@@ -170,6 +170,31 @@ async function swipeLeft(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
+async function waitForSurfacePageSettled(p, pageName) {
+  await p.waitForFunction((expectedPage) => {
+    const surface = document.querySelector(
+      '[data-testid="home-springboard-surface"]',
+    );
+    const rail = document.querySelector(
+      '[data-testid="home-springboard-rail"]',
+    );
+    if (!(surface instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
+      return false;
+    }
+    if (surface.getAttribute("data-page") !== expectedPage) return false;
+    const surfaceRect = surface.getBoundingClientRect();
+    const railRect = rail.getBoundingClientRect();
+    const expectedLeft =
+      expectedPage === "springboard"
+        ? surfaceRect.left - surfaceRect.width
+        : surfaceRect.left;
+    const railSettled = Math.abs(railRect.left - expectedLeft) < 1;
+    const transitionsDone = rail
+      .getAnimations()
+      .every((animation) => animation.playState === "finished");
+    return railSettled && transitionsDone;
+  }, pageName);
+}
 try {
   // Mobile (Pixel-ish) — the primary target.
   const mobileContext = await browser.newContext({
@@ -261,12 +286,7 @@ try {
   }
   await snap(mobile, "mobile-home");
   await swipeLeft(mobile.getByTestId("home-springboard-home-page"));
-  await mobile.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="home-springboard-surface"]')
-        ?.getAttribute("data-page") === "springboard",
-  );
+  await waitForSurfacePageSettled(mobile, "springboard");
   assert(
     await mobile.getByTestId("springboard-tile-settings").isVisible(),
     "Settings renders inside Springboard favorites",
@@ -318,12 +338,7 @@ try {
   );
   await snap(desktop, "desktop-home");
   await swipeLeft(desktop.getByTestId("home-springboard-home-page"));
-  await desktop.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="home-springboard-surface"]')
-        ?.getAttribute("data-page") === "springboard",
-  );
+  await waitForSurfacePageSettled(desktop, "springboard");
   await snap(desktop, "desktop-springboard");
   await desktop.close();
 } finally {

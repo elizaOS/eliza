@@ -1,19 +1,23 @@
 import * as React from "react";
 import { cn } from "../../lib/utils";
 import {
-  HOME_SPRINGBOARD_NAV_EVENT,
-  type HomeSpringboardNavigationDetail,
-  type HomeSpringboardPage,
-} from "./home-springboard-events";
+  goHome,
+  goSpringboard,
+  setShellSurfacePage,
+  setSpringboardPage,
+  useShellSurface,
+} from "../../state/shell-surface-store";
+import type { HomeSpringboardPage } from "./home-springboard-events";
 
-const HOME_TO_SPRINGBOARD_THRESHOLD = 72;
-const HOME_TO_SPRINGBOARD_ANGLE_RATIO = 1.25;
+/** Horizontal travel (px) needed to commit a rail flick (home ↔ springboard). */
+const RAIL_FLICK_THRESHOLD = 72;
+/** Horizontal travel must beat vertical by this ratio so a scroll never flips. */
+const RAIL_FLICK_ANGLE_RATIO = 1.25;
 
 interface FlickState {
   startX: number;
   startY: number;
   tracking: boolean;
-  moved: boolean;
 }
 
 export interface HomeSpringboardSurfaceProps {
@@ -23,97 +27,114 @@ export interface HomeSpringboardSurfaceProps {
   className?: string;
 }
 
+/**
+ * The home ↔ springboard rail. It owns NO local navigation state — `page` is
+ * read from (and every transition is dispatched to) the single shell-surface
+ * store, so this surface, the inner Springboard, the chat controller, and the
+ * page indicator can never disagree. One horizontal flick on either half maps to
+ * exactly one store intent (home → springboard on a left flick; springboard →
+ * home on a right flick), and a single combined indicator reflects the store —
+ * there is no second, competing dot strip.
+ */
 export function HomeSpringboardSurface({
   home,
   springboard,
   initialPage = "home",
   className,
 }: HomeSpringboardSurfaceProps): React.JSX.Element {
-  const [page, setPage] = React.useState<HomeSpringboardPage>(initialPage);
-  const flickRef = React.useRef<FlickState>({
+  const { page, springboardPage, springboardPageCount, springboardEditing } =
+    useShellSurface();
+
+  // The mounting route decides which half shows first. Re-runs only when the
+  // route actually changes `initialPage`, so an in-session swipe is never
+  // clobbered (the deps don't change on re-render).
+  React.useEffect(() => {
+    setShellSurfacePage(initialPage);
+  }, [initialPage]);
+
+  const homeFlick = React.useRef<FlickState>({
     startX: 0,
     startY: 0,
     tracking: false,
-    moved: false,
   });
-  const suppressNextClickRef = React.useRef(false);
+  const springboardFlick = React.useRef<FlickState>({
+    startX: 0,
+    startY: 0,
+    tracking: false,
+  });
+  // A committed flick must swallow the click that the browser synthesizes from
+  // the same press, so the flick doesn't also tap-launch the tile underneath.
+  const suppressHomeClickRef = React.useRef(false);
+  const suppressSpringboardClickRef = React.useRef(false);
 
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleNavigation = (event: Event) => {
-      const detail = (event as CustomEvent<HomeSpringboardNavigationDetail>)
-        .detail;
-      setPage(detail?.page ?? "home");
+  // One flick detector, parameterized by the direction that commits: the home
+  // half commits a LEFT flick (open springboard); the springboard half commits a
+  // RIGHT flick (return home) — the back gesture the old surface lacked, and the
+  // one escape that works even while the springboard is in edit mode.
+  const makeFlickHandlers = (
+    flick: React.RefObject<FlickState>,
+    suppress: React.RefObject<boolean>,
+    direction: "left" | "right",
+    onCommit: () => void,
+  ) => {
+    const committed = (dx: number, dy: number) =>
+      Math.abs(dx) > Math.abs(dy) * RAIL_FLICK_ANGLE_RATIO &&
+      (direction === "left"
+        ? dx < -RAIL_FLICK_THRESHOLD
+        : dx > RAIL_FLICK_THRESHOLD);
+    return {
+      onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!event.isPrimary) return;
+        flick.current = {
+          startX: event.clientX,
+          startY: event.clientY,
+          tracking: true,
+        };
+      },
+      onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => {
+        const state = flick.current;
+        if (!state.tracking) return;
+        state.tracking = false;
+        if (
+          !committed(event.clientX - state.startX, event.clientY - state.startY)
+        ) {
+          return;
+        }
+        suppress.current = true;
+        onCommit();
+        window.setTimeout(() => {
+          suppress.current = false;
+        }, 0);
+      },
+      onPointerCancel: () => {
+        flick.current.tracking = false;
+      },
+      onClickCapture: (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!suppress.current) return;
+        suppress.current = false;
+        event.preventDefault();
+        event.stopPropagation();
+      },
     };
-    window.addEventListener(HOME_SPRINGBOARD_NAV_EVENT, handleNavigation);
-    return () =>
-      window.removeEventListener(HOME_SPRINGBOARD_NAV_EVENT, handleNavigation);
-  }, []);
+  };
 
-  const openHome = React.useCallback(() => setPage("home"), []);
-  const openSpringboard = React.useCallback(() => setPage("springboard"), []);
-
-  const handleHomePointerDown = React.useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!event.isPrimary) return;
-      flickRef.current = {
-        startX: event.clientX,
-        startY: event.clientY,
-        tracking: true,
-        moved: false,
-      };
-    },
-    [],
+  const homeHandlers = makeFlickHandlers(
+    homeFlick,
+    suppressHomeClickRef,
+    "left",
+    goSpringboard,
   );
-
-  const handleHomePointerMove = React.useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const state = flickRef.current;
-      if (!state.tracking) return;
-      const dx = event.clientX - state.startX;
-      const dy = event.clientY - state.startY;
-      if (
-        dx < -HOME_TO_SPRINGBOARD_THRESHOLD &&
-        Math.abs(dx) > Math.abs(dy) * HOME_TO_SPRINGBOARD_ANGLE_RATIO
-      ) {
-        state.moved = true;
-      }
+  const springboardHandlers = makeFlickHandlers(
+    springboardFlick,
+    suppressSpringboardClickRef,
+    "right",
+    () => {
+      // A right-flick returns home only from the FIRST springboard page (iOS
+      // back); on deeper pages the inner pager steps back one page instead, so
+      // the two gestures never both fire. While editing it is always the escape
+      // hatch out of jiggle mode (the inner pager is disabled then).
+      if (springboardPage === 0 || springboardEditing) goHome();
     },
-    [],
-  );
-
-  const handleHomePointerUp = React.useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const state = flickRef.current;
-      if (!state.tracking) return;
-      state.tracking = false;
-      const dx = event.clientX - state.startX;
-      const dy = event.clientY - state.startY;
-      const shouldOpenSpringboard =
-        dx < -HOME_TO_SPRINGBOARD_THRESHOLD &&
-        Math.abs(dx) > Math.abs(dy) * HOME_TO_SPRINGBOARD_ANGLE_RATIO;
-      if (!shouldOpenSpringboard) return;
-      suppressNextClickRef.current = true;
-      openSpringboard();
-      window.setTimeout(() => {
-        suppressNextClickRef.current = false;
-      }, 0);
-    },
-    [openSpringboard],
-  );
-
-  const handleHomePointerCancel = React.useCallback(() => {
-    flickRef.current.tracking = false;
-  }, []);
-
-  const handleHomeClickCapture = React.useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!suppressNextClickRef.current) return;
-      suppressNextClickRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [],
   );
 
   const railStyle = React.useMemo<React.CSSProperties>(
@@ -124,14 +145,29 @@ export function HomeSpringboardSurface({
     [page],
   );
 
+  // ONE indicator for the whole launcher: a home dot followed by one dot per
+  // springboard page. Active index is derived from the store, so the doubled
+  // (stacked) dot strips are gone — there is exactly one. Tapping a dot is a
+  // direct jump (dot 0 → home; dot k → springboard page k-1).
+  const totalDots = 1 + Math.max(1, springboardPageCount);
+  const activeDot = page === "home" ? 0 : 1 + springboardPage;
+  const jumpToDot = React.useCallback((index: number) => {
+    if (index <= 0) {
+      goHome();
+      return;
+    }
+    goSpringboard();
+    setSpringboardPage(index - 1);
+  }, []);
+
   return (
     <section
       data-testid="home-springboard-surface"
       data-page={page}
       // `select-none`: this is a swipeable launcher (home ↔ springboard), so a
       // horizontal drag must pan the rail, never text-select the tile labels /
-      // widget text underneath (which left a stray blue selection highlight).
-      // (Vertical scroll of the home widget list is untouched.)
+      // widget text underneath. (Vertical scroll of the home widget list is
+      // untouched.)
       className={cn(
         "absolute inset-0 z-[1] select-none overflow-hidden",
         className,
@@ -149,11 +185,10 @@ export function HomeSpringboardSurface({
           data-testid="home-springboard-home-page"
           aria-hidden={page !== "home"}
           className="relative h-full w-1/2 shrink-0"
-          onPointerDown={handleHomePointerDown}
-          onPointerMove={handleHomePointerMove}
-          onPointerUp={handleHomePointerUp}
-          onPointerCancel={handleHomePointerCancel}
-          onClickCapture={handleHomeClickCapture}
+          onPointerDown={homeHandlers.onPointerDown}
+          onPointerUp={homeHandlers.onPointerUp}
+          onPointerCancel={homeHandlers.onPointerCancel}
+          onClickCapture={homeHandlers.onClickCapture}
         >
           {home}
         </div>
@@ -161,28 +196,34 @@ export function HomeSpringboardSurface({
           data-testid="home-springboard-springboard-page"
           aria-hidden={page !== "springboard"}
           className="relative h-full w-1/2 shrink-0"
+          onPointerDown={springboardHandlers.onPointerDown}
+          onPointerUp={springboardHandlers.onPointerUp}
+          onPointerCancel={springboardHandlers.onPointerCancel}
+          onClickCapture={springboardHandlers.onClickCapture}
         >
           {React.cloneElement(springboard, {
-            onNavigateHomeFromEdge: openHome,
+            onNavigateHomeFromEdge: goHome,
           })}
         </div>
       </div>
       <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+5.9rem)] z-[2] flex justify-center gap-1.5"
+        data-testid="home-springboard-indicator"
+        className="pointer-events-auto absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+5.9rem)] z-[2] flex justify-center gap-1.5"
       >
-        <span
-          className={cn(
-            "h-1.5 w-1.5 rounded-full transition-colors",
-            page === "home" ? "bg-white/70" : "bg-white/25",
-          )}
-        />
-        <span
-          className={cn(
-            "h-1.5 w-1.5 rounded-full transition-colors",
-            page === "springboard" ? "bg-white/70" : "bg-white/25",
-          )}
-        />
+        {Array.from({ length: totalDots }, (_, index) => (
+          <button
+            // biome-ignore lint/suspicious/noArrayIndexKey: dots have no stable id; index IS the page identity.
+            key={`shell-dot-${index}`}
+            type="button"
+            aria-label={index === 0 ? "Home" : `Apps page ${index}`}
+            aria-current={index === activeDot}
+            onClick={() => jumpToDot(index)}
+            className={cn(
+              "h-1.5 w-1.5 rounded-full transition-colors",
+              index === activeDot ? "bg-white/70" : "bg-white/25",
+            )}
+          />
+        ))}
       </div>
     </section>
   );

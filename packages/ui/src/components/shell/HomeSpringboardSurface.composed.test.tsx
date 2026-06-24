@@ -1,0 +1,235 @@
+// @vitest-environment jsdom
+//
+// COMPOSED screen-state test — the gap the audit flagged. Every prior test
+// rendered HomeSpringboardSurface against a one-button stub and the Springboard
+// in isolation, so the bugs that live in the COMPOSITION (two stacked dot
+// strips, swipe-back landing in jiggle mode) were structurally unreachable.
+// This renders the REAL HomeSpringboardSurface wrapping the REAL
+// SpringboardSurface, driven by the single shell-surface store, and asserts the
+// real transitions across the seam.
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
+import { useRoutableViews } from "../../hooks/useAvailableViews";
+import { useViewCatalog } from "../../hooks/useViewCatalog";
+import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
+import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { SpringboardSurface } from "../pages/SpringboardSurface";
+import { HomeSpringboardSurface } from "./HomeSpringboardSurface";
+
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useRoutableViews: vi.fn(),
+}));
+vi.mock("../../hooks/useViewCatalog", () => ({
+  useViewCatalog: vi.fn(),
+}));
+vi.mock("../../state/useViewKinds", () => ({
+  useEnabledViewKinds: vi.fn(),
+}));
+vi.mock("../../platform/platform-guards", () => ({
+  getActiveViewModality: () => "gui",
+}));
+
+const useRoutableViewsMock = vi.mocked(useRoutableViews);
+const useViewCatalogMock = vi.mocked(useViewCatalog);
+const useEnabledViewKindsMock = vi.mocked(useEnabledViewKinds);
+
+function view(
+  id: string,
+  label: string,
+  path: string,
+  options: Partial<ViewRegistryEntry> = {},
+): ViewRegistryEntry {
+  return {
+    id,
+    label,
+    viewType: "gui",
+    path,
+    available: true,
+    pluginName: "@elizaos/builtin",
+    visibleInManager: true,
+    builtin: true,
+    viewKind: "release",
+    ...options,
+  };
+}
+
+// Four dock favorites (so the dock fills) + 24 page views, which pack into TWO
+// springboard pages (page size 20). Two pages is what makes the doubled-dots
+// bug observable: the inner Springboard WOULD render its own dot strip here if
+// it weren't suppressed in favor of the rail's single indicator.
+const DOCK_VIEWS = [
+  view("settings", "Settings", "/settings", { icon: "Settings" }),
+  view("files", "Files", "/apps/files", { icon: "FolderClosed" }),
+  view("tasks", "Tasks", "/apps/tasks", { icon: "ListTodo" }),
+  view("activity", "Activity", "/activity", { icon: "Activity" }),
+];
+const PAGE_VIEWS = Array.from({ length: 24 }, (_, i) =>
+  view(`app${i}`, `App ${i}`, `/apps/app${i}`),
+);
+const ALL_VIEWS = [...DOCK_VIEWS, ...PAGE_VIEWS];
+
+beforeEach(() => {
+  resetShellSurfaceForTests();
+  window.localStorage.clear();
+  window.history.replaceState(null, "", "/");
+  useEnabledViewKindsMock.mockReturnValue({ developer: true, preview: true });
+  useRoutableViewsMock.mockReturnValue({
+    views: ALL_VIEWS,
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  });
+  useViewCatalogMock.mockReturnValue({
+    entries: [],
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+    get: vi.fn(async () => {}),
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  resetShellSurfaceForTests();
+  vi.clearAllMocks();
+  vi.useRealTimers();
+});
+
+function renderComposed() {
+  render(
+    <HomeSpringboardSurface
+      home={<div data-testid="home-content">home</div>}
+      springboard={<SpringboardSurface />}
+    />,
+  );
+  return screen.getByTestId("home-springboard-surface");
+}
+
+function flick(testid: string, dx: number, dy = 4): void {
+  const el = screen.getByTestId(testid);
+  fireEvent.pointerDown(el, { isPrimary: true, clientX: 260, clientY: 300 });
+  fireEvent.pointerMove(el, {
+    isPrimary: true,
+    clientX: 260 + dx,
+    clientY: 300 + dy,
+  });
+  fireEvent.pointerUp(el, {
+    isPrimary: true,
+    clientX: 260 + dx,
+    clientY: 300 + dy,
+  });
+}
+
+const openSpringboard = () => flick("home-springboard-home-page", -140);
+const swipeBackHome = () => flick("home-springboard-springboard-page", 140);
+
+describe("Home ↔ Springboard composed surface", () => {
+  it("renders exactly ONE page-indicator strip — no stacked dot rows (#4)", () => {
+    const surface = renderComposed();
+    openSpringboard();
+    expect(surface.getAttribute("data-page")).toBe("springboard");
+
+    // The single rail indicator: Home + one dot per springboard page (2 pages).
+    const indicator = screen.getByTestId("home-springboard-indicator");
+    const railDots = indicator.querySelectorAll("button");
+    expect(railDots.length).toBe(3); // Home + Apps page 1 + Apps page 2
+    expect(screen.getByLabelText("Home")).toBeTruthy();
+    expect(screen.getByLabelText("Apps page 1")).toBeTruthy();
+    expect(screen.getByLabelText("Apps page 2")).toBeTruthy();
+
+    // The inner Springboard's OWN dot strip (aria-label "Page N") must be gone —
+    // it is what stacked under the rail dots before. There must be none.
+    expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
+    // ...and only one indicator container exists.
+    expect(
+      document.querySelectorAll('[data-testid="home-springboard-indicator"]')
+        .length,
+    ).toBe(1);
+  });
+
+  it("swiping back from the springboard returns HOME and is NOT in edit mode (#3)", () => {
+    const surface = renderComposed();
+    openSpringboard();
+    expect(surface.getAttribute("data-page")).toBe("springboard");
+
+    // Enter edit mode via the Edit button.
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
+    expect(screen.getByTestId("springboard-fav-settings")).toBeTruthy();
+
+    // Swipe back. This is the exact gesture that used to strand the user in
+    // jiggle mode. It must return home AND drop edit mode (store invariant).
+    swipeBackHome();
+    expect(surface.getAttribute("data-page")).toBe("home");
+
+    // Re-enter the springboard: it must be a CLEAN launch view, not stale edit.
+    openSpringboard();
+    expect(surface.getAttribute("data-page")).toBe("springboard");
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+    expect(screen.queryByTestId("springboard-fav-settings")).toBeNull();
+  });
+
+  it("a horizontal swipe that starts ON a tile never ghost-fires edit mode (#3)", () => {
+    vi.useFakeTimers();
+    renderComposed();
+    openSpringboard();
+
+    // Press a tile and PAN past the slop before the long-press timer elapses.
+    const tile = screen
+      .getByTestId("springboard-tile-app0")
+      .querySelector("button");
+    if (!tile) throw new Error("tile button missing");
+    fireEvent.pointerDown(tile, { clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(tile, { clientX: 90, clientY: 52 }); // dx 40 > slop
+    act(() => vi.advanceTimersByTime(600));
+    // Swipe ⇒ NOT a long-press ⇒ NOT edit mode.
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+
+    // Control: a STATIONARY hold past the threshold DOES enter edit mode, so the
+    // intentional long-press affordance still works.
+    const tile2 = screen
+      .getByTestId("springboard-tile-app1")
+      .querySelector("button");
+    if (!tile2) throw new Error("tile button missing");
+    fireEvent.pointerDown(tile2, { clientX: 50, clientY: 50 });
+    act(() => vi.advanceTimersByTime(600));
+    expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
+  });
+
+  it("tapping a rail dot jumps directly to that surface", () => {
+    const surface = renderComposed();
+    openSpringboard();
+
+    // Jump to springboard page 2 via its dot.
+    fireEvent.click(screen.getByLabelText("Apps page 2"));
+    expect(
+      screen.getByLabelText("Apps page 2").getAttribute("aria-current"),
+    ).toBe("true");
+
+    // Jump home via the home dot.
+    fireEvent.click(screen.getByLabelText("Home"));
+    expect(surface.getAttribute("data-page")).toBe("home");
+  });
+
+  it("dock tiles render DISTINCT per-view glyphs, not one placeholder (#5)", () => {
+    renderComposed();
+    openSpringboard();
+    const settingsGlyph = document
+      .querySelector('[data-view-visual="settings"] svg')
+      ?.getAttribute("class");
+    const filesGlyph = document
+      .querySelector('[data-view-visual="files"] svg')
+      ?.getAttribute("class");
+    expect(settingsGlyph).toContain("lucide-settings");
+    expect(filesGlyph).toContain("lucide-folder-closed");
+    expect(settingsGlyph).not.toBe(filesGlyph);
+  });
+});

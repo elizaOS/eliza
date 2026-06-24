@@ -8,6 +8,12 @@ import {
   getActiveViewModality,
   type ViewModality,
 } from "../../platform/platform-guards";
+import {
+  setSpringboardEditing,
+  setSpringboardPage,
+  setSpringboardPageCount,
+  useShellSurface,
+} from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { recordRecentViewId } from "../../view-recents";
 import { Springboard } from "./Springboard";
@@ -95,6 +101,10 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
   const { entries: catalogEntries, get: getCatalogEntry } = useViewCatalog();
   const enabledKinds = useEnabledViewKinds();
   const activeModality = React.useMemo(() => getActiveViewModality(), []);
+  // Page index + edit mode come from the single shell-surface store, so the
+  // springboard, the rail, and its one indicator can never disagree (and edit
+  // mode is auto-reset by the store when the user leaves the springboard).
+  const { springboardPage, springboardEditing } = useShellSurface();
 
   const loadedEntries = React.useMemo(
     () =>
@@ -157,6 +167,12 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
         loading={loading}
         onLaunch={(entry) => handleLaunch(entryById.get(entry.id) ?? entry)}
         onEdgeSwipeRight={onNavigateHomeFromEdge}
+        page={springboardPage}
+        onPageChange={setSpringboardPage}
+        onPageCountChange={setSpringboardPageCount}
+        editing={springboardEditing}
+        onEditingChange={setSpringboardEditing}
+        showPageDots={false}
       />
     </div>
   );

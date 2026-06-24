@@ -158,12 +158,58 @@ const VIEWS_CACHE_KEY = "views:available";
 
 const EMPTY_VIEWS: ViewRegistryEntry[] = [];
 
+// Per-tab Lucide glyph names for the builtin shell views, so each springboard
+// tile renders a DISTINCT icon instead of collapsing onto the generic
+// LayoutGrid fallback (every builtin entry previously shipped no `icon`, so
+// Settings/Files/Tasks all rendered the same 4-square placeholder). Names must
+// exist in ViewIcon's ICONS map; an id with no entry here falls through to the
+// keyword guesser, then LayoutGrid.
+const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
+  chat: "MessageSquare",
+  phone: "Phone",
+  messages: "MessageSquare",
+  contacts: "UsersRound",
+  camera: "AppWindow",
+  tasks: "ListTodo",
+  browser: "Globe",
+  companion: "Bot",
+  stream: "Radio",
+  apps: "LayoutGrid",
+  views: "LayoutGrid",
+  character: "Bot",
+  "character-select": "Users",
+  automations: "Zap",
+  triggers: "Zap",
+  inventory: "Wallet",
+  documents: "FileText",
+  files: "FolderClosed",
+  plugins: "Plug",
+  skills: "Sparkles",
+  advanced: "BrainCircuit",
+  "fine-tuning": "BrainCircuit",
+  trajectories: "Activity",
+  transcripts: "FileText",
+  relationships: "Network",
+  memories: "BrainCircuit",
+  rolodex: "UsersRound",
+  voice: "Mic",
+  runtime: "Terminal",
+  database: "Database",
+  desktop: "Monitor",
+  settings: "Settings",
+  tutorial: "Sparkles",
+  help: "Inbox",
+  logs: "ScrollText",
+  background: "ImageIcon",
+};
+
 const BUILTIN_SHELL_VIEW_ENTRIES: ViewRegistryEntry[] = Object.entries(
   TAB_PATHS,
 ).map(([id, path]) => ({
   id,
   label: titleForTab(id as BuiltinTab),
   viewType: "gui",
+  icon: TAB_ICON_NAMES[id as BuiltinTab],
   path,
   available: true,
   pluginName: "@elizaos/builtin",

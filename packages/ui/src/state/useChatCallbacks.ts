@@ -18,7 +18,7 @@ import {
   client,
   type ImageAttachment,
 } from "../api";
-import { type Tab, tabFromPath } from "../navigation";
+import type { Tab } from "../navigation";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
 import {
   isConversationRecord,
@@ -118,18 +118,6 @@ function shouldStartFreshCompanionConversation(
     }
     return now - message.timestamp > COMPANION_STALE_THREAD_MAX_AGE_MS;
   });
-}
-
-function getNavigationPathFromWindow(): string {
-  if (typeof window === "undefined") return "/";
-  if (window.location.protocol === "file:") {
-    return window.location.hash.replace(/^#/, "") || "/";
-  }
-  return window.location.pathname || "/";
-}
-
-function shouldAutoCreateInitialConversation(): boolean {
-  return tabFromPath(getNavigationPathFromWindow()) === "chat";
 }
 
 // ── Deps interface ──────────────────────────────────────────────────
@@ -565,10 +553,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       activeConversationIdRef.current = null;
       setConversations([]);
 
-      if (!shouldAutoCreateInitialConversation()) {
-        return null;
-      }
-
+      // The ContinuousChatOverlay is mounted on EVERY surface (App.tsx), so the
+      // chat must ALWAYS have an active, greeted conversation — never an empty
+      // thread — regardless of which tab/route the shell launched on. Previously
+      // this was gated on the URL being the /chat route, so booting at /views or
+      // a cached app slug left the overlay permanently empty. Always create.
       traceGreeting("hydrate:auto_create_initial_conversation");
       try {
         const { conversation: rawConversation, greeting: inlineGreeting } =
