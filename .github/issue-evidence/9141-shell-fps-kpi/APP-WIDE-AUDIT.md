@@ -37,34 +37,37 @@ interaction-fps + reduced-motion e2e specs pass.
 ## Prioritized backlog (deferred — each needs its own measurement / visual review)
 
 **Battery (cloud-frontend polling cluster) — mechanical, but the cloud surface
-has its own visual-review gate:**
-- 6 un-gated 5–30s polls in `cloud/applications/components/app-analytics.tsx:264,274,282`,
-  `cloud/instances/lib/use-sandbox-status-poll.ts:132,249`, `app-domains.tsx:180`,
-  `eliza-wallet-section.tsx:187`, `use-job-poller.ts:184` → add `useDocumentVisibility`.
+## Backlog — now implemented in this PR
 
-**3D / agent layer (biggest GPU/battery win, needs runtime canvas verification):**
-- VRM render loop never pauses when the canvas is offscreen — only on a hidden
-  tab; no `IntersectionObserver` (`plugin-companion/.../VrmViewer.tsx:214`).
-- `ChatAvatar` never passes `active`, so its WebGL engine renders continuously
-  while the sidebar is collapsed (`ChatAvatar.tsx:125`).
-- `minimalBackgroundMode` is a write-only dead flag — "animate when hidden" runs
-  the full loop (`VrmEngine.ts:676,1498`).
+Everything the audit flagged that could be landed with verification has been
+landed (the items below are no longer deferred):
 
-**Re-render / per-frame cost (measurement-first):**
-- `resource-cache.setCached` writes a fresh reference every poll tick with no
-  equality gate → `useAvailableViews` re-renders the router + tab bar every 30s
-  (`hooks/resource-cache.ts:130`).
-- Per-message-identity memoization (WeakMap) for `normalizeTranscriptMessage` /
-  `ChatView.visibleMsgs` so per-token cost stops scaling with thread length
-  (`chat-transcript.tsx:128`, `ChatView.tsx:383`).
+**Battery (cloud-frontend poll cluster) — DONE.** All 6 un-gated 5–30s polls
+(`app-analytics.tsx` ×3, `use-sandbox-status-poll.ts` ×2, `app-domains.tsx`,
+`eliza-wallet-section.tsx`, `use-job-poller.ts`) now pause while the tab is
+hidden (logic-only; no visual change).
 
-**List virtualization (no virtualization primitive exists in `packages/ui`):**
-- `TranscriptBody` re-renders the full word tree per audio frame (`TranscriptBody.tsx:39`);
-  `TrajectoryDetailView` builds its pipeline in the render body + unwindowed call
-  list (`:400,705`); `LogsView` unwindowed (`:330`); `PluginCard`/`FileCard`/
-  `SkillRowButton`/`ChatConversationItem` unmemoized heavy leaves. A single
-  virtualization primitive + `React.memo` pass resolves most of these.
+**3D / agent layer (biggest GPU/battery win) — DONE + unit-tested.** The VRM
+render loop now pauses when the canvas is offscreen (`IntersectionObserver`),
+`ChatAvatar` passes `active={avatarVisible}` so the engine stops while collapsed,
+and the dead `minimalBackgroundMode` flag is replaced with the real
+`setHalfFramerateMode` throttle. The pause/throttle decision is a pure
+`computeVrmPausePolicy` with 6 unit tests.
 
-The deferred items are tracked as task chips / a follow-up so they get the
-per-change profiling and (for cloud/3D) visual verification they require rather
-than landing blind in this PR.
+**Re-render / per-frame cost — DONE + tested.** `resource-cache.setCached` now
+equality-gates (no re-render on an unchanged poll; 4 tests). `normalizeTranscriptMessage`
+and `ChatView.visibleMsgs` are WeakMap-memoized per message identity (O(N)→O(1)
+per token frame). Heavy list leaves (`PluginCard`, `FileCard`, `SkillRowButton`,
+`ChatConversationItem`, `TranscriptBody` words, `LogRow`) are `React.memo`'d, and
+`TrajectoryDetailView`'s event pipeline + `PluginsView`/`SkillsView` derivations
+are moved out of the render body into `useMemo`.
+
+## Still deferred (one item, with reason)
+
+**True list windowing/virtualization** for the unbounded lists (`LogsView` 1–5k
+rows, `TrajectoryDetailView` call list). The row components are now memoized (so
+reconciliation cost is bounded), but DOM-count windowing is intentionally left to
+a focused follow-up: fixed-height windowing over the variable-height rows here
+would risk introducing the exact scroll jank / "objects jumping on screen" this
+work is meant to eliminate, so it needs a proper measured, scroll-recorded pass
+(react-virtual or a dynamic-height implementation) rather than landing blind.
