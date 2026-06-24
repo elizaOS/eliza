@@ -138,7 +138,10 @@ export function reconcileLayout(
 ): SpringboardLayout {
   const available = new Set(availableIds);
 
-  const favorites = layout.favorites
+  // Dedupe defensively: toggleFavorite never adds a duplicate, but a corrupted
+  // or hand-edited localStorage payload could, and a duplicated favorite would
+  // otherwise render twice in the dock.
+  const favorites = [...new Set(layout.favorites)]
     .filter((id) => available.has(id))
     .slice(0, SPRINGBOARD_DOCK_LIMIT);
   const favoriteSet = new Set(favorites);
