@@ -27,19 +27,13 @@ afterEach(() => {
 describe("validateCloudBaseUrl — format", () => {
   it("rejects an unparseable URL and a non-HTTPS scheme", async () => {
     expect(await validateCloudBaseUrl("not a url")).toMatch(/Invalid cloud base URL/);
-    expect(await validateCloudBaseUrl("http://example.com")).toMatch(
-      /must use HTTPS/,
-    );
+    expect(await validateCloudBaseUrl("http://example.com")).toMatch(/must use HTTPS/);
   });
 });
 
 describe("validateCloudBaseUrl — local hostnames", () => {
   it("blocks localhost, *.localhost, and *.local", async () => {
-    for (const url of [
-      "https://localhost/",
-      "https://api.localhost/",
-      "https://printer.local/",
-    ]) {
+    for (const url of ["https://localhost/", "https://api.localhost/", "https://printer.local/"]) {
       expect(await validateCloudBaseUrl(url)).toMatch(/blocked local hostname/);
     }
   });
@@ -74,8 +68,6 @@ describe("validateCloudBaseUrl — allowed", () => {
     process.env.ELIZA_DEV = "1";
     expect(await validateCloudBaseUrl("https://10.0.0.1/")).toBeNull();
     // Format checks still apply even in dev mode.
-    expect(await validateCloudBaseUrl("http://10.0.0.1/")).toMatch(
-      /must use HTTPS/,
-    );
+    expect(await validateCloudBaseUrl("http://10.0.0.1/")).toMatch(/must use HTTPS/);
   });
 });

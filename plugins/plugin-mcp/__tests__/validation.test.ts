@@ -25,7 +25,7 @@ describe("validateToolSelectionName", () => {
   it("accepts a noToolAvailable signal and preserves reasoning", () => {
     const res = validateToolSelectionName(
       { noToolAvailable: true, reasoning: "nothing fits" },
-      stateWith({}),
+      stateWith({})
     );
     expect(res.success).toBe(true);
     if (res.success) {
@@ -36,23 +36,20 @@ describe("validateToolSelectionName", () => {
 
   it("rejects a selection for an unknown or disconnected server", () => {
     expect(
-      validateToolSelectionName(
-        { serverName: "ghost", toolName: "search" },
-        stateWith({}),
-      ).success,
+      validateToolSelectionName({ serverName: "ghost", toolName: "search" }, stateWith({})).success
     ).toBe(false);
     expect(
       validateToolSelectionName(
         { serverName: "web", toolName: "search" },
-        stateWith({ web: { status: "connecting", tools: {} } }),
-      ).success,
+        stateWith({ web: { status: "connecting", tools: {} } })
+      ).success
     ).toBe(false);
   });
 
   it("rejects a tool that does not exist on a connected server", () => {
     const res = validateToolSelectionName(
       { serverName: "web", toolName: "delete_everything" },
-      stateWith({ web: connectedServer }),
+      stateWith({ web: connectedServer })
     );
     expect(res.success).toBe(false);
     if (!res.success) expect(res.error).toMatch(/not found on server/);
@@ -61,15 +58,14 @@ describe("validateToolSelectionName", () => {
   it("accepts a real tool on a connected server", () => {
     const res = validateToolSelectionName(
       { serverName: "web", toolName: "search" },
-      stateWith({ web: connectedServer }),
+      stateWith({ web: connectedServer })
     );
     expect(res.success).toBe(true);
   });
 
   it("rejects structurally invalid output (missing toolName)", () => {
     expect(
-      validateToolSelectionName({ serverName: "web" }, stateWith({ web: connectedServer }))
-        .success,
+      validateToolSelectionName({ serverName: "web" }, stateWith({ web: connectedServer })).success
     ).toBe(false);
   });
 });
@@ -82,9 +78,9 @@ describe("validateToolSelectionArgument", () => {
   } as const;
 
   it("validates arguments against the tool input schema", () => {
-    expect(
-      validateToolSelectionArgument({ toolArguments: { q: "hi" } }, schema).success,
-    ).toBe(true);
+    expect(validateToolSelectionArgument({ toolArguments: { q: "hi" } }, schema).success).toBe(
+      true
+    );
     const bad = validateToolSelectionArgument({ toolArguments: {} }, schema);
     expect(bad.success).toBe(false);
     if (!bad.success) expect(bad.error).toMatch(/Invalid arguments/);
@@ -92,23 +88,17 @@ describe("validateToolSelectionArgument", () => {
 
   it("coerces an empty-string/'{}' toolArguments to an empty object", () => {
     const emptyObjSchema = { type: "object" } as const;
-    expect(
-      validateToolSelectionArgument({ toolArguments: "" }, emptyObjSchema).success,
-    ).toBe(true);
-    expect(
-      validateToolSelectionArgument({ toolArguments: "{}" }, emptyObjSchema).success,
-    ).toBe(true);
+    expect(validateToolSelectionArgument({ toolArguments: "" }, emptyObjSchema).success).toBe(true);
+    expect(validateToolSelectionArgument({ toolArguments: "{}" }, emptyObjSchema).success).toBe(
+      true
+    );
   });
 });
 
 describe("validateResourceSelection", () => {
   it("accepts noResourceAvailable and a well-formed selection, rejects a malformed one", () => {
-    expect(validateResourceSelection({ noResourceAvailable: true }).success).toBe(
-      true,
-    );
-    expect(
-      validateResourceSelection({ serverName: "fs", uri: "file:///a" }).success,
-    ).toBe(true);
+    expect(validateResourceSelection({ noResourceAvailable: true }).success).toBe(true);
+    expect(validateResourceSelection({ serverName: "fs", uri: "file:///a" }).success).toBe(true);
     expect(validateResourceSelection({ serverName: "fs" }).success).toBe(false);
   });
 });

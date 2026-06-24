@@ -127,10 +127,7 @@ describe("assertUrlAllowed", () => {
 });
 
 describe("safeFetch", () => {
-  const fakeResponse = (
-    status: number,
-    location?: string,
-  ): Response =>
+  const fakeResponse = (status: number, location?: string): Response =>
     ({
       status,
       headers: new Headers(location ? { location } : {}),
@@ -157,7 +154,10 @@ describe("safeFetch", () => {
   });
 
   it("returns the response for a non-redirect public fetch", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => fakeResponse(200)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => fakeResponse(200)),
+    );
     const res = await safeFetch("http://8.8.8.8/");
     expect(res.status).toBe(200);
   });
@@ -167,6 +167,8 @@ describe("safeFetch", () => {
       "fetch",
       vi.fn(async () => fakeResponse(302, "http://8.8.8.8/")),
     );
-    await expect(safeFetch("http://8.8.8.8/")).rejects.toThrow(/too many redirects/);
+    await expect(safeFetch("http://8.8.8.8/")).rejects.toThrow(
+      /too many redirects/,
+    );
   });
 });
