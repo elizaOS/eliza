@@ -314,6 +314,16 @@ export type ScenarioFinalCheck =
       requireReminderPlan?: boolean;
       websiteAccess?: DefinitionCountWebsiteAccess;
     })
+  | (CheckBase<"reminderIntensity"> & {
+      title: string;
+      titleAliases?: string[];
+      expected:
+        | "minimal"
+        | "normal"
+        | "persistent"
+        | "high_priority_only"
+        | "escalated";
+    })
   | (CheckBase<"judgeRubric"> & {
       name: string;
       rubric: string;
