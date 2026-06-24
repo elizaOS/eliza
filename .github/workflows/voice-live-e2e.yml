@@ -6,11 +6,11 @@ name: Voice Live E2E
 # self-hosted model-heavy nightly / workflow_dispatch lane.
 #
 # What it proves (no mocks at any stage):
-#   - Real STT: whisper.cpp FFI transcribes a real speech WAV.
-#   - Real TTS -> STT round-trip: text -> real OmniVoice TTS (omnivoice-tts CLI +
-#     OmniVoice base/tokenizer GGUF) -> real 24 kHz speech -> assert non-silent
-#     real signal -> ffmpeg resample -> real whisper STT -> transcript reads back
-#     the spoken words.
+#   - Real fused ASR: the provisioned libelizainference + ASR bundle
+#     transcribes real speech.
+#   - Optional mixed round-trip: when cloud voice/LLM keys are present, real
+#     generated speech flows through fused local ASR, a live cloud LLM, and
+#     live cloud TTS.
 #
 # The acoustic attribution matrix is provisioned with pinned GGUFs and a fused
 # libelizainference build. Its scripts run in require-real mode so a missing
@@ -37,16 +37,14 @@ env:
   NODE_VERSION: "24"
   BUN_VERSION: "canary"
   NODE_OPTIONS: "--experimental-sqlite"
-  # Where ensure-whisper-gguf.sh stages the model, and the exact file the voice
-  # tests resolve (both honor ELIZA_WHISPER_MODEL / _DIR before the home cache).
-  ELIZA_WHISPER_MODEL_DIR: "${{ github.workspace }}/.cache/eliza-whisper-models"
-  ELIZA_WHISPER_MODEL: "${{ github.workspace }}/.cache/eliza-whisper-models/ggml-base.en.bin"
-
 jobs:
   voice-roundtrip:
-    name: Real voice STT + TTS->STT round-trip (self-hosted)
+    name: Real fused ASR + optional mixed round-trip (self-hosted)
     runs-on: [self-hosted, Linux, X64, eliza]
     timeout-minutes: 90
+    env:
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
     # Non-blocking: a missing GPU/model environment must not red-X the branch.
     continue-on-error: true
     steps:
@@ -76,37 +74,48 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build whisper.cpp (STT engine + CLI + FFI adapter)
-        run: node plugins/plugin-local-inference/native/build-whisper.mjs
-
-      - name: Build OmniVoice (TTS engine + omnivoice-tts CLI)
+      - name: Probe preprovisioned fused ASR bundle
         run: |
           set -euo pipefail
-          node plugins/plugin-local-inference/native/build-omnivoice.mjs
-          cmake --build plugins/plugin-local-inference/native/omnivoice.cpp/build \
-                --target omnivoice-tts -j 4
+          first_existing_file() {
+            for path in "$@"; do
+              if [ -n "$path" ] && [ -f "$path" ]; then
+                printf '%s\n' "$path"
+                return 0
+              fi
+            done
+            return 1
+          }
 
-      - name: Stage whisper ggml model
-        run: |
-          set -euo pipefail
-          bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en
+          BUNDLE="${ELIZA_ASR_BUNDLE:-$HOME/.eliza/local-inference/models/eliza-1-2b.bundle}"
+          FUSED_LIB="$(first_existing_file \
+            "${ELIZA_INFERENCE_LIBRARY:-}" \
+            "$BUNDLE/lib/libelizainference.so" \
+            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cuda-fused/libelizainference.so" \
+            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so" \
+            || true)"
 
-      - name: Stage OmniVoice GGUFs (HF elizaos/eliza-1)
-        run: |
-          set -euo pipefail
-          DEST="$HOME/.local/state/eliza/local-inference/models/omnivoice"
-          mkdir -p "$DEST"
-          base="https://huggingface.co/elizaos/eliza-1/resolve/main/voice/omnivoice"
-          for f in omnivoice-base-q4_k_m.gguf omnivoice-tokenizer-q4_k_m.gguf; do
-            curl -fSL "$base/$f" -o "$DEST/$f"
-          done
-          ls -la "$DEST"
+          if [ ! -d "$BUNDLE/asr" ] || [ -z "$FUSED_LIB" ]; then
+            echo "preprovisioned fused ASR bundle not found; full gated coverage is in voice-acoustic-matrix"
+            echo "bundle=$BUNDLE"
+            echo "fusedLib=${FUSED_LIB:-missing}"
+            echo "ELIZA_ROUNDTRIP_REAL_READY=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
 
-      - name: Real STT test (whisper FFI, bun:ffi)
+          echo "ELIZA_ASR_BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
+          echo "ELIZA_INFERENCE_LIBRARY=$FUSED_LIB" >> "$GITHUB_ENV"
+          echo "ELIZA_ROUNDTRIP_REAL_READY=1" >> "$GITHUB_ENV"
+          echo "bundle=$BUNDLE"
+          echo "fusedLib=$FUSED_LIB"
+
+      - name: Real fused ASR smoke (bun:ffi)
+        if: env.ELIZA_ROUNDTRIP_REAL_READY == '1'
         run: bun run --cwd plugins/plugin-local-inference test:asr:real
 
-      - name: Real TTS -> STT round-trip test
-        run: bun run --cwd plugins/plugin-local-inference test:voice:roundtrip
+      - name: Optional mixed real round-trip test
+        if: env.ELIZA_ROUNDTRIP_REAL_READY == '1' && env.ELEVENLABS_API_KEY != '' && env.CEREBRAS_API_KEY != ''
+        run: bun run --cwd plugins/plugin-local-inference roundtrip:real
 
   voice-acoustic-matrix:
     name: Real acoustic VAD + diarization + self-voice matrix (self-hosted)
@@ -124,13 +133,21 @@ jobs:
       - name: Probe provisioned voice runner
         run: |
           set -euo pipefail
-          nvcc --version || true
-          nvidia-smi || true
-          ffmpeg -version | head -1 || true
-          if [ -z "${ELEVENLABS_API_KEY:-}" ]; then
-            echo "ELEVENLABS_API_KEY is required for real generated-speech lanes"
-            exit 1
-          fi
+          VOICE_REAL_MATRIX_OUT="$RUNNER_TEMP/voice-real-matrix"
+          echo "VOICE_REAL_MATRIX_OUT=$VOICE_REAL_MATRIX_OUT" >> "$GITHUB_ENV"
+          mkdir -p "$VOICE_REAL_MATRIX_OUT"
+          {
+            echo "runner=$(hostname)"
+            echo "workspace=$GITHUB_WORKSPACE"
+            echo "runnerTemp=$RUNNER_TEMP"
+            nvcc --version || true
+            nvidia-smi || true
+            ffmpeg -version | head -1 || true
+            if [ -z "${ELEVENLABS_API_KEY:-}" ]; then
+              echo "ELEVENLABS_API_KEY is required for real generated-speech lanes"
+              exit 1
+            fi
+          } 2>&1 | tee "$VOICE_REAL_MATRIX_OUT/probe.log"
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -248,16 +265,16 @@ jobs:
             echo "ELIZA_TEST_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
             echo "ELIZA_TEST_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0.gguf"
             echo "ELIZA_VOICE_REAL_MODEL_DIR=$BUNDLE"
-            echo "VOICE_REAL_MATRIX_OUT=$RUNNER_TEMP/voice-real-matrix"
+            echo "VOICE_REAL_MATRIX_OUT=$VOICE_REAL_MATRIX_OUT"
           } >> "$GITHUB_ENV"
 
-          mkdir -p "$RUNNER_TEMP/voice-real-matrix"
+          mkdir -p "$VOICE_REAL_MATRIX_OUT"
           {
             echo "sourceBundle=$SRC_BUNDLE"
             echo "overlayBundle=$BUNDLE"
             echo "fusedLib=$FUSED_LIB"
             find "$BUNDLE" -maxdepth 2 -type f -printf '%P %s bytes\n' | sort
-          } | tee "$RUNNER_TEMP/voice-real-matrix/provisioning.txt"
+          } | tee "$VOICE_REAL_MATRIX_OUT/provisioning.txt"
 
       - name: Real fused attribution smoke
         run: |

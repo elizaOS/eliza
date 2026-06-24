@@ -33,6 +33,15 @@ Scope:
   eliza` runner pool instead of the absent `gpu-cuda-12.6` label. The real lane
   still fails hard on missing bundle/library/GGUF/secret dependencies after the
   job starts; the label change only makes the job schedulable.
+- The acoustic workflow probe now creates `VOICE_REAL_MATRIX_OUT` before any
+  hard dependency check and tees runner/provisioning output into `probe.log`, so
+  early red runs still upload actionable evidence instead of failing artifact
+  upload with an empty directory.
+- The optional round-trip job no longer calls the removed
+  `native/build-whisper.mjs` or the nonexistent `test:voice:roundtrip` script.
+  It now probes for a preprovisioned fused ASR bundle, runs the current
+  `test:asr:real` smoke when present, and only runs `roundtrip:real` when both
+  cloud credentials are available.
 - The acoustic matrix job no longer has `continue-on-error: true`; missing real
   evidence is now a red nightly / workflow-dispatch result.
 
@@ -103,6 +112,17 @@ Result:
 - `voice:workbench --real` missing-dependency honesty check: pass by expected
   failure (`exit_status=1`, clear `missing ELIZA_ASR_BUNDLE` error).
 - Root `bun run verify`: pass (`509 successful, 509 total`).
+- Workflow-dispatch audit:
+  - `Voice Live E2E` run `28092178735` on branch `fix/finish-9147` scheduled on
+    the `self-hosted, Linux, X64, eliza` runner pool after the label fix.
+  - `Real acoustic VAD + diarization + self-voice matrix` started on runner
+    `odi-100-25-4` and failed in `Probe provisioned voice runner` because
+    `ELEVENLABS_API_KEY` was empty; the same probe showed `nvcc`,
+    `nvidia-smi`, and `ffmpeg` absent on that host.
+  - `Real voice STT + TTS->STT round-trip` started on runner `odi-100-25-5` and
+    failed at the stale `plugins/plugin-local-inference/native/build-whisper.mjs`
+    command; the workflow now uses the current fused-ASR smoke/roundtrip scripts
+    instead.
 
 N/A:
 - No screenshot/video was captured because this change adds machine-readable
