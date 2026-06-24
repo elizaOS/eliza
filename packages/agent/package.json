@@ -309,6 +309,7 @@
     "@elizaos/plugin-streaming": "workspace:*",
     "@elizaos/plugin-task-coordinator": "workspace:*",
     "@elizaos/plugin-video": "workspace:*",
+    "@elizaos/plugin-vision": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
