@@ -17,6 +17,7 @@ its own directory and carries `README.md` + `AGENTS.md` + `CLAUDE.md`.
 | `<benchmark>/` | One directory per benchmark — harness code, data, tests, and docs. |
 | `*-adapter/` | Harness bridges (`eliza`, `hermes`, `openclaw`, `smithers`) that let one benchmark run against different agent backends. |
 | `*_matrix/`, `app_eval/` | Per-benchmark code-agent comparison adapters, driven dynamically by `orchestrator/code_agent_matrix.py`. |
+| `loadperf/`, `memperf/`, `mobile-resource/` | Direct resource/load KPI workbenches with their own CI lanes; not suite-orchestrator adapters. |
 | `framework/`, `lib/`, `standard/` | Shared harness framework, helpers, and the standard academic adapters (MMLU, HumanEval, GSM8K, MT-Bench, dispatched by `run.py`). |
 | `viewer/` | Static browser UI for inspecting normalized results. |
 | `tests/` | Suite-level tests (registry scores, runner normalization, acceptance gate, …). |

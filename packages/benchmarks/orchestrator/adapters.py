@@ -80,6 +80,8 @@ IGNORED_BENCHMARK_DIRS = {
     "docs",
     "gaia",
     "loadperf",
+    "memperf",
+    "mobile-resource",
     "voice",
     # Legacy/partial shim with no source files in this checkout.
     "eliza-format",
