@@ -96,25 +96,26 @@ describe("WEB_SEARCH action", () => {
     else process.env.ELIZA_SERVER_WEB_SEARCH = originalServer;
   });
 
-  it("is disabled by default when provider-native server search is the default surface", async () => {
+  it("is available by default through the inline action surface", async () => {
     delete process.env.ELIZA_WEB_SEARCH;
     delete process.env.ELIZA_INLINE_WEB_SEARCH;
     delete process.env.ELIZA_SERVER_WEB_SEARCH;
-    expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(
-      false,
-    );
-  });
-
-  it("is available when inline search is explicitly enabled", async () => {
-    process.env.ELIZA_INLINE_WEB_SEARCH = "1";
     expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(
       true,
     );
   });
 
-  it("is available by default when provider-native server search is explicitly disabled", async () => {
+  it("is disabled by default when provider-native server search is explicitly enabled", async () => {
     delete process.env.ELIZA_INLINE_WEB_SEARCH;
-    process.env.ELIZA_SERVER_WEB_SEARCH = "0";
+    process.env.ELIZA_SERVER_WEB_SEARCH = "1";
+    expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(
+      false,
+    );
+  });
+
+  it("honors an explicit inline search override", async () => {
+    process.env.ELIZA_SERVER_WEB_SEARCH = "1";
+    process.env.ELIZA_INLINE_WEB_SEARCH = "1";
     expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(
       true,
     );
@@ -122,7 +123,7 @@ describe("WEB_SEARCH action", () => {
 
   it("is gated off when ELIZA_WEB_SEARCH disables all web-search surfaces", async () => {
     process.env.ELIZA_INLINE_WEB_SEARCH = "1";
-    process.env.ELIZA_SERVER_WEB_SEARCH = "0";
+    process.env.ELIZA_SERVER_WEB_SEARCH = "1";
     for (const value of ["0", "false", "off"]) {
       process.env.ELIZA_WEB_SEARCH = value;
       expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(

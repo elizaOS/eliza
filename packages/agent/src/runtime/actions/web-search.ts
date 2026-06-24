@@ -60,11 +60,11 @@ function readBooleanEnv(name: string): boolean | undefined {
 }
 
 /**
- * Capability gate for the INLINE keyless web-search action. Provider-native
- * server-side web search is the default surface; inline WEB_SEARCH is opt-in
- * unless the native surface was explicitly disabled with
- * `ELIZA_SERVER_WEB_SEARCH=0|false|off`. This prevents both search surfaces from
- * being live by default while keeping them independently switchable.
+ * Capability gate for the INLINE keyless web-search action. Inline WEB_SEARCH
+ * is the default surface because it goes through Eliza action routing/audit.
+ * Provider-native server-side search is an explicit opt-in with
+ * `ELIZA_SERVER_WEB_SEARCH=1`; when that native surface is enabled, inline stays
+ * off unless `ELIZA_INLINE_WEB_SEARCH` explicitly overrides it.
  */
 export function isWebSearchEnabled(): boolean {
   const master = readBooleanEnv("ELIZA_WEB_SEARCH");
@@ -73,7 +73,7 @@ export function isWebSearchEnabled(): boolean {
   const inline = readBooleanEnv("ELIZA_INLINE_WEB_SEARCH");
   if (inline !== undefined) return inline;
 
-  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") === false;
+  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") !== true;
 }
 
 interface WebSearchParams {

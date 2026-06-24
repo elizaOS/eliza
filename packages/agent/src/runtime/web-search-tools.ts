@@ -19,7 +19,7 @@
  *
  * Controlled by:
  *   ELIZA_WEB_SEARCH=0|false|off         — disable every web-search surface
- *   ELIZA_SERVER_WEB_SEARCH=0|false|off  — disable provider-native injection only
+ *   ELIZA_SERVER_WEB_SEARCH=1|true|on    — enable provider-native injection
  */
 
 import { createRequire } from "node:module";
@@ -41,7 +41,7 @@ function readBooleanEnv(name: string): boolean | undefined {
 
 export function isServerSideWebSearchEnabled(): boolean {
   if (readBooleanEnv("ELIZA_WEB_SEARCH") === false) return false;
-  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") ?? true;
+  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +139,12 @@ function shouldSkip(params: Record<string, unknown>): boolean {
   return false;
 }
 
+export function __shouldSkipServerSideWebSearchForTests(
+  params: Record<string, unknown>,
+): boolean {
+  return shouldSkip(params);
+}
+
 function wrapFn(
   original: (...a: unknown[]) => unknown,
   name: string,
@@ -190,16 +196,29 @@ function patchAiSdk(): void {
     return;
   }
 
-  patched = true;
-
+  let patchedAny = false;
   for (const name of ["generateText", "streamText"] as const) {
     if (typeof aiModule[name] === "function") {
-      aiModule[name] = wrapFn(
-        aiModule[name] as (...a: unknown[]) => unknown,
-        name,
-      );
+      try {
+        aiModule[name] = wrapFn(
+          aiModule[name] as (...a: unknown[]) => unknown,
+          name,
+        );
+        patchedAny = true;
+      } catch (err) {
+        logger.warn(
+          `[web-search] Could not patch ai.${name}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   }
+
+  if (!patchedAny) {
+    logger.warn("[web-search] No AI SDK text functions were patched");
+    return;
+  }
+
+  patched = true;
 
   logger.info(
     "[web-search] Patched ai.generateText/streamText for server-side web search auto-injection",
@@ -220,7 +239,7 @@ function patchAiSdk(): void {
 export function installServerSideWebSearch(): void {
   if (!isServerSideWebSearchEnabled()) {
     logger.info(
-      "[web-search] Disabled via ELIZA_WEB_SEARCH or ELIZA_SERVER_WEB_SEARCH env var",
+      "[web-search] Provider-native server search disabled; set ELIZA_SERVER_WEB_SEARCH=1 to enable",
     );
     return;
   }

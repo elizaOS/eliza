@@ -78,6 +78,7 @@ import {
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
 import {
+	extractJsonObjects,
 	parseJsonObject,
 	stripJsonStructuralJunkReply,
 } from "../runtime/json-output";
@@ -3280,19 +3281,74 @@ export async function renderMessageHandlerStablePrefix(
 		.join("\n\n");
 }
 
-function parseToolArguments(value: unknown): Record<string, unknown> | null {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		if (typeof value !== "string") {
-			return null;
-		}
+function canonicalJsonValue(value: unknown): string {
+	if (Array.isArray(value)) {
+		return `[${value.map(canonicalJsonValue).join(",")}]`;
+	}
+	if (value && typeof value === "object") {
+		const entries = Object.entries(value as Record<string, unknown>).sort(
+			([left], [right]) => left.localeCompare(right),
+		);
+		return `{${entries
+			.map(
+				([key, entry]) => `${JSON.stringify(key)}:${canonicalJsonValue(entry)}`,
+			)
+			.join(",")}}`;
+	}
+	return JSON.stringify(value);
+}
+
+function parseToolArgumentsString(
+	value: string,
+): Record<string, unknown> | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+
+	try {
+		const parsed: unknown = JSON.parse(trimmed);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: null;
+	} catch {
+		// Continue to the duplicated-streaming recovery below.
+	}
+
+	const objects = extractJsonObjects(trimmed);
+	if (objects.length === 0) return null;
+
+	let remainder = trimmed;
+	for (const objectText of objects) {
+		remainder = remainder.replace(objectText, "");
+	}
+	if (remainder.replace(/\0/g, "").trim().length > 0) {
+		return null;
+	}
+
+	const parsedObjects = objects.map((objectText) => {
 		try {
-			const parsed: unknown = JSON.parse(value);
+			const parsed: unknown = JSON.parse(objectText);
 			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
 				? (parsed as Record<string, unknown>)
 				: null;
 		} catch {
 			return null;
 		}
+	});
+	if (parsedObjects.some((parsed) => !parsed)) {
+		return null;
+	}
+
+	const [first, ...rest] = parsedObjects as Record<string, unknown>[];
+	const canonical = canonicalJsonValue(first);
+	if (rest.some((entry) => canonicalJsonValue(entry) !== canonical)) {
+		return null;
+	}
+	return first;
+}
+
+function parseToolArguments(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return typeof value === "string" ? parseToolArgumentsString(value) : null;
 	}
 	return value as Record<string, unknown>;
 }
@@ -4300,7 +4356,7 @@ function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	return true;
 }
 
-function getStage1RetryReason(
+export function getStage1RetryReason(
 	raw: string | GenerateTextResult,
 ): "empty completion" | "malformed HANDLE_RESPONSE tool call" | null {
 	if (isEmptyStage1Result(raw)) {
@@ -4313,9 +4369,6 @@ function getStage1RetryReason(
 		return null;
 	}
 	if (extractHandleResponseToolArguments(raw)) {
-		return null;
-	}
-	if (parseMessageHandlerOutput(getV5ModelText(raw))) {
 		return null;
 	}
 	return "malformed HANDLE_RESPONSE tool call";
