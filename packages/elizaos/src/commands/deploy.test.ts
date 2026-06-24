@@ -137,4 +137,61 @@ describe("runDeploy", () => {
     expect(code).toBe(1);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  // `runDeploy` validates `--domain` against DOMAIN_REGEX as its very first step,
+  // before resolving credentials or touching the network — a malformed value
+  // must fail closed with no request issued. Credentials are present in these
+  // cases so the regex gate (not a missing key) is provably what stops it.
+  it("rejects a malformed --domain before any network call", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const malformed = [
+      "notahostname", // no dot / TLD
+      "bad domain.com", // whitespace
+      "-lead.example.com", // label starts with a hyphen
+      "trailing.dot.", // trailing dot, empty TLD
+      "UPPER.example.com", // regex is lowercase-only
+      "under_score.example.com", // underscore not allowed in a hostname
+    ];
+    for (const domain of malformed) {
+      fetchMock.mockClear();
+      const code = await runDeploy({ appId: "app-1", domain });
+      expect(code, `domain "${domain}" should be rejected`).toBe(1);
+      expect(
+        fetchMock,
+        `domain "${domain}" must not reach the network`,
+      ).not.toHaveBeenCalled();
+    }
+  });
+
+  it("lets well-formed --domain values through the gate to the network", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test";
+    // Reject the first request so the run unwinds quickly; we only need to prove
+    // a valid domain passes validation and proceeds far enough to call fetch.
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValue(new Error("network disabled in test"));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const wellFormed = [
+      "app.example.com",
+      "a.io", // single-char label + 2-char TLD
+      "sub.domain.example.co",
+      "x1-y2.example.com", // digits + interior hyphen
+    ];
+    for (const domain of wellFormed) {
+      fetchMock.mockClear();
+      await runDeploy({ appId: "app-1", domain });
+      expect(
+        fetchMock,
+        `valid domain "${domain}" should reach the network`,
+      ).toHaveBeenCalled();
+    }
+  });
 });
