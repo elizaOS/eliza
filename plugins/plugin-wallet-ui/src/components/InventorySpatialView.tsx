@@ -316,7 +316,7 @@ export function InventorySpatialView({
       <Divider label="nfts" />
       {walletNfts.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No NFTs
+          None
         </Text>
       ) : (
         <List gap={0}>

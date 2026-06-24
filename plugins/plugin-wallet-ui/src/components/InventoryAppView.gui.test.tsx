@@ -406,7 +406,7 @@ describe("InventoryView GUI — rail tab switching", () => {
 
     // DeFi: no LP-like positions in the fixture -> empty state.
     fireEvent.click(within(sidebar).getByRole("button", { name: "DeFi" }));
-    expect(within(sidebar).getByText("No positions")).toBeTruthy();
+    expect(within(sidebar).getByText("None")).toBeTruthy();
     expect(
       within(sidebar).queryByText(hasFlatText("100.0000 USDC")),
     ).toBeNull();
@@ -479,7 +479,7 @@ describe("InventoryView GUI — address copy buttons", () => {
     const sidebar = await screen.findByTestId("wallets-sidebar");
 
     const evmCopy = within(sidebar).getByRole("button", {
-      name: "Copy No EVM address",
+      name: "Copy EVM address",
     });
     fireEvent.click(evmCopy);
     await waitFor(() =>
@@ -487,7 +487,7 @@ describe("InventoryView GUI — address copy buttons", () => {
     );
 
     const solCopy = within(sidebar).getByRole("button", {
-      name: "Copy No SOL address",
+      name: "Copy SOL address",
     });
     fireEvent.click(solCopy);
     await waitFor(() =>
@@ -657,9 +657,7 @@ describe("InventoryView GUI — dashboard panels", () => {
     // Danger banner.
     expect(screen.getByText("RPC provider unreachable")).toBeTruthy();
     // Empty panels.
-    expect(await screen.findByText("No activity")).toBeTruthy();
-    expect(screen.getByText("No positions")).toBeTruthy();
-    expect(screen.getByText("No NFTs")).toBeTruthy();
+    expect(await screen.findAllByText("None")).not.toHaveLength(0);
   });
 });
 
@@ -679,9 +677,9 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    // WalletEmptyHero unconfigured variant + Configure keys CTA.
-    expect(await screen.findByText("Configure wallet")).toBeTruthy();
-    const configure = screen.getByRole("button", { name: "Configure keys" });
+    // WalletEmptyHero unconfigured variant + keys CTA.
+    expect((await screen.findAllByText("Wallet")).length).toBeGreaterThan(0);
+    const configure = screen.getByRole("button", { name: "Keys" });
     fireEvent.click(configure);
     expect(state.setTab).toHaveBeenCalledWith("settings");
     expect(window.location.hash).toBe("#wallet-rpc");

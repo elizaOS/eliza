@@ -676,7 +676,7 @@ function PortfolioMoversPanel({
       );
     }
 
-    return <EmptyState icon={TrendingUp} title="No movers" />;
+    return <EmptyState icon={TrendingUp} title="None" />;
   }
 
   return (
@@ -837,7 +837,7 @@ function MarketPriceGrid({
   }
 
   if (prices.length === 0) {
-    return <EmptyState icon={BarChart3} title="No prices" />;
+    return <EmptyState icon={BarChart3} title="None" />;
   }
 
   return (
@@ -861,7 +861,7 @@ function MarketMoverList({
   }
 
   if (movers.length === 0) {
-    return <EmptyState icon={TrendingUp} title="No movers" />;
+    return <EmptyState icon={TrendingUp} title="None" />;
   }
 
   return (
@@ -965,7 +965,7 @@ function WalletEmptyHero({
     <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
       <WalletMotif />
       <div className="text-base font-semibold text-txt">
-        {hasKeys ? "No assets" : "Configure wallet"}
+        {hasKeys ? "None" : "Wallet"}
       </div>
       {hasKeys ? null : (
         <Button
@@ -974,7 +974,7 @@ function WalletEmptyHero({
           size="sm"
           onClick={onConfigureKeys}
         >
-          Configure keys
+          Keys
         </Button>
       )}
     </div>
@@ -1305,7 +1305,7 @@ function WalletAddressCluster({
       <WalletRailAddress
         address={addresses.evmAddress}
         chains={SUPPORTED_WALLET_CHAINS.filter((chain) => chain !== "solana")}
-        emptyLabel="No EVM"
+        emptyLabel="EVM"
         label="EVM"
         agentId="account-copy-evm-address"
         agentLabel="EVM address"
@@ -1313,7 +1313,7 @@ function WalletAddressCluster({
       <WalletRailAddress
         address={addresses.solanaAddress}
         chains={["solana"]}
-        emptyLabel="No SOL"
+        emptyLabel="SOL"
         label="SOL"
         agentId="account-copy-solana-address"
         agentLabel="Solana address"
@@ -1478,9 +1478,7 @@ function WalletRailEmpty({
     <div className="flex min-h-[13rem] flex-col items-center justify-center px-5 text-center">
       <Icon className="mb-3 h-5 w-5 text-muted" />
       <div className="text-sm font-semibold text-txt">{title}</div>
-      {body ? (
-        <div className="mt-1 text-xs-tight text-muted">{body}</div>
-      ) : null}
+      {body ? <div className="sr-only">{body}</div> : null}
     </div>
   );
 }
@@ -1564,7 +1562,7 @@ const TokenRailRow = memo(
 
 function RailNftList({ nfts }: { nfts: NftItem[] }) {
   if (nfts.length === 0) {
-    return <WalletRailEmpty icon={ImageIcon} title="No NFTs" />;
+    return <WalletRailEmpty icon={ImageIcon} title="None" />;
   }
 
   return (
@@ -1606,7 +1604,7 @@ function RailPositionList({
   positions: InventoryPositionAsset[];
 }) {
   if (positions.length === 0) {
-    return <WalletRailEmpty icon={Layers3} title="No positions" />;
+    return <WalletRailEmpty icon={Layers3} title="None" />;
   }
 
   return (
@@ -1751,7 +1749,7 @@ function WalletHoldingsSection({
         <div className="space-y-1">
           {activeTab === "tokens" ? (
             visibleRows.length === 0 ? (
-              <WalletRailEmpty icon={Wallet} title="No assets" />
+              <WalletRailEmpty icon={Wallet} title="None" />
             ) : (
               visibleRows.map((row) => (
                 <TokenRailRow
@@ -1846,7 +1844,7 @@ function ActivityLog({
   );
 
   if (entries.length === 0) {
-    return <EmptyState icon={Activity} title="No activity" />;
+    return <EmptyState icon={Activity} title="None" />;
   }
 
   return (
@@ -1909,7 +1907,7 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
   const visible = nfts.slice(0, 6);
 
   if (visible.length === 0) {
-    return <EmptyState icon={ImageIcon} title="No NFTs" />;
+    return <EmptyState icon={ImageIcon} title="None" />;
   }
 
   return (
@@ -1951,7 +1949,7 @@ function LpPositionsPanel({
   positions: InventoryPositionAsset[];
 }) {
   if (positions.length === 0) {
-    return <EmptyState icon={Layers3} title="No positions" />;
+    return <EmptyState icon={Layers3} title="None" />;
   }
 
   return (
