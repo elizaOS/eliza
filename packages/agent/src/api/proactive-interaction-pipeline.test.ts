@@ -17,12 +17,7 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
-import {
-  type EventPayload,
-  EventType,
-  type IAgentRuntime,
-  type UUID,
-} from "@elizaos/core";
+import type { EventPayload, IAgentRuntime, UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PROACTIVE_CHATTINESS_SETTING_KEY,
@@ -58,7 +53,8 @@ function buildHarness(judgeOutput: string) {
     agentId: AGENT_ID,
     events,
     registerEvent(event: string, handler: Handler) {
-      (events[event] ??= []).push(handler);
+      events[event] ??= [];
+      events[event].push(handler);
     },
     async emitEvent(event: string, params: Frame) {
       const handlers = events[event];

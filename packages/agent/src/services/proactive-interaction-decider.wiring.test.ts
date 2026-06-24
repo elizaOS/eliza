@@ -42,7 +42,8 @@ function makeRuntime(opts: FakeRuntimeOptions = {}): FakeRuntime {
   const rt: FakeRuntime = {
     events,
     registerEvent(event, handler) {
-      (events[event] ??= []).push(handler);
+      events[event] ??= [];
+      events[event].push(handler);
     },
     async emitEvent(event, params) {
       const handlers = events[event];
