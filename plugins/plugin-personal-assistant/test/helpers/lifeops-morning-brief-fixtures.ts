@@ -159,15 +159,10 @@ export async function seedMorningBriefFixtures(args: {
     ).toISOString(),
     metadata: {},
   });
-  const followUp = await service.createFollowUp({
-    relationshipId: frontier.id,
-    dueAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
-    reason: "Repair the missed walkthrough and reschedule.",
-    priority: 1,
-    draft: null,
-    completedAt: null,
-    metadata: {},
-  });
+  // Overdue follow-ups are derived from contact cadence and surfaced through
+  // the canonical `followup_overdue_digest` memory (seeded below), not a
+  // separate LifeOps follow-up table.
+  const followupReason = "Repair the missed walkthrough and reschedule.";
 
   const pendingDraft: DeferredInboxDraft = {
     triageEntryId: "seeded-vendor-triage-entry",
@@ -239,7 +234,7 @@ export async function seedMorningBriefFixtures(args: {
               displayName: frontier.name,
               daysOverdue: 1,
               thresholdDays: 0,
-              reason: followUp.reason,
+              reason: followupReason,
             },
           ],
         },
@@ -271,7 +266,7 @@ export async function seedMorningBriefFixtures(args: {
     pendingDraftSubject: "Investor diligence packet",
     pendingDraftRequestId: approvalRequest.id,
     followupContact: frontier.name,
-    followupReason: followUp.reason,
+    followupReason,
     documentBlockers,
   };
 }

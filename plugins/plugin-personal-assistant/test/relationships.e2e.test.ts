@@ -104,61 +104,6 @@ describe("relationships handler — real PGLite", () => {
     expect(days).toBe(0);
   });
 
-  it("createFollowUp + getDailyFollowUpQueue surface a due follow-up", async () => {
-    const rel = await service.upsertRelationship({
-      name: "Carol",
-      primaryChannel: "email",
-      primaryHandle: "carol@example.com",
-      email: "carol@example.com",
-      phone: null,
-      notes: "",
-      tags: [],
-      relationshipType: "contact",
-      lastContactedAt: null,
-      metadata: {},
-    });
-    const yesterday = new Date(Date.now() - 86400_000).toISOString();
-    const fu = await service.createFollowUp({
-      relationshipId: rel.id,
-      dueAt: yesterday,
-      reason: "annual check-in",
-      priority: 2,
-      draft: null,
-      completedAt: null,
-      metadata: {},
-    });
-    const queue = await service.getDailyFollowUpQueue({});
-    expect(queue.find((f) => f.id === fu.id)).toBeTruthy();
-  });
-
-  it("completeFollowUp removes it from the queue", async () => {
-    const rel = await service.upsertRelationship({
-      name: "Dan",
-      primaryChannel: "email",
-      primaryHandle: "dan@example.com",
-      email: "dan@example.com",
-      phone: null,
-      notes: "",
-      tags: [],
-      relationshipType: "contact",
-      lastContactedAt: null,
-      metadata: {},
-    });
-    const yesterday = new Date(Date.now() - 86400_000).toISOString();
-    const fu = await service.createFollowUp({
-      relationshipId: rel.id,
-      dueAt: yesterday,
-      reason: "ping",
-      priority: 3,
-      draft: null,
-      completedAt: null,
-      metadata: {},
-    });
-    await service.completeFollowUp(fu.id);
-    const queue = await service.getDailyFollowUpQueue({});
-    expect(queue.find((f) => f.id === fu.id)).toBeFalsy();
-  });
-
   it("entityAction list handler returns ActionResult", async () => {
     const result = await getEntityActionHandler()(
       runtime,
@@ -212,13 +157,12 @@ describe("relationships handler — real PGLite", () => {
     );
   });
 
-  // Follow-up cadence (`add_follow_up`, `complete_follow_up`,
-  // `follow_up_list`, `days_since`, `list_overdue_followups`,
-  // `mark_followup_done`, `set_followup_threshold`) lives on the
-  // SCHEDULED_TASK umbrella; the underlying service primitives
-  // (`createFollowUp`, `completeFollowUp`, `getDaysSinceContact`,
-  // `getDailyFollowUpQueue`, etc.) are exercised by the service-level tests
-  // above and by `scheduled-task-action.test.ts`.
+  // Follow-up cadence (`days_since`, `list_overdue_followups`,
+  // `set_followup_threshold`) lives on the SCHEDULED_TASK umbrella. Overdue
+  // follow-ups are derived from contact cadence by `computeOverdueFollowups`
+  // (followup-tracker) over the runtime knowledge graph; there is no separate
+  // LifeOps follow-up table. These are exercised by the followup-tracker tests
+  // and `scheduled-task-action.test.ts`.
 
   it("relationships graph collapses a four-platform person into one canonical node after accepted merges", async () => {
     const fixture = await seedCanonicalIdentityFixture({
