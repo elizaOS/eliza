@@ -74,9 +74,6 @@ IGNORED_BENCHMARK_DIRS = {
     "qwen_claw_bench_matrix",
     "agentbench_matrix",
     "swe_bench_pro_matrix",
-    # Legacy compatibility shim for benchmarks.mmau, not a separate benchmark.
-    "mmau",
-    "elizaos_mmau",
     "eliza-adapter",
     "app_eval",
     # Documentation, load/perf tooling, and unnormalized legacy packages.
