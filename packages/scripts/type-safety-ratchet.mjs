@@ -120,14 +120,23 @@ function collectUnsafeCasts(sourceText, relPath) {
     });
   }
 
+  function unwrapExpression(node) {
+    let current = node;
+    while (ts.isParenthesizedExpression(current)) {
+      current = current.expression;
+    }
+    return current;
+  }
+
   function visit(node) {
     if (ts.isAsExpression(node)) {
       if (node.type.kind === ts.SyntaxKind.AnyKeyword) {
         record("asAny", node);
       }
+      const expression = unwrapExpression(node.expression);
       if (
-        ts.isAsExpression(node.expression) &&
-        node.expression.type.kind === ts.SyntaxKind.UnknownKeyword
+        ts.isAsExpression(expression) &&
+        expression.type.kind === ts.SyntaxKind.UnknownKeyword
       ) {
         record("asUnknownAs", node);
       }
@@ -309,9 +318,10 @@ function runSelfTest() {
     const three = "value as any";
     // const four = value as unknown as Result;
     const five = value as unknown;
+    const six = (value as unknown) as Result;
   `;
   const counts = summarize(collectUnsafeCasts(sample, "sample.ts"));
-  if (counts.asUnknownAs !== 1 || counts.asAny !== 1) {
+  if (counts.asUnknownAs !== 2 || counts.asAny !== 1) {
     console.error(
       `[type-safety-ratchet] self-test failed: ${JSON.stringify(counts)}`,
     );
