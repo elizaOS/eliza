@@ -1609,6 +1609,36 @@ async function imageUrlToBase64(url: string): Promise<string> {
 }
 
 /**
+ * Collapse the degenerate repetition the small on-device vision model emits on
+ * sparse UI screenshots (e.g. "…text input field at the bottom." repeated for
+ * the whole token budget). We keep the first occurrence of each distinct
+ * sentence in order and cap the result, so the agent sees a bounded, low-token
+ * description — the EPIC #9105 "continuous low-token screen understanding"
+ * shape — without paying for a native generation-loop rebuild.
+ */
+function collapseDescriptionRepetition(text: string): string {
+	const sentences = text
+		.replace(/\s+/g, " ")
+		.split(/(?<=[.!?])\s+/)
+		.map((s) => s.trim())
+		.filter(Boolean);
+	const seen = new Set<string>();
+	const kept: string[] = [];
+	for (const sentence of sentences) {
+		const key = sentence.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+		if (key && seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		kept.push(sentence);
+		if (kept.length >= 6) {
+			break;
+		}
+	}
+	return kept.join(" ").trim() || text.trim();
+}
+
+/**
  * On-device IMAGE_DESCRIPTION via the bionic host (op="image"). The EPIC #9105
  * GET_SCREEN describe loop — and any agent vision-describe — routes here on a
  * bionic-delegated phone: the image bytes go to the in-process GPU host's mmproj
@@ -1651,12 +1681,13 @@ function makeBionicImageDescriptionHandler() {
 				`[mobile-device-bridge] bionic image describe failed: ${res.error ?? "unknown error"}`,
 			);
 		}
-		const description = (res.text ?? "").trim();
-		if (!description) {
+		const raw = (res.text ?? "").trim();
+		if (!raw) {
 			throw new Error(
 				"[mobile-device-bridge] bionic image describe returned empty text",
 			);
 		}
+		const description = collapseDescriptionRepetition(raw);
 		return {
 			title: description.split(/[.!?]/, 1)[0]?.trim() || "Image",
 			description,
