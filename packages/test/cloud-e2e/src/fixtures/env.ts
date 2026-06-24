@@ -56,6 +56,11 @@ export function buildSharedEnv(
     CONTAINER_CONTROL_PLANE_TOKEN: "test-token",
     CRON_SECRET: "test-cron-secret",
     INTERNAL_SECRET: "test-internal-secret",
+    // Apps Product 2 deploy path: enable the route and give the mock apps
+    // worker a prebuilt image to attach to container rows.
+    APPS_DEPLOY_ENABLED: "1",
+    APP_DEFAULT_IMAGE:
+      process.env.APP_DEFAULT_IMAGE ?? "ghcr.io/elizaos/eliza:e2e-app",
     // Playwright test auth bypass — secret read by cloud-shared auth helpers
     PLAYWRIGHT_TEST_AUTH: "true",
     PLAYWRIGHT_TEST_AUTH_SECRET: PLAYWRIGHT_TEST_AUTH_SECRET,

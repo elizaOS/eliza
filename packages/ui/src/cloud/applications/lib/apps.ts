@@ -36,6 +36,17 @@ export const APPS_QUERY_KEY = ["apps"] as const;
 /** Single-app key factory — exported for targeted invalidation. */
 export const appQueryKey = (id: string) => ["app", id] as const;
 
+export type DeploymentStatus = "BUILDING" | "READY" | "ERROR" | "DRAFT";
+
+export interface AppDeploymentRecord {
+  success?: boolean;
+  deploymentId: string | null;
+  status: DeploymentStatus;
+  vercelUrl: string | null;
+  error: string | null;
+  startedAt: string | null;
+}
+
 // Apps list changes only on create/edit/delete. Relax to 2 minutes so list
 // pages don't refetch on every nav while still staying responsive after
 // mutations (which also invalidate this key directly).
@@ -92,13 +103,27 @@ export async function createApp(input: {
  * Gated server-side by APPS_DEPLOY_ENABLED: when off, the route rejects with
  * `apps_deploy_disabled`, which surfaces to the caller as a thrown error.
  */
-export async function deployApp(
+export async function deployApp(id: string): Promise<{
+  deploymentId?: string;
+  status?: DeploymentStatus;
+  startedAt?: string;
+}> {
+  return api<{
+    deploymentId?: string;
+    status?: DeploymentStatus;
+    startedAt?: string;
+  }>(`/api/v1/apps/${id}/deploy`, { method: "POST" });
+}
+
+/**
+ * GET /api/v1/apps/:id/deploy/status - latest deployment record. The dashboard
+ * polls this after a deploy trigger so users see the app move from BUILDING to
+ * READY/ERROR without refreshing the page.
+ */
+export async function getLatestAppDeployment(
   id: string,
-): Promise<{ deploymentId?: string; status?: string }> {
-  return api<{ deploymentId?: string; status?: string }>(
-    `/api/v1/apps/${id}/deploy`,
-    { method: "POST" },
-  );
+): Promise<AppDeploymentRecord> {
+  return api<AppDeploymentRecord>(`/api/v1/apps/${id}/deploy/status`);
 }
 
 /** PUT /api/v1/apps/:id — update editable app fields. */

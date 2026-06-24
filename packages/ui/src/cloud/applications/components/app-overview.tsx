@@ -44,11 +44,22 @@ import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
-import { deployApp, regenerateAppApiKey } from "../lib/apps";
+import {
+  deployApp,
+  getLatestAppDeployment,
+  regenerateAppApiKey,
+} from "../lib/apps";
 
 interface AppOverviewProps {
   app: App;
   showApiKey?: string;
+}
+
+const DEPLOY_STATUS_POLL_INTERVAL_MS = 3_000;
+const DEPLOY_STATUS_POLL_TIMEOUT_MS = 10 * 60 * 1_000;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function AppOverview({ app, showApiKey }: AppOverviewProps) {
@@ -60,11 +71,14 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const [showKey, setShowKey] = useState(!!showApiKey);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
+  const [isPollingDeployment, setIsPollingDeployment] = useState(false);
   const [monetizationEnabled, setMonetizationEnabled] = useState<
     boolean | null
   >(null);
   const [totalEarnings, setTotalEarnings] = useState<number | null>(null);
   const hideApiKeyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deploymentPollInFlightRef = useRef(false);
+  const mountedRef = useRef(true);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -97,9 +111,89 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
 
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
       if (hideApiKeyTimerRef.current) clearTimeout(hideApiKeyTimerRef.current);
     };
   }, []);
+
+  const refreshAppRecord = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ["app", app.id] }),
+    [app.id, queryClient],
+  );
+
+  const pollLatestDeployment = useCallback(
+    async (showTerminalToast: boolean) => {
+      if (deploymentPollInFlightRef.current) return;
+
+      deploymentPollInFlightRef.current = true;
+      setIsPollingDeployment(true);
+      const deadline = Date.now() + DEPLOY_STATUS_POLL_TIMEOUT_MS;
+
+      try {
+        while (Date.now() < deadline && mountedRef.current) {
+          const record = await getLatestAppDeployment(app.id);
+          await refreshAppRecord();
+
+          if (record.status === "READY") {
+            if (showTerminalToast && mountedRef.current) {
+              toast.success(
+                t("cloud.apps.overview.deployReady", {
+                  defaultValue: "Deployment is live",
+                }),
+              );
+            }
+            return;
+          }
+
+          if (record.status === "ERROR") {
+            toast.error(
+              record.error ||
+                t("cloud.apps.overview.deployFailed", {
+                  defaultValue: "Deployment failed",
+                }),
+            );
+            return;
+          }
+
+          if (record.status === "DRAFT") return;
+
+          await wait(DEPLOY_STATUS_POLL_INTERVAL_MS);
+        }
+
+        if (showTerminalToast && mountedRef.current) {
+          toast.error(
+            t("cloud.apps.overview.deployPollTimeout", {
+              defaultValue:
+                "Deployment is still running. Refresh the app to check status.",
+            }),
+          );
+        }
+      } catch (error) {
+        if (mountedRef.current) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : t("cloud.apps.overview.deployStatusFailed", {
+                  defaultValue: "Failed to check deployment status",
+                }),
+          );
+        }
+      } finally {
+        deploymentPollInFlightRef.current = false;
+        if (mountedRef.current) setIsPollingDeployment(false);
+      }
+    },
+    [app.id, refreshAppRecord, t],
+  );
+
+  useEffect(() => {
+    if (
+      app.deployment_status === "building" ||
+      app.deployment_status === "deploying"
+    ) {
+      void pollLatestDeployment(false);
+    }
+  }, [app.deployment_status, pollLatestDeployment]);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,12 +248,13 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       await deployApp(app.id);
       // Refresh the app record so the Deployment status flips to "building"
       // without a manual reload (the key is a prefix of the auth-scoped key).
-      await queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+      await refreshAppRecord();
       toast.success(
         t("cloud.apps.overview.deployStarted", {
           defaultValue: "Deployment started",
         }),
       );
+      void pollLatestDeployment(true);
     } catch (error) {
       // Includes the gated `apps_deploy_disabled` case (deploy flag off) — show
       // the server's reason rather than pretending it worked.
@@ -175,6 +270,11 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     }
   }
 
+  const deploymentInProgress =
+    app.deployment_status === "building" ||
+    app.deployment_status === "deploying";
+  const deploymentButtonDisabled =
+    isDeploying || isPollingDeployment || deploymentInProgress;
   const allowedOrigins: string[] = Array.isArray(app.allowed_origins)
     ? app.allowed_origins.filter(
         (origin): origin is string => typeof origin === "string",
@@ -280,22 +380,28 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           </h3>
           <button
             type="button"
-            disabled={isDeploying || app.deployment_status === "building"}
+            disabled={deploymentButtonDisabled}
             onClick={handleDeploy}
             className="text-xs text-neutral-400 hover:text-white flex items-center gap-1 transition-colors disabled:opacity-50"
           >
-            {isDeploying ? (
+            {isDeploying || isPollingDeployment || deploymentInProgress ? (
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
               <Rocket className="h-3 w-3" />
             )}
-            {app.deployment_status === "deployed"
-              ? t("cloud.apps.overview.redeploy", { defaultValue: "Redeploy" })
-              : t("cloud.apps.overview.deploy", { defaultValue: "Deploy" })}
+            {deploymentInProgress || isPollingDeployment
+              ? t("cloud.apps.overview.deploying", {
+                  defaultValue: "Deploying",
+                })
+              : app.deployment_status === "deployed"
+                ? t("cloud.apps.overview.redeploy", {
+                    defaultValue: "Redeploy",
+                  })
+                : t("cloud.apps.overview.deploy", { defaultValue: "Deploy" })}
           </button>
         </div>
         <p className="text-xs text-neutral-500">
-          {app.deployment_status === "building"
+          {deploymentInProgress || isPollingDeployment
             ? t("cloud.apps.overview.deployBuilding", {
                 defaultValue: "A deployment is in progress…",
               })

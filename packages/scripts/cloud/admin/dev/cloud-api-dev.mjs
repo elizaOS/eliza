@@ -226,6 +226,14 @@ async function main() {
         `ELIZA_CF_REGISTRAR_DEV_STUB:${registrarStub}`,
       ]
     : [];
+  const appDeployDevVars = [
+    "APPS_DEPLOY_ENABLED",
+    "APPS_DEPLOY_ALLOWED_ORG_IDS",
+    "APP_DEFAULT_IMAGE",
+  ].flatMap((key) => {
+    const value = process.env[key];
+    return value ? ["--var", `${key}:${value}`] : [];
+  });
 
   const wranglerArgs =
     args.length > 0
@@ -238,6 +246,7 @@ async function main() {
           apiPort,
           "--local",
           ...testModeVars,
+          ...appDeployDevVars,
         ];
 
   const useNodeWrangler = env.CLOUD_E2E === "1" && env.NODE_ENV === "test";
