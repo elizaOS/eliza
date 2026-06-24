@@ -1482,6 +1482,20 @@ async function runTurnAssertions(
       );
     }
   }
+  const excludes = (turn as { responseExcludes?: unknown }).responseExcludes;
+  if (Array.isArray(excludes) && excludes.length > 0) {
+    const text = execution.responseText ?? "";
+    const hits = excludes.filter((pattern) =>
+      responsePatternMatches(pattern, text),
+    );
+    if (hits.length > 0) {
+      failures.push(
+        `responseExcludes: response included forbidden pattern(s) [${hits.join(
+          ",",
+        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
+      );
+    }
+  }
   const forbidden = (turn as { forbiddenActions?: unknown }).forbiddenActions;
   if (Array.isArray(forbidden) && forbidden.length > 0) {
     const hits = execution.actionsCalled.filter((a) =>
