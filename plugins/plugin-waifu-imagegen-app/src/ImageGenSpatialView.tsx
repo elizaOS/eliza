@@ -1,3 +1,4 @@
+import { formatUsd } from "./format";
 /**
  * ImageGenSpatialView — the image-gen surface authored once with the spatial
  * vocabulary, so it renders correctly wherever it is displayed:
@@ -64,11 +65,6 @@ export interface ImageGenSpatialViewProps {
   onAction?: (action: string) => void;
 }
 
-function formatUsd(value: number | undefined): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return `$${value.toFixed(value < 0.01 ? 6 : 4)}`;
-}
-
 export function ImageGenSpatialView({
   snapshot,
   onAction,
@@ -85,7 +81,9 @@ export function ImageGenSpatialView({
           credits-settled
         </Text>
         <Text style="caption" tone="muted">
-          {snapshot.markupPct == null ? "markup n/a" : `markup +${snapshot.markupPct}%`}
+          {snapshot.markupPct == null
+            ? "markup n/a"
+            : `markup +${snapshot.markupPct}%`}
         </Text>
       </HStack>
 
