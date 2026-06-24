@@ -22,6 +22,7 @@ import {
 import { computeCallCostUsd } from "../../../../packages/core/src/features/trajectories/pricing.ts";
 import { actionsAreScenarioEquivalent } from "../../../../packages/scenario-runner/src/action-families.ts";
 import type {
+  LifeOpsPromptBenchmarkTask,
   PromptBenchmarkCase,
   PromptBenchmarkRiskClass,
   PromptBenchmarkSuiteId,
@@ -86,6 +87,7 @@ export type PromptBenchmarkReport = {
   trajectoryCaptureRate: number;
   latency: PromptBenchmarkLatencyStats;
   bySuite: Record<PromptBenchmarkSuiteId, PromptBenchmarkSliceStats>;
+  byTask: Record<LifeOpsPromptBenchmarkTask, PromptBenchmarkSliceStats>;
   byVariant: Record<PromptBenchmarkVariantId, PromptBenchmarkSliceStats>;
   byRiskClass: Record<PromptBenchmarkRiskClass, PromptBenchmarkSliceStats>;
   failures: PromptBenchmarkResult[];
@@ -96,6 +98,7 @@ export type AxOptimizationRow = {
   id: string;
   suiteId: PromptBenchmarkSuiteId;
   baseScenarioId: string;
+  optimizationTask: PromptBenchmarkCase["optimizationTask"];
   variantId: PromptBenchmarkVariantId;
   prompt: string;
   axes: string[];
@@ -545,6 +548,10 @@ export function buildPromptBenchmarkReport(args: {
     PromptBenchmarkSuiteId,
     PromptBenchmarkSliceStats
   >;
+  const byTask = {} as Record<
+    LifeOpsPromptBenchmarkTask,
+    PromptBenchmarkSliceStats
+  >;
   const byVariant = {} as Record<
     PromptBenchmarkVariantId,
     PromptBenchmarkSliceStats
@@ -560,6 +567,10 @@ export function buildPromptBenchmarkReport(args: {
         [
           bySuite as Record<string, PromptBenchmarkSliceStats>,
           result.case.suiteId,
+        ],
+        [
+          byTask as Record<string, PromptBenchmarkSliceStats>,
+          result.case.optimizationTask,
         ],
         [
           byVariant as Record<string, PromptBenchmarkSliceStats>,
@@ -580,7 +591,7 @@ export function buildPromptBenchmarkReport(args: {
     }
   }
 
-  for (const collection of [bySuite, byVariant, byRiskClass]) {
+  for (const collection of [bySuite, byTask, byVariant, byRiskClass]) {
     for (const key of Object.keys(collection)) {
       const bucket = collection[key as keyof typeof collection];
       if (!bucket) {
@@ -617,6 +628,7 @@ export function buildPromptBenchmarkReport(args: {
       p95: percentile(latencies, 95),
     },
     bySuite,
+    byTask,
     byVariant,
     byRiskClass,
     failures: results.filter((result) => !result.pass),
@@ -631,6 +643,7 @@ export function buildAxOptimizationRows(
     id: result.case.caseId,
     suiteId: result.case.suiteId,
     baseScenarioId: result.case.baseScenarioId,
+    optimizationTask: result.case.optimizationTask,
     variantId: result.case.variantId,
     prompt: result.case.prompt,
     axes: [...result.case.axes],
@@ -691,6 +704,18 @@ export function formatPromptBenchmarkReportMarkdown(
   )) {
     lines.push(
       `| ${suiteId} | ${stats.passed} | ${stats.total} | ${(stats.accuracy * 100).toFixed(1)}% |`,
+    );
+  }
+  lines.push("");
+  lines.push("## By Task");
+  lines.push("");
+  lines.push("| Task | Passed | Total | Accuracy |");
+  lines.push("| --- | ---: | ---: | ---: |");
+  for (const [task, stats] of Object.entries(report.byTask).sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  )) {
+    lines.push(
+      `| ${task} | ${stats.passed} | ${stats.total} | ${(stats.accuracy * 100).toFixed(1)}% |`,
     );
   }
   lines.push("");

@@ -100,8 +100,10 @@ type TodoSeed = {
 type ContactSeedHandle = {
   platform?: unknown;
   identifier?: unknown;
+  handle?: unknown;
   displayLabel?: unknown;
   isPrimary?: unknown;
+  realPerson?: unknown;
 };
 
 type ContactSeed = {
@@ -129,6 +131,22 @@ type GmailInboxSeed = {
   fixtures?: unknown;
   requiredMessageIds?: unknown;
   clearLedger?: unknown;
+  faultInjection?: unknown;
+};
+
+type GmailFaultInjectionSeed = {
+  mode?: unknown;
+  method?: unknown;
+  path?: unknown;
+  endpoint?: unknown;
+  limit?: unknown;
+};
+
+type GmailFaultInjectionConfig = {
+  mode: "auth_expired" | "rate_limit" | "server_error" | "partial_failure";
+  method: string;
+  path: string;
+  remaining?: number;
 };
 
 type ConnectorSeed = {
@@ -145,7 +163,22 @@ type MemoryContactSeed = {
   kind?: unknown;
   type?: unknown;
   name?: unknown;
+  displayName?: unknown;
+  id?: unknown;
   notes?: unknown;
+  company?: unknown;
+  handles?: unknown;
+  platform?: unknown;
+  handle?: unknown;
+  oldHandle?: unknown;
+  newHandle?: unknown;
+  platformUserId?: unknown;
+  tags?: unknown;
+  primaryChannel?: unknown;
+  telegramHandle?: unknown;
+  recentNews?: unknown;
+  renameConfirmed?: unknown;
+  mergedAccidentally?: unknown;
   relationshipGoal?: unknown;
   followupThresholdDays?: unknown;
   lastContactedAt?: unknown;
@@ -379,24 +412,23 @@ async function seedTodo(
   return undefined;
 }
 
-function normalizeContactHandles(value: unknown): Array<{
+type NormalizedContactHandle = {
   platform: string;
   identifier: string;
   displayLabel?: string;
   isPrimary?: boolean;
-}> {
+};
+
+function normalizeContactHandles(value: unknown): NormalizedContactHandle[] {
   if (!Array.isArray(value)) return [];
-  const handles: Array<{
-    platform: string;
-    identifier: string;
-    displayLabel?: string;
-    isPrimary?: boolean;
-  }> = [];
+  const handles: NormalizedContactHandle[] = [];
   for (const entry of value) {
     if (!entry || typeof entry !== "object") continue;
     const handle = entry as ContactSeedHandle;
     const platform = readNonEmptyString(handle.platform);
-    const identifier = readNonEmptyString(handle.identifier);
+    const identifier =
+      readNonEmptyString(handle.identifier) ??
+      readNonEmptyString(handle.handle);
     if (!platform || !identifier) continue;
     handles.push({
       platform,
@@ -406,6 +438,133 @@ function normalizeContactHandles(value: unknown): Array<{
     });
   }
   return handles;
+}
+
+function dedupeContactHandles(
+  handles: NormalizedContactHandle[],
+): NormalizedContactHandle[] {
+  const seen = new Set<string>();
+  const deduped: NormalizedContactHandle[] = [];
+  for (const handle of handles) {
+    const key = `${handle.platform}:${handle.identifier}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(handle);
+  }
+  return deduped;
+}
+
+function normalizeEntityHandles(
+  seed: MemoryContactSeed,
+): NormalizedContactHandle[] {
+  const handles = normalizeContactHandles(seed.handles);
+  const displayLabel =
+    readNonEmptyString(seed.displayName) ??
+    readNonEmptyString(seed.name) ??
+    undefined;
+  const platform = readNonEmptyString(seed.platform);
+  if (platform) {
+    const primaryHandle = readNonEmptyString(seed.handle);
+    for (const identifier of [
+      primaryHandle,
+      readNonEmptyString(seed.newHandle),
+      readNonEmptyString(seed.oldHandle),
+    ]) {
+      if (!identifier) continue;
+      handles.push({
+        platform,
+        identifier,
+        displayLabel,
+        isPrimary: primaryHandle ? identifier === primaryHandle : undefined,
+      });
+    }
+  }
+  const telegramHandle = readNonEmptyString(seed.telegramHandle);
+  if (telegramHandle) {
+    handles.push({
+      platform: readNonEmptyString(seed.primaryChannel) ?? "telegram",
+      identifier: telegramHandle,
+      displayLabel,
+      isPrimary: true,
+    });
+  }
+  return dedupeContactHandles(handles);
+}
+
+function entityMemoryNotes(seed: MemoryContactSeed): string | undefined {
+  const notes: string[] = [];
+  const authoredNotes = readNonEmptyString(seed.notes);
+  if (authoredNotes) notes.push(authoredNotes);
+  const scenarioEntityId = readNonEmptyString(seed.id);
+  if (scenarioEntityId) notes.push(`Scenario entity id: ${scenarioEntityId}`);
+  const company = readNonEmptyString(seed.company);
+  if (company) notes.push(`Company: ${company}`);
+  const recentNews = readNonEmptyString(seed.recentNews);
+  if (recentNews) notes.push(`Recent news: ${recentNews}`);
+  const platformUserId = readNonEmptyString(seed.platformUserId);
+  if (platformUserId) notes.push(`Platform user ID: ${platformUserId}`);
+  const oldHandle = readNonEmptyString(seed.oldHandle);
+  const newHandle = readNonEmptyString(seed.newHandle);
+  if (oldHandle || newHandle) {
+    notes.push(
+      `Handle rename: ${oldHandle ?? "(unknown)"} -> ${newHandle ?? "(unknown)"}`,
+    );
+  }
+  const renameConfirmed = readOptionalBoolean(seed.renameConfirmed);
+  if (renameConfirmed !== undefined) {
+    notes.push(`Rename confirmed: ${renameConfirmed}`);
+  }
+  const mergedAccidentally = readOptionalBoolean(seed.mergedAccidentally);
+  if (mergedAccidentally !== undefined) {
+    notes.push(`Merged accidentally: ${mergedAccidentally}`);
+  }
+  if (Array.isArray(seed.handles)) {
+    for (const entry of seed.handles) {
+      if (!entry || typeof entry !== "object") continue;
+      const handle = entry as ContactSeedHandle;
+      const platform = readNonEmptyString(handle.platform);
+      const identifier =
+        readNonEmptyString(handle.identifier) ??
+        readNonEmptyString(handle.handle);
+      const realPerson = readNonEmptyString(handle.realPerson);
+      if (platform && identifier && realPerson) {
+        notes.push(`${platform} ${identifier} real person: ${realPerson}`);
+      }
+    }
+  }
+  return notes.length > 0 ? notes.join("\n") : undefined;
+}
+
+function memoryEntityToContactSeed(
+  seed: MemoryContactSeed,
+  memoryType: string,
+): ContactSeed {
+  const handles = normalizeEntityHandles(seed);
+  const authoredTags = readStringArray(seed.tags);
+  const isMerged = memoryType === "merged-entity";
+  return {
+    type: "contact",
+    name:
+      readNonEmptyString(seed.displayName) ??
+      readNonEmptyString(seed.name) ??
+      readNonEmptyString(seed.handle) ??
+      readNonEmptyString(seed.telegramHandle) ??
+      handles[0]?.identifier ??
+      (isMerged ? "Merged entity" : "Rolodex entity"),
+    notes: entityMemoryNotes(seed),
+    categories: isMerged ? ["merged-entity"] : undefined,
+    tags:
+      authoredTags.length > 0
+        ? authoredTags
+        : isMerged
+          ? ["merged-entity"]
+          : undefined,
+    handles,
+    relationshipGoal: seed.relationshipGoal,
+    followupThresholdDays: seed.followupThresholdDays,
+    lastContactedAt: seed.lastContactedAt,
+    relationshipStatus: seed.relationshipStatus,
+  };
 }
 
 function normalizeRelationshipStatus(
@@ -523,18 +682,14 @@ async function seedMemory(
   }
   const memoryType =
     readNonEmptyString(content.kind) ?? readNonEmptyString(content.type);
-  if (memoryType !== "contact") {
-    return undefined;
+  if (
+    memoryType === "contact" ||
+    memoryType === "rolodex-entity" ||
+    memoryType === "merged-entity"
+  ) {
+    return seedContact(ctx, memoryEntityToContactSeed(content, memoryType));
   }
-  return seedContact(ctx, {
-    type: "contact",
-    name: content.name,
-    notes: content.notes,
-    relationshipGoal: content.relationshipGoal,
-    followupThresholdDays: content.followupThresholdDays,
-    lastContactedAt: content.lastContactedAt,
-    relationshipStatus: content.relationshipStatus,
-  });
+  return undefined;
 }
 
 const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
@@ -567,6 +722,97 @@ async function clearGmailMockLedger(baseUrl: string): Promise<void> {
   }
 }
 
+async function clearGmailMockFault(baseUrl: string): Promise<void> {
+  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
+    method: "DELETE",
+  });
+  if (response.ok || response.status === 404) {
+    return;
+  }
+  throw new Error(`Gmail mock fault reset failed with HTTP ${response.status}`);
+}
+
+function normalizeGmailFaultMode(
+  value: unknown,
+): GmailFaultInjectionConfig["mode"] | null {
+  const mode = readNonEmptyString(value);
+  if (
+    mode === "auth_expired" ||
+    mode === "rate_limit" ||
+    mode === "server_error" ||
+    mode === "partial_failure"
+  ) {
+    return mode;
+  }
+  return null;
+}
+
+function defaultGmailFaultPath(
+  mode: GmailFaultInjectionConfig["mode"],
+): string {
+  return mode === "partial_failure"
+    ? "/gmail/v1/users/me/messages/batchModify"
+    : "/gmail/v1/users/me/messages";
+}
+
+function normalizeGmailFaultInjection(
+  value: unknown,
+): GmailFaultInjectionConfig | string | null {
+  if (value === undefined || value === null || value === false) {
+    return null;
+  }
+  if (!value || typeof value !== "object") {
+    return "gmailInbox faultInjection must be an object";
+  }
+  const seed = value as GmailFaultInjectionSeed;
+  const mode = normalizeGmailFaultMode(seed.mode);
+  if (!mode) {
+    return "gmailInbox faultInjection.mode must be auth_expired, rate_limit, server_error, or partial_failure";
+  }
+  const rawMethod = readNonEmptyString(seed.method);
+  const rawPath =
+    readNonEmptyString(seed.path) ?? readNonEmptyString(seed.endpoint);
+  const path = rawPath
+    ? rawPath.startsWith("/")
+      ? rawPath
+      : `/${rawPath}`
+    : defaultGmailFaultPath(mode);
+  let remaining: number | undefined;
+  if (seed.limit !== undefined && seed.limit !== null) {
+    if (
+      typeof seed.limit !== "number" ||
+      !Number.isFinite(seed.limit) ||
+      seed.limit < 0
+    ) {
+      return "gmailInbox faultInjection.limit must be a non-negative number";
+    }
+    remaining = Math.floor(seed.limit);
+  }
+  return {
+    mode,
+    method: (
+      rawMethod ?? (mode === "partial_failure" ? "POST" : "GET")
+    ).toUpperCase(),
+    path,
+    ...(remaining !== undefined ? { remaining } : {}),
+  };
+}
+
+async function configureGmailMockFault(
+  baseUrl: string,
+  fault: GmailFaultInjectionConfig,
+): Promise<string | undefined> {
+  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fault),
+  });
+  if (response.ok) {
+    return undefined;
+  }
+  return `Gmail mock faultInjection setup failed with HTTP ${response.status}`;
+}
+
 async function requireMockGmailMessage(
   baseUrl: string,
   messageId: string,
@@ -588,6 +834,12 @@ async function seedGmailInbox(
     return "gmailInbox seed requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
   const mockBaseUrl = baseUrl;
+  const faultInjection = normalizeGmailFaultInjection(seed.faultInjection);
+  if (typeof faultInjection === "string") {
+    return faultInjection;
+  }
+
+  await clearGmailMockFault(mockBaseUrl);
 
   const requiredIds = new Set(readStringArray(seed.requiredMessageIds));
   for (const fixture of gmailSeedFixtureNames(seed)) {
@@ -609,6 +861,10 @@ async function seedGmailInbox(
 
   if (seed.clearLedger !== false) {
     await clearGmailMockLedger(mockBaseUrl);
+  }
+
+  if (faultInjection) {
+    return configureGmailMockFault(mockBaseUrl, faultInjection);
   }
 
   return undefined;

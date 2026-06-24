@@ -38,18 +38,60 @@ function optimizedPromptRuntime(args: {
           }
         : null,
     getMemories: vi.fn(async () => []),
-    useModel: vi.fn(async (_modelType: unknown, params: { prompt?: string }) => {
-      args.capturedPrompts.push(String(params.prompt ?? ""));
-      const response =
-        args.modelResponses[Math.min(callIndex, args.modelResponses.length - 1)] ??
-        "";
-      callIndex += 1;
-      return response;
-    }),
+    useModel: vi.fn(
+      async (_modelType: unknown, params: { prompt?: string }) => {
+        args.capturedPrompts.push(String(params.prompt ?? ""));
+        const response =
+          args.modelResponses[
+            Math.min(callIndex, args.modelResponses.length - 1)
+          ] ?? "";
+        callIndex += 1;
+        return response;
+      },
+    ),
   } as unknown as IAgentRuntime;
 }
 
 describe("LifeOps optimized prompt routing", () => {
+  it("swaps inbox_triage instructions for Gmail plan extraction", async () => {
+    const { extractGmailPlanWithLlm } = await import(
+      "../src/lifeops/llm/extract-gmail-plan.js"
+    );
+    const capturedPrompts: string[] = [];
+    const runtime = optimizedPromptRuntime({
+      task: "inbox_triage",
+      optimizedPrompt: "OPTIMIZED INBOX: classify the mail action first.",
+      modelResponses: [
+        [
+          "subaction: search",
+          "shouldAct: true",
+          "response: null",
+          "queries: invoice || vendor renewal",
+        ].join("\n"),
+      ],
+      capturedPrompts,
+    });
+
+    const plan = await extractGmailPlanWithLlm(
+      runtime,
+      userMessage("Find the vendor renewal invoice from last week"),
+      undefined,
+      "Find the vendor renewal invoice from last week",
+    );
+
+    expect(plan.subaction).toBe("search");
+    expect(plan.queries).toEqual(["invoice", "vendor renewal"]);
+    expect(capturedPrompts[0]).toContain(
+      "OPTIMIZED INBOX: classify the mail action first.",
+    );
+    expect(capturedPrompts[0]).not.toContain(
+      "Plan the Gmail/inbox triage action",
+    );
+    expect(capturedPrompts[0]).toContain(
+      "Find the vendor renewal invoice from last week",
+    );
+  });
+
   it("swaps schedule_plan instructions while preserving scheduling context", async () => {
     const { runSchedulingNegotiationHandler } = await import(
       "../src/actions/lib/scheduling-handler.js"
