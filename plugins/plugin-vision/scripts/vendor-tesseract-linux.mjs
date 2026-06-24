@@ -1,0 +1,112 @@
+#!/usr/bin/env node
+/**
+ * Stage a PORTABLE tesseract into the app bundle so on-device/desktop OCR
+ * "just ships and works" with no host `apt install tesseract-ocr` (#9105).
+ *
+ * Output layout (consumed by `ocr-service-linux-tesseract.ts` `resolveTesseract`
+ * via `ELIZA_VISION_VENDOR_DIR`):
+ *
+ *   <out>/tesseract/
+ *     bin/tesseract                 the CLI
+ *     lib/libtesseract.so* liblept.so*   the shared libs (rest come from the host)
+ *     tessdata/<lang>.traineddata   the language model(s)
+ *     tessdata/configs/tsv ...      REQUIRED — tesseract reads the `tsv` output
+ *                                   config from here; without configs/ the
+ *                                   `tsv` arg silently fails ("Can't open tsv")
+ *                                   and the OCR returns zero rows.
+ *
+ * Linux x64 only (the desktop build host). macOS uses Apple Vision, Windows uses
+ * Windows.Media.Ocr, Android uses the native Tesseract4Android bridge — each
+ * provider is platform-resolved in plugin-vision/src/index.ts.
+ *
+ * Usage: node scripts/vendor-tesseract-linux.mjs [--out <dir>] [--langs eng,...]
+ * Build-time prereq: `apt-get download` works (no sudo needed — it only fetches
+ * .debs); `dpkg-deb` extracts them. Run on the Linux build host.
+ */
+import { execFileSync } from "node:child_process";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+function arg(name, def) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
+}
+const outDir = arg("--out", join(here, "..", "vendor"));
+const langs = arg("--langs", "eng")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const dest = join(outDir, "tesseract");
+
+if (process.platform !== "linux") {
+  console.log(
+    `[vendor-tesseract] non-linux host (${process.platform}); skipping (platform provider handles OCR).`,
+  );
+  process.exit(0);
+}
+
+const work = mkdtempSync(join(tmpdir(), "vendor-tess-"));
+const pkgs = [
+  "tesseract-ocr",
+  "libtesseract5",
+  "liblept5",
+  ...langs.map((l) => `tesseract-ocr-${l}`),
+];
+console.log(`[vendor-tesseract] downloading: ${pkgs.join(", ")}`);
+execFileSync("apt-get", ["download", ...pkgs], { cwd: work, stdio: "inherit" });
+
+const root = join(work, "root");
+for (const deb of readdirSync(work).filter((f) => f.endsWith(".deb"))) {
+  execFileSync("dpkg-deb", ["-x", join(work, deb), root], { stdio: "inherit" });
+}
+
+mkdirSync(join(dest, "bin"), { recursive: true });
+mkdirSync(join(dest, "lib"), { recursive: true });
+mkdirSync(join(dest, "tessdata"), { recursive: true });
+
+cpSync(join(root, "usr/bin/tesseract"), join(dest, "bin/tesseract"));
+const libDir = join(root, "usr/lib/x86_64-linux-gnu");
+for (const so of readdirSync(libDir).filter((f) =>
+  /^(libtesseract|liblept)\.so/.test(f),
+)) {
+  cpSync(join(libDir, so), join(dest, "lib", so), { dereference: false });
+}
+// tessdata lives under usr/share/tesseract-ocr/<ver>/tessdata — copy the WHOLE
+// dir (traineddata + the REQUIRED configs/ + tessconfigs/).
+const shareTess = join(root, "usr/share/tesseract-ocr");
+const ver = readdirSync(shareTess).find((d) =>
+  existsSync(join(shareTess, d, "tessdata")),
+);
+if (!ver)
+  throw new Error(
+    "[vendor-tesseract] tessdata not found in downloaded package",
+  );
+cpSync(join(shareTess, ver, "tessdata"), join(dest, "tessdata"), {
+  recursive: true,
+});
+
+if (!existsSync(join(dest, "tessdata", "configs", "tsv"))) {
+  throw new Error(
+    "[vendor-tesseract] tessdata/configs/tsv missing — TSV OCR output would fail",
+  );
+}
+for (const l of langs) {
+  if (!existsSync(join(dest, "tessdata", `${l}.traineddata`))) {
+    throw new Error(`[vendor-tesseract] ${l}.traineddata missing`);
+  }
+}
+console.log(
+  `[vendor-tesseract] staged portable tesseract → ${dest} (langs: ${langs.join(", ")})`,
+);
+console.log(
+  `[vendor-tesseract] set ELIZA_VISION_VENDOR_DIR=${outDir} so the runtime resolves it.`,
+);
