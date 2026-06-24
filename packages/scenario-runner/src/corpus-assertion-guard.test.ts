@@ -63,7 +63,14 @@ interface ScenarioFacts {
   hasFinalChecks: boolean;
   hasPerTurnAssert: boolean;
   hasPersonalityExpect: boolean;
+  hasDeadPlannerAssert: boolean;
 }
+
+// plannerIncludesAll / plannerIncludesAny / plannerExcludes are not in the
+// runner schema and are consumed by nothing in the repo — scenarios that use
+// them have silently-ignored "assertions". Tracked in #9310.
+const DEAD_PLANNER_ASSERT =
+  /\b(plannerIncludesAll|plannerIncludesAny|plannerExcludes)\s*:/;
 
 const PER_TURN_ASSERT =
   /\b(assertResponse|responseIncludesAny|responseIncludesAll|responseJudge|assertTurn)\b/;
@@ -80,6 +87,7 @@ function analyze(file: string): ScenarioFacts {
     hasFinalChecks: NON_EMPTY_FINAL_CHECKS.test(src),
     hasPerTurnAssert: PER_TURN_ASSERT.test(src),
     hasPersonalityExpect: /\bpersonalityExpect\s*:/.test(src),
+    hasDeadPlannerAssert: DEAD_PLANNER_ASSERT.test(src),
   };
 }
 
@@ -112,5 +120,26 @@ describe("scenario corpus assertion guard", () => {
       .map(rel)
       .sort();
     expect(misLaned).toEqual([]);
+  });
+
+  // Ratchet against the dead plannerIncludes*/plannerExcludes fields. They are
+  // unenforced (#9310); this only prevents the count from growing while the
+  // backlog is migrated to enforced assertions (or the executor is taught to
+  // consume them). Lower this as scenarios are fixed; never raise it.
+  it("does not grow unenforced plannerIncludes*/plannerExcludes usage beyond 153", () => {
+    const DEAD_PLANNER_BASELINE = 153;
+    const users = facts
+      .filter((f) => f.hasDeadPlannerAssert)
+      .map(rel)
+      .sort();
+    if (users.length > DEAD_PLANNER_BASELINE) {
+      throw new Error(
+        `unenforced planner-assertion scenarios grew to ${users.length} ` +
+          `(baseline ${DEAD_PLANNER_BASELINE}). plannerIncludesAll/Any/Excludes are ` +
+          `silently ignored by the executor — assert via finalChecks or an enforced ` +
+          `per-turn field instead. New offenders:\n${users.slice(DEAD_PLANNER_BASELINE).join("\n")}`,
+      );
+    }
+    expect(users.length).toBeLessThanOrEqual(DEAD_PLANNER_BASELINE);
   });
 });
