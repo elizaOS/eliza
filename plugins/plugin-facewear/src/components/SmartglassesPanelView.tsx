@@ -108,7 +108,7 @@ export function SmartglassesPanelView() {
     ) => {
       const bridge = getBridge();
       if (!bridge) {
-        setError("No native smartglasses bridge is available");
+        setError("Unavailable");
         return;
       }
       setBusy(label);

@@ -3506,9 +3506,7 @@ export function FineTuningView({
                     ))}
                   </div>
                 ) : (
-                  <div className="font-mono text-xs text-muted">
-                    No saved collection runs found.
-                  </div>
+                  <div className="font-mono text-xs text-muted">No runs</div>
                 )}
               </div>
             ) : null}
@@ -5485,7 +5483,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
   return (
     <div
       data-testid="fine-tuning-detail-extension"
-      className="flex flex-col gap-3 rounded-md border border-border/45 bg-card/25 p-4"
+      className="flex flex-col gap-3 px-1 py-2"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
@@ -5498,7 +5496,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
           <p className="mt-1 text-xs text-muted">
             {latest
               ? `${latest.readinessStatus} readiness, ${latest.artifactCount} artifacts`
-              : "No saved collection runs found yet."}
+              : "No runs"}
           </p>
         </div>
         <Button

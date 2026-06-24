@@ -110,8 +110,6 @@ describe("SmartglassesPanelView — unified GUI/XR panel", () => {
       fireEvent.click(button("wifi-status"));
       await Promise.resolve();
     });
-    expect(
-      screen.getByText("No native smartglasses bridge is available"),
-    ).toBeTruthy();
+    expect(screen.getByText("Unavailable")).toBeTruthy();
   });
 });

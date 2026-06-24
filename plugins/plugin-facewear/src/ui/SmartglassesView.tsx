@@ -670,8 +670,7 @@ export function SmartglassesView() {
     setBusy("wifi-scan");
     setError(null);
     try {
-      if (!bridge)
-        throw new Error("No native smartglasses bridge is available");
+      if (!bridge) throw new Error("Unavailable");
       const result = await callWifiBridge(bridge, "request_wifi_scan");
       const networks = parseWifiNetworks(result);
       setWifiNetworks(networks);
@@ -694,8 +693,7 @@ export function SmartglassesView() {
     setBusy("wifi-status");
     setError(null);
     try {
-      if (!bridge)
-        throw new Error("No native smartglasses bridge is available");
+      if (!bridge) throw new Error("Unavailable");
       const result = await callWifiBridge(bridge, "request_wifi_status");
       const networks = parseWifiNetworks(result);
       if (networks.length > 0) setWifiNetworks(networks);
@@ -714,8 +712,7 @@ export function SmartglassesView() {
     setBusy("wifi-configure");
     setError(null);
     try {
-      if (!bridge)
-        throw new Error("No native smartglasses bridge is available");
+      if (!bridge) throw new Error("Unavailable");
       if (!wifiSsid.trim()) throw new Error("Enter a Wi-Fi SSID");
       await callWifiBridge(bridge, "set_wifi_credentials", {
         ssid: wifiSsid.trim(),
@@ -736,8 +733,7 @@ export function SmartglassesView() {
     setBusy("wifi-setup");
     setError(null);
     try {
-      if (!bridge)
-        throw new Error("No native smartglasses bridge is available");
+      if (!bridge) throw new Error("Unavailable");
       await callWifiBridge(bridge, "request_wifi_setup", {
         reason: "Smartglasses setup",
       });
