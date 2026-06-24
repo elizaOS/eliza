@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useRef, useState } from "react";
-
+import { ShaderBackground } from "../../backgrounds/ShaderBackground";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import {
@@ -8,7 +8,6 @@ import {
   installHomeWidgetFetchMock,
   seedHomeWidgetNotifications,
 } from "../../widgets/__fixtures__/home-widget-mock-data";
-import { ShaderBackground } from "../../backgrounds/ShaderBackground";
 import { Springboard } from "../pages/Springboard";
 import { HomeScreen } from "./HomeScreen";
 import { HomeSpringboardSurface } from "./HomeSpringboardSurface";
