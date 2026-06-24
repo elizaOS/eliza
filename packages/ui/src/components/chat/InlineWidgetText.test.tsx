@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 //
-// Verifies the chat-overlay inline-widget renderer (#8997): assistant text with
-// inline-widget markers renders the real widgets (choice / form / followups /
-// task) and never leaks the raw `[CHOICE]`/`[FORM]`/`[TASK]`/`[FOLLOWUPS]`
-// marker syntax as text; plain replies pass through unchanged.
+// Verifies the chat-overlay inline-widget renderer (#8997, #9304): assistant
+// text with inline-widget markers renders the real widgets (choice / form /
+// followups / task) and never leaks the raw `[CHOICE]`/`[FORM]`/`[TASK]`/
+// `[FOLLOWUPS]` marker syntax as text; plain replies pass through unchanged.
+// Since #9304 the overlay shares the full ChatView's `parseSegments`, so it also
+// renders fenced code blocks and strips the structured/hidden markers
+// (`[CONFIG:…]`, fenced UiSpec JSON, `<think>` blocks) instead of leaking them.
 
 import { cleanup, render } from "@testing-library/react";
 import type * as React from "react";
@@ -96,5 +99,66 @@ describe("InlineWidgetText", () => {
     expect(container.textContent ?? "").toContain("The builders are running.");
     expect(container.textContent ?? "").not.toContain("[TASK:");
     expect(container.textContent ?? "").not.toContain("[/TASK]");
+  });
+
+  // #9304: the overlay previously re-implemented a partial parser that only knew
+  // the inline-widget markers, so the structured/hidden markers below leaked as
+  // raw text. Sharing the full ChatView `parseSegments` closes that drift.
+
+  it("does not leak a [CONFIG:…] marker (full-surface-only affordance)", () => {
+    const { container } = withApp(
+      <InlineWidgetText
+        content={"Configure it:\n[CONFIG:some-plugin]\nThanks."}
+      />,
+    );
+    expect(container.textContent ?? "").toContain("Configure it:");
+    expect(container.textContent ?? "").toContain("Thanks.");
+    expect(container.textContent ?? "").not.toContain("[CONFIG");
+    expect(container.textContent ?? "").not.toContain("some-plugin");
+  });
+
+  it("renders a fenced code block instead of leaking the raw fence", () => {
+    const { container, queryByTestId } = withApp(
+      <InlineWidgetText
+        content={"Here is the snippet:\n```ts\nconst x = 1;\n```\nDone."}
+      />,
+    );
+    expect(queryByTestId("code-block")).not.toBeNull();
+    expect(container.textContent ?? "").toContain("const x = 1;");
+    expect(container.textContent ?? "").toContain("Here is the snippet:");
+    expect(container.textContent ?? "").not.toContain("```");
+  });
+
+  it("strips hidden <think> reasoning blocks (never shown to the user)", () => {
+    const { container } = withApp(
+      <InlineWidgetText
+        content={"Visible answer.<think>secret chain of thought</think> More."}
+      />,
+    );
+    expect(container.textContent ?? "").toContain("Visible answer.");
+    expect(container.textContent ?? "").toContain("More.");
+    expect(container.textContent ?? "").not.toContain(
+      "secret chain of thought",
+    );
+    expect(container.textContent ?? "").not.toContain("<think>");
+  });
+
+  it("does not leak a fenced UiSpec JSON block as raw text", () => {
+    // Valid UiSpec shape (root: string + elements: object) so parseSegments
+    // classifies it as a ui-spec region (dropped on the overlay), not code.
+    const spec = JSON.stringify({
+      root: "n1",
+      elements: { n1: { type: "Text", text: "hi" } },
+    });
+    const { container } = withApp(
+      <InlineWidgetText
+        content={`Rendering UI:\n\`\`\`json\n${spec}\n\`\`\`\nOk.`}
+      />,
+    );
+    expect(container.textContent ?? "").toContain("Rendering UI:");
+    expect(container.textContent ?? "").toContain("Ok.");
+    // The raw JSON keys / fence must not leak as literal text.
+    expect(container.textContent ?? "").not.toContain('"elements"');
+    expect(container.textContent ?? "").not.toContain("```");
   });
 });
