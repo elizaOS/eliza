@@ -364,9 +364,7 @@ export function Springboard({
         </button>
       </div>
 
-      {/* Featured / favorites row — pinned at the TOP of the springboard (not a
-          bottom iOS dock). The most-used / pinned views sit above the full
-          launcher grid so they're the first thing the eye lands on. */}
+      {/* Featured / favorites row at the top of the springboard. */}
       {favoriteEntries.length > 0 ? (
         <div
           data-testid="springboard-dock"
