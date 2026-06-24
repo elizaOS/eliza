@@ -231,6 +231,12 @@ export type ScenarioFinalCheck =
       table: StringMatcher;
       minCount?: number;
     })
+  | (CheckBase<"memoryExists"> & {
+      table?: StringMatcher;
+      content?: unknown;
+      minCount?: number;
+      expected?: boolean;
+    })
   | (CheckBase<"gmailActionArguments"> & {
       actionName?: StringMatcher;
       subaction?: StringMatcher;

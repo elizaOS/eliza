@@ -31,6 +31,7 @@ export const FINAL_CHECK_KEYS = new Map(
       "minCount",
     ],
     memoryWriteOccurred: ["type", "name", "table", "minCount"],
+    memoryExists: ["type", "name", "table", "content", "minCount", "expected"],
     judgeRubric: ["type", "name", "rubric", "minimumScore"],
     gmailActionArguments: [
       "type",
