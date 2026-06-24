@@ -4803,11 +4803,18 @@ export class AgentRuntime implements IAgentRuntime {
 		const abortSignal = streamingCtx?.abortSignal;
 		const explicitStream = paramsAsStreaming?.stream;
 		const resolvedProviderName = resolvedModel?.provider;
-		// stream: false = force no stream, otherwise stream if any callback exists
+		// stream: false = force no stream, otherwise stream if any callback exists.
+		// Vision describes are often hidden preprocessing/OCR calls inside a chat
+		// turn; do not leak those chunks into the visible chat stream unless the
+		// call itself opts in.
+		const requiresExplicitStreaming =
+			requestedModelKey === ModelType.IMAGE_DESCRIPTION;
 		const shouldStream =
 			explicitStream === false
 				? false
-				: !!(paramsChunk || ctxChunk || explicitStream);
+				: requiresExplicitStreaming
+					? explicitStream === true
+					: !!(paramsChunk || ctxChunk || explicitStream);
 		const structuredStreamFields =
 			shouldStream && paramsAsStreaming?.streamStructured === true
 				? resolveResponseSkeletonStreamFields(

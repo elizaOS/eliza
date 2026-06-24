@@ -44,6 +44,13 @@ import {
 	loadElizaInferenceFfi,
 } from "./voice/ffi-bindings";
 
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (!signal?.aborted) return;
+	throw signal.reason instanceof Error
+		? signal.reason
+		: new DOMException("Aborted", "AbortError");
+}
+
 /**
  * Candidate filenames for the fused library, per platform. Mirrors
  * `samantha-preset-regenerator.ts::libraryFilenames` so the runtime and the
@@ -345,6 +352,7 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 			typeof ffi.llmStreamNext === "function" &&
 			typeof ffi.llmStreamClose === "function"
 		) {
+			throwIfAborted(args.signal);
 			const startedAt = Date.now();
 			const stream = ffi.describeImageStreamOpen({
 				ctx,
@@ -364,7 +372,7 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 				for (;;) {
 					if (args.signal?.aborted) {
 						ffi.llmStreamCancel?.(stream);
-						break;
+						throwIfAborted(args.signal);
 					}
 					const step = ffi.llmStreamNext({
 						stream,

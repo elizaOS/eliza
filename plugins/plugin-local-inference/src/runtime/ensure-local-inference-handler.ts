@@ -895,6 +895,8 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
 	prompt?: string;
+	signal?: AbortSignal;
+	onTextChunk?: (chunk: string) => void | Promise<void>;
 } {
 	const url = typeof params === "string" ? params : params.imageUrl;
 	if (typeof url !== "string" || url.length === 0) {
@@ -903,10 +905,36 @@ function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 		);
 	}
 	const prompt = typeof params === "object" ? params.prompt : undefined;
+	const signal =
+		typeof params === "object"
+			? (params as { signal?: AbortSignal }).signal
+			: undefined;
+	const wantsStream =
+		typeof params === "object" &&
+		(params as { stream?: boolean }).stream === true;
+	const streamSink =
+		wantsStream && typeof params === "object"
+			? (params as { onStreamChunk?: (chunk: string) => void | Promise<void> })
+					.onStreamChunk
+			: undefined;
+	const onTextChunk =
+		typeof streamSink === "function"
+			? (chunk: string) => streamSink(chunk)
+			: undefined;
 	if (url.startsWith("data:")) {
-		return { image: { kind: "dataUrl", dataUrl: url }, prompt };
+		return {
+			image: { kind: "dataUrl", dataUrl: url },
+			prompt,
+			...(signal ? { signal } : {}),
+			...(onTextChunk ? { onTextChunk } : {}),
+		};
 	}
-	return { image: { kind: "url", url }, prompt };
+	return {
+		image: { kind: "url", url },
+		prompt,
+		...(signal ? { signal } : {}),
+		...(onTextChunk ? { onTextChunk } : {}),
+	};
 }
 
 function normalizeImageDescription(

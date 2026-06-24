@@ -451,6 +451,8 @@ describe("ensureLocalInferenceHandler", () => {
 
 	it("routes image description through the Eliza-1 vision arbiter", async () => {
 		const { registrations, runtime } = makeRuntime();
+		const signal = new AbortController().signal;
+		const onStreamChunk = vi.fn();
 
 		await ensureLocalInferenceHandler(runtime);
 		const registration = registrations.find(
@@ -468,6 +470,9 @@ describe("ensureLocalInferenceHandler", () => {
 			handler?.(runtime, {
 				imageUrl: "data:image/png;base64,AAAA",
 				prompt: "describe this",
+				stream: true,
+				signal,
+				onStreamChunk,
 			}),
 		).resolves.toEqual({
 			title: "A small image",
@@ -478,12 +483,50 @@ describe("ensureLocalInferenceHandler", () => {
 			payload: {
 				image: { kind: "dataUrl", dataUrl: "data:image/png;base64,AAAA" },
 				prompt: "describe this",
+				signal,
+				onTextChunk: expect.any(Function),
 			},
 		});
+		const payload = arbiterState.requestVisionDescribe.mock.calls[0]?.[0]
+			?.payload as { onTextChunk?: (chunk: string) => void | Promise<void> };
+		await payload.onTextChunk?.("token");
+		expect(onStreamChunk).toHaveBeenCalledWith("token");
 		expect(runtime.setSetting).toHaveBeenCalledWith(
 			"ELIZA1_VISION_HANDLER_PRESENT",
 			"1",
 		);
+	});
+
+	it("keeps image description buffered unless stream is explicitly true", async () => {
+		const { registrations, runtime } = makeRuntime();
+		const onStreamChunk = vi.fn();
+
+		await ensureLocalInferenceHandler(runtime);
+		const registration = registrations.find(
+			(entry) => entry.modelType === ModelType.IMAGE_DESCRIPTION,
+		);
+		const handler = registration?.handler as
+			| ((
+					runtime: AgentRuntime,
+					params: Record<string, unknown>,
+			  ) => Promise<{ title: string; description: string }>)
+			| undefined;
+		expect(handler).toBeDefined();
+
+		await handler?.(runtime, {
+			imageUrl: "https://example.test/image.png",
+			prompt: "describe this",
+			onStreamChunk,
+		});
+
+		expect(arbiterState.requestVisionDescribe).toHaveBeenCalledWith({
+			modelKey: "gemma-vl",
+			payload: {
+				image: { kind: "url", url: "https://example.test/image.png" },
+				prompt: "describe this",
+			},
+		});
+		expect(onStreamChunk).not.toHaveBeenCalled();
 	});
 
 	it("arms the active voice bundle before TRANSCRIPTION", async () => {

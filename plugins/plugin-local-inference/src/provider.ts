@@ -727,6 +727,7 @@ function tryGetImageGenArbiter(
 function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
 	prompt?: string;
+	signal?: AbortSignal;
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 } {
 	const url = typeof params === "string" ? params : params.imageUrl;
@@ -738,14 +739,18 @@ function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 		);
 	}
 	const prompt = typeof params === "object" ? params.prompt : undefined;
-	// Token-by-token streaming: the runtime's `useModel` injects `onStreamChunk`
-	// into the params for local providers when a chat streaming context is active
-	// (runtime.ts). Forward it (read structurally so this stays robust to the core
-	// param type) so the description streams into the dashboard through the same
-	// pipe as chat text when the fused lib exposes ABI-v13 streaming vision;
-	// backends without it return the final description.
-	const streamSink =
+	const signal =
 		typeof params === "object"
+			? (params as { signal?: AbortSignal }).signal
+			: undefined;
+	// Token-by-token streaming is intentionally explicit for vision. Hidden image
+	// preprocessing can happen inside a streaming chat turn; only forward the
+	// runtime callback when the call itself asks for `stream: true`.
+	const wantsStream =
+		typeof params === "object" &&
+		(params as { stream?: boolean }).stream === true;
+	const streamSink =
+		wantsStream && typeof params === "object"
 			? (params as { onStreamChunk?: (chunk: string) => void | Promise<void> })
 					.onStreamChunk
 			: undefined;
@@ -757,13 +762,15 @@ function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 		return {
 			image: { kind: "dataUrl", dataUrl: url },
 			prompt,
-			onTextChunk,
+			...(signal ? { signal } : {}),
+			...(onTextChunk ? { onTextChunk } : {}),
 		};
 	}
 	return {
 		image: { kind: "url", url },
 		prompt,
-		onTextChunk,
+		...(signal ? { signal } : {}),
+		...(onTextChunk ? { onTextChunk } : {}),
 	};
 }
 
