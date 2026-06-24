@@ -103,8 +103,8 @@ export function HomeWidgetCard({
       title={label}
       onClick={onActivate}
       className={cn(
-        "group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-card/75 px-3 py-2.5 text-left backdrop-blur",
-        "transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-card/75 px-3 py-2.5 text-left",
+        "transition-colors hover:bg-card",
       )}
     >
       <span
@@ -119,7 +119,7 @@ export function HomeWidgetCard({
           <span
             aria-hidden
             className={cn(
-              "absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ring-2 ring-card",
+              "absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-card",
               TONE_DOT_CLASS[tone],
             )}
           />
