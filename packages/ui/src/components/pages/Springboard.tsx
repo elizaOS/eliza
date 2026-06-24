@@ -368,7 +368,7 @@ export function Springboard({
       {favoriteEntries.length > 0 ? (
         <div
           data-testid="springboard-dock"
-          className="mx-4 mt-1 mb-2 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/90 px-6 py-3"
+          className="mx-3 mt-1 mb-2 flex items-center justify-center gap-3 rounded-3xl bg-bg-accent/90 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
         >
           {favoriteEntries.map((entry) => (
             <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
