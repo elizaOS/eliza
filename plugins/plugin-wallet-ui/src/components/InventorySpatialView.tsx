@@ -269,7 +269,7 @@ export function InventorySpatialView({
       <Divider label="movers" />
       {marketMovers.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No market data
+          —
         </Text>
       ) : (
         <List gap={0}>

@@ -562,11 +562,11 @@ describe("InventoryView GUI — P&L window selector + chart", () => {
     await screen.findByTestId("wallets-sidebar");
 
     // PnlChart renders a polyline (pnlSeries has >=2 finite points), not the
-    // empty "No realized P&L yet" placeholder.
+    // empty "P&L pending" placeholder.
     await waitFor(() =>
       expect(container.querySelector("polyline")).toBeTruthy(),
     );
-    expect(screen.queryByText("No realized P&L yet")).toBeNull();
+    expect(screen.queryByText("P&L pending")).toBeNull();
 
     // SummaryChip shows the formatted realized P&L (1.5 BNB, positive).
     expect(screen.getByText("+1.5 BNB")).toBeTruthy();
@@ -601,7 +601,7 @@ describe("InventoryView GUI — P&L window selector + chart", () => {
     appHooks.useApp.mockReturnValue(makeAppState());
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
-    expect(await screen.findByText("No realized P&L yet")).toBeTruthy();
+    expect(await screen.findByText("P&L pending")).toBeTruthy();
   });
 });
 
@@ -657,7 +657,7 @@ describe("InventoryView GUI — dashboard panels", () => {
     // Danger banner.
     expect(screen.getByText("RPC provider unreachable")).toBeTruthy();
     // Empty panels.
-    expect(await screen.findByText("No activity yet")).toBeTruthy();
+    expect(await screen.findByText("No activity")).toBeTruthy();
     expect(screen.getByText("No positions")).toBeTruthy();
     expect(screen.getByText("No NFTs")).toBeTruthy();
   });
@@ -679,8 +679,8 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    // WalletEmptyHero "not configured" variant + Configure keys CTA.
-    expect(await screen.findByText("Wallet not configured")).toBeTruthy();
+    // WalletEmptyHero unconfigured variant + Configure keys CTA.
+    expect(await screen.findByText("Configure wallet")).toBeTruthy();
     const configure = screen.getByRole("button", { name: "Configure keys" });
     fireEvent.click(configure);
     expect(state.setTab).toHaveBeenCalledWith("settings");
@@ -734,7 +734,7 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    expect(await screen.findByText("Top movers unavailable")).toBeTruthy();
-    expect(screen.getByText("CoinGecko rate limited")).toBeTruthy();
+    expect(await screen.findByText("Unavailable")).toBeTruthy();
+    expect(screen.getByTitle("Top movers unavailable")).toBeTruthy();
   });
 });

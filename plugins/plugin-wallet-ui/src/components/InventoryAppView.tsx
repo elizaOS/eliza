@@ -676,7 +676,7 @@ function PortfolioMoversPanel({
       );
     }
 
-    return <EmptyState icon={TrendingUp} title="No movers yet" />;
+    return <EmptyState icon={TrendingUp} title="No movers" />;
   }
 
   return (
@@ -783,9 +783,9 @@ function MarketDataUnavailable({
   source: WalletMarketOverviewSource;
 }) {
   return (
-    <div className="px-1 py-2">
-      <div className="text-sm font-semibold text-warn">{title} unavailable</div>
-      <div className="mt-1 text-xs text-muted">
+    <div className="px-1 py-2" title={`${title} unavailable`}>
+      <div className="text-sm font-semibold text-warn">Unavailable</div>
+      <div className="sr-only mt-1 text-xs text-muted">
         {source.error ?? `${source.providerName} did not return live data.`}
       </div>
     </div>
@@ -837,7 +837,7 @@ function MarketPriceGrid({
   }
 
   if (prices.length === 0) {
-    return <EmptyState icon={BarChart3} title="No price snapshots yet" />;
+    return <EmptyState icon={BarChart3} title="No prices" />;
   }
 
   return (
@@ -861,7 +861,7 @@ function MarketMoverList({
   }
 
   if (movers.length === 0) {
-    return <EmptyState icon={TrendingUp} title="No market movers yet" />;
+    return <EmptyState icon={TrendingUp} title="No movers" />;
   }
 
   return (
@@ -965,7 +965,7 @@ function WalletEmptyHero({
     <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
       <WalletMotif />
       <div className="text-base font-semibold text-txt">
-        {hasKeys ? "No assets yet" : "Wallet not configured"}
+        {hasKeys ? "No assets" : "Configure wallet"}
       </div>
       {hasKeys ? null : (
         <Button
@@ -1108,7 +1108,7 @@ function PnlChart({
   if (values.length < 2) {
     return (
       <div className="flex h-40 items-center justify-center text-xs text-muted">
-        No realized P&L yet
+        P&amp;L pending
       </div>
     );
   }
@@ -1846,7 +1846,7 @@ function ActivityLog({
   );
 
   if (entries.length === 0) {
-    return <EmptyState icon={Activity} title="No activity yet" />;
+    return <EmptyState icon={Activity} title="No activity" />;
   }
 
   return (
