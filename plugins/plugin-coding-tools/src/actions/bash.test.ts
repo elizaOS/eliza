@@ -28,7 +28,9 @@ const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import {
+  type CommandPlatform,
   localResourceUserFacingText,
+  resolveCommandPlatform,
   resolveCryptoSpotPriceCommand,
   resolveDiskInspectionCommand,
   resolveLocalStatusCommand,
@@ -564,6 +566,7 @@ describeIfPosix("shellAction", () => {
         "check disk space on / and /home and name the biggest cleanup candidate you can see",
       command:
         "df -h / /home && echo '---' && du -sh /* 2>/dev/null | sort -hr | head -n 5",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -579,6 +582,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "check disk space and free RAM on this server, summarize the biggest cleanup candidate and memory availability",
       command: "free -m",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -602,6 +606,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "check the local bot health endpoint and summarize ready status and plugin counts, concise",
       command: "curl -s http://localhost:3000/health",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -614,6 +619,7 @@ describeIfPosix("shellAction", () => {
     const result = resolveLocalStatusCommand({
       messageText: "how much RAM is free right now? concise",
       command: "top -b -n 1 | head",
+      platform: "linux",
     });
 
     expect(result).toEqual({
@@ -1086,5 +1092,120 @@ describeIfPosix("shellAction", () => {
     );
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.action).toBe("view_history");
+  });
+});
+
+// These run on every platform (including win32): they pass an explicit
+// `platform` so the canned-command dialect is asserted deterministically,
+// independent of the host shell the test runner happens to be on.
+describe("platform-aware canned resource commands", () => {
+  describe("windows (PowerShell)", () => {
+    it("rewrites memory probes to a Win32_OperatingSystem query (no `free`)", () => {
+      const result = resolveLocalStatusCommand({
+        messageText: "how much RAM is free right now? concise",
+        command: "top -b -n 1 | head",
+        platform: "windows",
+      });
+      expect(result.kind).toBe("memory");
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Win32_OperatingSystem");
+      expect(result.command).toContain("Mem:");
+      expect(result.command).not.toContain("free -m");
+    });
+
+    it("rewrites health probes to Invoke-WebRequest against /api/health", () => {
+      const result = resolveLocalStatusCommand({
+        messageText:
+          "check the local bot health endpoint and summarize ready status and plugin counts, concise",
+        command: "curl -s http://localhost:3000/health",
+        platform: "windows",
+      });
+      expect(result.kind).toBe("health");
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Invoke-WebRequest");
+      expect(result.command).toContain("/api/health");
+      expect(result.command).toContain("ELIZA_API_PORT");
+      expect(result.command).not.toContain("curl");
+    });
+
+    it("rewrites combined disk+memory probes to PowerShell with both markers", () => {
+      const result = resolveDiskInspectionCommand({
+        messageText:
+          "check disk space and free RAM on this server, summarize the biggest cleanup candidate and memory availability",
+        command: "free -m",
+        platform: "windows",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Get-PSDrive");
+      expect(result.command).toContain("--- cleanup candidates ---");
+      expect(result.command).toContain("--- memory ---");
+      expect(result.command).toContain("Win32_OperatingSystem");
+      expect(result.command).not.toContain("free -m");
+      expect(result.command).not.toContain("df -h");
+    });
+  });
+
+  describe("macos", () => {
+    it("rewrites memory probes to a vm_stat/sysctl synthesis (no Linux `free`)", () => {
+      const result = resolveLocalStatusCommand({
+        messageText: "how much RAM is free right now? concise",
+        command: "top -l 1 | head",
+        platform: "macos",
+      });
+      expect(result.kind).toBe("memory");
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("vm_stat");
+      expect(result.command).toContain("hw.memsize");
+      expect(result.command).not.toContain("free -m");
+    });
+
+    it("uses a macOS cleanup-candidate set for broad disk scans", () => {
+      const result = resolveDiskInspectionCommand({
+        messageText:
+          "check disk space on / and name the biggest cleanup candidate you can see",
+        command: "df -h / && du -sh /* 2>/dev/null | sort -hr | head -n 5",
+        platform: "macos",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Library/Caches");
+      expect(result.command).toContain(".Trash");
+      expect(result.command).not.toContain("free -m");
+    });
+  });
+
+  describe("linux", () => {
+    it("keeps the POSIX `free -m` memory probe", () => {
+      const result = resolveLocalStatusCommand({
+        messageText: "how much RAM is free right now? concise",
+        command: "top -b -n 1 | head",
+        platform: "linux",
+      });
+      expect(result).toEqual({
+        command: "free -m",
+        kind: "memory",
+        rewritten: true,
+      });
+    });
+
+    it("keeps the POSIX df/du bounded disk scan", () => {
+      const result = resolveDiskInspectionCommand({
+        messageText:
+          "check disk space on / and /home and name the biggest cleanup candidate you can see",
+        command:
+          "df -h / /home && du -sh /* 2>/dev/null | sort -hr | head -n 5",
+        platform: "linux",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("df -h / /home");
+      expect(result.command).toContain("$HOME/.cache");
+      expect(result.command).not.toContain("Win32_OperatingSystem");
+    });
+  });
+
+  describe("resolveCommandPlatform", () => {
+    it("resolves the host shell to a known platform dialect", () => {
+      const platform: CommandPlatform = resolveCommandPlatform();
+      expect(["windows", "macos", "linux"]).toContain(platform);
+    });
   });
 });
