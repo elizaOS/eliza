@@ -15,7 +15,7 @@
 
 import { Pencil, Trash2 } from "lucide-react";
 import { motion, Reorder } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import {
@@ -27,7 +27,8 @@ import {
   toggleFavorite,
   writeSpringboardLayout,
 } from "../../state/springboard-layout";
-import { ViewIcon } from "../views/ViewIcon";
+import { emitViewInteraction } from "../../view-telemetry";
+import { ViewTileImage } from "../views/ViewTileImage";
 
 export interface SpringboardProps {
   entries: ViewEntry[];
@@ -58,7 +59,9 @@ const LONG_PRESS_MS = 450;
 /** Horizontal drag distance (px) needed to flip to the adjacent page. */
 const SWIPE_THRESHOLD = 60;
 
-function IconTile({
+// Memoized so a layout reconcile (install/uninstall/sort) re-renders only the
+// tiles whose props actually changed, not all ~20 on a page.
+const IconTile = memo(function IconTile({
   entry,
   editing,
   favorited,
@@ -70,11 +73,6 @@ function IconTile({
   onLongPress,
 }: IconTileProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Every view shows its hero image (the endpoint returns a real image or a
-  // branded generated SVG). Fall back to the Lucide icon only if the image fails
-  // to load, so a tile is never blank.
-  const [imgFailed, setImgFailed] = useState(false);
-  const tileImage = imgFailed ? undefined : entry.imageUrl;
 
   const clear = () => {
     if (timer.current) {
@@ -106,31 +104,20 @@ function IconTile({
           // ghost-fires edit mode after the user finishes scrolling.
           onPointerCancel={clear}
           className={cn(
-            "h-16 w-16 overflow-hidden rounded-2xl transition-colors",
-            "  ",
-            tileImage
-              ? "bg-bg-accent/40"
-              : "grid place-items-center bg-bg-accent/60 text-foreground hover:bg-bg-accent",
+            // ViewTileImage handles image-vs-glyph internally, so the button is
+            // one constant surface. backdrop-blur (#9281) and focus rings (#9292)
+            // were deliberately removed on develop — do not reintroduce them.
+            "h-16 w-16 overflow-hidden rounded-2xl bg-bg-accent/60 text-foreground transition-colors hover:bg-bg-accent",
             editing && "animate-pulse",
           )}
         >
-          {tileImage ? (
-            <img
-              src={tileImage}
-              alt=""
-              draggable={false}
-              onError={() => setImgFailed(true)}
-              className="h-full w-full object-cover"
-              data-testid={`springboard-image-${entry.id}`}
-            />
-          ) : (
-            <ViewIcon
-              icon={entry.icon}
-              label={entry.label}
-              id={entry.id}
-              className="h-7 w-7"
-            />
-          )}
+          <ViewTileImage
+            entry={entry}
+            source="springboard"
+            containerClassName="grid h-full w-full place-items-center"
+            glyphClassName="h-7 w-7"
+            imageTestId={`springboard-image-${entry.id}`}
+          />
         </button>
         {editing ? (
           <button
@@ -191,7 +178,7 @@ function IconTile({
       </span>
     </div>
   );
-}
+});
 
 export function Springboard({
   entries,
@@ -247,14 +234,47 @@ export function Springboard({
 
   const toggleFav = useCallback(
     (id: string) => {
+      const wasFavorited = (favorites ?? layout.favorites).includes(id);
+      emitViewInteraction({
+        source: "springboard",
+        action: wasFavorited ? "unfavorite" : "favorite",
+        viewId: id,
+      });
       if (controlled) {
         onToggleFavorite?.(id);
         return;
       }
       commit(reconcileLayout(toggleFavorite(layout, id), availableIds));
     },
-    [controlled, onToggleFavorite, commit, layout, availableIds],
+    [controlled, onToggleFavorite, commit, layout, availableIds, favorites],
   );
+
+  const handleLaunch = useCallback(
+    (entry: ViewEntry) => {
+      emitViewInteraction({
+        source: "springboard",
+        action: "launch",
+        viewId: entry.id,
+      });
+      onLaunch(entry);
+    },
+    [onLaunch],
+  );
+
+  const enterEditMode = useCallback(() => {
+    if (!editing) {
+      emitViewInteraction({ source: "springboard", action: "edit-mode-enter" });
+    }
+    setEditing(true);
+  }, [editing]);
+
+  const toggleEditMode = useCallback(() => {
+    emitViewInteraction({
+      source: "springboard",
+      action: editing ? "edit-mode-exit" : "edit-mode-enter",
+    });
+    setEditing((e) => !e);
+  }, [editing]);
 
   const pages = layout.pages.length > 0 ? layout.pages : [[]];
   const clampedPage = Math.min(page, pages.length - 1);
@@ -269,6 +289,8 @@ export function Springboard({
   const favoriteEntries = favoriteIdList
     .map((id) => byId.get(id))
     .filter((e): e is ViewEntry => e != null);
+  // O(1) dock-membership check inside the tile map instead of Array.includes.
+  const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
@@ -277,23 +299,39 @@ export function Springboard({
       nextIds.forEach((id, index) => {
         next = moveIcon(next, id, pageIndex, index);
       });
+      emitViewInteraction({
+        source: "springboard",
+        action: "reorder",
+        count: pageIndex,
+      });
       commit(next);
     },
     [layout, commit],
   );
 
-  const renderTile = (entry: ViewEntry, favorited: boolean) => (
-    <IconTile
-      entry={entry}
-      editing={editing}
-      favorited={favorited}
-      manageable={canManageView?.(entry.id) ?? false}
-      onLaunch={onLaunch}
-      onToggleFavorite={toggleFav}
-      onEdit={onEditView}
-      onDelete={onDeleteView}
-      onLongPress={() => setEditing(true)}
-    />
+  const renderTile = useCallback(
+    (entry: ViewEntry, favorited: boolean) => (
+      <IconTile
+        entry={entry}
+        editing={editing}
+        favorited={favorited}
+        manageable={canManageView?.(entry.id) ?? false}
+        onLaunch={handleLaunch}
+        onToggleFavorite={toggleFav}
+        onEdit={onEditView}
+        onDelete={onDeleteView}
+        onLongPress={enterEditMode}
+      />
+    ),
+    [
+      editing,
+      canManageView,
+      handleLaunch,
+      toggleFav,
+      onEditView,
+      onDeleteView,
+      enterEditMode,
+    ],
   );
 
   return (
@@ -304,7 +342,7 @@ export function Springboard({
       <div className="flex items-center justify-end px-4 pt-2">
         <button
           type="button"
-          onClick={() => setEditing((e) => !e)}
+          onClick={toggleEditMode}
           className={cn(
             "rounded-full px-3 py-1 text-xs font-medium transition-colors",
             editing
@@ -332,8 +370,18 @@ export function Springboard({
               clampedPage < pages.length - 1
             ) {
               setPage(clampedPage + 1);
+              emitViewInteraction({
+                source: "springboard",
+                action: "page-swipe",
+                count: clampedPage + 1,
+              });
             } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
               setPage(clampedPage - 1);
+              emitViewInteraction({
+                source: "springboard",
+                action: "page-swipe",
+                count: clampedPage - 1,
+              });
             }
           }}
           className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 py-6"
@@ -355,7 +403,7 @@ export function Springboard({
                   dragListener={editing}
                   className="flex justify-center"
                 >
-                  {renderTile(entry, favoriteIdList.includes(id))}
+                  {renderTile(entry, favoriteSet.has(id))}
                 </Reorder.Item>
               );
             })}
