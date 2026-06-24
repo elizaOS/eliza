@@ -677,6 +677,73 @@ export async function performGuardedHttpGet(
   };
 }
 
+export interface GuardedHttpPostOptions extends GuardedHttpGetOptions {
+  /** Request body. Sent as `application/json` unless `Content-Type` is set. */
+  body: string;
+}
+
+/**
+ * SSRF-guarded HTTPS POST. Identical safety model to {@link performGuardedHttpGet}
+ * (https-only, internal/private targets blocked, DNS pinned, body capped) but
+ * sends a body — used by inline actions that call a public JSON/MCP endpoint
+ * (e.g. the keyless web-search MCP) rather than fetching a plain URL.
+ */
+export async function performGuardedHttpPost(
+  url: string,
+  opts: GuardedHttpPostOptions,
+): Promise<GuardedHttpGetResult> {
+  const timeoutMs = opts.timeoutMs ?? CUSTOM_ACTION_FETCH_TIMEOUT_MS;
+  const maxChars = opts.maxChars ?? GUARDED_GET_MAX_BYTES;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, status: 0, text: "", blocked: true };
+  }
+  if (parsed.protocol !== "https:") {
+    return { ok: false, status: 0, text: "", blocked: true };
+  }
+
+  const safety = await resolveUrlSafety(url);
+  if (safety.blocked) {
+    return { ok: false, status: 0, text: "", blocked: true };
+  }
+
+  const headers = new Headers({
+    "User-Agent": GUARDED_GET_DEFAULT_USER_AGENT,
+    "Content-Type": "application/json",
+  });
+  if (opts.headers) {
+    for (const [key, value] of Object.entries(opts.headers)) {
+      headers.set(key, value);
+    }
+  }
+
+  const fetchOpts: RequestInit = {
+    method: "POST",
+    headers,
+    body: opts.body,
+    redirect: "manual",
+  };
+
+  const response = safety.target
+    ? await fetchWithPinnedTarget(safety.target, fetchOpts, timeoutMs)
+    : await fetch(url, fetchOpts);
+
+  if (response.status >= 300 && response.status < 400) {
+    return { ok: false, status: response.status, text: "", blocked: true };
+  }
+
+  const text = await readBodyTextCapped(response, maxChars);
+  return {
+    ok: response.ok,
+    status: response.status,
+    text,
+    blocked: false,
+  };
+}
+
 function buildHandler(
   handler: CustomActionHandler,
   paramDefs: CustomActionDef["parameters"],
