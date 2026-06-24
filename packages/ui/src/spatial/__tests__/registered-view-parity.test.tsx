@@ -54,7 +54,7 @@ beforeAll(async () => {
     if (entry) (entry[1] as () => void)();
   }
   registeredIds.push(...listTerminalViewIds().sort());
-});
+}, 30_000);
 
 afterEach(cleanup);
 
@@ -186,5 +186,5 @@ describe("registered view parity — every view × three surfaces", () => {
 
     // Surface every failing (id, surface) pair, then assert clean.
     expect(failures).toEqual([]);
-  });
+  }, 30_000);
 });

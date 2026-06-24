@@ -8,10 +8,10 @@
  * first screen when there is data, and that they self-hide (the #9143 clean-home
  * design) when there is none.
  *
- * The two always-visible core widgets (notifications, messages) are the
- * guaranteed home cards (`ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS`); the
- * per-plugin lifeops cards are API-polled and self-hide without a backend, which
- * is the correct fresh-launch behavior.
+ * Notifications are the guaranteed home card; messages stay in the always-
+ * present floating chat overlay/default widget sink rather than occupying the
+ * launch grid. Per-plugin lifeops cards are API-polled and self-hide without a
+ * backend, which is the correct fresh-launch behavior.
  */
 
 import type { AgentNotification } from "@elizaos/core";
@@ -95,7 +95,7 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
     expect(host.getAttribute("data-layout")).toBe("grid");
   });
 
-  it("renders the notifications + messages home widgets when there is data", () => {
+  it("renders the notifications home widget when there is data", () => {
     __ingestNotificationForTests(notification("n1", "Standup at 10"), 1);
     __ingestNotificationForTests(notification("n2", "PR review requested"), 2);
 
@@ -110,9 +110,9 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
 
     // Real widgets, resolved by the real registry, rendered into the home host.
     const notifications = screen.getByTestId("widget-notifications");
-    expect(notifications.textContent).toContain("Standup at 10");
-    const messages = screen.getByTestId("widget-messages");
-    expect(messages.textContent).toContain("Trip planning");
+    expect(notifications.textContent).toContain("PR review requested");
+    expect(notifications.textContent).toContain("2");
+    expect(screen.queryByTestId("widget-messages")).toBeNull();
   });
 
   it("self-hides every card when there is no data (the #9143 clean home)", () => {

@@ -298,8 +298,16 @@ export function AppsView() {
   const [isAppWindow] = useState<boolean>(isAppWindowRoute);
   const [appWindows, setAppWindows] = useState<AppWindowRecord[]>([]);
   const [busyAppWindowId, setBusyAppWindowId] = useState<string | null>(null);
+  const mountedRef = useRef(true);
   const slugAutoLaunchDone = useRef(false);
   const appWindowsRef = useRef<AppWindowRecord[]>([]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const handleSidebarCollapsedChange = useCallback((next: boolean) => {
     setSidebarCollapsed(next);
@@ -474,6 +482,7 @@ export function AppsView() {
 
   const refreshRuns = useCallback(async () => {
     const runs = await client.listAppRuns();
+    if (!mountedRef.current) return runs;
     setState("appRuns", runs);
     return runs;
   }, [setState]);
@@ -517,9 +526,11 @@ export function AppsView() {
     void refreshRuns().catch(() => {});
     try {
       const list = await loadAppsCatalog();
+      if (!mountedRef.current) return;
       setApps(list);
       writeAppsCache(list);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(
         t("appsview.LoadError", {
           message:
@@ -527,7 +538,9 @@ export function AppsView() {
         }),
       );
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [refreshRuns, t]);
 
