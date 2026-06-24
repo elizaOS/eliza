@@ -12,8 +12,11 @@ import {
   isRecord,
   normalizeCustomActionName,
   normalizeStreamComparisonText,
+  parseConversationMessageEvent,
   parseCustomActionParams,
+  parseProactiveMessageEvent,
   parseSlashCommandInput,
+  parseStreamEventEnvelopeEvent,
   shouldApplyFinalStreamText,
 } from "./parsers";
 
@@ -180,5 +183,133 @@ describe("asApiLikeError + formatStartupErrorDetail", () => {
     expect(formatStartupErrorDetail(new Error("oops"))).toBe("oops");
     expect(formatStartupErrorDetail({})).toBeUndefined();
     expect(formatStartupErrorDetail("plain string")).toBeUndefined();
+  });
+});
+
+describe("parseStreamEventEnvelopeEvent", () => {
+  const valid = {
+    type: "agent_event",
+    eventId: "e1",
+    ts: 123,
+    payload: { foo: 1 },
+  };
+
+  it("accepts the known envelope types and stamps version 1", () => {
+    expect(parseStreamEventEnvelopeEvent(valid)).toEqual({
+      type: "agent_event",
+      version: 1,
+      eventId: "e1",
+      ts: 123,
+      payload: { foo: 1 },
+    });
+    expect(
+      parseStreamEventEnvelopeEvent({ ...valid, type: "heartbeat_event" }),
+    ).not.toBeNull();
+  });
+
+  it("rejects unknown types or malformed required fields", () => {
+    expect(
+      parseStreamEventEnvelopeEvent({ ...valid, type: "nope" }),
+    ).toBeNull();
+    expect(parseStreamEventEnvelopeEvent({ ...valid, eventId: 5 })).toBeNull();
+    expect(parseStreamEventEnvelopeEvent({ ...valid, ts: "123" })).toBeNull();
+    expect(
+      parseStreamEventEnvelopeEvent({ ...valid, payload: "no" }),
+    ).toBeNull();
+  });
+
+  it("copies optional fields only when correctly typed", () => {
+    const env = parseStreamEventEnvelopeEvent({
+      ...valid,
+      runId: "r1",
+      seq: 4,
+      agentId: "a1",
+      stream: 99, // wrong type → ignored
+    });
+    expect(env?.runId).toBe("r1");
+    expect(env?.seq).toBe(4);
+    expect(env?.agentId).toBe("a1");
+    expect(env?.stream).toBeUndefined();
+  });
+});
+
+describe("parseConversationMessageEvent", () => {
+  it("parses a minimal valid message and rejects malformed ones", () => {
+    expect(
+      parseConversationMessageEvent({
+        id: "m1",
+        role: "assistant",
+        text: "hi",
+        timestamp: 10,
+      }),
+    ).toEqual({ id: "m1", role: "assistant", text: "hi", timestamp: 10 });
+
+    expect(parseConversationMessageEvent(null)).toBeNull();
+    expect(
+      parseConversationMessageEvent({
+        id: "m1",
+        role: "bot",
+        text: "x",
+        timestamp: 1,
+      }),
+    ).toBeNull();
+    expect(
+      parseConversationMessageEvent({ id: "m1", role: "user", timestamp: 1 }),
+    ).toBeNull();
+  });
+
+  it("carries optional fields and filters actionCallbackHistory", () => {
+    const parsed = parseConversationMessageEvent({
+      id: "m1",
+      role: "assistant",
+      text: "hi",
+      timestamp: 10,
+      source: "discord",
+      actionCallbackHistory: ["a", "", "  ", "b", 5],
+    });
+    expect(parsed?.source).toBe("discord");
+    expect(parsed?.actionCallbackHistory).toEqual(["a", "b"]);
+  });
+
+  it("validates reactions (drops empty emoji / non-positive count) and users", () => {
+    const parsed = parseConversationMessageEvent({
+      id: "m1",
+      role: "assistant",
+      text: "hi",
+      timestamp: 10,
+      reactions: [
+        { emoji: "👍", count: 2, users: ["u1", "", "u2"] },
+        { emoji: "", count: 3 }, // empty emoji → dropped
+        { emoji: "🔥", count: 0 }, // non-positive count → dropped
+      ],
+    });
+    expect(parsed?.reactions).toEqual([
+      { emoji: "👍", count: 2, users: ["u1", "u2"] },
+    ]);
+  });
+});
+
+describe("parseProactiveMessageEvent", () => {
+  it("wraps a valid conversation message under its conversationId", () => {
+    expect(
+      parseProactiveMessageEvent({
+        conversationId: "c1",
+        message: { id: "m1", role: "assistant", text: "hi", timestamp: 1 },
+      }),
+    ).toEqual({
+      conversationId: "c1",
+      message: { id: "m1", role: "assistant", text: "hi", timestamp: 1 },
+    });
+  });
+
+  it("returns null when the id or the inner message is invalid", () => {
+    expect(
+      parseProactiveMessageEvent({
+        message: { id: "m1", role: "assistant", text: "hi", timestamp: 1 },
+      }),
+    ).toBeNull();
+    expect(
+      parseProactiveMessageEvent({ conversationId: "c1", message: { bad: 1 } }),
+    ).toBeNull();
   });
 });
