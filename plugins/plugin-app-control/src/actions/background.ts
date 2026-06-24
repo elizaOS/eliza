@@ -60,14 +60,13 @@ type BackgroundPlan =
 // three.js scene path was removed; "background"/"wallpaper" now mean THIS layer.
 const BACKGROUND_NOUN_RE = /\b(background|wallpaper|backdrop)\b/i;
 // History verbs (checked before set, so "go back" isn't read as an edit).
-const UNDO_RE = /\b(undo|revert|go back|change it back|put it back|previous)\b/i;
+const UNDO_RE =
+	/\b(undo|revert|go back|change it back|put it back|previous)\b/i;
 const RESET_RE = /\b(reset|restore (?:the )?default|default|factory)\b/i;
 // "set/make/change … background …" — a request to apply something.
-const SET_RE =
-	/\b(set|make|change|use|turn|switch|give me|apply|put)\b/i;
+const SET_RE = /\b(set|make|change|use|turn|switch|give me|apply|put)\b/i;
 // Explicit ask for a generated image rather than a flat color.
-const GENERATE_RE =
-	/\b(generate|create|paint|draw|design|render|imagine)\b/i;
+const GENERATE_RE = /\b(generate|create|paint|draw|design|render|imagine)\b/i;
 
 /**
  * Curated color-name → hex map. Multi-word keys are listed first so "light
@@ -140,7 +139,9 @@ function resolveColor(
 	if (explicit) {
 		const hex = normalizeHex(explicit);
 		if (hex) return { color: hex, label: hex };
-		const named = NAMED_COLORS.find(([name]) => name === explicit.toLowerCase());
+		const named = NAMED_COLORS.find(
+			([name]) => name === explicit.toLowerCase(),
+		);
 		if (named) return { color: named[1], label: explicit.toLowerCase() };
 	}
 	const hexMatch = text.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/);
@@ -202,15 +203,24 @@ export function inferBackgroundPlan(
 
 	if (!mentionsBackground) return null;
 
-	if (explicitOp === "undo" || (UNDO_RE.test(trimmed) && !RESET_RE.test(trimmed)))
+	if (
+		explicitOp === "undo" ||
+		(UNDO_RE.test(trimmed) && !RESET_RE.test(trimmed))
+	)
 		return { op: "undo" };
 	if (explicitOp === "reset" || RESET_RE.test(trimmed)) return { op: "reset" };
 
 	// Explicit options win over text parsing.
-	if (explicitImage) return { op: "set", mode: "image", imageUrl: explicitImage };
+	if (explicitImage)
+		return { op: "set", mode: "image", imageUrl: explicitImage };
 	const color = resolveColor(trimmed, explicitColor);
 	if (color)
-		return { op: "set", mode: "shader", color: color.color, colorLabel: color.label };
+		return {
+			op: "set",
+			mode: "shader",
+			color: color.color,
+			colorLabel: color.label,
+		};
 	if (explicitPrompt) return { op: "set", generatePrompt: explicitPrompt };
 
 	// An attached image the user wants to use.
@@ -229,7 +239,9 @@ export function inferBackgroundPlan(
 }
 
 /** Pushes a `background:apply` event to all connected frontends. */
-export type BackgroundEmitter = (payload: BackgroundApplyPayload) => Promise<void>;
+export type BackgroundEmitter = (
+	payload: BackgroundApplyPayload,
+) => Promise<void>;
 /** Generates a background image from a prompt; returns a served URL. */
 export type BackgroundImageGenerator = (prompt: string) => Promise<string>;
 
@@ -280,7 +292,9 @@ async function defaultGenerateImage(prompt: string): Promise<string> {
 	return data.url;
 }
 
-export function createBackgroundAction(deps: BackgroundActionDeps = {}): Action {
+export function createBackgroundAction(
+	deps: BackgroundActionDeps = {},
+): Action {
 	const emit = deps.emit ?? defaultEmit;
 	const generateImage = deps.generateImage ?? defaultGenerateImage;
 
@@ -422,7 +436,10 @@ export function createBackgroundAction(deps: BackgroundActionDeps = {}): Action 
 				{ name: "{{user1}}", content: { text: "make the background teal" } },
 				{
 					name: "{{agentName}}",
-					content: { text: "Set the background to teal.", action: "BACKGROUND" },
+					content: {
+						text: "Set the background to teal.",
+						action: "BACKGROUND",
+					},
 				},
 			],
 			[

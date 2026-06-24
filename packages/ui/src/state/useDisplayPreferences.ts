@@ -57,8 +57,9 @@ export function useDisplayPreferences() {
   // Bounded undo stack: the previous configs, most-recent last. Refs mirror the
   // latest values so the set/undo callbacks stay identity-stable ([] deps) while
   // never reading stale state.
-  const [backgroundHistory, setBackgroundHistoryState] =
-    useState<BackgroundConfig[]>(loadBackgroundHistory);
+  const [backgroundHistory, setBackgroundHistoryState] = useState<
+    BackgroundConfig[]
+  >(loadBackgroundHistory);
   const backgroundConfigRef = useRef(backgroundConfig);
   backgroundConfigRef.current = backgroundConfig;
   const backgroundHistoryRef = useRef(backgroundHistory);

@@ -34,12 +34,17 @@ describe("inferBackgroundPlan", () => {
 	});
 
 	it("maps 'orange' to the brand default color", () => {
-		const plan = inferBackgroundPlan("change the wallpaper to orange", undefined);
+		const plan = inferBackgroundPlan(
+			"change the wallpaper to orange",
+			undefined,
+		);
 		expect(plan).toMatchObject({ op: "set", mode: "shader", color: "#ef5a1f" });
 	});
 
 	it("detects undo", () => {
-		expect(inferBackgroundPlan("undo the background change", undefined)).toEqual({
+		expect(
+			inferBackgroundPlan("undo the background change", undefined),
+		).toEqual({
 			op: "undo",
 		});
 	});
@@ -66,19 +71,26 @@ describe("inferBackgroundPlan", () => {
 			"generate a misty forest background",
 			undefined,
 		);
-		expect(plan).toMatchObject({ op: "set", generatePrompt: expect.any(String) });
+		expect(plan).toMatchObject({
+			op: "set",
+			generatePrompt: expect.any(String),
+		});
 		if (plan && "generatePrompt" in plan) {
 			expect(plan.generatePrompt.toLowerCase()).toContain("misty forest");
 		}
 	});
 
 	it("ignores chat that does not mention the background", () => {
-		expect(inferBackgroundPlan("what is the weather today?", undefined)).toBeNull();
+		expect(
+			inferBackgroundPlan("what is the weather today?", undefined),
+		).toBeNull();
 	});
 
 	it("honors explicit options over text", () => {
 		expect(
-			inferBackgroundPlan("change my background", undefined, { color: "violet" }),
+			inferBackgroundPlan("change my background", undefined, {
+				color: "violet",
+			}),
 		).toMatchObject({ op: "set", mode: "shader", color: "#7c3aed" });
 	});
 });
