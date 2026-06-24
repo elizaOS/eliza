@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { copyDir } from "./safe-copy-dir.ts";
@@ -93,20 +93,35 @@ function prepareTemplates(): void {
         : new Date().toISOString(),
   };
   fs.writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
-  execSync(`${resolveBin("biome")} format --write ${MANIFEST_PATH}`, {
+  runBin(resolveBin("biome"), ["format", "--write", MANIFEST_PATH]);
+}
+
+/**
+ * Run a resolved binary with array args (no shell), throwing on a non-zero
+ * exit. Using spawnSync instead of execSync with an interpolated command string
+ * avoids the shell re-interpreting a bin/path that contains spaces or
+ * metacharacters (e.g. a Windows "C:\\Users\\Jo Doe\\..." path).
+ */
+function runBin(bin: string, args: string[]): void {
+  const result = spawnSync(bin, args, {
     cwd: PACKAGE_DIR,
     stdio: "inherit",
   });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `${bin} ${args.join(" ")} exited with code ${result.status}`,
+    );
+  }
 }
 
 function buildTypescript(): void {
   if (!fs.existsSync(DIST_DIR)) {
     fs.mkdirSync(DIST_DIR, { recursive: true });
   }
-  execSync(`${resolveBin("tsc")} -p tsconfig.json`, {
-    cwd: PACKAGE_DIR,
-    stdio: "inherit",
-  });
+  runBin(resolveBin("tsc"), ["-p", "tsconfig.json"]);
 }
 
 function ensureCliShebang(): void {
