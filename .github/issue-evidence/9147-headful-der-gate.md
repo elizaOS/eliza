@@ -158,6 +158,18 @@ Result:
     `17c2026e386359cddcbcfa88a0b9cc39a0522a930182632d09821df43b7a3205`)
     contains `probe.log` showing `nvcc`, `nvidia-smi`, and `ffmpeg` are not on
     `PATH`, and `ELEVENLABS_API_KEY` is empty on the current runner.
+- Provisioning audit after the current-head failure:
+  - `gh secret list --repo elizaOS/eliza` does not list `ELEVENLABS_API_KEY`,
+    so the acoustic workflow's required `${{ secrets.ELEVENLABS_API_KEY }}` is
+    currently absent from the repository secret set.
+  - `gh api --paginate repos/elizaOS/eliza/actions/runners` shows online
+    `self-hosted, Linux, X64, eliza` runners (`odi-100-25-1` through
+    `odi-100-25-5`) and `hetzner-robot` runners, but no registered runner label
+    advertising `gpu`, `cuda`, or `gpu-cuda-12.6`.
+  - Because the real matrix intentionally has no synthetic fallback, another
+    workflow dispatch on the same branch cannot produce DER/WER/echo/owner/
+    impostor metrics until the self-hosted lane is provisioned with the
+    ElevenLabs secret, required native tooling, and the fused bundle/library.
 
 N/A:
 - No screenshot/video was captured because this change adds machine-readable
