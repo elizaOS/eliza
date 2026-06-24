@@ -135,11 +135,16 @@ export const ActivatesOnClick: Story = {
   },
   play: async ({ canvasElement }) => {
     activateCount = 0;
-    const card = canvasElement.querySelector('[data-testid="home-card-activate"]');
+    const card = canvasElement.querySelector(
+      '[data-testid="home-card-activate"]',
+    );
     // It is a real button carrying the full meaning for screen readers.
     assert(card instanceof HTMLButtonElement, "card is a <button>");
     assert(card.getAttribute("aria-label"), "card has an aria-label");
     card.click();
-    assert(activateCount === 1, `click fired onActivate once (got ${activateCount})`);
+    assert(
+      activateCount === 1,
+      `click fired onActivate once (got ${activateCount})`,
+    );
   },
 };
