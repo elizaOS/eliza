@@ -12,7 +12,6 @@ export * from "./useContextMenu";
 export * from "./useDesktopBridgeEvent";
 export * from "./useDocumentVisibility";
 export * from "./useFetchData";
-export * from "./useFrameBudget";
 export * from "./useFrameBudgetMonitor";
 export { COMMON_SHORTCUTS } from "./useKeyboardShortcuts";
 export * from "./useLinkedSidebarSelection";

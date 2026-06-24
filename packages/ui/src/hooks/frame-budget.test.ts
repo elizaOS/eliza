@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FRAME_BUDGET,
+  FrameBudgetSampler,
   frameBudgetMs,
   percentile,
   shouldReportFrameBudget,
@@ -114,5 +115,87 @@ describe("shouldReportFrameBudget", () => {
         summary({ p95FrameMs: 19, droppedFrames: 0, longTasks: 0 }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("FrameBudgetSampler", () => {
+  // Injectable rAF: stores the latest scheduled callback so a test can drive
+  // frames deterministically by invoking `cb(timestamp)`.
+  function manualRaf() {
+    let cb: (now: number) => void = () => {};
+    let scheduled = 0;
+    return {
+      raf: (fn: (now: number) => void) => {
+        cb = fn;
+        scheduled++;
+        return scheduled;
+      },
+      cancelRaf: () => {},
+      frame: (now: number) => cb(now),
+    };
+  }
+
+  it("is inert until start() and reports an empty summary", () => {
+    const { raf, cancelRaf } = manualRaf();
+    const sampler = new FrameBudgetSampler({ raf, cancelRaf });
+    expect(sampler.running).toBe(false);
+    expect(sampler.summary().sampleCount).toBe(0);
+  });
+
+  it("turns N timestamps into N-1 deltas and computes ~60fps", () => {
+    const { raf, cancelRaf, frame } = manualRaf();
+    const sampler = new FrameBudgetSampler({ raf, cancelRaf });
+    sampler.start();
+    expect(sampler.running).toBe(true);
+    for (let i = 0; i < 11; i++) frame(i * 16.6); // 11 frames → 10 deltas
+    const s = sampler.summary();
+    expect(s.sampleCount).toBe(10);
+    expect(s.fps).toBeCloseTo(60.2, 0);
+    expect(s.droppedFrames).toBe(0);
+    sampler.stop();
+    expect(sampler.running).toBe(false);
+  });
+
+  it("rolls a bounded window (prunes oldest deltas past windowSize)", () => {
+    const { raf, cancelRaf, frame } = manualRaf();
+    const sampler = new FrameBudgetSampler({ windowSize: 4, raf, cancelRaf });
+    sampler.start();
+    for (let i = 0; i <= 10; i++) frame(i * 16.6); // 11 frames → 10 deltas, capped at 4
+    expect(sampler.summary().sampleCount).toBe(4);
+  });
+
+  it("does not double-start", () => {
+    let starts = 0;
+    const sampler = new FrameBudgetSampler({
+      raf: () => {
+        starts++;
+        return 1;
+      },
+      cancelRaf: () => {},
+    });
+    sampler.start();
+    sampler.start();
+    expect(starts).toBe(1);
+  });
+
+  it("invokes onFrame each frame and reset() clears the window + baseline", () => {
+    const { raf, cancelRaf, frame } = manualRaf();
+    const seen: number[] = [];
+    const sampler = new FrameBudgetSampler({
+      raf,
+      cancelRaf,
+      onFrame: (now) => seen.push(now),
+    });
+    sampler.start();
+    for (let i = 0; i < 5; i++) frame(i * 16.6);
+    expect(seen).toHaveLength(5);
+    expect(sampler.summary().sampleCount).toBe(4);
+    sampler.reset();
+    expect(sampler.summary().sampleCount).toBe(0);
+    // After reset the next frame is a fresh baseline (no spurious huge delta).
+    frame(100_000);
+    expect(sampler.summary().sampleCount).toBe(0);
+    frame(100_016.6);
+    expect(sampler.summary().sampleCount).toBe(1);
   });
 });

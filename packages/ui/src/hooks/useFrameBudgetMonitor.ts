@@ -15,9 +15,9 @@ import {
   DEFAULT_FRAME_BUDGET,
   type FrameBudget,
   type FrameBudgetReportOptions,
+  FrameBudgetSampler,
   type FrameBudgetTelemetryEvent,
   shouldReportFrameBudget,
-  summarizeFrameSamples,
 } from "./frame-budget";
 import {
   currentRoute,
@@ -83,60 +83,37 @@ export function startFrameBudgetMonitor(
   const windowMs = options.windowMs ?? 1000;
   const emitHealthy = options.emitHealthy ?? false;
 
-  let frameDurations: number[] = [];
-  let longTasks = 0;
-  let lastFrameAt = performance.now();
-  let windowStart = lastFrameAt;
-  let rafId = 0;
-  let stopped = false;
+  // One shared rAF + longtask collector (see FrameBudgetSampler). It accumulates
+  // frame deltas + long tasks; we flush on a fixed time window and reset so each
+  // emitted summary covers exactly `windowMs`. windowSize is generous so a full
+  // window of frames is never pruned before the flush.
+  let windowStart: number | null = null;
+  const sampler = new FrameBudgetSampler({
+    budget,
+    windowSize: 1024,
+    onFrame: (now, currentSampler) => {
+      if (windowStart === null) windowStart = now;
+      if (now - windowStart < windowMs) return;
+      const summary = currentSampler.summary();
+      const report = shouldReportFrameBudget(summary, options);
+      if (emitHealthy || report) {
+        emitFrameBudget({
+          source: "frameBudget",
+          severity: report ? "error" : "info",
+          summary,
+          windowMs,
+          at: now,
+          sequence: nextRenderTelemetrySequence(),
+          route: currentRoute(),
+        });
+      }
+      currentSampler.reset();
+      windowStart = now;
+    },
+  });
+  sampler.start();
 
-  let observer: PerformanceObserver | null = null;
-  if (typeof PerformanceObserver === "function") {
-    try {
-      observer = new PerformanceObserver((list) => {
-        longTasks += list.getEntries().length;
-      });
-      observer.observe({ entryTypes: ["longtask"] });
-    } catch {
-      observer = null; // longtask not supported in this browser — frame deltas still work.
-    }
-  }
-
-  const flush = (now: number) => {
-    const summary = summarizeFrameSamples(frameDurations, longTasks, budget);
-    if (emitHealthy || shouldReportFrameBudget(summary, options)) {
-      emitFrameBudget({
-        source: "frameBudget",
-        severity: shouldReportFrameBudget(summary, options) ? "error" : "info",
-        summary,
-        windowMs,
-        at: now,
-        sequence: nextRenderTelemetrySequence(),
-        route: currentRoute(),
-      });
-    }
-    frameDurations = [];
-    longTasks = 0;
-    windowStart = now;
-  };
-
-  const tick = () => {
-    if (stopped) return;
-    const now = performance.now();
-    frameDurations.push(now - lastFrameAt);
-    lastFrameAt = now;
-    if (now - windowStart >= windowMs) {
-      flush(now);
-    }
-    rafId = requestAnimationFrame(tick);
-  };
-  rafId = requestAnimationFrame(tick);
-
-  return () => {
-    stopped = true;
-    if (rafId) cancelAnimationFrame(rafId);
-    observer?.disconnect();
-  };
+  return () => sampler.stop();
 }
 
 /**
