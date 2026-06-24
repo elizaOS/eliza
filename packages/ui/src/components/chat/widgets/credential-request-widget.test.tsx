@@ -55,9 +55,7 @@ describe("CredentialRequestWidget", () => {
         />,
       );
       expect(screen.getByTestId("credential-oauth-connected")).toBeTruthy();
-      expect(
-        screen.queryByTestId("credential-oauth-authorize"),
-      ).toBeNull();
+      expect(screen.queryByTestId("credential-oauth-authorize")).toBeNull();
     });
   });
 

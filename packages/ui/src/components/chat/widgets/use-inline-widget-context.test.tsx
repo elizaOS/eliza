@@ -16,9 +16,7 @@ describe("useInlineWidgetContext", () => {
   it("sendAction sends the raw value through the action-message pipeline", () => {
     const send = vi.fn(async () => {});
     const setInput = vi.fn();
-    const { result } = renderHook(() =>
-      useInlineWidgetContext(send, setInput),
-    );
+    const { result } = renderHook(() => useInlineWidgetContext(send, setInput));
     result.current.sendAction("yes");
     expect(send).toHaveBeenCalledWith("yes");
     expect(setInput).not.toHaveBeenCalled();
@@ -27,9 +25,7 @@ describe("useInlineWidgetContext", () => {
   it("prefillComposer fills the composer draft, never sends", () => {
     const send = vi.fn(async () => {});
     const setInput = vi.fn();
-    const { result } = renderHook(() =>
-      useInlineWidgetContext(send, setInput),
-    );
+    const { result } = renderHook(() => useInlineWidgetContext(send, setInput));
     result.current.prefillComposer("draft text");
     expect(setInput).toHaveBeenCalledWith("draft text");
     expect(send).not.toHaveBeenCalled();
@@ -40,9 +36,7 @@ describe("useInlineWidgetContext", () => {
     const events: CustomEvent[] = [];
     const listener = (e: Event) => events.push(e as CustomEvent);
     window.addEventListener("eliza:navigate:view", listener);
-    const { result } = renderHook(() =>
-      useInlineWidgetContext(send, vi.fn()),
-    );
+    const { result } = renderHook(() => useInlineWidgetContext(send, vi.fn()));
     result.current.navigate("/orchestrator?taskId=abc");
     window.removeEventListener("eliza:navigate:view", listener);
     expect(events).toHaveLength(1);
@@ -56,7 +50,10 @@ describe("useInlineWidgetContext", () => {
     const listener = (e: Event) => events.push(e as CustomEvent);
     window.addEventListener("eliza:navigate:view", listener);
     const { result } = renderHook(() =>
-      useInlineWidgetContext(vi.fn(async () => {}), vi.fn()),
+      useInlineWidgetContext(
+        vi.fn(async () => {}),
+        vi.fn(),
+      ),
     );
     result.current.navigate("wallet");
     window.removeEventListener("eliza:navigate:view", listener);
@@ -66,9 +63,7 @@ describe("useInlineWidgetContext", () => {
 
   it("submitForm encodes the form id + JSON values as an action message", () => {
     const send = vi.fn(async () => {});
-    const { result } = renderHook(() =>
-      useInlineWidgetContext(send, vi.fn()),
-    );
+    const { result } = renderHook(() => useInlineWidgetContext(send, vi.fn()));
     result.current.submitForm("signup", { email: "a@b.c", agree: true });
     expect(send).toHaveBeenCalledWith(
       `[form:submit signup] ${JSON.stringify({ email: "a@b.c", agree: true })}`,
