@@ -214,6 +214,10 @@ export default defineConfig({
           "index.node.ts",
         ),
       },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: path.join(elizaRoot, "packages", "tui", "src", "index.ts"),
+      },
       // These packages are imported by @elizaos/core while this suite inlines
       // core. Resolve them through Bun's real package-store path so their own
       // nested dependencies remain visible with preserveSymlinks enabled.

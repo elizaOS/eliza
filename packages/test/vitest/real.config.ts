@@ -248,6 +248,7 @@ const realResolveAlias: ModuleAlias[] = [
     "plugin-companion",
     "plugin-documents",
     "plugin-personal-assistant",
+    "plugin-scheduling",
     "plugin-local-inference",
     "plugin-shopify-ui",
     "plugin-training",
