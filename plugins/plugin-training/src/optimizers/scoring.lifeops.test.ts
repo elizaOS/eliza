@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { LIFEOPS_TRAINING_TASKS } from "../core/trajectory-task-datasets.js";
 import {
+  LIFEOPS_SCORER_TASKS,
+  LIFEOPS_STRUCTURED_SCORER_TASKS,
   scoreActionSet,
   scoreLifeOpsTask,
   scoreStructuredFields,
@@ -18,8 +21,16 @@ describe("scoreStructuredFields", () => {
   });
 
   it("gives partial credit per matched field", () => {
-    const expected = JSON.stringify({ title: "Lunch", start: "noon", end: "1pm" });
-    const actual = JSON.stringify({ title: "Lunch", start: "noon", end: "2pm" });
+    const expected = JSON.stringify({
+      title: "Lunch",
+      start: "noon",
+      end: "1pm",
+    });
+    const actual = JSON.stringify({
+      title: "Lunch",
+      start: "noon",
+      end: "2pm",
+    });
     // 2 of 3 fields match.
     expect(scoreStructuredFields(actual, expected)).toBeCloseTo(2 / 3, 5);
   });
@@ -76,10 +87,18 @@ describe("scoreActionSet", () => {
 });
 
 describe("scoreLifeOpsTask", () => {
-  it("uses structured-field match for extraction tasks", () => {
+  it("registers every LifeOps trajectory task for per-capability scoring", () => {
+    expect([...LIFEOPS_SCORER_TASKS].sort()).toEqual(
+      [...LIFEOPS_TRAINING_TASKS].sort(),
+    );
+  });
+
+  it.each(
+    LIFEOPS_STRUCTURED_SCORER_TASKS,
+  )("uses structured-field match for %s", (task) => {
     const expected = JSON.stringify({ title: "Lunch", start: "noon" });
     const actual = JSON.stringify({ title: "Lunch", start: "1pm" });
-    expect(scoreLifeOpsTask("calendar_extract", actual, expected)).toBe(0.5);
+    expect(scoreLifeOpsTask(task, actual, expected)).toBe(0.5);
   });
 
   it("falls back to token agreement for the chat-shaped morning brief", () => {

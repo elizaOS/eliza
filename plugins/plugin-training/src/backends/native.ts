@@ -34,6 +34,7 @@ import {
 import {
   createPromptScorer,
   createRuntimeAdapter,
+  LIFEOPS_SCORER_TASKS,
   type LlmAdapter,
   type OptimizationExample,
   type OptimizerName,
@@ -54,14 +55,7 @@ import {
  * scorer instead of the default token-overlap comparator.
  */
 const LIFEOPS_TASKS = new Set<TrajectoryTrainingTask>([
-  "calendar_extract",
-  "schedule_plan",
-  "reminder_dispatch",
-  "inbox_triage",
-  "meeting_prep",
-  "morning_brief",
-  "health_checkin",
-  "screentime_recap",
+  ...LIFEOPS_SCORER_TASKS,
 ]);
 
 export interface NativeBackendOptions {

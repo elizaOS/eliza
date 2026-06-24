@@ -293,8 +293,20 @@ function tokenize(text: string): Set<string> {
 // hundreds-of-completions-per-round budget.
 // -----------------------------------------------------------------------------
 
+/** LifeOps tasks with per-capability scorers (#8795). */
+export const LIFEOPS_SCORER_TASKS = [
+  "calendar_extract",
+  "schedule_plan",
+  "reminder_dispatch",
+  "inbox_triage",
+  "meeting_prep",
+  "morning_brief",
+  "health_checkin",
+  "screentime_recap",
+] as const;
+
 /** LifeOps tasks whose output is a structured JSON object (exact-field match). */
-const LIFEOPS_EXTRACTION_TASKS: ReadonlySet<string> = new Set([
+export const LIFEOPS_STRUCTURED_SCORER_TASKS = [
   "calendar_extract",
   "schedule_plan",
   "reminder_dispatch",
@@ -302,7 +314,11 @@ const LIFEOPS_EXTRACTION_TASKS: ReadonlySet<string> = new Set([
   "meeting_prep",
   "health_checkin",
   "screentime_recap",
-]);
+] as const;
+
+const LIFEOPS_EXTRACTION_TASKS: ReadonlySet<string> = new Set(
+  LIFEOPS_STRUCTURED_SCORER_TASKS,
+);
 
 /** Parse a JSON object out of a completion, tolerating ```json fences/prose. */
 function parseJsonLoose(text: string): Record<string, unknown> | null {
