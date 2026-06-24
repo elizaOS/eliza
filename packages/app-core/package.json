@@ -227,7 +227,7 @@
 		"sharp": "^0.34.5"
 	},
 	"dependencies": {
-		"@capacitor-community/sqlite": "^7.0.0",
+		"@capacitor-community/sqlite": "^8.1.0",
 		"@capacitor/background-runner": "^3.0.0",
 		"@capacitor/barcode-scanner": "^3.0.0",
 		"@capacitor/core": "8.4.0",

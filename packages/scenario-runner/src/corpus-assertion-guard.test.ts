@@ -65,6 +65,7 @@ interface ScenarioFacts {
   hasPersonalityExpect: boolean;
   hasDeadPlannerAssert: boolean;
   hasMessageAsGmailLabelExpectation: boolean;
+  hasExpectedActionParams: boolean;
 }
 
 // plannerIncludesAll / plannerIncludesAny / plannerExcludes are not in the
@@ -72,6 +73,7 @@ interface ScenarioFacts {
 // them have silently-ignored "assertions". Tracked in #9310.
 const DEAD_PLANNER_ASSERT =
   /\b(plannerIncludesAll|plannerIncludesAny|plannerExcludes)\s*:/;
+const DEAD_EXPECTED_ACTION_PARAMS = /\bexpectedActionParams\s*:/;
 
 const PER_TURN_ASSERT =
   /\b(assertResponse|responseIncludesAny|responseIncludesAll|responseJudge|assertTurn)\b/;
@@ -93,6 +95,7 @@ function analyze(file: string): ScenarioFacts {
     hasDeadPlannerAssert: DEAD_PLANNER_ASSERT.test(src),
     hasMessageAsGmailLabelExpectation:
       MESSAGE_AS_GMAIL_LABEL_EXPECTATION.test(src),
+    hasExpectedActionParams: DEAD_EXPECTED_ACTION_PARAMS.test(src),
   };
 }
 
@@ -130,6 +133,14 @@ describe("scenario corpus assertion guard", () => {
   it('does not use action name "MESSAGE" as a Gmail label expectation', () => {
     const offenders = facts
       .filter((f) => f.hasMessageAsGmailLabelExpectation)
+      .map(rel)
+      .sort();
+    expect(offenders).toEqual([]);
+  });
+
+  it("does not use dead expectedActionParams turn assertions", () => {
+    const offenders = facts
+      .filter((f) => f.hasExpectedActionParams)
       .map(rel)
       .sort();
     expect(offenders).toEqual([]);

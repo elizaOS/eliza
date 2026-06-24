@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 const moduleCache = new Map<string, unknown>();
 
@@ -32,8 +32,10 @@ export async function loadPluginModule<T = unknown>(
 	const { repoRoot, npmScope = "@elizaos" } = options;
 	const errors: string[] = [];
 
-	// Direct path import
-	if (nameOrPath.startsWith(".") || nameOrPath.startsWith("/")) {
+	// Direct path import. Use path.isAbsolute (not startsWith("/")) so a Windows
+	// absolute path (a C: drive path or UNC path) is recognized — otherwise it
+	// falls through to npm/workspace resolution and fails to load on Windows.
+	if (nameOrPath.startsWith(".") || isAbsolute(nameOrPath)) {
 		const mod = await import(/* @vite-ignore */ resolve(nameOrPath));
 		moduleCache.set(cacheKey, mod);
 		return mod as T;

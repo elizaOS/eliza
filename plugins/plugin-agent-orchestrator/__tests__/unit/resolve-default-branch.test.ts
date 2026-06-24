@@ -16,8 +16,12 @@ const { resolveDefaultBranch, _clearDefaultBranchCache } = await import(
 // Drive the (file, args, opts, cb) execFile callback with a canned git result.
 function mockGit(err: Error | null, stdout = "") {
   execFileMock.mockImplementation(
-    (_file: string, _args: string[], _opts: unknown, cb: Function) =>
-      cb(err, stdout, ""),
+    (
+      _file: string,
+      _args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => cb(err, stdout, ""),
   );
 }
 

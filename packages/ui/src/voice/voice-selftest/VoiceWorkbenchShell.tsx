@@ -166,6 +166,8 @@ export function VoiceWorkbenchShell() {
       <div
         data-testid="voice-workbench-overall"
         data-overall={report?.overall ?? "pending"}
+        data-der={report?.diarization.der ?? ""}
+        data-max-der={report?.diarization.maxDer ?? ""}
         data-running={running ? "1" : "0"}
         style={{
           fontSize: 16,
@@ -186,6 +188,8 @@ export function VoiceWorkbenchShell() {
             data-testid={`voice-workbench-turn-${t.index}`}
             data-status={t.status}
             data-speaker={t.speaker}
+            data-predicted-speaker-label={t.predictedSpeakerLabel ?? ""}
+            data-expected-speaker-label={t.expectedSpeakerLabel}
             data-responded={t.responded ? "1" : "0"}
             data-expect-respond={t.expectRespond ? "1" : "0"}
             style={{ marginBottom: 6 }}

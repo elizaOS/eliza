@@ -254,6 +254,18 @@ export class EmbeddingGenerationService extends Service {
 		if (!memory.id) {
 			return;
 		}
+		if (!Array.isArray(embedding) || embedding.length === 0) {
+			// An empty vector is a failed generation, not a real embedding.
+			// Persisting it would write nothing yet report success, marking the
+			// memory permanently "embedded" with no vector (silent recall gap).
+			// Throw so both callers route it through their failure path: the
+			// per-item path rethrows; the batch loop records success:false and
+			// retries. A configured zero-vector (length === dim) is intentional
+			// for text-only deployments and is left untouched.
+			throw new Error(
+				`[EmbeddingGenerationService] refusing to persist an empty embedding for memory ${memory.id}; the embedding model returned no vector`,
+			);
+		}
 		await this.runtime.updateMemory({
 			id: memory.id,
 			embedding,

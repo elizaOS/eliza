@@ -20,6 +20,19 @@ import {
 } from "./helpers/screenshot-quality";
 import { VIEW_CASES } from "./plugin-view-cases";
 
+// Strict-gate config (#9304). The audit was a pure reporter — `broken` /
+// `needs-work` verdicts only landed in report.json and never failed a run, so a
+// regressed view shipped green. With `ELIZA_AUDIT_APP_STRICT=1` the audit becomes
+// a GATE that fails on any `broken` verdict (a real crash / blank render /
+// console error / empty view) outside the shrinking debt allowlist below.
+// `needs-work` (design debt: blue / orange-hover / off-token radius) is logged
+// with a count but not hard-gated yet — capture the current set into
+// AESTHETIC_VERDICT_DEBT from a clean CI run, then tighten this to gate it too.
+const AUDIT_STRICT = process.env.ELIZA_AUDIT_APP_STRICT === "1";
+// Key: `${slug}-${viewport}`. Value: the worst verdict currently tolerated for
+// that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention).
+const AESTHETIC_VERDICT_DEBT: Record<string, "broken" | "needs-work"> = {};
+
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
  * cloud-frontend's `audit:cloud`. It walks EVERY view (built-in tabs + plugin
@@ -460,5 +473,37 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `${rows}</table>`,
       "utf8",
     );
+
+    // Gate (#9304). Always log the verdict tally; in strict mode, fail the run
+    // on any `broken` view not covered by the debt allowlist.
+    const broken = findings.filter((f) => f.verdict === "broken");
+    const needsWork = findings.filter((f) => f.verdict === "needs-work");
+    const undebtedBroken = broken.filter(
+      (f) => AESTHETIC_VERDICT_DEBT[`${f.slug}-${f.viewport}`] !== "broken",
+    );
+    console.log(
+      `[aesthetic-audit] ${findings.length} findings — ` +
+        `broken=${broken.length} needs-work=${needsWork.length} ` +
+        `needs-eyeball=${findings.filter((f) => f.verdict === "needs-eyeball").length} ` +
+        `good=${findings.filter((f) => f.verdict === "good").length} ` +
+        `(strict=${AUDIT_STRICT}, undebted-broken=${undebtedBroken.length})`,
+    );
+    if (AUDIT_STRICT && undebtedBroken.length > 0) {
+      const detail = undebtedBroken
+        .map(
+          (f) =>
+            `  ${f.slug} @ ${f.viewport}: ${
+              [...f.consoleErrors, ...f.qualityIssues].join("; ") ||
+              `readableChars=${f.readableChars}`
+            }`,
+        )
+        .join("\n");
+      throw new Error(
+        `[aesthetic-audit] STRICT gate failed: ${undebtedBroken.length} ` +
+          `non-exempt 'broken' view(s) not in AESTHETIC_VERDICT_DEBT:\n${detail}\n` +
+          `Fix the view or, if genuinely accepted debt, add the slug-viewport key ` +
+          `to AESTHETIC_VERDICT_DEBT (and shrink it over time).`,
+      );
+    }
   });
 });

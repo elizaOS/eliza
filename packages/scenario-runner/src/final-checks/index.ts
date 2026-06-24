@@ -5,6 +5,11 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { LifeOpsService } from "@elizaos/plugin-personal-assistant/lifeops/service";
+import {
+  REMINDER_ESCALATION_INDEX_METADATA_KEY,
+  REMINDER_LIFECYCLE_METADATA_KEY,
+} from "@elizaos/plugin-personal-assistant/lifeops/service-constants";
 import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
@@ -46,6 +51,7 @@ function matchesPattern(value: string, pattern: string | RegExp): boolean {
   if (typeof pattern === "string") {
     return value.toLowerCase().includes(pattern.toLowerCase());
   }
+  pattern.lastIndex = 0;
   return pattern.test(value);
 }
 
@@ -64,6 +70,20 @@ function normalizeChannel(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/[-\s]+/g, "_");
+}
+
+function normalizeComparableText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function textMatchesLoose(actual: string, expected: string): boolean {
+  const normalizedActual = normalizeComparableText(actual);
+  const normalizedExpected = normalizeComparableText(expected);
+  return (
+    normalizedActual === normalizedExpected ||
+    normalizedActual.includes(normalizedExpected) ||
+    normalizedExpected.includes(normalizedActual)
+  );
 }
 
 function matchesChannel(
@@ -136,6 +156,268 @@ function matchesExpectedFields(
   return Object.entries(expected).every(([path, expectedValue]) =>
     valuesEqual(readPath(value, path), expectedValue),
   );
+}
+
+function matchesContentMatcher(actual: unknown, expected: unknown): boolean {
+  const expectedRecord = toRecord(expected);
+  if (expectedRecord) {
+    if (Object.hasOwn(expectedRecord, "$contains")) {
+      const needle = expectedRecord.$contains;
+      if (typeof needle !== "string" && !(needle instanceof RegExp)) {
+        return false;
+      }
+      const haystack =
+        typeof actual === "string" ? actual : JSON.stringify(actual ?? "");
+      return matchesPattern(haystack, needle);
+    }
+    const actualRecord = toRecord(actual);
+    if (!actualRecord) {
+      return false;
+    }
+    return Object.entries(expectedRecord).every(([key, value]) =>
+      matchesContentMatcher(actualRecord[key], value),
+    );
+  }
+  if (Array.isArray(expected)) {
+    return expected.some((candidate) =>
+      matchesContentMatcher(actual, candidate),
+    );
+  }
+  return valuesEqual(actual, expected);
+}
+
+function recordHasEntries(value: unknown): boolean {
+  const record = toRecord(value);
+  return Boolean(record && Object.keys(record).length > 0);
+}
+
+function isGoalRecord(value: unknown): value is Record<string, unknown> {
+  const record = toRecord(value);
+  return typeof record?.title === "string" && record.title.trim().length > 0;
+}
+
+function goalRecordFromActionResult(
+  value: unknown,
+): Record<string, unknown> | null {
+  const record = toRecord(value);
+  if (!record) {
+    return null;
+  }
+  if (isGoalRecord(record.goal)) {
+    return toRecord(record.goal);
+  }
+  const wrappedRecord = toRecord(record.record);
+  if (isGoalRecord(wrappedRecord?.goal)) {
+    return toRecord(wrappedRecord.goal);
+  }
+  return null;
+}
+
+type DefinitionCountCheck = {
+  title?: string;
+  titleAliases?: string[];
+  delta?: number;
+  cadenceKind?: string;
+  requiredSlots?: Array<{ label?: string; minuteOfDay?: number }>;
+  requiredWeekdays?: number[];
+  requiredWindows?: string[];
+  requiredEveryMinutes?: number;
+  requiredMaxOccurrencesPerDay?: number;
+  expectedTimeZone?: string;
+  requireReminderPlan?: boolean;
+  websiteAccess?: Record<string, unknown>;
+};
+
+type DefinitionRecordLike = {
+  definition: Record<string, unknown>;
+  reminderPlan: unknown;
+};
+
+type DefinitionListingService = {
+  listDefinitions(): Promise<unknown[]>;
+};
+
+function isDefinitionListingService(
+  value: unknown,
+): value is DefinitionListingService {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  if (!("listDefinitions" in value)) {
+    return false;
+  }
+  return typeof value.listDefinitions === "function";
+}
+
+function definitionRecordFromValue(
+  value: unknown,
+): DefinitionRecordLike | null {
+  const record = toRecord(value);
+  if (!record) {
+    return null;
+  }
+  const definition = toRecord(record.definition) ?? record;
+  if (typeof definition.title !== "string") {
+    return null;
+  }
+  return {
+    definition,
+    reminderPlan: record.reminderPlan ?? definition.reminderPlan ?? null,
+  };
+}
+
+function definitionTitleMatches(
+  definition: Record<string, unknown>,
+  check: DefinitionCountCheck,
+): boolean {
+  if (typeof check.title !== "string" || check.title.trim().length === 0) {
+    return false;
+  }
+  if (typeof definition.title !== "string") {
+    return false;
+  }
+  const actualTitle = definition.title;
+  const accepted = [check.title, ...(check.titleAliases ?? [])];
+  return accepted.some((title) => textMatchesLoose(actualTitle, title));
+}
+
+function requiredSlotMatches(
+  actualSlot: unknown,
+  expectedSlot: { label?: string; minuteOfDay?: number },
+): boolean {
+  const actual = toRecord(actualSlot);
+  if (!actual) {
+    return false;
+  }
+  if (
+    typeof expectedSlot.minuteOfDay === "number" &&
+    actual.minuteOfDay !== expectedSlot.minuteOfDay
+  ) {
+    return false;
+  }
+  if (typeof expectedSlot.label === "string") {
+    return (
+      typeof actual.label === "string" &&
+      textMatchesLoose(actual.label, expectedSlot.label)
+    );
+  }
+  return true;
+}
+
+function arrayContainsAllValues(actual: unknown, expected: unknown[]): boolean {
+  if (!Array.isArray(actual)) {
+    return false;
+  }
+  return expected.every((expectedValue) =>
+    actual.some((actualValue) =>
+      looselyMatchesValue(actualValue, expectedValue),
+    ),
+  );
+}
+
+function looselyMatchesValue(actual: unknown, expected: unknown): boolean {
+  if (Array.isArray(expected)) {
+    return arrayContainsAllValues(actual, expected);
+  }
+  const expectedRecord = toRecord(expected);
+  if (expectedRecord) {
+    const actualRecord = toRecord(actual);
+    return Boolean(
+      actualRecord &&
+        Object.entries(expectedRecord).every(([key, value]) =>
+          looselyMatchesValue(actualRecord[key], value),
+        ),
+    );
+  }
+  if (typeof expected === "string") {
+    return (
+      typeof actual === "string" &&
+      normalizeComparableText(actual) === normalizeComparableText(expected)
+    );
+  }
+  return actual === expected;
+}
+
+function definitionMismatchReasons(
+  record: DefinitionRecordLike,
+  check: DefinitionCountCheck,
+): string[] {
+  const reasons: string[] = [];
+  const cadence = toRecord(record.definition.cadence);
+  if (
+    typeof check.cadenceKind === "string" &&
+    cadence?.kind !== check.cadenceKind
+  ) {
+    reasons.push(
+      `cadence.kind expected ${check.cadenceKind}, saw ${String(cadence?.kind ?? "missing")}`,
+    );
+  }
+  if (
+    typeof check.expectedTimeZone === "string" &&
+    record.definition.timezone !== check.expectedTimeZone
+  ) {
+    reasons.push(
+      `timezone expected ${check.expectedTimeZone}, saw ${String(record.definition.timezone ?? "missing")}`,
+    );
+  }
+  if (Array.isArray(check.requiredSlots) && check.requiredSlots.length > 0) {
+    const slots = Array.isArray(cadence?.slots) ? cadence.slots : [];
+    for (const slot of check.requiredSlots) {
+      if (!slots.some((actualSlot) => requiredSlotMatches(actualSlot, slot))) {
+        reasons.push(`missing required slot ${JSON.stringify(slot)}`);
+      }
+    }
+  }
+  if (
+    Array.isArray(check.requiredWeekdays) &&
+    check.requiredWeekdays.length > 0 &&
+    !arrayContainsAllValues(cadence?.weekdays, check.requiredWeekdays)
+  ) {
+    reasons.push(`weekdays missing [${check.requiredWeekdays.join(", ")}]`);
+  }
+  if (
+    Array.isArray(check.requiredWindows) &&
+    check.requiredWindows.length > 0 &&
+    !arrayContainsAllValues(cadence?.windows, check.requiredWindows)
+  ) {
+    reasons.push(`windows missing [${check.requiredWindows.join(", ")}]`);
+  }
+  if (
+    typeof check.requiredEveryMinutes === "number" &&
+    cadence?.everyMinutes !== check.requiredEveryMinutes
+  ) {
+    reasons.push(
+      `everyMinutes expected ${check.requiredEveryMinutes}, saw ${String(cadence?.everyMinutes ?? "missing")}`,
+    );
+  }
+  if (
+    typeof check.requiredMaxOccurrencesPerDay === "number" &&
+    cadence?.maxOccurrencesPerDay !== check.requiredMaxOccurrencesPerDay
+  ) {
+    reasons.push(
+      `maxOccurrencesPerDay expected ${check.requiredMaxOccurrencesPerDay}, saw ${String(cadence?.maxOccurrencesPerDay ?? "missing")}`,
+    );
+  }
+  if (typeof check.requireReminderPlan === "boolean") {
+    const hasReminderPlan =
+      recordHasEntries(record.reminderPlan) ||
+      (typeof record.definition.reminderPlanId === "string" &&
+        record.definition.reminderPlanId.length > 0);
+    if (hasReminderPlan !== check.requireReminderPlan) {
+      reasons.push(
+        `reminderPlan expected ${check.requireReminderPlan}, saw ${hasReminderPlan}`,
+      );
+    }
+  }
+  if (check.websiteAccess) {
+    const websiteAccess = toRecord(record.definition.websiteAccess);
+    if (!websiteAccess) {
+      reasons.push("websiteAccess missing");
+    } else if (!looselyMatchesValue(websiteAccess, check.websiteAccess)) {
+      reasons.push("websiteAccess did not match expected fields");
+    }
+  }
+  return reasons;
 }
 
 type GmailMockRequest = {
@@ -519,6 +801,224 @@ registerFinalCheckHandler("memoryWriteOccurred", (check, { ctx }) => {
     detail: `${matched.length} write(s) to [${tables.join(",")}]`,
   };
 });
+
+registerFinalCheckHandler("memoryExists", (check, { ctx }) => {
+  const { table, content, minCount, expected } = check as {
+    table?: string | string[];
+    content?: unknown;
+    minCount?: number;
+    expected?: boolean;
+  };
+  const tables = table === undefined ? [] : toArray(table);
+  const writes = ctx.memoryWrites ?? [];
+  const matched = writes.filter((write) => {
+    if (tables.length > 0 && !tables.includes(write.table)) {
+      return false;
+    }
+    if (content === undefined) {
+      return true;
+    }
+    return matchesContentMatcher(write.content, content);
+  });
+  const wantPresent = expected ?? true;
+  const wantCount = typeof minCount === "number" ? minCount : 1;
+  if (wantPresent) {
+    if (matched.length < wantCount) {
+      return {
+        status: "failed",
+        detail: `expected ${wantCount} matching memory write(s), saw ${matched.length} of ${writes.length} total`,
+      };
+    }
+    return {
+      status: "passed",
+      detail: `${matched.length} matching memory write(s)`,
+    };
+  }
+  if (matched.length > 0) {
+    return {
+      status: "failed",
+      detail: `expected no matching memory write, saw ${matched.length}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: "no matching memory write observed",
+  };
+});
+
+registerFinalCheckHandler("goalCountDelta", (check, { ctx }) => {
+  const {
+    title,
+    titleAliases,
+    delta,
+    expectedStatus,
+    expectedReviewState,
+    expectedGroundingState,
+    requireDescription,
+    requireSuccessCriteria,
+    requireSupportStrategy,
+  } = check as {
+    title: string;
+    titleAliases?: string[];
+    delta?: number;
+    expectedStatus?: string;
+    expectedReviewState?: string;
+    expectedGroundingState?: string;
+    requireDescription?: boolean;
+    requireSuccessCriteria?: boolean;
+    requireSupportStrategy?: boolean;
+  };
+  const acceptedTitles = [title, ...(titleAliases ?? [])].filter(
+    (entry) => typeof entry === "string" && entry.trim().length > 0,
+  );
+  const goalRecords = ctx.actionsCalled
+    .filter(
+      (action) =>
+        action.result?.success === true && !isSynthesizedReply(action),
+    )
+    .flatMap((action) => {
+      const fromData = goalRecordFromActionResult(action.result?.data);
+      const fromRaw = goalRecordFromActionResult(action.result?.raw);
+      return [fromData, fromRaw].filter(
+        (record): record is Record<string, unknown> => Boolean(record),
+      );
+    });
+  const matched = goalRecords.filter((goal) => {
+    const actualTitle = String(goal.title ?? "");
+    if (
+      !acceptedTitles.some((candidate) =>
+        textMatchesLoose(actualTitle, candidate),
+      )
+    ) {
+      return false;
+    }
+    if (expectedStatus !== undefined && goal.status !== expectedStatus) {
+      return false;
+    }
+    if (
+      expectedReviewState !== undefined &&
+      goal.reviewState !== expectedReviewState
+    ) {
+      return false;
+    }
+    const actualGroundingState =
+      readPath(goal, "metadata.groundingState") ?? goal.groundingState;
+    if (
+      expectedGroundingState !== undefined &&
+      actualGroundingState !== expectedGroundingState
+    ) {
+      return false;
+    }
+    if (
+      requireDescription === true &&
+      String(goal.description ?? "").trim().length === 0
+    ) {
+      return false;
+    }
+    if (
+      requireSuccessCriteria === true &&
+      !recordHasEntries(goal.successCriteria)
+    ) {
+      return false;
+    }
+    if (
+      requireSupportStrategy === true &&
+      !recordHasEntries(goal.supportStrategy)
+    ) {
+      return false;
+    }
+    return true;
+  });
+  const expectedDelta = typeof delta === "number" ? delta : 1;
+  if (expectedDelta <= 0) {
+    return matched.length === 0
+      ? { status: "passed", detail: "no matching goal records observed" }
+      : {
+          status: "failed",
+          detail: `expected no matching goal records, saw ${matched.length}`,
+        };
+  }
+  if (matched.length < expectedDelta) {
+    const titles =
+      goalRecords.map((goal) => String(goal.title ?? "")).join(", ") ||
+      "(none)";
+    return {
+      status: "failed",
+      detail: `expected ${expectedDelta} matching goal record(s), saw ${matched.length}. Goal titles: ${titles}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${matched.length} matching goal record(s)`,
+  };
+});
+
+registerFinalCheckHandler(
+  "definitionCountDelta",
+  async (check, { runtime }) => {
+    const definitionCheck = check as DefinitionCountCheck;
+    if (
+      typeof definitionCheck.title !== "string" ||
+      definitionCheck.title.trim().length === 0
+    ) {
+      return {
+        status: "failed",
+        detail: "definitionCountDelta requires a non-empty title",
+      };
+    }
+    const service = new LifeOpsService(runtime);
+    if (!isDefinitionListingService(service)) {
+      return {
+        status: "failed",
+        detail: "LifeOpsService does not expose listDefinitions()",
+      };
+    }
+    const records = (await service.listDefinitions())
+      .map(definitionRecordFromValue)
+      .filter((record): record is DefinitionRecordLike => record !== null);
+    const titleMatches = records.filter((record) =>
+      definitionTitleMatches(record.definition, definitionCheck),
+    );
+    const matched = titleMatches.filter(
+      (record) =>
+        definitionMismatchReasons(record, definitionCheck).length === 0,
+    );
+    const delta =
+      typeof definitionCheck.delta === "number" ? definitionCheck.delta : 1;
+    if (delta <= 0) {
+      if (matched.length === 0) {
+        return {
+          status: "passed",
+          detail: `no matching definition for "${definitionCheck.title}"`,
+        };
+      }
+      return {
+        status: "failed",
+        detail: `expected no matching definition for "${definitionCheck.title}", saw ${matched.length}`,
+      };
+    }
+    if (matched.length >= delta) {
+      return {
+        status: "passed",
+        detail: `${matched.length} matching definition(s) for "${definitionCheck.title}"`,
+      };
+    }
+    const mismatchDetails = titleMatches
+      .map((record) => {
+        const title = String(record.definition.title ?? "(untitled)");
+        const reasons = definitionMismatchReasons(record, definitionCheck);
+        return `${title}: ${reasons.join("; ") || "matched"}`;
+      })
+      .join(" | ");
+    return {
+      status: "failed",
+      detail:
+        titleMatches.length === 0
+          ? `expected ${delta} matching definition(s) for "${definitionCheck.title}", saw none among ${records.length} definition(s)`
+          : `expected ${delta} matching definition(s) for "${definitionCheck.title}", saw ${matched.length}. Candidate mismatches: ${mismatchDetails}`,
+    };
+  },
+);
 
 registerFinalCheckHandler("approvalRequestExists", (check, { ctx }) => {
   if (ctx.approvalRequests === undefined) {
@@ -1175,6 +1675,46 @@ registerFinalCheckHandler("workflowDispatchOccurred", (check, { ctx }) => {
   };
 });
 
+registerFinalCheckHandler(
+  "reminderIntensity",
+  async (check, { runtime, ctx }) => {
+    const { title, titleAliases, expected } = check as {
+      title?: string;
+      titleAliases?: string[];
+      expected?: string;
+    };
+    if (typeof title !== "string" || title.length === 0) {
+      return { status: "failed", detail: "reminderIntensity missing title" };
+    }
+    if (typeof expected !== "string" || expected.length === 0) {
+      return { status: "failed", detail: "reminderIntensity missing expected" };
+    }
+    const titleCandidates = titleCandidatesForReminderIntensity({
+      title,
+      titleAliases,
+    });
+    if (expected === "escalated") {
+      const attempts = collectReminderAttempts(
+        (ctx.turns ?? []).map((turn) => turn.responseBody),
+      );
+      const matched = attempts.filter((attempt) =>
+        isDeliveredEscalationAttempt(attempt, titleCandidates),
+      );
+      if (matched.length > 0) {
+        return {
+          status: "passed",
+          detail: `${matched.length} delivered escalation reminder attempt(s) matched [${titleCandidates.join(", ")}]`,
+        };
+      }
+      return {
+        status: "failed",
+        detail: `no delivered escalation reminder attempts matched [${titleCandidates.join(", ")}]; saw ${attempts.length} reminder attempt(s)`,
+      };
+    }
+    return checkStoredReminderIntensity(runtime, titleCandidates, expected);
+  },
+);
+
 // judgeRubric is handled inline by the executor so it can reuse the live LLM
 // without threading the runtime through the generic handler registry.
 registerFinalCheckHandler("judgeRubric", () => ({
@@ -1221,5 +1761,141 @@ export async function runFinalCheck(
     type,
     status: outcome.status,
     detail: outcome.detail,
+  };
+}
+
+type ReminderPreferenceService = {
+  listDefinitions(): Promise<unknown[]>;
+  getReminderPreference(definitionId?: string | null): Promise<unknown>;
+};
+
+function isReminderPreferenceService(
+  value: unknown,
+): value is ReminderPreferenceService {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  return (
+    "listDefinitions" in value &&
+    typeof value.listDefinitions === "function" &&
+    "getReminderPreference" in value &&
+    typeof value.getReminderPreference === "function"
+  );
+}
+
+function titleCandidatesForReminderIntensity(check: {
+  title: string;
+  titleAliases?: string[];
+}): string[] {
+  return [check.title, ...(check.titleAliases ?? [])];
+}
+
+function reminderDefinitionTitle(value: unknown): string | null {
+  const record = toRecord(value);
+  const definition = toRecord(record?.definition);
+  return typeof definition?.title === "string" ? definition.title : null;
+}
+
+function reminderDefinitionId(value: unknown): string | null {
+  const record = toRecord(value);
+  const definition = toRecord(record?.definition);
+  return typeof definition?.id === "string" ? definition.id : null;
+}
+
+function matchesReminderTitle(value: unknown, candidates: string[]): boolean {
+  return (
+    typeof value === "string" &&
+    candidates.some((candidate) => textMatchesLoose(value, candidate))
+  );
+}
+
+function collectReminderAttempts(
+  value: unknown,
+  out: Record<string, unknown>[] = [],
+): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectReminderAttempts(entry, out);
+    }
+    return out;
+  }
+  const record = toRecord(value);
+  if (!record) {
+    return out;
+  }
+  if (toRecord(record.deliveryMetadata)) {
+    out.push(record);
+  }
+  for (const entry of Object.values(record)) {
+    collectReminderAttempts(entry, out);
+  }
+  return out;
+}
+
+function isDeliveredEscalationAttempt(
+  attempt: Record<string, unknown>,
+  titleCandidates: string[],
+): boolean {
+  if (attempt.outcome !== "delivered") {
+    return false;
+  }
+  const deliveryMetadata = toRecord(attempt.deliveryMetadata);
+  if (!deliveryMetadata) {
+    return false;
+  }
+  if (!matchesReminderTitle(deliveryMetadata.title, titleCandidates)) {
+    return false;
+  }
+  return (
+    deliveryMetadata[REMINDER_LIFECYCLE_METADATA_KEY] === "escalation" ||
+    typeof deliveryMetadata[REMINDER_ESCALATION_INDEX_METADATA_KEY] === "number"
+  );
+}
+
+async function checkStoredReminderIntensity(
+  runtime: IAgentRuntime,
+  titleCandidates: string[],
+  expected: string,
+): Promise<FinalCheckOutcome> {
+  const service = new LifeOpsService(runtime);
+  if (!isReminderPreferenceService(service)) {
+    return {
+      status: "skipped-dependency-missing",
+      detail: "LifeOpsService does not expose reminder preference methods",
+    };
+  }
+  const definitions = await service.listDefinitions();
+  const match = definitions.find((entry) => {
+    const title = reminderDefinitionTitle(entry);
+    return title !== null && matchesReminderTitle(title, titleCandidates);
+  });
+  if (!match) {
+    return {
+      status: "failed",
+      detail: `no reminder definition matched [${titleCandidates.join(", ")}]`,
+    };
+  }
+  const definitionId = reminderDefinitionId(match);
+  if (!definitionId) {
+    return {
+      status: "failed",
+      detail: "matched reminder definition has no id",
+    };
+  }
+  const preference = toRecord(
+    await service.getReminderPreference(definitionId),
+  );
+  const effective = toRecord(preference?.effective);
+  const actual =
+    typeof effective?.intensity === "string" ? effective.intensity : undefined;
+  if (actual === expected) {
+    return {
+      status: "passed",
+      detail: `reminder "${reminderDefinitionTitle(match) ?? definitionId}" effective intensity=${expected}`,
+    };
+  }
+  return {
+    status: "failed",
+    detail: `expected reminder "${reminderDefinitionTitle(match) ?? definitionId}" effective intensity=${expected}, saw ${actual ?? "(missing)"}`,
   };
 }

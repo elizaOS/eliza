@@ -10,9 +10,9 @@
  *                      respond / echo / bystander / wake-word gate + name
  *                      extraction over the corpus (no acoustic models). CI-
  *                      runnable; catches a regression in the decision logic.
- *   --real             real local backend (acoustic models). No real services
- *                      adapter is provisioned here yet, so every scenario reports
- *                      `skipped` — never a false `pass` (the honesty contract).
+ *   --real             provisioned real backend: ElevenLabs-generated human
+ *                      speech + fused local TTS/ASR + WeSpeaker + pyannote.
+ *                      Missing real deps are a hard failure, not a skipped pass.
  *   --out <dir>        output directory (default ./voice-workbench-output).
  *   --baseline <path>  golden report JSON to compare metrics against; exit 1 if
  *                      any metric regressed past tolerance (regression gate).
@@ -29,6 +29,7 @@ import {
 } from "../src/services/voice/voice-workbench-report.ts";
 import { buildAndRunVoiceWorkbench, writeVoiceWorkbenchResult } from "../src/services/voice/workbench-entrypoint.ts";
 import { realDecisionLogicServices } from "../src/services/voice/workbench-logic-services.ts";
+import { createRealVoiceWorkbenchRuntimeFromEnv } from "../src/services/voice/workbench-real-services.ts";
 import { groundTruthMockServices } from "../src/services/voice/workbench-scenarios.ts";
 
 async function main(): Promise<void> {
@@ -46,18 +47,29 @@ async function main(): Promise<void> {
 			? path.resolve(args[outIdx + 1])
 			: path.resolve("voice-workbench-output");
 
-	// --real: real-backend (acoustic) services are gated; when none is provisioned
-	// we pass `null`, making every scenario `skipped` (never a false pass).
+	// --real: real-backend (acoustic) services are gated and fail fast when not
+	// provisioned. No all-skipped success: #9147 needs numbers, not skip evidence.
 	// --logic: the real shipped decision logic (no acoustic models).
 	// default (--mock): echoes ground truth so the runner → scorers → report path
 	// runs end-to-end.
-	const services = real
-		? null
+	const realRuntime = real
+		? await createRealVoiceWorkbenchRuntimeFromEnv()
+		: null;
+	const services = realRuntime
+		? realRuntime.services
 		: logic
 			? realDecisionLogicServices()
 			: groundTruthMockServices();
 
-	const result = await buildAndRunVoiceWorkbench({ services });
+	let result!: Awaited<ReturnType<typeof buildAndRunVoiceWorkbench>>;
+	try {
+		result = await buildAndRunVoiceWorkbench({
+			services,
+			...(realRuntime ? { synthesizer: realRuntime.synthesizer } : {}),
+		});
+	} finally {
+		await realRuntime?.dispose();
+	}
 	const artifacts = writeVoiceWorkbenchResult(result, outDir);
 
 	process.stdout.write(`${result.markdown}\n\nReport: ${artifacts.reportJsonPath}\n`);

@@ -69,6 +69,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "jimp": "^1.6.0",
     "sharp": "^0.34.3"
   },
   "devDependencies": {

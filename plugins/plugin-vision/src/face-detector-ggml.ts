@@ -20,7 +20,7 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
-import sharp from "sharp";
+import { getSharp } from "./image/sharp-compat";
 import type { BoundingBox } from "./types";
 
 const MODULE_TAG = "[BlazeFaceGgml]";
@@ -345,6 +345,7 @@ export class BlazeFaceGgmlDetector {
     if (!this.initialized) await this.initialize();
     if (!this.bindings || !this.handle) return [];
 
+    const sharp = await getSharp();
     const meta = await sharp(imageBuffer).metadata();
     const origW = meta.width ?? 0;
     const origH = meta.height ?? 0;

@@ -109,6 +109,20 @@ Classifier precedence: `store_build` > `vanilla_mobile` (iOS) > `not_local_yolo`
 backend below is reachable; when unsupported only the stub action registers
 (see "Gated by `isLocalCodeExecutionAllowed()` AND terminal support" below).
 
+Topology decision (#9146): local coding-agent subprocess execution is a
+host capability, not a per-client guarantee. Desktop/server Node runtimes and
+Android direct/AOSP `local-yolo` builds may run the orchestrator locally. iOS,
+Android Play/store, Mac App Store, and other sandboxed/store builds do not spawn
+local coding CLIs; they should operate as remote controllers for a desktop/cloud
+host orchestrator via the shared `/api/orchestrator/*` and
+`/api/coding-agents/*` HTTP surfaces. Account selection, subscription token
+materialization, and API-key dropping happen on that host, so web, desktop, and
+Capacitor mobile clients all observe the same selected-account behavior when
+they call the host APIs. Voice is in scope as an input modality: a voice turn
+creates or messages the same orchestrator task/session, and the completion is
+narrated by the normal task transcript/progress path rather than by a separate
+voice-only scheduler.
+
 Backend → auth-mode reach (`ORCHESTRATOR_BACKEND_AUTH`, mirroring
 `AGENT_PROVIDER_CANDIDATES` in
 `packages/app-core/src/services/coding-account-bridge.ts`; subscription is

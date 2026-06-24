@@ -25,6 +25,8 @@ import {
   logger,
   stringToUuid,
 } from "@elizaos/core";
+import { stopSelfControlBlock } from "@elizaos/plugin-blocker/services/website-blocker/index";
+import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -34,18 +36,18 @@ import type {
   ScenarioTurn,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
+import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
-import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
-import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   FinalCheckReport,
   RunnerContext,
   ScenarioReport,
 } from "./types.ts";
 import { isLoopbackUrl, toRecord } from "./utils.js";
+import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
 
 export interface ExecutorOptions {
   providerName: string;
@@ -54,6 +56,37 @@ export interface ExecutorOptions {
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
+
+function responsePatternMatches(
+  pattern: unknown,
+  responseText: string,
+): boolean {
+  if (typeof pattern === "string") {
+    return responseText.toLowerCase().includes(pattern.toLowerCase());
+  }
+  if (pattern instanceof RegExp) {
+    pattern.lastIndex = 0;
+    return pattern.test(responseText);
+  }
+  return false;
+}
+
+function stringList(value: unknown): string[] {
+  if (typeof value === "string" && value.length > 0) {
+    return [value];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function isSynthesizedReplyAction(
+  action: ScenarioTurnExecution["actionsCalled"][number],
+): boolean {
+  const data = toRecord(action.result?.data);
+  return action.actionName === "REPLY" && data?.source === "synthesized-reply";
+}
 
 type ScenarioRoomDefinition = {
   id: string;
@@ -1038,6 +1071,14 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
   return undefined;
 }
 
+async function clearSelfControlBlocks(): Promise<string | undefined> {
+  const result = await stopSelfControlBlock();
+  if (result.success) {
+    return undefined;
+  }
+  return `selfControlClearBlocks failed: ${result.error}`;
+}
+
 async function runScenarioCleanups(
   scenario: ScenarioDefinition,
 ): Promise<string[]> {
@@ -1051,19 +1092,21 @@ async function runScenarioCleanups(
       continue;
     }
     const step = cleanup as { type?: unknown; name?: unknown };
-    if (step.type !== "gmailDeleteDrafts") {
-      continue;
-    }
+    let result: string | undefined;
     try {
-      const result = await deleteMockGmailDrafts();
+      if (step.type === "gmailDeleteDrafts") {
+        result = await deleteMockGmailDrafts();
+      } else if (step.type === "selfControlClearBlocks") {
+        result = await clearSelfControlBlocks();
+      } else {
+        continue;
+      }
       if (result) {
-        failures.push(
-          `cleanup ${String(step.name ?? "gmailDeleteDrafts")}: ${result}`,
-        );
+        failures.push(`cleanup ${String(step.name ?? step.type)}: ${result}`);
       }
     } catch (err) {
       failures.push(
-        `cleanup ${String(step.name ?? "gmailDeleteDrafts")} threw: ${err instanceof Error ? err.message : String(err)}`,
+        `cleanup ${String(step.name ?? step.type)} threw: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -1452,17 +1495,76 @@ async function runTurnAssertions(
     }
   }
 
-  // responseIncludesAny / forbiddenActions / responseIncludesAll (inline)
+  const expectedActions = stringList(
+    (turn as { expectedActions?: unknown }).expectedActions,
+  );
+  if (expectedActions.length > 0) {
+    const realActions = execution.actionsCalled.filter(
+      (action) => !isSynthesizedReplyAction(action),
+    );
+    const ok = realActions.some((action) =>
+      actionMatchesScenarioExpectation(action.actionName, expectedActions),
+    );
+    if (!ok) {
+      const realActionNames =
+        realActions.map((action) => action.actionName).join(",") || "(none)";
+      const capturedActionNames =
+        execution.actionsCalled.map((action) => action.actionName).join(",") ||
+        "(none)";
+      const capturedDetail =
+        capturedActionNames === realActionNames
+          ? ""
+          : `; captured actions: [${capturedActionNames}]`;
+      failures.push(
+        `expectedActions: expected action in [${expectedActions.join(
+          ",",
+        )}], saw actions [${realActionNames}]${capturedDetail}`,
+      );
+    }
+  }
+
+  // responseIncludesAny / responseIncludesAll / responseExcludes / forbiddenActions (inline)
   const includesAny = (turn as { responseIncludesAny?: unknown })
     .responseIncludesAny;
   if (Array.isArray(includesAny) && includesAny.length > 0) {
-    const text = (execution.responseText ?? "").toLowerCase();
-    const ok = includesAny.some(
-      (p) => typeof p === "string" && text.includes(p.toLowerCase()),
+    const text = execution.responseText ?? "";
+    const ok = includesAny.some((pattern) =>
+      responsePatternMatches(pattern, text),
     );
     if (!ok) {
       failures.push(
         `responseIncludesAny: expected response to include any of [${includesAny.join(
+          ",",
+        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
+      );
+    }
+  }
+  const includesAll = (turn as { responseIncludesAll?: unknown })
+    .responseIncludesAll;
+  if (Array.isArray(includesAll) && includesAll.length > 0) {
+    const text = execution.responseText ?? "";
+    const missing = includesAll.filter(
+      (pattern) => !responsePatternMatches(pattern, text),
+    );
+    if (missing.length > 0) {
+      failures.push(
+        `responseIncludesAll: expected response to include all of [${includesAll.join(
+          ",",
+        )}], missing [${missing.join(",")}], saw ${JSON.stringify(
+          execution.responseText ?? "",
+        )}`,
+      );
+    }
+  }
+  const excludes = (turn as { responseExcludes?: unknown }).responseExcludes;
+  if (Array.isArray(excludes) && excludes.length > 0) {
+    const text = execution.responseText ?? "";
+    const hits = excludes.filter((pattern) =>
+      responsePatternMatches(pattern, text),
+    );
+    if (hits.length > 0) {
+      failures.push(
+        `responseExcludes: response included forbidden pattern(s) [${hits.join(
           ",",
         )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
       );

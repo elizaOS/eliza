@@ -521,7 +521,7 @@ export function normalizeNativeTools(tools: unknown): unknown[] | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function normalizeNativeToolChoice(toolChoice: unknown): unknown {
+export function normalizeNativeToolChoice(toolChoice: unknown): unknown {
   if (!toolChoice) {
     return undefined;
   }
@@ -535,7 +535,17 @@ function normalizeNativeToolChoice(toolChoice: unknown): unknown {
 
   const choice = asRecord(toolChoice);
   if (choice.type === "function") {
-    return toolChoice;
+    const functionChoice = recordAt(choice, "function");
+    const toolName = firstString(functionChoice.name, choice.name, choice.toolName);
+    return toolName
+      ? {
+          type: "function",
+          function: {
+            ...functionChoice,
+            name: toolName,
+          },
+        }
+      : undefined;
   }
   if (choice.type === "tool") {
     const toolName = firstString(choice.toolName, choice.name);

@@ -13,8 +13,9 @@
  * an open-ended lookup through a coding sub-agent is slow, re-spawns, and risks
  * leaking the weak model's tool-call markup — this answers it in one hop.
  *
- * Enabled by default; `validate` honors `ELIZA_WEB_SEARCH=0|false|off`. The POST
- * is SSRF-guarded and only ever targets the two fixed public search endpoints.
+ * Enabled by default; `validate` honors `ELIZA_INLINE_WEB_SEARCH=0|false|off`.
+ * The POST is SSRF-guarded and only ever targets the two fixed public search
+ * endpoints.
  *
  * @module runtime/actions/web-search
  */
@@ -47,11 +48,14 @@ const WEB_SEARCH_RESULT_CHARS = 4_000;
 const DEFAULT_NUM_RESULTS = 6;
 
 /**
- * Capability gate: WEB_SEARCH is enabled by default and opted out with
- * `ELIZA_WEB_SEARCH=0|false|off`, mirroring the `ELIZA_WEB_FETCH` convention.
+ * Capability gate for the INLINE keyless web-search action. Its own env var
+ * (not `ELIZA_WEB_SEARCH`, which `web-search-tools.ts` already owns for the
+ * server-side provider-native web_search) so the two web-search surfaces are
+ * independently switchable — disabling one never silently disables the other.
+ * Enabled by default; opted out with `ELIZA_INLINE_WEB_SEARCH=0|false|off`.
  */
 export function isWebSearchEnabled(): boolean {
-  const raw = process.env.ELIZA_WEB_SEARCH?.toLowerCase();
+  const raw = process.env.ELIZA_INLINE_WEB_SEARCH?.toLowerCase();
   return !(raw === "0" || raw === "false" || raw === "off");
 }
 
@@ -77,9 +81,17 @@ function readParams(options: unknown): WebSearchParams {
 }
 
 /**
- * Extract the human-readable result text from an MCP `tools/call` response. The
- * body is either a JSON-RPC object or an SSE stream of `data:` lines; both wrap
- * the payload at `result.content[].text`. A JSON-RPC `error` envelope or a
+ * Extract the human-readable result text from an MCP `tools/call` response.
+ *
+ * (Same shape as the vendored opencode `parseResponse` in
+ * plugin-agent-orchestrator/vendor/opencode/.../tool/mcp-websearch.ts, but that
+ * copy is Effect-based and lives in a third-party vendor tree `@elizaos/agent`
+ * doesn't depend on — so it can't be reused without dragging Effect in. This is
+ * the one plain-Promise copy, and it adds the error-envelope/isError handling
+ * the vendored one lacks.)
+ *
+ * The body is either a JSON-RPC object or an SSE stream of `data:` lines; both
+ * wrap the payload at `result.content[].text`. A JSON-RPC `error` envelope or a
  * tool-level `result.isError` is treated as a failure (returns undefined) — NOT
  * mistaken for a search result — so the caller falls back to the other provider
  * instead of handing the model an error string as if it were results.

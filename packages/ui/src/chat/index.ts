@@ -131,8 +131,8 @@ export interface CommandItem extends CommandDef {
 export const NAV_COMMANDS: readonly { id: string; label: string; tab: Tab }[] =
   [
     { id: "nav-chat", label: "Open Chat", tab: "chat" },
-    { id: "nav-apps", label: "Open Apps", tab: "apps" },
-    { id: "nav-views", label: "Open Views", tab: "views" },
+    // Views + Apps consolidated into the single Springboard launcher (#9143).
+    { id: "nav-springboard", label: "Open Springboard", tab: "views" },
     { id: "nav-character", label: "Open Character", tab: "character" },
     { id: "nav-triggers", label: "Open Heartbeats", tab: "triggers" },
     { id: "nav-inventory", label: "Open Wallet", tab: "inventory" },

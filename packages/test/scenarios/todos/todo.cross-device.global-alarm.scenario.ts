@@ -38,5 +38,13 @@ export default scenario({
       status: "success",
       minCount: 2,
     },
+    {
+      type: "definitionCountDelta",
+      title: "Wake up alarm",
+      titleAliases: ["Wake-up alarm", "Morning alarm", "Wake up"],
+      delta: 1,
+      cadenceKind: "once",
+      requireReminderPlan: true,
+    },
   ],
 });
