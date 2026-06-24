@@ -271,6 +271,45 @@ describe("JniVoicePipeline", () => {
     await p.stop();
   });
 
+  it("feeds selfVoiceSimilarity into the ambient gate", async () => {
+    const voice = fakeVoice(state);
+    const { b64 } = encodeEmbedding();
+    const turn: ElizaVoiceTurn = {
+      turnId: "jni_self_voice",
+      samples: 32000,
+      durationMs: 2000,
+      hasEmbedding: true,
+      embNorm: 1,
+      diarizFrames: 293,
+      diarizDistinctClasses: 1,
+      embedding: b64,
+      embeddingDim: 256,
+      labels: "",
+      labelCount: 0,
+    };
+    state.nextTurns = [[turn]];
+    const resolveSelfVoiceSimilarity = vi.fn(async () => 0.92);
+    const tm = fakeTalkmode((cb) => {
+      emit = cb;
+    });
+    const p = new JniVoicePipeline(tm, voice, {
+      resolveSelfVoiceSimilarity,
+      selfVoiceContext: { agentSpeaking: true },
+    });
+    const turns: JniAttributedTurn[] = [];
+    p.onTurn((t) => turns.push(t));
+    await p.start();
+    for (let i = 0; i < 49; i += 1) emit(makeFrame(320));
+    await new Promise((r) => setTimeout(r, 0));
+    await (p as unknown as { feeding: Promise<void> }).feeding;
+
+    expect(resolveSelfVoiceSimilarity).toHaveBeenCalledOnce();
+    expect(turns[0].signal.agentShouldSpeak).toBe(false);
+    expect(turns[0].signal.nextSpeaker).toBe("user");
+    expect(turns[0].signal.source).toBe("client-ambient+self-voice");
+    await p.stop();
+  });
+
   it("requests completed turn PCM only when the handoff listener is configured", async () => {
     const voice = fakeVoice(state);
     const pcm = [0.125, -0.25, 0.5, -0.75];

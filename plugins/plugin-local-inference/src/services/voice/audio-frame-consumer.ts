@@ -515,7 +515,10 @@ export class AudioFrameConsumer {
 		}
 		const embedding = output.observation?.embedding;
 		if (this.resolveSelfVoiceSimilarity && embedding) {
-			const similarity = await this.resolveSelfVoiceSimilarity(embedding, output);
+			const similarity = await this.resolveSelfVoiceSimilarity(
+				embedding,
+				output,
+			);
 			if (typeof similarity === "number" && Number.isFinite(similarity)) {
 				options = { ...options, selfVoiceSimilarity: similarity };
 			}

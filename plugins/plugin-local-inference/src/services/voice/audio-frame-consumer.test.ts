@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { HandleLiveVoiceAttributionOptions } from "../../runtime/voice-entity-binding";
 import {
 	type AttributionPipelineLike,
 	AudioFrameConsumer,
@@ -23,6 +24,7 @@ import {
 	type AudioFrameEvent,
 	decodeAudioFramePcm,
 	type RuntimeEventSink,
+	type SelfVoiceSimilarityResolver,
 	type TurnTranscriber,
 } from "./audio-frame-consumer";
 import type { VoiceAttributionOutput } from "./speaker/attribution-pipeline";
@@ -121,6 +123,8 @@ function buildHarness(
 	probs: readonly number[],
 	entityId: string | null = "entity-x",
 	transcribe?: TurnTranscriber,
+	attributionOptions?: Partial<HandleLiveVoiceAttributionOptions>,
+	resolveSelfVoiceSimilarity?: SelfVoiceSimilarityResolver,
 ) {
 	const silero = new ScriptedSilero(probs);
 	const vad = new VadDetector(silero, {
@@ -133,13 +137,20 @@ function buildHarness(
 	const pipeline = new FakePipeline(entityId);
 	const runtime = new FakeRuntime();
 	const consumer = new AudioFrameConsumer(
-		{ vad, pipeline, runtime, ...(transcribe ? { transcribe } : {}) },
+		{
+			vad,
+			pipeline,
+			runtime,
+			...(transcribe ? { transcribe } : {}),
+			...(resolveSelfVoiceSimilarity ? { resolveSelfVoiceSimilarity } : {}),
+		},
 		{
 			source: { kind: "device", deviceId: "pixel" },
 			attributionOptions: {
 				ownerEntityId: "entity-x",
 				knownSpeakerEntityIds: ["entity-x"],
 				endOfTurnProbability: 0.95,
+				...attributionOptions,
 			},
 			preRollSeconds: 0, // deterministic buffering for assertions
 			maxTurnSeconds: 30,
@@ -304,6 +315,41 @@ describe("AudioFrameConsumer", () => {
 		}
 		await consumer.flush();
 		expect(metaSignal).toBeTruthy();
+	});
+
+	it("passes live selfVoiceSimilarity into the gate and suppresses agent echo", async () => {
+		const probs = [...Array(24).fill(0.9), ...Array(12).fill(0.0)];
+		const resolveSelfVoiceSimilarity: SelfVoiceSimilarityResolver = (
+			embedding,
+			output,
+		) => {
+			expect(embedding).toBe(output.observation?.embedding);
+			expect(embedding.length).toBe(256);
+			return 0.91;
+		};
+		const { consumer } = buildHarness(
+			probs,
+			"entity-x",
+			undefined,
+			{ agentSpeaking: true },
+			resolveSelfVoiceSimilarity,
+		);
+		let signal: {
+			agentShouldSpeak: boolean | null;
+			nextSpeaker: string;
+			metadata?: { provenance?: string; selfVoiceSimilarity?: number };
+		} | null = null;
+		consumer.onTurn((t) => {
+			signal = t.signal as typeof signal;
+		});
+
+		await driveOneTurn(consumer);
+
+		expect(signal).not.toBeNull();
+		expect(signal?.agentShouldSpeak).toBe(false);
+		expect(signal?.nextSpeaker).toBe("user");
+		expect(signal?.metadata?.provenance).toBe("voice-bridge+self-voice");
+		expect(signal?.metadata?.selfVoiceSimilarity).toBeCloseTo(0.91);
 	});
 
 	it("does not segment a turn from pure silence", async () => {

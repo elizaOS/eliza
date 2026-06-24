@@ -34,6 +34,7 @@ import type {
   TalkModePluginLike,
 } from "../bridge/native-plugins";
 import {
+  type BuildVoiceTurnSignalContext,
   buildVoiceTurnSignal,
   type VoiceTurnSignal,
   type VoiceTurnSpeakerAttribution,
@@ -93,11 +94,36 @@ export type SpeakerResolver = (
   embedding: Float32Array,
 ) => Promise<VoiceTurnSpeakerAttribution | null>;
 
+export type SelfVoiceSimilarityResolver = (
+  embedding: Float32Array,
+) => Promise<number | null | undefined> | number | null | undefined;
+
+export type SelfVoiceContextProvider =
+  | Pick<
+      BuildVoiceTurnSignalContext,
+      "agentSpeaking" | "recentAgentReply" | "replyAgeMs"
+    >
+  | (() =>
+      | Pick<
+          BuildVoiceTurnSignalContext,
+          "agentSpeaking" | "recentAgentReply" | "replyAgeMs"
+        >
+      | Promise<
+          Pick<
+            BuildVoiceTurnSignalContext,
+            "agentSpeaking" | "recentAgentReply" | "replyAgeMs"
+          >
+        >);
+
 export interface JniVoicePipelineOptions {
   /** Override the on-device bundle dir (else the app's eliza-1/bundle default). */
   bundleDir?: string;
   /** Resolves a turn's speaker embedding to an enrolled entity (optional). */
   resolveSpeaker?: SpeakerResolver;
+  /** Resolves a turn's embedding against the agent-TTS voice centroid. */
+  resolveSelfVoiceSimilarity?: SelfVoiceSimilarityResolver;
+  /** Supplies reply recency / playback state for acoustic self-voice gating. */
+  selfVoiceContext?: SelfVoiceContextProvider;
   /** Entity ids the agent answers to without a wake word (owner + enrolled). */
   knownSpeakerEntityIds?: readonly string[];
   /**
@@ -315,14 +341,24 @@ export class JniVoicePipeline {
         embedding.length > 0 && this.options.resolveSpeaker
           ? await this.options.resolveSpeaker(embedding)
           : null;
+      const selfVoiceSimilarity =
+        embedding.length > 0 && this.options.resolveSelfVoiceSimilarity
+          ? await this.options.resolveSelfVoiceSimilarity(embedding)
+          : undefined;
+      const selfVoiceContext = await this.resolveSelfVoiceContext();
       // Transcript is the ASR path's concern; the ambient gate's audio-frame
       // inputs (speaker identity, wake word) are what this pipeline supplies.
       // An empty transcript degrades to the conservative transcript gate, which
       // the diarization speaker gate then refines.
       const signal = buildVoiceTurnSignal("", {
+        ...selfVoiceContext,
         ...(attribution ? { speaker: attribution } : {}),
         ...(this.options.knownSpeakerEntityIds
           ? { knownSpeakerEntityIds: this.options.knownSpeakerEntityIds }
+          : {}),
+        ...(typeof selfVoiceSimilarity === "number" &&
+        Number.isFinite(selfVoiceSimilarity)
+          ? { selfVoiceSimilarity }
           : {}),
       });
       this.turnsObserved += 1;
@@ -339,6 +375,17 @@ export class JniVoicePipeline {
       this.dispatchCompletedPcmTurn(raw, signal);
       for (const listener of this.turnListeners) listener(turn);
     }
+  }
+
+  private async resolveSelfVoiceContext(): Promise<
+    Pick<
+      BuildVoiceTurnSignalContext,
+      "agentSpeaking" | "recentAgentReply" | "replyAgeMs"
+    >
+  > {
+    const provider = this.options.selfVoiceContext;
+    if (!provider) return {};
+    return typeof provider === "function" ? await provider() : provider;
   }
 
   private dispatchCompletedPcmTurn(
