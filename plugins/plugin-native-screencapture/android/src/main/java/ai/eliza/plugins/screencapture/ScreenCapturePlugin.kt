@@ -7,6 +7,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.ContextCompat
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -354,37 +355,69 @@ class ScreenCapturePlugin : Plugin() {
             return
         }
 
-        mediaProjection = mediaProjectionManager?.getMediaProjection(result.resultCode, result.data!!)
-
-        if (mediaProjection == null) {
-            call.reject("Failed to get media projection")
-            return
+        // Android 14+ (API 34) throws SecurityException from getMediaProjection()
+        // unless a foreground service of type mediaProjection is ALREADY running.
+        // Start it now, then acquire the projection once it has gone foreground.
+        try {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, ScreenCaptureFgService::class.java)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not start mediaProjection FGS", e)
         }
 
-        // Register stop callback for cleanup
-        mediaProjection?.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() {
-                Log.d(TAG, "MediaProjection stopped by system")
-                if (isRecording) {
-                    scope.launch { stopRecordingInternal() }
-                }
-                // The session projection is gone — drop our warm references so
-                // the next captureScreenshot re-acquires consent cleanly instead
-                // of using a dead projection.
-                virtualDisplay?.release()
-                virtualDisplay = null
-                imageReader?.close()
-                imageReader = null
-                screenshotVdWidth = 0
-                screenshotVdHeight = 0
-                mediaProjection = null
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                mediaProjection =
+                    mediaProjectionManager?.getMediaProjection(result.resultCode, result.data!!)
+            } catch (e: Exception) {
+                Log.e(TAG, "getMediaProjection failed", e)
+                stopFgService()
+                call.reject("Media projection failed: ${e.message}")
+                return@postDelayed
             }
-        }, Handler(Looper.getMainLooper()))
+            if (mediaProjection == null) {
+                stopFgService()
+                call.reject("Failed to get media projection")
+                return@postDelayed
+            }
 
-        when (pendingAction) {
-            "screenshot" -> captureScreenshotInternal(call)
-            "recording" -> startRecordingInternal(call)
-            else -> call.reject("Unknown action")
+            // Register stop callback for cleanup
+            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    Log.d(TAG, "MediaProjection stopped by system")
+                    if (isRecording) {
+                        scope.launch { stopRecordingInternal() }
+                    }
+                    // The session projection is gone — drop our warm references so
+                    // the next captureScreenshot re-acquires consent cleanly instead
+                    // of using a dead projection.
+                    virtualDisplay?.release()
+                    virtualDisplay = null
+                    imageReader?.close()
+                    imageReader = null
+                    screenshotVdWidth = 0
+                    screenshotVdHeight = 0
+                    mediaProjection = null
+                    stopFgService()
+                }
+            }, Handler(Looper.getMainLooper()))
+
+            when (pendingAction) {
+                "screenshot" -> captureScreenshotInternal(call)
+                "recording" -> startRecordingInternal(call)
+                else -> call.reject("Unknown action")
+            }
+        }, 600)
+    }
+
+    /** Stop the mediaProjection foreground service (idempotent). */
+    private fun stopFgService() {
+        try {
+            context.stopService(Intent(context, ScreenCaptureFgService::class.java))
+        } catch (e: Exception) {
+            Log.w(TAG, "stopFgService failed", e)
         }
     }
 
@@ -493,6 +526,7 @@ class ScreenCapturePlugin : Plugin() {
         screenshotVdHeight = 0
         mediaProjection?.stop()
         mediaProjection = null
+        stopFgService()
     }
 
     private fun imageToBitmap(image: Image, width: Int, height: Int): Bitmap {
@@ -820,6 +854,7 @@ class ScreenCapturePlugin : Plugin() {
         screenshotVdHeight = 0
         mediaProjection?.stop()
         mediaProjection = null
+        stopFgService()
     }
 
     // ── Lifecycle ───────────────────────────────────────────────────────
