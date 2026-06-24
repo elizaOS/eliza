@@ -267,7 +267,7 @@ function OrchestratorList({
       <Divider label="tasks" />
       {threads.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No task threads
+          None
         </Text>
       ) : (
         <List gap={1}>
@@ -578,7 +578,7 @@ function SessionsSection({
       <Divider label={`sessions (${sessions.length})`} />
       {sessions.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No sessions
+          None
         </Text>
       ) : (
         <List gap={1}>

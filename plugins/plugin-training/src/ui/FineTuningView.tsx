@@ -3506,7 +3506,7 @@ export function FineTuningView({
                     ))}
                   </div>
                 ) : (
-                  <div className="font-mono text-xs text-muted">No runs</div>
+                  <div className="font-mono text-xs text-muted">None</div>
                 )}
               </div>
             ) : null}
@@ -5496,7 +5496,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
           <p className="mt-1 text-xs text-muted">
             {latest
               ? `${latest.readinessStatus} readiness, ${latest.artifactCount} artifacts`
-              : "No runs"}
+              : "None"}
           </p>
         </div>
         <Button

@@ -150,7 +150,7 @@ export function FineTuningSpatialView({
         </VStack>
       ) : (
         <Text tone="muted" align="center" style="caption">
-          No active job
+          None
         </Text>
       )}
 
@@ -182,7 +182,7 @@ export function FineTuningSpatialView({
       <Divider label="jobs" />
       {snapshot.jobs.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No training jobs
+          None
         </Text>
       ) : (
         <List gap={0}>

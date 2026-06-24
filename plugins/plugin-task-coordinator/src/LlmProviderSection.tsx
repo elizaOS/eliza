@@ -167,15 +167,13 @@ export function LlmProviderSection({
             <SettingsControls.MutedText
               className="inline-flex items-center gap-1.5 text-xs text-warn"
               title={t("codingagentsettingssection.CloudUnpaired", {
-                defaultValue:
-                  "No Eliza Cloud account connected. Pair your account in the Cloud settings section first.",
+                defaultValue: "Unavailable",
               })}
             >
               <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
               <span className="sr-only">
                 {t("codingagentsettingssection.CloudUnpaired", {
-                  defaultValue:
-                    "No Eliza Cloud account connected. Pair your account in the Cloud settings section first.",
+                  defaultValue: "Unavailable",
                 })}
               </span>
             </SettingsControls.MutedText>

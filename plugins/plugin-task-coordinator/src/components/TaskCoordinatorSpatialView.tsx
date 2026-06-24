@@ -239,7 +239,7 @@ function TaskList({
       <Divider label="tasks" />
       {threads.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          {loading ? "Loading" : "No tasks"}
+          {loading ? "Loading" : "None"}
         </Text>
       ) : (
         <List gap={1}>
@@ -397,7 +397,7 @@ function SessionsSection({
       <Divider label={`sessions (${sessions.length})`} />
       {sessions.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No sessions
+          None
         </Text>
       ) : (
         <List gap={0}>

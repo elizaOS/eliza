@@ -276,7 +276,7 @@ function ThreadDetailContent({
         {(detail.sessions ?? []).length === 0 ? (
           <div className="text-xs-tight text-muted">
             {t("codingagenttaskspanel.noSessionsRecorded", {
-              defaultValue: "No sessions recorded.",
+              defaultValue: "None",
             })}
           </div>
         ) : (
@@ -297,7 +297,7 @@ function ThreadDetailContent({
                     {session.workdir ||
                       session.repo ||
                       t("codingagenttaskspanel.noWorkspace", {
-                        defaultValue: "No workspace",
+                        defaultValue: "None",
                       })}
                   </div>
                   {getWorkspaceChangesSummary(session.metadata) ? (
@@ -940,13 +940,13 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
       ) : loading ? (
         <div className="text-sm text-muted">
           {t("codingagenttaskspanel.loadingTasks", {
-            defaultValue: "Loading tasks…",
+            defaultValue: "Loading",
           })}
         </div>
       ) : (
         <TaskEmptyState
           title={t("codingagenttaskspanel.empty.title", {
-            defaultValue: "No coding tasks yet",
+            defaultValue: "None",
           })}
           hint={t("codingagenttaskspanel.empty.hint", {
             defaultValue:

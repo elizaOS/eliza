@@ -920,7 +920,7 @@ function SubAgentCard({
   const workspace =
     session.repo ||
     session.workdir ||
-    t("orchestrator.noWorkspace", { defaultValue: "No workspace" });
+    t("orchestrator.noWorkspace", { defaultValue: "None" });
   const stopLabel = t("orchestrator.action.stopAgent", {
     defaultValue: "Stop agent",
   });
@@ -3578,13 +3578,13 @@ export function OrchestratorWorkbench() {
               loading ? (
                 <p className="p-2 text-sm text-muted">
                   {t("orchestrator.loadingTasks", {
-                    defaultValue: "Loading tasks…",
+                    defaultValue: "Loading",
                   })}
                 </p>
               ) : (
                 <TaskEmptyState
                   title={t("orchestrator.empty.title", {
-                    defaultValue: "No tasks yet",
+                    defaultValue: "None",
                   })}
                   hint={t("orchestrator.empty.hint", {
                     defaultValue:
