@@ -140,6 +140,7 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
+import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleFirstRunTtsRoute } from "./first-run-tts-route";
 import { handleInternalWakeRoute } from "./internal-routes";
@@ -799,25 +800,7 @@ async function handleCompatRouteInner(
   // cloud-connection management. `/api/cloud/*` connection management is
   // served by elizaCloudRoutePlugin.routes on the runtime plugin route system.
 
-  if (method === "GET" && url.pathname === "/api/drop/status") {
-    const config = loadElizaConfig() as ElizaConfig & {
-      features?: { dropEnabled?: boolean };
-    };
-    if (config.features?.dropEnabled === true) {
-      return false;
-    }
-    sendJsonResponse(res, 200, {
-      dropEnabled: false,
-      publicMintOpen: false,
-      whitelistMintOpen: false,
-      mintedOut: false,
-      currentSupply: 0,
-      maxSupply: 0,
-      shinyPrice: "0",
-      userHasMinted: false,
-    });
-    return true;
-  }
+  if (handleDropStatusCompatRoute(req, res, method, url.pathname)) return true;
 
   if (method === "POST" && url.pathname === "/api/agent/reset") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) {
