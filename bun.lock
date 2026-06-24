@@ -2821,6 +2821,7 @@
         "@types/react-dom": "^19.2.3",
         "@types/three": "^0.184.0",
         "@types/ws": "^8.18.1",
+        "fast-check": "^4.8.0",
         "jsdom": "^29.0.0",
         "react": "19.2.5",
         "react-dom": "19.2.5",
