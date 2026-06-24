@@ -49,7 +49,7 @@ import {
 } from "../config/boot-config.js";
 
 const DEFAULT_BRANDED_PREFIX = "ELIZA";
-const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
+export const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
   "@elizaos/plugin-vincent",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",

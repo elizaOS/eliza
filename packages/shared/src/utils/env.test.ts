@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   isEnvDisabled,
   normalizeEnvValue,
   normalizeEnvValueOrNull,
@@ -65,6 +66,35 @@ describe("syncElizaEnvAliases", () => {
       expect(process.env.ELIZA_USE_PI_AI).toBeUndefined();
       expect(process.env.ELIZA_TASK_AGENT_AUTH_TRUSTED_HOSTS).toBeUndefined();
       expect(process.env.ELIZA_TASK_AGENT_AUTH_API_BASE_URL).toBeUndefined();
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+
+  it("uses the shared default app route plugin modules", () => {
+    const keys = [
+      "ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT",
+      "ELIZA_APP_ROUTE_PLUGIN_MODULES",
+    ];
+    const previous = new Map(
+      keys.map((key) => [key, process.env[key]] as const),
+    );
+    try {
+      for (const key of keys) {
+        delete process.env[key];
+      }
+
+      syncElizaEnvAliases({ brandedPrefix: "MILADY" });
+
+      expect(process.env.ELIZA_APP_ROUTE_PLUGIN_MODULES).toBe(
+        DEFAULT_APP_ROUTE_PLUGIN_MODULES.join(","),
+      );
     } finally {
       for (const [key, value] of previous) {
         if (value === undefined) {
