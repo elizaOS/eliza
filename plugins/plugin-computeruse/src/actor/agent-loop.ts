@@ -60,10 +60,24 @@ export interface PredictClickInput {
  * loops that plan elsewhere but reuse our grounding, and by callers that want
  * grounding without a full step).
  */
+/**
+ * Per-run model-call accounting (#9105). `invocations` counts the token-bearing
+ * model calls a loop actually issued; `cacheHits` counts calls served without a
+ * model round-trip. Reported once per run as `evt:"computeruse.agent.tokens"`.
+ */
+export interface AgentLoopStats {
+  /** Token-bearing model calls actually issued during the run. */
+  invocations: number;
+  /** Calls served from cache (no model call, no tokens). */
+  cacheHits: number;
+}
+
 export interface AgentLoop {
   readonly name: string;
   predictStep(input: AgentStepInput): Promise<CascadeResult>;
   predictClick(input: PredictClickInput): Promise<GroundingResult | null>;
+  /** Per-run model-call accounting, when the loop tracks it (#9105). */
+  getStats?(): AgentLoopStats;
 }
 
 export interface AgentLoopDeps {
@@ -97,9 +111,11 @@ export interface AgentLoopRegistration {
 export class LocalGrounderLoop implements AgentLoop {
   readonly name = DEFAULT_AGENT_LOOP_MODEL;
   private readonly cascade: Cascade;
+  private readonly brain: Brain;
 
   constructor(deps: AgentLoopDeps) {
     const brain = deps.brain ?? new Brain(deps.runtime);
+    this.brain = brain;
     const actor =
       deps.actor ??
       getRegisteredActor() ??
@@ -134,6 +150,11 @@ export class LocalGrounderLoop implements AgentLoop {
   /** Grounding cache hit/miss snapshot (delegates to the wrapped cascade). */
   getGroundStats() {
     return this.cascade.getGroundStats();
+  }
+
+  /** Model-call accounting from the wrapped Brain (#9105). */
+  getStats(): AgentLoopStats {
+    return this.brain.getStats();
   }
 }
 

@@ -50,6 +50,7 @@ import {
 import {
   AGENT_LOOP_SETTING,
   type AgentLoop,
+  type AgentLoopStats,
   createAgentLoop,
   DEFAULT_AGENT_LOOP_MODEL,
 } from "../actor/agent-loop.js";
@@ -144,6 +145,8 @@ export interface ComputerUseAgentReport {
   error?: string;
   /** Per-step transcript recorded by the trajectory middleware (#9170 M11). */
   trajectory?: TrajectoryEntry[];
+  /** Per-run model-call accounting, when the loop reports it (#9105). */
+  modelStats?: AgentLoopStats;
 }
 
 export function formatComputerUseAgentProgress(
@@ -240,6 +243,21 @@ export async function runComputerUseAgentLoop(
 
   const finalize = async (): Promise<ComputerUseAgentReport> => {
     if (!deps.middleware) report.trajectory = trajectoryMw.entries();
+    const stats = loop.getStats?.();
+    if (stats) {
+      report.modelStats = stats;
+      logger.info(
+        {
+          evt: "computeruse.agent.tokens",
+          goal,
+          loop: loop.name,
+          invocations: stats.invocations,
+          cacheHits: stats.cacheHits,
+          steps: report.steps.length,
+        },
+        `[computeruse/agent] ${stats.invocations} model call(s), ${stats.cacheHits} cache hit(s) over ${report.steps.length} step(s)`,
+      );
+    }
     await runOnRunEnd(middlewares, {
       goal,
       steps: report.steps.length,
