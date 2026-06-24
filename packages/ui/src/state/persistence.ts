@@ -188,6 +188,37 @@ export function saveBackgroundConfig(config: BackgroundConfig): void {
   }, undefined);
 }
 
+/**
+ * Bounded undo history for the background. The most recent previous config is
+ * last. Capped so a long session never grows localStorage without bound; image
+ * configs carry a data/media URL so the cap is deliberately small.
+ */
+const UI_BACKGROUND_HISTORY_STORAGE_KEY = "eliza:ui-background-history";
+export const MAX_BACKGROUND_HISTORY = 10;
+
+export function normalizeBackgroundHistory(value: unknown): BackgroundConfig[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => normalizeBackgroundConfig(entry))
+    .slice(-MAX_BACKGROUND_HISTORY);
+}
+
+export function loadBackgroundHistory(): BackgroundConfig[] {
+  return tryLocalStorage(() => {
+    const raw = localStorage.getItem(UI_BACKGROUND_HISTORY_STORAGE_KEY);
+    return raw ? normalizeBackgroundHistory(JSON.parse(raw)) : [];
+  }, []);
+}
+
+export function saveBackgroundHistory(history: BackgroundConfig[]): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      UI_BACKGROUND_HISTORY_STORAGE_KEY,
+      JSON.stringify(normalizeBackgroundHistory(history)),
+    );
+  }, undefined);
+}
+
 const COMPANION_VRM_POWER_STORAGE_KEY = "eliza:companion-vrm-power";
 /** Legacy; migrated into `eliza:companion-vrm-power` on first read. */
 const LEGACY_COMPANION_EFFICIENCY_KEY = "eliza:companion-efficiency";
