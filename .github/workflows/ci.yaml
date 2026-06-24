@@ -239,6 +239,12 @@ jobs:
       - name: Prompt secret scan
         run: cd packages/prompts && bun run check:secrets
 
+      - name: Type safety ratchet self-test
+        run: bun run audit:type-safety-ratchet:self-test
+
+      - name: Type safety ratchet
+        run: bun run audit:type-safety-ratchet
+
       - name: Check format
         run: bun run format:check
 

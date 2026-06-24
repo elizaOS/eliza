@@ -1,0 +1,43 @@
+{
+  "schema": "eliza_type_safety_ratchet_v1",
+  "updatedAt": "2026-06-24T21:07:32.316Z",
+  "scope": {
+    "trackedOnly": true,
+    "globs": [
+      "src/**/*.ts",
+      "src/**/*.tsx",
+      "**/src/**/*.ts",
+      "**/src/**/*.tsx"
+    ],
+    "excludes": [
+      "*.d.ts",
+      "*.test.ts",
+      "*.test.tsx",
+      "*.spec.ts",
+      "*.spec.tsx",
+      "*.e2e.ts",
+      "*.e2e.tsx",
+      "*.story.ts",
+      "*.story.tsx",
+      "*.stories.ts",
+      "*.stories.tsx",
+      "*.fixture.ts",
+      "*.fixture.tsx",
+      "*.mock.ts",
+      "*.mock.tsx",
+      "**/__fixtures__/**",
+      "**/__mocks__/**",
+      "**/__tests__/**",
+      "**/fixtures/**",
+      "**/mock/**",
+      "**/mocks/**",
+      "**/test/**",
+      "**/tests/**"
+    ]
+  },
+  "limits": {
+    "asUnknownAs": 488,
+    "asAny": 6
+  },
+  "filesScanned": 10010
+}
