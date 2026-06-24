@@ -978,10 +978,10 @@ const ThreadLine = React.memo(function ThreadLine({
             <motion.span
               key="copied"
               data-testid="thread-line-copied"
-              initial={{ opacity: 0, y: 4 }}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
+              transition={{ duration: reduce ? 0 : 0.18 }}
               className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black shadow"
             >
               Copied
