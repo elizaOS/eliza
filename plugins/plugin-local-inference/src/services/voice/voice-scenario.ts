@@ -155,17 +155,37 @@ export interface VoiceScenarioValidation {
  * exist as participants. Returns all errors (does not throw) so a corpus build
  * can report every problem at once.
  */
+/** True when a value is not a non-empty string (so `.trim()` is never called on a non-string). */
+function isBlank(v: unknown): boolean {
+	return typeof v !== "string" || v.trim().length === 0;
+}
+
 export function validateVoiceScenario(
 	scenario: VoiceScenario,
 ): VoiceScenarioValidation {
 	const errors: string[] = [];
-	if (!scenario.id?.trim()) errors.push("scenario.id is required");
+	// A malformed/empty scenario file can deserialize to a non-object; guard the
+	// boundary so the validator reports an error instead of throwing.
+	if (!scenario || typeof scenario !== "object" || Array.isArray(scenario)) {
+		return { valid: false, errors: ["scenario must be an object"] };
+	}
+	if (isBlank(scenario.id)) errors.push("scenario.id is required");
 	if (!Array.isArray(scenario.classes) || scenario.classes.length === 0) {
 		errors.push("scenario.classes must be a non-empty array");
 	}
+	// Iterate defensively: a malformed scenario may carry non-array fields.
+	const participants = Array.isArray(scenario.participants)
+		? scenario.participants
+		: [];
+	const turns = Array.isArray(scenario.turns) ? scenario.turns : [];
+	const agents = Array.isArray(scenario.agents) ? scenario.agents : [];
 	const labels = new Set<string>();
-	for (const p of scenario.participants ?? []) {
-		if (!p.label?.trim()) {
+	for (const p of participants) {
+		if (!p || typeof p !== "object") {
+			errors.push("participant must be an object");
+			continue;
+		}
+		if (isBlank(p.label)) {
 			errors.push("participant.label is required");
 			continue;
 		}
@@ -177,11 +197,15 @@ export function validateVoiceScenario(
 	if (!Array.isArray(scenario.turns) || scenario.turns.length === 0) {
 		errors.push("scenario.turns must be a non-empty array");
 	}
-	scenario.turns?.forEach((t, i) => {
+	turns.forEach((t, i) => {
+		if (!t || typeof t !== "object") {
+			errors.push(`turn[${i}] must be an object`);
+			return;
+		}
 		if (!labels.has(t.speaker)) {
 			errors.push(`turn[${i}].speaker "${t.speaker}" is not a participant`);
 		}
-		if (!t.text?.trim() && !t.audioRef?.trim()) {
+		if (isBlank(t.text) && isBlank(t.audioRef)) {
 			errors.push(`turn[${i}] must have either text or audioRef`);
 		}
 		if (typeof t.expectRespond !== "boolean") {
@@ -194,14 +218,14 @@ export function validateVoiceScenario(
 			errors.push(`turn[${i}].expectEndOfTurn must be a boolean`);
 		}
 	});
-	for (const agent of scenario.agents ?? []) {
+	for (const agent of agents) {
 		if (!labels.has(agent)) {
 			errors.push(`agent "${agent}" is not a participant`);
 		}
 	}
 	validateEnvironment(scenario.environment, "scenario.environment", errors);
-	scenario.turns?.forEach((t, i) => {
-		validateEnvironment(t.environment, `turn[${i}].environment`, errors);
+	turns.forEach((t, i) => {
+		validateEnvironment(t?.environment, `turn[${i}].environment`, errors);
 	});
 	return { valid: errors.length === 0, errors };
 }
