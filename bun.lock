@@ -2573,6 +2573,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-agent-skills": "workspace:*",
         "@elizaos/plugin-app-control": "workspace:*",
+        "@elizaos/plugin-blocker": "workspace:*",
         "@elizaos/plugin-coding-tools": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
         "@elizaos/plugin-device-filesystem": "workspace:*",
