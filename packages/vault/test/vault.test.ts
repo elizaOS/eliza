@@ -247,6 +247,13 @@ describe("vault — audit log", () => {
     await test.clearAuditLog();
     expect(await test.getAuditRecords()).toEqual([]);
   });
+
+  it("surfaces audit append failures to the vault caller", async () => {
+    await fs.rm(test.auditLogPath, { force: true, recursive: true });
+    await fs.mkdir(test.auditLogPath, { recursive: true });
+
+    await expect(test.vault.set("ui.theme", "dark")).rejects.toThrow();
+  });
 });
 
 describe("vault — atomicity + concurrency", () => {
