@@ -397,7 +397,7 @@ export function ChatView({
         // with connector messages. Live-streamed turns flow through
         // the SSE path and don't carry the server-side default from
         // conversation-routes.ts, so we catch them here too.
-        .map((msg) => (msg.source ? msg : { ...msg, source: "eliza" })),
+        .map(withDefaultSource),
     [chatFirstTokenReceived, chatSending, msgs],
   );
   const {
@@ -1094,6 +1094,20 @@ export function TerminalChannelPanel({
  * uses, and routes outbound replies back through the runtime's
  * source-specific send handlers.
  */
+// Default-tag a message's source to "eliza", memoized per message identity so an
+// un-sourced message isn't re-cloned every token frame (the input array identity
+// changes per token; the individual prior messages don't). A real new message
+// misses and is tagged once; a WeakMap lets dropped messages GC.
+const defaultSourceCache = new WeakMap<object, unknown>();
+function withDefaultSource<T extends { source?: string }>(msg: T): T {
+  if (msg.source) return msg;
+  const cached = defaultSourceCache.get(msg);
+  if (cached) return cached as T;
+  const tagged = { ...msg, source: "eliza" } as T;
+  defaultSourceCache.set(msg, tagged);
+  return tagged;
+}
+
 // Module-level stable identity: an inline arrow here would change every render
 // and break ChatMessage's arePropsEqual (renderContent compare), re-parsing
 // markdown for every inbox message on any panel re-render. (Inbox doesn't use
