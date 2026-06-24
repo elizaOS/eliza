@@ -78,10 +78,9 @@ describe("LM Studio embeddings", () => {
     embedMock.mockRejectedValue(new Error("LM Studio embeddings unavailable"));
 
     await expect(
-      handleTextEmbedding(
-        createRuntime({ LMSTUDIO_EMBEDDING_MODEL: "nomic-embed" }),
-        { text: "hello" }
-      )
+      handleTextEmbedding(createRuntime({ LMSTUDIO_EMBEDDING_MODEL: "nomic-embed" }), {
+        text: "hello",
+      })
     ).rejects.toThrow("LM Studio embeddings unavailable");
   });
 });
