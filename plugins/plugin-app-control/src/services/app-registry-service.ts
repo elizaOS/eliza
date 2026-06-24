@@ -156,7 +156,15 @@ async function readPersisted(file: string): Promise<PersistedShape> {
 	if (raw === null) {
 		return { version: 1, entries: [] };
 	}
-	const parsed = JSON.parse(raw) as unknown;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		logger.warn(
+			`[plugin-app-control] app-registry.json malformed JSON; resetting (file=${file})`,
+		);
+		return { version: 1, entries: [] };
+	}
 	if (
 		!parsed ||
 		typeof parsed !== "object" ||

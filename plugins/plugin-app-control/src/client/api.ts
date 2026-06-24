@@ -77,7 +77,14 @@ async function requestJson<T>(
 	const rawText = await response.text();
 	let body: unknown = null;
 	if (rawText.length > 0) {
-		body = JSON.parse(rawText) as unknown;
+		try {
+			body = JSON.parse(rawText);
+		} catch (err) {
+			const detail = err instanceof Error ? err.message : String(err);
+			throw new Error(
+				`Invalid JSON response from ${path} for ${errorContext}: ${detail}`,
+			);
+		}
 	}
 
 	if (!response.ok) {
