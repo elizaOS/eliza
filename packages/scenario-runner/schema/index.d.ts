@@ -241,6 +241,17 @@ export type ScenarioFinalCheck =
       minCount?: number;
       expected?: boolean;
     })
+  | (CheckBase<"goalCountDelta"> & {
+      title: string;
+      titleAliases?: string[];
+      delta?: number;
+      expectedStatus?: string;
+      expectedReviewState?: string;
+      expectedGroundingState?: string;
+      requireDescription?: boolean;
+      requireSuccessCriteria?: boolean;
+      requireSupportStrategy?: boolean;
+    })
   | (CheckBase<"gmailActionArguments"> & {
       actionName?: StringMatcher;
       subaction?: StringMatcher;

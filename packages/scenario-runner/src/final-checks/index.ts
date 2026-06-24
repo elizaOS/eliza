@@ -167,6 +167,47 @@ function matchesContentMatcher(actual: unknown, expected: unknown): boolean {
   return valuesEqual(actual, expected);
 }
 
+function normalizeComparableText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function textMatchesLoose(actual: string, expected: string): boolean {
+  const normalizedActual = normalizeComparableText(actual);
+  const normalizedExpected = normalizeComparableText(expected);
+  return (
+    normalizedActual === normalizedExpected ||
+    normalizedActual.includes(normalizedExpected) ||
+    normalizedExpected.includes(normalizedActual)
+  );
+}
+
+function recordHasEntries(value: unknown): boolean {
+  const record = toRecord(value);
+  return Boolean(record && Object.keys(record).length > 0);
+}
+
+function isGoalRecord(value: unknown): value is Record<string, unknown> {
+  const record = toRecord(value);
+  return typeof record?.title === "string" && record.title.trim().length > 0;
+}
+
+function goalRecordFromActionResult(
+  value: unknown,
+): Record<string, unknown> | null {
+  const record = toRecord(value);
+  if (!record) {
+    return null;
+  }
+  if (isGoalRecord(record.goal)) {
+    return toRecord(record.goal);
+  }
+  const wrappedRecord = toRecord(record.record);
+  if (isGoalRecord(wrappedRecord?.goal)) {
+    return toRecord(wrappedRecord.goal);
+  }
+  return null;
+}
+
 type GmailMockRequest = {
   environment?: string;
   method?: string;
@@ -590,6 +631,113 @@ registerFinalCheckHandler("memoryExists", (check, { ctx }) => {
   return {
     status: "passed",
     detail: "no matching memory write observed",
+  };
+});
+
+registerFinalCheckHandler("goalCountDelta", (check, { ctx }) => {
+  const {
+    title,
+    titleAliases,
+    delta,
+    expectedStatus,
+    expectedReviewState,
+    expectedGroundingState,
+    requireDescription,
+    requireSuccessCriteria,
+    requireSupportStrategy,
+  } = check as {
+    title: string;
+    titleAliases?: string[];
+    delta?: number;
+    expectedStatus?: string;
+    expectedReviewState?: string;
+    expectedGroundingState?: string;
+    requireDescription?: boolean;
+    requireSuccessCriteria?: boolean;
+    requireSupportStrategy?: boolean;
+  };
+  const acceptedTitles = [title, ...(titleAliases ?? [])].filter(
+    (entry) => typeof entry === "string" && entry.trim().length > 0,
+  );
+  const goalRecords = ctx.actionsCalled
+    .filter(
+      (action) =>
+        action.result?.success === true && !isSynthesizedReply(action),
+    )
+    .flatMap((action) => {
+      const fromData = goalRecordFromActionResult(action.result?.data);
+      const fromRaw = goalRecordFromActionResult(action.result?.raw);
+      return [fromData, fromRaw].filter(
+        (record): record is Record<string, unknown> => Boolean(record),
+      );
+    });
+  const matched = goalRecords.filter((goal) => {
+    const actualTitle = String(goal.title ?? "");
+    if (
+      !acceptedTitles.some((candidate) =>
+        textMatchesLoose(actualTitle, candidate),
+      )
+    ) {
+      return false;
+    }
+    if (expectedStatus !== undefined && goal.status !== expectedStatus) {
+      return false;
+    }
+    if (
+      expectedReviewState !== undefined &&
+      goal.reviewState !== expectedReviewState
+    ) {
+      return false;
+    }
+    const actualGroundingState =
+      readPath(goal, "metadata.groundingState") ?? goal.groundingState;
+    if (
+      expectedGroundingState !== undefined &&
+      actualGroundingState !== expectedGroundingState
+    ) {
+      return false;
+    }
+    if (
+      requireDescription === true &&
+      String(goal.description ?? "").trim().length === 0
+    ) {
+      return false;
+    }
+    if (
+      requireSuccessCriteria === true &&
+      !recordHasEntries(goal.successCriteria)
+    ) {
+      return false;
+    }
+    if (
+      requireSupportStrategy === true &&
+      !recordHasEntries(goal.supportStrategy)
+    ) {
+      return false;
+    }
+    return true;
+  });
+  const expectedDelta = typeof delta === "number" ? delta : 1;
+  if (expectedDelta <= 0) {
+    return matched.length === 0
+      ? { status: "passed", detail: "no matching goal records observed" }
+      : {
+          status: "failed",
+          detail: `expected no matching goal records, saw ${matched.length}`,
+        };
+  }
+  if (matched.length < expectedDelta) {
+    const titles =
+      goalRecords.map((goal) => String(goal.title ?? "")).join(", ") ||
+      "(none)";
+    return {
+      status: "failed",
+      detail: `expected ${expectedDelta} matching goal record(s), saw ${matched.length}. Goal titles: ${titles}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${matched.length} matching goal record(s)`,
   };
 });
 
