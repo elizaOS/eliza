@@ -606,9 +606,8 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
       <div
         data-spatial-kind="divider"
         style={{
-          width: 1,
+          width: "0.375rem",
           alignSelf: "stretch",
-          background: "var(--border, rgba(128,128,128,0.35))",
         }}
       />
     );
@@ -646,9 +645,8 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
     <div
       data-spatial-kind="divider"
       style={{
-        height: 1,
+        height: "0.375rem",
         alignSelf: "stretch",
-        background: "var(--border, rgba(128,128,128,0.35))",
       }}
     />
   );
@@ -694,14 +692,20 @@ export function HStack(props: Omit<StackProps, "direction">) {
 export function VStack(props: Omit<StackProps, "direction">) {
   return <Stack {...props} direction="column" />;
 }
-/** A bordered, padded surface. */
-export function Card(props: StackProps) {
+/** A compact grouped surface without a visible frame by default. */
+export function Card({
+  border,
+  gap,
+  padding,
+  title: _title,
+  ...props
+}: StackProps) {
   return (
     <Stack
       {...props}
-      border={props.border ?? "round"}
-      padding={props.padding ?? 2}
-      gap={props.gap ?? 1}
+      border={border ?? "none"}
+      padding={padding ?? 1}
+      gap={gap ?? 1}
     />
   );
 }

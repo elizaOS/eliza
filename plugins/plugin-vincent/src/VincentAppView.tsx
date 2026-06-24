@@ -56,14 +56,14 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
       className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center justify-between gap-3 px-3 py-2">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Button
             ref={back.ref}
             {...back.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-xl text-muted hover:text-txt"
+            className="h-9 w-9 shrink-0 text-muted hover:text-txt"
             onClick={exitToApps}
             aria-label={backLabel}
           >
@@ -78,10 +78,8 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
           {/* Connection status pill */}
           <span
             data-testid="vincent-status-card"
-            className={`inline-flex max-w-[8.5rem] items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs-tight font-semibold ${
-              vincentConnected
-                ? "border-ok/35 bg-ok/12 text-ok"
-                : "border-border bg-bg-accent text-muted"
+            className={`inline-flex max-w-[8.5rem] items-center gap-1.5 px-1 py-1 text-xs-tight font-semibold ${
+              vincentConnected ? "text-ok" : "text-muted"
             }`}
           >
             <span
@@ -101,7 +99,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
             {...refreshControl.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-xl text-muted hover:text-txt"
+            className="h-9 w-9 text-muted hover:text-txt"
             onClick={refresh}
             disabled={loading}
             aria-label={refreshLabel}
@@ -112,7 +110,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
       </div>
 
       {/* Scrollable content */}
-      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 pb-32 pt-4 sm:px-6 sm:pb-36">
+      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-3 pb-32 pt-2 sm:px-5 sm:pb-36">
         <div className="mx-auto max-w-5xl">
           {/* Error banner */}
           {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
@@ -126,7 +124,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
           )}
 
           <div className="flex flex-col gap-4">
-            <div className="space-y-4">
+            <div className="space-y-3">
               <VincentConnectionCard setActionNotice={setActionNotice} t={t} />
 
               {vincentConnected && (

@@ -13,10 +13,7 @@ export const PagePanelFrame = React.forwardRef<
   return (
     <div
       ref={ref}
-      className={cn(
-        "flex h-full w-full min-h-0 bg-transparent p-0 lg:p-1",
-        className,
-      )}
+      className={cn("flex h-full w-full min-h-0 bg-transparent p-0", className)}
       {...props}
     />
   );

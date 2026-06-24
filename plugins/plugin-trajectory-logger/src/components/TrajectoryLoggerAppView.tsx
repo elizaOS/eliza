@@ -48,7 +48,7 @@ export function TrajectoryLoggerAppView({ exitToApps }: OverlayAppContext) {
 
   return (
     <div className="flex h-full w-full flex-col bg-bg text-xs">
-      <header className="flex items-center justify-between gap-2 border-b border-border/24 px-2 py-2">
+      <header className="flex items-center justify-between gap-2 px-2 py-2">
         <div className="flex items-center gap-2">
           <Button
             ref={backButton.ref}
@@ -60,13 +60,13 @@ export function TrajectoryLoggerAppView({ exitToApps }: OverlayAppContext) {
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="grid h-7 w-7 place-items-center rounded-lg border border-accent/30 bg-accent/10">
+          <span className="grid h-7 w-7 place-items-center">
             <Route className="h-3.5 w-3.5 text-accent" aria-hidden />
           </span>
           <span className="text-sm font-semibold text-txt">Trajectories</span>
         </div>
         {state.unavailable ? (
-          <span className="max-w-[42vw] truncate text-2xs text-muted/60">
+          <span className="sr-only max-w-[42vw] truncate text-2xs text-muted/60">
             Trajectory logging unavailable on this surface
           </span>
         ) : state.error ? (
@@ -74,13 +74,13 @@ export function TrajectoryLoggerAppView({ exitToApps }: OverlayAppContext) {
             {state.error}
           </span>
         ) : !state.ready ? (
-          <span className="text-2xs text-muted/60">loading…</span>
+          <span className="sr-only text-2xs text-muted/60">loading…</span>
         ) : (
           <LoggingStatusBadge active={!!state.active} />
         )}
       </header>
 
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3 pb-32">
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2 pb-32">
         <PhaseStrip
           live
           slot="now"
@@ -110,7 +110,7 @@ export function TrajectoryLoggerAppView({ exitToApps }: OverlayAppContext) {
           }
         />
         {selected ? (
-          <div className="max-h-[52vh] overflow-auto rounded border border-border/24 bg-card/30 p-2">
+          <div className="max-h-[52vh] overflow-auto px-1 py-2">
             <PhaseDrilldown phase={selected} />
           </div>
         ) : null}
@@ -147,10 +147,8 @@ function PhaseStrip({
   return (
     <div
       className={[
-        "flex min-w-0 flex-col gap-3 rounded-xl border bg-card/40 px-3 py-3 shadow-sm transition-colors",
-        recording
-          ? "border-accent/30 animate-[pulse_2.4s_ease-in-out_infinite]"
-          : "border-border/24",
+        "flex min-w-0 flex-col gap-2 px-2 py-2 transition-colors",
+        recording ? "animate-[pulse_2.4s_ease-in-out_infinite]" : "",
       ].join(" ")}
     >
       <div className="flex items-center justify-between">
@@ -170,7 +168,7 @@ function PhaseStrip({
           {live ? "Now" : "Last"}
         </span>
         {!trajectory ? (
-          <span className="text-2xs text-muted/50">no turn yet</span>
+          <span className="sr-only text-2xs text-muted/50">no turn yet</span>
         ) : null}
       </div>
       <div
@@ -178,10 +176,10 @@ function PhaseStrip({
         title={trajectory ? undefined : "No trajectory captured yet"}
       >
         {/* Progress rail behind the medallion row */}
-        <div className="pointer-events-none absolute inset-x-[12.5%] top-[18px] h-0.5 rounded-full bg-border/30">
+        <div className="pointer-events-none absolute inset-x-[12.5%] top-[18px] h-0.5 bg-border/20">
           <div
             className={[
-              "h-full rounded-full transition-all duration-500",
+              "h-full transition-all duration-500",
               recording ? "bg-accent/70" : "bg-ok/55",
             ].join(" ")}
             style={{ width: `${fillPct}%` }}
@@ -209,14 +207,12 @@ function PhaseStrip({
  * Compact status badge for the overlay header.
  */
 function LoggingStatusBadge({ active }: { active: boolean }) {
-  const tone = active
-    ? "border-danger/40 bg-danger/10 text-danger"
-    : "border-border/30 bg-bg-elevated text-muted";
+  const tone = active ? "text-danger" : "text-muted";
   const label = active ? "recording" : "idle";
   return (
     <span
       title="Trajectory logging status"
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide ${tone}`}
+      className={`inline-flex items-center gap-1.5 px-1 py-1 text-2xs font-semibold uppercase tracking-wide ${tone}`}
       data-testid="trajectory-logging-badge"
     >
       <span

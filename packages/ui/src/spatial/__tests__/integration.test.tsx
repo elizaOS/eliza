@@ -93,7 +93,7 @@ describe("deep nested + stateful parity", () => {
       <Dashboard title="Ops" />,
     ) as SpatialBoxNode;
     expect(tree.type).toBe("box");
-    expect(tree.title).toBe("Ops");
+    expect(tree.title).toBeUndefined();
     // Card > [header HStack, VStack(rows), Toggle HStack]
     expect(tree.children.map((c) => c.type)).toEqual(["box", "box", "box"]);
     const rows = tree.children[1] as SpatialBoxNode;
@@ -108,7 +108,6 @@ describe("deep nested + stateful parity", () => {
       expect(line.length).toBeGreaterThan(0);
     }
     const flat = lines.join("\n");
-    expect(flat).toContain("Ops");
     expect(flat).toContain("Sessions");
     expect(flat).toContain("alpha");
     expect(flat).toContain("12 msgs");

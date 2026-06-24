@@ -132,11 +132,11 @@ function PhoneTabTrigger({
       value={tab}
       disabled={disabled}
       aria-current={active ? "true" : undefined}
-      className="rounded-full font-semibold transition-colors"
+      className="font-semibold transition-colors"
       style={{
-        backgroundColor: active ? "var(--accent-subtle)" : "transparent",
+        backgroundColor: "transparent",
         color: active ? "var(--accent)" : "var(--muted)",
-        border: active ? "1px solid var(--accent)" : "1px solid transparent",
+        border: "1px solid transparent",
       }}
       {...agentProps}
     >
@@ -163,11 +163,11 @@ function PhoneDialKey({
     <button
       ref={ref}
       type="button"
-      className="h-16 rounded-full text-2xl font-semibold transition active:scale-95 sm:h-20"
+      className="h-16 text-2xl font-semibold transition active:scale-95 sm:h-20"
       style={{
-        backgroundColor: "var(--surface)",
+        backgroundColor: "transparent",
         color: "var(--text)",
-        border: "1px solid var(--border)",
+        border: "none",
       }}
       onClick={() => onPress(digit)}
       aria-label={`Dial ${digit}`}
@@ -204,10 +204,10 @@ function RecentCallButton({
       ref={ref}
       type="button"
       onClick={() => onCall(entry.number)}
-      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99]"
+      className="flex w-full items-center gap-3 px-2 py-2 text-left transition active:scale-[0.99]"
       style={{
-        backgroundColor: "var(--surface)",
-        border: "1px solid transparent",
+        backgroundColor: "transparent",
+        border: "none",
       }}
       {...agentProps}
     >
@@ -416,13 +416,13 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
       className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center justify-between px-3 py-2">
         <div className="flex items-center gap-3">
           <Button
             ref={backAgent.ref}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-xl text-muted hover:text-txt"
+            className="h-9 w-9 text-muted hover:text-txt"
             onClick={exitToApps}
             aria-label={backLabel}
             {...backAgent.agentProps}
@@ -433,7 +433,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
             <h1 className="text-base font-semibold text-txt">
               {t("phone.title", { defaultValue: "Phone" })}
             </h1>
-            <p className="text-xs-tight text-muted leading-none">
+            <p className="sr-only text-xs-tight text-muted leading-none">
               {t("phone.subtitle", {
                 defaultValue: "Dialer and recent calls",
               })}
@@ -445,7 +445,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
             ref={contactsNavAgent.ref}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-xl text-muted hover:text-txt"
+            className="h-9 w-9 text-muted hover:text-txt"
             onClick={openContacts}
             aria-label={contactsLabel}
             data-testid="phone-open-contacts"
@@ -462,11 +462,8 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
         onValueChange={(v: string) => setActiveTab(v as PhoneTab)}
         className="flex flex-1 min-h-0 flex-col"
       >
-        <div className="shrink-0 border-b border-border/20 bg-bg/60 px-3 py-2">
-          <TabsList
-            className="grid w-full max-w-sm grid-cols-2 gap-1"
-            style={{ backgroundColor: "var(--surface)" }}
-          >
+        <div className="shrink-0 px-3 py-1">
+          <TabsList className="grid w-full max-w-sm grid-cols-2 gap-1 bg-transparent">
             <PhoneTabTrigger
               tab="dialer"
               label={t("phone.tabs.dialer", { defaultValue: "Dialer" })}
@@ -488,10 +485,10 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
           <div className="flex min-h-full flex-col items-center px-4 pb-32 pt-6">
             <div className="flex w-full max-w-sm flex-col items-center gap-3 pt-2">
               <output
-                className="block min-h-[3rem] w-full select-text rounded-xl px-4 py-3 text-center font-mono text-2xl"
+                className="block min-h-[3rem] w-full select-text px-4 py-3 text-center font-mono text-2xl"
                 style={{
-                  backgroundColor: "var(--surface)",
-                  border: "1px solid var(--border)",
+                  backgroundColor: "transparent",
+                  border: "none",
                   color: "var(--text)",
                 }}
                 aria-live="polite"
@@ -538,10 +535,10 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               <button
                 ref={plusAgent.ref}
                 type="button"
-                className="h-12 rounded-full text-lg font-semibold active:scale-95"
+                className="h-12 text-lg font-semibold active:scale-95"
                 style={{
-                  backgroundColor: "var(--surface)",
-                  border: "1px solid var(--border)",
+                  backgroundColor: "transparent",
+                  border: "none",
                   color: "var(--text)",
                 }}
                 onClick={appendPlus}
@@ -576,10 +573,10 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
               <button
                 ref={backspaceAgent.ref}
                 type="button"
-                className="flex h-12 items-center justify-center rounded-full active:scale-95 disabled:opacity-50"
+                className="flex h-12 items-center justify-center active:scale-95 disabled:opacity-50"
                 style={{
-                  backgroundColor: "var(--surface)",
-                  border: "1px solid var(--border)",
+                  backgroundColor: "transparent",
+                  border: "none",
                   color: "var(--text)",
                 }}
                 onClick={backspace}
@@ -613,9 +610,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 testId="phone-recent-permission-callout"
               />
             ) : callsError ? (
-              <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
-                {callsError}
-              </p>
+              <p className="px-1 py-2 text-sm text-danger">{callsError}</p>
             ) : null}
             {!callsError && calls.length === 0 && callsLoading ? (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted">
@@ -633,7 +628,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                       defaultValue: "No recent calls.",
                     })}
                   </div>
-                  <p className="mt-1 text-xs text-muted">
+                  <p className="sr-only mt-1 text-xs text-muted">
                     {t("phone.recent.emptyBody", {
                       defaultValue:
                         "Recent incoming, outgoing, and missed calls will appear here after Android grants call-log access.",
@@ -642,7 +637,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                   <div className="mt-4 flex justify-center gap-2">
                     <Button
                       ref={emptyDialerAgent.ref}
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => setActiveTab("dialer")}
                       {...emptyDialerAgent.agentProps}

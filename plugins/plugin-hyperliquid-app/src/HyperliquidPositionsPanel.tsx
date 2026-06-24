@@ -103,11 +103,7 @@ function pnlTone(value: number | null): string {
 function ReadinessPill({ ready, label }: { ready: boolean; label: string }) {
   return (
     <span
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
-        ready
-          ? "border-ok/35 bg-ok/12 text-ok"
-          : "border-border bg-bg-accent text-muted"
-      }`}
+      className={`inline-flex h-8 w-8 items-center justify-center ${ready ? "text-ok" : "text-muted"}`}
       role="status"
       aria-label={label}
       title={label}
@@ -131,7 +127,7 @@ function StatTile({
   tone?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-border/24 bg-card/50 px-3 py-2.5">
+    <div className="flex flex-col gap-1 px-1 py-2">
       <span className="text-[11px] font-medium uppercase tracking-wide text-muted">
         {label}
       </span>
@@ -183,14 +179,14 @@ function PositionRow({ position }: { position: HyperliquidPosition }) {
           {position.coin}
         </span>
         <span
-          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+          className={`px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
             isLong ? "bg-ok/12 text-ok" : "bg-danger/12 text-danger"
           }`}
         >
           {isLong ? "long" : "short"}
         </span>
         {position.leverageValue !== null && (
-          <span className="rounded bg-bg-accent px-1.5 py-0.5 font-mono text-[10px] text-muted">
+          <span className="px-1.5 py-0.5 font-mono text-[10px] text-muted">
             {position.leverageValue}x
           </span>
         )}
@@ -258,8 +254,8 @@ export function HyperliquidPositionsPanel({
     <section className="space-y-3">
       <AccountHealthStrip summary={summary} />
 
-      <div className="rounded-lg border border-border/24 bg-card/50">
-        <div className="flex items-center gap-2 border-b border-border/20 px-4 py-3">
+      <div>
+        <div className="flex items-center gap-2 px-1 py-2">
           {totalPnl !== null && totalPnl < 0 ? (
             <TrendingDown className="h-4 w-4 text-danger" />
           ) : (
@@ -276,7 +272,7 @@ export function HyperliquidPositionsPanel({
         </div>
 
         {readBlockedReason ? (
-          <div className="px-4 py-6 text-center text-xs text-muted">
+          <div className="px-1 py-6 text-center text-xs text-muted">
             {readBlockedReason}
           </div>
         ) : openPositions.length === 0 ? (
@@ -286,14 +282,14 @@ export function HyperliquidPositionsPanel({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-[minmax(0,1.2fr)_repeat(4,minmax(0,1fr))] gap-3 border-b border-border/14 px-4 py-2 text-[10px] font-medium uppercase tracking-wide text-muted">
+            <div className="grid grid-cols-[minmax(0,1.2fr)_repeat(4,minmax(0,1fr))] gap-3 px-1 py-2 text-[10px] font-medium uppercase tracking-wide text-muted">
               <span>Asset</span>
               <span className="text-right">Size</span>
               <span className="text-right">Notional</span>
               <span className="text-right">Entry</span>
               <span className="text-right">uPnL</span>
             </div>
-            <div className="divide-y divide-border/14">
+            <div>
               {openPositions.map((position) => (
                 <PositionRow key={position.coin} position={position} />
               ))}

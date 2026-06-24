@@ -38,8 +38,8 @@ function shortAddress(address: string): string {
 
 function TokenChip({ token }: { token: SwapToken }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-md border border-border bg-bg-accent px-2.5 py-1.5">
-      <span className="grid h-5 w-5 place-items-center rounded-full border border-border/40 bg-card text-[10px] font-semibold text-muted">
+    <span className="inline-flex items-center gap-2 px-1 py-1.5">
+      <span className="grid h-5 w-5 place-items-center text-[10px] font-semibold text-muted">
         {token.symbol.slice(0, 2).toUpperCase()}
       </span>
       <span className="font-mono text-xs text-txt">{token.symbol}</span>
@@ -196,7 +196,7 @@ export function SwapAppView({
       data-testid="swap-shell"
       className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg supports-[height:100dvh]:h-[100dvh]"
     >
-      <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center gap-3 px-3 py-2">
         <Button
           ref={backButton.ref}
           {...backButton.agentProps}
@@ -215,13 +215,13 @@ export function SwapAppView({
 
         <div className="flex-1" />
 
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+        <span className="inline-flex items-center gap-1.5 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
           PancakeSwap v3
         </span>
       </div>
 
-      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mx-auto max-w-xl space-y-4">
+      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-3 py-2 sm:px-5">
+        <div className="mx-auto max-w-xl space-y-3">
           {!config.agentTokenAddress && (
             <PagePanel.Notice tone="warning">
               No agent is configured for swapping.
@@ -229,7 +229,7 @@ export function SwapAppView({
           )}
 
           {/* From */}
-          <section className="rounded-lg border border-border/24 bg-card/50 p-4">
+          <section className="py-2">
             <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
               <span>from</span>
             </div>
@@ -264,7 +264,7 @@ export function SwapAppView({
               {...reverseButton.agentProps}
               variant="ghost"
               size="icon"
-              className="h-9 w-9 rounded-full border border-border/40 bg-bg text-muted hover:text-accent"
+              className="h-9 w-9 text-muted hover:text-accent"
               onClick={reverse}
               disabled={executing}
               aria-label="Reverse direction"
@@ -274,7 +274,7 @@ export function SwapAppView({
           </div>
 
           {/* To */}
-          <section className="rounded-lg border border-border/24 bg-card/50 p-4">
+          <section className="py-2">
             <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
               <span>to (estimate)</span>
               {quoting ? (
@@ -304,7 +304,7 @@ export function SwapAppView({
           </section>
 
           {/* Slippage + fee controls */}
-          <section className="rounded-lg border border-border/24 bg-card/50 p-4">
+          <section className="py-2">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
               <Settings2 className="h-3.5 w-3.5" />
               slippage tolerance
@@ -349,7 +349,7 @@ export function SwapAppView({
 
           {/* Route detail */}
           {quote && amountValid ? (
-            <dl className="space-y-2 rounded-lg border border-border/24 bg-bg-accent px-4 py-3 text-xs">
+            <dl className="space-y-2 px-1 py-2 text-xs">
               <DetailRow label="route">
                 <span className="inline-flex items-center gap-1.5">
                   <ArrowLeftRight className="h-3.5 w-3.5 text-muted" />
@@ -380,13 +380,13 @@ export function SwapAppView({
 
           {/* Outcome */}
           {outcome?.kind === "stubbed" && (
-            <div className="flex items-start gap-2 rounded-lg border border-border/24 bg-bg-accent px-4 py-3 text-sm text-muted">
+            <div className="flex items-start gap-2 px-1 py-2 text-sm text-muted">
               <Info className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{outcome.message}</span>
             </div>
           )}
           {outcome?.kind === "prepared" && (
-            <div className="flex items-start gap-2 rounded-lg border border-ok/35 bg-ok/12 px-4 py-3 text-sm text-ok">
+            <div className="flex items-start gap-2 px-1 py-2 text-sm text-ok">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 transaction prepared for {shortAddress(outcome.to)} — sign in
@@ -419,7 +419,7 @@ export function SwapAppView({
           </Button>
 
           {!executeEnabled && (
-            <p className="text-center text-xs text-muted">
+            <p className="sr-only">
               quote-only preview — on-chain execution lands when the agent
               signer is enabled
             </p>
