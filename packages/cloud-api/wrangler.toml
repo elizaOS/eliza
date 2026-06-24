@@ -346,8 +346,10 @@ workers_dev = false
 # or they hit cloud-api instead of their real backend. The carve-out is a
 # Cloudflare dashboard action (a Worker cannot opt a host out of its own route):
 # add a more-specific Workers route `feed.elizacloud.ai/*` with Worker = None,
-# or set the `feed` DNS record to DNS-only. See packages/feed/RAILWAY.md,
-# "Canonical host: feed.elizacloud.ai".
+# or set the `feed` DNS record to DNS-only. ALTERNATIVELY (CI-deployable, no DNS
+# change): set the `FEED_ORIGIN_HOST` var/secret to the Railway feed host and this
+# Worker reverse-proxies feed.elizacloud.ai → Railway (src/index.ts, inert when
+# unset). See packages/feed/RAILWAY.md, "Canonical host: feed.elizacloud.ai".
 routes = [
   { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },

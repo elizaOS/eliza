@@ -94,9 +94,30 @@ export function redirectFrontendHost(
   return Response.redirect(targetUrl.toString(), 308);
 }
 
-export function getFrontendAliasProxyTarget(url: URL): URL | null {
+// The Feed app's public host. Feed runs on Railway and serves both its pages and
+// its own `/api/*` from one origin, so the wildcard `*.elizacloud.ai/*` Worker
+// route would otherwise swallow it (see packages/feed/RAILWAY.md). When the
+// operator sets `FEED_ORIGIN_HOST` (the Railway host) this Worker reverse-proxies
+// the host to Railway; unset = inert (request falls through to cloud-api as before).
+const FEED_ALIAS_HOST = "feed.elizacloud.ai";
+
+export function getFrontendAliasProxyTarget(
+  url: URL,
+  env?: { FEED_ORIGIN_HOST?: string },
+): URL | null {
   const hostname = normalizeHostname(url.hostname);
   if (!hostname) return null;
+
+  // Config-gated Feed passthrough. Single origin for pages + API, so no app/api
+  // split. Inert unless FEED_ORIGIN_HOST is set.
+  if (hostname === FEED_ALIAS_HOST) {
+    const feedOrigin = normalizeHostname(env?.FEED_ORIGIN_HOST);
+    if (!feedOrigin) return null;
+    const feedUrl = new URL(url);
+    feedUrl.hostname = feedOrigin;
+    return feedUrl;
+  }
+
   const target = FRONTEND_ALIAS_TARGETS[hostname];
   if (!target) return null;
 
@@ -113,8 +134,12 @@ export function getFrontendAliasProxyTarget(url: URL): URL | null {
 function proxyFrontendAliasRequest(
   request: Request,
   url: URL,
+  env: AppEnv["Bindings"],
 ): Promise<Response> | null {
-  const targetUrl = getFrontendAliasProxyTarget(url);
+  const targetUrl = getFrontendAliasProxyTarget(
+    url,
+    env as { FEED_ORIGIN_HOST?: string },
+  );
   if (!targetUrl) return null;
 
   const headers = new Headers(request.headers);
@@ -162,7 +187,7 @@ export default {
     ctx: ExecutionContext,
   ) => {
     const url = new URL(request.url);
-    const frontendAliasResponse = proxyFrontendAliasRequest(request, url);
+    const frontendAliasResponse = proxyFrontendAliasRequest(request, url, env);
     if (frontendAliasResponse) return frontendAliasResponse;
     const agentProxyResponse = proxyGeneratedAgentRequest(request, env, url);
     if (agentProxyResponse) return agentProxyResponse;
