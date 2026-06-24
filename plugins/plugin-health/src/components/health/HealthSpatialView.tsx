@@ -85,12 +85,12 @@ export function HealthSpatialView({
 
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
-          Loading sleep data
+          Loading
         </Text>
       ) : snapshot.state === "error" ? (
         <HealthErrorBody snapshot={snapshot} dispatch={dispatch} />
       ) : snapshot.state === "empty" ? (
-        <HealthEmptyBody snapshot={snapshot} />
+        <HealthEmptyBody />
       ) : (
         <HealthReadyBody snapshot={snapshot} />
       )}
@@ -147,17 +147,8 @@ function HealthErrorBody({
   );
 }
 
-function HealthEmptyBody({ snapshot }: { snapshot: HealthSnapshot }) {
-  return (
-    <>
-      <Text bold>No sleep data yet</Text>
-      {snapshot.emptyDetail ? (
-        <Text tone="muted" style="caption">
-          {snapshot.emptyDetail}
-        </Text>
-      ) : null}
-    </>
-  );
+function HealthEmptyBody() {
+  return <Text bold>No sleep</Text>;
 }
 
 function HealthReadyBody({ snapshot }: { snapshot: HealthSnapshot }) {

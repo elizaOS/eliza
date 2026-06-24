@@ -122,7 +122,7 @@ describe("RelationshipsSpatialView one source, three modalities", () => {
         <RelationshipsSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No people yet");
+    expect(html).toContain("No people");
     expect(html).toContain('data-agent-id="add"');
   });
 

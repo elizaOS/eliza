@@ -142,7 +142,7 @@ function RelationshipsEmptyBody({
 }) {
   return (
     <>
-      <Text bold>No people yet</Text>
+      <Text bold>No people</Text>
       <HStack gap={1}>
         <Button agent="add" onPress={dispatch("add")}>
           Add someone

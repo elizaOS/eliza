@@ -125,7 +125,7 @@ describe("GoalsSpatialView one source, three modalities", () => {
         <GoalsSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(gui).toContain("No goals yet");
+    expect(gui).toContain("No goals");
     expect(gui).toContain('data-agent-id="new"');
   });
 

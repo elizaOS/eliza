@@ -137,7 +137,7 @@ function DocumentsErrorBody({
 }
 
 function DocumentsEmptyBody() {
-  return <Text bold>No documents yet</Text>;
+  return <Text bold>No documents</Text>;
 }
 
 function DocumentsReadyBody({

@@ -99,7 +99,7 @@ describe("DocumentsSpatialView one source, three modalities", () => {
         <DocumentsSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No documents yet");
+    expect(html).toContain("No documents");
   });
 
   it("error state renders the message and a Retry control", () => {

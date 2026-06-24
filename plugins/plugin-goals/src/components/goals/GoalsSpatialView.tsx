@@ -169,7 +169,7 @@ function GoalsReadyBody({
   if (snapshot.goals.length === 0) {
     return (
       <>
-        <Text bold>No goals yet</Text>
+        <Text bold>No goals</Text>
         <HStack gap={1}>
           <Button agent="new" onPress={dispatch("new")}>
             Set a goal

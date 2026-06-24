@@ -89,7 +89,7 @@ describe("CalendarSpatialView one source, three modalities", () => {
     );
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
     const flat = lines.join("\n");
-    expect(flat).toContain("No upcoming events");
+    expect(flat).toContain("No events");
   });
 
   it("error state surfaces the error text", () => {
