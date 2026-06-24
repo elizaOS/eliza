@@ -64,6 +64,76 @@ describe("AgentSandboxesRepository", () => {
     expect(new PgDialect().sqlToQuery(capturedWhere).sql).toContain("'sleeping'");
   });
 
+  test("provisioning lock admits a running row ONLY when it has no container (re-provision unblock)", async () => {
+    // Bug: a direct/shared provision inserts the row as `running` BEFORE any
+    // container exists. If that provision crashes, the row is stuck at
+    // `running` with NO container, and the old `status IN (...)` clause (which
+    // excludes `running`) could never retake the lock — blocking re-provision
+    // PERMANENTLY (the tonight outage; an engineer had to reset rows to
+    // `pending` by hand). The fix admits `running` too, but ONLY for a
+    // never-containerized row.
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().trySetProvisioning("e06bb509-6c52-4c33-a9f7-66addc43e8c8");
+
+    if (!capturedWhere) throw new Error("trySetProvisioning did not build a where clause");
+    const sql = new PgDialect().sqlToQuery(capturedWhere).sql.toLowerCase();
+
+    // The existing acquirable states still work (regression guard)...
+    expect(sql).toContain("'pending'");
+    expect(sql).toContain("'provisioning'");
+    expect(sql).toContain("'stopped'");
+    expect(sql).toContain("'sleeping'");
+    expect(sql).toContain("'disconnected'");
+    expect(sql).toContain("'error'");
+
+    // ...AND a `running` row can now be acquired...
+    expect(sql).toContain("'running'");
+
+    // ...but the `running` branch is GATED on BOTH container fields being NULL.
+    // This is the live-agent protection: the moment a container is created the
+    // provision path stamps container_name / sandbox_id, so a genuinely-running
+    // dedicated agent can NEVER satisfy this branch and can NEVER have its lock
+    // taken. Assert both NULL guards are present on the running branch.
+    expect(sql).toContain("container_name");
+    expect(sql).toContain("sandbox_id");
+    expect(sql).toContain("is null");
+    // The running admission must be an OR alternative to the IN-list, not a
+    // standalone clause that would widen acquisition.
+    expect(sql).toContain(" or ");
+  });
+
+  test("provisioning lock guards the running branch with BOTH container columns (live-agent protection)", async () => {
+    // The live-agent protection is load-bearing: acquiring the lock from a
+    // genuinely-running dedicated agent would double-provision / disrupt a live
+    // customer agent. Pin that the `running` admission requires container_name
+    // IS NULL *and* sandbox_id IS NULL — never just one. We assert the
+    // structural shape of the generated SQL: a `'running'` literal followed by
+    // two `is null` predicates on the two container columns.
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().trySetProvisioning("e06bb509-6c52-4c33-a9f7-66addc43e8c8");
+
+    if (!capturedWhere) throw new Error("trySetProvisioning did not build a where clause");
+    const sql = new PgDialect().sqlToQuery(capturedWhere).sql.toLowerCase();
+
+    const runningIdx = sql.indexOf("'running'");
+    expect(runningIdx).toBeGreaterThan(-1);
+    // Everything from the `'running'` literal onward must reference BOTH
+    // container columns AND `is null` — i.e. the running admission is fenced by
+    // the two NULL guards (a running-WITH-container row can never match).
+    const afterRunning = sql.slice(runningIdx);
+    expect(afterRunning).toContain("container_name");
+    expect(afterRunning).toContain("sandbox_id");
+    // Two NULL guards on the running branch (one per container column).
+    const nullGuardCount = (afterRunning.match(/is null/g) ?? []).length;
+    expect(nullGuardCount).toBeGreaterThanOrEqual(2);
+  });
+
   test("heartbeat selection excludes shared-runtime agents (no container to dial)", async () => {
     capturedWhere = undefined;
 

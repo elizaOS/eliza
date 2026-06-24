@@ -612,8 +612,24 @@ interface LifecycleJobOptions<TData extends object> {
  * headscale network I/O while holding a DB advisory lock) used to run for
  * minutes and starve the whole cycle. Every leaf is independently bounded, so
  * a job hitting this ceiling means something is genuinely wedged.
+ *
+ * 180s, not 120s: a freshly-pinned agent image cold-pulls in ~2.5 min on the
+ * node (the leaf SSH `docker pull` allows up to `PULL_TIMEOUT_MS` = 300s in
+ * docker-sandbox-provider). At the old 120s this wrapper aborted the awaiter
+ * mid-pull, so the job flipped toward failure even though the pull was still
+ * landing the image in the node cache — retry churn + the half-provisioned
+ * state behind the tonight outage. 180s clears a cold pull with margin.
+ *
+ * This is WATCHDOG-SAFE and stays OFF the heartbeat critical path. The
+ * provisioning-worker daemon already frees the *cycle* awaiter at its own
+ * `PHASE_TIMEOUT_MS` (60s) and advances `lastCycleCompletedAt` immediately, so
+ * the heartbeat keeps flowing regardless of this value — `PER_JOB_TIMEOUT_MS`
+ * governs only the detached background job promise, not the watchdog clock.
+ * Kept <= the daemon's `WORK_CYCLE_TIMEOUT_MS` (240s) so it never reads as if a
+ * single job could outlive the bounded work group. The watchdog window (300s)
+ * and the `WORK_CYCLE_TIMEOUT_MS + poll < 300s` invariant are untouched.
  */
-const PER_JOB_TIMEOUT_MS = 120_000;
+export const PER_JOB_TIMEOUT_MS = 180_000;
 
 /**
  * Stale-job recovery thresholds, by job type. `recoverStaleJobs` resets a job

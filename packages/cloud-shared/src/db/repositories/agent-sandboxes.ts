@@ -458,6 +458,18 @@ export class AgentSandboxesRepository {
    * Atomically take the provisioning lock. `provisioning` is included so a
    * row left stuck by a crashed worker can be retaken; the job-level stale
    * recovery in ProvisioningJobService is the time-based gate.
+   *
+   * `running` is admitted ONLY for a never-containerized row
+   * (`container_name IS NULL AND sandbox_id IS NULL`). A direct/shared provision
+   * inserts the row as `running` BEFORE any container exists
+   * (eliza-sandbox.ts buildAgentInsertData), so a half-provisioned row that
+   * crashed before a container was created would otherwise be stuck at `running`
+   * forever — none of the other admitted states match it, and the lock could
+   * never be retaken, permanently blocking re-provision (the tonight outage).
+   * The two NULL guards keep this STRICTLY off any genuinely-running dedicated
+   * agent: the moment a container is created the provision path stamps
+   * `container_name`/`sandbox_id`, so a live agent can NEVER satisfy this branch
+   * and can NEVER have its lock taken from under it.
    */
   async trySetProvisioning(id: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
@@ -471,7 +483,14 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.id, id),
-          sql`${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'sleeping', 'disconnected', 'error')`,
+          sql`(
+            ${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'sleeping', 'disconnected', 'error')
+            OR (
+              ${agentSandboxes.status} = 'running'
+              AND ${agentSandboxes.container_name} IS NULL
+              AND ${agentSandboxes.sandbox_id} IS NULL
+            )
+          )`,
         ),
       )
       .returning();
