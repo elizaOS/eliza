@@ -224,7 +224,7 @@ export function SettingsRow({
         aria-current={active ? "true" : undefined}
         className={cn(
           "group -mx-2 flex w-[calc(100%+1rem)] min-h-[3rem] items-center rounded-lg px-2 py-2.5 text-left transition-colors",
-          "hover:bg-surface/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40",
+          "hover:bg-surface/70    ",
           active && "bg-accent/10 hover:bg-accent/12",
           disabled && "cursor-not-allowed opacity-50",
           className,

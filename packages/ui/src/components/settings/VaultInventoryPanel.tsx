@@ -966,7 +966,7 @@ const ProfileRow = memo(
       });
     return (
       <li
-        className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? "ring-1 ring-accent/40" : ""}`}
+        className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? " " : ""}`}
       >
         <input
           ref={activateRef}

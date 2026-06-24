@@ -57,7 +57,7 @@ export function CharacterFilters({
             })}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="h-9 rounded-full border-white/15 bg-black/40 pl-9 text-sm text-white placeholder:text-white/35 focus-visible:ring-[var(--brand-orange)]/50 md:h-10"
+            className="h-9 rounded-full border-white/15 bg-black/40 pl-9 text-sm text-white placeholder:text-white/35  md:h-10"
           />
         </div>
         {searchQuery && (
@@ -74,7 +74,7 @@ export function CharacterFilters({
           value={sortBy}
           onValueChange={(v) => onSortChange(v as SortOption)}
         >
-          <SelectTrigger className="h-9 w-full rounded-full border-white/15 bg-black/40 text-sm text-white/70 focus:ring-1 focus:ring-[var(--brand-orange)]/50 sm:w-[160px] md:h-10">
+          <SelectTrigger className="h-9 w-full rounded-full border-white/15 bg-black/40 text-sm text-white/70   sm:w-[160px] md:h-10">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="rounded-sm">

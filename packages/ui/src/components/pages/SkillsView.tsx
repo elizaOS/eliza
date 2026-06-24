@@ -594,7 +594,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         </span>
                         <Input
                           ref={createNameInput.ref}
-                          className="w-full border-border/50 bg-bg/50 focus-visible:ring-accent"
+                          className="w-full border-border/50 bg-bg/50 "
                           placeholder={t("skillsview.eGMyAwesomeSkil")}
                           value={skillCreateName}
                           onChange={(event) =>
@@ -618,7 +618,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         </span>
                         <Input
                           ref={createDescriptionInput.ref}
-                          className="w-full border-border/50 bg-bg/50 focus-visible:ring-accent"
+                          className="w-full border-border/50 bg-bg/50 "
                           placeholder={t("skillsview.BriefDescriptionOf")}
                           value={skillCreateDescription}
                           onChange={(event) =>

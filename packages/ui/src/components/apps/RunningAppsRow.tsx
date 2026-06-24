@@ -50,13 +50,13 @@ const RunningAppCard = memo(function RunningAppCard({
   return (
     <div
       data-testid={`running-app-card-${run.runId}`}
-      className="group relative overflow-hidden rounded-sm border border-accent/35 bg-card/72 transition-all hover:border-accent/55 focus-within:ring-2 focus-within:ring-accent/35"
+      className="group relative overflow-hidden rounded-sm border border-accent/35 bg-card/72 transition-all hover:border-accent/55  "
     >
       <button
         type="button"
         aria-label={`Open ${run.displayName}`}
         aria-busy={isBusy || undefined}
-        className="block w-full text-left focus-visible:outline-none"
+        className="block w-full text-left "
         onClick={() => onOpenRun(run)}
       >
         <AppHero

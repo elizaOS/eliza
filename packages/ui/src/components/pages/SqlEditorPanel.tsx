@@ -40,7 +40,7 @@ export function SqlEditorPanel({
 
       <PagePanel variant="surface" className="mt-4 flex flex-col p-4">
         <div className="relative group">
-          <div className="absolute -inset-[1px] bg-gradient-to-r from-accent/0 via-accent/30 to-accent/0 rounded-sm opacity-0 group-focus-within:opacity-100 blur transition-opacity duration-500" />
+          <div className="absolute -inset-[1px] bg-gradient-to-r from-accent/0 via-accent/30 to-accent/0 rounded-sm opacity-0  blur transition-opacity duration-500" />
           <Textarea
             value={queryText}
             onChange={(e) => setQueryText(e.target.value)}
@@ -52,7 +52,7 @@ export function SqlEditorPanel({
             }}
             placeholder={t("databaseview.SELECTFROMMemori")}
             rows={6}
-            className="w-full relative bg-bg/95 border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-sm focus-visible:ring-accent focus-visible:border-accent custom-scrollbar "
+            className="w-full relative bg-bg/95 border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-sm   custom-scrollbar "
             spellCheck={false}
           />
         </div>

@@ -108,7 +108,7 @@ export default function BscPromoPage() {
                       max={10000}
                       value={amount}
                       onChange={(event) => setAmount(event.target.value)}
-                      className="border-0 bg-transparent px-0 text-base text-black focus:border-0 focus:ring-0"
+                      className="border-0 bg-transparent px-0 text-base text-black  "
                     />
                   </div>
                 </label>

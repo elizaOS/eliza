@@ -19,8 +19,10 @@ decorative box/drop shadows are removed app-wide.
   background, or by bumping translucent content surfaces to a solid token
   (mostly `/95`). Thin chips/badges with a border kept their low translucency
   (they read fine without blur).
-- **Preserved on purpose**: `ring-*` / `focus-visible:` focus + selection
-  indicators (accessibility), `text-shadow`, the `ShaderBackground` inset glow
+- **Also removed in follow-up**: authored `ring-*` utilities and Tailwind
+  focus-state styling (`focus:*`, `focus-visible:*`, `focus-within:*`) so those
+  visual indicators do not reappear in app UI.
+- **Preserved on purpose**: `text-shadow`, the `ShaderBackground` inset glow
   (the app background's lighting — static, painted once, cheap), and the
   `TutorialSpotlight` halo (a *functional* highlight, not decoration).
 
@@ -29,6 +31,9 @@ decorative box/drop shadows are removed app-wide.
 `packages/ui/src/no-backdrop-blur-gate.test.ts` fails the build if any
 `backdrop-filter` / `backdrop-blur` / `supports-[backdrop-filter]` creeps back,
 so the battery win can't silently regress.
+
+`packages/ui/src/no-focus-ring-gate.test.ts` fails if authored UI source adds
+Tailwind `ring-*` utilities or focus-state visual classes back.
 
 ## Legibility verification (screenshots)
 

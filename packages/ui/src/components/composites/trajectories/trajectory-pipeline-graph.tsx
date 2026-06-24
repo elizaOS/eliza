@@ -90,13 +90,13 @@ function PipelineNodeButton({
 
   const statusClasses = {
     active: selected
-      ? "border-primary/40 bg-primary/5 ring-2 ring-primary/30 "
+      ? "border-primary/40 bg-primary/5   "
       : "border-border/40 hover:border-border/60 ",
     skipped: selected
-      ? "border-primary/30 bg-primary/5 ring-2 ring-primary/20 opacity-70"
+      ? "border-primary/30 bg-primary/5   opacity-70"
       : "border-border/25 border-dashed opacity-50 hover:opacity-70",
     error: selected
-      ? "border-danger/40 bg-danger/5 ring-2 ring-danger/30"
+      ? "border-danger/40 bg-danger/5  "
       : "border-danger/30 hover:border-danger/40",
   };
 

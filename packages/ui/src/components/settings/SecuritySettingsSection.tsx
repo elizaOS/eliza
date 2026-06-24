@@ -1043,10 +1043,7 @@ function RemotePasswordSection({
             }}
             disabled={isSubmitting}
             aria-invalid={confirmMismatch}
-            className={cn(
-              "h-11",
-              confirmMismatch && "border-danger focus-visible:border-danger",
-            )}
+            className={cn("h-11", confirmMismatch && "border-danger ")}
           />
           {confirmMismatch && (
             <p className="text-xs text-danger">

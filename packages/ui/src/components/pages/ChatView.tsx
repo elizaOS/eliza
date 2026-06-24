@@ -832,7 +832,7 @@ export function ChatView({
         aria-label="Reset conversation"
         title="Reset conversation"
         onClick={resetConversation}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-txt/30"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt   "
       >
         <RotateCcw className="h-[18px] w-[18px]" aria-hidden />
       </button>
@@ -851,7 +851,7 @@ export function ChatView({
         }
         title={conversationCopied ? "Conversation copied" : "Copy conversation"}
         onClick={handleCopyConversation}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-txt/30"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt   "
       >
         {conversationCopied ? (
           <Check className="h-[18px] w-[18px] text-ok" aria-hidden />

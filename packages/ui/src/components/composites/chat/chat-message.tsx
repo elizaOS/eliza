@@ -643,7 +643,7 @@ export const ChatMessage = memo(function ChatMessage({
                 value={draftText}
                 onChange={(event) => setDraftText(event.target.value)}
                 onKeyDown={handleEditKeyDown}
-                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none   "
                 style={{ fontFamily: "var(--font-chat)" }}
                 aria-label={labels.edit ?? "Edit message"}
                 disabled={savingEdit}

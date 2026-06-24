@@ -656,7 +656,7 @@ export function ConversationsSidebar({
             </DropdownMenuItem>
             <DropdownMenuItem
               data-testid="conv-menu-delete"
-              className="text-danger focus:text-danger"
+              className="text-danger "
               onClick={() => {
                 if (!menuConversation) return;
                 setRenameTarget(null);

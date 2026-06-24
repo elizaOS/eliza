@@ -720,7 +720,7 @@ function WakeWordSection({
           <Input
             ref={addTriggerRef}
             type="text"
-            className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+            className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-xs shadow-none "
             placeholder={t("voiceconfigview.AddTrigger")}
             value={triggerInput}
             onChange={(e) => setTriggerInput(e.target.value)}

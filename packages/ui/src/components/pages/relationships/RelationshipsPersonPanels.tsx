@@ -333,7 +333,7 @@ function OwnerNameEditor({
         }}
         disabled={saving}
         maxLength={60}
-        className="min-w-0 flex-1 rounded-sm border border-accent/40 bg-card/60 px-2 py-1 text-[1.5rem] font-semibold text-txt outline-none focus:border-accent"
+        className="min-w-0 flex-1 rounded-sm border border-accent/40 bg-card/60 px-2 py-1 text-[1.5rem] font-semibold text-txt outline-none "
         aria-label={t("relationships.owner.nameAria", {
           defaultValue: "Owner name",
         })}

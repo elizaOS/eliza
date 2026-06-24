@@ -6,7 +6,7 @@ import { cn } from "../../lib/utils";
 import { Button, type ButtonProps } from "./button";
 
 const inputGroupVariants = cva(
-  "group/input-group relative flex w-full items-stretch rounded-sm border border-input bg-bg text-sm transition-[border-color,box-shadow] focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-bg",
+  "group/input-group relative flex w-full items-stretch rounded-sm border border-input bg-bg text-sm transition-[border-color,box-shadow]     ",
   {
     variants: {
       density: {
@@ -34,7 +34,7 @@ const InputGroup = React.forwardRef<HTMLDivElement, InputGroupProps>(
       className={cn(
         inputGroupVariants({ density }),
         hasError &&
-          "border-destructive focus-within:ring-destructive bg-[color-mix(in_srgb,var(--destructive)_3%,var(--card))]",
+          "border-destructive  bg-[color-mix(in_srgb,var(--destructive)_3%,var(--card))]",
         "data-[align*=block]:flex-col",
         className,
       )}
@@ -98,7 +98,7 @@ const InputGroupInput = React.forwardRef<
     type={type}
     data-slot="input-group-input"
     className={cn(
-      "min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-txt placeholder:text-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+      "min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-txt placeholder:text-muted  disabled:cursor-not-allowed disabled:opacity-50",
       className,
     )}
     {...props}
@@ -114,7 +114,7 @@ const InputGroupTextarea = React.forwardRef<
     ref={ref}
     data-slot="input-group-textarea"
     className={cn(
-      "min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-sm text-txt placeholder:text-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+      "min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-sm text-txt placeholder:text-muted  disabled:cursor-not-allowed disabled:opacity-50",
       className,
     )}
     {...props}

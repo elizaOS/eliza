@@ -222,7 +222,7 @@ export function TelegramAccountConnectorPanel() {
                 }
               }}
               placeholder="+15551234567"
-              className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent focus:outline-none"
+              className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50  "
             />
             <Button
               variant="default"
@@ -254,7 +254,7 @@ export function TelegramAccountConnectorPanel() {
                   }
                 }}
                 placeholder={prompt.placeholder}
-                className="h-8 flex-1 rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                className="h-8 flex-1 rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50  "
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     void submitAuthInput();

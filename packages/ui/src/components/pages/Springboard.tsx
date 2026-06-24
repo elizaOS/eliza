@@ -103,7 +103,7 @@ const IconTile = memo(function IconTile({
           onPointerLeave={clear}
           className={cn(
             "h-16 w-16 overflow-hidden rounded-2xl transition-colors",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
+            "  ",
             tileImage
               ? "bg-bg-accent/40"
               : "grid place-items-center bg-bg-accent/60 text-foreground hover:bg-bg-accent",

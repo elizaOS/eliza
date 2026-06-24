@@ -347,7 +347,7 @@ export function HomeScreen({
                       // Tactile press: a quick scale-down on tap (stilled for
                       // reduce-motion users), plus the glass brightening on hover.
                       "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                      "hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                      "hover:bg-white/[0.14]   ",
                     )}
                   >
                     {/* No chip behind the icon — it sits directly on the glass tile. */}

@@ -432,7 +432,7 @@ function SecretPicker({
         </DialogHeader>
         <Input
           type="text"
-          className="h-12 w-full rounded-none border-0 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none focus-visible:ring-0 font-body"
+          className="h-12 w-full rounded-none border-0 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none  font-body"
           placeholder={t("secretsview.SearchByKeyDescr")}
           aria-label={t("secretsview.SearchByKeyDescr")}
           value={search}
@@ -590,7 +590,7 @@ const SecretCard = memo(function SecretCard({
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
         <Input
           type={isVisible ? "text" : "password"}
-          className="h-9 flex-1 border-border/60 bg-bg px-2.5 py-1.5 text-sm font-mono text-txt focus-visible:border-accent/50 focus-visible:ring-1 focus-visible:ring-accent/30"
+          className="h-9 flex-1 border-border/60 bg-bg px-2.5 py-1.5 text-sm font-mono text-txt   "
           placeholder={
             secret.isSet ? "Enter new value to update" : "Enter value"
           }

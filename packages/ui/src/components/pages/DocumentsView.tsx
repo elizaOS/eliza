@@ -307,7 +307,7 @@ const DocumentListItem = memo(function DocumentListItem({
           </div>
         </div>
       </button>
-      <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
+      <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 ">
         <ConfirmDeleteControl
           triggerClassName="h-7 rounded-sm border border-transparent px-2 text-2xs font-bold !bg-transparent text-danger/70 transition-all hover:!bg-danger/12 hover:border-danger/25 hover:text-danger"
           confirmClassName="h-7 rounded-sm border border-danger/25 bg-danger/14 px-2 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
@@ -1177,7 +1177,7 @@ export function DocumentsView({
     >
       <PagePanel
         variant="inset"
-        className={`${useCompactSelectorRail ? "p-2" : "p-3"} !rounded-none !border-0 !bg-transparent !shadow-none !ring-0`}
+        className={`${useCompactSelectorRail ? "p-2" : "p-3"} !rounded-none !border-0 !bg-transparent !shadow-none `}
       >
         <UploadZone
           fileInputId={fileInputId}
@@ -1191,7 +1191,7 @@ export function DocumentsView({
 
       <PagePanel
         variant="inset"
-        className={`flex flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0 ${
+        className={`flex flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none  ${
           useCompactSelectorRail ? "min-h-[14rem]" : "min-h-[18rem]"
         }`}
       >
@@ -1225,7 +1225,7 @@ export function DocumentsView({
           {!loading && !isShowingSearchResults && documents.length === 0 && (
             <PagePanel.Empty
               variant="inset"
-              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
               description={t("documentsview.UploadFilesOrImpo")}
               title={t("documentsview.NoDocumentsYet")}
             />
@@ -1237,7 +1237,7 @@ export function DocumentsView({
             filteredDocuments.length === 0 && (
               <PagePanel.Empty
                 variant="inset"
-                className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+                className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
                 description={t("documentsview.SearchTips", {
                   defaultValue:
                     "Try a filename, topic, or phrase from the document body.",
@@ -1251,7 +1251,7 @@ export function DocumentsView({
           {isShowingSearchResults && visibleSearchResults.length === 0 && (
             <PagePanel.Empty
               variant="inset"
-              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
               description={t("documentsview.SearchTips", {
                 defaultValue:
                   "Try a filename, topic, or phrase from the document body.",
@@ -1287,7 +1287,7 @@ export function DocumentsView({
   const compactDocumentStrip = !shouldRenderSelectorRail ? (
     <PagePanel
       variant="inset"
-      className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+      className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none "
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
         <ChatSearchHint
@@ -1353,7 +1353,7 @@ export function DocumentsView({
       {isServiceLoading && (
         <PagePanel
           variant="inset"
-          className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+          className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none "
         >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
           {t("documentsview.DocumentServiceIs")}

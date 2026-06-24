@@ -201,7 +201,7 @@ export function ImagePromptInput({
             placeholder="Describe the image you want to generate in detail... The more specific you are, the better the results!"
             disabled={isLoading}
             rows={6}
-            className="w-full rounded-sm border-2 bg-background px-5 py-4 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed resize-none transition-all"
+            className="w-full rounded-sm border-2 bg-background px-5 py-4 text-sm leading-relaxed placeholder:text-muted-foreground/60     disabled:opacity-50 disabled:cursor-not-allowed resize-none transition-all"
           />
         </div>
 
