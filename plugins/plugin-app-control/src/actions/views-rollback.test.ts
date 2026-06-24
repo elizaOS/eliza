@@ -267,7 +267,7 @@ describe("isRollbackRequest", () => {
 	it("does not hijack generic navigation/undo", () => {
 		expect(isRollbackRequest("go back to the home screen")).toBe(false);
 		expect(isRollbackRequest("show me the wallet view")).toBe(false);
-		// bare 'undo' belongs to HOMESCREEN, not the plugin rollback offer.
+		// bare 'undo' belongs to BACKGROUND, not the plugin rollback offer.
 		expect(isRollbackRequest("undo")).toBe(false);
 	});
 });

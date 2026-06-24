@@ -779,18 +779,18 @@ export default scenario({
     },
     {
       kind: "action",
-      name: "reset homescreen scene",
-      text: "Reset the homescreen to default",
-      actionName: "HOMESCREEN",
+      name: "reset background",
+      text: "Reset the background to default",
+      actionName: "BACKGROUND",
       options: { op: "reset" },
-      responseIncludesAny: ["Reset the homescreen to the default crystal ball"],
+      responseIncludesAny: ["Reset the background to the default"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
-          actionName: "HOMESCREEN",
+          actionName: "BACKGROUND",
           parameters: { op: "reset" },
-          responseText: "Reset the homescreen to the default crystal ball.",
+          responseText: "Reset the background to the default.",
           resultFields: {
-            "values.mode": "reset",
+            "values.op": "reset",
           },
         }),
     },
@@ -1217,7 +1217,7 @@ export default scenario({
             search: "",
           },
           {
-            body: { type: "homescreen:apply", payload: { op: "reset" } },
+            body: { type: "background:apply", payload: { op: "reset" } },
             method: "POST",
             pathname: "/api/views/events/broadcast",
             response: { body: { ok: true, delivered: 2 }, status: 200 },
