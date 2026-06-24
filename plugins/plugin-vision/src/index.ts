@@ -10,6 +10,8 @@ import {
   registerOcrWithCoordsService,
 } from "./ocr-with-coords";
 import { visionProvider } from "./provider";
+import { visionRoutes } from "./routes";
+import { ScreenCaptureBridgeService } from "./screen-capture-bridge";
 import { VisionService } from "./service";
 import { wireComputerUseSetOfMarksBridge } from "./set-of-marks-provider";
 
@@ -17,8 +19,9 @@ export const visionPlugin: Plugin = {
   name: "vision",
   description:
     "Provides visual perception through camera integration and scene analysis",
-  services: [VisionService],
+  services: [VisionService, ScreenCaptureBridgeService],
   providers: [visionProvider],
+  routes: visionRoutes,
   actions: [...promoteSubactionsToActions(visionAction)],
   // Self-declared auto-enable: activate when features.vision is enabled OR
   // when media.vision.provider is configured.

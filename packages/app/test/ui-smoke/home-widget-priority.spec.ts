@@ -594,8 +594,35 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
   });
 }
 
+// The home screen plays a staggered `home-enter` fade-up (opacity 0 -> 1,
+// HomeScreen.tsx's HOME_ENTER_CSS) on its content blocks — including the
+// WidgetHost wrapper. A `setViewportSize` restarts that animation from
+// opacity:0, so a screenshot taken immediately after a resize captures the
+// still-invisible cards over the bare ambient field. Wait for every running
+// entrance animation in the home subtree to finish before each capture so the
+// shot shows the populated, fully-opaque widgets.
+async function settleHomeEntrance(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const home = document.querySelector('[data-testid="home-screen"]');
+      if (!home) return false;
+      const animating = (home as HTMLElement)
+        .getAnimations({ subtree: true })
+        .some(
+          (a) =>
+            (a as CSSAnimation).animationName === "home-enter" &&
+            a.playState !== "finished",
+        );
+      return !animating;
+    },
+    undefined,
+    { timeout: 5_000 },
+  );
+}
+
 async function screenshot(page: Page, name: string): Promise<void> {
   await mkdir(SCREENSHOT_DIR, { recursive: true });
+  await settleHomeEntrance(page);
   await captureScreenshotWithQualityRetry(page, name, {
     path: path.join(SCREENSHOT_DIR, `${name}.png`),
     fullPage: false,
@@ -666,13 +693,10 @@ test.describe("home widget priority (#9143)", () => {
     await installReadyDesktopStatusBridge(page);
     await installHomeWidgetRoutes(page);
 
-    // The Views springboard is the default catalog face: it mounts
-    // <WidgetHost slot="home"> above the launcher grid when no search query is
-    // active (ViewCatalog.tsx).
-    await openAppPath(page, "/views");
-    await expect(page.getByRole("heading", { name: "Views" })).toBeVisible({
-      timeout: 30_000,
-    });
+    // The /chat home (HomeScreen) mounts the unified <WidgetHost slot="home">
+    // (#9143). Views was consolidated into the Springboard, and the home-widget
+    // surface now lives on the home page behind the floating chat overlay.
+    await openAppPath(page, "/chat");
 
     const host = page.getByTestId("widget-host-home");
     await expect(host).toBeVisible({ timeout: 30_000 });
@@ -737,5 +761,45 @@ test.describe("home widget priority (#9143)", () => {
       await expect(host.getByTestId(testId)).toBeVisible({ timeout: 15_000 });
     }
     await screenshot(page, "mobile");
+
+    // Springboard capture — the home (widgets) and the springboard (launcher
+    // tiles) are the two pages of HomeSpringboardSurface, sharing one ambient
+    // wallpaper after the Views→Springboard consolidation. Flip to the
+    // springboard page via its navigation event (the same one the in-app edge
+    // swipe dispatches) and screenshot the launcher to capture the consolidated
+    // home↔springboard pair on the same surface.
+    const surface = page.getByTestId("home-springboard-surface");
+    const springboardPage = page.getByTestId(
+      "home-springboard-springboard-page",
+    );
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:home-springboard:navigate", {
+          detail: { page: "springboard" },
+        }),
+      );
+    });
+    await expect(surface).toHaveAttribute("data-page", "springboard", {
+      timeout: 10_000,
+    });
+    await expect(springboardPage).toBeVisible();
+    // The rail slides over 300ms (translate3d) and the springboard tiles play
+    // their own entrance; wait until nothing in the rail subtree is still
+    // animating so the shot shows the settled launcher rather than a mid-slide
+    // frame straddling home + springboard.
+    await page.waitForFunction(
+      () => {
+        const rail = document.querySelector(
+          '[data-testid="home-springboard-rail"]',
+        );
+        if (!rail) return false;
+        return !(rail as HTMLElement)
+          .getAnimations({ subtree: true })
+          .some((a) => a.playState === "running");
+      },
+      undefined,
+      { timeout: 5_000 },
+    );
+    await screenshot(page, "springboard");
   });
 });

@@ -26,12 +26,26 @@ export default scenario({
       name: "schedule-nightly-block",
       room: "main",
       text: "Block apps after 10pm every night until I go to sleep.",
+      forbiddenActions: ["APP_BLOCK", "WEBSITE_BLOCK", "BLOCK"],
+      assertResponse: (text) => {
+        if (!/\?/.test(text)) {
+          return "expected the response to ask a clarification question";
+        }
+        if (!/\b(app|apps|application|applications)\b/i.test(text)) {
+          return "expected the response to clarify which apps to block";
+        }
+        if (
+          !/\b(which|what|specific|include|choose|pick|select)\b/i.test(text)
+        ) {
+          return "expected the response to ask for the specific apps to include";
+        }
+      },
     },
   ],
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "APP_BLOCK",
+      actionName: "REPLY",
       minCount: 1,
     },
   ],

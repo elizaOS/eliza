@@ -66,7 +66,7 @@ jobs:
         run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
 
       - name: Cache upstream Debian image
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
         with:
           path: packages/os/linux/vm/disk-base/.cache
           key: elizaos-vm-upstream-${{ hashFiles('packages/os/linux/vm/disk-base/mmdebstrap.recipe') }}

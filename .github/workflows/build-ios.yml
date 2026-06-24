@@ -51,7 +51,7 @@ jobs:
           xcodebuild -version
 
       - name: Cache CocoaPods
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
         with:
           path: ${{ env.APP_DIR }}/ios/App/Pods
           key: pods-${{ runner.os }}-${{ hashFiles('packages/app-core/platforms/ios/App/Podfile', 'packages/app/capacitor.config.ts', 'packages/app/package.json') }}

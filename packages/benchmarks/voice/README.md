@@ -14,6 +14,15 @@ in `reports/`.
 ELIZA_VOICE_CLASSIFIER_LIB=<repo>/build-darwin/libvoice_classifier.dylib \
   bun packages/benchmarks/voice/three-voice-e2e-real.mjs
 
+# Provisioned CI real matrix: fused lib + GGUFs + generated speech.
+# Writes DER/WER/echo-rejection/owner-security JSON + Markdown reports.
+ELIZA_ASR_BUNDLE=<bundle> \
+ELIZA_INFERENCE_LIBRARY=<libelizainference> \
+ELIZA_SPEAKER_GGUF=<wespeaker.gguf> \
+ELIZA_DIARIZ_GGUF=<pyannote.gguf> \
+ELEVENLABS_API_KEY=<key> \
+  bun packages/benchmarks/voice/voice-real-ci-matrix.mjs
+
 # Pure-JS smoke test — no model bundle required
 bun packages/benchmarks/voice/owner-voice-first-run.mjs
 bun packages/benchmarks/voice/test-diarizer.mjs

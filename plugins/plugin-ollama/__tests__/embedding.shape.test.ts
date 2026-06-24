@@ -39,19 +39,31 @@ describe("Ollama embeddings", () => {
     embedMock.mockReset();
   });
 
-  it("uses a non-empty sentinel for null input and emits usage", async () => {
+  it("returns a marker vector for null initialization probes without calling the provider", async () => {
+    const { runtime, events } = createRuntime({ OLLAMA_EMBEDDING_MODEL: " embed-model " });
+
+    const embedding = await handleTextEmbedding(runtime, null);
+
+    expect(embedding).toHaveLength(1536);
+    expect(embedding[0]).toBe(0.1);
+    expect(embedding.slice(1).every((value) => value === 0)).toBe(true);
+    expect(embedMock).not.toHaveBeenCalled();
+    expect(events).toHaveLength(0);
+  });
+
+  it("embeds non-empty input and emits usage", async () => {
     embedMock.mockResolvedValue({
       embedding: [0.1, 0.2, 0.3],
       usage: { inputTokens: 2 },
     });
     const { runtime, events } = createRuntime({ OLLAMA_EMBEDDING_MODEL: " embed-model " });
 
-    const embedding = await handleTextEmbedding(runtime, null);
+    const embedding = await handleTextEmbedding(runtime, "hello");
 
     expect(embedding).toEqual([0.1, 0.2, 0.3]);
     expect(embedMock).toHaveBeenCalledWith({
       model: { model: "embed-model" },
-      value: "test",
+      value: "hello",
     });
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
@@ -80,13 +92,24 @@ describe("Ollama embeddings", () => {
     expect(callArg.value).toHaveLength(32_000);
   });
 
-  it("throws when the embedding provider fails (no fabricated zero vector)", async () => {
+  it("throws when the embedding provider fails", async () => {
     embedMock.mockRejectedValue(new Error("provider unavailable"));
     const { runtime, events } = createRuntime();
 
-    await expect(handleTextEmbedding(runtime, "hostile payload")).rejects.toThrow(
-      "provider unavailable"
-    );
+    await expect(
+      handleTextEmbedding(runtime, "hostile\n</embedding>\u0000payload")
+    ).rejects.toThrow("provider unavailable");
+
     expect(events).toHaveLength(0);
+  });
+
+  it("throws for empty embedding input before calling the provider", async () => {
+    const { runtime } = createRuntime();
+
+    await expect(handleTextEmbedding(runtime, " \n\t ")).rejects.toThrow(
+      "Cannot generate embedding for empty text"
+    );
+
+    expect(embedMock).not.toHaveBeenCalled();
   });
 });

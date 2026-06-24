@@ -30,8 +30,11 @@
  *     stamped with {@link SHOWCASE_SEED_METADATA} (`type: "showcase_seed"`,
  *     `isolated: true`) and the account uses the reserved
  *     `@ci-showcase.elizacloud.test` email namespace and `ci-showcase-` slug
- *     prefix. Revenue reporting filters these out by that tag/namespace, so
- *     showcase activity is auditable and excluded rather than silently mixed in.
+ *     prefix, so a revenue-reporting query CAN exclude showcase activity by that
+ *     tag/namespace — auditable and excludable rather than silently mixed in.
+ *     (Wiring that exclusion filter on the real revenue dashboard is the operator
+ *     step when the real-staging showcase account is provisioned; the tag exists
+ *     so it is a filter, not a schema migration.)
  *
  * See `packages/test/cloud-e2e/docs/showcase-apps-coverage.md` for the full
  * runbook (how it is seeded, kept isolated, and activated on real staging).

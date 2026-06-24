@@ -1,0 +1,153 @@
+name: Build Example App Images
+
+# Builds + pushes the example-app showcase images consumed by the Apps/Product 2
+# showcase e2e loop. Right now that's just EDAD; future example apps (e.g. the
+# clone-ur-crush app) get their own job here once they have a standalone build.
+#
+# The showcase spec (packages/test/cloud-e2e/tests/example-apps-showcase.spec.ts)
+# deploys `ghcr.io/elizaos/example-edad:showcase` via the prebuilt-image path
+# (app.metadata.imageTag → app-deploy-runner.ts), but nothing in the repo built
+# that image. This workflow is that missing piece.
+#
+# Why we bundle on the runner instead of building ./Dockerfile from scratch:
+#   server.ts imports `@elizaos/cloud-sdk` (workspace:*). That only resolves
+#   inside the monorepo, and the SDK's dist/ is gitignored. A standalone docker
+#   build of ./Dockerfile would crash at boot ("Cannot find package
+#   @elizaos/cloud-sdk"). Instead we run `bun build server.ts` on the runner —
+#   where the workspace IS resolvable — which inlines the SDK into a single
+#   self-contained server.js (verified: 0 residual @elizaos/cloud-sdk imports),
+#   then ship that with Dockerfile.bundle from a tiny context. Same pre-build
+#   sequence build-agent-image.yml uses to make the cloud-sdk dist available.
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "packages/examples/cloud/edad/**"
+      - "packages/cloud-sdk/**"
+      - ".github/workflows/build-example-app-images.yml"
+  workflow_dispatch:
+
+# One in-flight build per ref; a newer push cancels the stale one (avoids the
+# queue pile-up the agent-image build learned the hard way).
+concurrency:
+  group: build-example-edad-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: elizaos/example-edad
+
+# Least privilege by default; the build job opts into packages: write.
+permissions:
+  contents: read
+
+jobs:
+  build-edad:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Cache Bun install
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-canary-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-canary-
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        # Creates the @elizaos/cloud-sdk workspace symlink edad resolves through.
+        # --no-frozen-lockfile mirrors build-agent-image.yml: a downstream
+        # lockfile drift on develop shouldn't short-circuit the install.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: bun install --no-frozen-lockfile
+
+      - name: Build @elizaos/cloud-sdk
+        # The SDK's `exports.import` points at ./dist/index.js, which is
+        # gitignored (absent on a cold checkout). Without this build, the
+        # `bun build` below fails to resolve "@elizaos/cloud-sdk" even with the
+        # workspace symlink in place. build-agent-image.yml builds this same
+        # package for the same reason.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          cd packages/cloud-sdk
+          bun install --no-frozen-lockfile --ignore-scripts
+          bun run build
+
+      - name: Bundle the EDAD server (inline the workspace SDK)
+        # Produces a single self-contained server.js with @elizaos/cloud-sdk
+        # inlined — no workspace dep, no bun install needed in the image. Output
+        # goes to ./dist (already gitignored, same dir edad's `build` script
+        # uses); dist/ (server.js + public/) is the tiny docker build context.
+        run: |
+          set -euo pipefail
+          cd packages/examples/cloud/edad
+          rm -rf ./dist
+          bun build server.ts --outdir=./dist --target=bun --format=esm
+          cp -r public ./dist/public
+          test -f ./dist/server.js
+          # Guard: the bundle must NOT still reference the workspace dep, else
+          # the image would crash at boot.
+          if grep -q "@elizaos/cloud-sdk" ./dist/server.js; then
+            echo "::error::server.js still references @elizaos/cloud-sdk — bundle did not inline the workspace dep" >&2
+            exit 1
+          fi
+
+      - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5
+
+      - id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # :showcase    → the moving tag the showcase spec deploys
+          # :sha-<short> → immutable per-commit tag (mirrors build-agent-image.yml)
+          tags: |
+            type=raw,value=showcase
+            type=sha,prefix=sha-,format=short
+
+      - id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          context: packages/examples/cloud/edad/dist
+          file: packages/examples/cloud/edad/Dockerfile.bundle
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Make image public
+        # The deploy puller pulls anonymously; keep the package public.
+        # Idempotent — patching to public when already public is a no-op.
+        run: |
+          curl \
+            -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/orgs/elizaOS/packages/container/example-edad/visibility \
+            -d '{"visibility":"public"}' || \
+          echo "::warning::Could not set package visibility to public — set it once manually in the GHCR package settings"

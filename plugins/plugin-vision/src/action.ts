@@ -6,6 +6,7 @@ import {
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
+  isMobilePlatform,
   logger,
   type Media,
   type Memory,
@@ -13,6 +14,10 @@ import {
 } from "@elizaos/core";
 import { buildGetScreen, summarizeGetScreen } from "./get-screen";
 import { assertValidVisionImageBuffer } from "./image-input";
+import {
+  SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+  type ScreenCaptureBridgeService,
+} from "./screen-capture-bridge";
 import type { VisionService } from "./service";
 import { VisionMode } from "./types";
 
@@ -412,12 +417,23 @@ interface ComputerUseLike {
  * Acquire a fresh screen frame for GET_SCREEN. Prefers plugin-computeruse's
  * verified OS screenshot (which also drives the CUA loop); falls back to the
  * vision service's own screen capture. Returns null when neither is available.
+ *
+ * On mobile the agent has no desktop capture sources; the renderer-pulled
+ * ScreenCaptureBridgeService is the ONLY source (the renderer polls, captures
+ * via the Capacitor ScreenCapture MediaProjection plugin, and POSTs the frame
+ * back). Return its result directly — do not fall through to desktop sources.
  */
 async function acquireScreenFrame(runtime: IAgentRuntime): Promise<{
   pngBytes: Uint8Array;
   displayId: number;
   capturedAt: number;
 } | null> {
+  if (isMobilePlatform()) {
+    const bridge = runtime.getService<ScreenCaptureBridgeService>(
+      SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+    );
+    return bridge ? await bridge.requestFrame() : null;
+  }
   const cu = runtime.getService("computeruse") as ComputerUseLike | null;
   if (cu?.executeCommand) {
     try {

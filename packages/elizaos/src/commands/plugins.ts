@@ -94,7 +94,7 @@ export async function submitPluginToRegistry(
   }
 
   if (!options.skipValidation) {
-    validatePublishedPackage(metadata.package);
+    await validatePublishedPackage(metadata.package);
     validateGithubRepository(metadata.repository);
   }
 
@@ -316,8 +316,33 @@ function sanitizeBranchPart(packageName: string): string {
     .slice(0, 80);
 }
 
-function validatePublishedPackage(packageName: string): void {
-  ensureCommand("npm", ["view", packageName, "version"]);
+async function validatePublishedPackage(packageName: string): Promise<void> {
+  // npm is `npm.cmd` on Windows, and Node cannot spawn a .cmd without
+  // `shell: true` (ENOENT/EINVAL), so `npm view` fails there. On Windows,
+  // verify publication via the public registry directly; keep `npm view`
+  // unchanged elsewhere.
+  if (process.platform !== "win32") {
+    ensureCommand("npm", ["view", packageName, "version"]);
+    return;
+  }
+  const encoded = packageName.replace(/\//g, "%2f");
+  const res = await fetch(`https://registry.npmjs.org/${encoded}`, {
+    headers: { accept: "application/vnd.npm.install-v1+json" },
+  }).catch((err: unknown) => {
+    throw new Error(
+      `Failed to reach the npm registry to validate ${packageName}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  });
+  if (res.status === 404) {
+    throw new Error(`Package ${packageName} is not published to npm.`);
+  }
+  if (!res.ok) {
+    throw new Error(
+      `npm registry returned status ${res.status} validating ${packageName}.`,
+    );
+  }
 }
 
 function validateGithubRepository(repository: string): void {

@@ -112,7 +112,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       "move",
       "go",
     ],
-    deepLink: { label: "Open Views", tab: "views" },
+    deepLink: { label: "Open Springboard", tab: "views" },
   },
   {
     id: "navigate-by-talking",
@@ -429,7 +429,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       "tasks",
       "actions",
     ],
-    deepLink: { label: "Browse Views", tab: "views" },
+    deepLink: { label: "Open Springboard", tab: "views" },
   },
   {
     id: "what-are-skills",
@@ -450,19 +450,21 @@ export const HELP_ENTRIES: HelpEntry[] = [
   {
     id: "views-and-apps",
     category: "What Eliza can do",
-    question: "What are Views and Apps?",
+    question: "What is the Springboard?",
     answer:
-      "Views and Apps are the screens Eliza can show you — things like your tasks, documents, memories, settings, or specialized tools. You can open them from the home tiles or by asking the chat; Eliza can also open them for you.",
+      "The Springboard is the launcher for every screen Eliza can show you — things like your tasks, documents, memories, settings, or specialized tools. Swipe right from the home dashboard to reach it, open any screen from there or by asking the chat, and Eliza can also open them for you.",
     keywords: [
+      "springboard",
       "views",
       "apps",
       "screens",
       "tools",
       "tiles",
+      "launcher",
       "surfaces",
       "what",
     ],
-    deepLink: { label: "Open Views", tab: "views" },
+    deepLink: { label: "Open Springboard", tab: "views" },
   },
 
   // ── Troubleshooting ───────────────────────────────────────────────────────
