@@ -5,6 +5,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { LifeOpsService } from "@elizaos/plugin-personal-assistant/lifeops/service";
 import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
@@ -165,6 +166,232 @@ function matchesContentMatcher(actual: unknown, expected: unknown): boolean {
     );
   }
   return valuesEqual(actual, expected);
+}
+
+function normalizeComparableText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function textMatchesLoose(actual: string, expected: string): boolean {
+  const normalizedActual = normalizeComparableText(actual);
+  const normalizedExpected = normalizeComparableText(expected);
+  return (
+    normalizedActual === normalizedExpected ||
+    normalizedActual.includes(normalizedExpected) ||
+    normalizedExpected.includes(normalizedActual)
+  );
+}
+
+function recordHasEntries(value: unknown): boolean {
+  const record = toRecord(value);
+  return Boolean(record && Object.keys(record).length > 0);
+}
+
+type DefinitionCountCheck = {
+  title?: string;
+  titleAliases?: string[];
+  delta?: number;
+  cadenceKind?: string;
+  requiredSlots?: Array<{ label?: string; minuteOfDay?: number }>;
+  requiredWeekdays?: number[];
+  requiredWindows?: string[];
+  requiredEveryMinutes?: number;
+  requiredMaxOccurrencesPerDay?: number;
+  expectedTimeZone?: string;
+  requireReminderPlan?: boolean;
+  websiteAccess?: Record<string, unknown>;
+};
+
+type DefinitionRecordLike = {
+  definition: Record<string, unknown>;
+  reminderPlan: unknown;
+};
+
+type DefinitionListingService = {
+  listDefinitions(): Promise<unknown[]>;
+};
+
+function isDefinitionListingService(
+  value: unknown,
+): value is DefinitionListingService {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  if (!("listDefinitions" in value)) {
+    return false;
+  }
+  return typeof value.listDefinitions === "function";
+}
+
+function definitionRecordFromValue(
+  value: unknown,
+): DefinitionRecordLike | null {
+  const record = toRecord(value);
+  if (!record) {
+    return null;
+  }
+  const definition = toRecord(record.definition) ?? record;
+  if (typeof definition.title !== "string") {
+    return null;
+  }
+  return {
+    definition,
+    reminderPlan: record.reminderPlan ?? definition.reminderPlan ?? null,
+  };
+}
+
+function definitionTitleMatches(
+  definition: Record<string, unknown>,
+  check: DefinitionCountCheck,
+): boolean {
+  if (typeof check.title !== "string" || check.title.trim().length === 0) {
+    return false;
+  }
+  if (typeof definition.title !== "string") {
+    return false;
+  }
+  const actualTitle = definition.title;
+  const accepted = [check.title, ...(check.titleAliases ?? [])];
+  return accepted.some((title) => textMatchesLoose(actualTitle, title));
+}
+
+function requiredSlotMatches(
+  actualSlot: unknown,
+  expectedSlot: { label?: string; minuteOfDay?: number },
+): boolean {
+  const actual = toRecord(actualSlot);
+  if (!actual) {
+    return false;
+  }
+  if (
+    typeof expectedSlot.minuteOfDay === "number" &&
+    actual.minuteOfDay !== expectedSlot.minuteOfDay
+  ) {
+    return false;
+  }
+  if (typeof expectedSlot.label === "string") {
+    return (
+      typeof actual.label === "string" &&
+      textMatchesLoose(actual.label, expectedSlot.label)
+    );
+  }
+  return true;
+}
+
+function arrayContainsAllValues(actual: unknown, expected: unknown[]): boolean {
+  if (!Array.isArray(actual)) {
+    return false;
+  }
+  return expected.every((expectedValue) =>
+    actual.some((actualValue) =>
+      looselyMatchesValue(actualValue, expectedValue),
+    ),
+  );
+}
+
+function looselyMatchesValue(actual: unknown, expected: unknown): boolean {
+  if (Array.isArray(expected)) {
+    return arrayContainsAllValues(actual, expected);
+  }
+  const expectedRecord = toRecord(expected);
+  if (expectedRecord) {
+    const actualRecord = toRecord(actual);
+    return Boolean(
+      actualRecord &&
+        Object.entries(expectedRecord).every(([key, value]) =>
+          looselyMatchesValue(actualRecord[key], value),
+        ),
+    );
+  }
+  if (typeof expected === "string") {
+    return (
+      typeof actual === "string" &&
+      normalizeComparableText(actual) === normalizeComparableText(expected)
+    );
+  }
+  return actual === expected;
+}
+
+function definitionMismatchReasons(
+  record: DefinitionRecordLike,
+  check: DefinitionCountCheck,
+): string[] {
+  const reasons: string[] = [];
+  const cadence = toRecord(record.definition.cadence);
+  if (
+    typeof check.cadenceKind === "string" &&
+    cadence?.kind !== check.cadenceKind
+  ) {
+    reasons.push(
+      `cadence.kind expected ${check.cadenceKind}, saw ${String(cadence?.kind ?? "missing")}`,
+    );
+  }
+  if (
+    typeof check.expectedTimeZone === "string" &&
+    record.definition.timezone !== check.expectedTimeZone
+  ) {
+    reasons.push(
+      `timezone expected ${check.expectedTimeZone}, saw ${String(record.definition.timezone ?? "missing")}`,
+    );
+  }
+  if (Array.isArray(check.requiredSlots) && check.requiredSlots.length > 0) {
+    const slots = Array.isArray(cadence?.slots) ? cadence.slots : [];
+    for (const slot of check.requiredSlots) {
+      if (!slots.some((actualSlot) => requiredSlotMatches(actualSlot, slot))) {
+        reasons.push(`missing required slot ${JSON.stringify(slot)}`);
+      }
+    }
+  }
+  if (
+    Array.isArray(check.requiredWeekdays) &&
+    check.requiredWeekdays.length > 0 &&
+    !arrayContainsAllValues(cadence?.weekdays, check.requiredWeekdays)
+  ) {
+    reasons.push(`weekdays missing [${check.requiredWeekdays.join(", ")}]`);
+  }
+  if (
+    Array.isArray(check.requiredWindows) &&
+    check.requiredWindows.length > 0 &&
+    !arrayContainsAllValues(cadence?.windows, check.requiredWindows)
+  ) {
+    reasons.push(`windows missing [${check.requiredWindows.join(", ")}]`);
+  }
+  if (
+    typeof check.requiredEveryMinutes === "number" &&
+    cadence?.everyMinutes !== check.requiredEveryMinutes
+  ) {
+    reasons.push(
+      `everyMinutes expected ${check.requiredEveryMinutes}, saw ${String(cadence?.everyMinutes ?? "missing")}`,
+    );
+  }
+  if (
+    typeof check.requiredMaxOccurrencesPerDay === "number" &&
+    cadence?.maxOccurrencesPerDay !== check.requiredMaxOccurrencesPerDay
+  ) {
+    reasons.push(
+      `maxOccurrencesPerDay expected ${check.requiredMaxOccurrencesPerDay}, saw ${String(cadence?.maxOccurrencesPerDay ?? "missing")}`,
+    );
+  }
+  if (typeof check.requireReminderPlan === "boolean") {
+    const hasReminderPlan =
+      recordHasEntries(record.reminderPlan) ||
+      (typeof record.definition.reminderPlanId === "string" &&
+        record.definition.reminderPlanId.length > 0);
+    if (hasReminderPlan !== check.requireReminderPlan) {
+      reasons.push(
+        `reminderPlan expected ${check.requireReminderPlan}, saw ${hasReminderPlan}`,
+      );
+    }
+  }
+  if (check.websiteAccess) {
+    const websiteAccess = toRecord(record.definition.websiteAccess);
+    if (!websiteAccess) {
+      reasons.push("websiteAccess missing");
+    } else if (!looselyMatchesValue(websiteAccess, check.websiteAccess)) {
+      reasons.push("websiteAccess did not match expected fields");
+    }
+  }
+  return reasons;
 }
 
 type GmailMockRequest = {
@@ -592,6 +819,73 @@ registerFinalCheckHandler("memoryExists", (check, { ctx }) => {
     detail: "no matching memory write observed",
   };
 });
+
+registerFinalCheckHandler(
+  "definitionCountDelta",
+  async (check, { runtime }) => {
+    const definitionCheck = check as DefinitionCountCheck;
+    if (
+      typeof definitionCheck.title !== "string" ||
+      definitionCheck.title.trim().length === 0
+    ) {
+      return {
+        status: "failed",
+        detail: "definitionCountDelta requires a non-empty title",
+      };
+    }
+    const service = new LifeOpsService(runtime);
+    if (!isDefinitionListingService(service)) {
+      return {
+        status: "failed",
+        detail: "LifeOpsService does not expose listDefinitions()",
+      };
+    }
+    const records = (await service.listDefinitions())
+      .map(definitionRecordFromValue)
+      .filter((record): record is DefinitionRecordLike => record !== null);
+    const titleMatches = records.filter((record) =>
+      definitionTitleMatches(record.definition, definitionCheck),
+    );
+    const matched = titleMatches.filter(
+      (record) =>
+        definitionMismatchReasons(record, definitionCheck).length === 0,
+    );
+    const delta =
+      typeof definitionCheck.delta === "number" ? definitionCheck.delta : 1;
+    if (delta <= 0) {
+      if (matched.length === 0) {
+        return {
+          status: "passed",
+          detail: `no matching definition for "${definitionCheck.title}"`,
+        };
+      }
+      return {
+        status: "failed",
+        detail: `expected no matching definition for "${definitionCheck.title}", saw ${matched.length}`,
+      };
+    }
+    if (matched.length >= delta) {
+      return {
+        status: "passed",
+        detail: `${matched.length} matching definition(s) for "${definitionCheck.title}"`,
+      };
+    }
+    const mismatchDetails = titleMatches
+      .map((record) => {
+        const title = String(record.definition.title ?? "(untitled)");
+        const reasons = definitionMismatchReasons(record, definitionCheck);
+        return `${title}: ${reasons.join("; ") || "matched"}`;
+      })
+      .join(" | ");
+    return {
+      status: "failed",
+      detail:
+        titleMatches.length === 0
+          ? `expected ${delta} matching definition(s) for "${definitionCheck.title}", saw none among ${records.length} definition(s)`
+          : `expected ${delta} matching definition(s) for "${definitionCheck.title}", saw ${matched.length}. Candidate mismatches: ${mismatchDetails}`,
+    };
+  },
+);
 
 registerFinalCheckHandler("approvalRequestExists", (check, { ctx }) => {
   if (ctx.approvalRequests === undefined) {

@@ -64,6 +64,22 @@ export const FINAL_CHECK_KEYS = new Map(
       "expected",
       "minCount",
     ],
+    definitionCountDelta: [
+      "type",
+      "name",
+      "title",
+      "titleAliases",
+      "delta",
+      "cadenceKind",
+      "requiredSlots",
+      "requiredWeekdays",
+      "requiredWindows",
+      "requiredEveryMinutes",
+      "requiredMaxOccurrencesPerDay",
+      "expectedTimeZone",
+      "requireReminderPlan",
+      "websiteAccess",
+    ],
   }).map(([type, keys]) => [type, new Set(keys)]),
 );
 
