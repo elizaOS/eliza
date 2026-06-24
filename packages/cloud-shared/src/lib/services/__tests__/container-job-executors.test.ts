@@ -163,6 +163,35 @@ describe("executeContainerProvision", () => {
       }),
     ).rejects.toThrow("not found");
   });
+
+  test("route-add failure AFTER markRunning keeps the row running, never failed", async () => {
+    const prev = process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+    process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = "apps.elizacloud.ai";
+    try {
+      const { events, store } = fakeStore();
+      const { provider } = fakeProvider();
+      await expect(
+        executeContainerProvision(
+          job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+          {
+            provider,
+            store,
+            // Caddy unreachable: the route add fails AFTER the container is running.
+            onRouteAdded: async () => {
+              throw new Error("caddy unreachable");
+            },
+          },
+        ),
+      ).rejects.toThrow("caddy unreachable");
+      // The container WAS marked running (it is live), and was NOT flipped to
+      // error — a live, working container must never look reapable/failed.
+      expect(events.some((e) => e.op === "running")).toBe(true);
+      expect(events.some((e) => e.op === "error")).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+      else process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = prev;
+    }
+  });
 });
 
 describe("executeContainerDelete / restart / logs", () => {

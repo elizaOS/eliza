@@ -11,6 +11,7 @@
  * or repo directly.
  */
 
+import { logger } from "../utils/logger";
 import type { AppContainerProvider } from "./app-container-provider";
 import { deriveAppPublicUrl } from "./app-url";
 import {
@@ -105,8 +106,12 @@ export async function executeContainerProvision(
     port: row.port,
     environmentVars: row.environmentVars,
   });
+  // PROVISION + markRunning: a failure HERE means no container is running, so the
+  // row is a true provision failure -> markError (reapable/retryable). Only this
+  // span is allowed to flip the row to `failed`.
+  let result: Awaited<ReturnType<typeof deps.provider.provision>>;
   try {
-    const result = await deps.provider.provision({
+    result = await deps.provider.provision({
       appId: row.appId,
       containerName: row.containerName,
       input,
@@ -117,10 +122,20 @@ export async function executeContainerProvision(
       network: result.network,
       nodeHost: result.nodeHost,
     });
+  } catch (error) {
+    await deps.store.markError(containerId, error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+
+  // POST-markRunning: the container IS running. Registering the ingress route +
+  // flipping the app to `deployed` are follow-up steps; a failure here must NOT
+  // flip the row to `failed` (that would make a live, working container look
+  // reapable). Leave the status `running` and let a reconciler or a redeploy
+  // re-add the route. We rethrow so the job retries — but the row stays `running`.
+  try {
     // Register the ingress route so `<shortid>.<base>` reaches this container,
     // plus the app's verified custom domains (best-effort — a domain-lookup
     // failure must NOT fail the deploy; the app just keeps its wildcard host).
-    // Inside the try: an add failure marks the container errored (no silent 502).
     const endpoint = deriveAppPublicUrl(containerId);
     if (endpoint && deps.onRouteAdded) {
       const extraHostnames = deps.listVerifiedAppHostnames
@@ -138,7 +153,14 @@ export async function executeContainerProvision(
       await deps.markAppDeployed(row.appId, endpoint?.url ?? null);
     }
   } catch (error) {
-    await deps.store.markError(containerId, error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn("[ContainerExecutor] route-add/markAppDeployed failed after markRunning", {
+      containerId,
+      appId: row.appId,
+      error: message,
+    });
+    // Rethrow to retry the job — but the container row stays `running`, never
+    // `failed` (it is a live container; only the post-provision wiring failed).
     throw error;
   }
 }

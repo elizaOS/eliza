@@ -26,9 +26,11 @@
  *
  * STATUS VOCAB (containers.ContainerStatus): pending | building | deploying |
  *   running | stopped | failed | deleting | deleted. We use:
- *     markRunning -> "running", markError -> "failed", markDeleted -> "stopped".
- *   ("stopped" keeps the partial unique index active_project_volume_unique happy:
- *   its predicate excludes status IN ('failed','stopped').)
+ *     markRunning -> "running", markError -> "failed", markDeleted -> "deleted".
+ *   ("deleted" is the terminal, non-quota-counting state — the quota readers
+ *   exclude only `deleting`/`deleted`, so a retired row stops counting against
+ *   the org's container cap. App containers carry no `volume_path`, so the
+ *   active_project_volume_unique index never applies to them.)
  *
  * SERVER + NODE: this is a plain DB adapter (no `pg`), but it is wired into the
  * node daemon's container-executor deps (the daemon runs the provision against a
@@ -150,9 +152,13 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
   }
 
   async markDeleted(containerId: string): Promise<void> {
-    // "stopped" rather than the terminal "deleted" so a redeploy can reuse the
-    // row; both satisfy the active_project_volume_unique predicate exclusion.
-    await containersRepository.updateStatus(containerId, "stopped");
+    // Terminal "deleted" — the daemon has actually removed the container, so the
+    // row must reach a state that does NOT count toward the per-org container
+    // quota. `checkQuota`/`createWithQuotaCheck` exclude only `deleting`/`deleted`;
+    // a `stopped` row would keep leaking quota across redeploys (the daemon never
+    // reuses this row — each deploy creates a fresh one). App containers carry no
+    // `volume_path`, so the active_project_volume_unique index never applies here.
+    await containersRepository.updateStatus(containerId, "deleted");
   }
 
   async markError(containerId: string, error: string): Promise<void> {

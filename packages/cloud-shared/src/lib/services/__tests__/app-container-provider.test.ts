@@ -75,6 +75,46 @@ describe("AppContainerProvider.provision", () => {
     expect(calls).toContain("docker start 'app-nubilio'");
   });
 
+  test("removes any stale container by name BEFORE docker create (redeploy self-heal)", async () => {
+    const { calls, ssh } = recordingSsh();
+    const provider = new AppContainerProvider({ ssh, allocateHostPort: async () => 49001 });
+
+    await provider.provision({
+      appId: APP_ID,
+      containerName: "app-nubilio",
+      input: INPUT,
+    });
+
+    const rmIdx = calls.indexOf("docker rm -f 'app-nubilio'");
+    const createIdx = calls.findIndex((c) => c.startsWith("docker create"));
+    // A best-effort `docker rm -f <name>` is issued, and it precedes the create
+    // so the deterministic `app-<slug>` name is free (no 'name already in use').
+    expect(rmIdx).toBeGreaterThanOrEqual(0);
+    expect(createIdx).toBeGreaterThanOrEqual(0);
+    expect(rmIdx).toBeLessThan(createIdx);
+  });
+
+  test("a failing pre-clean rm does not abort the provision (best-effort)", async () => {
+    const calls: string[] = [];
+    const ssh: AppContainerSsh = {
+      async exec(command) {
+        calls.push(command);
+        if (command.startsWith("docker rm -f")) throw new Error("no such container");
+        if (command.startsWith("docker create")) return "cid";
+        return "";
+      },
+    };
+    const provider = new AppContainerProvider({ ssh, allocateHostPort: async () => 49001 });
+    const result = await provider.provision({
+      appId: APP_ID,
+      containerName: "app-nubilio",
+      input: INPUT,
+    });
+    // rm threw but the create still ran and the provision succeeded.
+    expect(result.containerId).toBe("cid");
+    expect(calls.some((c) => c.startsWith("docker create"))).toBe(true);
+  });
+
   test("picks a host port not already in use on the node (collision-safe)", async () => {
     // node already has 30000 published; allocator hands out 30000 then 31000
     const ports = [30000, 31000];

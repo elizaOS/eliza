@@ -153,6 +153,18 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
     const containerName = containerNameForApp(appId);
 
     const enqueuer = new ContainerJobEnqueuer(this.deps.jobsWriter);
+
+    // Retire the app's pre-existing container row(s) BEFORE creating the new one.
+    // Every deploy creates a fresh `containers` row under the same project key
+    // (project_name = appId); without retiring the old ones, their stale
+    // `stopped`/`failed` rows keep counting against the per-org container quota
+    // forever (the quota readers exclude only `deleting`/`deleted`). We flip each
+    // prior row to `deleting` immediately (so it stops counting before the new
+    // row's quota check runs) and enqueue a CONTAINER_DELETE so the daemon
+    // removes the old container + releases its node slot. Net effect: at most one
+    // active row per app.
+    await this.retirePriorContainers(app.organization_id, appId, enqueuer);
+
     const createContainerRow =
       this.deps.createContainerRow ??
       (async (row: NewAppContainerRow) => {
@@ -205,6 +217,43 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       jobId: result.jobId,
       image,
     });
+  }
+
+  /**
+   * Retire every pre-existing container row for an app so stale rows from prior
+   * deploys stop counting against the per-org container quota (and the old
+   * containers get torn down on the node). Each prior row is flipped to
+   * `deleting` immediately — a non-quota-counting state — so the quota count
+   * drops BEFORE the new row's createWithQuotaCheck runs (the enqueued
+   * CONTAINER_DELETE is async and would otherwise race the new row's check). The
+   * daemon's CONTAINER_DELETE then does the real `docker rm -f` + node-slot
+   * release and flips the row to terminal `deleted`. Best-effort per row: a
+   * failure to retire one row is logged but never blocks the new deploy.
+   */
+  private async retirePriorContainers(
+    organizationId: string,
+    appId: string,
+    enqueuer: ContainerJobEnqueuer,
+  ): Promise<void> {
+    const prior = await containersRepository.findUndeletedByProjectName(organizationId, appId);
+    for (const row of prior) {
+      try {
+        // Mark `deleting` up front so it stops counting toward quota before the
+        // new row's quota check; the daemon's CONTAINER_DELETE finishes the job.
+        await containersRepository.updateStatus(row.id, "deleting");
+        await enqueuer.enqueueDelete({ containerId: row.id, organizationId });
+        logger.info("[AppDeployRunner] retired prior container row", {
+          appId,
+          containerId: row.id,
+        });
+      } catch (error) {
+        logger.warn("[AppDeployRunner] failed to retire prior container row", {
+          appId,
+          containerId: row.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 }
 
@@ -270,11 +319,26 @@ export function makeDirectAppDeployRunner(args: {
       // delete can resolve the per-tenant DSN and run the DROP + slot release.
       // Stored as plaintext — see the factory header; decryptIfNeeded passes
       // plaintext through on the daemon side.
-      await appDatabasesRepository.updateState(appId, {
-        user_database_uri: dsn,
-        user_database_status: "ready",
-        user_database_error: null,
-      });
+      try {
+        await appDatabasesRepository.updateState(appId, {
+          user_database_uri: dsn,
+          user_database_status: "ready",
+          user_database_error: null,
+        });
+      } catch (error) {
+        // The tenant DB + cluster slot already exist, but persisting the canonical
+        // row failed — without that row, app delete can't resolve the DSN to DROP
+        // the DB or release the slot, so both would leak permanently. Compensate
+        // by tearing the just-provisioned DB down (DROP DB + release slot) before
+        // rethrowing, so a failed persist self-heals instead of leaking.
+        await args.tenantDbProvisioning.deprovisionForApp(appId, dsn).catch((teardownError) => {
+          logger.error("[AppDeployRunner] compensating tenant-DB teardown failed", {
+            appId,
+            error: teardownError instanceof Error ? teardownError.message : String(teardownError),
+          });
+        });
+        throw error;
+      }
       return dsn;
     },
     jobsWriter: args.jobsWriter,

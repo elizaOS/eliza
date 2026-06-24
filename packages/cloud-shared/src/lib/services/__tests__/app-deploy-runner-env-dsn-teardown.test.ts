@@ -24,12 +24,18 @@ import type { AppDatabaseState } from "../../../db/repositories/app-databases";
 // Worker delete read (findStateByAppIdForWrite) — the row must survive across
 // both for the teardown to resolve the DSN.
 const appDatabasesStore = new Map<string, AppDatabaseState>();
+// Toggle so a single test can simulate the canonical-row persist failing AFTER
+// the tenant DB is already provisioned (Bug 4 — the compensating-teardown case).
+const persistControl = { failUpdateState: false };
 mock.module("../../../db/repositories/app-databases", () => ({
   appDatabasesRepository: {
     updateState: async (
       appId: string,
       data: Partial<AppDatabaseState>,
     ): Promise<AppDatabaseState> => {
+      if (persistControl.failUpdateState) {
+        throw new Error("app_databases updateState failed");
+      }
       const next: AppDatabaseState = {
         app_id: appId,
         user_database_uri: null,
@@ -78,6 +84,11 @@ mock.module("../apps", () => ({
 mock.module("../../../db/repositories/containers", () => ({
   containersRepository: {
     create: async () => ({ id: "container-1" }),
+    // The default createContainerRow enforces quota via createWithQuotaCheck.
+    createWithQuotaCheck: async () => ({ id: "container-1" }),
+    // No prior deploy for this app — the redeploy-retire step finds nothing.
+    findUndeletedByProjectName: async () => [],
+    updateStatus: async () => null,
   },
 }));
 
@@ -204,5 +215,40 @@ describe("env-DSN deploy mode — per-tenant DB teardown (#8342)", () => {
     expect(live.size).toBe(0); // DB dropped
     expect(released).toEqual(["cluster-1"]); // slot released exactly once
     expect(slotCount()).toBe(0); // database_count back to baseline — no leak
+  });
+
+  // Bug 4 — env-DSN mode: if the canonical app_databases row fails to persist
+  // AFTER the tenant DB is provisioned, the DB + cluster slot must NOT leak.
+  // The compensating teardown DROPs the just-provisioned DB and releases the slot
+  // before rethrowing, so a failed persist self-heals.
+  test("updateState failure after provision triggers a compensating deprovision (no leak)", async () => {
+    appDatabasesStore.clear();
+    const { provisioning, live, released, slotCount } = makeProvisioning();
+
+    const jobsWriter: ContainerJobsWriter = {
+      async insertJob() {
+        return { id: "job-x" };
+      },
+    };
+
+    const runner = makeDirectAppDeployRunner({
+      tenantDbProvisioning: provisioning,
+      jobsWriter,
+      resolveImage: () => "ghcr.io/elizaos/app:test",
+    });
+
+    persistControl.failUpdateState = true;
+    try {
+      // The deploy fails (the persist throws) and the error surfaces.
+      await expect(runner.run(APP_ID)).rejects.toThrow("app_databases updateState failed");
+    } finally {
+      persistControl.failUpdateState = false;
+    }
+
+    // The just-provisioned DB was torn back down and the slot released — both
+    // back to baseline, no orphaned DB and no leaked cluster slot.
+    expect(live.size).toBe(0);
+    expect(released).toEqual(["cluster-1"]);
+    expect(slotCount()).toBe(0);
   });
 });
