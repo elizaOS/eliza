@@ -8,10 +8,12 @@ afterEach(() => {
 });
 
 // #9143 — the frontpage Messages widget renders recent conversations.
+// #9226 — when there are no conversations it renders nothing (no empty
+// placeholder card) so the Springboard home isn't cluttered with dead slots.
 describe("MessagesWidget (#9143)", () => {
-  it("renders its empty state when there are no conversations", () => {
-    render(<MessagesWidget pluginId="messages" />);
-    expect(screen.getByTestId("widget-messages")).toBeTruthy();
-    expect(screen.getByText("No conversations yet")).toBeTruthy();
+  it("renders nothing when there are no conversations (#9226)", () => {
+    const { container } = render(<MessagesWidget pluginId="messages" />);
+    expect(screen.queryByTestId("widget-messages")).toBeNull();
+    expect(container.firstChild).toBeNull();
   });
 });

@@ -2,7 +2,7 @@ import type { AgentNotification } from "@elizaos/core";
 import { Bell } from "lucide-react";
 import { useNotifications } from "../../../state/notifications/notification-store";
 import type { WidgetProps } from "../../../widgets/types";
-import { EmptyWidgetState, WidgetSection } from "./shared";
+import { WidgetSection } from "./shared";
 
 const MAX_HOME_NOTIFICATIONS = 4;
 
@@ -35,6 +35,14 @@ export function NotificationsWidget(_props: WidgetProps) {
   const { notifications, unreadCount } = useNotifications();
   const recent = notifications.slice(0, MAX_HOME_NOTIFICATIONS);
 
+  // Render nothing until there's real activity. The always-visible home surface
+  // (#9143) must not show an empty placeholder card — empty-state hints belong
+  // on the dedicated view, not the home slot (matches the ViewCatalog
+  // "renders nothing until populated" contract).
+  if (recent.length === 0) {
+    return null;
+  }
+
   return (
     <WidgetSection
       title="Notifications"
@@ -48,19 +56,11 @@ export function NotificationsWidget(_props: WidgetProps) {
         ) : undefined
       }
     >
-      {recent.length === 0 ? (
-        <EmptyWidgetState
-          icon={<Bell />}
-          title="No notifications yet"
-          description="Agent activity and reminders show up here."
-        />
-      ) : (
-        <ul className="flex flex-col gap-0.5">
-          {recent.map((n) => (
-            <NotificationRow key={n.id} notification={n} />
-          ))}
-        </ul>
-      )}
+      <ul className="flex flex-col gap-0.5">
+        {recent.map((n) => (
+          <NotificationRow key={n.id} notification={n} />
+        ))}
+      </ul>
     </WidgetSection>
   );
 }
