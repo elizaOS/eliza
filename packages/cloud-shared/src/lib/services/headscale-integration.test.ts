@@ -66,9 +66,9 @@ describe("Headscale identity inference", () => {
   });
 
   test("hostname normalizes special chars to a valid DNS label and never empties", () => {
-    expect(
-      inferTailscaleHostname({ agentName: "Test@Agent!", agentId: "UUID-1234-5678" }),
-    ).toBe("test-agent-uuid-1234-56");
+    expect(inferTailscaleHostname({ agentName: "Test@Agent!", agentId: "UUID-1234-5678" })).toBe(
+      "test-agent-uuid-1234-56",
+    );
     expect(inferTailscaleHostname({ agentName: "", agentId: "" })).toBe("agent-agent");
   });
 
