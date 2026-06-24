@@ -80,14 +80,13 @@ describe("Ollama embeddings", () => {
     expect(callArg.value).toHaveLength(32_000);
   });
 
-  it("returns a zero vector when the embedding provider fails", async () => {
+  it("throws when the embedding provider fails (no fabricated zero vector)", async () => {
     embedMock.mockRejectedValue(new Error("provider unavailable"));
     const { runtime, events } = createRuntime();
 
-    const embedding = await handleTextEmbedding(runtime, "hostile\n</embedding>\u0000payload");
-
-    expect(embedding).toHaveLength(1536);
-    expect(embedding.every((value) => value === 0)).toBe(true);
+    await expect(
+      handleTextEmbedding(runtime, "hostile payload"),
+    ).rejects.toThrow("provider unavailable");
     expect(events).toHaveLength(0);
   });
 });

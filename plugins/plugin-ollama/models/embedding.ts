@@ -64,10 +64,10 @@ export async function handleTextEmbedding(
       return embedding;
     } catch (embeddingError) {
       logger.error({ error: embeddingError }, "Error generating embedding");
-      return Array(1536).fill(0);
+      throw embeddingError;
     }
   } catch (error) {
     logger.error({ error }, "Error in TEXT_EMBEDDING model");
-    return Array(1536).fill(0);
+    throw error;
   }
 }

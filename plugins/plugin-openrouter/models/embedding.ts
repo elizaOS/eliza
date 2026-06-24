@@ -34,19 +34,11 @@ export async function handleTextEmbedding(
   } else if (typeof params === "object" && params.text) {
     text = params.text;
   } else {
-    const errorMsg = "Invalid input format for embedding";
-    logger.warn(errorMsg);
-    const fallbackVector = Array(embeddingDimension).fill(0) as number[];
-    fallbackVector[0] = 0.2;
-    return fallbackVector;
+    throw new Error("[OpenRouter] Invalid input format for embedding");
   }
 
   if (!text.trim()) {
-    const errorMsg = "Empty text for embedding";
-    logger.warn(errorMsg);
-    const fallbackVector = Array(embeddingDimension).fill(0) as number[];
-    fallbackVector[0] = 0.3;
-    return fallbackVector;
+    throw new Error("[OpenRouter] Empty text for embedding");
   }
 
   // Truncate to stay within embedding model token limits (~4 chars per token)
@@ -102,9 +94,7 @@ export async function handleTextEmbedding(
     if (!Array.isArray(embedding) || embedding.length !== embeddingDimension) {
       const errorMsg = `Embedding length ${embedding.length} does not match configured dimension ${embeddingDimension}`;
       logger.error(errorMsg);
-      const fallbackVector = Array(embeddingDimension).fill(0) as number[];
-      fallbackVector[0] = 0.4;
-      return fallbackVector;
+      throw new Error(errorMsg);
     }
 
     if (data.usage) {

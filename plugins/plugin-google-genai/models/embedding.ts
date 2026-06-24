@@ -33,8 +33,7 @@ export async function handleTextEmbedding(
         : "";
 
   if (!text.trim()) {
-    logger.warn("Empty text for embedding");
-    return Array(768).fill(0) as number[];
+    throw new Error("[Google GenAI] Empty text for embedding");
   }
 
   // Truncate to stay within embedding model token limits (~4 chars per token)
@@ -68,6 +67,6 @@ export async function handleTextEmbedding(
     logger.error(
       `Error generating embedding: ${error instanceof Error ? error.message : String(error)}`,
     );
-    return Array(768).fill(0) as number[];
+    throw error;
   }
 }
