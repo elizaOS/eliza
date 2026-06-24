@@ -57,18 +57,6 @@ export interface WorkbenchTurn {
   expectRespond: boolean;
   expectedTranscript?: string;
   expectedSpeakerLabel?: string;
-  /**
-   * The speaker label a diarizer/attribution model is expected to PREDICT for
-   * this turn — distinct from the ground-truth `speaker`. When no live
-   * attribution model runs (`VoiceWorkbenchOptions.resolvePredictedSpeakerLabel`
-   * absent), this drives the diarization gate, so a scenario can encode a
-   * deliberate misattribution (`predictedSpeakerLabel !== expectedSpeakerLabel`)
-   * and the gate will correctly fail. The player NEVER falls back to `speaker`
-   * for the prediction — that would make the DER gate compare ground truth to
-   * itself (tautological). Absent (and no live resolver) → the turn is
-   * UNATTRIBUTED: excluded from DER and the gate reports skipped, never a pass.
-   */
-  predictedSpeakerLabel?: string;
   expectedEntity?: string;
 }
 
@@ -117,6 +105,7 @@ export interface VoiceWorkbenchReport {
   finishedAt: string;
   turns: VoiceWorkbenchTurnReport[];
   diarization: {
+    status: TurnStatus;
     /** Turns with a real attribution output (the DER denominator). */
     total: number;
     der: number;
@@ -128,6 +117,7 @@ export interface VoiceWorkbenchReport {
      * SKIPPED (no diarizer on this host), distinct from a real DER failure. */
     evaluated: boolean;
     passed: boolean;
+    reason?: string;
   };
 }
 
@@ -147,12 +137,13 @@ export interface VoiceWorkbenchOptions {
    * scenario's ground-truth `speaker` — drives the diarization gate, so the gate
    * fails on a real misattribution. Return `null` when the model can't attribute
    * the turn (unattributed: excluded from DER, the gate reports skipped, never a
-   * pass). When absent, the player uses the turn's explicit
-   * `predictedSpeakerLabel`; it never falls back to `speaker`.
+   * pass). When absent, the player records no predicted speaker label; it never
+   * falls back to `speaker`.
    */
   resolvePredictedSpeakerLabel?: (
     turn: WorkbenchTurn,
     index: number,
+    wav: Uint8Array,
   ) => Promise<string | null> | string | null;
   /** TTS route to exercise. local for desktop/android, cloud for web. */
   ttsRoute: "/api/tts/local-inference" | "/api/tts/cloud";
@@ -263,14 +254,6 @@ async function runTurn(
   const t0 = now();
   const expectedTranscript = turnReference(turn);
   const expectedSpeakerLabel = turnSpeakerLabel(turn);
-  // Predicted label comes from an actual attribution output (live model hook or
-  // an explicit per-turn `predictedSpeakerLabel`), NEVER from the ground-truth
-  // `turn.speaker` — comparing ground truth to itself made this gate tautological
-  // (#9427). Absent prediction → null → scored as a miss, never a pass.
-  const predictedSpeakerLabel =
-    (await opts.resolvePredictedSpeakerLabel?.(turn, index)) ??
-    (turn.predictedSpeakerLabel?.trim() || null);
-  const speakerLabelOk = predictedSpeakerLabel === expectedSpeakerLabel;
   const werTolerance = opts.werTolerance ?? 0.34;
 
   let wav: Uint8Array;
@@ -282,7 +265,7 @@ async function runTurn(
       index,
       speaker: turn.speaker,
       expectedSpeakerLabel,
-      predictedSpeakerLabel,
+      predictedSpeakerLabel: null,
       status: "skipped",
       responded: false,
       expectRespond: turn.expectRespond,
@@ -294,6 +277,34 @@ async function runTurn(
       error: error instanceof Error ? error.message : String(error),
     };
   }
+
+  let predictedSpeakerLabel: string | null = null;
+  let speakerAttributionRan = false;
+  try {
+    if (opts.resolvePredictedSpeakerLabel) {
+      const label = await opts.resolvePredictedSpeakerLabel(turn, index, wav);
+      predictedSpeakerLabel = label?.trim() || null;
+      speakerAttributionRan = predictedSpeakerLabel !== null;
+    }
+  } catch (error) {
+    return {
+      index,
+      speaker: turn.speaker,
+      expectedSpeakerLabel,
+      predictedSpeakerLabel: null,
+      status: "fail",
+      responded: false,
+      expectRespond: turn.expectRespond,
+      transcript: "",
+      expectedTranscript,
+      reply: "",
+      durationMs: Math.round(now() - t0),
+      detail: { stage: "speaker-attribution" },
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  const speakerLabelOk =
+    !speakerAttributionRan || predictedSpeakerLabel === expectedSpeakerLabel;
 
   let transcript = "";
   try {
@@ -389,7 +400,11 @@ async function runTurn(
     }
   }
 
-  const ok = transcriptOk && respondDecisionOk && speakerLabelOk && ttsOk;
+  const ok =
+    transcriptOk &&
+    respondDecisionOk &&
+    ttsOk &&
+    (!speakerAttributionRan || speakerLabelOk);
   const detail: Record<string, string | number | boolean> = {
     transcript,
     expectedTranscript,
@@ -401,6 +416,7 @@ async function runTurn(
     predictedSpeakerLabel: predictedSpeakerLabel ?? "",
     expectedSpeakerLabel,
     speakerLabelOk,
+    speakerAttributionRan,
     completed,
     agentName,
     ...ttsDetail,
@@ -430,7 +446,7 @@ async function runTurn(
         ? `ASR WER ${wer.toFixed(3)} exceeds tolerance ${werTolerance}`
         : !respondDecisionOk
           ? `respond decision: got ${responded}, expected ${turn.expectRespond}`
-          : !speakerLabelOk
+          : speakerAttributionRan && !speakerLabelOk
             ? `speaker label: got ${predictedSpeakerLabel ?? "null"}, expected ${expectedSpeakerLabel}`
             : (ttsError ?? "turn failed"),
   };
@@ -454,14 +470,25 @@ export function scoreWorkbenchDiarization(
   }
   const total = attributed.length;
   const der = total > 0 ? confusions / total : 0;
+  const evaluated = total > 0;
+  const passed = evaluated && der <= maxDer;
   return {
+    status: evaluated ? (passed ? "pass" : "fail") : "skipped",
     total,
     der: Number(der.toFixed(4)),
     confusions,
     unattributed: ran.length - attributed.length,
     maxDer,
-    evaluated: total > 0,
-    passed: total > 0 && der <= maxDer,
+    evaluated,
+    passed,
+    ...(evaluated
+      ? {}
+      : {
+          reason:
+            ran.length > 0
+              ? "real speaker attribution is not available on this host"
+              : "no non-skipped turns available for diarization scoring",
+        }),
   };
 }
 
@@ -522,13 +549,16 @@ export async function runVoiceWorkbench(
   const hasFail = turns.some((t) => t.status === "fail");
   const allSkipped =
     turns.length > 0 && turns.every((t) => t.status === "skipped");
-  const overall: VoiceWorkbenchReport["overall"] = hasFail
-    ? "fail"
-    : allSkipped
-      ? "skipped"
-      : diarization.passed
-        ? "pass"
-        : "fail";
+  const requiresDiarization = scenario.classes.includes("diarization");
+  let overall: VoiceWorkbenchReport["overall"] = "pass";
+  if (hasFail || diarization.status === "fail") {
+    overall = "fail";
+  } else if (
+    allSkipped ||
+    (requiresDiarization && diarization.status === "skipped")
+  ) {
+    overall = "skipped";
+  }
 
   return {
     ...base,

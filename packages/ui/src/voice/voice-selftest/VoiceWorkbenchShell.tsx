@@ -166,6 +166,7 @@ export function VoiceWorkbenchShell() {
       <div
         data-testid="voice-workbench-overall"
         data-overall={report?.overall ?? "pending"}
+        data-diarization-status={report?.diarization.status ?? "pending"}
         data-der={report?.diarization.der ?? ""}
         data-max-der={report?.diarization.maxDer ?? ""}
         data-running={running ? "1" : "0"}
