@@ -18,7 +18,8 @@ vi.mock("../../../api/client", () => ({
   client: { getCodingAgentTaskThread: getCodingAgentTaskThreadMock },
 }));
 
-import { TaskWidget } from "./task-widget";
+import { getInlineWidget } from "./inline-registry";
+import { registerTaskWidget, TaskWidget } from "./task-widget";
 
 const THREAD_ID = "0123abcd-1234-5678-9abc-deadbeefcafe";
 
@@ -180,5 +181,27 @@ describe("TaskWidget", () => {
       expect(getCodingAgentTaskThreadMock).toHaveBeenCalledTimes(1);
     });
     expect(container.textContent?.includes("super-secret-value")).toBe(false);
+  });
+});
+
+// #9304 — task inline-widget registration gate.
+//
+// The `[TASK:…]` widget is owned by the orchestrator plugin and registered via
+// registerTaskWidget() (not auto-loaded). This gate proves that calling it wires
+// the "task" kind so a marker actually parses + would render — dropping the
+// registration fails CI here.
+describe("registerTaskWidget (#9304 registration gate)", () => {
+  it("is not registered until registerTaskWidget() is called", () => {
+    expect(getInlineWidget("task")).toBeUndefined();
+  });
+
+  it("registers the task kind so a [TASK:…] marker parses", () => {
+    registerTaskWidget();
+    const def = getInlineWidget("task");
+    expect(def).toBeDefined();
+    const matches =
+      def?.parse(`open [TASK:${THREAD_ID}]My task[/TASK] done`) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.data).toMatchObject({ threadId: THREAD_ID });
   });
 });
