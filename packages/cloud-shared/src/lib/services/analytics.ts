@@ -262,8 +262,6 @@ export class AnalyticsService {
             successRate: summary.successRate,
             avgCostPerRequest:
               summary.totalRequests > 0 ? summary.totalCost / summary.totalRequests : 0,
-            avgLatency: 0,
-            activeApiKeys: 0,
           },
           trends: {
             requestsChange: trends.requestsChange,
@@ -330,8 +328,6 @@ export class AnalyticsService {
           successRate: summary.successRate,
           avgCostPerRequest:
             summary.totalRequests > 0 ? summary.totalCost / summary.totalRequests : 0,
-          avgLatency: 0,
-          activeApiKeys: 0,
         },
         trends: {
           requestsChange: trends.requestsChange,
