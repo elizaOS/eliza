@@ -19,6 +19,8 @@
  * runtime-type branching at call sites.
  */
 
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { Context as VmContext, Script as VmScript } from "node:vm";
 import { resolveDistributionProfile } from "@elizaos/shared";
 
@@ -207,8 +209,12 @@ function toFileUrl(absolutePath: string): string {
   if (/^[a-z]+:\/\//i.test(absolutePath)) {
     return absolutePath;
   }
-  if (absolutePath.startsWith("/")) {
-    return `file://${absolutePath}`;
+  // Use pathToFileURL so a Windows drive path (C:\…) becomes a valid file://
+  // module specifier. The old `file://${absolutePath}` only worked for POSIX
+  // "/…" paths — a Windows backslash path starts with "C:\", never "/", so it
+  // fell through unconverted and was not a loadable URL for dynamic import.
+  if (path.isAbsolute(absolutePath)) {
+    return pathToFileURL(absolutePath).href;
   }
   return absolutePath;
 }
