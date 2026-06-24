@@ -9,10 +9,46 @@ const TEXT_EMBEDDING_MODEL_TYPE = ((
   ElizaCore as { ModelType?: Record<string, string> }
 ).ModelType?.TEXT_EMBEDDING ?? "TEXT_EMBEDDING") as string;
 
+function createInitProbeVector(): number[] {
+  const vector = Array(768).fill(0);
+  vector[0] = 0.1;
+  return vector;
+}
+
+function extractText(
+  params: TextEmbeddingParams | string | null,
+): string | null {
+  if (params === null) {
+    return null;
+  }
+  if (typeof params === "string") {
+    return params;
+  }
+  if (typeof params === "object" && typeof params.text === "string") {
+    return params.text;
+  }
+  throw new Error(
+    "Invalid input format for embedding: expected string or { text: string }",
+  );
+}
+
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
 ): Promise<number[]> {
+  if (params === null) {
+    return createInitProbeVector();
+  }
+
+  let text = extractText(params);
+  if (text === null) {
+    return createInitProbeVector();
+  }
+
+  if (!text.trim()) {
+    throw new Error("Cannot generate embedding for empty text");
+  }
+
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -20,21 +56,6 @@ export async function handleTextEmbedding(
 
   const embeddingModelName = getEmbeddingModel(runtime);
   logger.debug(`[TEXT_EMBEDDING] Using model: ${embeddingModelName}`);
-
-  if (params === null) {
-    return Array(768).fill(0) as number[];
-  }
-
-  let text =
-    typeof params === "string"
-      ? params
-      : typeof params === "object" && params.text
-        ? params.text
-        : "";
-
-  if (!text.trim()) {
-    throw new Error("[Google GenAI] Empty text for embedding");
-  }
 
   // Truncate to stay within embedding model token limits (~4 chars per token)
   const maxChars = 8_192 * 4;
@@ -52,6 +73,9 @@ export async function handleTextEmbedding(
     });
 
     const embedding = response.embeddings?.[0]?.values || [];
+    if (embedding.length === 0) {
+      throw new Error("Google GenAI API returned no embedding");
+    }
 
     const promptTokens = await countTokens(text);
 
@@ -67,6 +91,6 @@ export async function handleTextEmbedding(
     logger.error(
       `Error generating embedding: ${error instanceof Error ? error.message : String(error)}`,
     );
-    throw error;
+    throw error instanceof Error ? error : new Error(String(error));
   }
 }
