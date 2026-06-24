@@ -61,9 +61,14 @@ function toTimestamp(iso: string | undefined): number {
 }
 
 /**
- * People sorted by the OLDEST lastInteractionAt first ("haven't talked to X").
- * People with a real (non-owner) interaction history only — owners and people
- * with no recorded interaction carry no recency signal worth surfacing.
+ * Non-owner people sorted by the OLDEST lastInteractionAt first ("haven't
+ * talked to X"). A missing `lastInteractionAt` is a valid state — a contact
+ * you've never interacted with — and the backend legitimately omits it (it is
+ * optional on RelationshipsPersonSummary; the graph builder only sets it when a
+ * lastModified exists). Those contacts are the *stalest* of all, so they're
+ * kept (toTimestamp maps `undefined → 0`, sorting them first) rather than
+ * silently dropped, which would empty the card whenever no one has a recorded
+ * interaction.
  */
 function staleContactsFrom(
   people: RelationshipsPersonSummary[],
@@ -74,8 +79,7 @@ function staleContactsFrom(
       (person): person is RelationshipsPersonSummary =>
         isRecord(person) &&
         typeof person.displayName === "string" &&
-        !person.isOwner &&
-        typeof person.lastInteractionAt === "string",
+        !person.isOwner,
     )
     .sort(
       (left, right) =>
