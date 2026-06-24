@@ -325,13 +325,14 @@ function assertInstalledIosRendererIsFresh(udid) {
     "public",
     "eliza-renderer-build.json",
   );
-  const freshManifest = path.join(
-    repoRoot,
-    "packages",
-    "app",
-    "dist",
-    "eliza-renderer-build.json",
-  );
+  // Resolve the fresh renderer from the SAME dist the installed shell was built
+  // from. A white-label shell (ELIZA_SMOKE_APP_ID) builds from its own dist
+  // (e.g. apps/app/dist); comparing against packages/app/dist would be a
+  // guaranteed buildId mismatch and a false "stale UI" failure.
+  const rendererDist = process.env.ELIZA_SMOKE_RENDERER_DIST
+    ? path.resolve(process.env.ELIZA_SMOKE_RENDERER_DIST)
+    : path.join(repoRoot, "packages", "app", "dist");
+  const freshManifest = path.join(rendererDist, "eliza-renderer-build.json");
   if (!fs.existsSync(freshManifest)) {
     console.warn(
       `[local-chat-smoke] no freshly built renderer manifest at ${freshManifest}; skipping stamp check.`,
