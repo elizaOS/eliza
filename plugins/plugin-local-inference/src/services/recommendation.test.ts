@@ -1,6 +1,7 @@
 import type { CatalogModel, HardwareProbe } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
+	canBundleBeDefaultOnDevice,
 	catalogDownloadSizeBytes,
 	catalogDownloadSizeGb,
 	classifyRecommendationPlatform,
@@ -145,5 +146,36 @@ describe("selectBestQuantizationVariant", () => {
 		).toBe("q3");
 
 		expect(selectBestQuantizationVariant({} as CatalogModel)).toBeNull();
+	});
+});
+
+describe("canBundleBeDefaultOnDevice gate (#8848)", () => {
+	// Types derived from the function signature so the test needs no extra
+	// type imports; the manifest-loader injection keeps it model-independent.
+	type Installed = Parameters<typeof canBundleBeDefaultOnDevice>[0];
+	type Loader = NonNullable<
+		Parameters<typeof canBundleBeDefaultOnDevice>[2]
+	>["manifestLoader"];
+
+	it("refuses a bundle with no validated manifest", () => {
+		const result = canBundleBeDefaultOnDevice(
+			{ id: "test-bundle" } as unknown as Installed,
+			probe(),
+			{ manifestLoader: (() => null) as Loader },
+		);
+		expect(result.canBeDefault).toBe(false);
+		expect(result.reason).toBe("no-manifest");
+	});
+
+	it("refuses a bundle whose on-device verify pass has not run", () => {
+		// Manifest present but `bundleVerifiedAt` unset → the verify gate fires
+		// before any RAM/kernel check, so the manifest content is irrelevant.
+		const result = canBundleBeDefaultOnDevice(
+			{ id: "test-bundle" } as unknown as Installed,
+			probe(),
+			{ manifestLoader: (() => ({})) as Loader },
+		);
+		expect(result.canBeDefault).toBe(false);
+		expect(result.reason).toBe("not-verified-on-device");
 	});
 });
