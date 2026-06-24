@@ -283,6 +283,12 @@ export const PARITY_MATRIX: readonly ParityCapability[] = [
     note: "read_bytes/write_bytes (base64) + create_dir + directory_exists + get_file_size — binary-safe guest I/O in file-ops.ts + executeFileAction; windows round-trip verified",
     os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
   },
+  {
+    id: "mcp_server_seam",
+    status: "have",
+    note: "src/mcp — MCP tool catalog + dispatch (every desktop verb → executeCommand) + optional-SDK McpServer wiring; lets external MCP clients drive computeruse. Catalog/dispatch unit-tested; @modelcontextprotocol/sdk is an optionalDependency",
+    os: { windows: "covered", linux: "covered", macos: "covered", aosp: "na" },
+  },
 
   // ── Explicitly N/A (don't chase) ─────────────────────────────────────────
   {

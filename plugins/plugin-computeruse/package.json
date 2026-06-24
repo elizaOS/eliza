@@ -63,6 +63,9 @@
     "@nut-tree-fork/nut-js": "^4.2.6",
     "puppeteer-core": "^24.9.0"
   },
+  "optionalDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
   "license": "Apache-2.0",
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

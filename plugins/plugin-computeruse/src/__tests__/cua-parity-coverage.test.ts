@@ -161,7 +161,7 @@ const CAPABILITIES: Capability[] = [
   { cua: "callback_middleware (budget/retention/trajectory)", domain: "architecture", status: "partial", milestone: "M11" },
   { cua: "vm/sandbox provider matrix", domain: "architecture", status: "partial", milestone: "M13" },
   { cua: "daemon/RPC seam", domain: "architecture", status: "missing", milestone: "M13" },
-  { cua: "MCP server seam", domain: "architecture", status: "missing" },
+  { cua: "MCP server seam", domain: "architecture", status: "have", milestone: "src/mcp — tool catalog + dispatch + optional-SDK server" },
   { cua: "eval harness (ScreenSpot/OSWorld/per-OS scenarios)", domain: "architecture", status: "partial", milestone: "M14" },
   { cua: "low-token continuous screen description", domain: "architecture", status: "have" },
   { cua: "accessibility tree grounding", domain: "architecture", status: "have" },
