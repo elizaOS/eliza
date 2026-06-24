@@ -116,11 +116,16 @@ export interface VoiceWorkbenchReport {
   finishedAt: string;
   turns: VoiceWorkbenchTurnReport[];
   diarization: {
+    /** Turns with a real attribution output (the DER denominator). */
     total: number;
     der: number;
     confusions: number;
-    misses: number;
+    /** Turns with no attribution output — no diarizer ran; excluded from DER. */
+    unattributed: number;
     maxDer: number;
+    /** Did any turn carry a real attribution output? When false the gate is
+     * SKIPPED (no diarizer on this host), distinct from a real DER failure. */
+    evaluated: boolean;
     passed: boolean;
   };
 }
@@ -433,23 +438,27 @@ export function scoreWorkbenchDiarization(
   turns: ReadonlyArray<VoiceWorkbenchTurnReport>,
   maxDer = 0.2,
 ): VoiceWorkbenchReport["diarization"] {
-  const scored = turns.filter((turn) => turn.status !== "skipped");
+  const ran = turns.filter((turn) => turn.status !== "skipped");
+  // A null prediction means no attribution model ran on this turn (no diarizer
+  // available on this host / scenario). Such turns are UNATTRIBUTED — excluded
+  // from DER, never scored as a confusion. The gate reports `skipped` (evaluated
+  // === false) when nothing was attributed, never a false pass and never a
+  // spurious failure that would block a diarizer-less host (#9147, #9427).
+  const attributed = ran.filter((turn) => turn.predictedSpeakerLabel !== null);
   let confusions = 0;
-  let misses = 0;
-  for (const turn of scored) {
-    if (turn.predictedSpeakerLabel === null) misses += 1;
-    else if (turn.predictedSpeakerLabel !== turn.expectedSpeakerLabel) {
+  for (const turn of attributed) {
+    if (turn.predictedSpeakerLabel !== turn.expectedSpeakerLabel)
       confusions += 1;
-    }
   }
-  const total = scored.length;
-  const der = total > 0 ? (confusions + misses) / total : 0;
+  const total = attributed.length;
+  const der = total > 0 ? confusions / total : 0;
   return {
     total,
     der: Number(der.toFixed(4)),
     confusions,
-    misses,
+    unattributed: ran.length - attributed.length,
     maxDer,
+    evaluated: total > 0,
     passed: total > 0 && der <= maxDer,
   };
 }

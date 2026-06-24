@@ -64,16 +64,22 @@ describe("scoreWorkbenchDiarization (#9427)", () => {
     ]);
     expect(report.confusions).toBe(1);
     expect(report.der).toBeGreaterThan(0);
+    expect(report.evaluated).toBe(true);
     expect(report.passed).toBe(false);
   });
 
-  it("counts a null prediction (no attribution ran) as a miss, never a pass", () => {
+  it("reports SKIPPED (not pass, not fail) when no attribution ran (all null)", () => {
     const report = scoreWorkbenchDiarization([
       turn({ expectedSpeakerLabel: "speaker_a", predictedSpeakerLabel: null }),
       turn({ expectedSpeakerLabel: "speaker_b", predictedSpeakerLabel: null }),
     ]);
-    expect(report.misses).toBe(2);
-    expect(report.der).toBe(1);
+    // No diarizer on this host → unattributed, excluded from DER. The gate is
+    // not evaluated — never a false pass, never a spurious failure (#9147).
+    expect(report.unattributed).toBe(2);
+    expect(report.total).toBe(0);
+    expect(report.confusions).toBe(0);
+    expect(report.der).toBe(0);
+    expect(report.evaluated).toBe(false);
     expect(report.passed).toBe(false);
   });
 
