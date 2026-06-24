@@ -46,6 +46,7 @@ function matchesPattern(value: string, pattern: string | RegExp): boolean {
   if (typeof pattern === "string") {
     return value.toLowerCase().includes(pattern.toLowerCase());
   }
+  pattern.lastIndex = 0;
   return pattern.test(value);
 }
 
@@ -136,6 +137,34 @@ function matchesExpectedFields(
   return Object.entries(expected).every(([path, expectedValue]) =>
     valuesEqual(readPath(value, path), expectedValue),
   );
+}
+
+function matchesContentMatcher(actual: unknown, expected: unknown): boolean {
+  const expectedRecord = toRecord(expected);
+  if (expectedRecord) {
+    if (Object.hasOwn(expectedRecord, "$contains")) {
+      const needle = expectedRecord.$contains;
+      if (typeof needle !== "string" && !(needle instanceof RegExp)) {
+        return false;
+      }
+      const haystack =
+        typeof actual === "string" ? actual : JSON.stringify(actual ?? "");
+      return matchesPattern(haystack, needle);
+    }
+    const actualRecord = toRecord(actual);
+    if (!actualRecord) {
+      return false;
+    }
+    return Object.entries(expectedRecord).every(([key, value]) =>
+      matchesContentMatcher(actualRecord[key], value),
+    );
+  }
+  if (Array.isArray(expected)) {
+    return expected.some((candidate) =>
+      matchesContentMatcher(actual, candidate),
+    );
+  }
+  return valuesEqual(actual, expected);
 }
 
 type GmailMockRequest = {
@@ -517,6 +546,50 @@ registerFinalCheckHandler("memoryWriteOccurred", (check, { ctx }) => {
   return {
     status: "passed",
     detail: `${matched.length} write(s) to [${tables.join(",")}]`,
+  };
+});
+
+registerFinalCheckHandler("memoryExists", (check, { ctx }) => {
+  const { table, content, minCount, expected } = check as {
+    table?: string | string[];
+    content?: unknown;
+    minCount?: number;
+    expected?: boolean;
+  };
+  const tables = table === undefined ? [] : toArray(table);
+  const writes = ctx.memoryWrites ?? [];
+  const matched = writes.filter((write) => {
+    if (tables.length > 0 && !tables.includes(write.table)) {
+      return false;
+    }
+    if (content === undefined) {
+      return true;
+    }
+    return matchesContentMatcher(write.content, content);
+  });
+  const wantPresent = expected ?? true;
+  const wantCount = typeof minCount === "number" ? minCount : 1;
+  if (wantPresent) {
+    if (matched.length < wantCount) {
+      return {
+        status: "failed",
+        detail: `expected ${wantCount} matching memory write(s), saw ${matched.length} of ${writes.length} total`,
+      };
+    }
+    return {
+      status: "passed",
+      detail: `${matched.length} matching memory write(s)`,
+    };
+  }
+  if (matched.length > 0) {
+    return {
+      status: "failed",
+      detail: `expected no matching memory write, saw ${matched.length}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: "no matching memory write observed",
   };
 });
 
