@@ -727,6 +727,7 @@ function tryGetImageGenArbiter(
 function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
 	prompt?: string;
+	onTextChunk?: (chunk: string) => void | Promise<void>;
 } {
 	const url = typeof params === "string" ? params : params.imageUrl;
 	if (typeof url !== "string" || !url) {
@@ -737,15 +738,32 @@ function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 		);
 	}
 	const prompt = typeof params === "object" ? params.prompt : undefined;
+	// Token-by-token streaming: the runtime's `useModel` injects `onStreamChunk`
+	// into the params for local providers when a chat streaming context is active
+	// (runtime.ts). Forward it (read structurally so this stays robust to the core
+	// param type) so the description streams into the dashboard through the same
+	// pipe as chat text when the fused lib exposes ABI-v13 streaming vision;
+	// backends without it return the final description.
+	const streamSink =
+		typeof params === "object"
+			? (params as { onStreamChunk?: (chunk: string) => void | Promise<void> })
+					.onStreamChunk
+			: undefined;
+	const onTextChunk =
+		typeof streamSink === "function"
+			? (chunk: string) => streamSink(chunk)
+			: undefined;
 	if (url.startsWith("data:")) {
 		return {
 			image: { kind: "dataUrl", dataUrl: url },
 			prompt,
+			onTextChunk,
 		};
 	}
 	return {
 		image: { kind: "url", url },
 		prompt,
+		onTextChunk,
 	};
 }
 

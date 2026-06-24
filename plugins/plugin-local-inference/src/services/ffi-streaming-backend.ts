@@ -355,6 +355,10 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		maxTokens?: number;
 		temperature?: number;
 		signal?: AbortSignal;
+		/** Per-token callback — when set + the runtime supports streaming vision,
+		 * the description is decoded token-by-token through the same pipe as chat. */
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		maxTokensPerStep?: number;
 	}): Promise<{ text: string; projectorMs?: number; decodeMs?: number }> {
 		if (!this.session) {
 			throw new Error(
@@ -378,6 +382,8 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 				maxTokens?: number;
 				temperature?: number;
 				signal?: AbortSignal;
+				onTextChunk?: (chunk: string) => void | Promise<void>;
+				maxTokensPerStep?: number;
 			}) => Promise<{ text: string; projectorMs?: number; decodeMs?: number }>;
 		};
 		if (!runtime.describeImage) {
@@ -392,6 +398,8 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			maxTokens: args.maxTokens,
 			temperature: args.temperature,
 			signal: args.signal,
+			onTextChunk: args.onTextChunk,
+			maxTokensPerStep: args.maxTokensPerStep,
 		});
 	}
 

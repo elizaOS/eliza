@@ -106,7 +106,7 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     degraded capability: its voice/ASR/VAD/LLM/text surface is unchanged and
  *     Kokoro just probes unsupported on it.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 12 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 13 as const;
 
 /** One transcribed word with playback-synced timing (ms from utterance start). */
 export interface AsrWordTiming {
@@ -676,6 +676,29 @@ export interface ElizaInferenceFfi {
 		maxTextBytes?: number;
 	}): string;
 
+	/* ---- Streaming mmproj vision describe (ABI v13) -------------- */
+
+	/**
+	 * True when this build wires token-by-token vision describe
+	 * (`eliza_inference_describe_image_stream_open`). A <=v12 / vision-off
+	 * library returns false, so the IMAGE_DESCRIPTION handler falls back to the
+	 * buffered {@link describeImage}.
+	 */
+	visionStreamSupported?(): boolean;
+	/**
+	 * Open a streaming vision-describe session: prime an `LlmStreamHandle`'s KV
+	 * with `imageBytes` (raw PNG/JPEG/WebP) + `prompt` through the mmproj at
+	 * `mmprojPath`, then PULL tokens with the existing {@link llmStreamNext} loop
+	 * and release via {@link llmStreamClose} — the same machinery as chat text.
+	 * Throws `VoiceLifecycleError` when the build lacks vision streaming.
+	 */
+	describeImageStreamOpen?(args: {
+		ctx: ElizaInferenceContextHandle;
+		imageBytes: Uint8Array;
+		mmprojPath: string;
+		prompt?: string;
+	}): LlmStreamHandle;
+
 	/* ---- Tokenizer (ABI v9) -------------------------------------- */
 
 	/**
@@ -1037,6 +1060,21 @@ interface BunFfiSymbols {
 		maxTextBytes: bigint | number,
 		outErr: unknown,
 	) => number;
+	// Streaming mmproj vision describe (ABI v13). Optional — absent on <=v12
+	// builds (the probe then reports unsupported and IMAGE_DESCRIPTION falls back
+	// to the buffered `eliza_inference_describe_image`). `_stream_open` returns an
+	// EliLlmStream* (as a pointer/bigint) primed with the image+prompt KV; the
+	// caller drives the existing `eliza_inference_llm_stream_next` loop and frees
+	// via `eliza_inference_llm_stream_close`.
+	eliza_inference_vision_stream_supported?: () => number;
+	eliza_inference_describe_image_stream_open?: (
+		ctx: bigint,
+		imageBytes: unknown,
+		nBytes: bigint | number,
+		mmprojPath: unknown,
+		prompt: unknown,
+		outErr: unknown,
+	) => bigint;
 	// Tokenizer (ABI v9). Optional — absent on v8 builds.
 	eliza_inference_tokenize_supported?: () => number;
 	eliza_inference_tokenize?: (
@@ -1419,6 +1457,21 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			returns: T.i32,
 		},
 	};
+	// Streaming mmproj vision describe (ABI v13): open returns an EliLlmStream*
+	// primed with the image+prompt KV; the caller drives the existing
+	// `eliza_inference_llm_stream_next` loop. Layered on top of the v12 surface;
+	// the cascade peels it when a <=v12 library is loaded (the
+	// `visionStreamSupported()` probe then reports false and IMAGE_DESCRIPTION
+	// falls back to the buffered `eliza_inference_describe_image`).
+	let visionStreamSymbolsAvailable = true;
+	const visionStreamDefs = {
+		eliza_inference_vision_stream_supported: { args: [], returns: T.i32 },
+		eliza_inference_describe_image_stream_open: {
+			// ctx, image_bytes, n_bytes, mmproj_path, prompt, out_error -> EliLlmStream*
+			args: [T.ptr, T.ptr, T.usize, T.ptr, T.ptr, T.ptr],
+			returns: T.ptr,
+		},
+	};
 	const coreDefs = {
 		eliza_inference_abi_version: { args: [], returns: T.cstring },
 		eliza_inference_create: {
@@ -1495,7 +1548,36 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	const classifierDefs = { ...speakerDefs, ...diarizDefs };
 	const attempts = [
 		{
-			// Full v12 surface (v11 + the in-process ASR word-timestamp decoder).
+			// Full v13 surface (v12 + token-by-token mmproj vision describe).
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+				...eotDefs,
+				...timedAsrDefs,
+				...visionStreamDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+			eot: true,
+			timedAsr: true,
+			visionStream: true,
+		},
+		{
+			// Full v12 surface (v11 + the in-process ASR word-timestamp decoder);
+			// a v12 build lacks the v13 streaming-vision symbols.
 			defs: {
 				...coreDefs,
 				...referenceEncodeDefs,
@@ -1731,6 +1813,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			eotSymbolsAvailable = (attempt as { eot?: boolean }).eot ?? false;
 			timedAsrSymbolsAvailable =
 				(attempt as { timedAsr?: boolean }).timedAsr ?? false;
+			visionStreamSymbolsAvailable =
+				(attempt as { visionStream?: boolean }).visionStream ?? false;
 			break;
 		} catch (err) {
 			lastOpenError = err;
@@ -1774,6 +1858,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
+		(reported === "12" && !visionStreamSymbolsAvailable) ||
 		(reported === "11" && !timedAsrSymbolsAvailable) ||
 		(reported === "10" && !eotSymbolsAvailable && !timedAsrSymbolsAvailable) ||
 		(reported === "9" && !kokoroSymbolsAvailable && !eotSymbolsAvailable) ||
@@ -2894,6 +2979,45 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			return Buffer.from(outText.buffer, outText.byteOffset, len).toString(
 				"utf8",
 			);
+		},
+
+		/* ---- Streaming mmproj vision describe (ABI v13) ------------ */
+
+		visionStreamSupported(): boolean {
+			const probe = loadedLib.symbols.eliza_inference_vision_stream_supported;
+			return (
+				visionStreamSymbolsAvailable &&
+				typeof probe === "function" &&
+				probe() === 1
+			);
+		},
+
+		describeImageStreamOpen({ ctx, imageBytes, mmprojPath, prompt }) {
+			const open = loadedLib.symbols.eliza_inference_describe_image_stream_open;
+			if (!visionStreamSymbolsAvailable || typeof open !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_describe_image_stream_open is not exported by this build",
+				);
+			}
+			const err = makeOutErr();
+			const mmprojArg = cstr(mmprojPath);
+			const promptArg = cstr(prompt ?? null);
+			const handle = open(
+				ctx,
+				ffi.ptr(imageBytes),
+				BigInt(imageBytes.length),
+				mmprojArg.ptr,
+				promptArg.ptr,
+				err.ptr,
+			);
+			if (isNullPointer(handle)) {
+				const message =
+					takeError(err.buf) ??
+					"[ffi-bindings] eliza_inference_describe_image_stream_open returned NULL with no diagnostic";
+				throw new VoiceLifecycleError("kernel-missing", message);
+			}
+			return handle as LlmStreamHandle;
 		},
 
 		/* ---- Tokenizer (ABI v9) ------------------------------------ */
