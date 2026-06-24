@@ -103,6 +103,7 @@ type ContactSeedHandle = {
   handle?: unknown;
   displayLabel?: unknown;
   isPrimary?: unknown;
+  realPerson?: unknown;
 };
 
 type ContactSeed = {
@@ -146,9 +147,9 @@ type MemoryContactSeed = {
   kind?: unknown;
   type?: unknown;
   name?: unknown;
-  notes?: unknown;
   displayName?: unknown;
   id?: unknown;
+  notes?: unknown;
   company?: unknown;
   handles?: unknown;
   platform?: unknown;
@@ -161,6 +162,7 @@ type MemoryContactSeed = {
   telegramHandle?: unknown;
   recentNews?: unknown;
   renameConfirmed?: unknown;
+  mergedAccidentally?: unknown;
   relationshipGoal?: unknown;
   followupThresholdDays?: unknown;
   lastContactedAt?: unknown;
@@ -454,6 +456,18 @@ function dedupeContactHandles(
   return deduped;
 }
 
+function normalizeMergedEntityHandles(
+  seed: MemoryContactSeed,
+): ReturnType<typeof normalizeContactHandles> {
+  const handles = normalizeContactHandles(seed.handles);
+  const platform = readNonEmptyString(seed.platform);
+  const handle = readNonEmptyString(seed.handle);
+  if (platform && handle) {
+    handles.push({ platform, identifier: handle });
+  }
+  return dedupeContactHandles(handles);
+}
+
 function normalizeRolodexHandles(content: MemoryContactSeed): Array<{
   platform: string;
   identifier: string;
@@ -490,6 +504,59 @@ function normalizeRolodexHandles(content: MemoryContactSeed): Array<{
     });
   }
   return dedupeContactHandles(handles);
+}
+
+function mergedEntityNotes(seed: MemoryContactSeed): string | undefined {
+  const notes: string[] = [];
+  const authoredNotes = readNonEmptyString(seed.notes);
+  if (authoredNotes) {
+    notes.push(authoredNotes);
+  }
+  const scenarioEntityId = readNonEmptyString(seed.id);
+  if (scenarioEntityId) {
+    notes.push(`Scenario entity id: ${scenarioEntityId}`);
+  }
+  if (readOptionalBoolean(seed.mergedAccidentally) !== undefined) {
+    notes.push(
+      `Merged accidentally: ${readOptionalBoolean(seed.mergedAccidentally)}`,
+    );
+  }
+  if (Array.isArray(seed.handles)) {
+    for (const entry of seed.handles) {
+      if (!entry || typeof entry !== "object") continue;
+      const handle = entry as ContactSeedHandle;
+      const platform = readNonEmptyString(handle.platform);
+      const identifier =
+        readNonEmptyString(handle.identifier) ??
+        readNonEmptyString(handle.handle);
+      const realPerson = readNonEmptyString(handle.realPerson);
+      if (platform && identifier && realPerson) {
+        notes.push(`${platform} ${identifier} real person: ${realPerson}`);
+      }
+    }
+  }
+  return notes.length > 0 ? notes.join("\n") : undefined;
+}
+
+function mergedEntityToContactSeed(seed: MemoryContactSeed): ContactSeed {
+  const handles = normalizeMergedEntityHandles(seed);
+  const tags = readStringArray(seed.tags);
+  return {
+    type: "contact",
+    name:
+      readNonEmptyString(seed.displayName) ??
+      readNonEmptyString(seed.name) ??
+      handles[0]?.identifier ??
+      "Merged entity",
+    notes: mergedEntityNotes(seed),
+    categories: ["merged-entity"],
+    tags: tags.length > 0 ? tags : ["merged-entity"],
+    handles,
+    relationshipGoal: seed.relationshipGoal,
+    followupThresholdDays: seed.followupThresholdDays,
+    lastContactedAt: seed.lastContactedAt,
+    relationshipStatus: seed.relationshipStatus,
+  };
 }
 
 function rolodexNotes(content: MemoryContactSeed): string | undefined {
@@ -645,21 +712,24 @@ async function seedMemory(
   }
   const memoryType =
     readNonEmptyString(content.kind) ?? readNonEmptyString(content.type);
-  if (memoryType !== "contact") {
-    if (memoryType === "rolodex-entity") {
-      return seedContact(ctx, rolodexEntityToContactSeed(content));
-    }
-    return undefined;
+  if (memoryType === "contact") {
+    return seedContact(ctx, {
+      type: "contact",
+      name: content.name,
+      notes: content.notes,
+      relationshipGoal: content.relationshipGoal,
+      followupThresholdDays: content.followupThresholdDays,
+      lastContactedAt: content.lastContactedAt,
+      relationshipStatus: content.relationshipStatus,
+    });
   }
-  return seedContact(ctx, {
-    type: "contact",
-    name: content.name,
-    notes: content.notes,
-    relationshipGoal: content.relationshipGoal,
-    followupThresholdDays: content.followupThresholdDays,
-    lastContactedAt: content.lastContactedAt,
-    relationshipStatus: content.relationshipStatus,
-  });
+  if (memoryType === "rolodex-entity") {
+    return seedContact(ctx, rolodexEntityToContactSeed(content));
+  }
+  if (memoryType === "merged-entity") {
+    return seedContact(ctx, mergedEntityToContactSeed(content));
+  }
+  return undefined;
 }
 
 const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
