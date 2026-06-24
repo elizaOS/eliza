@@ -472,10 +472,17 @@ function TabScrollView({
   );
 }
 
-function TabContentView({ children }: { children: ReactNode }) {
+function TabContentView({
+  children,
+  surface = "opaque",
+}: {
+  children: ReactNode;
+  surface?: "opaque" | "transparent";
+}) {
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
+      surface={surface}
       main={
         <div
           data-shell-content-region="true"
@@ -954,12 +961,12 @@ function renderStaticViewRouterTab({
     automations: <AutomationsFeed />,
     triggers: <AutomationsFeed />,
     voice: (
-      <TabContentView>
+      <TabContentView surface="transparent">
         <SettingsView key="settings-identity" initialSection="identity" />
       </TabContentView>
     ),
     settings: (
-      <TabContentView>
+      <TabContentView surface="transparent">
         <SettingsView
           key="settings-root"
           initialSection={settingsInitialSection ?? undefined}
@@ -1990,6 +1997,20 @@ export function App() {
               z-10 so opaque views paint over it and transparent ones (home,
               Views) let it show through. */}
           <AppBackground />
+          {/* Readability scrim for text-dense views that opt into the unified
+              wallpaper (Settings). A full-viewport translucent frosted layer
+              between the wallpaper (z-0) and the content (z-10): it covers the
+              status-bar safe area too (it's `fixed inset-0`, outside the root's
+              safe-area padding), so the wallpaper reads through seamlessly while
+              the flat, card-less Settings text stays legible over any wallpaper.
+              Sparse views (springboard/Views) need no scrim and don't get one. */}
+          {isSettingsPage ? (
+            <div
+              aria-hidden="true"
+              data-testid="app-background-scrim"
+              className="pointer-events-none fixed inset-0 z-[1] bg-bg/55 backdrop-blur-md"
+            />
+          ) : null}
           <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
             <ConnectionFailedBanner />
             <SystemWarningBanner />

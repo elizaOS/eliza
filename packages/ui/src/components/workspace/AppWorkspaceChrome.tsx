@@ -58,6 +58,17 @@ export interface AppWorkspaceChromeProps {
   main: ReactNode;
   /** data-testid applied to the root element. */
   testId?: string;
+  /**
+   * Background surface for the chrome's content pane.
+   * - `"opaque"` (default): a solid `bg-bg` panel — the right choice for the
+   *   majority of routed views, which own their full surface.
+   * - `"transparent"`: paints no background, so the unified app wallpaper
+   *   (mounted once at the shell root) shows through — used by views that opt
+   *   into the shared background (e.g. Settings), matching the springboard.
+   *   Readability over an arbitrary wallpaper is handled by the shell's
+   *   translucent scrim layer, not by this pane.
+   */
+  surface?: "opaque" | "transparent";
 }
 
 /**
@@ -70,6 +81,7 @@ export function AppWorkspaceChrome({
   nav,
   main,
   testId = "app-workspace-chrome",
+  surface = "opaque",
 }: AppWorkspaceChromeProps): React.JSX.Element {
   const isMobileViewport = useMediaQuery(WORKSPACE_MOBILE_MEDIA_QUERY);
   const [mobileSidebarControl, setMobileSidebarControl] =
@@ -104,7 +116,9 @@ export function AppWorkspaceChrome({
       value={mobileSidebarControlsValue}
     >
       <div
-        className={`flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))] ${
+        className={`flex min-h-0 min-w-0 w-full flex-1 ${
+          surface === "transparent" ? "" : "bg-bg"
+        } pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))] ${
           isMobileViewport ? "flex-col" : ""
         }`}
         data-testid={testId}
