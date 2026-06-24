@@ -266,7 +266,7 @@ export function TransactionHistory({
       {!loading && filtered.length === 0 ? (
         <PagePanel.Empty
           variant={embedded ? "workspace" : "panel"}
-          title="No transactions yet"
+          title="None"
         />
       ) : null}
 

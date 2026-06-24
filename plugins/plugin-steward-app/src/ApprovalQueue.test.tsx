@@ -121,7 +121,7 @@ describe("ApprovalQueue — populated data", () => {
   it("shows the empty state when there are no pending approvals", async () => {
     const props = makeProps([]);
     render(React.createElement(ApprovalQueue, props));
-    expect(await screen.findByText("No pending approvals")).toBeTruthy();
+    expect(await screen.findByText("None")).toBeTruthy();
   });
 
   it("shows an error notice when loading fails", async () => {
@@ -153,7 +153,7 @@ describe("ApprovalQueue — interactive controls", () => {
       3000,
     );
     // Optimistic removal -> empty state appears.
-    expect(await screen.findByText("No pending approvals")).toBeTruthy();
+    expect(await screen.findByText("None")).toBeTruthy();
     // Count decremented (items.length - 1 == 0).
     expect(props.onPendingCountChange).toHaveBeenLastCalledWith(0);
   });

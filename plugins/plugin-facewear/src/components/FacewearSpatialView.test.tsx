@@ -80,9 +80,9 @@ describe("FacewearSpatialView one source, three modalities", () => {
       />,
       50,
     ).join("\n");
-    expect(empty).toContain("No devices");
+    expect(empty).toContain("None");
     expect(empty).toContain("network down");
-    expect(empty).toContain("No supported devices");
+    expect(empty).toContain("None");
   });
 
   it("registers as a terminal view the agent terminal can mount and render", () => {

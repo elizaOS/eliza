@@ -223,9 +223,7 @@ export function SwapAppView({
       <div className="chat-native-scrollbar flex-1 overflow-y-auto px-3 py-2 sm:px-5">
         <div className="mx-auto max-w-xl space-y-3">
           {!config.agentTokenAddress && (
-            <PagePanel.Notice tone="warning">
-              No agent configured.
-            </PagePanel.Notice>
+            <PagePanel.Notice tone="warning">Unavailable</PagePanel.Notice>
           )}
 
           {/* From */}

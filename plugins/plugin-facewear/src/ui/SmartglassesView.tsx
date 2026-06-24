@@ -1084,7 +1084,7 @@ export function SmartglassesView() {
           </div>
           <div className="mt-3 max-h-72 overflow-y-auto">
             {events.length === 0 ? (
-              <p className="px-1 py-2 text-xs text-muted">No events</p>
+              <p className="px-1 py-2 text-xs text-muted">None</p>
             ) : (
               events
                 .slice()

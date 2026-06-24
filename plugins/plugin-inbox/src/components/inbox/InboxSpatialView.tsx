@@ -203,7 +203,7 @@ function InboxEmptyBody({
   if (noChannels) {
     return (
       <VStack gap={1}>
-        <Text bold>No channels</Text>
+        <Text bold>None</Text>
         <Button width="100%" agent="connect" onPress={dispatch("connect")}>
           Connect
         </Button>

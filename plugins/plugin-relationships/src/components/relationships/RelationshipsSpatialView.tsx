@@ -142,7 +142,7 @@ function RelationshipsEmptyBody({
 }) {
   return (
     <>
-      <Text bold>No people</Text>
+      <Text bold>None</Text>
       <HStack gap={1}>
         <Button agent="add" onPress={dispatch("add")}>
           Add someone
@@ -183,7 +183,7 @@ function RelationshipsReadyBody({
       </Text>
       {visible.length === 0 ? (
         <Text tone="muted" style="caption">
-          No matches
+          None
         </Text>
       ) : (
         <List gap={1}>

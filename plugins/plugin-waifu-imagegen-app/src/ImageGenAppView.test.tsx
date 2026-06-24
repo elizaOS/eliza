@@ -124,7 +124,7 @@ describe("ImageGenAppView", () => {
   it("warns when no agent token is configured", () => {
     delete (window as unknown as Record<string, unknown>).__WAIFU_IMAGEGEN__;
     render(React.createElement(ImageGenAppView, ctx()));
-    expect(screen.getByText("No agent configured.")).toBeTruthy();
+    expect(screen.getByText("Unavailable")).toBeTruthy();
     expect(invokeImageGen).not.toHaveBeenCalled();
   });
 

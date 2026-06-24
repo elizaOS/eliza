@@ -171,10 +171,7 @@ function PhaseStrip({
           <span className="sr-only text-2xs text-muted/50">no turn yet</span>
         ) : null}
       </div>
-      <div
-        className="relative min-w-0"
-        title={trajectory ? undefined : "No trajectory captured yet"}
-      >
+      <div className="relative min-w-0" title={trajectory ? undefined : "None"}>
         {/* Progress rail behind the medallion row */}
         <div className="pointer-events-none absolute inset-x-[12.5%] top-[18px] h-0.5 bg-border/20">
           <div

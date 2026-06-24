@@ -181,7 +181,7 @@ function ApprovalsBody({
       <Divider label="pending approvals" />
       {snapshot.pendingApprovals.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          {snapshot.loading ? "loading" : "No pending approvals"}
+          {snapshot.loading ? "Loading" : "None"}
         </Text>
       ) : (
         <List gap={1} width="100%">
@@ -280,7 +280,7 @@ function HistoryBody({
       <Divider label="transaction history" />
       {snapshot.history.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          {snapshot.loading ? "loading" : "No transactions"}
+          {snapshot.loading ? "Loading" : "None"}
         </Text>
       ) : (
         <List gap={1} width="100%">

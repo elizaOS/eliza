@@ -215,7 +215,7 @@ export function CompanionSpatialView({
       </HStack>
       {categories.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No emote categories
+          None
         </Text>
       ) : (
         <List gap={0}>

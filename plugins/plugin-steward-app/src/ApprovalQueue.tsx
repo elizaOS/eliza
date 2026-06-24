@@ -382,7 +382,7 @@ export function ApprovalQueue({
       {!loading && items.length === 0 && !error ? (
         <PagePanel.Empty
           variant={embedded ? "workspace" : "panel"}
-          title="No pending approvals"
+          title="None"
         />
       ) : null}
 

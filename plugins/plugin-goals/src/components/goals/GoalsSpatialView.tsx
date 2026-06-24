@@ -169,7 +169,7 @@ function GoalsReadyBody({
   if (snapshot.goals.length === 0) {
     return (
       <>
-        <Text bold>No goals</Text>
+        <Text bold>None</Text>
         <HStack gap={1}>
           <Button agent="new" onPress={dispatch("new")}>
             Set a goal
@@ -213,7 +213,7 @@ function GoalsReadyBody({
 
       {groups.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No matches
+          None
         </Text>
       ) : (
         groups.map((group) => (

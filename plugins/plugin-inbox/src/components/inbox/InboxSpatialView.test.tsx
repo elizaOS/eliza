@@ -123,7 +123,7 @@ describe("InboxSpatialView one source, three modalities", () => {
         <InboxSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No channels");
+    expect(html).toContain("None");
     expect(html).toContain('data-agent-id="connect"');
   });
 
@@ -140,7 +140,7 @@ describe("InboxSpatialView one source, three modalities", () => {
     const lines = renderViewToLines(<InboxSpatialView snapshot={zero} />, 54);
     const flat = lines.join("\n");
     expect(flat).toContain("Inbox zero");
-    expect(flat).not.toContain("No channels");
+    expect(flat).not.toContain("None");
   });
 
   it("an active channel filter is marked on its chip", () => {

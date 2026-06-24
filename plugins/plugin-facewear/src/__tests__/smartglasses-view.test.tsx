@@ -111,7 +111,7 @@ describe("SmartglassesView — connection + status display", () => {
     expect(screen.getByText("Offline")).toBeTruthy();
     // Both lens pills read the idle state.
     expect(screen.getAllByText("idle")).toHaveLength(2);
-    expect(screen.getByText("No events")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
     // Report shows the native bridge is available (window.__evenBridge set).
     expect(screen.getByText("available")).toBeTruthy();
   });
