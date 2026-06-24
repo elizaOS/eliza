@@ -81,9 +81,17 @@ function readParams(options: unknown): WebSearchParams {
 }
 
 /**
- * Extract the human-readable result text from an MCP `tools/call` response. The
- * body is either a JSON-RPC object or an SSE stream of `data:` lines; both wrap
- * the payload at `result.content[].text`. A JSON-RPC `error` envelope or a
+ * Extract the human-readable result text from an MCP `tools/call` response.
+ *
+ * (Same shape as the vendored opencode `parseResponse` in
+ * plugin-agent-orchestrator/vendor/opencode/.../tool/mcp-websearch.ts, but that
+ * copy is Effect-based and lives in a third-party vendor tree `@elizaos/agent`
+ * doesn't depend on — so it can't be reused without dragging Effect in. This is
+ * the one plain-Promise copy, and it adds the error-envelope/isError handling
+ * the vendored one lacks.)
+ *
+ * The body is either a JSON-RPC object or an SSE stream of `data:` lines; both
+ * wrap the payload at `result.content[].text`. A JSON-RPC `error` envelope or a
  * tool-level `result.isError` is treated as a failure (returns undefined) — NOT
  * mistaken for a search result — so the caller falls back to the other provider
  * instead of handing the model an error string as if it were results.

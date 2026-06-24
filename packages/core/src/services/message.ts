@@ -7175,19 +7175,18 @@ function findDirectOwnedActionSuggestion(
 	messageText: string,
 ): ActionOwnershipSuggestion | null {
 	if (looksLikeLocalShellRequest(messageText)) {
-		const shellAction = findRuntimeActionByNames(runtime, [
+		const shellName = findAvailableActionName(runtime.actions ?? [], [
 			"SHELL",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
 			"EXECUTE_COMMAND",
 			"TERMINAL",
-			"SHELL",
 			"RUN_SHELL",
 			"EXEC",
 		]);
-		if (shellAction) {
+		if (shellName) {
 			return {
-				actionName: shellAction.name,
+				actionName: shellName,
 				score: 100,
 				secondBestScore: 0,
 				reasons: ["direct:local-shell-check"],
@@ -7196,19 +7195,10 @@ function findDirectOwnedActionSuggestion(
 	}
 
 	if (looksLikeWebSearchRequest(messageText)) {
-		const searchAction = findRuntimeActionByNames(runtime, [
-			"SEARCH",
-			"WEB_SEARCH",
-			"SEARCH_WEB",
-			"BRAVE_SEARCH",
-			"INTERNET_SEARCH",
-			"SEARCH_INTERNET",
-			"LOOKUP_WEB",
-			"GOOGLE",
-		]);
-		if (searchAction) {
+		const searchName = findWebLookupActionName(runtime.actions ?? []);
+		if (searchName) {
 			return {
-				actionName: searchAction.name,
+				actionName: searchName,
 				score: 100,
 				secondBestScore: 0,
 				reasons: ["direct:web-search"],
@@ -7237,27 +7227,6 @@ function findDirectOwnedActionSuggestion(
 	}
 
 	return null;
-}
-
-function findRuntimeActionByNames(
-	runtime: Pick<IAgentRuntime, "actions">,
-	names: string[],
-): Action | undefined {
-	// Resolve in `names` PRIORITY order, not action-registration order, so the
-	// leading preference wins (mirrors findAvailableActionName in
-	// direct-action-heuristics.ts).
-	const actions = runtime.actions ?? [];
-	for (const want of names) {
-		const wanted = normalizeActionIdentifier(want);
-		const match = actions.find((action) => {
-			const candidates = [action.name, ...(action.similes ?? [])]
-				.filter((value): value is string => typeof value === "string")
-				.map(normalizeActionIdentifier);
-			return candidates.includes(wanted);
-		});
-		if (match) return match;
-	}
-	return undefined;
 }
 
 function looksLikeActionExplanationRequest(text: string): boolean {

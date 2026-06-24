@@ -600,15 +600,6 @@ export interface GuardedHttpGetResult {
   blocked: boolean;
 }
 
-/**
- * SSRF-guarded, https-only, GET-only HTTP fetch shared by custom actions and
- * the built-in WEB_FETCH action.
- *
- * Reuses {@link resolveUrlSafety} (DNS-pinned private/link-local IP blocking via
- * the security network policy) and {@link fetchWithPinnedTarget}. Enforces an
- * https scheme, rejects redirects, and caps both the timeout and the number of
- * body bytes read.
- */
 // Default User-Agent for guarded GETs. Many public REST/JSON APIs (crypto
 // price, weather, news endpoints) reject undici's default `node` User-Agent - or
 // a missing one - with HTTP 403, which silently broke every WEB_FETCH live-info
@@ -693,10 +684,7 @@ async function performGuardedHttpRequest(
   return { ok: response.ok, status: response.status, text, blocked: false };
 }
 
-/**
- * SSRF-guarded, https-only, GET-only HTTP fetch shared by custom actions and the
- * built-in WEB_FETCH action.
- */
+/** SSRF-guarded https-only GET (custom actions + the built-in WEB_FETCH action). */
 export async function performGuardedHttpGet(
   url: string,
   opts: GuardedHttpGetOptions = {},
