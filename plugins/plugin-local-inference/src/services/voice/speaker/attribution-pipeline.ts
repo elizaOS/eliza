@@ -69,16 +69,54 @@ function nonOverlappingSegments(
 		);
 }
 
+function spanDurationMs(spans: ReadonlyArray<LocalSpeakerSegment>): number {
+	let total = 0;
+	for (const span of mergeSpanRanges(spans)) {
+		total += Math.max(0, span.endMs - span.startMs);
+	}
+	return total;
+}
+
+function mergeSpanRanges(
+	spans: ReadonlyArray<LocalSpeakerSegment>,
+): Array<{ startMs: number; endMs: number }> {
+	const sorted = spans
+		.map((span) => ({
+			startMs: Math.max(0, span.startMs),
+			endMs: Math.max(0, span.endMs),
+		}))
+		.filter((span) => span.endMs > span.startMs)
+		.sort((a, b) =>
+			a.startMs !== b.startMs ? a.startMs - b.startMs : a.endMs - b.endMs,
+		);
+	const merged: Array<{ startMs: number; endMs: number }> = [];
+	for (const span of sorted) {
+		const last = merged[merged.length - 1];
+		if (last && span.startMs <= last.endMs) {
+			last.endMs = Math.max(last.endMs, span.endMs);
+		} else {
+			merged.push({ ...span });
+		}
+	}
+	return merged;
+}
+
 function pickPrimaryLocalSpeaker(
 	local: ReadonlyArray<LocalSpeakerSegment>,
 ): number | null {
 	if (local.length === 0) return null;
 	const durations = new Map<number, number>();
+	const bySpeaker = new Map<number, LocalSpeakerSegment[]>();
 	for (const seg of local) {
-		const ms = Math.max(0, seg.endMs - seg.startMs);
+		const list = bySpeaker.get(seg.localSpeakerId) ?? [];
+		list.push(seg);
+		bySpeaker.set(seg.localSpeakerId, list);
+	}
+	for (const [localSpeakerId, spans] of bySpeaker.entries()) {
+		const ms = spanDurationMs(spans);
 		durations.set(
-			seg.localSpeakerId,
-			(durations.get(seg.localSpeakerId) ?? 0) + ms,
+			localSpeakerId,
+			(durations.get(localSpeakerId) ?? 0) + ms,
 		);
 	}
 	let best: { id: number; ms: number } | null = null;
@@ -117,11 +155,15 @@ export class VoiceAttributionPipeline {
 		}
 		// Diarizer is optional — when missing we treat the whole turn as
 		// one segment with `localSpeakerId=0`.
+		let rawLocal: LocalSpeakerSegment[] = [];
 		let local: LocalSpeakerSegment[] = [];
 		if (this.deps.diarizer) {
 			try {
 				const out = await this.deps.diarizer.diarizeWindow(req.pcm);
-				local = nonOverlappingSegments(out.segments);
+				rawLocal = out.segments.sort((a, b) =>
+					a.startMs !== b.startMs ? a.startMs - b.startMs : a.endMs - b.endMs,
+				);
+				local = nonOverlappingSegments(rawLocal);
 			} catch {
 				local = [];
 			}
@@ -139,14 +181,31 @@ export class VoiceAttributionPipeline {
 				},
 			];
 		}
-		const primaryLocal = pickPrimaryLocalSpeaker(local);
+		let primaryLocal = pickPrimaryLocalSpeaker(local);
 		if (primaryLocal === null) return this.buildEmptyOutput(req);
 		// Concatenate the primary local speaker's spans into a single PCM
 		// window for the embedding.
-		const primarySpans = local.filter(
+		let primarySpans = local.filter(
 			(seg) => seg.localSpeakerId === primaryLocal,
 		);
-		const window = this.spliceSpans(req.pcm, primarySpans);
+		let window = this.spliceSpans(req.pcm, primarySpans);
+		if (
+			window.length < WESPEAKER_MIN_SAMPLES &&
+			rawLocal.length > local.length
+		) {
+			const fallbackPrimary = pickPrimaryLocalSpeaker(rawLocal);
+			const fallbackSpans =
+				fallbackPrimary === null
+					? []
+					: rawLocal.filter((seg) => seg.localSpeakerId === fallbackPrimary);
+			const fallbackWindow = this.spliceSpans(req.pcm, fallbackSpans);
+			if (fallbackWindow.length >= WESPEAKER_MIN_SAMPLES) {
+				local = rawLocal;
+				primaryLocal = fallbackPrimary;
+				primarySpans = fallbackSpans;
+				window = fallbackWindow;
+			}
+		}
 		if (window.length < WESPEAKER_MIN_SAMPLES) {
 			// Not enough audio for a stable embedding — emit an
 			// "unknown speaker" segment, no profile observation.
