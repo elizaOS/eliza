@@ -37,49 +37,56 @@ const stubCalls = { block: [] as BlockCall[], unblock: 0 };
 // The app-blocker engine moved to @elizaos/plugin-blocker (LifeOps decomposition);
 // keep the real access helpers (the owner isAgentSelf shortcut this test relies on)
 // and override only the four engine side-effect functions.
-vi.mock("@elizaos/plugin-blocker", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/plugin-blocker")>()),
-  async getAppBlockerStatus() {
-    return {
-      available: true,
-      permissionStatus: stubState.permissionStatus,
-      active: stubState.active,
-      blockedCount: stubState.blockedCount,
-      blockedPackageNames: stubState.blockedPackageNames,
-      endsAt: stubState.endsAt,
-      platform: stubState.platform,
-      engine: "test-stub",
-    };
-  },
-  async getInstalledApps() {
-    return [
-      { displayName: "Twitter", packageName: "com.twitter.android" },
-      { displayName: "Instagram", packageName: "com.instagram.android" },
-    ];
-  },
-  async startAppBlock(options: BlockCall) {
-    stubCalls.block.push(options);
-    const blockedCount =
-      (options.packageNames?.length ?? 0) + (options.appTokens?.length ?? 0);
-    const endsAt =
-      typeof options.durationMinutes === "number"
-        ? new Date(Date.now() + options.durationMinutes * 60_000).toISOString()
-        : null;
-    stubState.active = true;
-    stubState.blockedCount = blockedCount;
-    stubState.blockedPackageNames = options.packageNames ?? [];
-    stubState.endsAt = endsAt;
-    return { success: true, blockedCount, endsAt };
-  },
-  async stopAppBlock() {
-    stubCalls.unblock += 1;
-    stubState.active = false;
-    stubState.blockedCount = 0;
-    stubState.blockedPackageNames = [];
-    stubState.endsAt = null;
-    return { success: true };
-  },
-}));
+vi.mock(
+  "@elizaos/plugin-blocker/services/app-blocker/index",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@elizaos/plugin-blocker/services/app-blocker/index")
+    >()),
+    async getAppBlockerStatus() {
+      return {
+        available: true,
+        permissionStatus: stubState.permissionStatus,
+        active: stubState.active,
+        blockedCount: stubState.blockedCount,
+        blockedPackageNames: stubState.blockedPackageNames,
+        endsAt: stubState.endsAt,
+        platform: stubState.platform,
+        engine: "test-stub",
+      };
+    },
+    async getInstalledApps() {
+      return [
+        { displayName: "Twitter", packageName: "com.twitter.android" },
+        { displayName: "Instagram", packageName: "com.instagram.android" },
+      ];
+    },
+    async startAppBlock(options: BlockCall) {
+      stubCalls.block.push(options);
+      const blockedCount =
+        (options.packageNames?.length ?? 0) + (options.appTokens?.length ?? 0);
+      const endsAt =
+        typeof options.durationMinutes === "number"
+          ? new Date(
+              Date.now() + options.durationMinutes * 60_000,
+            ).toISOString()
+          : null;
+      stubState.active = true;
+      stubState.blockedCount = blockedCount;
+      stubState.blockedPackageNames = options.packageNames ?? [];
+      stubState.endsAt = endsAt;
+      return { success: true, blockedCount, endsAt };
+    },
+    async stopAppBlock() {
+      stubCalls.unblock += 1;
+      stubState.active = false;
+      stubState.blockedCount = 0;
+      stubState.blockedPackageNames = [];
+      stubState.endsAt = null;
+      return { success: true };
+    },
+  }),
+);
 
 // Audit F folded the standalone `APP_BLOCK` action into a handler function;
 // the BLOCK umbrella in `./block.ts` is the only registered action.
