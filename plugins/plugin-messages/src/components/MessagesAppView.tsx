@@ -461,7 +461,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
               <div>
                 <div className="font-medium text-txt">
                   {t("messages.smsRoleTitle", {
-                    defaultValue: "SMS role is not assigned to this app",
+                    defaultValue: "SMS role",
                   })}
                 </div>
                 <div className="sr-only text-xs text-muted">

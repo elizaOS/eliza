@@ -851,7 +851,7 @@ export function VectorGraph3D({
       <div className="px-4 py-10 text-center">
         <div className="text-sm text-txt">
           {t("vectorbrowserview.RendererUnavailable", {
-            defaultValue: "3D view unavailable in this environment.",
+            defaultValue: "Unavailable",
           })}
         </div>
         <div className="sr-only mt-2 text-xs text-muted">
