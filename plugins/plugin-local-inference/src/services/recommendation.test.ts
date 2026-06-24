@@ -10,6 +10,7 @@ import {
 	classifyRecommendationPlatform,
 	deviceCapsFromProbe,
 	selectBestQuantizationVariant,
+	selectRecommendedModelForSlot,
 } from "./recommendation.js";
 
 /**
@@ -205,5 +206,11 @@ describe("model-fit + smaller-fallback ladder (#8848)", () => {
 		expect(catalogDownloadSizeGb(fallback as CatalogModel)).toBeLessThan(
 			catalogDownloadSizeGb(largest),
 		);
+	});
+
+	it("selectRecommendedModelForSlot picks a real, fitting catalog model on a capable host", () => {
+		const sel = selectRecommendedModelForSlot("TEXT_LARGE", huge);
+		expect(sel.model).not.toBeNull();
+		expect(MODEL_CATALOG.some((m) => m.id === sel.model?.id)).toBe(true);
 	});
 });
