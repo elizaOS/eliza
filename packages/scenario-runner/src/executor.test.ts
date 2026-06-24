@@ -523,6 +523,164 @@ describe("scenario executor action turns", () => {
     ]);
   });
 
+  it("enforces planner includes and excludes against the captured selected action trace", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "VIEWS",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(
+            async (_runtime, _message, _state, options, callback) => {
+              await callback?.({ text: `opened ${String(options?.view)}` });
+              return {
+                success: true,
+                data: {
+                  route: "finance",
+                  view: options?.view,
+                },
+              };
+            },
+          ),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "planner-matchers-pass",
+        title: "Planner matchers pass",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "open view",
+            text: "open the remote ledger view",
+            actionName: "VIEWS",
+            options: { action: "pin", view: "remote-ledger" },
+            plannerIncludesAll: ["VIEWS", "remote-ledger"],
+            plannerIncludesAny: ["pin", "dashboard"],
+            plannerExcludes: ["calendar_action"],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(report.turns[0]?.failedAssertions).toEqual([]);
+  });
+
+  it("reports planner matcher failures with the captured selected action trace", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "VIEWS",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(async () => ({
+            success: true,
+            text: "opened remote-ledger",
+            data: {
+              route: "finance",
+            },
+          })),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "planner-matchers-fail",
+        title: "Planner matchers fail",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "open view",
+            actionName: "VIEWS",
+            options: { action: "pin", view: "local-notes" },
+            plannerIncludesAll: ["remote-ledger"],
+            plannerIncludesAny: ["finance", "remote-ledger"],
+            plannerExcludes: ["local-notes"],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(report.turns[0]?.failedAssertions).toEqual([
+      'plannerIncludesAll: expected planner trace to include remote-ledger, saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"}"',
+      'plannerIncludesAny: expected planner trace to include any of [finance,remote-ledger], saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"}"',
+      'plannerExcludes: expected planner trace to exclude [local-notes], saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"}"',
+    ]);
+  });
+
+  it("does not satisfy planner matchers with a synthesized REPLY trace", async () => {
+    const runtime = {
+      ...createRuntime([]),
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback({
+            text: "I can talk about remote-ledger, but I did not select an action.",
+          });
+          return {};
+        }),
+      },
+    } as unknown as AgentRuntime;
+
+    const report = await runScenario(
+      {
+        id: "planner-matchers-synthesized-reply",
+        title: "Planner matchers synthesized reply",
+        domain: "executor",
+        rooms: [{ id: "main", source: "telegram", title: "Action User" }],
+        turns: [
+          {
+            kind: "message",
+            name: "free text only",
+            text: "open remote ledger",
+            plannerIncludesAll: ["REPLY", "remote-ledger"],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.turns[0]?.actionsCalled[0]).toMatchObject({
+      actionName: "REPLY",
+      result: { data: { source: "synthesized-reply" } },
+    });
+    expect(report.turns[0]?.failedAssertions).toEqual([
+      'plannerIncludesAll: expected planner trace to include REPLY, saw ""',
+    ]);
+  });
+
   it("matches expectedActions against the action selected during the turn", async () => {
     const runtime = createRuntime(
       [

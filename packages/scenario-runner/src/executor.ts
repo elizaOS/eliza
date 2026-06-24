@@ -57,6 +57,8 @@ export interface ExecutorOptions {
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
 
+type TurnMatcher = string | RegExp;
+
 function responsePatternMatches(
   pattern: unknown,
   responseText: string,
@@ -86,6 +88,67 @@ function isSynthesizedReplyAction(
 ): boolean {
   const data = toRecord(action.result?.data);
   return action.actionName === "REPLY" && data?.source === "synthesized-reply";
+}
+
+function stringifyForAssertion(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isTurnMatcher(value: unknown): value is TurnMatcher {
+  return typeof value === "string" || value instanceof RegExp;
+}
+
+function toTurnMatcherArray(value: unknown): TurnMatcher[] {
+  if (isTurnMatcher(value)) {
+    return [value];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isTurnMatcher);
+}
+
+function formatTurnMatcher(pattern: TurnMatcher): string {
+  return pattern instanceof RegExp ? pattern.toString() : pattern;
+}
+
+function formatTurnMatchers(patterns: readonly TurnMatcher[]): string {
+  return patterns.map(formatTurnMatcher).join(",");
+}
+
+function matchesTurnMatcher(value: string, pattern: TurnMatcher): boolean {
+  if (typeof pattern === "string") {
+    return value.toLowerCase().includes(pattern.toLowerCase());
+  }
+  pattern.lastIndex = 0;
+  return pattern.test(value);
+}
+
+function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
+  const parts: string[] = [];
+  if (
+    typeof execution.plannerText === "string" &&
+    execution.plannerText.trim().length > 0
+  ) {
+    parts.push(execution.plannerText);
+  }
+  for (const action of execution.actionsCalled) {
+    if (isSynthesizedReplyAction(action)) {
+      continue;
+    }
+    parts.push(action.actionName);
+    if (action.parameters !== undefined) {
+      parts.push(stringifyForAssertion(action.parameters));
+    }
+  }
+  return parts.join(" ");
 }
 
 type ScenarioRoomDefinition = {
@@ -1579,6 +1642,59 @@ async function runTurnAssertions(
       failures.push(
         `forbiddenActions triggered: ${hits.map((h) => h.actionName).join(",")}`,
       );
+    }
+  }
+  const plannerIncludesAll = toTurnMatcherArray(
+    (turn as { plannerIncludesAll?: unknown }).plannerIncludesAll,
+  );
+  const plannerIncludesAny = toTurnMatcherArray(
+    (turn as { plannerIncludesAny?: unknown }).plannerIncludesAny,
+  );
+  const plannerExcludes = toTurnMatcherArray(
+    (turn as { plannerExcludes?: unknown }).plannerExcludes,
+  );
+  if (
+    plannerIncludesAll.length > 0 ||
+    plannerIncludesAny.length > 0 ||
+    plannerExcludes.length > 0
+  ) {
+    const plannerBlob = buildPlannerAssertionBlob(execution);
+    const plannerPreview = JSON.stringify(plannerBlob.slice(0, 500));
+    if (plannerIncludesAll.length > 0) {
+      const missing = plannerIncludesAll.filter(
+        (pattern) => !matchesTurnMatcher(plannerBlob, pattern),
+      );
+      if (missing.length > 0) {
+        failures.push(
+          `plannerIncludesAll: expected planner trace to include ${formatTurnMatcher(
+            missing[0] as TurnMatcher,
+          )}, saw ${plannerPreview}`,
+        );
+      }
+    }
+    if (plannerIncludesAny.length > 0) {
+      const ok = plannerIncludesAny.some((pattern) =>
+        matchesTurnMatcher(plannerBlob, pattern),
+      );
+      if (!ok) {
+        failures.push(
+          `plannerIncludesAny: expected planner trace to include any of [${formatTurnMatchers(
+            plannerIncludesAny,
+          )}], saw ${plannerPreview}`,
+        );
+      }
+    }
+    if (plannerExcludes.length > 0) {
+      const hits = plannerExcludes.filter((pattern) =>
+        matchesTurnMatcher(plannerBlob, pattern),
+      );
+      if (hits.length > 0) {
+        failures.push(
+          `plannerExcludes: expected planner trace to exclude [${formatTurnMatchers(
+            hits,
+          )}], saw ${plannerPreview}`,
+        );
+      }
     }
   }
 
