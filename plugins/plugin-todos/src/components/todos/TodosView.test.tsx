@@ -120,7 +120,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: () => never }),
       }),
     );
-    expect(screen.getByText("Loading todos")).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
   it("renders the populated three-lane board", async () => {
@@ -140,7 +140,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
       }),
     );
-    await screen.findByText("No todos");
+    await screen.findByText("None");
     expect(screen.queryByText("Overdue task")).toBeNull();
   });
 
@@ -154,7 +154,7 @@ describe("TodosView — states", () => {
         }),
       }),
     );
-    await screen.findByText("No todos");
+    await screen.findByText("None");
     expect(screen.queryByText("Done")).toBeNull();
   });
 
@@ -164,7 +164,7 @@ describe("TodosView — states", () => {
         fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
       }),
     );
-    await screen.findByText("No todos");
+    await screen.findByText("None");
     fireEvent.click(agent("add"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });

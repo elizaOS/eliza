@@ -76,7 +76,7 @@ export function TodosSpatialView({
     <Card gap={1} padding={1}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
-          Loading todos
+          Loading
         </Text>
       ) : snapshot.state === "error" ? (
         <TodosErrorBody snapshot={snapshot} dispatch={dispatch} />
@@ -118,10 +118,10 @@ function TodosEmptyBody({
 }) {
   return (
     <>
-      <Text bold>No todos</Text>
+      <Text bold>None</Text>
       <HStack gap={1}>
         <Button agent="add" onPress={dispatch("add")}>
-          Add a todo
+          Add
         </Button>
       </HStack>
     </>
