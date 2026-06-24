@@ -12,7 +12,7 @@
  * (should-respond / RESPONSE_HANDLER) turn.
  */
 import { describe, expect, it } from "vitest";
-import { normalizeNativeTools } from "../../src/models/text";
+import { normalizeNativeToolChoice, normalizeNativeTools } from "../../src/models/text";
 
 type NativeTool = {
   type: "function";
@@ -103,5 +103,41 @@ describe("normalizeNativeTools", () => {
     expect(normalizeNativeTools(null)).toBeUndefined();
     expect(normalizeNativeTools([])).toBeUndefined();
     expect(normalizeNativeTools({})).toBeUndefined();
+  });
+});
+
+describe("normalizeNativeToolChoice", () => {
+  it("wraps a flat function choice into the OpenAI {type, function} shape", () => {
+    const result = normalizeNativeToolChoice({
+      type: "function",
+      name: "HANDLE_RESPONSE",
+    }) as NativeTool;
+
+    expect(result).toEqual({
+      type: "function",
+      function: { name: "HANDLE_RESPONSE" },
+    });
+  });
+
+  it("preserves a nested function choice while guaranteeing function.name", () => {
+    const result = normalizeNativeToolChoice({
+      type: "function",
+      function: {
+        name: "GET_WEATHER",
+      },
+    }) as NativeTool;
+
+    expect(result).toEqual({
+      type: "function",
+      function: { name: "GET_WEATHER" },
+    });
+  });
+
+  it("normalizes tool-choice aliases and drops nameless function choices", () => {
+    expect(normalizeNativeToolChoice({ type: "tool", toolName: "SEARCH" })).toEqual({
+      type: "function",
+      function: { name: "SEARCH" },
+    });
+    expect(normalizeNativeToolChoice({ type: "function" })).toBeUndefined();
   });
 });
