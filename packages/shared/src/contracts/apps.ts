@@ -3,6 +3,9 @@
  */
 
 import type { IAgentRuntime, ViewKind } from "@elizaos/core";
+import curatedAppDefinitions from "@elizaos/registry/first-party/curated-app-definitions.json" with {
+  type: "json",
+};
 import z from "zod";
 
 // ---------------------------------------------------------------------------
@@ -687,64 +690,14 @@ function packageNameToBasename(packageName: string): string {
     .trim();
 }
 
+// Materialized from the first-party registry. The curated-app set is derived at
+// registry build time from each plugin's `registry-entry.json` `curatedApp`
+// marker (slug + order + aliases) and emitted as a small, browser-safe JSON. To
+// add/change a curated app, edit the owning plugin's registry-entry.json and run
+// `bun run --cwd packages/registry generate:first-party` — do NOT hand-edit this
+// list. Registration is plugin-side; see packages/registry/src/first-party/.
 export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[] =
-  [
-    {
-      slug: "companion",
-      canonicalName: "@elizaos/plugin-companion",
-      aliases: [],
-    },
-    {
-      slug: "contacts",
-      canonicalName: "@elizaos/plugin-contacts",
-      aliases: [],
-    },
-    {
-      slug: "phone",
-      canonicalName: "@elizaos/plugin-phone",
-      aliases: [],
-    },
-    {
-      slug: "wifi",
-      canonicalName: "@elizaos/plugin-wifi",
-      aliases: [],
-    },
-    {
-      slug: "feed",
-      canonicalName: "@elizaos/plugin-feed",
-      aliases: [],
-    },
-    {
-      slug: "vincent",
-      canonicalName: "@elizaos/plugin-vincent",
-      aliases: [],
-    },
-    {
-      slug: "hyperliquid",
-      canonicalName: "@elizaos/plugin-hyperliquid-app",
-      aliases: [],
-    },
-    {
-      slug: "polymarket",
-      canonicalName: "@elizaos/plugin-polymarket-app",
-      aliases: [],
-    },
-    {
-      slug: "shopify",
-      canonicalName: "@elizaos/plugin-shopify-ui",
-      aliases: ["@elizaos/plugin-shopify"],
-    },
-    {
-      slug: "screenshare",
-      canonicalName: "@elizaos/plugin-screenshare",
-      aliases: [],
-    },
-    {
-      slug: "trajectory-logger",
-      canonicalName: "@elizaos/plugin-trajectory-logger",
-      aliases: [],
-    },
-  ] as const;
+  curatedAppDefinitions;
 
 function getElizaCuratedAppMatchKeys(
   definition: ElizaCuratedAppDefinition,

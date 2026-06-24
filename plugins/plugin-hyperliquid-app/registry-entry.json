@@ -27,5 +27,10 @@
       "specifier": "@elizaos/plugin-hyperliquid-app/plugin",
       "exportName": "hyperliquidPlugin"
     }
+  },
+  "curatedApp": {
+    "slug": "hyperliquid",
+    "order": 6,
+    "aliases": []
   }
 }

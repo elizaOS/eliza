@@ -100,5 +100,6 @@
   "auth": {
     "kind": "token",
     "credentialKeys": []
-  }
+  },
+  "channels": ["msteams"]
 }

@@ -5,7 +5,13 @@
   "npmName": "@elizaos/plugin-whatsapp",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": ["whatsapp", "connector", "social", "social-chat", "messaging"],
+  "tags": [
+    "whatsapp",
+    "connector",
+    "social",
+    "social-chat",
+    "messaging"
+  ],
   "config": {
     "WHATSAPP_ACCESS_TOKEN": {
       "type": "secret",
@@ -96,7 +102,11 @@
     "icon": "Smartphone",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",
@@ -108,6 +118,11 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": ["WHATSAPP_ACCESS_TOKEN"]
-  }
+    "credentialKeys": [
+      "WHATSAPP_ACCESS_TOKEN"
+    ]
+  },
+  "channels": [
+    "whatsapp"
+  ]
 }

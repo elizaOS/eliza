@@ -27,5 +27,10 @@
       "specifier": "@elizaos/plugin-vincent/plugin",
       "exportName": "vincentPlugin"
     }
+  },
+  "curatedApp": {
+    "slug": "vincent",
+    "order": 5,
+    "aliases": []
   }
 }

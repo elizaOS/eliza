@@ -106,5 +106,6 @@
   "auth": {
     "kind": "token",
     "credentialKeys": ["TWITCH_ACCESS_TOKEN"]
-  }
+  },
+  "channels": ["twitch"]
 }

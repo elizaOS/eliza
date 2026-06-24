@@ -236,6 +236,22 @@ const commonFields = {
   render: renderSchema,
   resources: resourcesSchema.default({}),
   dependsOn: z.array(z.string()).default([]),
+  // Channel keys this entry handles (drives CHANNEL_PLUGIN_MAP). Usually `[id]`,
+  // but an entry can claim aliases (e.g. x -> ["x", "twitter"]). Most entries
+  // declare none. Connectors are the typical owners, but a plugin may also claim
+  // a channel (e.g. blooio).
+  channels: z.array(z.string()).default([]),
+  // Curated-app marker: when present, this entry is one of the curated apps the
+  // agent can resolve by name (NL matching). `slug` is the short curated name,
+  // `order` fixes its catalog position, `aliases` are extra match terms. The
+  // canonical name is the entry's `npmName`. Drives ELIZA_CURATED_APP_DEFINITIONS.
+  curatedApp: z
+    .object({
+      slug: z.string(),
+      order: z.number(),
+      aliases: z.array(z.string()).default([]),
+    })
+    .optional(),
 } as const;
 
 // ---------------------------------------------------------------------------

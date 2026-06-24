@@ -11,7 +11,11 @@
     "url": "git+https://github.com/elizaOS/eliza.git",
     "directory": "packages/registry"
   },
-  "keywords": ["elizaos", "registry", "plugins"],
+  "keywords": [
+    "elizaos",
+    "registry",
+    "plugins"
+  ],
   "engines": {
     "node": ">=24.0.0"
   },
@@ -26,7 +30,10 @@
       "types": "./src/first-party/index.ts",
       "import": "./src/first-party/index.ts",
       "default": "./src/first-party/index.ts"
-    }
+    },
+    "./first-party/generated.json": "./src/first-party/generated.json",
+    "./first-party/curated-app-definitions.json": "./src/first-party/curated-app-definitions.json",
+    "./first-party/channel-plugin-map.json": "./src/first-party/channel-plugin-map.json"
   },
   "scripts": {
     "validate": "bun run src/validate-cli.ts",

@@ -29,5 +29,10 @@
   },
   "dependsOn": [],
   "kind": "plugin",
-  "subtype": "storage"
+  "subtype": "storage",
+  "curatedApp": {
+    "slug": "trajectory-logger",
+    "order": 10,
+    "aliases": []
+  }
 }

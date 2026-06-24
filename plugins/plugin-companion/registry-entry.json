@@ -24,5 +24,10 @@
     "target": "companion",
     "capabilities": [],
     "curatedSlug": "companion"
+  },
+  "curatedApp": {
+    "slug": "companion",
+    "order": 0,
+    "aliases": []
   }
 }

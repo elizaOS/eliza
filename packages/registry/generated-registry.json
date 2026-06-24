@@ -26,13 +26,7 @@
       },
       "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw — vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
       "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
-      "topics": [
-        "security",
-        "secrets",
-        "vault",
-        "signing",
-        "multi-chain"
-      ],
+      "topics": ["security", "secrets", "vault", "signing", "multi-chain"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -118,14 +112,7 @@
       },
       "description": "WaaP wallet plugin for ElizaOS — 2-of-2 MPC signing for EVM and Sui, with native 2FA and server-enforced spending policies; the agent never holds private keys.",
       "homepage": "https://github.com/holonym-foundation/eliza-plugin-waap",
-      "topics": [
-        "wallet",
-        "mpc",
-        "2pc",
-        "evm",
-        "sui",
-        "2fa"
-      ],
+      "topics": ["wallet", "mpc", "2pc", "evm", "sui", "2fa"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -401,11 +388,7 @@
       },
       "description": "Reference third-party elizaOS plugin: an ECHO action that repeats a message back.",
       "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo",
-      "topics": [
-        "example",
-        "utility",
-        "reference"
-      ],
+      "topics": ["example", "utility", "reference"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -444,12 +427,7 @@
       },
       "description": "Farcaster engagement discovery, like, reply, and follow/unfollow actions via Neynar REST API for ElizaOS agents",
       "homepage": null,
-      "topics": [
-        "farcaster",
-        "neynar",
-        "social",
-        "discovery"
-      ],
+      "topics": ["farcaster", "neynar", "social", "discovery"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -488,10 +466,56 @@
       },
       "description": "ElizaOS plugin for Reddit integration — search, engage, and manage Reddit interactions autonomously",
       "homepage": null,
+      "topics": ["reddit", "social", "discovery"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-x402-alpha-data": {
+      "git": {
+        "repo": "sna4an/plugin-x402-alpha-data",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-x402-alpha-data",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Paid alpha data endpoints via x402 protocol — token safety, whale tracking, yield strategies, governance, sentiment.",
+      "homepage": "https://github.com/sna4an/plugin-x402-alpha-data",
       "topics": [
-        "reddit",
-        "social",
-        "discovery"
+        "x402",
+        "defi",
+        "alpha",
+        "whale-tracking",
+        "token-safety",
+        "yield",
+        "solana",
+        "base",
+        "web3",
+        "paid-api"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

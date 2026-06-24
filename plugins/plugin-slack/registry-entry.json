@@ -98,5 +98,6 @@
       "credentialKeys": [],
       "notes": "The agent's own Slack bot identity (xoxb-... bot token), installed into the workspace via Eliza Cloud OAuth. Posts, mentions, replies, and DMs flow through the bot user."
     }
-  }
+  },
+  "channels": ["slack"]
 }
