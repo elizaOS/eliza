@@ -84,7 +84,7 @@ jobs:
           cmake --version
 
       - name: Cache llama.cpp build artifacts
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
         with:
           path: |
             plugins/plugin-local-inference/native/llama.cpp/build-ios-device
