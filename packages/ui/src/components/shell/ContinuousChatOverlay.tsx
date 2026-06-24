@@ -65,7 +65,7 @@ import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
-import type { ShellMessage } from "./shell-state";
+import { type ShellMessage, selectVisibleShellMessages } from "./shell-state";
 import { TopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
 import { deriveChannelTopics, groupMessagesByTopic } from "./topic-grouping";
@@ -173,10 +173,6 @@ const SHEET_TOP_MARGIN = 72;
 // of resting free — so near-detent releases are deterministic + clean, and only
 // the clear gaps between detents keep the free-drag rest height.
 const SHEET_DETENT_MAGNET = 64;
-// Cap how many turns are actually rendered. Older messages stay in state (the
-// agent's context is untouched) — this only bounds DOM nodes so a long thread
-// can't jank scrolling on a phone, without pulling in a virtualizer.
-const MAX_RENDERED_MESSAGES = 80;
 
 // Feature flag: the resting one-tap prompt-suggestion strip. Off for now so the
 // composer can be tested without it; flip to true to bring the strip back.
@@ -1226,21 +1222,11 @@ export function ContinuousChatOverlay({
   // fling a history thread open to half instead of resting on the input bar).
   const suppressExpandOnFocusRef = React.useRef(false);
   const focusThreadRef = React.useRef(false);
-  // Recomputed only when the thread changes — NOT on every drag/draft re-render.
-  // Filter empty turns, then keep only the most recent window (cap DOM nodes).
+  // Recomputed only when the thread or phase changes — NOT on every drag/draft
+  // re-render. Pure windowing (empty-turn filter + most-recent cap, with the
+  // streaming-assistant exception) lives in shell-state so it's unit-tested.
   const visibleMessages = React.useMemo(
-    () =>
-      messages
-        // Drop empty turns — EXCEPT the in-flight assistant turn while a reply is
-        // streaming, so its bubble can show the breathing dots anchored where the
-        // text fills in (then the text replaces them). It's dropped again the
-        // moment we leave `responding`, so a failed/empty turn never lingers.
-        .filter(
-          (m) =>
-            m.content.trim() ||
-            (m.role === "assistant" && phase === "responding"),
-        )
-        .slice(-MAX_RENDERED_MESSAGES),
+    () => selectVisibleShellMessages(messages, phase),
     [messages, phase],
   );
   const lastId = visibleMessages.at(-1)?.id ?? null;
