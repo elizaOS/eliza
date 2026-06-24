@@ -797,7 +797,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React47 = require_react();
+      var React48 = require_react();
       function formatProdErrorMessage(code) {
         var url2 = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -837,7 +837,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React47.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React48.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -973,7 +973,7 @@
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React47 = require_react();
+      var React48 = require_react();
       var ReactDOM5 = require_react_dom();
       function formatProdErrorMessage(code) {
         var url2 = "https://react.dev/errors/" + code;
@@ -1164,7 +1164,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React47.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React48.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM5.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -12610,7 +12610,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1840 = React47.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1840 = React48.version;
       if ("19.2.5" !== isomorphicReactPackageVersion$jscomp$inline_1840)
         throw Error(
           formatProdErrorMessage(
@@ -28521,6 +28521,9 @@
     );
   }
 
+  // packages/ui/src/components/shell/HomeScreen.tsx
+  var import_react91 = __toESM(require_react(), 1);
+
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.activity-stub.ts
   function useActivityEvents() {
     return {
@@ -28535,12 +28538,67 @@
     };
   }
 
+  // packages/ui/src/hooks/useRenderGuard.ts
+  var import_react32 = __toESM(require_react(), 1);
+  var import_meta = {};
+  function readEnvValue(key) {
+    const meta3 = import_meta;
+    if (key === "VITE_ELIZA_RENDER_TELEMETRY") {
+      const explicit = meta3.env?.VITE_ELIZA_RENDER_TELEMETRY;
+      if (explicit !== void 0) return explicit;
+    }
+    const viteValue = meta3.env?.[key];
+    if (viteValue !== void 0) return viteValue;
+    if (typeof process !== "undefined") {
+      return process.env[key];
+    }
+    return void 0;
+  }
+  function isRenderTelemetryEnabled() {
+    if (globalThis.__ELIZA_RENDER_TELEMETRY_DISABLED__ === true) {
+      return false;
+    }
+    const explicit = readEnvValue("VITE_ELIZA_RENDER_TELEMETRY");
+    if (explicit === false || explicit === "0" || explicit === "false") {
+      return false;
+    }
+    if (explicit === true || explicit === "1" || explicit === "true") {
+      return true;
+    }
+    const nodeEnv = typeof process !== "undefined" ? "production" : void 0;
+    const meta3 = import_meta;
+    const mode = meta3.env?.MODE;
+    return meta3.env?.DEV === true || mode === "development" || mode === "test" || nodeEnv === "development" || nodeEnv === "test";
+  }
+
+  // packages/ui/src/testing/layout-stability.ts
+  var LAYOUT_SHIFT_OBSERVER_INIT = `
+(() => {
+  const w = window;
+  if (w.__ELIZA_LAYOUT_SHIFTS__) return;
+  w.__ELIZA_LAYOUT_SHIFTS__ = [];
+  try {
+    const obs = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        w.__ELIZA_LAYOUT_SHIFTS__.push({
+          value: entry.value,
+          hadRecentInput: entry.hadRecentInput === true,
+        });
+      }
+    });
+    obs.observe({ type: 'layout-shift', buffered: true });
+  } catch {
+    /* layout-shift unsupported \u2014 caller treats absence as 0 CLS */
+  }
+})();
+`;
+
   // packages/ui/src/widgets/WidgetHost.tsx
-  var import_core29 = __toESM(require_core(), 1);
-  var import_react88 = __toESM(require_react(), 1);
+  var import_core30 = __toESM(require_core(), 1);
+  var import_react90 = __toESM(require_react(), 1);
 
   // packages/ui/src/components/config-ui/ui-renderer.tsx
-  var import_react72 = __toESM(require_react(), 1);
+  var import_react73 = __toESM(require_react(), 1);
 
   // node_modules/.bun/zod@4.4.3/node_modules/zod/v4/classic/external.js
   var external_exports = {};
@@ -43395,7 +43453,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   });
 
   // packages/ui/src/state/AppContext.tsx
-  var import_react67 = __toESM(require_react(), 1);
+  var import_react68 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/components/ui/confirm-dialog.tsx
@@ -44671,9 +44729,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/use-callback-ref@1.3.3+b2e33729a97476bf/node_modules/use-callback-ref/dist/es2015/useRef.js
-  var import_react32 = __toESM(require_react());
+  var import_react33 = __toESM(require_react());
   function useCallbackRef2(initialValue, callback) {
-    var ref = (0, import_react32.useState)(function() {
+    var ref = (0, import_react33.useState)(function() {
       return {
         // value
         value: initialValue,
@@ -45934,7 +45992,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var React34 = __toESM(require_react(), 1);
 
   // packages/ui/src/config/boot-config-react.hooks.ts
-  var import_react33 = __toESM(require_react(), 1);
+  var import_react34 = __toESM(require_react(), 1);
 
   // packages/ui/src/config/boot-config-store.ts
   var DEFAULT_BOOT_CONFIG = {
@@ -45973,7 +46031,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // packages/ui/src/config/boot-config-react.hooks.ts
-  var AppBootContext = (0, import_react33.createContext)(DEFAULT_BOOT_CONFIG);
+  var AppBootContext = (0, import_react34.createContext)(DEFAULT_BOOT_CONFIG);
 
   // packages/ui/src/config/branding-base.ts
   var DEFAULT_APP_DISPLAY_NAME = "Eliza";
@@ -45994,8 +46052,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // packages/ui/src/config/branding-react.hooks.ts
-  var import_react34 = __toESM(require_react(), 1);
-  var BrandingContext = (0, import_react34.createContext)(
+  var import_react35 = __toESM(require_react(), 1);
+  var BrandingContext = (0, import_react35.createContext)(
     void 0
   );
 
@@ -47892,8 +47950,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // packages/ui/src/navigation/index.ts
-  var import_meta = {};
-  var viteEnv = import_meta.env;
+  var import_meta2 = {};
+  var viteEnv = import_meta2.env;
   function viteEnvFlagEnabled(name, defaultValue) {
     const value = viteEnv?.[name];
     if (value == null) return defaultValue;
@@ -48021,7 +48079,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var CONFIG_SELECT_FLOATING_LAYER_NAME = "config-select";
 
   // packages/ui/src/utils/asset-url.ts
-  var import_meta2 = {};
+  var import_meta3 = {};
   var cachedRuntimeBaseHref = null;
   function stripLeadingPathMarkers(assetPath) {
     return assetPath.trim().replace(/^\.?\//, "").replace(/^\/+/, "");
@@ -48058,7 +48116,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     const href = window.location?.href;
     if (typeof href !== "string" || !href) return null;
     try {
-      const viteBaseUrl = import_meta2.env?.BASE_URL;
+      const viteBaseUrl = import_meta3.env?.BASE_URL;
       cachedRuntimeBaseHref = computeBaseHref(href, viteBaseUrl);
       return cachedRuntimeBaseHref;
     } catch {
@@ -51442,7 +51500,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   init_app_store();
 
   // packages/ui/src/state/ChatComposerContext.hooks.ts
-  var import_react35 = __toESM(require_react(), 1);
+  var import_react36 = __toESM(require_react(), 1);
   var DEFAULT_COMPOSER = {
     chatInput: "",
     chatSending: false,
@@ -51452,24 +51510,24 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     setChatPendingImages: () => {
     }
   };
-  var ChatComposerCtx = (0, import_react35.createContext)(DEFAULT_COMPOSER);
-  var ChatInputRefCtx = (0, import_react35.createContext)(null);
+  var ChatComposerCtx = (0, import_react36.createContext)(DEFAULT_COMPOSER);
+  var ChatInputRefCtx = (0, import_react36.createContext)(null);
 
   // packages/ui/src/state/ChatTurnStatusContext.hooks.ts
-  var import_react36 = __toESM(require_react(), 1);
-  var ChatTurnStatusCtx = (0, import_react36.createContext)({
+  var import_react37 = __toESM(require_react(), 1);
+  var ChatTurnStatusCtx = (0, import_react37.createContext)({
     serverTurnStatus: null,
     setServerTurnStatus: () => {
     }
   });
 
   // packages/ui/src/state/CompanionSceneConfigContext.hooks.ts
-  var import_react37 = __toESM(require_react(), 1);
-  var CompanionSceneConfigCtx = (0, import_react37.createContext)(null);
+  var import_react38 = __toESM(require_react(), 1);
+  var CompanionSceneConfigCtx = (0, import_react38.createContext)(null);
 
   // packages/ui/src/state/ConversationMessagesContext.hooks.ts
-  var import_react38 = __toESM(require_react(), 1);
-  var ConversationMessagesCtx = (0, import_react38.createContext)(
+  var import_react39 = __toESM(require_react(), 1);
+  var ConversationMessagesCtx = (0, import_react39.createContext)(
     {
       conversationMessages: [],
       removeConversationMessage: () => {
@@ -54797,7 +54855,7 @@ Assistant:`;
   }
 
   // packages/ui/src/api/ios-local-agent-transport.ts
-  var import_meta3 = {};
+  var import_meta4 = {};
   var transport = null;
   var globalRequestHandlerInstalled = false;
   var globalFetchBridgeInstalled = false;
@@ -54831,7 +54889,7 @@ Assistant:`;
     LOG_LEVEL: "error"
   };
   function viteEnv2() {
-    const metaEnv = import_meta3.env ?? {};
+    const metaEnv = import_meta4.env ?? {};
     const processEnv = typeof process === "undefined" ? {} : process.env;
     return { ...processEnv, ...metaEnv };
   }
@@ -63155,8 +63213,8 @@ Assistant:`;
   }
 
   // packages/ui/src/state/TranslationContext.hooks.ts
-  var import_react39 = __toESM(require_react(), 1);
-  var TranslationCtx = (0, import_react39.createContext)(
+  var import_react40 = __toESM(require_react(), 1);
+  var TranslationCtx = (0, import_react40.createContext)(
     null
   );
   var TEST_TRANSLATION_CONTEXT = {
@@ -63167,45 +63225,45 @@ Assistant:`;
   };
 
   // packages/ui/src/state/TranslationProvider.tsx
-  var import_react40 = __toESM(require_react(), 1);
+  var import_react41 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
   var import_jsx_runtime24 = __toESM(require_jsx_runtime(), 1);
 
   // packages/ui/src/state/useApp.ts
-  var import_react41 = __toESM(require_react(), 1);
+  var import_react42 = __toESM(require_react(), 1);
   var appContextGlobal = globalThis;
   if (!appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__) {
-    appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__ = (0, import_react41.createContext)(null);
+    appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__ = (0, import_react42.createContext)(null);
   }
   var AppContext = appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__;
 
   // packages/ui/src/state/PtySessionsContext.hooks.ts
-  var import_react42 = __toESM(require_react(), 1);
-  var PtySessionsCtx = (0, import_react42.createContext)({
+  var import_react43 = __toESM(require_react(), 1);
+  var PtySessionsCtx = (0, import_react43.createContext)({
     ptySessions: []
   });
 
   // packages/ui/src/state/useAppLifecycleEvents.ts
-  var import_react43 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/useAppProviderEffects.ts
   var import_react44 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/useAppShellState.ts
+  // packages/ui/src/state/useAppProviderEffects.ts
   var import_react45 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useAppShellState.ts
+  var import_react46 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useCharacterState.ts
-  var import_react46 = __toESM(require_react(), 1);
+  var import_react47 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useChatCallbacks.ts
-  var import_react49 = __toESM(require_react(), 1);
+  var import_react50 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useChatLifecycle.ts
-  var import_react47 = __toESM(require_react(), 1);
+  var import_react48 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/platform/assistant-launch-payload.ts
@@ -63232,7 +63290,7 @@ Assistant:`;
   init_native_plugins();
 
   // packages/ui/src/state/useChatSend.ts
-  var import_react48 = __toESM(require_react(), 1);
+  var import_react49 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/api/client-cloud.ts
@@ -66205,35 +66263,35 @@ Assistant:`;
   var COMPANION_STALE_THREAD_MAX_AGE_MS = 30 * 60 * 1e3;
 
   // packages/ui/src/state/useChatState.ts
-  var import_react50 = __toESM(require_react(), 1);
+  var import_react51 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useCloudState.ts
-  var import_react51 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/useDataLoaders.ts
   var import_react52 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/useDisplayPreferences.ts
+  // packages/ui/src/state/useDataLoaders.ts
   var import_react53 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useDisplayPreferences.ts
+  var import_react54 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useExportImportState.ts
-  var import_react54 = __toESM(require_react(), 1);
+  var import_react55 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useFirstRunCallbacks.ts
   init_dist();
-  var import_react55 = __toESM(require_react(), 1);
+  var import_react56 = __toESM(require_react(), 1);
 
   // packages/ui/src/first-run/ensure-store-build-workspace-folder.ts
   init_electrobun_rpc();
 
   // packages/ui/src/state/useFirstRunState.ts
-  var import_react56 = __toESM(require_react(), 1);
+  var import_react57 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useLifecycleState.ts
-  var import_react57 = __toESM(require_react(), 1);
+  var import_react58 = __toESM(require_react(), 1);
   var INITIAL_LIFECYCLE_STATE = {
     connected: false,
     agentStatus: null,
@@ -66263,25 +66321,25 @@ Assistant:`;
   };
 
   // packages/ui/src/state/useLogsState.ts
-  var import_react58 = __toESM(require_react(), 1);
+  var import_react59 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useMiscUiState.ts
-  var import_react59 = __toESM(require_react(), 1);
-
-  // packages/ui/src/state/useNavigationState.ts
   var import_react60 = __toESM(require_react(), 1);
 
-  // packages/ui/src/state/usePairingState.ts
+  // packages/ui/src/state/useNavigationState.ts
   var import_react61 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/usePluginsSkillsState.ts
+  // packages/ui/src/state/usePairingState.ts
   var import_react62 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/useStartupCoordinator.ts
+  // packages/ui/src/state/usePluginsSkillsState.ts
   var import_react63 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useStartupCoordinator.ts
+  var import_react64 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/startup-phase-hydrate.ts
@@ -66556,14 +66614,14 @@ Assistant:`;
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useTabSync.ts
-  var import_react64 = __toESM(require_react(), 1);
+  var import_react65 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useTriggersState.ts
-  var import_react65 = __toESM(require_react(), 1);
+  var import_react66 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useWalletState.ts
-  var import_react66 = __toESM(require_react(), 1);
+  var import_react67 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/AppContext.tsx
@@ -66577,19 +66635,19 @@ Assistant:`;
   init_app_store();
 
   // packages/ui/src/state/useContentPack.ts
-  var import_react68 = __toESM(require_react(), 1);
+  var import_react69 = __toESM(require_react(), 1);
   init_app_store();
 
   // packages/ui/src/state/useDeveloperMode.ts
-  var import_react69 = __toESM(require_react(), 1);
-  var import_meta4 = {};
+  var import_react70 = __toESM(require_react(), 1);
+  var import_meta5 = {};
   var STORAGE_KEY = "eliza:developerMode";
   var ENABLED = "1";
   var DISABLED = "0";
   var listeners2 = /* @__PURE__ */ new Set();
   function defaultDeveloperMode() {
     try {
-      return Boolean(import_meta4.env?.DEV);
+      return Boolean(import_meta5.env?.DEV);
     } catch {
       return false;
     }
@@ -66619,7 +66677,7 @@ Assistant:`;
   }
 
   // packages/ui/src/state/usePreviewMode.ts
-  var import_react70 = __toESM(require_react(), 1);
+  var import_react71 = __toESM(require_react(), 1);
   var STORAGE_KEY2 = "eliza:previewMode";
   var ENABLED2 = "1";
   var DISABLED2 = "0";
@@ -68695,12 +68753,12 @@ Assistant:`;
 
   // node_modules/.bun/@floating-ui+react-dom@2.1.8+21ccd8898788a04d/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.mjs
   var React41 = __toESM(require_react(), 1);
-  var import_react71 = __toESM(require_react(), 1);
+  var import_react72 = __toESM(require_react(), 1);
   var ReactDOM3 = __toESM(require_react_dom(), 1);
   var isClient = typeof document !== "undefined";
   var noop3 = function noop4() {
   };
-  var index = isClient ? import_react71.useLayoutEffect : noop3;
+  var index = isClient ? import_react72.useLayoutEffect : noop3;
   function deepEqual(a, b) {
     if (a === b) {
       return true;
@@ -70780,9 +70838,9 @@ Assistant:`;
 
   // packages/ui/src/components/config-ui/ui-renderer.tsx
   var import_jsx_runtime37 = __toESM(require_jsx_runtime(), 1);
-  var UiContext = (0, import_react72.createContext)(null);
+  var UiContext = (0, import_react73.createContext)(null);
   function useUiCtx() {
-    const ctx = (0, import_react72.useContext)(UiContext);
+    const ctx = (0, import_react73.useContext)(UiContext);
     if (!ctx) throw new Error("UiRenderer context missing");
     return ctx;
   }
@@ -70845,7 +70903,7 @@ Assistant:`;
   }
   function useStatePath(statePath, ctx) {
     const value = statePath ? getByPath(ctx.state, statePath) : void 0;
-    const setValue = (0, import_react72.useCallback)(
+    const setValue = (0, import_react73.useCallback)(
       (v) => {
         if (statePath) ctx.setState(statePath, v);
       },
@@ -71273,7 +71331,7 @@ Assistant:`;
   var CarouselComponent = (props) => {
     const t2 = useAppSelector((s) => s.t);
     const items = props.items ?? [];
-    const [current, setCurrent] = (0, import_react72.useState)(0);
+    const [current, setCurrent] = (0, import_react73.useState)(0);
     return /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)("div", { className: "relative", children: [
       /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("div", { className: "border border-border bg-[var(--bg-hover)] p-4 min-h-[60px]", children: items[current] && /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)("div", { children: [
         /* @__PURE__ */ (0, import_jsx_runtime37.jsx)("div", { className: "text-xs font-bold", children: items[current].title }),
@@ -71489,7 +71547,7 @@ Assistant:`;
     );
   };
   var DropdownMenuComponent = (props, _children, ctx) => {
-    const [open, setOpen] = (0, import_react72.useState)(false);
+    const [open, setOpen] = (0, import_react73.useState)(false);
     const items = props.items ?? [];
     return /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)("div", { className: "relative inline-block", children: [
       /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)(
@@ -71691,7 +71749,7 @@ Assistant:`;
     ] });
   };
   var TooltipComponent = (props) => {
-    const [show, setShow] = (0, import_react72.useState)(false);
+    const [show, setShow] = (0, import_react73.useState)(false);
     return /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)(
       Button,
       {
@@ -71711,7 +71769,7 @@ Assistant:`;
     );
   };
   var PopoverComponent = (props) => {
-    const [open, setOpen] = (0, import_react72.useState)(false);
+    const [open, setOpen] = (0, import_react73.useState)(false);
     return /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)("div", { className: "relative inline-block", children: [
       /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(
         Button,
@@ -71740,7 +71798,7 @@ Assistant:`;
     ] });
   };
   var CollapsibleComponent = (props, children) => {
-    const [open, setOpen] = (0, import_react72.useState)(!!props.defaultOpen);
+    const [open, setOpen] = (0, import_react73.useState)(!!props.defaultOpen);
     return /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)("div", { className: "border border-border", children: [
       /* @__PURE__ */ (0, import_jsx_runtime37.jsxs)(
         Button,
@@ -71768,7 +71826,7 @@ Assistant:`;
   var AccordionComponent = (props) => {
     const items = props.items ?? [];
     const isSingle = props.type === "single";
-    const [openSet, setOpenSet] = (0, import_react72.useState)(/* @__PURE__ */ new Set());
+    const [openSet, setOpenSet] = (0, import_react73.useState)(/* @__PURE__ */ new Set());
     const toggle = (idx) => {
       setOpenSet((prev) => {
         const next = isSingle ? /* @__PURE__ */ new Set() : new Set(prev);
@@ -71935,11 +71993,11 @@ Assistant:`;
     component,
     resolvedProps
   }) {
-    const itemCtx = (0, import_react72.useMemo)(
+    const itemCtx = (0, import_react73.useMemo)(
       () => ({ ...ctx, repeatItem: item }),
       [ctx, item]
     );
-    const childNodes = (0, import_react72.useMemo)(
+    const childNodes = (0, import_react73.useMemo)(
       () => el.children.map((childId) => /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(UiContext.Provider, { value: itemCtx, children: /* @__PURE__ */ (0, import_jsx_runtime37.jsx)(ElementRenderer, { elementId: childId }) }, childId)),
       [el.children, itemCtx]
     );
@@ -71991,18 +72049,18 @@ Assistant:`;
     auth,
     validators
   }) {
-    const [state2, setStateRaw] = (0, import_react72.useState)(() => ({
+    const [state2, setStateRaw] = (0, import_react73.useState)(() => ({
       ...spec.state
     }));
-    const [fieldErrors, setFieldErrors] = (0, import_react72.useState)({});
-    const setState2 = (0, import_react72.useCallback)((path, value) => {
+    const [fieldErrors, setFieldErrors] = (0, import_react73.useState)({});
+    const setState2 = (0, import_react73.useCallback)((path, value) => {
       setStateRaw((prev) => {
         const next = { ...prev };
         setByPath(next, path, value);
         return next;
       });
     }, []);
-    const validateField = (0, import_react72.useCallback)(
+    const validateField = (0, import_react73.useCallback)(
       (statePath) => {
         for (const el of Object.values(spec.elements)) {
           if (el.props.statePath === statePath && el.validation) {
@@ -72015,7 +72073,7 @@ Assistant:`;
       },
       [spec.elements, state2, validators]
     );
-    const ctx = (0, import_react72.useMemo)(
+    const ctx = (0, import_react73.useMemo)(
       () => ({
         spec,
         state: state2,
@@ -72050,10 +72108,10 @@ Assistant:`;
   }
 
   // packages/ui/src/hooks/useNow.ts
-  var import_react73 = __toESM(require_react(), 1);
+  var import_react74 = __toESM(require_react(), 1);
   function useNow(intervalMs = 6e4) {
-    const [now2, setNow] = (0, import_react73.useState)(0);
-    (0, import_react73.useEffect)(() => {
+    const [now2, setNow] = (0, import_react74.useState)(0);
+    (0, import_react74.useEffect)(() => {
       setNow(Date.now());
       const id3 = setInterval(() => setNow(Date.now()), intervalMs);
       return () => clearInterval(id3);
@@ -72065,7 +72123,7 @@ Assistant:`;
   init_notification_store();
 
   // packages/ui/src/widgets/home-attention-store.ts
-  var import_react74 = __toESM(require_react(), 1);
+  var import_react75 = __toESM(require_react(), 1);
   var entries = {};
   var snapshot = [];
   var listeners4 = /* @__PURE__ */ new Set();
@@ -72102,10 +72160,10 @@ Assistant:`;
     return snapshot;
   }
   function useHomeAttentionSignals() {
-    return (0, import_react74.useSyncExternalStore)(subscribe3, getSnapshot2, getSnapshot2);
+    return (0, import_react75.useSyncExternalStore)(subscribe3, getSnapshot2, getSnapshot2);
   }
   function usePublishHomeAttention(widgetKey, weight) {
-    (0, import_react74.useEffect)(() => {
+    (0, import_react75.useEffect)(() => {
       if (weight == null || weight <= 0) {
         clearHomeAttention(widgetKey);
         return;
@@ -72333,7 +72391,7 @@ Assistant:`;
   }
 
   // packages/ui/src/components/chat/widgets/agent-orchestrator.tsx
-  var import_react77 = __toESM(require_react(), 1);
+  var import_react79 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.docvis-stub.ts
@@ -72341,7 +72399,7 @@ Assistant:`;
   }
 
   // packages/ui/src/components/apps/app-identity.tsx
-  var import_react75 = __toESM(require_react(), 1);
+  var import_react76 = __toESM(require_react(), 1);
 
   // packages/ui/src/components/apps/app-identity.helpers.ts
   function iconImageSource(icon) {
@@ -72417,7 +72475,7 @@ Assistant:`;
       heroSrc ?? "",
       iconSrc ?? ""
     ].join("\0");
-    const [failureState, setFailureState] = (0, import_react75.useState)(() => ({
+    const [failureState, setFailureState] = (0, import_react76.useState)(() => ({
       sourceKey,
       failedHeroSrc: null,
       failedIconSrc: null,
@@ -72688,7 +72746,7 @@ Assistant:`;
   }
 
   // packages/ui/src/components/chat/widgets/agent-orchestrator-accounts-view.tsx
-  var import_react76 = __toESM(require_react(), 1);
+  var import_react77 = __toESM(require_react(), 1);
 
   // packages/ui/src/components/chat/widgets/shared.tsx
   var import_jsx_runtime40 = __toESM(require_jsx_runtime(), 1);
@@ -72783,24 +72841,24 @@ Assistant:`;
     t: t2 = fallbackTranslate,
     onConnect
   }) {
-    const flatAccounts = (0, import_react76.useMemo)(
+    const flatAccounts = (0, import_react77.useMemo)(
       () => (accounts?.providers ?? []).flatMap(
         (provider) => provider.accounts.map((account) => ({ ...account }))
       ),
       [accounts]
     );
-    const activeAssignments = (0, import_react76.useMemo)(
+    const activeAssignments = (0, import_react77.useMemo)(
       () => (overview?.assignments ?? []).filter((a) => a.active),
       [overview]
     );
-    const assignmentCountByAccount = (0, import_react76.useMemo)(() => {
+    const assignmentCountByAccount = (0, import_react77.useMemo)(() => {
       const map2 = /* @__PURE__ */ new Map();
       for (const a of activeAssignments) {
         map2.set(a.accountId, (map2.get(a.accountId) ?? 0) + 1);
       }
       return map2;
     }, [activeAssignments]);
-    const activeRooms = (0, import_react76.useMemo)(
+    const activeRooms = (0, import_react77.useMemo)(
       () => (rooms?.rooms ?? []).filter((r2) => r2.activeAgentCount > 0),
       [rooms]
     );
@@ -72979,8 +73037,198 @@ Assistant:`;
     );
   }
 
-  // packages/ui/src/components/chat/widgets/agent-orchestrator.tsx
+  // packages/ui/src/components/chat/widgets/home-widget-card.tsx
+  var import_react78 = __toESM(require_react(), 1);
+
+  // packages/ui/src/chat/useSlashCommandController.ts
+  var React47 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/components/settings/settings-section-tokens.ts
+  var SETTINGS_SECTION_TOKEN_ALIASES = {
+    basics: "identity",
+    identity: "identity",
+    profile: "identity",
+    model: "ai-model",
+    models: "ai-model",
+    provider: "ai-model",
+    providers: "ai-model",
+    ai: "ai-model",
+    cloud: "ai-model",
+    runtime: "runtime",
+    appearance: "appearance",
+    theme: "appearance",
+    look: "appearance",
+    voice: "voice",
+    tts: "voice",
+    speech: "voice",
+    capabilities: "capabilities",
+    abilities: "capabilities",
+    apps: "apps",
+    views: "apps",
+    "remote-plugins": "remote-plugins",
+    remote: "remote-plugins",
+    connectors: "connectors",
+    connections: "connectors",
+    integrations: "connectors",
+    "app-permissions": "app-permissions",
+    wallet: "wallet-rpc",
+    rpc: "wallet-rpc",
+    "wallet-rpc": "wallet-rpc",
+    permissions: "permissions",
+    perms: "permissions",
+    secrets: "secrets",
+    vault: "secrets",
+    keys: "secrets",
+    security: "security",
+    updates: "updates",
+    update: "updates",
+    advanced: "advanced",
+    "fine-tuning": "advanced"
+  };
+  var CANONICAL_SECTION_IDS = new Set(
+    Object.values(SETTINGS_SECTION_TOKEN_ALIASES)
+  );
+  var SETTINGS_SECTION_SUGGESTIONS = Array.from(
+    new Set(Object.keys(SETTINGS_SECTION_TOKEN_ALIASES))
+  );
+
+  // packages/ui/src/chat/slash-menu.ts
+  var import_core29 = __toESM(require_core(), 1);
+
+  // packages/ui/src/chat/useSlashCommandController.ts
+  function reportUserViewSwitch(viewId, viewPath) {
+    try {
+      const base = getElizaApiBase();
+      if (!base || typeof fetch === "undefined") return;
+      const token = getElizaApiToken();
+      void fetch(`${base}/api/views/${encodeURIComponent(viewId)}/navigate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...token ? { Authorization: `Bearer ${token}` } : {}
+        },
+        body: JSON.stringify({
+          source: "user",
+          ...viewPath ? { path: viewPath } : {}
+        })
+      }).catch(() => {
+      });
+    } catch {
+    }
+  }
+
+  // packages/ui/src/components/chat/widgets/home-widget-card.tsx
   var import_jsx_runtime42 = __toESM(require_jsx_runtime(), 1);
+  function useWidgetNavigation() {
+    const { setTab } = useAppSelectorShallow((s) => ({ setTab: s.setTab }));
+    return (0, import_react78.useMemo)(
+      () => ({
+        openView(path, viewId) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("eliza:navigate:view", {
+                detail: { viewPath: path }
+              })
+            );
+          }
+          reportUserViewSwitch(viewId ?? path, path);
+        },
+        openTab(tab) {
+          setTab?.(tab);
+          reportUserViewSwitch(tab);
+        }
+      }),
+      [setTab]
+    );
+  }
+  var TONE_VALUE_CLASS = {
+    default: "text-txt",
+    danger: "text-danger",
+    warn: "text-warn"
+  };
+  var TONE_DOT_CLASS = {
+    default: "bg-muted",
+    danger: "bg-danger",
+    warn: "bg-warn"
+  };
+  function HomeWidgetCard({
+    icon,
+    label,
+    value,
+    meta: meta3,
+    badge,
+    tone = "default",
+    testId,
+    ariaLabel,
+    onActivate
+  }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
+      "button",
+      {
+        type: "button",
+        "data-testid": testId,
+        "aria-label": ariaLabel,
+        onClick: onActivate,
+        className: cn(
+          "group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-card/75 px-3 py-2.5 text-left backdrop-blur",
+          "transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        ),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
+            "span",
+            {
+              className: cn(
+                "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg/60 text-muted [&>svg]:h-4 [&>svg]:w-4",
+                tone === "danger" && "text-danger",
+                tone === "warn" && "text-warn"
+              ),
+              children: [
+                icon,
+                tone !== "default" ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+                  "span",
+                  {
+                    "aria-hidden": true,
+                    className: cn(
+                      "absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ring-2 ring-card",
+                      TONE_DOT_CLASS[tone]
+                    )
+                  }
+                ) : null
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("span", { className: "flex min-w-0 flex-1 flex-col", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("span", { className: "text-2xs font-medium uppercase tracking-wide text-muted/80", children: label }),
+            value != null ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+              "span",
+              {
+                className: cn(
+                  "truncate text-sm font-semibold leading-tight",
+                  TONE_VALUE_CLASS[tone]
+                ),
+                children: value
+              }
+            ) : null
+          ] }),
+          meta3 != null ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("span", { className: "shrink-0 text-2xs tabular-nums text-muted", children: meta3 }) : null,
+          badge != null ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+            "span",
+            {
+              className: cn(
+                "shrink-0 rounded-full px-1.5 py-0.5 text-2xs font-semibold",
+                tone === "danger" ? "bg-danger/15 text-danger" : tone === "warn" ? "bg-warn/15 text-warn" : "bg-accent-subtle text-accent"
+              ),
+              children: badge
+            }
+          ) : null
+        ]
+      }
+    );
+  }
+
+  // packages/ui/src/components/chat/widgets/agent-orchestrator.tsx
+  var import_jsx_runtime43 = __toESM(require_jsx_runtime(), 1);
   function relativeTime(ts, t2) {
     const delta = Math.max(0, Math.floor((Date.now() - ts) / 1e3));
     if (delta < 5)
@@ -73111,17 +73359,17 @@ Assistant:`;
     onSelectEvent
   }) {
     if (events.length === 0) {
-      return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
         EmptyWidgetState,
         {
-          icon: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Activity, { className: "h-8 w-8" }),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Activity, { className: "h-8 w-8" }),
           title: t2("agentorchestrator.noRecentActivity", {
             defaultValue: "No recent activity"
           })
         }
       );
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "flex flex-col gap-0.5", children: events.map((event) => {
+    return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "flex flex-col gap-0.5", children: events.map((event) => {
       const eventTypeMeta = EVENT_TYPE_META[event.eventType] ?? DEFAULT_EVENT_TYPE_META;
       const EventIcon = eventTypeMeta.icon;
       const eventLabel = t2(eventTypeMeta.labelKey, {
@@ -73130,7 +73378,7 @@ Assistant:`;
       const openLabel = event.sessionId ? t2("agentorchestrator.openSession", {
         defaultValue: "Open session"
       }) : t2("agentorchestrator.openTasks", { defaultValue: "Open tasks" });
-      return /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
+      return /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)(
         "button",
         {
           type: "button",
@@ -73138,20 +73386,20 @@ Assistant:`;
           "aria-label": `${openLabel}: ${event.summary}`,
           className: "flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors hover:bg-bg-hover/40   ",
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("span", { className: "shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted", children: relativeDuration(event.timestamp) }),
-            /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
+            /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("span", { className: "shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted", children: relativeDuration(event.timestamp) }),
+            /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)(
               "span",
               {
                 className: `inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm ${eventTypeMeta.toneClass}`,
                 role: "img",
                 title: eventLabel,
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(EventIcon, { className: "h-2.5 w-2.5" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("span", { className: "sr-only", children: eventLabel })
+                  /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(EventIcon, { className: "h-2.5 w-2.5" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("span", { className: "sr-only", children: eventLabel })
                 ]
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("span", { className: "min-w-0 flex-1 break-words pt-0.5 text-2xs leading-4 text-txt", children: event.summary })
+            /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("span", { className: "min-w-0 flex-1 break-words pt-0.5 text-2xs leading-4 text-txt", children: event.summary })
           ]
         },
         event.id
@@ -73180,12 +73428,12 @@ Assistant:`;
   }) {
     const healthDot = run.health.state === "healthy" ? "bg-ok" : run.health.state === "degraded" ? "bg-warn" : "bg-danger";
     const ViewerIcon = run.viewerAttachment === "attached" ? Eye : EyeOff;
-    return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "rounded-sm border border-border/50 bg-bg-accent/30 p-2", children: /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "flex items-start gap-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "w-20 shrink-0 overflow-hidden rounded-sm border border-white/10 bg-black/10", children: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(AppHero, { app, className: "aspect-[5/4]", imageOnly: true }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "min-w-0 flex-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "truncate text-2xs font-semibold text-txt", children: run.displayName }),
-        /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "mt-1 flex flex-wrap items-center gap-1.5 text-3xs text-muted", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "rounded-sm border border-border/50 bg-bg-accent/30 p-2", children: /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "flex items-start gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "w-20 shrink-0 overflow-hidden rounded-sm border border-white/10 bg-black/10", children: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(AppHero, { app, className: "aspect-[5/4]", imageOnly: true }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "min-w-0 flex-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "truncate text-2xs font-semibold text-txt", children: run.displayName }),
+        /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "mt-1 flex flex-wrap items-center gap-1.5 text-3xs text-muted", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
             "span",
             {
               className: `inline-block h-1.5 w-1.5 rounded-full ${healthDot}`,
@@ -73194,14 +73442,14 @@ Assistant:`;
               title: run.health.state
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(ViewerIcon, { className: "h-3 w-3", "aria-label": run.viewerAttachment }),
-          /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("span", { children: formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt, t2) })
+          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(ViewerIcon, { className: "h-3 w-3", "aria-label": run.viewerAttachment }),
+          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("span", { children: formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt, t2) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "mt-1 line-clamp-2 text-3xs text-muted", children: run.summary || run.health.message || t2("agentorchestrator.runActive", {
+        /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "mt-1 line-clamp-2 text-3xs text-muted", children: run.summary || run.health.message || t2("agentorchestrator.runActive", {
           defaultValue: "Run active."
         }) }),
-        attentionReasons.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "mt-1.5 flex items-center gap-1.5 text-3xs text-warn", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+        attentionReasons.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "mt-1.5 flex items-center gap-1.5 text-3xs text-warn", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
             TriangleAlert,
             {
               className: "h-3 w-3 shrink-0",
@@ -73210,7 +73458,7 @@ Assistant:`;
               })
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("span", { className: "truncate", children: attentionReasons[0] })
+          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("span", { className: "truncate", children: attentionReasons[0] })
         ] }) : null
       ] })
     ] }) });
@@ -73230,13 +73478,13 @@ Assistant:`;
     const setTab = appSetTab ?? (() => void 0);
     const setState2 = appSetState ?? (() => void 0);
     const t2 = appT ?? fallbackTranslate;
-    const [catalogApps, setCatalogApps] = (0, import_react77.useState)([]);
-    const [runs, setRuns] = (0, import_react77.useState)(
+    const [catalogApps, setCatalogApps] = (0, import_react79.useState)([]);
+    const [runs, setRuns] = (0, import_react79.useState)(
       () => Array.isArray(appRuns) ? appRuns : []
     );
-    const [loading, setLoading] = (0, import_react77.useState)(true);
-    const [error51, setError] = (0, import_react77.useState)(null);
-    const catalogAppsByName = (0, import_react77.useMemo)(
+    const [loading, setLoading] = (0, import_react79.useState)(true);
+    const [error51, setError] = (0, import_react79.useState)(null);
+    const catalogAppsByName = (0, import_react79.useMemo)(
       () => new Map(catalogApps.map((catalogApp) => [catalogApp.name, catalogApp])),
       [catalogApps]
     );
@@ -73247,13 +73495,13 @@ Assistant:`;
     const backgroundCount = runs.filter(
       (run) => run.viewerAttachment !== "attached"
     ).length;
-    const attentionMap = (0, import_react77.useMemo)(
+    const attentionMap = (0, import_react79.useMemo)(
       () => new Map(
         runs.map((run) => [run.runId, getRunAttentionReasons(run)])
       ),
       [runs]
     );
-    const needsAttentionCount = (0, import_react77.useMemo)(
+    const needsAttentionCount = (0, import_react79.useMemo)(
       () => runs.filter((run) => (attentionMap.get(run.runId)?.length ?? 0) > 0).length,
       [attentionMap, runs]
     );
@@ -73261,7 +73509,7 @@ Assistant:`;
       (run) => (attentionMap.get(run.runId)?.length ?? 0) > 0
     );
     const shouldHideWidget = !loading && runs.length === 0 && error51 === null;
-    (0, import_react77.useEffect)(() => {
+    (0, import_react79.useEffect)(() => {
       let cancelled = false;
       void loadMergedCatalogApps({ includeHiddenApps: true }).then((apps) => {
         if (!cancelled) {
@@ -73272,7 +73520,7 @@ Assistant:`;
         cancelled = true;
       };
     }, []);
-    (0, import_react77.useEffect)(() => {
+    (0, import_react79.useEffect)(() => {
       let cancelled = false;
       let lastAppRunsKey = "";
       const refreshRuns = async () => {
@@ -73284,7 +73532,7 @@ Assistant:`;
           const nextKey = JSON.stringify(nextRunsSafe);
           const changed = nextKey !== lastAppRunsKey;
           lastAppRunsKey = nextKey;
-          (0, import_react77.startTransition)(() => {
+          (0, import_react79.startTransition)(() => {
             setRuns(nextRunsSafe);
             if (changed) setState2("appRuns", nextRunsSafe);
           });
@@ -73316,13 +73564,13 @@ Assistant:`;
     if (shouldHideWidget) {
       return null;
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)(
       WidgetSection,
       {
         title: t2("appsview.Running", { defaultValue: "Apps" }),
-        icon: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Activity, { className: "h-4 w-4" }),
-        action: /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "flex items-center gap-1", children: [
-          currentRun ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+        icon: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Activity, { className: "h-4 w-4" }),
+        action: /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "flex items-center gap-1", children: [
+          currentRun ? /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
             Button,
             {
               type: "button",
@@ -73338,10 +73586,10 @@ Assistant:`;
                 setTab("apps");
                 setState2("appsSubTab", "games");
               },
-              children: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Play, { className: "h-3.5 w-3.5" })
+              children: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Play, { className: "h-3.5 w-3.5" })
             }
           ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
             Button,
             {
               type: "button",
@@ -73356,26 +73604,26 @@ Assistant:`;
                 setTab("apps");
                 setState2("appsSubTab", "running");
               },
-              children: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(SquareArrowOutUpRight, { className: "h-3.5 w-3.5" })
+              children: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(SquareArrowOutUpRight, { className: "h-3.5 w-3.5" })
             }
           )
         ] }),
         testId: "chat-widget-app-runs",
         children: [
-          error51 ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "mb-2 rounded-sm border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger", children: error51 }) : null,
-          runs.length === 0 ? loading ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "text-xs-tight text-muted", children: t2("agentorchestrator.loadingRuns", {
+          error51 ? /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "mb-2 rounded-sm border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger", children: error51 }) : null,
+          runs.length === 0 ? loading ? /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "text-xs-tight text-muted", children: t2("agentorchestrator.loadingRuns", {
             defaultValue: "Loading app runs..."
-          }) }) : /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+          }) }) : /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
             EmptyWidgetState,
             {
-              icon: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Activity, { className: "h-8 w-8" }),
+              icon: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Activity, { className: "h-8 w-8" }),
               title: t2("agentorchestrator.noGamesRunning", {
                 defaultValue: "No games are running"
               })
             }
-          ) : /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "flex flex-col gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "flex flex-wrap items-center gap-3 text-3xs text-muted", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
+          ) : /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "flex flex-col gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "flex flex-wrap items-center gap-3 text-3xs text-muted", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)(
                 "span",
                 {
                   className: "inline-flex items-center gap-1",
@@ -73383,12 +73631,12 @@ Assistant:`;
                     defaultValue: "Currently playing"
                   }),
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Eye, { className: "h-3 w-3" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Eye, { className: "h-3 w-3" }),
                     attachedCount
                   ]
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
+              /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)(
                 "span",
                 {
                   className: "inline-flex items-center gap-1",
@@ -73396,12 +73644,12 @@ Assistant:`;
                     defaultValue: "Background"
                   }),
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(EyeOff, { className: "h-3 w-3" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(EyeOff, { className: "h-3 w-3" }),
                     backgroundCount
                   ]
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
+              /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)(
                 "span",
                 {
                   className: `inline-flex items-center gap-1 ${needsAttentionCount > 0 ? "text-warn" : "text-ok"}`,
@@ -73409,20 +73657,20 @@ Assistant:`;
                     defaultValue: "Needs attention"
                   }),
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(TriangleAlert, { className: "h-3 w-3" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(TriangleAlert, { className: "h-3 w-3" }),
                     needsAttentionCount
                   ]
                 }
               )
             ] }),
-            attentionRuns.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "rounded-sm border border-warn/30 bg-warn/10 p-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)("div", { className: "mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.08em] text-warn", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(TriangleAlert, { className: "h-3 w-3" }),
+            attentionRuns.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "rounded-sm border border-warn/30 bg-warn/10 p-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)("div", { className: "mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.08em] text-warn", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(TriangleAlert, { className: "h-3 w-3" }),
                 t2("agentorchestrator.recovery", { defaultValue: "Recovery" })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "flex flex-col gap-2", children: attentionRuns.slice(0, 3).map((run) => {
+              /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "flex flex-col gap-2", children: attentionRuns.slice(0, 3).map((run) => {
                 const reasons = attentionMap.get(run.runId) ?? [];
-                return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+                return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
                   AppRunCard,
                   {
                     run,
@@ -73434,7 +73682,7 @@ Assistant:`;
                 );
               }) })
             ] }) : null,
-            /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("div", { className: "flex flex-col gap-2", children: runs.slice(0, 4).map((run) => /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "flex flex-col gap-2", children: runs.slice(0, 4).map((run) => /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
               AppRunCard,
               {
                 run,
@@ -73451,7 +73699,8 @@ Assistant:`;
   }
   function OrchestratorActivityWidget({
     events,
-    clearEvents
+    clearEvents,
+    slot
   }) {
     const {
       t: appT,
@@ -73463,7 +73712,8 @@ Assistant:`;
       setTab: s.setTab
     }));
     const t2 = appT ?? fallbackTranslate;
-    const onSelectEvent = (0, import_react77.useCallback)(
+    const nav = useWidgetNavigation();
+    const onSelectEvent = (0, import_react79.useCallback)(
       (event) => {
         if (event.sessionId) {
           setState2?.("activeInboxChat", null);
@@ -73477,12 +73727,28 @@ Assistant:`;
     if (events.length === 0) {
       return null;
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+    if (slot === "home") {
+      const latest = events[0];
+      return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
+        HomeWidgetCard,
+        {
+          icon: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Activity, {}),
+          label: t2("taskseventspanel.Activity", { defaultValue: "Activity" }),
+          value: latest.summary,
+          meta: relativeDuration(latest.timestamp),
+          badge: events.length > 1 ? events.length : void 0,
+          testId: "chat-widget-events",
+          ariaLabel: `Activity: ${events.length} events, latest ${latest.summary}. Open tasks.`,
+          onActivate: () => nav.openTab("tasks")
+        }
+      );
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
       WidgetSection,
       {
         title: t2("taskseventspanel.Activity", { defaultValue: "Activity" }),
-        icon: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Activity, { className: "h-4 w-4" }),
-        action: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+        icon: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Activity, { className: "h-4 w-4" }),
+        action: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
           Button,
           {
             variant: "ghost",
@@ -73492,11 +73758,11 @@ Assistant:`;
               defaultValue: "Clear activity"
             }),
             className: "h-6 w-6 p-0 text-muted",
-            children: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(Trash2, { className: "h-3.5 w-3.5" })
+            children: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Trash2, { className: "h-3.5 w-3.5" })
           }
         ),
         testId: "chat-widget-events",
-        children: /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
           ActivityItemsContent,
           {
             events,
@@ -73513,15 +73779,15 @@ Assistant:`;
       setTab: s.setTab
     }));
     const t2 = appT ?? fallbackTranslate;
-    const [accounts, setAccounts] = (0, import_react77.useState)(null);
-    const [overview, setOverview] = (0, import_react77.useState)(
+    const [accounts, setAccounts] = (0, import_react79.useState)(null);
+    const [overview, setOverview] = (0, import_react79.useState)(
       null
     );
-    const [rooms, setRooms] = (0, import_react77.useState)(
+    const [rooms, setRooms] = (0, import_react79.useState)(
       null
     );
-    const [loading, setLoading] = (0, import_react77.useState)(true);
-    const refresh = (0, import_react77.useCallback)(async () => {
+    const [loading, setLoading] = (0, import_react79.useState)(true);
+    const refresh = (0, import_react79.useCallback)(async () => {
       const [acctRes, ovRes, roomsRes] = await Promise.allSettled([
         client.listAccounts(),
         client.getOrchestratorAccounts(),
@@ -73532,12 +73798,12 @@ Assistant:`;
       if (roomsRes.status === "fulfilled") setRooms(roomsRes.value);
       setLoading(false);
     }, []);
-    (0, import_react77.useEffect)(() => {
+    (0, import_react79.useEffect)(() => {
       void refresh();
     }, [refresh]);
     useIntervalWhenDocumentVisible(() => void refresh(), 15e3);
     if (loading) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
       OrchestratorAccountsView,
       {
         accounts,
@@ -73573,9 +73839,9 @@ Assistant:`;
   ];
 
   // packages/ui/src/components/chat/widgets/browser-status.tsx
-  var import_react78 = __toESM(require_react(), 1);
+  var import_react80 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
-  var import_jsx_runtime43 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime44 = __toESM(require_jsx_runtime(), 1);
   var POLL_INTERVAL_MS = 4e3;
   var MAX_TAB_ROWS = 8;
   function tabLabel(tab) {
@@ -73605,17 +73871,17 @@ Assistant:`;
   }
   function BrowserStatusSidebarWidget(_props) {
     const setTab = useAppSelector((s) => s.setTab);
-    const [snapshot2, setSnapshot] = (0, import_react78.useState)(
+    const [snapshot2, setSnapshot] = (0, import_react80.useState)(
       null
     );
-    const poll = (0, import_react78.useCallback)(async () => {
+    const poll = (0, import_react80.useCallback)(async () => {
       try {
         const next = await client.getBrowserWorkspace();
         setSnapshot(next);
       } catch {
       }
     }, []);
-    (0, import_react78.useEffect)(() => {
+    (0, import_react80.useEffect)(() => {
       void poll();
     }, [poll]);
     useIntervalWhenDocumentVisible(() => void poll(), POLL_INTERVAL_MS);
@@ -73633,17 +73899,17 @@ Assistant:`;
       })();
       setTab("browser");
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
       WidgetSection,
       {
         title: "Browser",
-        icon: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(Globe, { className: "h-3.5 w-3.5" }),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(Globe, { className: "h-3.5 w-3.5" }),
         testId: "chat-widget-browser-status",
         onTitleClick: () => setTab("browser"),
-        children: /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("div", { className: "flex flex-col gap-0.5 pt-0.5", children: rows.map((tab) => {
+        children: /* @__PURE__ */ (0, import_jsx_runtime44.jsx)("div", { className: "flex flex-col gap-0.5 pt-0.5", children: rows.map((tab) => {
           const label = tabLabel(tab);
           const status = tabStatus(tab);
-          return /* @__PURE__ */ (0, import_jsx_runtime43.jsxs)(
+          return /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)(
             "button",
             {
               type: "button",
@@ -73652,21 +73918,21 @@ Assistant:`;
               "data-testid": `chat-widget-browser-tab-${tab.id}`,
               className: "flex items-center gap-2 rounded-sm px-0.5 py-0.5 text-left transition-colors hover:bg-bg-hover/40",
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
                   "span",
                   {
                     className: `h-1.5 w-1.5 shrink-0 rounded-full ${status.dotClass}`,
                     "aria-hidden": true
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime43.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
                   "span",
                   {
                     className: `min-w-0 flex-1 truncate text-3xs ${status.textClass}`,
                     children: label
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime43.jsx)("span", { className: "shrink-0 text-3xs uppercase tracking-wider text-muted/70", children: status.label })
+                /* @__PURE__ */ (0, import_jsx_runtime44.jsx)("span", { className: "shrink-0 text-3xs uppercase tracking-wider text-muted/70", children: status.label })
               ]
             },
             tab.id
@@ -73686,12 +73952,11 @@ Assistant:`;
   };
 
   // packages/ui/src/components/chat/widgets/calendar-upcoming.tsx
-  var import_react79 = __toESM(require_react(), 1);
+  var import_react81 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
-  var import_jsx_runtime44 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime45 = __toESM(require_jsx_runtime(), 1);
   var CALENDAR_WIDGET_KEY = "calendar/calendar.upcoming";
   var CALENDAR_REFRESH_INTERVAL_MS = 6e4;
-  var MAX_VISIBLE_EVENTS = 4;
   var URGENT_WINDOW_MS = 2 * 60 * 6e4;
   var LOOKAHEAD_MS = 14 * 24 * 60 * 6e4;
   function isCalendarFeedEvent(value) {
@@ -73709,7 +73974,7 @@ Assistant:`;
     return events.filter((event) => {
       const startMs = Date.parse(event.startAt);
       return Number.isFinite(startMs) && startMs >= now2;
-    }).sort((a, b) => a.startAt.localeCompare(b.startAt)).slice(0, MAX_VISIBLE_EVENTS);
+    }).sort((a, b) => a.startAt.localeCompare(b.startAt));
   }
   function relativeTime2(startAt, now2) {
     const deltaMs = Date.parse(startAt) - now2;
@@ -73720,19 +73985,21 @@ Assistant:`;
     const hours = Math.round(minutes / 60);
     if (hours < 24) return `in ${hours}h`;
     const days = Math.round(hours / 24);
+    if (days === 1) return "tomorrow";
     return `in ${days}d`;
   }
-  function CalendarEventRow({ event }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime44.jsxs)("div", { className: "flex items-center gap-2 py-0.5", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(CalendarClock, { className: "h-3 w-3 shrink-0 text-muted" }),
-      /* @__PURE__ */ (0, import_jsx_runtime44.jsx)("span", { className: "min-w-0 flex-1 truncate text-xs font-medium text-txt", children: event.title.trim().length > 0 ? event.title : "(untitled)" }),
-      /* @__PURE__ */ (0, import_jsx_runtime44.jsx)("span", { className: "shrink-0 text-3xs tabular-nums text-muted", children: event.isAllDay ? "all day" : relativeTime2(event.startAt, Date.now()) })
-    ] });
+  function eventsEqual(a, b) {
+    if (a.length !== b.length) return false;
+    return a.every((event, i) => {
+      const other = b[i];
+      return event.id === other.id && event.title === other.title && event.startAt === other.startAt && event.isAllDay === other.isAllDay;
+    });
   }
   function CalendarUpcomingWidget({ slot }) {
-    const [events, setEvents] = (0, import_react79.useState)([]);
-    const [loaded, setLoaded] = (0, import_react79.useState)(false);
-    const loadEvents = (0, import_react79.useCallback)(async () => {
+    const [events, setEvents] = (0, import_react81.useState)([]);
+    const [loaded, setLoaded] = (0, import_react81.useState)(false);
+    const nav = useWidgetNavigation();
+    const loadEvents = (0, import_react81.useCallback)(async () => {
       const now3 = /* @__PURE__ */ new Date();
       const timeMin = now3.toISOString();
       const timeMax = new Date(now3.getTime() + LOOKAHEAD_MS).toISOString();
@@ -73749,13 +74016,14 @@ Assistant:`;
         );
         if (!res.ok) return;
         const json3 = await res.json();
-        setEvents(parseCalendarFeed(json3));
+        const next2 = parseCalendarFeed(json3);
+        setEvents((prev) => eventsEqual(prev, next2) ? prev : next2);
       } catch {
       } finally {
         setLoaded(true);
       }
     }, []);
-    (0, import_react79.useEffect)(() => {
+    (0, import_react81.useEffect)(() => {
       void loadEvents();
     }, [loadEvents]);
     useIntervalWhenDocumentVisible(
@@ -73763,26 +74031,31 @@ Assistant:`;
       CALENDAR_REFRESH_INTERVAL_MS
     );
     const now2 = Date.now();
-    const visible = upcomingEvents(events, now2);
+    const visible = (0, import_react81.useMemo)(() => upcomingEvents(events, now2), [events, now2]);
     const onHome = slot === "home";
-    const urgent = visible.some((event) => {
-      if (event.isAllDay) return false;
-      const startMs = Date.parse(event.startAt);
-      return Number.isFinite(startMs) && startMs - now2 >= 0 && startMs - now2 <= URGENT_WINDOW_MS;
-    });
+    const next = visible[0];
+    const urgent = next != null && !next.isAllDay && Number.isFinite(Date.parse(next.startAt)) && Date.parse(next.startAt) - now2 >= 0 && Date.parse(next.startAt) - now2 <= URGENT_WINDOW_MS;
     usePublishHomeAttention(
       CALENDAR_WIDGET_KEY,
       onHome && urgent ? HOME_SIGNAL_WEIGHTS.reminder : null
     );
     if (!loaded && events.length === 0) return null;
-    if (visible.length === 0) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(
-      WidgetSection,
+    if (next == null) return null;
+    const title = next.title.trim().length > 0 ? next.title : "(untitled)";
+    const when = next.isAllDay ? "all day" : relativeTime2(next.startAt, now2);
+    const more = visible.length - 1;
+    return /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(
+      HomeWidgetCard,
       {
-        title: "Upcoming",
-        icon: /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(CalendarClock, { className: "h-4 w-4" }),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(CalendarClock, {}),
+        label: "Next",
+        value: title,
+        meta: when,
+        badge: more > 0 ? `+${more}` : void 0,
+        tone: urgent ? "warn" : "default",
         testId: "chat-widget-calendar-upcoming",
-        children: /* @__PURE__ */ (0, import_jsx_runtime44.jsx)("div", { className: "flex flex-col", children: visible.map((event) => /* @__PURE__ */ (0, import_jsx_runtime44.jsx)(CalendarEventRow, { event }, event.id)) })
+        ariaLabel: `Next event: ${title} ${when}${more > 0 ? ` (+${more} more upcoming)` : ""}. Open Calendar.`,
+        onActivate: () => nav.openView("/calendar", "calendar")
       }
     );
   }
@@ -73795,12 +74068,11 @@ Assistant:`;
   };
 
   // packages/ui/src/components/chat/widgets/finances-alerts.tsx
-  var import_react80 = __toESM(require_react(), 1);
+  var import_react82 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
-  var import_jsx_runtime45 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime46 = __toESM(require_jsx_runtime(), 1);
   var FINANCES_WIDGET_KEY = "finances/finances.alerts";
   var FINANCES_REFRESH_INTERVAL_MS = 3e4;
-  var MAX_VISIBLE_BILLS = 3;
   var WEEK_MS = 7 * 24 * 60 * 60 * 1e3;
   var USD = "USD";
   function isRecord(value) {
@@ -73879,77 +74151,83 @@ Assistant:`;
       return leftDue - rightDue;
     });
   }
+  function financesEqual(a, b) {
+    if (!a) return false;
+    if (a.hasSource !== b.hasSource || a.netBalanceMinor !== b.netBalanceMinor || a.bills.length !== b.bills.length) {
+      return false;
+    }
+    return a.bills.every((bill, i) => {
+      const other = b.bills[i];
+      return bill.id === other.id && bill.amountMinor === other.amountMinor && bill.nextChargeAt === other.nextChargeAt;
+    });
+  }
   function FinancesAlertsWidget(_props) {
-    const [data, setData] = (0, import_react80.useState)(null);
-    const load = (0, import_react80.useCallback)(async () => {
+    const [data, setData] = (0, import_react82.useState)(null);
+    const nav = useWidgetNavigation();
+    const load = (0, import_react82.useCallback)(async () => {
       try {
         const [dashboard, recurring, sources] = await Promise.all([
           getJson("/api/lifeops/money/dashboard"),
           getJson("/api/lifeops/money/recurring"),
           getJson("/api/lifeops/money/sources")
         ]);
-        setData({
+        const next = {
           hasSource: parseHasSource(sources),
           netBalanceMinor: parseNetBalanceMinor(dashboard),
           currency: USD,
           bills: parseBills(recurring)
-        });
+        };
+        setData((prev) => financesEqual(prev, next) ? prev : next);
       } catch {
       }
     }, []);
-    (0, import_react80.useEffect)(() => {
+    (0, import_react82.useEffect)(() => {
       void load();
     }, [load]);
     useIntervalWhenDocumentVisible(
       () => void load(),
       FINANCES_REFRESH_INTERVAL_MS
     );
-    const now2 = Date.now();
     const overdrawn = data != null && data.netBalanceMinor < 0;
-    const dueSoon = data ? billsDueWithin7Days(data.bills, now2) : [];
+    const dueSoon = (0, import_react82.useMemo)(
+      () => data ? billsDueWithin7Days(data.bills, Date.now()) : [],
+      [data]
+    );
     const hasBillsDue = dueSoon.length > 0;
     const weight = overdrawn ? HOME_SIGNAL_WEIGHTS.escalation : hasBillsDue ? HOME_SIGNAL_WEIGHTS.reminder : null;
     usePublishHomeAttention(FINANCES_WIDGET_KEY, weight);
     if (data == null) return null;
     if (!data.hasSource) return null;
     if (!overdrawn && !hasBillsDue) return null;
-    const visibleBills = dueSoon.slice(0, MAX_VISIBLE_BILLS);
-    const remainingCount = dueSoon.length - visibleBills.length;
-    return /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(
-      WidgetSection,
+    if (overdrawn) {
+      const amount = formatMinor(data.netBalanceMinor, data.currency);
+      return /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+        HomeWidgetCard,
+        {
+          icon: /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(Wallet, {}),
+          label: "Bills",
+          value: amount,
+          badge: "Overdrawn",
+          tone: "danger",
+          testId: "chat-widget-finances-alerts",
+          ariaLabel: `Bills: account overdrawn ${amount}. Open Finances.`,
+          onActivate: () => nav.openView("/finances", "finances")
+        }
+      );
+    }
+    const soonest = dueSoon[0];
+    return /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(
+      HomeWidgetCard,
       {
-        title: "Bills & Balance",
-        icon: /* @__PURE__ */ (0, import_jsx_runtime45.jsx)(Wallet, { className: "h-4 w-4" }),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime46.jsx)(Wallet, {}),
+        label: "Bills",
+        value: soonest.label,
+        meta: dueInLabel(soonest.nextChargeAt, Date.now()),
+        badge: dueSoon.length > 1 ? `${dueSoon.length} due` : void 0,
+        tone: "warn",
         testId: "chat-widget-finances-alerts",
-        children: /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "flex flex-col gap-1", children: [
-          overdrawn ? /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("div", { className: "flex items-center justify-between gap-2 px-1 py-1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("span", { className: "truncate text-xs font-semibold text-danger", children: "Overdrawn" }),
-            /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("span", { className: "shrink-0 text-xs font-semibold text-danger", children: formatMinor(data.netBalanceMinor, data.currency) })
-          ] }) : null,
-          visibleBills.map((bill) => /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)(
-            "div",
-            {
-              className: "flex items-center justify-between gap-2 px-1 py-1",
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime45.jsx)("span", { className: "min-w-0 truncate text-xs font-medium text-txt", children: bill.label }),
-                /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("span", { className: "shrink-0 text-2xs text-muted", children: [
-                  formatMinor(bill.amountMinor, bill.currency),
-                  " \u2022",
-                  " ",
-                  dueInLabel(bill.nextChargeAt, now2)
-                ] })
-              ]
-            },
-            bill.id
-          )),
-          remainingCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime45.jsxs)("p", { className: "px-1 text-3xs text-muted", children: [
-            "+",
-            remainingCount,
-            " more bill",
-            remainingCount === 1 ? "" : "s",
-            " due soon"
-          ] }) : null
-        ] })
+        ariaLabel: `Bills: ${dueSoon.length} due this week, next ${soonest.label} ${dueInLabel(soonest.nextChargeAt, Date.now())}. Open Finances.`,
+        onActivate: () => nav.openView("/finances", "finances")
       }
     );
   }
@@ -73962,36 +74240,11 @@ Assistant:`;
   };
 
   // packages/ui/src/components/chat/widgets/goals-attention.tsx
-  var import_react81 = __toESM(require_react(), 1);
+  var import_react83 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/components/ui/badge.tsx
-  var import_jsx_runtime46 = __toESM(require_jsx_runtime(), 1);
-  var badgeVariants = cva(
-    "inline-flex items-center rounded-sm border px-2.5 py-0.5 text-xs font-semibold transition-colors    ",
-    {
-      variants: {
-        variant: {
-          default: "border-transparent bg-primary text-primary-fg hover:bg-primary/80",
-          secondary: "border-transparent bg-bg-accent text-txt hover:bg-bg-hover",
-          destructive: "border-transparent bg-destructive text-destructive-fg hover:bg-destructive/80",
-          outline: "text-txt border-border"
-        }
-      },
-      defaultVariants: {
-        variant: "default"
-      }
-    }
-  );
-  function Badge({ className, variant, ...props }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime46.jsx)("div", { className: cn(badgeVariants({ variant }), className), ...props });
-  }
-
-  // packages/ui/src/components/chat/widgets/goals-attention.tsx
   var import_jsx_runtime47 = __toESM(require_jsx_runtime(), 1);
   var GOALS_WIDGET_KEY = "goals/goals.attention";
   var GOALS_REFRESH_INTERVAL_MS = 2e4;
-  var MAX_VISIBLE_GOALS = 5;
   var KNOWN_STATUSES = /* @__PURE__ */ new Set([
     "active",
     "paused",
@@ -74037,85 +74290,66 @@ Assistant:`;
     }
     return parseGoals(await response.json());
   }
-  var REVIEW_RANK = {
-    at_risk: 0,
-    needs_attention: 1,
-    on_track: 2,
-    idle: 3
-  };
   function liveGoals(goals) {
     return goals.filter(
       (goal) => goal.status !== "archived" && goal.status !== "satisfied"
     );
   }
-  function sortForWidget(goals) {
-    return [...goals].sort((left, right) => {
-      const byReview = REVIEW_RANK[left.reviewState] - REVIEW_RANK[right.reviewState];
-      if (byReview !== 0) return byReview;
-      return left.title.localeCompare(right.title);
+  function mostUrgentGoal(goals) {
+    const live = liveGoals(goals);
+    const byTitle = (left, right) => left.title.localeCompare(right.title);
+    const atRisk = live.filter((goal) => goal.reviewState === "at_risk").sort(byTitle);
+    if (atRisk.length > 0) return atRisk[0];
+    const needsAttention = live.filter((goal) => goal.reviewState === "needs_attention").sort(byTitle);
+    if (needsAttention.length > 0) return needsAttention[0];
+    return null;
+  }
+  function attentionCount(goals) {
+    return liveGoals(goals).filter(
+      (goal) => goal.reviewState === "at_risk" || goal.reviewState === "needs_attention"
+    ).length;
+  }
+  function goalsEqual(a, b) {
+    if (!a || a.length !== b.length) return false;
+    return a.every((goal, i) => {
+      const other = b[i];
+      return goal.id === other.id && goal.title === other.title && goal.status === other.status && goal.reviewState === other.reviewState;
     });
   }
-  function isUrgent(goal) {
-    return goal.reviewState === "at_risk" || goal.reviewState === "needs_attention";
-  }
-  var REVIEW_BADGE_LABEL = {
-    at_risk: "At risk",
-    needs_attention: "Needs attention",
-    on_track: "On track",
-    idle: null
-  };
-  function GoalRow({ goal }) {
-    const badgeLabel = REVIEW_BADGE_LABEL[goal.reviewState];
-    const urgent = isUrgent(goal);
-    return /* @__PURE__ */ (0, import_jsx_runtime47.jsxs)("div", { className: "flex items-center gap-2 px-1 py-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
-        "span",
-        {
-          className: `inline-block h-2 w-2 shrink-0 rounded-full ${urgent ? "bg-danger" : goal.status === "active" ? "bg-accent" : "bg-muted"}`
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("span", { className: "min-w-0 flex-1 truncate text-xs font-medium text-txt", children: goal.title }),
-      badgeLabel ? /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
-        Badge,
-        {
-          variant: "secondary",
-          className: `shrink-0 text-3xs ${urgent ? "text-danger" : ""}`,
-          children: badgeLabel
-        }
-      ) : null
-    ] });
-  }
   function GoalsAttentionWidget(_props) {
-    const [goals, setGoals] = (0, import_react81.useState)([]);
-    const [loaded, setLoaded] = (0, import_react81.useState)(false);
-    const load = (0, import_react81.useCallback)(async () => {
+    const [goals, setGoals] = (0, import_react83.useState)(null);
+    const nav = useWidgetNavigation();
+    const load = (0, import_react83.useCallback)(async () => {
       try {
         const next = await fetchGoals();
-        setGoals(next);
+        setGoals((prev) => goalsEqual(prev, next) ? prev : next);
       } catch {
-      } finally {
-        setLoaded(true);
       }
     }, []);
-    (0, import_react81.useEffect)(() => {
+    (0, import_react83.useEffect)(() => {
       void load();
     }, [load]);
     useIntervalWhenDocumentVisible(() => void load(), GOALS_REFRESH_INTERVAL_MS);
-    const visible = sortForWidget(liveGoals(goals));
-    const hasUrgent = visible.some(isUrgent);
+    const urgent = (0, import_react83.useMemo)(() => goals ? mostUrgentGoal(goals) : null, [goals]);
+    const count3 = (0, import_react83.useMemo)(() => goals ? attentionCount(goals) : 0, [goals]);
     usePublishHomeAttention(
       GOALS_WIDGET_KEY,
-      hasUrgent ? HOME_SIGNAL_WEIGHTS.escalation : null
+      urgent ? HOME_SIGNAL_WEIGHTS.escalation : null
     );
-    if (!loaded || visible.length === 0) return null;
-    const rows = visible.slice(0, MAX_VISIBLE_GOALS);
+    if (goals == null || urgent == null) return null;
+    const tone = urgent.reviewState === "at_risk" ? "danger" : "warn";
+    const status = urgent.reviewState === "at_risk" ? "at risk" : "needs attention";
     return /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(
-      WidgetSection,
+      HomeWidgetCard,
       {
-        title: "Goals",
-        icon: /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(Target, { className: "h-4 w-4" }),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(Target, {}),
+        label: "Goals",
+        value: urgent.title,
+        badge: count3 > 1 ? `${count3}` : void 0,
+        tone,
         testId: "widget-goals-attention",
-        children: /* @__PURE__ */ (0, import_jsx_runtime47.jsx)("div", { className: "flex flex-col gap-0.5", children: rows.map((goal) => /* @__PURE__ */ (0, import_jsx_runtime47.jsx)(GoalRow, { goal }, goal.id)) })
+        ariaLabel: `Goals: ${count3} need attention, top "${urgent.title}" ${status}. Open Goals.`,
+        onActivate: () => nav.openView("/goals", "goals")
       }
     );
   }
@@ -74128,13 +74362,12 @@ Assistant:`;
   };
 
   // packages/ui/src/components/chat/widgets/health-sleep.tsx
-  var import_react82 = __toESM(require_react(), 1);
+  var import_react84 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
   var import_jsx_runtime48 = __toESM(require_jsx_runtime(), 1);
   var HEALTH_SLEEP_WIDGET_KEY = "health/health.sleep";
   var SLEEP_REFRESH_INTERVAL_MS = 2e4;
   var WINDOW_DAYS = 14;
-  var EMPTY_DATA = { latest: null, classification: null };
   var REGULARITY_CLASSES = /* @__PURE__ */ new Set([
     "very_regular",
     "regular",
@@ -74142,12 +74375,9 @@ Assistant:`;
     "very_irregular",
     "insufficient_data"
   ]);
-  var REGULARITY_LABELS = {
-    very_regular: "Very regular",
-    regular: "Regular",
+  var OFF_RHYTHM_LABELS = {
     irregular: "Irregular",
-    very_irregular: "Very irregular",
-    insufficient_data: "Insufficient data"
+    very_irregular: "Very irregular"
   };
   function isOffRhythm(classification) {
     return classification === "irregular" || classification === "very_irregular";
@@ -74199,52 +74429,47 @@ Assistant:`;
     const mins = minutes % 60;
     return hours === 0 ? `${mins}m` : `${hours}h ${mins}m`;
   }
-  function formatWhen(value) {
-    if (!value) return "in progress";
-    const date5 = new Date(value);
-    return Number.isNaN(date5.getTime()) ? value : date5.toLocaleString();
+  function sleepEqual(a, b) {
+    if (!a) return false;
+    if (a.classification !== b.classification) return false;
+    if (a.latest === b.latest) return true;
+    if (a.latest === null || b.latest === null) return false;
+    return a.latest.startedAt === b.latest.startedAt && a.latest.endedAt === b.latest.endedAt && a.latest.durationMin === b.latest.durationMin;
   }
   function HealthSleepWidget(_props) {
-    const [data, setData] = (0, import_react82.useState)(EMPTY_DATA);
-    const [loaded, setLoaded] = (0, import_react82.useState)(false);
-    const load = (0, import_react82.useCallback)(async () => {
+    const [data, setData] = (0, import_react84.useState)(null);
+    const nav = useWidgetNavigation();
+    const load = (0, import_react84.useCallback)(async () => {
       try {
-        setData(await fetchSleep());
-        setLoaded(true);
+        const next = await fetchSleep();
+        setData((prev) => sleepEqual(prev, next) ? prev : next);
       } catch {
       }
     }, []);
-    (0, import_react82.useEffect)(() => {
+    (0, import_react84.useEffect)(() => {
       void load();
     }, [load]);
     useIntervalWhenDocumentVisible(() => void load(), SLEEP_REFRESH_INTERVAL_MS);
-    const urgent = isOffRhythm(data.classification);
+    const offRhythm = isOffRhythm(data?.classification ?? null);
     usePublishHomeAttention(
       HEALTH_SLEEP_WIDGET_KEY,
-      urgent ? HOME_SIGNAL_WEIGHTS["check-in"] : null
+      offRhythm ? HOME_SIGNAL_WEIGHTS["check-in"] : null
     );
-    if (!loaded || !data.latest) return null;
-    const classificationLabel = data.classification ? REGULARITY_LABELS[data.classification] : null;
+    if (data == null || !data.latest) return null;
+    const duration3 = formatDuration(data.latest.durationMin);
+    const badge = data.classification && isOffRhythm(data.classification) ? OFF_RHYTHM_LABELS[data.classification] : void 0;
+    const ariaLabel = badge ? `Sleep: last ${duration3}, regularity ${badge.toLowerCase()}. Open Health.` : `Sleep: last ${duration3}. Open Health.`;
     return /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
-      WidgetSection,
+      HomeWidgetCard,
       {
-        title: "Sleep",
-        icon: /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(Moon, { className: "h-4 w-4" }),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(Moon, {}),
+        label: "Sleep",
+        value: duration3,
+        badge,
+        tone: badge ? "warn" : "default",
         testId: "widget-health-sleep",
-        children: /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "rounded-sm border border-border/50 bg-bg/70 p-3", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime48.jsxs)("div", { className: "flex items-center justify-between gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("span", { className: "min-w-0 truncate text-xs font-semibold text-txt", children: formatDuration(data.latest.durationMin) }),
-            classificationLabel ? /* @__PURE__ */ (0, import_jsx_runtime48.jsx)(
-              Badge,
-              {
-                variant: "secondary",
-                className: `shrink-0 text-3xs ${urgent ? "text-danger" : ""}`,
-                children: classificationLabel
-              }
-            ) : null
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime48.jsx)("p", { className: "mt-1 truncate text-xs-tight leading-5 text-muted", children: formatWhen(data.latest.startedAt) })
-        ] })
+        ariaLabel,
+        onActivate: () => nav.openView("/health", "health")
       }
     );
   }
@@ -74257,12 +74482,11 @@ Assistant:`;
   };
 
   // packages/ui/src/components/chat/widgets/inbox-unread.tsx
-  var import_react83 = __toESM(require_react(), 1);
+  var import_react85 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
   var import_jsx_runtime49 = __toESM(require_jsx_runtime(), 1);
   var INBOX_WIDGET_KEY = "inbox/inbox.unread";
   var INBOX_REFRESH_INTERVAL_MS = 2e4;
-  var MAX_VISIBLE_UNREAD = 4;
   function isRecord2(value) {
     return typeof value === "object" && value !== null;
   }
@@ -74276,31 +74500,35 @@ Assistant:`;
       if (!id3) continue;
       const sender = isRecord2(message.sender) && typeof message.sender.displayName === "string" ? message.sender.displayName : "Someone";
       const subject = typeof message.subject === "string" ? message.subject : "";
-      const snippet = typeof message.snippet === "string" ? message.snippet : "";
-      threads.push({ id: id3, sender, summary: subject || snippet });
+      const priorityScore = typeof message.priorityScore === "number" ? message.priorityScore : 0;
+      const important = message.priorityCategory === "important";
+      threads.push({ id: id3, sender, subject, important, priorityScore });
     }
     return threads;
   }
-  function UnreadRow({ thread }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("li", { className: "flex flex-col gap-0.5 px-1 py-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "truncate text-xs font-medium text-txt", children: thread.sender }),
-      thread.summary ? /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "truncate text-2xs text-muted", children: thread.summary }) : null
-    ] });
+  function unreadEqual(a, b) {
+    if (a.length !== b.length) return false;
+    return a.every((thread, i) => {
+      const other = b[i];
+      return thread.id === other.id && thread.sender === other.sender && thread.subject === other.subject && thread.important === other.important && thread.priorityScore === other.priorityScore;
+    });
   }
   function InboxUnreadWidget(_props) {
-    const [unread, setUnread] = (0, import_react83.useState)([]);
-    const [loaded, setLoaded] = (0, import_react83.useState)(false);
-    const loadInbox = (0, import_react83.useCallback)(async () => {
+    const [unread, setUnread] = (0, import_react85.useState)([]);
+    const [loaded, setLoaded] = (0, import_react85.useState)(false);
+    const nav = useWidgetNavigation();
+    const loadInbox = (0, import_react85.useCallback)(async () => {
       try {
         const response = await fetch(`${client.getBaseUrl()}/api/lifeops/inbox`);
         if (!response.ok) return;
-        setUnread(parseUnread(await response.json()));
+        const next = parseUnread(await response.json());
+        setUnread((prev) => unreadEqual(prev, next) ? prev : next);
       } catch {
       } finally {
         setLoaded(true);
       }
     }, []);
-    (0, import_react83.useEffect)(() => {
+    (0, import_react85.useEffect)(() => {
       void loadInbox();
     }, [loadInbox]);
     useIntervalWhenDocumentVisible(
@@ -74311,25 +74539,30 @@ Assistant:`;
       INBOX_WIDGET_KEY,
       unread.length > 0 ? HOME_SIGNAL_WEIGHTS.message : null
     );
-    if (!loaded || unread.length === 0) return null;
-    const visible = unread.slice(0, MAX_VISIBLE_UNREAD);
-    const overflow = unread.length - visible.length;
-    return /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)(
-      WidgetSection,
+    const top = (0, import_react85.useMemo)(() => {
+      if (unread.length === 0) return null;
+      return unread.reduce(
+        (best, thread) => thread.priorityScore > best.priorityScore ? thread : best
+      );
+    }, [unread]);
+    const hasImportant = (0, import_react85.useMemo)(
+      () => unread.some((thread) => thread.important),
+      [unread]
+    );
+    if (!loaded || top == null) return null;
+    const datum = top.sender !== "Someone" ? top.sender : top.subject || top.sender;
+    const tone = hasImportant ? "warn" : "default";
+    return /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(
+      HomeWidgetCard,
       {
-        title: "Inbox",
-        icon: /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Inbox, { className: "h-4 w-4" }),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(Inbox, {}),
+        label: "Inbox",
+        value: datum,
+        badge: unread.length,
+        tone,
         testId: "chat-widget-inbox-unread",
-        action: /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("span", { className: "rounded-full bg-accent-subtle px-1.5 text-2xs font-medium text-accent", children: unread.length }),
-        children: [
-          /* @__PURE__ */ (0, import_jsx_runtime49.jsx)("ul", { className: "flex flex-col gap-0.5", children: visible.map((thread) => /* @__PURE__ */ (0, import_jsx_runtime49.jsx)(UnreadRow, { thread }, thread.id)) }),
-          overflow > 0 ? /* @__PURE__ */ (0, import_jsx_runtime49.jsxs)("p", { className: "px-1 text-xs-tight text-muted", children: [
-            "+",
-            overflow,
-            " more unread thread",
-            overflow === 1 ? "" : "s"
-          ] }) : null
-        ]
+        ariaLabel: `Inbox: ${unread.length} unread thread${unread.length === 1 ? "" : "s"} need a reply, top from ${datum}. Open Inbox.`,
+        onActivate: () => nav.openView("/inbox", "inbox")
       }
     );
   }
@@ -74342,20 +74575,38 @@ Assistant:`;
   };
 
   // packages/ui/src/components/chat/widgets/messages.tsx
-  var import_react84 = __toESM(require_react(), 1);
+  var import_react86 = __toESM(require_react(), 1);
   var import_jsx_runtime50 = __toESM(require_jsx_runtime(), 1);
   var MAX_HOME_CONVERSATIONS = 4;
   function byUpdatedDesc(a, b) {
     return (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
   }
-  function MessagesWidget(_props) {
+  function MessagesWidget(props) {
     const conversations = useAppSelector((s) => s.conversations);
-    const recent = (0, import_react84.useMemo)(
+    const nav = useWidgetNavigation();
+    const recent = (0, import_react86.useMemo)(
       () => (Array.isArray(conversations) ? [...conversations] : []).sort(byUpdatedDesc).slice(0, MAX_HOME_CONVERSATIONS),
       [conversations]
     );
     if (recent.length === 0) {
       return null;
+    }
+    if (props.slot === "home") {
+      const top = recent[0];
+      const title = top.title || "Untitled";
+      return /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
+        HomeWidgetCard,
+        {
+          icon: /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(MessageSquare, {}),
+          label: "Messages",
+          value: title,
+          meta: formatRelativeTime(top.updatedAt),
+          badge: recent.length > 1 ? recent.length : void 0,
+          testId: "widget-messages",
+          ariaLabel: `Messages: ${recent.length} recent, latest ${title}. Open Messages.`,
+          onActivate: () => nav.openView("/messages", "messages")
+        }
+      );
     }
     return /* @__PURE__ */ (0, import_jsx_runtime50.jsx)(
       WidgetSection,
@@ -74379,7 +74630,7 @@ Assistant:`;
   }
 
   // packages/ui/src/components/chat/widgets/music-player.tsx
-  var import_react85 = __toESM(require_react(), 1);
+  var import_react87 = __toESM(require_react(), 1);
   var import_jsx_runtime51 = __toESM(require_jsx_runtime(), 1);
   var MEDIA_ERROR_NAMES = {
     1: "MEDIA_ERR_ABORTED",
@@ -74394,13 +74645,13 @@ Assistant:`;
     return "Idle";
   }
   function MusicPlayerSidebarWidget(_props) {
-    const audioRef = (0, import_react85.useRef)(null);
-    const lastAttachedTrack = (0, import_react85.useRef)(null);
-    const [player, setPlayer] = (0, import_react85.useState)({ kind: "idle" });
-    const [audioError, setAudioError] = (0, import_react85.useState)(null);
-    const [audioPaused, setAudioPaused] = (0, import_react85.useState)(true);
+    const audioRef = (0, import_react87.useRef)(null);
+    const lastAttachedTrack = (0, import_react87.useRef)(null);
+    const [player, setPlayer] = (0, import_react87.useState)({ kind: "idle" });
+    const [audioError, setAudioError] = (0, import_react87.useState)(null);
+    const [audioPaused, setAudioPaused] = (0, import_react87.useState)(true);
     const isPlaying = player.kind === "playing";
-    const pollOnce = (0, import_react85.useCallback)(async () => {
+    const pollOnce = (0, import_react87.useCallback)(async () => {
       setPlayer((prev) => prev.kind === "idle" ? { kind: "loading" } : prev);
       try {
         const res = await fetchWithCsrf(resolveApiUrl("/music-player/status"));
@@ -74429,11 +74680,11 @@ Assistant:`;
         setAudioPaused(true);
       }
     }, []);
-    (0, import_react85.useEffect)(() => {
+    (0, import_react87.useEffect)(() => {
       void pollOnce();
     }, [pollOnce]);
     useIntervalWhenDocumentVisible(() => void pollOnce(), 5e3);
-    (0, import_react85.useEffect)(() => {
+    (0, import_react87.useEffect)(() => {
       const el = audioRef.current;
       if (!el) return;
       if (player.kind !== "playing") {
@@ -74459,7 +74710,7 @@ Assistant:`;
       el.play().catch(() => {
       });
     }, [player]);
-    (0, import_react85.useEffect)(() => {
+    (0, import_react87.useEffect)(() => {
       const el = audioRef.current;
       if (!el) return;
       const handlePlay = () => setAudioPaused(false);
@@ -74569,14 +74820,30 @@ Assistant:`;
       notification.body ? /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("span", { className: "truncate text-2xs text-muted", children: notification.body }) : null
     ] });
   }
-  function NotificationsWidget(_props) {
+  function NotificationsWidget(props) {
     const { notifications, unreadCount } = useNotifications();
-    const recent = rankHomeNotifications(notifications).slice(
-      0,
-      MAX_HOME_NOTIFICATIONS
-    );
+    const nav = useWidgetNavigation();
+    const ranked = rankHomeNotifications(notifications);
+    const recent = ranked.slice(0, MAX_HOME_NOTIFICATIONS);
     if (recent.length === 0) {
       return null;
+    }
+    if (props.slot === "home") {
+      const top = recent[0];
+      const urgent = top.priority === "urgent";
+      return /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(
+        HomeWidgetCard,
+        {
+          icon: /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(Bell, {}),
+          label: "Notifications",
+          value: top.title,
+          badge: unreadCount > 0 ? unreadCount : void 0,
+          tone: urgent ? "danger" : top.priority === "high" ? "warn" : "default",
+          testId: "widget-notifications",
+          ariaLabel: `Notifications: ${unreadCount} unread, latest ${top.title}. Open inbox.`,
+          onActivate: () => top.deepLink ? nav.openView(top.deepLink, "inbox") : nav.openView("/inbox", "inbox")
+        }
+      );
     }
     return /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(
       WidgetSection,
@@ -74591,13 +74858,12 @@ Assistant:`;
   }
 
   // packages/ui/src/components/chat/widgets/relationships-attention.tsx
-  var import_react86 = __toESM(require_react(), 1);
+  var import_react88 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
   var import_jsx_runtime53 = __toESM(require_jsx_runtime(), 1);
   var RELATIONSHIPS_WIDGET_KEY = "relationships/relationships.attention";
   var RELATIONSHIPS_REFRESH_INTERVAL_MS = 3e4;
-  var MAX_STALE_CONTACTS = 3;
-  var EMPTY_DATA2 = {
+  var EMPTY_DATA = {
     pendingCandidates: [],
     staleContacts: []
   };
@@ -74621,63 +74887,80 @@ Assistant:`;
       (person) => isRecord3(person) && typeof person.displayName === "string" && !person.isOwner
     ).sort(
       (left, right) => toTimestamp(left.lastInteractionAt) - toTimestamp(right.lastInteractionAt)
-    ).slice(0, MAX_STALE_CONTACTS);
+    );
   }
-  function CandidateRow() {
-    return /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { className: "flex items-center gap-2 rounded-sm border border-border/50 bg-bg/70 px-3 py-1.5", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("span", { className: "mt-px inline-block h-2 w-2 shrink-0 rounded-full bg-accent" }),
-      /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("span", { className: "min-w-0 flex-1 truncate text-xs font-semibold text-txt", children: "Confirm merge?" })
-    ] });
-  }
-  function StaleContactRow({ person }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { className: "flex items-center gap-2 px-1 py-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("span", { className: "mt-px inline-block h-2 w-2 shrink-0 rounded-full bg-muted" }),
-      /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("span", { className: "min-w-0 flex-1 truncate text-xs-tight text-muted", children: [
-        "Haven't talked to ",
-        person.displayName
-      ] })
-    ] });
+  function relationshipsEqual(a, b) {
+    if (a.pendingCandidates.length !== b.pendingCandidates.length || a.staleContacts.length !== b.staleContacts.length) {
+      return false;
+    }
+    const sameCandidates = a.pendingCandidates.every(
+      (candidate, i) => candidate.id === b.pendingCandidates[i].id
+    );
+    if (!sameCandidates) return false;
+    return a.staleContacts.every((person, i) => {
+      const other = b.staleContacts[i];
+      return person.groupId === other.groupId && person.lastInteractionAt === other.lastInteractionAt;
+    });
   }
   function RelationshipsAttentionWidget({ slot }) {
-    const [data, setData] = (0, import_react86.useState)(EMPTY_DATA2);
-    const load = (0, import_react86.useCallback)(async () => {
+    const [data, setData] = (0, import_react88.useState)(EMPTY_DATA);
+    const nav = useWidgetNavigation();
+    const load = (0, import_react88.useCallback)(async () => {
       try {
         const [peopleResult, candidates] = await Promise.all([
           client.getRelationshipsPeople(),
           client.getRelationshipsCandidates()
         ]);
-        setData({
+        const next = {
           pendingCandidates: pendingCandidatesFrom(candidates),
           staleContacts: staleContactsFrom(peopleResult.people)
-        });
+        };
+        setData((prev) => relationshipsEqual(prev, next) ? prev : next);
       } catch {
       }
     }, []);
-    (0, import_react86.useEffect)(() => {
+    (0, import_react88.useEffect)(() => {
       void load();
     }, [load]);
     useIntervalWhenDocumentVisible(
       () => void load(),
       RELATIONSHIPS_REFRESH_INTERVAL_MS
     );
-    const hasPendingMerge = data.pendingCandidates.length > 0;
-    const hasContacts = data.staleContacts.length > 0;
+    const pendingCount = data.pendingCandidates.length;
+    const hasPendingMerge = pendingCount > 0;
+    const stalest = (0, import_react88.useMemo)(() => data.staleContacts[0] ?? null, [data]);
+    const hasContacts = stalest != null;
     const onHome = slot === "home";
     usePublishHomeAttention(
       RELATIONSHIPS_WIDGET_KEY,
       onHome && hasPendingMerge ? HOME_SIGNAL_WEIGHTS.approval : null
     );
     if (!hasPendingMerge && !hasContacts) return null;
+    if (hasPendingMerge) {
+      return /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
+        HomeWidgetCard,
+        {
+          icon: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Users, {}),
+          label: "People",
+          value: "Confirm merge?",
+          badge: pendingCount,
+          tone: "warn",
+          testId: "chat-widget-relationships",
+          ariaLabel: `People: ${pendingCount} merge ${pendingCount === 1 ? "candidate" : "candidates"} to confirm. Open Relationships.`,
+          onActivate: () => nav.openView("/relationships", "relationships")
+        }
+      );
+    }
     return /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
-      WidgetSection,
+      HomeWidgetCard,
       {
-        title: "Relationships",
-        icon: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Users, { className: "h-4 w-4" }),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Users, {}),
+        label: "Reach out",
+        value: stalest.displayName,
+        tone: "default",
         testId: "chat-widget-relationships",
-        children: /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("div", { className: "flex flex-col gap-2", children: [
-          hasPendingMerge ? /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("div", { className: "flex flex-col gap-1", children: data.pendingCandidates.slice(0, MAX_STALE_CONTACTS).map((candidate) => /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(CandidateRow, {}, candidate.id)) }) : null,
-          hasContacts ? /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("div", { className: "flex flex-col", children: data.staleContacts.map((person) => /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(StaleContactRow, { person }, person.groupId)) }) : null
-        ] })
+        ariaLabel: `Reach out: you haven't talked to ${stalest.displayName} in a while. Open Relationships.`,
+        onActivate: () => nav.openView("/relationships", "relationships")
       }
     );
   }
@@ -74690,9 +74973,33 @@ Assistant:`;
   };
 
   // packages/ui/src/components/chat/widgets/todo.tsx
-  var import_react87 = __toESM(require_react(), 1);
+  var import_react89 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/components/ui/badge.tsx
   var import_jsx_runtime54 = __toESM(require_jsx_runtime(), 1);
+  var badgeVariants = cva(
+    "inline-flex items-center rounded-sm border px-2.5 py-0.5 text-xs font-semibold transition-colors    ",
+    {
+      variants: {
+        variant: {
+          default: "border-transparent bg-primary text-primary-fg hover:bg-primary/80",
+          secondary: "border-transparent bg-bg-accent text-txt hover:bg-bg-hover",
+          destructive: "border-transparent bg-destructive text-destructive-fg hover:bg-destructive/80",
+          outline: "text-txt border-border"
+        }
+      },
+      defaultVariants: {
+        variant: "default"
+      }
+    }
+  );
+  function Badge({ className, variant, ...props }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { className: cn(badgeVariants({ variant }), className), ...props });
+  }
+
+  // packages/ui/src/components/chat/widgets/todo.tsx
+  var import_jsx_runtime55 = __toESM(require_jsx_runtime(), 1);
   var TODO_WIDGET_KEY = "todo/todo.items";
   var TODO_REFRESH_INTERVAL_MS = 15e3;
   var MAX_VISIBLE_TODOS = 8;
@@ -74723,24 +75030,24 @@ Assistant:`;
   function TodoRow({ todo }) {
     const showDescription = todo.description.trim().length > 0 && todo.description !== todo.name;
     const showType = todo.type.trim().length > 0 && todo.type !== "task";
-    return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { className: "rounded-sm border border-border/50 bg-bg/70 p-3", children: /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { className: "flex items-start gap-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { className: "rounded-sm border border-border/50 bg-bg/70 p-3", children: /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex items-start gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
         "span",
         {
           className: `mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${todo.isUrgent ? "bg-danger" : todo.priority != null ? "bg-accent" : "bg-muted"}`
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { className: "min-w-0 flex-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { className: "flex flex-wrap items-center gap-1.5", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("span", { className: "min-w-0 truncate text-xs font-semibold text-txt", children: todo.name }),
-          todo.isUrgent ? /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Badge, { variant: "secondary", className: "text-3xs text-danger", children: "Urgent" }) : null,
-          todo.priority != null ? /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)(Badge, { variant: "secondary", className: "text-3xs", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "min-w-0 flex-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex flex-wrap items-center gap-1.5", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("span", { className: "min-w-0 truncate text-xs font-semibold text-txt", children: todo.name }),
+          todo.isUrgent ? /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Badge, { variant: "secondary", className: "text-3xs text-danger", children: "Urgent" }) : null,
+          todo.priority != null ? /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)(Badge, { variant: "secondary", className: "text-3xs", children: [
             "P",
             todo.priority
           ] }) : null,
-          showType ? /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Badge, { variant: "secondary", className: "text-3xs", children: todo.type }) : null
+          showType ? /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Badge, { variant: "secondary", className: "text-3xs", children: todo.type }) : null
         ] }),
-        showDescription ? /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("p", { className: "mt-1 line-clamp-2 text-xs-tight leading-5 text-muted", children: todo.description }) : null
+        showDescription ? /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("p", { className: "mt-1 line-clamp-2 text-xs-tight leading-5 text-muted", children: todo.description }) : null
       ] })
     ] }) });
   }
@@ -74753,26 +75060,26 @@ Assistant:`;
     const visibleTodos = openTodos.slice(0, MAX_VISIBLE_TODOS);
     const remainingCount = openTodos.length - visibleTodos.length;
     if (loading && todos.length === 0) {
-      return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { className: "py-3 text-xs text-muted", children: "Refreshing todos\u2026" });
+      return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { className: "py-3 text-xs text-muted", children: "Refreshing todos\u2026" });
     }
     if (openTodos.length === 0) {
-      return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
         EmptyWidgetState,
         {
-          icon: /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(ListTodo, { className: "h-8 w-8" }),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(ListTodo, { className: "h-8 w-8" }),
           title: "No open todos"
         }
       );
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("div", { className: "flex flex-col gap-2", children: [
-      visibleTodos.map((todo) => /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(TodoRow, { todo }, todo.id)),
-      remainingCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("p", { className: "px-1 text-xs-tight text-muted", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex flex-col gap-2", children: [
+      visibleTodos.map((todo) => /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(TodoRow, { todo }, todo.id)),
+      remainingCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("p", { className: "px-1 text-xs-tight text-muted", children: [
         "+",
         remainingCount,
         " more open todo",
         remainingCount === 1 ? "" : "s"
       ] }) : null,
-      hiddenCompletedCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime54.jsxs)("p", { className: "px-1 text-xs-tight text-muted", children: [
+      hiddenCompletedCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("p", { className: "px-1 text-xs-tight text-muted", children: [
         hiddenCompletedCount,
         " completed todo",
         hiddenCompletedCount === 1 ? "" : "s",
@@ -74786,14 +75093,14 @@ Assistant:`;
       t: s.t
     }));
     const t2 = appT ?? fallbackTranslate2;
-    const [todos, setTodos] = (0, import_react87.useState)(
+    const [todos, setTodos] = (0, import_react89.useState)(
       () => dedupeTodos(workbench?.todos ?? [])
     );
-    const [todosLoading, setTodosLoading] = (0, import_react87.useState)(false);
-    (0, import_react87.useEffect)(() => {
+    const [todosLoading, setTodosLoading] = (0, import_react89.useState)(false);
+    (0, import_react89.useEffect)(() => {
       setTodos(dedupeTodos(workbench?.todos ?? []));
     }, [workbench?.todos]);
-    const loadTodos = (0, import_react87.useCallback)(
+    const loadTodos = (0, import_react89.useCallback)(
       async (silent = false) => {
         if (!silent) {
           setTodosLoading(true);
@@ -74811,7 +75118,7 @@ Assistant:`;
       },
       [workbench?.todos]
     );
-    (0, import_react87.useEffect)(() => {
+    (0, import_react89.useEffect)(() => {
       void loadTodos(todos.length > 0);
     }, [loadTodos, todos.length]);
     useIntervalWhenDocumentVisible(
@@ -74826,13 +75133,13 @@ Assistant:`;
       onHome && hasUrgent ? HOME_SIGNAL_WEIGHTS.reminder : null
     );
     if (onHome && openTodos.length === 0) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
       WidgetSection,
       {
         title: t2("taskseventspanel.Todos", { defaultValue: "Todos" }),
-        icon: /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(ListTodo, { className: "h-4 w-4" }),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(ListTodo, { className: "h-4 w-4" }),
         testId: "chat-widget-todos",
-        children: /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(TodoItemsContent, { todos, loading: todosLoading })
+        children: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(TodoItemsContent, { todos, loading: todosLoading })
       }
     );
   }
@@ -75131,7 +75438,7 @@ Assistant:`;
   var WIDGET_UI_ACTION_EVENT = "eliza:widget-ui-action";
 
   // packages/ui/src/widgets/WidgetHost.tsx
-  var import_jsx_runtime55 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime56 = __toESM(require_jsx_runtime(), 1);
   function dispatchWidgetUiAction(declaration, action, params2) {
     if (typeof window === "undefined") return;
     const detail = {
@@ -75143,7 +75450,7 @@ Assistant:`;
     };
     window.dispatchEvent(new CustomEvent(WIDGET_UI_ACTION_EVENT, { detail }));
   }
-  var WidgetErrorBoundary = class extends import_react88.Component {
+  var WidgetErrorBoundary = class extends import_react90.Component {
     state = { error: null };
     static getDerivedStateFromError(error51) {
       return { error: error51 };
@@ -75152,7 +75459,7 @@ Assistant:`;
     }
     render() {
       if (this.state.error) {
-        return /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)(
+        return /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)(
           "div",
           {
             className: "rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger",
@@ -75183,26 +75490,27 @@ Assistant:`;
     const { notifications } = useNotifications();
     const selfAttention = useHomeAttentionSignals();
     const now2 = useNow();
-    const resolved = (0, import_react88.useMemo)(() => {
+    const resolved = (0, import_react90.useMemo)(() => {
       const all = resolveWidgetsForSlot(slot, plugins ?? []);
       const gated = all.filter(
-        (entry) => (0, import_core29.isViewVisible)(entry.declaration, enabledKinds)
+        (entry) => (0, import_core30.isViewVisible)(entry.declaration, enabledKinds)
       );
       return filter2 ? gated.filter((entry) => filter2(entry.declaration)) : gated;
     }, [slot, plugins, filter2, enabledKinds]);
-    const displayed = (0, import_react88.useMemo)(() => {
+    const notificationSignalInputs = (0, import_react90.useMemo)(
+      () => notifications.map((n) => ({
+        priority: n.priority,
+        timestamp: n.createdAt,
+        readAt: n.readAt
+      })),
+      [notifications]
+    );
+    const ranked = (0, import_react90.useMemo)(() => {
       if (slot !== "home") return resolved;
       const declarations = resolved.map((entry) => entry.declaration);
       const signals = [
         ...homeSignalsFromEvents(events ?? [], declarations),
-        ...homeSignalsFromNotifications(
-          notifications.map((n) => ({
-            priority: n.priority,
-            timestamp: n.createdAt,
-            readAt: n.readAt
-          })),
-          declarations
-        ),
+        ...homeSignalsFromNotifications(notificationSignalInputs, declarations),
         ...selfAttention.map((entry) => ({ ...entry, timestamp: now2 }))
       ];
       const byKey = new Map(
@@ -75211,62 +75519,74 @@ Assistant:`;
       return rankHomeWidgets(declarations, signals, {
         now: now2,
         maxVisible: HOME_RENDER_CAP
-      }).flatMap((ranked) => {
-        const entry = byKey.get(homeWidgetKey(ranked.declaration));
+      }).flatMap((ranked2) => {
+        const entry = byKey.get(homeWidgetKey(ranked2.declaration));
         return entry ? [entry] : [];
       });
-    }, [slot, resolved, events, notifications, selfAttention, now2]);
-    const pluginById = (0, import_react88.useMemo)(() => {
+    }, [slot, resolved, events, notificationSignalInputs, selfAttention, now2]);
+    const orderKey = ranked.map(({ declaration }) => homeWidgetKey(declaration)).join("|");
+    const displayedRef = (0, import_react90.useRef)({ key: orderKey, resolved, entries: ranked });
+    if (displayedRef.current.key !== orderKey || displayedRef.current.resolved !== resolved) {
+      displayedRef.current = { key: orderKey, resolved, entries: ranked };
+    }
+    const displayed = displayedRef.current.entries;
+    const pluginById = (0, import_react90.useMemo)(() => {
       const map2 = /* @__PURE__ */ new Map();
       for (const p of plugins ?? []) map2.set(p.id, p);
       return map2;
     }, [plugins]);
-    if (displayed.length === 0 && hideWhenEmpty) return null;
+    const widgetPropsBase = (0, import_react90.useMemo)(
+      () => ({ events, clearEvents, slot }),
+      [events, clearEvents, slot]
+    );
+    const children = (0, import_react90.useMemo)(
+      () => displayed.map(({ declaration, Component: Component3 }) => {
+        const widgetKey = `${declaration.pluginId}/${declaration.id}`;
+        const widgetProps = {
+          ...widgetPropsBase,
+          pluginId: declaration.pluginId,
+          pluginState: pluginById.get(declaration.pluginId)
+        };
+        if (Component3) {
+          return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(WidgetErrorBoundary, { widgetId: widgetKey, children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Component3, { ...widgetProps }) }, widgetKey);
+        }
+        if (declaration.uiSpec) {
+          return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(WidgetErrorBoundary, { widgetId: widgetKey, children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+            "div",
+            {
+              className: "min-w-0",
+              "data-testid": `widget-uispec-${declaration.id}`,
+              children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+                UiRenderer,
+                {
+                  spec: declaration.uiSpec,
+                  onAction: (action, params2) => dispatchWidgetUiAction(declaration, action, params2)
+                }
+              )
+            }
+          ) }, widgetKey);
+        }
+        return null;
+      }).filter((node) => node !== null),
+      [displayed, widgetPropsBase, pluginById]
+    );
+    if (children.length === 0 && hideWhenEmpty) return null;
     const layoutClass = layout2 === "grid" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "flex flex-col gap-3";
-    return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
       "div",
       {
         className: `${layoutClass} ${className ?? ""}`,
+        style: { contain: "layout" },
         "data-testid": `widget-host-${slot}`,
         "data-layout": layout2,
         "data-slot": slot,
-        children: displayed.map(({ declaration, Component: Component3 }) => {
-          const widgetKey = `${declaration.pluginId}/${declaration.id}`;
-          const pluginState = pluginById.get(declaration.pluginId);
-          const widgetProps = {
-            pluginId: declaration.pluginId,
-            pluginState,
-            events,
-            clearEvents,
-            slot
-          };
-          if (Component3) {
-            return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(WidgetErrorBoundary, { widgetId: widgetKey, children: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Component3, { ...widgetProps }) }, widgetKey);
-          }
-          if (declaration.uiSpec) {
-            return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(WidgetErrorBoundary, { widgetId: widgetKey, children: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
-              "div",
-              {
-                className: "min-w-0",
-                "data-testid": `widget-uispec-${declaration.id}`,
-                children: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
-                  UiRenderer,
-                  {
-                    spec: declaration.uiSpec,
-                    onAction: (action, params2) => dispatchWidgetUiAction(declaration, action, params2)
-                  }
-                )
-              }
-            ) }, widgetKey);
-          }
-          return null;
-        })
+        children
       }
     );
   }
 
   // packages/ui/src/components/shell/HomeScreen.tsx
-  var import_jsx_runtime56 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime57 = __toESM(require_jsx_runtime(), 1);
   var HOME_ENTER_CSS = `
 @keyframes home-enter {
   from { opacity: 0; transform: translateY(10px); }
@@ -75277,6 +75597,27 @@ Assistant:`;
   .home-enter { animation: none; }
 }
 `;
+  function useEnterOnceClass() {
+    const [played, setPlayed] = (0, import_react91.useState)(false);
+    const ranRef = (0, import_react91.useRef)(false);
+    (0, import_react91.useEffect)(() => {
+      if (ranRef.current) return;
+      ranRef.current = true;
+      const id3 = window.setTimeout(() => setPlayed(true), 700);
+      return () => window.clearTimeout(id3);
+    }, []);
+    return played ? "" : "home-enter";
+  }
+  function useHomeLayoutShiftObserver() {
+    (0, import_react91.useEffect)(() => {
+      if (typeof window === "undefined") return;
+      if (!isRenderTelemetryEnabled()) return;
+      try {
+        new Function(LAYOUT_SHIFT_OBSERVER_INIT)();
+      } catch {
+      }
+    }, []);
+  }
   var HOME_TILES = [
     {
       // The only "messages" surface is the AOSP SMS view (MessagesPageView), which
@@ -75316,7 +75657,9 @@ Assistant:`;
   }) {
     const tiles = HOME_TILES.filter((t2) => !t2.nativeOs || showNativeOsTiles2);
     const { events, clearEvents } = useActivityEvents();
-    return /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)(
+    const enterClass = useEnterOnceClass();
+    useHomeLayoutShiftObserver();
+    return /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(
       "div",
       {
         "data-testid": "home-screen",
@@ -75328,10 +75671,10 @@ Assistant:`;
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]"
         ),
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("style", { children: HOME_ENTER_CSS }),
-          /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
-            clockAccessory ? /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "home-enter flex justify-end", children: clockAccessory }) : null,
-            /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "home-enter", style: { animationDelay: "70ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("style", { children: HOME_ENTER_CSS }),
+          /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
+            clockAccessory ? /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: cn(enterClass, "flex justify-end"), children: clockAccessory }) : null,
+            /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: enterClass, style: { animationDelay: "70ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
               WidgetHost,
               {
                 slot: "home",
@@ -75340,16 +75683,16 @@ Assistant:`;
                 clearEvents
               }
             ) }),
-            tiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+            tiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
               "nav",
               {
                 "aria-label": "Apps",
                 "data-testid": "home-tiles",
-                className: "home-enter mt-2",
+                className: cn(enterClass, "mt-2"),
                 style: { animationDelay: "150ms" },
-                children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
+                children: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
                   const Icon2 = tile.icon;
-                  return /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)(
+                  return /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(
                     "button",
                     {
                       type: "button",
@@ -75364,14 +75707,14 @@ Assistant:`;
                         "hover:bg-white/[0.14]   "
                       ),
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+                        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
                           Icon2,
                           {
                             className: "h-[22px] w-[22px] text-white/90",
                             "aria-hidden": true
                           }
                         ),
-                        /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
+                        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
                       ]
                     },
                     tile.id
@@ -75386,31 +75729,31 @@ Assistant:`;
   }
 
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.tsx
-  var import_jsx_runtime57 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime58 = __toESM(require_jsx_runtime(), 1);
   seedHomeWidgetAppStore();
   seedHomeWidgetNotifications();
   installHomeWidgetFetchMock();
   var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
   var showNativeOsTiles = params.has("native");
   function Harness() {
-    return /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
       "div",
       {
         "data-testid": "home-fixture-root",
         style: { position: "fixed", inset: 0, overflow: "hidden" },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(ShaderBackground, {}),
-          /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(ShaderBackground, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
             HomeSpringboardSurface,
             {
-              home: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+              home: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
                 HomeScreen,
                 {
                   onOpenTile: (t2) => console.log(`[fixture] open ${JSON.stringify(t2)}`),
                   showNativeOsTiles
                 }
               ),
-              springboard: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(SpringboardSurface, {})
+              springboard: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(SpringboardSurface, {})
             }
           )
         ]
@@ -75418,7 +75761,7 @@ Assistant:`;
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client2.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Harness, {}));
+  if (root) (0, import_client2.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 

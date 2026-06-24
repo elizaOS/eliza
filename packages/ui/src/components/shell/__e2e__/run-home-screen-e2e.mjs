@@ -13,6 +13,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  LAYOUT_SHIFT_OBSERVER_INIT,
+  summarizeStability,
+} from "../../../testing/layout-stability.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-home");
@@ -182,6 +186,12 @@ try {
   });
   const mobile = await mobileContext.newPage();
   mobile.on("pageerror", (e) => sink.errors.push(String(e)));
+  // Install the shared layout-shift PerformanceObserver BEFORE any paint, so
+  // every shift during the home settle lands in window.__ELIZA_LAYOUT_SHIFTS__
+  // (the same contract HomeScreen's dev observer + the KPI specs use). We read
+  // it after the entrance animation finishes and assert the home doesn't jump
+  // (CLS budget + no flicker flash) via the meta-tested summarizeStability.
+  await mobile.addInitScript(LAYOUT_SHIFT_OBSERVER_INIT);
   await mobile.goto(`${url}?native`);
   await mobile.waitForSelector('[data-testid="home-springboard-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
@@ -260,6 +270,21 @@ try {
     );
   }
   await snap(mobile, "mobile-home");
+
+  // Layout-stability lock (#9304): the home cards rank + self-hide; a ranking
+  // reorder or a card popping in must NOT jump the page. `contain: layout` on
+  // the WidgetHost + the once-only entrance fade keep the settle stable. Read
+  // the observed layout-shifts and assert the meta-tested summarizer doesn't
+  // flag the home settle (CLS under the Web-Vitals "good" budget, no flash).
+  const shifts = await mobile.evaluate(
+    () => window.__ELIZA_LAYOUT_SHIFTS__ ?? [],
+  );
+  const stability = summarizeStability(shifts, [], { maxCls: 0.1 });
+  assert(
+    !stability.flagged,
+    `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
+  );
+
   await swipeLeft(mobile.getByTestId("home-springboard-home-page"));
   await mobile.waitForFunction(
     () =>
