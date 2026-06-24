@@ -147,11 +147,9 @@ describe("device-settings contract — real SystemWeb output", () => {
     // Each real stream renders a card with the correct label and live percent
     // computed from the real current/max.
     for (const volume of real.volumes) {
-      const card = screen
-        .getByTestId(`device-settings-volume-${volume.stream}`)
-        .closest("div.rounded-lg") as HTMLElement | null;
-      expect(card).toBeTruthy();
-      const scoped = within(card as HTMLElement);
+      const scoped = within(
+        screen.getByTestId(`device-settings-volume-card-${volume.stream}`),
+      );
       expect(scoped.getByText(VOLUME_LABELS[volume.stream])).toBeTruthy();
       const expectedPercent = `${Math.round((volume.current / volume.max) * 100)}%`;
       expect(scoped.getByText(expectedPercent)).toBeTruthy();
@@ -165,8 +163,6 @@ describe("device-settings contract — real SystemWeb output", () => {
 
     // The real web getStatus() returns no Android roles -> the honest empty
     // state, not a fabricated role list.
-    expect(
-      screen.getByText("Android role status is not available in this runtime."),
-    ).toBeTruthy();
+    expect(screen.getByText("Unavailable")).toBeTruthy();
   });
 });

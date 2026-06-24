@@ -247,7 +247,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-txt">
               {t("deviceSettings.title", {
-                defaultValue: "Device Settings",
+                defaultValue: "Device",
               })}
             </h1>
           </div>
@@ -475,7 +475,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               })}
               {!loading && orderedVolumes.length === 0 ? (
                 <div className="px-4 py-6 text-center text-sm text-muted md:col-span-2">
-                  Volume streams are not available in this runtime.
+                  Unavailable
                 </div>
               ) : null}
             </div>
@@ -533,7 +533,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               ))}
               {!loading && roles.length === 0 ? (
                 <div className="px-4 py-6 text-center text-sm text-muted md:col-span-2 xl:col-span-4">
-                  Android role status is not available in this runtime.
+                  Unavailable
                 </div>
               ) : null}
             </div>

@@ -11,15 +11,15 @@ export interface SelectedAppRun {
 function toneClassName(tone: SurfaceTone): string {
   switch (tone) {
     case "success":
-      return "border-ok/30 bg-ok/10 text-ok";
+      return "text-ok";
     case "accent":
-      return "border-accent/25 bg-accent/10 text-accent";
+      return "text-accent";
     case "warn":
-      return "border-warn/30 bg-warn/10 text-warn";
+      return "text-warn";
     case "danger":
-      return "border-danger/30 bg-danger/10 text-danger";
+      return "text-danger";
     default:
-      return "border-border/35 bg-bg-hover/70 text-muted-strong";
+      return "text-muted-strong";
   }
 }
 
@@ -32,7 +32,7 @@ export function SurfaceBadge({
 }) {
   return (
     <span
-      className={`inline-flex min-h-6 items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.14em] ${toneClassName(tone)}`}
+      className={`inline-flex min-h-6 items-center px-1.5 py-1 text-2xs font-medium ${toneClassName(tone)}`}
     >
       {children}
     </span>
@@ -51,15 +51,13 @@ export function SurfaceCard({
   subtitle?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-sm border border-border/35 bg-card/74 px-4 py-3 ">
-      <div className="text-xs-tight font-medium uppercase tracking-[0.16em] text-muted">
-        {label}
-      </div>
-      <div className={`mt-1 text-xs leading-5 ${toneClassName(tone)}`}>
+    <div className="px-1 py-1.5">
+      <div className="text-xs-tight font-medium text-muted">{label}</div>
+      <div className={`mt-0.5 text-xs leading-5 ${toneClassName(tone)}`}>
         {value}
       </div>
       {subtitle ? (
-        <div className="mt-1 text-xs-tight leading-5 text-muted-strong">
+        <div className="mt-0.5 text-xs-tight leading-5 text-muted-strong">
           {subtitle}
         </div>
       ) : null}
@@ -79,10 +77,8 @@ export function SurfaceSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-3 rounded-sm border border-border/35 bg-card/74 p-4 ">
-      <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-        {title}
-      </div>
+    <section className="space-y-2 py-1">
+      <div className="sr-only">{title}</div>
       {children}
     </section>
   );
@@ -96,11 +92,9 @@ export function SurfaceEmptyState({
   body: string;
 }) {
   return (
-    <div className="rounded-sm border border-border/35 bg-card/74 p-4 ">
-      <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-        {title}
-      </div>
-      <p className="mt-2 text-xs leading-6 text-muted-strong">{body}</p>
+    <div className="px-1 py-2">
+      <div className="text-xs-tight font-semibold text-muted">{title}</div>
+      <p className="mt-1 text-xs leading-5 text-muted-strong">{body}</p>
     </div>
   );
 }

@@ -1,10 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
-// Shared visual shell for game/app operator surfaces: a compact header (title +
-// status + CTA), a horizontal status strip of stat chips, and a content zone.
-// Inline styles only — the view bundle does not ship Tailwind, so utility
-// classes do not paint here. Theme tokens (--accent, --card, --border …) are
-// read via CSS var().
+// Shared visual shell for game/app operator surfaces. Inline styles only: the
+// view bundle does not ship Tailwind, so utility classes do not paint here.
 
 export type ChipState = "ready" | "pending" | "active" | "idle" | "danger";
 
@@ -54,9 +51,7 @@ export function GameSurfaceHero({
         alignItems: "center",
         justifyContent: "space-between",
         gap: 12,
-        padding: "14px 16px",
-        borderBottom: "1px solid var(--border, rgba(0,0,0,0.1))",
-        background: "var(--card, rgba(0,0,0,0.02))",
+        padding: "10px 12px",
       }}
     >
       <div style={{ minWidth: 0 }}>
@@ -64,7 +59,7 @@ export function GameSurfaceHero({
           style={{
             fontSize: 16,
             fontWeight: 600,
-            letterSpacing: "-0.01em",
+            letterSpacing: 0,
             color: "var(--foreground, #111)",
             lineHeight: 1.2,
           }}
@@ -76,7 +71,7 @@ export function GameSurfaceHero({
             display: "inline-flex",
             alignItems: "center",
             gap: 7,
-            marginTop: 6,
+            marginTop: 4,
             fontSize: 12,
             color: "var(--muted, #6b7280)",
           }}
@@ -114,14 +109,14 @@ export function HeroCta({
       onClick={onClick}
       disabled={disabled}
       style={{
-        padding: "9px 16px",
-        borderRadius: 12,
+        padding: "8px 12px",
+        borderRadius: 8,
         border: "none",
         background: accent,
         color: "#fff",
         fontSize: 13,
         fontWeight: 700,
-        letterSpacing: "0.01em",
+        letterSpacing: 0,
         cursor: disabled ? "default" : "pointer",
         opacity: disabled ? 0.55 : 1,
         whiteSpace: "nowrap",
@@ -137,11 +132,9 @@ export function GameSurfaceStrip({ chips }: { chips: StatChip[] }) {
     <div
       style={{
         display: "flex",
-        gap: 10,
-        padding: "12px 16px",
+        gap: 8,
+        padding: "6px 12px 10px",
         overflowX: "auto",
-        borderBottom: "1px solid var(--border, rgba(0,0,0,0.08))",
-        background: "var(--card, rgba(255,255,255,0.5))",
       }}
     >
       {chips.map((chip) => (
@@ -152,22 +145,18 @@ export function GameSurfaceStrip({ chips }: { chips: StatChip[] }) {
             minWidth: 120,
             display: "flex",
             alignItems: "center",
-            gap: 10,
-            padding: "10px 12px",
-            borderRadius: 14,
-            background: "var(--bg, rgba(255,255,255,0.6))",
+            gap: 8,
+            padding: "4px 0",
           }}
         >
           <div
             style={{
               display: "grid",
               placeItems: "center",
-              width: 34,
-              height: 34,
-              borderRadius: 10,
+              width: 24,
+              height: 24,
               fontSize: 17,
               flexShrink: 0,
-              background: `${STATE_COLOR[chip.state ?? "idle"]}1f`,
               color: STATE_COLOR[chip.state ?? "idle"],
             }}
           >
@@ -176,9 +165,15 @@ export function GameSurfaceStrip({ chips }: { chips: StatChip[] }) {
           <div style={{ minWidth: 0 }}>
             <div
               style={{
-                fontSize: 11,
-                fontWeight: 500,
-                color: "var(--muted, #6b7280)",
+                position: "absolute",
+                width: 1,
+                height: 1,
+                padding: 0,
+                margin: -1,
+                overflow: "hidden",
+                clip: "rect(0, 0, 0, 0)",
+                whiteSpace: "nowrap",
+                border: 0,
               }}
             >
               {chip.label}
@@ -241,23 +236,20 @@ export function WaitingForSession({
     <div
       style={{
         flex: 1,
-        minHeight: 220,
+        minHeight: 160,
         display: "grid",
         placeItems: "center",
-        padding: "24px 16px",
+        padding: "16px",
       }}
     >
       <div style={{ textAlign: "center", maxWidth: 360 }}>
         <div
           style={{
-            margin: "0 auto 16px",
-            width: 56,
-            height: 56,
-            borderRadius: 18,
+            margin: "0 auto 12px",
+            width: 44,
+            height: 44,
             display: "grid",
             placeItems: "center",
-            background: `${accent}14`,
-            border: `1px solid ${accent}3a`,
           }}
         >
           <span
@@ -270,16 +262,18 @@ export function WaitingForSession({
             }}
           />
         </div>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: "var(--muted, #6b7280)",
-            lineHeight: 1.5,
-          }}
-        >
-          {message}
-        </div>
+        {message ? (
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--muted, #6b7280)",
+              lineHeight: 1.5,
+            }}
+          >
+            {message}
+          </div>
+        ) : null}
       </div>
       <style>{`@keyframes gsPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.72)}}`}</style>
     </div>

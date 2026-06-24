@@ -182,9 +182,7 @@ describe("DeviceSettingsAppView — populated data display", () => {
     mockBridgeFull();
     renderView();
 
-    expect(
-      await screen.findByRole("heading", { name: "Device Settings" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Device" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
     expect(screen.getByTestId("device-settings-refresh")).toBeTruthy();
   });
@@ -557,14 +555,7 @@ describe("DeviceSettingsAppView — interactions", () => {
     });
     renderView();
 
-    expect(
-      await screen.findByText(
-        "Volume streams are not available in this runtime.",
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText("Android role status is not available in this runtime."),
-    ).toBeTruthy();
+    expect(await screen.findAllByText("Unavailable")).toHaveLength(2);
     expect(screen.getByText("0 streams")).toBeTruthy();
     expect(screen.getByText("0 roles")).toBeTruthy();
   });

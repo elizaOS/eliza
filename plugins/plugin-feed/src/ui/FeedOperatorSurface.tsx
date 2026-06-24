@@ -81,7 +81,7 @@ function formatPnL(value: unknown): string {
 }
 
 function listPreview(items: FeedPredictionMarket[]): string {
-  if (items.length === 0) return "Market data is not available yet.";
+  if (items.length === 0) return "—";
   return items
     .slice(0, 3)
     .map((market) => {
@@ -173,12 +173,7 @@ export function FeedOperatorSurface({
     null;
   const agentPortfolio = agentSummary?.portfolio ?? null;
   const teamTotals = teamDashboard.summary?.totals ?? null;
-  const surfaceTitle =
-    variant === "live"
-      ? "Feed Live Dashboard"
-      : variant === "running"
-        ? "Feed Run Dashboard"
-        : "Feed Operator Dashboard";
+  const surfaceTitle = "Feed";
   const showDashboard = focus !== "chat";
   const showChat = focus !== "dashboard";
   const controlAction = run?.session?.controls?.includes("pause")
@@ -320,7 +315,7 @@ export function FeedOperatorSurface({
 
   if (!run) {
     const chips: StatChip[] = [
-      { icon: "◉", label: "Agent", value: "Session pending", state: "pending" },
+      { icon: "◉", label: "Agent", value: "Pending", state: "pending" },
       { icon: "◒", label: "Portfolio", value: "—", state: "idle" },
       { icon: "▲", label: "Markets", value: "—", state: "idle" },
       { icon: "◇", label: "Wallet", value: "—", state: "idle" },
@@ -335,10 +330,7 @@ export function FeedOperatorSurface({
             cta={<HeroCta label="Spawn agent" accent={FEED_ACCENT} disabled />}
           />
           <GameSurfaceStrip chips={chips} />
-          <WaitingForSession
-            accent={FEED_ACCENT}
-            message="Waiting for a Feed session. Spawn the trading agent to stream live markets, portfolio PnL, and team coordination here."
-          />
+          <WaitingForSession accent={FEED_ACCENT} message="" />
         </GameSurfaceShell>
       </div>
     );
@@ -471,7 +463,7 @@ export function FeedOperatorSurface({
                             ? ` · ${teamTotals.openPositions} open positions`
                             : ""
                         }`
-                      : "Team summary is not available yet."
+                      : undefined
                   }
                 />
               </div>
@@ -551,7 +543,7 @@ export function FeedOperatorSurface({
                 ))}
                 {recentChatMessages.length === 0 ? (
                   <div className="px-1 py-1 text-xs-tight italic text-muted">
-                    No relay yet.
+                    —
                   </div>
                 ) : null}
               </div>
@@ -585,11 +577,7 @@ export function FeedOperatorSurface({
                 />
                 <SurfaceCard
                   label="Wallet"
-                  value={
-                    wallet
-                      ? formatCurrency(wallet.balance)
-                      : "Waiting for wallet"
-                  }
+                  value={wallet ? formatCurrency(wallet.balance) : "—"}
                   subtitle={
                     wallet
                       ? `${wallet.transactions.length} transactions · trading ${formatCurrency(tradingBalance)}`

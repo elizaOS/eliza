@@ -203,14 +203,9 @@ function InboxEmptyBody({
   if (noChannels) {
     return (
       <VStack gap={1}>
-        <Text bold>No channels connected</Text>
-        <Text tone="muted" style="caption">
-          Connect email, Discord, Telegram, WhatsApp, Signal, iMessage, or X so
-          Eliza can triage your inbox. Nothing is shown until a channel is
-          linked.
-        </Text>
+        <Text bold>No channels</Text>
         <Button width="100%" agent="connect" onPress={dispatch("connect")}>
-          Connect a channel
+          Connect
         </Button>
       </VStack>
     );
@@ -218,11 +213,6 @@ function InboxEmptyBody({
   return (
     <VStack gap={1}>
       <Text bold>Inbox zero</Text>
-      <Text tone="muted" style="caption">
-        {snapshot.activeFilterCount > 0
-          ? "Nothing to triage in the selected channels."
-          : "Nothing to triage right now. You're all caught up."}
-      </Text>
     </VStack>
   );
 }

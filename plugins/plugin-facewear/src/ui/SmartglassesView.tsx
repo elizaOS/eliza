@@ -774,7 +774,7 @@ export function SmartglassesView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-bg text-txt">
-      <div className="border-b border-border/60 px-4 py-3">
+      <div className="px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -789,7 +789,7 @@ export function SmartglassesView() {
         </div>
       </div>
 
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 p-4">
         <Panel>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -813,8 +813,8 @@ export function SmartglassesView() {
             <LensStatus side="right" state={lenses.right} />
           </div>
           {!webBluetoothAvailable && (
-            <p className="mt-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted">
-              Web Bluetooth unavailable. Use a native bridge or Chrome/Edge.
+            <p className="mt-3 px-1 text-xs text-muted">
+              Web Bluetooth unavailable
             </p>
           )}
           <HeadsetStateHint
@@ -826,7 +826,7 @@ export function SmartglassesView() {
 
         <Panel>
           <h2 className="text-sm font-semibold">Platform</h2>
-          <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg border border-border/50 bg-muted/15 p-1">
+          <div className="mt-3 grid grid-cols-3 gap-1">
             {(Object.keys(PLATFORM_COPY) as PlatformKey[]).map((key) => (
               <PlatformTabButton
                 key={key}
@@ -869,10 +869,10 @@ export function SmartglassesView() {
                 type="button"
                 onClick={() => setTestText(preset.text)}
                 aria-pressed={testText === preset.text}
-                className={`h-14 rounded-md border px-3 text-left text-xs font-semibold transition ${
+                className={`h-14 px-3 text-left text-xs font-semibold transition ${
                   testText === preset.text
                     ? preset.className
-                    : "border-border/60 bg-muted/10 text-muted hover:text-txt"
+                    : "text-muted hover:text-txt"
                 }`}
               >
                 {preset.label}
@@ -929,7 +929,7 @@ export function SmartglassesView() {
                 <CheckRow key={id} ok={ok} label={labelForTest(id)} />
               ))}
             {Object.keys(tests).length > VISIBLE_TEST_LIMIT ? (
-              <div className="rounded-md border border-border/50 px-3 py-2 text-xs text-muted">
+              <div className="px-3 py-2 text-xs text-muted">
                 +{Object.keys(tests).length - VISIBLE_TEST_LIMIT} checks
               </div>
             ) : null}
@@ -1008,15 +1008,12 @@ export function SmartglassesView() {
           {wifiNetworks.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
               {wifiNetworks.slice(0, VISIBLE_WIFI_LIMIT).map((network) => (
-                <span
-                  key={network}
-                  className="rounded-md bg-muted/30 px-2 py-1 text-xs text-muted"
-                >
+                <span key={network} className="px-1.5 py-1 text-xs text-muted">
                   {network}
                 </span>
               ))}
               {wifiNetworks.length > VISIBLE_WIFI_LIMIT ? (
-                <span className="rounded-md bg-muted/20 px-2 py-1 text-xs text-muted">
+                <span className="px-1.5 py-1 text-xs text-muted">
                   +{wifiNetworks.length - VISIBLE_WIFI_LIMIT}
                 </span>
               ) : null}
@@ -1089,9 +1086,9 @@ export function SmartglassesView() {
             <Settings2 className="h-4 w-4 text-accent" />
             <h2 className="text-sm font-semibold">Events</h2>
           </div>
-          <div className="mt-3 max-h-72 overflow-y-auto rounded-md border border-border/50 bg-muted/10">
+          <div className="mt-3 max-h-72 overflow-y-auto">
             {events.length === 0 ? (
-              <p className="px-3 py-4 text-xs text-muted">No events yet.</p>
+              <p className="px-1 py-2 text-xs text-muted">No events</p>
             ) : (
               events
                 .slice()
@@ -1100,7 +1097,7 @@ export function SmartglassesView() {
                 .map((event) => (
                   <div
                     key={`${event.at}:${event.type}:${event.detail}`}
-                    className="border-b border-border/40 px-3 py-2 last:border-b-0"
+                    className="px-1 py-2"
                   >
                     <p className="text-xs font-medium text-txt">{event.type}</p>
                     <p className="mt-0.5 text-xs text-muted">{event.detail}</p>
@@ -1116,7 +1113,7 @@ export function SmartglassesView() {
         </Panel>
       </div>
       {error && (
-        <div className="mx-4 mb-4 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div className="mx-4 mb-4 px-1 py-2 text-xs text-destructive">
           {error}
         </div>
       )}
@@ -1125,11 +1122,7 @@ export function SmartglassesView() {
 }
 
 function Panel({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-card p-4">
-      {children}
-    </div>
-  );
+  return <div className="py-2">{children}</div>;
 }
 
 function ActionButton({
@@ -1164,7 +1157,7 @@ function ActionButton({
       onClick={() => void onClick()}
       disabled={disabled}
       aria-label={agentLabel}
-      className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex h-9 items-center gap-2 px-3 text-sm font-medium hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-50"
       {...agentProps}
     >
       {children}
@@ -1199,10 +1192,8 @@ function PlatformTabButton({
       onClick={() => onSelect(platformKey)}
       aria-current={isActive ? "page" : undefined}
       aria-label={`${label} platform`}
-      className={`h-8 rounded-md px-2 text-xs font-medium transition-colors ${
-        isActive
-          ? "bg-bg text-accent shadow-sm ring-1 ring-accent/30"
-          : "text-muted hover:bg-muted/20 hover:text-txt"
+      className={`h-8 px-2 text-xs font-medium transition-colors ${
+        isActive ? "text-accent" : "text-muted hover:bg-muted/20 hover:text-txt"
       }`}
       {...agentProps}
     >
@@ -1214,10 +1205,8 @@ function PlatformTabButton({
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
-      className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium ${
-        ok
-          ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
-          : "border-border bg-muted/20 text-muted"
+      className={`inline-flex h-7 items-center gap-1.5 px-1.5 text-xs font-medium ${
+        ok ? "text-green-700 dark:text-green-300" : "text-muted"
       }`}
     >
       {ok ? (
@@ -1233,7 +1222,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 function LensStatus({ side, state }: { side: GlassSide; state: LensState }) {
   const ok = state === "connected";
   return (
-    <div className="flex items-center justify-between rounded-md border border-border/50 px-3 py-2">
+    <div className="flex items-center justify-between px-1 py-2">
       <div className="flex items-center gap-2">
         <Glasses className="h-4 w-4 text-muted" />
         <span className="text-sm capitalize">{side}</span>
@@ -1260,17 +1249,17 @@ function HeadsetStateHint({
   const blocked = isCradleOrChargingState(physicalState, batteryState);
   const ready = physicalState === "wearing";
   const tone = blocked
-    ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+    ? "text-amber-800 dark:text-amber-200"
     : ready
-      ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
-      : "border-border/50 bg-muted/15 text-muted";
+      ? "text-green-700 dark:text-green-300"
+      : "text-muted";
   const hint = blocked
     ? "Remove from charger and wear before validation."
     : ready
       ? "Ready for tap/audio validation."
       : "Wear state required for tap/audio validation.";
   return (
-    <div className={`mt-3 rounded-lg border px-3 py-2 ${tone}`}>
+    <div className={`mt-3 px-1 py-2 ${tone}`}>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-2xs font-semibold uppercase tracking-wider opacity-70">
           Headset
@@ -1279,7 +1268,7 @@ function HeadsetStateHint({
           chips.map((chip) => (
             <span
               key={chip.key}
-              className="inline-flex items-center gap-1 rounded-full border border-current/20 bg-current/5 px-2 py-0.5 text-2xs font-medium"
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs font-medium"
             >
               <span
                 className="h-1 w-1 rounded-full bg-current opacity-70"
@@ -1299,13 +1288,7 @@ function HeadsetStateHint({
 
 function CheckRow({ ok, label }: { ok: boolean; label: string; key?: string }) {
   return (
-    <div
-      className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 transition-colors ${
-        ok
-          ? "border-green-500/30 bg-green-500/5"
-          : "border-border/40 bg-muted/5"
-      }`}
-    >
+    <div className="flex items-center justify-between gap-2 px-1 py-2 transition-colors">
       <span className={`text-xs ${ok ? "font-medium text-txt" : "text-muted"}`}>
         {label}
       </span>
