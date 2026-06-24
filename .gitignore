@@ -18,6 +18,8 @@ node_modules
 .idea
 .zed
 .DS_Store
+# macOS AppleDouble resource-fork sidecar files
+._*
 .art
 art_venv
 

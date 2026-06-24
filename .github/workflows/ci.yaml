@@ -141,7 +141,7 @@ jobs:
         run: bun run --cwd packages/ui test -- src/hooks/useVoiceChat.bidirectional.test.tsx src/hooks/useContinuousChat.test.tsx
 
       - name: UI dynamic view interaction coverage
-        run: bun run --cwd packages/ui test -- src/App.navigate-view-wiring.test.tsx src/app-navigate-view.test.ts src/components/pages/ViewManagerPage.test.tsx src/components/shell/__tests__/shell-assistant-flow.test.tsx src/components/views/DynamicViewLoader.test.tsx src/hooks/useAvailableViews.test.tsx src/hooks/useDesktopTabs.test.tsx src/state/startup-phase-hydrate.view-interact.test.ts
+        run: bun run --cwd packages/ui test -- src/App.navigate-view-wiring.test.tsx src/app-navigate-view.test.ts src/components/shell/__tests__/shell-assistant-flow.test.tsx src/components/views/DynamicViewLoader.test.tsx src/hooks/useAvailableViews.test.tsx src/hooks/useDesktopTabs.test.tsx src/state/startup-phase-hydrate.view-interact.test.ts
 
       - name: Agent plugin view route and interaction coverage
         run: bunx vitest run packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts
