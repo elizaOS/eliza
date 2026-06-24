@@ -1,6 +1,7 @@
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
+import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import type { AppContext } from "@/types/cloud-worker-env";
 
@@ -100,6 +101,23 @@ export async function handleWorkflowProxyRequest(
 ): Promise<Response> {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
+    // Confirm the caller's org owns this agent before proxying — otherwise any
+    // authenticated user could drive workflow ops (suspend/resume/state) on
+    // another org's agent just by knowing its id. Matches the suspend/resume
+    // routes, which gate on getAgent(agentId, organization_id).
+    const agent = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
+    if (!agent) {
+      return applyCorsHeaders(
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
+        WORKFLOW_CORS_METHODS,
+      );
+    }
     const forwarded = await forwardWorkflowToAgentServer({
       ctx,
       request,
