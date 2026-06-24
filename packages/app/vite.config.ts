@@ -1278,6 +1278,8 @@ const VENDOR_WALLET_TEST =
 // Solana wallet/web3 stack — also folded into `vendor-crypto` (it imports the
 // same bn.js/buffer core).
 const VENDOR_SOLANA_TEST = /\/node_modules\/@solana\//;
+const VENDOR_OPTIMIZED_WALLET_TEST =
+  /\/node_modules\/\.vite\/deps\/(@solana_|wagmi|@wagmi_|viem|@rainbow-me_|@walletconnect_|@reown_|@coinbase_wallet|mipd|eventemitter3|bn(?:\.js|_js)?|elliptic|secp256k1|buffer|safe-buffer|safe_buffer|hash-base|hash_base|create-hash|create_hash|create-hmac|create_hmac|sha(?:\.js|_js)?)(?:[._-]|$)/;
 
 // React runtime + scheduler + react-spring.
 const VENDOR_REACT_TEST =
@@ -1317,7 +1319,8 @@ function resolveManualChunk(id: string): string | undefined {
     if (
       VENDOR_CRYPTO_TEST.test(normalizedId) ||
       VENDOR_WALLET_TEST.test(normalizedId) ||
-      VENDOR_SOLANA_TEST.test(normalizedId)
+      VENDOR_SOLANA_TEST.test(normalizedId) ||
+      VENDOR_OPTIMIZED_WALLET_TEST.test(normalizedId)
     ) {
       return "vendor-crypto";
     }
