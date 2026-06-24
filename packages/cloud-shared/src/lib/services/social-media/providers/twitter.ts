@@ -336,7 +336,10 @@ export const twitterProvider: SocialMediaProvider = {
         },
         fetchedAt: new Date(),
       };
-    } catch {
+    } catch (error) {
+      logger.warn("[Twitter] getMetrics failed", {
+        error: extractErrorMessage(error),
+      });
       return null;
     }
   },
@@ -370,7 +373,10 @@ export const twitterProvider: SocialMediaProvider = {
         },
         fetchedAt: new Date(),
       };
-    } catch {
+    } catch (error) {
+      logger.warn("[Twitter] getAccountAnalytics failed", {
+        error: extractErrorMessage(error),
+      });
       return null;
     }
   },

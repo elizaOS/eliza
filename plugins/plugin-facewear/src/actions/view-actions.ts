@@ -21,8 +21,13 @@ function firstConnectionId(svc: XRSessionService): string | null {
   return svc.getConnections()[0]?.id ?? null;
 }
 
-function agentBaseUrl(runtime: IAgentRuntime): string {
-  const port = (runtime as unknown as { port?: number }).port ?? 31337;
+function agentBaseUrl(): string {
+  // The API port is orchestrator-assigned (never hardcoded) — read it from the
+  // environment, not a non-existent `runtime.port` field. Falls back to 31337.
+  const port =
+    process.env.ELIZA_API_PORT?.trim() ||
+    process.env.ELIZA_PORT?.trim() ||
+    "31337";
   return process.env.XR_AGENT_URL ?? `http://localhost:${port}`;
 }
 
@@ -89,7 +94,7 @@ export const xrOpenViewAction: Action = {
       return { success: false, text };
     }
 
-    const base = agentBaseUrl(runtime);
+    const base = agentBaseUrl();
     const scale = (options?.scale as number | undefined) ?? 1.0;
     svc.openView(connId, viewId, base, { scale, followMode: "billboard" });
     const text = `Opening ${viewId} view on your headset.`;
