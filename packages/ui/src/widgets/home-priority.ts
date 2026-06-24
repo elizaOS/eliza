@@ -247,8 +247,10 @@ export function rankHomeNotifications<T extends RankableContentNotification>(
       const aUnread = a.item.readAt ? 0 : 1;
       const bUnread = b.item.readAt ? 0 : 1;
       if (aUnread !== bUnread) return bUnread - aUnread;
-      const aPriority = NOTIFICATION_PRIORITY_RANK[a.item.priority ?? "normal"] ?? 1;
-      const bPriority = NOTIFICATION_PRIORITY_RANK[b.item.priority ?? "normal"] ?? 1;
+      const aPriority =
+        NOTIFICATION_PRIORITY_RANK[a.item.priority ?? "normal"] ?? 1;
+      const bPriority =
+        NOTIFICATION_PRIORITY_RANK[b.item.priority ?? "normal"] ?? 1;
       if (aPriority !== bPriority) return bPriority - aPriority;
       if (a.item.createdAt !== b.item.createdAt) {
         return b.item.createdAt - a.item.createdAt;

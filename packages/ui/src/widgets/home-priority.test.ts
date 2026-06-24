@@ -3,9 +3,9 @@ import {
   baseHomeScore,
   HOME_SIGNAL_WEIGHTS,
   type HomeWidgetSignal,
-  homeSignalWeight,
   homeSignalsFromEvents,
   homeSignalsFromNotifications,
+  homeSignalWeight,
   type RankableContentNotification,
   type RankableHomeWidget,
   rankHomeNotifications,
@@ -162,7 +162,12 @@ describe("signalKindForEventType", () => {
 
 describe("homeSignalsFromEvents", () => {
   const decls: RankableHomeWidget[] = [
-    { id: "act", pluginId: "p", order: 100, signalKinds: ["blocked", "activity"] },
+    {
+      id: "act",
+      pluginId: "p",
+      order: 100,
+      signalKinds: ["blocked", "activity"],
+    },
     { id: "msg", pluginId: "p", order: 60, signalKinds: ["message"] },
     { id: "static", pluginId: "p", order: 50 }, // no signalKinds → never boosted
   ];
@@ -173,7 +178,11 @@ describe("homeSignalsFromEvents", () => {
       decls,
     );
     expect(signals).toEqual([
-      { widgetKey: "p/act", weight: HOME_SIGNAL_WEIGHTS.blocked, timestamp: NOW },
+      {
+        widgetKey: "p/act",
+        weight: HOME_SIGNAL_WEIGHTS.blocked,
+        timestamp: NOW,
+      },
     ]);
   });
 

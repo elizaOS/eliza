@@ -56,9 +56,7 @@ function makeRuntime(rowsFor: (sql: string) => unknown): IAgentRuntime {
     getService: () => null,
     adapter: {
       db: {
-        execute: async (query: {
-          queryChunks: Array<{ value?: unknown }>;
-        }) => {
+        execute: async (query: { queryChunks: Array<{ value?: unknown }> }) => {
           const chunk = query.queryChunks[0]?.value;
           const sql = Array.isArray(chunk) ? String(chunk[0]) : String(chunk);
           return rowsFor(sql);
