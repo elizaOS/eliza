@@ -312,17 +312,11 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     // Boosted by any notification; urgent ones map to escalation-level weight.
     signalKinds: ["notification", "approval", "escalation"],
   },
-  // Messages (recent conversations) — the shared "messages" home widget (#9143).
-  {
-    id: "messages.recent",
-    pluginId: "messages",
-    slot: "home",
-    label: "Messages",
-    icon: "MessageSquare",
-    order: 60,
-    defaultEnabled: true,
-    signalKinds: ["message"],
-  },
+  // NOTE: the "messages.recent" home widget was removed (#9304) — it duplicated
+  // the always-present floating chat overlay (recent conversations are already
+  // one tap away in chat), and being ALWAYS_VISIBLE it was the only card on a
+  // fresh home. The MessagesWidget component stays registered for the
+  // `defaultWidget: "messages"` sink; it just no longer occupies the home slot.
   // Agent Orchestrator — app runs
   {
     id: "agent-orchestrator.apps",
@@ -511,10 +505,9 @@ const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   "music-player",
   // Notifications is a core runtime feature (NotificationService), not a
   // loadable plugin, so its frontpage widget must render regardless of the
-  // plugin snapshot. (#9143)
+  // plugin snapshot. (#9143). Messages was removed (#9304) — redundant with the
+  // always-present chat overlay.
   "notifications",
-  // Messages (recent conversations) is likewise a core surface. (#9143)
-  "messages",
 ]);
 
 export interface ResolvedWidget {

@@ -100,6 +100,7 @@ export function HomeWidgetCard({
       type="button"
       data-testid={testId}
       aria-label={ariaLabel}
+      title={label}
       onClick={onActivate}
       className={cn(
         "group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-card/75 px-3 py-2.5 text-left backdrop-blur",
@@ -125,10 +126,10 @@ export function HomeWidgetCard({
         ) : null}
       </span>
 
+      {/* Icon-only: the lucide icon identifies the widget; the label is folded
+          into the button's aria-label (and the hover title), never shown as a
+          visible eyebrow. Only the single high-priority datum renders. */}
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-2xs font-medium uppercase tracking-wide text-muted/80">
-          {label}
-        </span>
         {value != null ? (
           <span
             className={cn(

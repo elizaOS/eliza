@@ -92,7 +92,12 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     description: view.description,
     icon: view.icon,
     heroUrl: hasHero ? view.heroImageUrl : undefined,
-    imageUrl: view.heroImageUrl,
+    // `imageUrl` must ALWAYS resolve to the hero endpoint so Springboard tiles
+    // show a real/branded image, never the generic fallback glyph. The backend
+    // always serves `/api/views/{id}/hero` (a real image or a deterministic
+    // branded SVG), so synthesize it when the registry entry omits the URL.
+    imageUrl:
+      view.heroImageUrl ?? `/api/views/${encodeURIComponent(view.id)}/hero`,
     hasHero,
     modality: view.viewType ?? "gui",
     modalities: [view.viewType ?? "gui"],
