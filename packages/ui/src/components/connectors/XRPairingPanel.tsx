@@ -86,7 +86,7 @@ export function XRPairingPanel() {
             <li key={c.id} className="text-xs text-muted">
               <span className="font-medium text-txt">{c.deviceType}</span>
               {t("xrpairing.connectedAt", {
-                time: new Date(c.connectedAt).toLocaleTimeString(),
+                time: new Date(c.connectedAt).toLocaleTimeString("en-US"),
                 defaultValue: " — connected {{time}}",
               })}
             </li>
