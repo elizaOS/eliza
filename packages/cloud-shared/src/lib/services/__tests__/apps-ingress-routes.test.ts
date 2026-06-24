@@ -19,11 +19,14 @@ describe("buildCaddyRouteId", () => {
 });
 
 describe("buildCaddyRoute", () => {
-  test("host-match -> reverse_proxy to nodeHost:hostPort, keyed by @id", () => {
-    expect(buildCaddyRoute({ hostname: HOST, nodeHost: "10.30.1.5", hostPort: 28123 })).toEqual({
+  test("host-match -> reverse_proxy to the node-local 127.0.0.1:hostPort, keyed by @id", () => {
+    // Caddy is co-located on the app node and the container publishes only to
+    // loopback, so the dial is always 127.0.0.1 (NOT the private-network node IP)
+    // — this is what makes the published port unreachable across tenants.
+    expect(buildCaddyRoute({ hostname: HOST, hostPort: 28123 })).toEqual({
       "@id": "app-abc12345",
       match: [{ host: ["abc12345.apps.elizacloud.ai"] }],
-      handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "10.30.1.5:28123" }] }],
+      handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "127.0.0.1:28123" }] }],
     });
   });
 
@@ -31,7 +34,6 @@ describe("buildCaddyRoute", () => {
     const route = buildCaddyRoute({
       hostname: HOST,
       extraHostnames: ["Elocute.fun", "www.elocute.fun", "elocute.fun", "   "],
-      nodeHost: "10.30.1.5",
       hostPort: 28123,
     });
     // @id stays keyed off the wildcard host, so one DELETE tears down all hosts
@@ -39,12 +41,14 @@ describe("buildCaddyRoute", () => {
     expect(route.match).toEqual([
       { host: ["abc12345.apps.elizacloud.ai", "elocute.fun", "www.elocute.fun"] },
     ]);
+    // host-match folds in the custom domains, but the dial stays loopback
+    expect(route.handle[0].upstreams[0].dial).toBe("127.0.0.1:28123");
   });
 
   test("empty/omitted extraHostnames keeps the plain single-host route", () => {
-    expect(
-      buildCaddyRoute({ hostname: HOST, extraHostnames: [], nodeHost: "n", hostPort: 1 }).match,
-    ).toEqual([{ host: ["abc12345.apps.elizacloud.ai"] }]);
+    expect(buildCaddyRoute({ hostname: HOST, extraHostnames: [], hostPort: 1 }).match).toEqual([
+      { host: ["abc12345.apps.elizacloud.ai"] },
+    ]);
   });
 });
 

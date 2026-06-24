@@ -245,6 +245,7 @@
   "dependencies": {
     "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/registry": "workspace:*",
     "chalk": "^5.3.0",
     "drizzle-orm": "0.45.2",
     "phonemizer": "^1.2.1",

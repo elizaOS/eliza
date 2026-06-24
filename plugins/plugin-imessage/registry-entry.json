@@ -81,7 +81,11 @@
     "icon": "MessageSquare",
     "group": "connector",
     "groupOrder": 1,
-    "actions": ["enable", "configure", "setup-guide"]
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#imessage-macos-only"
@@ -92,5 +96,8 @@
   "auth": {
     "kind": "token",
     "credentialKeys": []
-  }
+  },
+  "channels": [
+    "imessage"
+  ]
 }

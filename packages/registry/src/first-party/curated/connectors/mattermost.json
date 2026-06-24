@@ -106,5 +106,6 @@
   "auth": {
     "kind": "token",
     "credentialKeys": ["MATTERMOST_BOT_TOKEN"]
-  }
+  },
+  "channels": ["mattermost"]
 }

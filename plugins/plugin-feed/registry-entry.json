@@ -26,5 +26,10 @@
     "uiExtension": {
       "detailPanelId": "feed-operator-dashboard"
     }
+  },
+  "curatedApp": {
+    "slug": "feed",
+    "order": 4,
+    "aliases": []
   }
 }

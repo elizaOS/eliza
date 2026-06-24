@@ -90,5 +90,6 @@
   "auth": {
     "kind": "token",
     "credentialKeys": ["MATRIX_ACCESS_TOKEN"]
-  }
+  },
+  "channels": ["matrix"]
 }

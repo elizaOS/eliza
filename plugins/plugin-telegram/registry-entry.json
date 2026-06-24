@@ -67,5 +67,6 @@
   "auth": {
     "kind": "token",
     "credentialKeys": ["TELEGRAM_BOT_TOKEN"]
-  }
+  },
+  "channels": ["telegram"]
 }

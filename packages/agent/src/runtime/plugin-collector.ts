@@ -12,6 +12,9 @@
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
+import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
+  type: "json",
+};
 import {
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
@@ -152,32 +155,14 @@ function isStoreBuildVariant(): boolean {
   return raw?.toLowerCase() === "store";
 }
 
-/** Maps Eliza channel names to plugin package names. */
-export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> = {
-  bluebubbles: "@elizaos/plugin-bluebubbles",
-  discord: "@elizaos/plugin-discord",
-  discordLocal: "@elizaos/plugin-discord-local",
-  telegram: "@elizaos/plugin-telegram",
-  slack: "@elizaos/plugin-slack",
-  x: "@elizaos/plugin-x",
-  // Backward-compat alias: legacy "twitter" channel resolves to plugin-x.
-  twitter: "@elizaos/plugin-x",
-  // Internal connector built from src/plugins/whatsapp (not an npm package).
-  whatsapp: "@elizaos/plugin-whatsapp",
-  // Internal connector built from src/plugins/signal (not an npm package).
-  signal: "@elizaos/plugin-signal",
-  imessage: "@elizaos/plugin-imessage",
-  farcaster: "@elizaos/plugin-farcaster",
-  lens: "@elizaos/plugin-lens",
-  msteams: "@elizaos/plugin-msteams",
-  feishu: "@elizaos/plugin-feishu",
-  matrix: "@elizaos/plugin-matrix",
-  nostr: "@elizaos/plugin-nostr",
-  blooio: "@elizaos/plugin-blooio",
-  twitch: "@elizaos/plugin-twitch",
-  mattermost: "@elizaos/plugin-mattermost",
-  googlechat: "@elizaos/plugin-google-chat",
-};
+/**
+ * Maps Eliza channel names to plugin package names. Derived at registry build
+ * time from each connector entry's `channels` (e.g. x -> ["x", "twitter"]); see
+ * packages/registry/src/first-party. To add/rename a channel, edit the owning
+ * connector's registry-entry.json `channels` and regenerate — not this list.
+ */
+export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> =
+  channelPluginMap;
 
 /** Maps environment variable names to model-provider plugin packages. */
 export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {

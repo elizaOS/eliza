@@ -1,16 +1,30 @@
 /**
  * AppImageBuilder (Apps / Product 2) — the impure build executor for the
  * repo→image pipeline. Composes the pure ref/command builders
- * ({@link buildAppImageRef}, {@link buildAppImageBuildCmd}) and runs them over
- * an injected `exec` seam: SSH to a builder node in production, a local shell in
- * verification. The ONLY IO is `exec`, so the orchestration is unit-testable
- * with a fake and the same code path is exercised locally against real Docker.
+ * ({@link buildAppImageRef}, {@link buildIsolatedAppImageScript}) and runs them
+ * over an injected `exec` seam: SSH to a builder host in production, a local
+ * shell in verification. The ONLY IO is `exec`, so the orchestration is
+ * unit-testable with a fake and the same code path is exercised locally against
+ * real Docker.
+ *
+ * SECURITY: the Dockerfile is UNTRUSTED (user-supplied). By default the build is
+ * run inside a FRESH, THROWAWAY `docker-container` BuildKit instance that is torn
+ * down after the build (see {@link buildIsolatedAppImageScript}), so an untrusted
+ * build never shares cache/state with the host daemon hosting tenant containers.
+ * The builder name carries random entropy so concurrent builds never collide on
+ * a shared BuildKit. Set `isolatedBuilder: false` only for trusted/verification
+ * builds where the host daemon is acceptable.
  *
  * Decoupled from the deploy/run path: the builder yields a resolvable image ref;
  * `app-deploy-runner.ts` resolves that ref and the container provider runs it.
  */
 
-import { type AppBuildCmdParams, buildAppImageBuildCmd } from "./app-build-cmd";
+import { randomBytes } from "node:crypto";
+import {
+  buildAppImageBuildCmd,
+  buildIsolatedAppImageScript,
+  isolatedBuilderName,
+} from "./app-build-cmd";
 import { buildAppImageRef } from "./app-image-ref";
 
 /** Command-exec seam — structurally the same as `AppContainerSsh` (reusable). */
@@ -44,10 +58,14 @@ export interface AppImageBuildResult {
 export class AppImageBuilder {
   private readonly exec: BuildExec;
   private readonly timeoutMs: number;
+  private readonly isolatedBuilder: boolean;
 
-  constructor(deps: { exec: BuildExec; timeoutMs?: number }) {
+  constructor(deps: { exec: BuildExec; timeoutMs?: number; isolatedBuilder?: boolean }) {
     this.exec = deps.exec;
     this.timeoutMs = deps.timeoutMs ?? 10 * 60_000;
+    // Untrusted Dockerfiles run in a throwaway isolated builder by default;
+    // opt out only for trusted/verification builds against the host daemon.
+    this.isolatedBuilder = deps.isolatedBuilder ?? true;
   }
 
   /** Build (and optionally push) the app image; returns the resolvable ref. */
@@ -57,14 +75,31 @@ export class AppImageBuilder {
       appId: req.appId,
       sourceRef: req.sourceRef,
     });
-    const params: AppBuildCmdParams = {
-      context: req.context,
-      dockerfile: req.dockerfile,
-      imageRef,
-      push: req.push,
-      buildArgs: req.buildArgs,
-    };
-    const buildOutput = await this.exec.exec(buildAppImageBuildCmd(params), this.timeoutMs);
+
+    let command: string;
+    if (this.isolatedBuilder) {
+      // Random per-build suffix so two concurrent untrusted builds never share a
+      // BuildKit instance; the script tears the builder down on EXIT.
+      const builderName = isolatedBuilderName(req.appId, randomBytes(6).toString("hex"));
+      command = buildIsolatedAppImageScript({
+        context: req.context,
+        dockerfile: req.dockerfile,
+        imageRef,
+        push: req.push,
+        buildArgs: req.buildArgs,
+        builderName,
+      });
+    } else {
+      command = buildAppImageBuildCmd({
+        context: req.context,
+        dockerfile: req.dockerfile,
+        imageRef,
+        push: req.push,
+        buildArgs: req.buildArgs,
+      });
+    }
+
+    const buildOutput = await this.exec.exec(command, this.timeoutMs);
     return { imageRef, buildOutput };
   }
 }

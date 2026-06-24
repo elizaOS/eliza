@@ -211,7 +211,7 @@ describe("ingress route hooks", () => {
     });
   }
 
-  test("provision adds the route (host + nodeHost + hostPort) + threads nodeHost to markRunning", async () => {
+  test("provision adds the route (host + hostPort, NO nodeHost in the dial) + threads nodeHost to markRunning", async () => {
     await withBase("apps.elizacloud.ai", async () => {
       const { events, store } = fakeStore();
       const { provider } = fakeProvider({
@@ -224,7 +224,7 @@ describe("ingress route hooks", () => {
           };
         },
       } as never);
-      const routes: Array<{ hostname: string; nodeHost: string; hostPort: number }> = [];
+      const routes: Array<{ hostname: string; hostPort: number; nodeHost?: string }> = [];
       await executeContainerProvision(
         job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
         {
@@ -237,8 +237,12 @@ describe("ingress route hooks", () => {
       );
       expect(routes).toHaveLength(1);
       expect(routes[0].hostname).toMatch(/\.apps\.elizacloud\.ai$/);
-      expect(routes[0]).toMatchObject({ nodeHost: "10.30.1.5", hostPort: 49001 });
-      // nodeHost is also persisted (markRunning -> metadata.hostname / ingress-map)
+      expect(routes[0]).toMatchObject({ hostPort: 49001 });
+      // The route no longer carries nodeHost — the dial is node-local loopback,
+      // so the node IP must NOT leak into the ingress hook.
+      expect(routes[0].nodeHost).toBeUndefined();
+      // nodeHost is still persisted to the container record (markRunning), which
+      // is a separate concern from the loopback ingress dial.
       expect(events.find((e) => e.op === "running")?.info).toMatchObject({ nodeHost: "10.30.1.5" });
     });
   });

@@ -266,6 +266,54 @@ export const containersEnv = {
   },
 
   /**
+   * Explicit arming flag for BUILD-FROM-REPO (the "Vercel-like" path where the
+   * platform builds an UNTRUSTED user Dockerfile into an image).
+   *
+   * SECURITY: a malicious Dockerfile can attack the dockerd it builds on. Even
+   * with the throwaway-isolated-builder mitigation (see app-build-cmd.ts), the
+   * build still launches a BuildKit container via SOME dockerd — so building on a
+   * node that also hosts tenant containers keeps a residual blast radius. This
+   * flag is the canary gate: build-from-repo stays OFF unless explicitly armed
+   * AND a dedicated builder host (`buildsHost()`) is configured, OR the operator
+   * opts into building on the runtime node by setting
+   * `APPS_BUILD_ON_RUNTIME_NODE=1`. Default OFF (prebuilt-image path only).
+   */
+  buildFromRepoEnabled(): boolean {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.APPS_BUILD_FROM_REPO_ENABLED);
+    return raw === "true" || raw === "1";
+  },
+
+  /**
+   * Dedicated builder host (`hostname` or `nodeId:hostname:capacity`) that runs
+   * untrusted app builds, DISTINCT from any node hosting tenant containers. When
+   * set, build-from-repo SSHes here instead of the runtime node, so a malicious
+   * Dockerfile cannot reach co-tenant containers' daemon. Undefined = no
+   * dedicated host (build-from-repo only runs if `APPS_BUILD_ON_RUNTIME_NODE=1`
+   * explicitly opts into the runtime node).
+   */
+  buildsHost(): string | undefined {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.APPS_BUILDS_HOST);
+    if (!raw) return undefined;
+    const parts = raw.split(":");
+    const host = parts.length >= 2 ? parts[1]?.trim() : parts[0]?.trim();
+    return host || undefined;
+  },
+
+  /**
+   * Escape hatch: allow building untrusted Dockerfiles on the runtime node's
+   * daemon (the one hosting tenant containers) when no dedicated builder host is
+   * configured. OFF by default — opting in accepts the residual blast radius the
+   * throwaway-isolated-builder mitigation narrows but does not eliminate.
+   */
+  buildOnRuntimeNodeAllowed(): boolean {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.APPS_BUILD_ON_RUNTIME_NODE);
+    return raw === "true" || raw === "1";
+  },
+
+  /**
    * Caddy admin-API base URL the daemon uses to add/remove per-app ingress routes
    * (e.g. `http://127.0.0.1:2019` over an SSH tunnel, or the app node's
    * private-IP admin endpoint). Undefined = ingress not wired (routes are no-ops).

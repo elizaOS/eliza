@@ -27,6 +27,59 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..", "..");
 const CURATED_DIR = join(HERE, "curated");
 const GENERATED_PATH = join(HERE, "generated.json");
+// Small derived artifact: just the curated-app definitions (slug, canonicalName,
+// aliases), ordered. `@elizaos/shared` statically imports this (browser-safe, no
+// fs) to materialize ELIZA_CURATED_APP_DEFINITIONS without bundling the full
+// registry. Regenerated alongside generated.json.
+const CURATED_DEFS_PATH = join(HERE, "curated-app-definitions.json");
+// Derived channel -> plugin-package map. agent + app-core statically import this
+// (browser-safe, no fs) instead of hand-maintaining duplicate CHANNEL_PLUGIN_MAPs.
+const CHANNEL_MAP_PATH = join(HERE, "channel-plugin-map.json");
+
+interface CuratedAppDefinition {
+  slug: string;
+  canonicalName: string;
+  aliases: string[];
+}
+
+export function collectCuratedAppDefinitions(
+  entries: RegistryEntry[],
+): CuratedAppDefinition[] {
+  return entries
+    .filter((e) => Boolean(e.curatedApp))
+    .sort((a, b) => (a.curatedApp?.order ?? 0) - (b.curatedApp?.order ?? 0))
+    .map((e) => ({
+      slug: e.curatedApp?.slug ?? "",
+      // canonicalName is the entry's npm package; every curated entry declares one.
+      canonicalName: e.npmName ?? "",
+      aliases: e.curatedApp?.aliases ?? [],
+    }));
+}
+
+// Derive the channel -> plugin-package map from connector entries' `channels`.
+// This replaces the hand-maintained CHANNEL_PLUGIN_MAP duplicated in agent +
+// app-core. Keys are sorted for a stable artifact; consumers read by key.
+export function collectChannelPluginMap(
+  entries: RegistryEntry[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const e of entries) {
+    if (!e.npmName) continue;
+    for (const channel of e.channels ?? []) {
+      if (map[channel] && map[channel] !== e.npmName) {
+        throw new Error(
+          `[registry/generate] channel "${channel}" claimed by both ${map[channel]} and ${e.npmName}`,
+        );
+      }
+      map[channel] = e.npmName;
+    }
+  }
+  return Object.fromEntries(
+    Object.keys(map)
+      .sort()
+      .map((k) => [k, map[k]]),
+  );
+}
 
 interface SourcedEntry {
   entry: RegistryEntry;
@@ -93,31 +146,49 @@ export function collectFirstPartyEntries(): RegistryEntry[] {
   return sourced.map((s) => s.entry).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export function generateFirstPartyRegistry(): string {
+export function generateFirstPartyRegistry(): {
+  full: string;
+  curated: string;
+  channels: string;
+} {
   const entries = collectFirstPartyEntries();
-  return `${JSON.stringify({ entries }, null, 2)}\n`;
+  return {
+    full: `${JSON.stringify({ entries }, null, 2)}\n`,
+    curated: `${JSON.stringify(collectCuratedAppDefinitions(entries), null, 2)}\n`,
+    channels: `${JSON.stringify(collectChannelPluginMap(entries), null, 2)}\n`,
+  };
 }
 
 function main(): void {
   const check = process.argv.includes("--check");
   const next = generateFirstPartyRegistry();
+  const artifacts: [string, string][] = [
+    [GENERATED_PATH, next.full],
+    [CURATED_DEFS_PATH, next.curated],
+    [CHANNEL_MAP_PATH, next.channels],
+  ];
   if (check) {
-    const current =
-      existsSync(GENERATED_PATH) && statSync(GENERATED_PATH).isFile()
-        ? readFileSync(GENERATED_PATH, "utf-8")
-        : "";
-    if (current !== next) {
-      console.error(
-        "[registry/generate] generated.json is stale. Run `bun run --cwd packages/registry generate:first-party` and commit the result.",
-      );
-      process.exit(1);
+    for (const [path, expected] of artifacts) {
+      const current =
+        existsSync(path) && statSync(path).isFile()
+          ? readFileSync(path, "utf-8")
+          : "";
+      if (current !== expected) {
+        console.error(
+          `[registry/generate] ${path} is stale. Run \`bun run --cwd packages/registry generate:first-party\` and commit the result.`,
+        );
+        process.exit(1);
+      }
     }
-    console.log("[registry/generate] generated.json is up to date.");
+    console.log("[registry/generate] generated artifacts are up to date.");
     return;
   }
-  writeFileSync(GENERATED_PATH, next);
-  const count = JSON.parse(next).entries.length;
-  console.log(`[registry/generate] wrote ${count} entries to generated.json`);
+  for (const [path, content] of artifacts) writeFileSync(path, content);
+  const count = JSON.parse(next.full).entries.length;
+  const curatedCount = JSON.parse(next.curated).length;
+  console.log(
+    `[registry/generate] wrote ${count} entries + ${curatedCount} curated-app definitions`,
+  );
 }
 
 if (import.meta.main) {

@@ -227,5 +227,6 @@
       "credentialKeys": ["TWITTER_BROKER_URL", "TWITTER_BROKER_TOKEN"],
       "notes": "A separate X account that represents the agent's own identity. Same OAuth flow, different X account at the OAuth screen."
     }
-  }
+  },
+  "channels": ["x", "twitter"]
 }

@@ -27,5 +27,10 @@
       "specifier": "@elizaos/plugin-polymarket-app/plugin",
       "exportName": "polymarketPlugin"
     }
+  },
+  "curatedApp": {
+    "slug": "polymarket",
+    "order": 7,
+    "aliases": []
   }
 }

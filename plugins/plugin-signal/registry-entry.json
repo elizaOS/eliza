@@ -69,5 +69,6 @@
   "auth": {
     "kind": "token",
     "credentialKeys": []
-  }
+  },
+  "channels": ["signal"]
 }

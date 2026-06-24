@@ -27,5 +27,10 @@
       "specifier": "@elizaos/plugin-shopify-ui/plugin",
       "exportName": "shopifyPlugin"
     }
+  },
+  "curatedApp": {
+    "slug": "shopify",
+    "order": 8,
+    "aliases": ["@elizaos/plugin-shopify"]
   }
 }

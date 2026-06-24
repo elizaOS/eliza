@@ -66,5 +66,6 @@
   "auth": {
     "kind": "token",
     "credentialKeys": []
-  }
+  },
+  "channels": ["nostr"]
 }

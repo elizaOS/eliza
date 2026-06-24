@@ -265,6 +265,26 @@ function isWidgetEnabled(
  * Merges built-in declarations with any server-provided declarations
  * (from PluginInfo.widgets), deduplicating by declaration ID.
  */
+/**
+ * Maps a declaration's `defaultWidget` opt-in (#9143) to the registered shared
+ * frontpage sink component (already registered above via
+ * `registerWidgetComponent`). A `home`-slot plugin with no own component renders
+ * one of these shared widgets instead of shipping its own.
+ */
+const DEFAULT_WIDGET_SINK_COMPONENT: Readonly<
+  Record<
+    NonNullable<PluginWidgetDeclaration["defaultWidget"]>,
+    { pluginId: string; id: string }
+  >
+> = {
+  notifications: { pluginId: "notifications", id: "notifications.recent" },
+  messages: { pluginId: "messages", id: "messages.recent" },
+  activity: {
+    pluginId: "agent-orchestrator",
+    id: "agent-orchestrator.activity",
+  },
+};
+
 export function resolveWidgetsForSlot(
   slot: WidgetSlot,
   plugins: readonly WidgetPluginState[],
@@ -304,7 +324,21 @@ export function resolveWidgetsForSlot(
   for (const { declaration, source } of declarationMap.values()) {
     if (!isWidgetEnabled(declaration, plugins, source)) continue;
 
-    const Component = getWidgetComponent(declaration.pluginId, declaration.id);
+    let Component = getWidgetComponent(declaration.pluginId, declaration.id);
+
+    // Home-slot opt-in sink (#9143): a plugin with no own component but a
+    // `defaultWidget` renders the shared sink component for that kind. Borrows
+    // only the component — the declaration keeps its own pluginId/id/order so
+    // ranking + dedupe treat it as distinct. Fallback-only: never overrides an
+    // own component, never fires off the home slot.
+    if (
+      !Component &&
+      declaration.slot === "home" &&
+      declaration.defaultWidget
+    ) {
+      const sink = DEFAULT_WIDGET_SINK_COMPONENT[declaration.defaultWidget];
+      Component = getWidgetComponent(sink.pluginId, sink.id);
+    }
 
     // Include if we have a React component OR a uiSpec fallback
     if (Component || declaration.uiSpec) {
