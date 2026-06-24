@@ -248,6 +248,7 @@ async function callStewardExchange(
       method: "POST",
       headers,
       body: bodyText,
+      signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
     return {

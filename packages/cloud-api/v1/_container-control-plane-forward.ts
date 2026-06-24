@@ -62,6 +62,7 @@ async function forwardControlPlaneRequest(
       headers,
       method: c.req.method,
       redirect: "manual",
+      signal: AbortSignal.timeout(30_000),
     };
     if (body) init.duplex = "half";
 

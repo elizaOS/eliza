@@ -111,14 +111,33 @@ operator-gated. To activate the `loop` job for the showcase account:
 2. **Seed CI secrets** in the `ci-hetzner-e2e` GitHub environment: `HCLOUD_TOKEN_CI`
    (CI-scoped Hetzner project) and `CLOUD_E2E_API_KEY` (the showcase account's
    long-lived bearer token). Optionally set `MONETIZED_LOOP_BASE_URL`.
-3. **Write the real-mode driver.** Replace the describe-level skip's body with a
-   loop that drives `MONETIZED_LOOP_BASE_URL` with `CLOUD_E2E_API_KEY` instead of
-   the mock `stack` fixture: register the two apps, deploy them through the real
-   app-container path (`dedicated-agent-proxy` / `bootstrap-app` / `cloud-infra`),
-   verify the assigned `*.apps.elizacloud.ai` subdomain actually serves, run a
-   monetized transaction, and assert the creator earning is redeemable - with
-   guaranteed teardown of the CI-scoped node + domain. Tracked as a #9300
-   follow-up.
+3. **Pin the EDAD image operator-side.** Set
+   `APP_DEFAULT_IMAGE=ghcr.io/elizaos/example-edad:showcase` (the GHCR image
+   #9384 builds) on the staging Worker. `metadata.imageTag` is NOT settable via
+   REST, so this is how the real driver stays pure-HTTP: `resolveImageRef`
+   (`app-deploy-runner.ts`) falls back to `APP_DEFAULT_IMAGE` when no resolver /
+   metadata image is present, so the deploy picks up the EDAD image without the
+   driver writing any metadata or holding a staging `DATABASE_URL` secret. Also
+   put the showcase org in `APPS_DEPLOY_ALLOWED_ORG_IDS` with `APPS_DEPLOY_ENABLED=1`.
+4. **The real-mode driver (slice 1 — landed).**
+   [`tests/example-edad-real-deploy.spec.ts`](../tests/example-edad-real-deploy.spec.ts)
+   is the pure-HTTP deploy-and-serve driver. It honest-skips at the describe level
+   unless `MONETIZED_LOOP_REAL=1` + `MONETIZED_LOOP_BASE_URL` + `CLOUD_E2E_API_KEY`
+   are all set (so per-PR / mock CI never reaches live staging), and otherwise:
+   auth-preflights the showcase key, registers EDAD (the `SHOWCASE_APPS`
+   descriptor), deploys via the real `POST /deploy` route, polls
+   `GET /deploy/status` to READY (real ~5s cadence, ~10min cap, **no** mock
+   control-plane tick), then asserts the app flips to deployed/remote, its
+   `*.apps.elizacloud.ai` `production_url` **actually serves** (`fetch` 200 +
+   EDAD's own `/api/config` self-report, not the mock `mock-app-container`), and
+   the ingress on-demand-TLS `ask` gate authorizes the live host — with
+   **guaranteed teardown** (`DELETE /api/v1/apps/:id` full cleanup) in a `finally`
+   so a real run leaves no orphan billable container. It is a NEW file, so the
+   mock showcase spec above is unchanged (it already skips itself when `REAL=1`).
+5. **The monetized half (slice 2 — follow-up).** Drive a real charge → app
+   earning → redeemable through real HTTP routes (the mock spec drives this
+   in-process via `appCreditsService.deductCredits`; a real driver must push it
+   through a route). Tracked as a #9300 follow-up, separate PR.
 
 The contract is the same either way: every hop above must be asserted against
 real data, and a failure must surface loudly in CI with logs + screenshots +

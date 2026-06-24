@@ -24,8 +24,8 @@ its own directory and carries `README.md` + `AGENTS.md` + `CLAUDE.md`.
 >   Eliza code inside them (`claw-eval`, `qwen-claw-bench`, `swe-bench-pro`,
 >   `swe-bench-multilingual`).
 > - **Vendored-but-not-yet-integrated** — present and registry/coverage-tracked or
->   skip-listed, but with no working adapter yet; see each dir's `INTEGRATION.md`
->   (`qwen-web-bench`, `skillsbench`).
+>   skip-listed, but with no working adapter yet; see its `INTEGRATION.md`
+>   (`qwen-web-bench`).
 > - **Runs in CI** — only a small subset has its own scheduled/gated lane
 >   (`memperf`, `lifeops-bench`, `hyperliquid-bench-live`, voice, mobile-resource).
 >   The registry-driven orchestrator suite as a whole is **not** scheduled against

@@ -1545,6 +1545,7 @@ export class LocalInferenceEngine {
 	async transcribePcm(
 		args: TranscriptionAudio,
 		signal?: AbortSignal,
+		onPartial?: (delta: string) => void,
 	): Promise<string> {
 		this.markActivity();
 		if (signal?.aborted) {
@@ -1554,7 +1555,7 @@ export class LocalInferenceEngine {
 		}
 		const transcript = await this.requireVoiceBridge(
 			"transcribe audio",
-		).transcribePcm(args, signal);
+		).transcribePcm(args, signal, onPartial);
 		if (signal?.aborted) {
 			throw signal.reason instanceof Error
 				? signal.reason

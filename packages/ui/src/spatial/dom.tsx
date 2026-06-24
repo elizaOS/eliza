@@ -12,6 +12,13 @@ import { type ReactNode, useMemo } from "react";
 import { type SpatialAction, SpatialContextProvider } from "./context.ts";
 import type { SpatialModality } from "./ir.ts";
 
+declare global {
+  interface Window {
+    /** Set by the XR view-host (plugin-facewear / plugin-xr) inside a headset. */
+    __elizaXRContext?: unknown;
+  }
+}
+
 /**
  * Detect the active DOM modality (`gui` vs `xr`).
  *
@@ -21,10 +28,7 @@ import type { SpatialModality } from "./ir.ts";
  * Capacitor-free) so `<SpatialSurface>` picks the surface automatically.
  */
 export function detectDomModality(): SpatialModality {
-  if (
-    typeof window !== "undefined" &&
-    (window as unknown as Record<string, unknown>).__elizaXRContext
-  ) {
+  if (typeof window !== "undefined" && window.__elizaXRContext) {
     return "xr";
   }
   return "gui";

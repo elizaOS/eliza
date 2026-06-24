@@ -20,6 +20,7 @@ import {
   truncate,
 } from "../lib/format.js";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
+import { resolveHostShell } from "../lib/terminal-capabilities.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -102,11 +103,123 @@ const CRYPTO_SPOT_ASSETS: CryptoSpotAsset[] = [
   },
 ];
 
-const LOCAL_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-\${API_PORT:-\${SERVER_PORT:-2138}}}}"; curl -sS "http://127.0.0.1:\${PORT}/api/health"`;
-const LOCAL_MEMORY_COMMAND = "free -m";
-const BOUNDED_DISK_INSPECTION_COMMAND =
+export type CommandPlatform = "windows" | "macos" | "linux";
+
+/**
+ * Pick the canned-command dialect for the shell that {@link runShell} will
+ * actually dispatch to. POSIX shells (bash/zsh/sh — including Git-Bash on
+ * Windows) get POSIX commands; a PowerShell host shell (the default on Windows
+ * when no `SHELL`/`CODING_TOOLS_SHELL` override is set) gets PowerShell. Within
+ * the POSIX family macOS is split out from Linux because `free` does not exist
+ * on macOS (it exposes memory through `vm_stat`/`sysctl`).
+ */
+export function resolveCommandPlatform(): CommandPlatform {
+  const base = path.basename(resolveHostShell().command).toLowerCase();
+  if (base.includes("powershell") || base.includes("pwsh")) return "windows";
+  return process.platform === "darwin" ? "macos" : "linux";
+}
+
+// --- POSIX (Linux) — kept byte-for-byte so the existing Linux command/parser
+// contract is unchanged. ---
+const POSIX_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-\${API_PORT:-\${SERVER_PORT:-2138}}}}"; curl -sS "http://127.0.0.1:\${PORT}/api/health"`;
+const LINUX_MEMORY_COMMAND = "free -m";
+const LINUX_DISK_INSPECTION_COMMAND =
   'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
-const BOUNDED_DISK_AND_MEMORY_INSPECTION_COMMAND = `${BOUNDED_DISK_INSPECTION_COMMAND}; printf '\\n--- memory ---\\n'; ${LOCAL_MEMORY_COMMAND}`;
+
+// --- macOS — `free` is Linux-only, so synthesize a `free -m`-compatible `Mem:`
+// line from `sysctl`/`vm_stat` (page size via `hw.pagesize`, which is 16384 on
+// Apple Silicon, not 4096). `df`/`du` already behave like the Linux variant. ---
+const MACOS_MEMORY_COMMAND =
+  'page=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096); total_mb=$(( $(sysctl -n hw.memsize) / 1048576 )); free_pages=$(vm_stat | awk \'/Pages free/{gsub(/[^0-9]/,"",$3);print $3}\'); inactive_pages=$(vm_stat | awk \'/Pages inactive/{gsub(/[^0-9]/,"",$3);print $3}\'); [ -z "$free_pages" ] && free_pages=0; [ -z "$inactive_pages" ] && inactive_pages=0; free_mb=$(( ( free_pages + inactive_pages ) * page / 1048576 )); printf \'Mem: %s %s %s 0 0 %s\\n\' "$total_mb" "$(( total_mb - free_mb ))" "$free_mb" "$free_mb"';
+const MACOS_DISK_INSPECTION_COMMAND =
+  'df -h /; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/Library/Caches" "$HOME/.Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
+
+// --- Windows (PowerShell) — every string uses single-quoted format strings and
+// no embedded double quotes, so Node's Win32 argv quoting passes the script to
+// `powershell.exe -Command` intact. Each command emits the same `Mem:` /
+// `/`-terminated df-style row / `--- cleanup candidates ---` markers the shared
+// output parsers already understand. ---
+const WINDOWS_MEMORY_COMMAND = [
+  "$os = Get-CimInstance -ClassName Win32_OperatingSystem",
+  "$totalMb = [math]::Round($os.TotalVisibleMemorySize / 1024)",
+  "$freeMb = [math]::Round($os.FreePhysicalMemory / 1024)",
+  "Write-Output ('Mem: {0} {1} {2} 0 0 {2}' -f $totalMb, ($totalMb - $freeMb), $freeMb)",
+].join("\n");
+// Sizing temp/cache dirs is a recursive walk; on a busy box `%TEMP%` can be
+// huge, so cap each directory at a 2s wall-clock budget via a manual .NET
+// stack walk (far lower per-file overhead than `Get-ChildItem -Recurse`). The
+// reported size is a lower bound under heavy churn, but the command stays well
+// inside the SHELL timeout instead of hanging.
+const WINDOWS_DISK_INSPECTION_COMMAND = [
+  "$dn = $env:SystemDrive.TrimEnd(':')",
+  "$d = Get-PSDrive -Name $dn -PSProvider FileSystem",
+  "$total = [double]$d.Used + [double]$d.Free",
+  "$pct = if ($total -gt 0) { [math]::Round(([double]$d.Used / $total) * 100) } else { 0 }",
+  "Write-Output ('{0} {1}G {2}G {3}G {4}% /' -f $dn, [math]::Round($total / 1GB), [math]::Round([double]$d.Used / 1GB), [math]::Round([double]$d.Free / 1GB), $pct)",
+  "Write-Output '--- cleanup candidates ---'",
+  "$paths = @($env:TEMP, $env:TMP, (Join-Path $env:LOCALAPPDATA 'Temp'), (Join-Path $env:USERPROFILE '.bun'), (Join-Path $env:USERPROFILE '.npm'), (Join-Path $env:LOCALAPPDATA 'npm-cache'), (Join-Path $env:USERPROFILE '.cache')) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | ForEach-Object { try { (Get-Item -LiteralPath $_ -Force).FullName } catch { $_ } } | Sort-Object -Unique",
+  "$rows = foreach ($p in $paths) {",
+  "  $sw = [System.Diagnostics.Stopwatch]::StartNew()",
+  "  $sum = [long]0",
+  "  $stack = New-Object System.Collections.Stack",
+  "  $stack.Push($p)",
+  "  while ($stack.Count -gt 0 -and $sw.ElapsedMilliseconds -lt 2000) {",
+  "    $dir = $stack.Pop()",
+  "    try { foreach ($f in [System.IO.Directory]::EnumerateFiles($dir)) { try { $sum += ([System.IO.FileInfo]$f).Length } catch {} } } catch {}",
+  "    try { foreach ($sub in [System.IO.Directory]::EnumerateDirectories($dir)) { $stack.Push($sub) } } catch {}",
+  "  }",
+  "  [pscustomobject]@{ Bytes = $sum; Path = $p }",
+  "}",
+  "$rows | Where-Object { $_.Bytes -gt 0 } | Sort-Object Bytes -Descending | Select-Object -First 10 | ForEach-Object {",
+  "  $b = $_.Bytes",
+  "  if ($b -ge 1GB) { $h = '{0:N1}G' -f ($b / 1GB) } elseif ($b -ge 1MB) { $h = '{0:N0}M' -f ($b / 1MB) } else { $h = '{0:N0}K' -f ($b / 1KB) }",
+  "  Write-Output ('{0} {1}' -f $h, $_.Path)",
+  "}",
+].join("\n");
+const WINDOWS_HEALTH_COMMAND = [
+  "$port = if ($env:ELIZA_API_PORT) { $env:ELIZA_API_PORT } elseif ($env:ELIZA_PORT) { $env:ELIZA_PORT } elseif ($env:API_PORT) { $env:API_PORT } elseif ($env:SERVER_PORT) { $env:SERVER_PORT } else { 2138 }",
+  "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 -Uri ('http://127.0.0.1:{0}/api/health' -f $port)).Content }",
+  "catch { $r = $_.Exception.Response; if ($r) { (New-Object System.IO.StreamReader($r.GetResponseStream())).ReadToEnd() } else { throw } }",
+].join("\n");
+
+export function localHealthCommand(platform: CommandPlatform): string {
+  return platform === "windows" ? WINDOWS_HEALTH_COMMAND : POSIX_HEALTH_COMMAND;
+}
+
+export function localMemoryCommand(platform: CommandPlatform): string {
+  switch (platform) {
+    case "windows":
+      return WINDOWS_MEMORY_COMMAND;
+    case "macos":
+      return MACOS_MEMORY_COMMAND;
+    default:
+      return LINUX_MEMORY_COMMAND;
+  }
+}
+
+export function boundedDiskInspectionCommand(
+  platform: CommandPlatform,
+): string {
+  switch (platform) {
+    case "windows":
+      return WINDOWS_DISK_INSPECTION_COMMAND;
+    case "macos":
+      return MACOS_DISK_INSPECTION_COMMAND;
+    default:
+      return LINUX_DISK_INSPECTION_COMMAND;
+  }
+}
+
+export function boundedDiskAndMemoryInspectionCommand(
+  platform: CommandPlatform,
+): string {
+  const disk = boundedDiskInspectionCommand(platform);
+  const memory = localMemoryCommand(platform);
+  if (platform === "windows") {
+    return `${disk}\nWrite-Output ''\nWrite-Output '--- memory ---'\n${memory}`;
+  }
+  return `${disk}; printf '\\n--- memory ---\\n'; ${memory}`;
+}
 const SOURCE_SEARCH_EXCLUDES = [
   "!**/.git/**",
   "!**/node_modules/**",
@@ -284,20 +397,20 @@ function usesBroadDiskUsageScan(command: string): boolean {
 export function resolveDiskInspectionCommand(args: {
   command: string;
   messageText: string;
+  platform?: CommandPlatform;
 }): DiskInspectionCommandResolution {
+  const platform = args.platform ?? resolveCommandPlatform();
   if (!asksForDiskInspection(args.messageText)) {
     return { command: args.command, rewritten: false };
   }
   if (asksForMemoryStatus(args.messageText)) {
-    return {
-      command: BOUNDED_DISK_AND_MEMORY_INSPECTION_COMMAND,
-      rewritten: args.command !== BOUNDED_DISK_AND_MEMORY_INSPECTION_COMMAND,
-    };
+    const canonical = boundedDiskAndMemoryInspectionCommand(platform);
+    return { command: canonical, rewritten: args.command !== canonical };
   }
   if (!usesBroadDiskUsageScan(args.command)) {
     return { command: args.command, rewritten: false };
   }
-  return { command: BOUNDED_DISK_INSPECTION_COMMAND, rewritten: true };
+  return { command: boundedDiskInspectionCommand(platform), rewritten: true };
 }
 
 function requestedLocalStatusKind(text: string): LocalStatusKind | undefined {
@@ -324,13 +437,16 @@ function includesDiskProbe(command: string): boolean {
 export function resolveLocalStatusCommand(args: {
   command: string;
   messageText: string;
+  platform?: CommandPlatform;
 }): LocalStatusCommandResolution {
+  const platform = args.platform ?? resolveCommandPlatform();
   const kind = requestedLocalStatusKind(args.messageText);
   if (kind === "health") {
+    const canonical = localHealthCommand(platform);
     return {
-      command: LOCAL_HEALTH_COMMAND,
+      command: canonical,
       kind,
-      rewritten: args.command !== LOCAL_HEALTH_COMMAND,
+      rewritten: args.command !== canonical,
     };
   }
   if (kind === "memory") {
@@ -340,10 +456,11 @@ export function resolveLocalStatusCommand(args: {
     ) {
       return { command: args.command, kind, rewritten: false };
     }
+    const canonical = localMemoryCommand(platform);
     return {
-      command: LOCAL_MEMORY_COMMAND,
+      command: canonical,
       kind,
-      rewritten: args.command !== LOCAL_MEMORY_COMMAND,
+      rewritten: args.command !== canonical,
     };
   }
   return { command: args.command, rewritten: false };

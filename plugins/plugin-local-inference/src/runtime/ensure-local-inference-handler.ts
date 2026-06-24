@@ -886,7 +886,30 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 		// there is no whisper.cpp second attempt and no silent empty transcript.
 		await localInferenceEngine.ensureActiveBundleVoiceReady();
 		throwIfAborted(signal);
-		const transcript = await localInferenceEngine.transcribePcm(audio, signal);
+		// Stream partial transcripts through the same pipe as chat text when the
+		// runtime wired a chunk sink (useModel injects onStreamChunk into local
+		// model params inside a streaming reply turn). The fused streaming-ASR
+		// session surfaces each running partial; we forward the deltas. Read the
+		// sink structurally so this stays robust to the core param type surface.
+		const streamSink =
+			params && typeof params === "object"
+				? (
+						params as {
+							onStreamChunk?: (chunk: string) => void | Promise<void>;
+						}
+					).onStreamChunk
+				: undefined;
+		const onPartial =
+			typeof streamSink === "function"
+				? (delta: string) => {
+						void streamSink(delta);
+					}
+				: undefined;
+		const transcript = await localInferenceEngine.transcribePcm(
+			audio,
+			signal,
+			onPartial,
+		);
 		throwIfAborted(signal);
 		return transcript;
 	};

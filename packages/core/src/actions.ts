@@ -1,3 +1,4 @@
+import { testSchemaPattern } from "./actions/validate-tool-args.ts";
 import { allActionDocs } from "./generated/action-docs.ts";
 import type {
 	Action,
@@ -593,9 +594,9 @@ function validateParamType(
 				return `Parameter '${name}' value '${value}' not in allowed values: ${enumValues.join(", ")}`;
 			}
 			if (schema.pattern) {
-				const regex = new RegExp(schema.pattern);
-				if (!regex.test(value)) {
-					return `Parameter '${name}' value '${value}' does not match pattern: ${schema.pattern}`;
+				const result = testSchemaPattern(schema.pattern, value);
+				if (!result.ok) {
+					return `Parameter '${name}' value '${value}' ${result.reason}`;
 				}
 			}
 			break;

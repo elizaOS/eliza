@@ -26,6 +26,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { withTimeout } from "../utils/with-timeout";
+// Import the provider's REAL pull ceiling so this test tracks the production
+// constant (and goes red if either drifts), rather than asserting against a
+// hand-copied literal that can silently diverge.
+import { PULL_TIMEOUT_MS } from "./docker-sandbox-provider";
 import { PER_JOB_TIMEOUT_MS } from "./provisioning-jobs";
 
 /** A cold `docker pull` of a freshly-pinned image takes ~2.5 min on the node. */
@@ -42,8 +46,10 @@ const OLD_PER_JOB_TIMEOUT_MS = 120_000;
  * PER_JOB_TIMEOUT_MS, and the watchdog invariant
  * (WORK_CYCLE_TIMEOUT_MS 240s + poll 30s < WATCHDOG_MAX_CYCLE_MS 300s) does not
  * reference it. Raising PER_JOB_TIMEOUT_MS to 300s therefore stays watchdog-safe.
+ *
+ * `PULL_TIMEOUT_MS` is imported from `docker-sandbox-provider` (not redeclared)
+ * so this assertion catches real drift in the provider's pull ceiling.
  */
-const PULL_TIMEOUT_MS = 300_000;
 /** Shared 1000x scale-down so the timing tests run instantly. */
 const SCALE = 1000;
 
