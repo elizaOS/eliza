@@ -45,6 +45,10 @@ isolation; the walkthrough joins them into one continuous journey.
 - `springboard-interaction.spec.ts` covers Springboard tiles, paging, edit mode,
   and tap-to-launch.
 - `view-switching-chat-e2e.spec.ts` covers chat-command view switching.
+- `walkthrough/walkthrough-capture-smoke.spec.ts` covers an early, keyless
+  capture path for onboarding, chat send/receive, full chat detent, Springboard,
+  and launching a view. It is not the full 22-step journey; it records named
+  screenshots only when run through the existing `E2E_RECORD=1` harness.
 
 ## Open Surface Decision
 
