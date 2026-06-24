@@ -282,11 +282,11 @@ jobs:
       - name: Real fused FFI vitest lanes
         run: |
           set -euo pipefail
-          bun run --cwd plugins/plugin-local-inference vitest run \
-            src/services/voice/speaker/encoder-fused.real.test.ts \
-            src/services/voice/speaker/diarizer-fused.real.test.ts \
-            src/services/voice/asr-timed.real.test.ts \
-            src/services/voice/kokoro/__tests__/kokoro-engine-bridge.real.test.ts \
+          bunx vitest run --config packages/test/vitest/real.config.ts \
+            plugins/plugin-local-inference/src/services/voice/speaker/encoder-fused.real.test.ts \
+            plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.real.test.ts \
+            plugins/plugin-local-inference/src/services/voice/asr-timed.real.test.ts \
+            plugins/plugin-local-inference/src/services/voice/kokoro/__tests__/kokoro-engine-bridge.real.test.ts \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/fused-real-vitest.log"
 
       - name: Upload real voice matrix logs
