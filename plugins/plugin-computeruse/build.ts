@@ -33,20 +33,24 @@ async function build() {
       (async () => {
         console.log("Bundling with Bun...");
         const outputs: BuildArtifact[] = [];
-        for (const entrypoint of [
-          "./src/index.ts",
-          "./src/register-routes.ts",
+        for (const { entrypoint, outdir } of [
+          { entrypoint: "./src/index.ts", outdir: "./dist" },
+          { entrypoint: "./src/register-routes.ts", outdir: "./dist" },
+          {
+            entrypoint: "./src/mobile/ocr-provider.ts",
+            outdir: "./dist/mobile",
+          },
         ]) {
           const result = await Bun.build({
             entrypoints: [entrypoint],
-            outdir: "./dist",
+            outdir,
             target: "node",
             format: "esm",
             sourcemap: "linked",
             minify: false,
             external: externalDeps,
             naming: {
-              entry: "[dir]/[name].[ext]",
+              entry: "[name].[ext]",
             },
           });
 
