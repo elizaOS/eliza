@@ -1,9 +1,9 @@
 name: Voice Live E2E
 
-# Gated, NON-blocking REAL voice lane. The keyless PR lanes stub voice entirely
+# Provisioned REAL voice lane. The keyless PR lanes stub voice entirely
 # (silent-WAV TTS, shimmed STT transcript), so genuinely-real voice coverage —
-# real speech synthesis + real transcription with real models — MUST live in a
-# secret-free but GPU + model-heavy lane that never gates PRs.
+# real speech synthesis + real transcription with real models — lives in this
+# GPU + model-heavy nightly / workflow_dispatch lane.
 #
 # What it proves (no mocks at any stage):
 #   - Real STT: whisper.cpp FFI transcribes a real speech WAV.
@@ -12,10 +12,9 @@ name: Voice Live E2E
 #     real signal -> ffmpeg resample -> real whisper STT -> transcript reads back
 #     the spoken words.
 #
-# The round-trip job self-skips cleanly when its engines/models are absent.
 # The acoustic attribution matrix is provisioned with pinned GGUFs and a fused
-# libelizainference build, and its smoke script runs with --require-real so a
-# missing model/ABI is a hard failure rather than green skip evidence.
+# libelizainference build. Its scripts run in require-real mode so a missing
+# model/ABI/credential is a hard failure rather than green skip evidence.
 #
 # Runs nightly (offset from app-live-e2e) + on-demand; never on pull_request.
 
@@ -113,9 +112,6 @@ jobs:
     name: Real acoustic VAD + diarization + self-voice matrix (GPU)
     runs-on: [self-hosted, gpu-cuda-12.6]
     timeout-minutes: 120
-    # Non-blocking: real acoustic fixtures depend on the provisioned GPU runner
-    # and external generated-speech credentials.
-    continue-on-error: true
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
     steps:
@@ -280,6 +276,12 @@ jobs:
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/agentvoice-real.log"
           bun run --cwd plugins/plugin-local-inference robustness:real \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/robustness-real.log"
+
+      - name: Real packages/benchmarks/voice matrix
+        run: |
+          set -euo pipefail
+          bun packages/benchmarks/voice/voice-real-ci-matrix.mjs \
+            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/benchmarks-voice-real-ci-matrix.log"
 
       - name: Real fused FFI vitest lanes
         run: |

@@ -12,6 +12,15 @@ in the suite orchestrator — run scripts directly with Bun.
 ELIZA_VOICE_CLASSIFIER_LIB=<repo-root>/build-darwin/libvoice_classifier.dylib \
   bun packages/benchmarks/voice/three-voice-e2e-real.mjs
 
+# Provisioned CI real matrix: fused lib + GGUFs + generated speech.
+# Fails instead of skipping when any real dependency is absent.
+ELIZA_ASR_BUNDLE=<bundle> \
+ELIZA_INFERENCE_LIBRARY=<libelizainference> \
+ELIZA_SPEAKER_GGUF=<wespeaker.gguf> \
+ELIZA_DIARIZ_GGUF=<pyannote.gguf> \
+ELEVENLABS_API_KEY=<key> \
+  bun packages/benchmarks/voice/voice-real-ci-matrix.mjs
+
 # Three-voice scenario with synthetic fixtures (no real TTS models needed)
 bun packages/benchmarks/voice/three-voice-scenario.mjs [--bundle <path>]
 
@@ -63,6 +72,7 @@ count and exits 1 on any failure.
 | Path | Role |
 | --- | --- |
 | `three-voice-e2e-real.mjs` | Full E2E: OmniVoice TTS, Kokoro agent voice, pyannote diarizer, WeSpeaker encoder, eliza-1 ASR, should-respond |
+| `voice-real-ci-matrix.mjs` | Provisioned CI real matrix: ElevenLabs owner/impostor speech + fused on-device agent TTS/ASR/diarizer/speaker encoder, producing DER/WER/echo-rejection/owner-security metrics |
 | `three-voice-scenario.mjs` | Same scenario with synthetic-fixture PCM (no real TTS) |
 | `owner-voice-first-run.mjs` | Owner enrollment, recognition, rejection, injection-attack defense (pure-JS, self-contained) |
 | `test-diarizer.mjs` | Diarizer GGUF smoke test; falls back to pure-JS classifyFramesToSegments |
