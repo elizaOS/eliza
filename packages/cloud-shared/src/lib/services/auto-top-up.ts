@@ -244,17 +244,36 @@ export class AutoTopUpService {
 
     if (paymentIntent.status === "succeeded") {
       const previousBalance = Number(org.credit_balance);
-      const { creditsService } = await import("./credits");
-      const { newBalance } = await creditsService.addCredits({
-        organizationId,
-        amount,
-        description: `Auto top-up - $${amount.toFixed(2)}`,
-        metadata: {
-          ...metadata,
-          payment_intent_id: paymentIntent.id,
-        },
-        stripePaymentIntentId: paymentIntent.id,
-      });
+
+      // Persist the credits synchronously so the API never reports success while the
+      // balance is still unwritten. `creditsService` lives in `./credits`, which
+      // dynamic-imports this module back — load it dynamically to avoid the cycle.
+      // `stripePaymentIntentId` is load-bearing: it's the same id the Stripe webhook
+      // uses, so the 3-layer idempotency guard collapses sync-add + webhook into
+      // exactly one credit. Drop it and the org double-credits.
+      let newBalance = previousBalance + amount;
+      try {
+        const { creditsService } = await import("./credits");
+        const persisted = await creditsService.addCredits({
+          organizationId,
+          amount,
+          description: `Auto top-up - $${amount.toFixed(2)}`,
+          metadata: {
+            ...metadata,
+            payment_intent_id: paymentIntent.id,
+          },
+          stripePaymentIntentId: paymentIntent.id,
+        });
+        newBalance = persisted.newBalance;
+      } catch (persistError) {
+        // The card is ALREADY charged. Never flip to success:false here — that risks a
+        // retry / double charge. Log loudly and let the Stripe webhook reconcile via the
+        // same payment-intent idempotency key; fall back to the locally-computed balance.
+        logger.error(
+          `[AutoTopUp] CRITICAL: auto-top-up charged but sync credit persist failed; the Stripe webhook will reconcile via idempotency, org=${organizationId}, pi=${paymentIntent.id}`,
+          persistError,
+        );
+      }
 
       logger.info(
         `[AutoTopUp] ✓ Auto top-up succeeded for org ${organizationId}. Payment: ${paymentIntent.id}`,
