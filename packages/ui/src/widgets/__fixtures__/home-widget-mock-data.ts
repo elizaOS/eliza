@@ -67,8 +67,10 @@ export const HOME_WIDGET_MOCK_PLUGINS: PluginInfo[] = [
 // ---------------------------------------------------------------------------
 
 const NOW = () => Date.now();
-const minutesFromNow = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
-const hoursFromNow = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+const minutesFromNow = (m: number) =>
+  new Date(Date.now() + m * 60_000).toISOString();
+const hoursFromNow = (h: number) =>
+  new Date(Date.now() + h * 3_600_000).toISOString();
 const daysFromNow = (d: number) =>
   new Date(Date.now() + d * 24 * 3_600_000).toISOString();
 
@@ -124,7 +126,10 @@ function goalsPayload() {
  *  netUsd < 0 (overdrawn) floats up at escalation weight. A connected source is
  *  required for the card to render. */
 function moneyDashboard() {
-  return { spending: { netUsd: -125.5 }, generatedAt: new Date(NOW()).toISOString() };
+  return {
+    spending: { netUsd: -125.5 },
+    generatedAt: new Date(NOW()).toISOString(),
+  };
 }
 function moneySources() {
   return { sources: [{ id: "src-1", status: "active", label: "Checking" }] };
@@ -168,7 +173,12 @@ function sleepHistory() {
   };
 }
 function sleepRegularity() {
-  return { classification: "irregular", sri: 41.2, sampleSize: 6, windowDays: 14 };
+  return {
+    classification: "irregular",
+    sri: 41.2,
+    sampleSize: 6,
+    windowDays: 14,
+  };
 }
 
 /** RelationshipsAttentionWidget reads client.getRelationshipsPeople() ->
@@ -313,7 +323,10 @@ function routeTable(): RouteMatch[] {
     { test: has("/api/lifeops/sleep/regularity"), body: sleepRegularity },
     { test: has("/api/lifeops/inbox"), body: inboxPayload },
     { test: has("/api/relationships/people"), body: relationshipsPeople },
-    { test: has("/api/relationships/candidates"), body: relationshipsCandidates },
+    {
+      test: has("/api/relationships/candidates"),
+      body: relationshipsCandidates,
+    },
     { test: has("/api/notifications"), body: notificationsPayload },
   ];
 }

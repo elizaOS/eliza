@@ -1,6 +1,6 @@
 import type { CatalogModel, HardwareProbe } from "@elizaos/shared";
-import { MODEL_CATALOG } from "./catalog.js";
 import { describe, expect, it } from "vitest";
+import { MODEL_CATALOG } from "./catalog.js";
 import {
 	assessCatalogModelFit,
 	canBundleBeDefaultOnDevice,
