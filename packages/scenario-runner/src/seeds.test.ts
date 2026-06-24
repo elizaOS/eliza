@@ -8,80 +8,6 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyScenarioSeedStep } from "./seeds";
 
-type ConnectorContributionForTest = {
-  kind: string;
-  capabilities: string[];
-  modes: Array<"local" | "cloud">;
-  describe: { label: string };
-  start: () => Promise<void>;
-  disconnect: () => Promise<void>;
-  verify: () => Promise<boolean>;
-  status: () => Promise<{
-    state: "ok" | "degraded" | "disconnected";
-    message?: string;
-    observedAt: string;
-  }>;
-  send?: (payload: unknown) => Promise<unknown>;
-};
-
-type ConnectorRegistryModuleForTest = {
-  createConnectorRegistry: () => {
-    register: (contribution: ConnectorContributionForTest) => void;
-    get: (kind: string) => ConnectorContributionForTest | null;
-    list: (filter?: {
-      capability?: string;
-      mode?: "local" | "cloud";
-    }) => ConnectorContributionForTest[];
-    byCapability: (capability: string) => ConnectorContributionForTest[];
-  };
-  getConnectorRegistry: (
-    runtime: AgentRuntime,
-  ) => ReturnType<
-    ConnectorRegistryModuleForTest["createConnectorRegistry"]
-  > | null;
-  registerConnectorRegistry: (
-    runtime: AgentRuntime,
-    registry: ReturnType<
-      ConnectorRegistryModuleForTest["createConnectorRegistry"]
-    >,
-  ) => void;
-};
-
-async function loadConnectorRegistryForTest(): Promise<ConnectorRegistryModuleForTest> {
-  const specifier = new URL(
-    "../../../plugins/plugin-personal-assistant/src/lifeops/connectors/registry.ts",
-    import.meta.url,
-  ).href;
-  return import(specifier) as Promise<ConnectorRegistryModuleForTest>;
-}
-
-function createSeedContext() {
-  const runtime = {
-    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
-  } as unknown as AgentRuntime;
-  return { runtime, ctx: { runtime } as ScenarioContext };
-}
-
-function createRelationshipSeedContext() {
-  const relationships = {
-    getContact: vi.fn(async () => null),
-    addContact: vi.fn(async () => undefined),
-    updateContact: vi.fn(async () => undefined),
-    addHandle: vi.fn(async () => undefined),
-    recordInteraction: vi.fn(async () => undefined),
-    setRelationshipGoal: vi.fn(async () => undefined),
-  };
-  const runtime = {
-    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
-    getService: vi.fn((serviceName: string) =>
-      serviceName === "relationships" ? relationships : null,
-    ),
-    getEntityById: vi.fn(async () => null),
-    createEntity: vi.fn(async () => undefined),
-  } as unknown as AgentRuntime;
-  return { ctx: { runtime } as ScenarioContext, relationships, runtime };
-}
-
 type MockRequest = {
   method: string;
   path: string;
@@ -167,6 +93,86 @@ async function startGmailSeedMock(): Promise<{
   };
 }
 
+const gmailSeedContext: ScenarioContext = { actionsCalled: [] };
+
+type ConnectorContributionForTest = {
+  kind: string;
+  capabilities: string[];
+  modes: Array<"local" | "cloud">;
+  describe: { label: string };
+  start: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  verify: () => Promise<boolean>;
+  status: () => Promise<{
+    state: "ok" | "degraded" | "disconnected";
+    message?: string;
+    observedAt: string;
+  }>;
+  send?: (payload: unknown) => Promise<unknown>;
+};
+
+type ConnectorRegistryModuleForTest = {
+  createConnectorRegistry: () => {
+    register: (contribution: ConnectorContributionForTest) => void;
+    get: (kind: string) => ConnectorContributionForTest | null;
+    list: (filter?: {
+      capability?: string;
+      mode?: "local" | "cloud";
+    }) => ConnectorContributionForTest[];
+    byCapability: (capability: string) => ConnectorContributionForTest[];
+  };
+  getConnectorRegistry: (
+    runtime: AgentRuntime,
+  ) => ReturnType<
+    ConnectorRegistryModuleForTest["createConnectorRegistry"]
+  > | null;
+  registerConnectorRegistry: (
+    runtime: AgentRuntime,
+    registry: ReturnType<
+      ConnectorRegistryModuleForTest["createConnectorRegistry"]
+    >,
+  ) => void;
+};
+
+async function loadConnectorRegistryForTest(): Promise<ConnectorRegistryModuleForTest> {
+  const specifier = new URL(
+    "../../../plugins/plugin-personal-assistant/src/lifeops/connectors/registry.ts",
+    import.meta.url,
+  ).href;
+  return import(specifier) as Promise<ConnectorRegistryModuleForTest>;
+}
+
+function createSeedContext() {
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+  } as unknown as AgentRuntime;
+  return { runtime, ctx: { runtime } as ScenarioContext };
+}
+
+function createSeedHarness() {
+  const relationships = {
+    getContact: vi.fn(async () => null),
+    addContact: vi.fn(async () => undefined),
+    updateContact: vi.fn(async () => undefined),
+    addHandle: vi.fn(async () => undefined),
+    recordInteraction: vi.fn(async () => undefined),
+    setRelationshipGoal: vi.fn(async () => undefined),
+  };
+  const runtime = {
+    agentId: "00000000-0000-0000-0000-000000000001" as UUID,
+    getService: vi.fn((serviceName: string) =>
+      serviceName === "relationships" ? relationships : null,
+    ),
+    getEntityById: vi.fn(async () => null),
+    createEntity: vi.fn(async () => undefined),
+  } as unknown as AgentRuntime;
+  return {
+    ctx: { runtime } as ScenarioContext,
+    relationships,
+    runtime,
+  };
+}
+
 function baseConnector(
   overrides: Partial<ConnectorContributionForTest> = {},
 ): ConnectorContributionForTest {
@@ -189,7 +195,7 @@ function baseConnector(
 
 describe("scenario memory seeds", () => {
   it("maps rolodex-entity memory seeds into relationship contacts", async () => {
-    const { ctx, relationships, runtime } = createRelationshipSeedContext();
+    const { ctx, relationships, runtime } = createSeedHarness();
 
     const result = await applyScenarioSeedStep(ctx, {
       type: "memory",
@@ -201,7 +207,7 @@ describe("scenario memory seeds", () => {
         tags: ["vip"],
         handles: [{ platform: "gmail", handle: "tomas.reyes@acme.com" }],
       },
-    } as ScenarioSeedStep);
+    } satisfies ScenarioSeedStep);
 
     expect(result).toBeUndefined();
     expect(runtime.createEntity).toHaveBeenCalledWith(
@@ -232,8 +238,41 @@ describe("scenario memory seeds", () => {
     );
   });
 
-  it("maps merged-entity memory seeds with all handles and metadata", async () => {
-    const { ctx, relationships } = createRelationshipSeedContext();
+  it("maps direct rolodex platform handles and recent news", async () => {
+    const { ctx, relationships } = createSeedHarness();
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      content: {
+        kind: "rolodex-entity",
+        name: "Alex Rivera",
+        primaryChannel: "telegram",
+        telegramHandle: "@arivera",
+        recentNews: "promoted to VP Engineering at Acme",
+      },
+    } satisfies ScenarioSeedStep);
+
+    expect(result).toBeUndefined();
+    expect(relationships.addHandle).toHaveBeenCalledWith(expect.any(String), {
+      platform: "telegram",
+      identifier: "@arivera",
+      displayLabel: "Alex Rivera",
+      isPrimary: true,
+    });
+    expect(relationships.addContact).toHaveBeenCalledWith(
+      expect.any(String),
+      ["acquaintance"],
+      expect.objectContaining({
+        notes: expect.stringContaining(
+          "Recent news: promoted to VP Engineering at Acme",
+        ),
+      }),
+      { displayName: "Alex Rivera" },
+    );
+  });
+
+  it("maps merged-entity memory seeds into relationship contacts with all handles", async () => {
+    const { ctx, relationships, runtime } = createSeedHarness();
 
     const result = await applyScenarioSeedStep(ctx, {
       type: "memory",
@@ -255,9 +294,14 @@ describe("scenario memory seeds", () => {
         ],
         mergedAccidentally: true,
       },
-    } as ScenarioSeedStep);
+    } satisfies ScenarioSeedStep);
 
     expect(result).toBeUndefined();
+    expect(runtime.createEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        names: ["Alex Lee"],
+      }),
+    );
     expect(relationships.addContact).toHaveBeenCalledWith(
       expect.any(String),
       ["merged-entity"],
@@ -270,9 +314,19 @@ describe("scenario memory seeds", () => {
       },
       { displayName: "Alex Lee" },
     );
-    const addHandleCalls = relationships.addHandle.mock
-      .calls as unknown as Array<[string, unknown]>;
-    expect(addHandleCalls.map(([, handle]) => handle)).toEqual([
+    const addedHandles = relationships.addHandle.mock.calls.map(
+      (call) =>
+        (
+          call as unknown as [
+            unknown,
+            {
+              platform: string;
+              identifier: string;
+            },
+          ]
+        )[1],
+    );
+    expect(addedHandles).toEqual([
       expect.objectContaining({
         platform: "gmail",
         identifier: "alex.lee@quanta.com",
@@ -291,41 +345,36 @@ describe("scenario memory seeds", () => {
     );
   });
 
-  it("maps direct rolodex platform handles and recent news", async () => {
-    const { ctx, relationships } = createRelationshipSeedContext();
+  it("keeps direct platform handles and authored tags on merged-entity seeds", async () => {
+    const { ctx, relationships } = createSeedHarness();
 
-    const result = await applyScenarioSeedStep(ctx, {
+    await applyScenarioSeedStep(ctx, {
       type: "memory",
       content: {
-        kind: "rolodex-entity",
-        name: "Alex Rivera",
-        primaryChannel: "telegram",
-        telegramHandle: "@arivera",
-        recentNews: "promoted to VP Engineering at Acme",
+        kind: "merged-entity",
+        platform: "discord",
+        handle: "priyam#0042",
+        tags: ["vip", "studio"],
       },
-    } as ScenarioSeedStep);
+    } satisfies ScenarioSeedStep);
 
-    expect(result).toBeUndefined();
-    expect(relationships.addHandle).toHaveBeenCalledWith(expect.any(String), {
-      platform: "telegram",
-      identifier: "@arivera",
-      displayLabel: "Alex Rivera",
-      isPrimary: true,
-    });
-    expect(relationships.addContact).toHaveBeenCalledWith(
+    expect(relationships.addHandle).toHaveBeenCalledWith(
       expect.any(String),
-      ["acquaintance"],
       expect.objectContaining({
-        notes: expect.stringContaining(
-          "Recent news: promoted to VP Engineering at Acme",
-        ),
+        platform: "discord",
+        identifier: "priyam#0042",
       }),
-      { displayName: "Alex Rivera" },
+    );
+    expect(relationships.updateContact).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        tags: ["vip", "studio"],
+      }),
     );
   });
 
   it("continues to ignore unsupported memory seed kinds", async () => {
-    const { ctx, relationships, runtime } = createRelationshipSeedContext();
+    const { ctx, relationships, runtime } = createSeedHarness();
 
     const result = await applyScenarioSeedStep(ctx, {
       type: "memory",
@@ -333,7 +382,7 @@ describe("scenario memory seeds", () => {
         kind: "inbound-message",
         text: "hello",
       },
-    } as ScenarioSeedStep);
+    } satisfies ScenarioSeedStep);
 
     expect(result).toBeUndefined();
     expect(runtime.getService).not.toHaveBeenCalled();
@@ -342,15 +391,44 @@ describe("scenario memory seeds", () => {
 });
 
 describe("scenario gmail seeds", () => {
-  it("forwards gmailInbox faultInjection to the loopback Google mock", async () => {
+  it("forwards bounded gmailInbox faultInjection to the loopback Google mock", async () => {
     const { baseUrl, requests } = await startGmailSeedMock();
     process.env.ELIZA_MOCK_GOOGLE_BASE = baseUrl;
 
-    const result = await applyScenarioSeedStep({ actionsCalled: [] }, {
+    const result = await applyScenarioSeedStep(gmailSeedContext, {
       type: "gmailInbox",
       fixture: "default",
-      faultInjection: { mode: "partial_failure", method: "POST" },
-    } as ScenarioSeedStep);
+      faultInjection: { mode: "server_error", method: "GET", limit: 0 },
+    } satisfies ScenarioSeedStep);
+
+    expect(result).toBeUndefined();
+    expect(
+      requests.map((request) => `${request.method} ${request.path}`),
+    ).toEqual([
+      "DELETE /__mock/google/gmail/fault",
+      "GET /gmail/v1/users/me/messages/msg-finance",
+      "GET /gmail/v1/users/me/messages/msg-sarah",
+      "GET /gmail/v1/users/me/messages/msg-newsletter",
+      "DELETE /__mock/requests",
+      "POST /__mock/google/gmail/fault",
+    ]);
+    expect(requests.at(-1)?.body).toEqual({
+      mode: "server_error",
+      method: "GET",
+      path: "/gmail/v1/users/me/messages",
+      remaining: 0,
+    });
+  });
+
+  it("defaults partial_failure gmailInbox faults to batchModify", async () => {
+    const { baseUrl, requests } = await startGmailSeedMock();
+    process.env.ELIZA_MOCK_GOOGLE_BASE = baseUrl;
+
+    const result = await applyScenarioSeedStep(gmailSeedContext, {
+      type: "gmailInbox",
+      fixture: "default",
+      faultInjection: { mode: "partial_failure" },
+    } satisfies ScenarioSeedStep);
 
     expect(result).toBeUndefined();
     expect(
@@ -374,10 +452,10 @@ describe("scenario gmail seeds", () => {
     const { baseUrl } = await startGmailSeedMock();
     process.env.ELIZA_MOCK_GOOGLE_BASE = baseUrl;
 
-    const result = await applyScenarioSeedStep({ actionsCalled: [] }, {
+    const result = await applyScenarioSeedStep(gmailSeedContext, {
       type: "gmailInbox",
       faultInjection: { mode: "server_error", limit: -1 },
-    } as ScenarioSeedStep);
+    } satisfies ScenarioSeedStep);
 
     expect(result).toContain("faultInjection.limit");
   });
