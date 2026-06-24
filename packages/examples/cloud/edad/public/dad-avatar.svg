@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="dadAvatarTitle dadAvatarDesc">
+  <title id="dadAvatarTitle">eDad avatar</title>
+  <desc id="dadAvatarDesc">A tight circle-safe eDad headshot with open eyes, gold glasses, warm skin, grey mustache, and salt-and-pepper hair.</desc>
+  <defs>
+    <radialGradient id="avatarBg" cx="35%" cy="20%" r="82%">
+      <stop offset="0" stop-color="#262630"/>
+      <stop offset="0.5" stop-color="#1c1c22"/>
+      <stop offset="1" stop-color="#0b0b0d"/>
+    </radialGradient>
+    <radialGradient id="avatarGlow" cx="26%" cy="15%" r="58%">
+      <stop offset="0" stop-color="#c79a3f" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#0b0b0d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="avatarSkin" x1="43" y1="24" x2="84" y2="101" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d3aa84"/>
+      <stop offset="0.62" stop-color="#c99d76"/>
+      <stop offset="1" stop-color="#b8845e"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="64" fill="url(#avatarBg)"/>
+  <circle cx="64" cy="64" r="64" fill="url(#avatarGlow)"/>
+  <path d="M15 128c3-22 14-36 33-42 11-4 22-5 33-2 20 6 31 21 34 44z" fill="#161417"/>
+  <path d="M24 128c4-17 14-28 29-34 9-3 18-4 27-1 16 5 25 17 29 35z" fill="#5b4a36"/>
+  <path d="M42 98l22 27 22-27c-14 7-30 7-44 0z" fill="#c99d76"/>
+  <path d="M49 103l15 18 16-18c-10 4-21 4-31 0z" fill="#e1d7c8" opacity="0.9"/>
+  <path d="M48 84h32l2 15c-11 10-25 10-36 0z" fill="#c99d76"/>
+  <path d="M39 55c-5 0-9 5-8 12 1 8 6 13 12 12z" fill="#bf8f67"/>
+  <path d="M89 55c5 0 9 5 8 12-1 8-6 13-12 12z" fill="#b8845e"/>
+  <path d="M64 22c19 0 32 14 32 39 0 24-12 44-32 44S32 85 32 61c0-25 13-39 32-39z" fill="url(#avatarSkin)"/>
+  <path d="M39 60c-2-17 4-30 17-37 11-6 27-6 38 1 10 7 15 20 12 36-5-11-13-18-24-20-5 6-13 9-24 8-9 0-15 4-19 12z" fill="#28292d"/>
+  <path d="M43 54c5-14 15-23 28-27 8-2 17-1 26 4-9-1-17 0-25 4-7 4-12 9-15 16-5 0-9 1-14 3z" fill="#55575a"/>
+  <path d="M42 55c0-14 8-25 24-32" fill="none" stroke="#c79a3f" stroke-width="3" stroke-linecap="round" opacity="0.48"/>
+  <path d="M52 31c6-5 14-8 24-9" fill="none" stroke="#c9cbc4" stroke-width="2.6" stroke-linecap="round" opacity="0.45"/>
+  <path d="M76 28c6 1 12 3 17 6" fill="none" stroke="#8a8579" stroke-width="2.6" stroke-linecap="round" opacity="0.56"/>
+  <path d="M45 62c5-4 12-5 18-2" fill="none" stroke="#3c3d3f" stroke-width="3.3" stroke-linecap="round"/>
+  <path d="M65 60c6-3 13-2 18 2" fill="none" stroke="#3c3d3f" stroke-width="3.3" stroke-linecap="round"/>
+  <circle cx="54" cy="68" r="11.5" fill="#ebe6d9" opacity="0.07"/>
+  <circle cx="74" cy="68" r="11.5" fill="#ebe6d9" opacity="0.07"/>
+  <circle cx="54" cy="68" r="12" fill="none" stroke="#c79a3f" stroke-width="2.8"/>
+  <circle cx="74" cy="68" r="12" fill="none" stroke="#c79a3f" stroke-width="2.8"/>
+  <path d="M66 68h-4" fill="none" stroke="#c79a3f" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M42 67l-8-3" fill="none" stroke="#c79a3f" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M86 67l8-3" fill="none" stroke="#c79a3f" stroke-width="2.2" stroke-linecap="round"/>
+  <ellipse cx="54" cy="69" rx="3.8" ry="4.7" fill="#151316"/>
+  <ellipse cx="74" cy="69" rx="3.8" ry="4.7" fill="#151316"/>
+  <circle cx="55.5" cy="67" r="1.2" fill="#f7f1e6"/>
+  <circle cx="75.5" cy="67" r="1.2" fill="#f7f1e6"/>
+  <path d="M64 73c-1 5-3 10-6 14 4 3 9 3 13 0" fill="none" stroke="#8d5f42" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.48"/>
+  <path d="M63 84c-7-5-17-4-23 2 7 7 16 7 24 1z" fill="#c9cbc4"/>
+  <path d="M65 84c7-5 17-4 23 2-7 7-16 7-24 1z" fill="#b8bab5"/>
+  <path d="M55 96c6 5 13 5 19 0" fill="none" stroke="#6b3f33" stroke-width="2.8" stroke-linecap="round"/>
+  <path d="M84 94c4 3 9 7 13 13" fill="none" stroke="#c79a3f" stroke-width="2.5" stroke-linecap="round" opacity="0.34"/>
+</svg>

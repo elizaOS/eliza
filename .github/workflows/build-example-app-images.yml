@@ -1,8 +1,7 @@
 name: Build Example App Images
 
 # Builds + pushes the example-app showcase images consumed by the Apps/Product 2
-# showcase e2e loop. Right now that's just EDAD; future example apps (e.g. the
-# clone-ur-crush app) get their own job here once they have a standalone build.
+# showcase e2e loop. Each example app gets its own job and image tag.
 #
 # The showcase spec (packages/test/cloud-e2e/tests/example-apps-showcase.spec.ts)
 # deploys `ghcr.io/elizaos/example-edad:showcase` via the prebuilt-image path
@@ -110,6 +109,35 @@ jobs:
             exit 1
           fi
 
+      - name: Smoke-test the image (gate the GHCR push on a working container)
+        # Build + run the exact bundle image and assert it actually serves before
+        # we publish it — so the showcase deploy never pulls a broken :showcase
+        # tag. Mirrors the local verification in DEPLOY_AND_VALIDATE.md.
+        run: |
+          set -euo pipefail
+          docker build --load -t edad-smoke:ci \
+            -f packages/examples/cloud/edad/Dockerfile.bundle \
+            packages/examples/cloud/edad/dist
+          docker rm -f edad-smoke >/dev/null 2>&1 || true
+          docker run -d --name edad-smoke -p 3000:3000 edad-smoke:ci
+          ok=""
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1; then ok=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::EDAD image never became healthy" >&2
+            docker logs edad-smoke || true
+            exit 1
+          fi
+          test "$(curl -fsS http://127.0.0.1:3000/health)" = "ok"
+          curl -fsS http://127.0.0.1:3000/ | grep -q "eDad" \
+            || { echo "::error::EDAD did not serve its UI" >&2; exit 1; }
+          curl -fsS http://127.0.0.1:3000/api/config | grep -q "cloud_url" \
+            || { echo "::error::EDAD /api/config is broken" >&2; exit 1; }
+          docker rm -f edad-smoke >/dev/null 2>&1 || true
+          echo "EDAD image smoke test passed: healthy + serves UI + /api/config."
+
       - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
         with:
           registry: ${{ env.REGISTRY }}
@@ -145,7 +173,7 @@ jobs:
         # The deploy puller pulls anonymously; keep the package public.
         # Idempotent — patching to public when already public is a no-op.
         run: |
-          curl \
+          curl --fail-with-body --show-error --silent \
             -X PATCH \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
@@ -233,7 +261,7 @@ jobs:
 
       - name: Make image public
         run: |
-          curl \
+          curl --fail-with-body --show-error --silent \
             -X PATCH \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
