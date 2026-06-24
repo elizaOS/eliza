@@ -530,7 +530,13 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       // gracefully on every platform (no capture tool → no processing loop),
       // so it is safe to register unconditionally in the deferred phase.
       packageName: "@elizaos/plugin-vision",
-      phase: "deferred",
+      // Blocking (not deferred) so it loads during boot and its HTTP routes
+      // (/api/vision/capture-requests + /api/vision/screen-frame, the EPIC
+      // #9105 screen-capture bridge) register into runtime.routes BEFORE the
+      // server starts serving — a deferred load registered the plugin too late
+      // for the route table, so the renderer poll 404'd. required:false keeps a
+      // load failure non-fatal (vision degrades, the rest of the agent boots).
+      phase: "blocking",
       required: false,
       load: () => getOptionalPlugin("@elizaos/plugin-vision"),
     },
