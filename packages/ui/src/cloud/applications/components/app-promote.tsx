@@ -20,7 +20,7 @@ import { Link } from "react-router-dom";
 import { PromoteAppDialog } from "../../../cloud-ui/components/promotion/promote-app-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
-import { api } from "../../lib/api-client";
+import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
 
@@ -50,6 +50,7 @@ export function AppPromote({ app }: AppPromoteProps) {
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingAssets, setIsGeneratingAssets] = useState(false);
+  const [assetError, setAssetError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -75,14 +76,24 @@ export function AppPromote({ app }: AppPromoteProps) {
 
   const handleGenerateAssets = async () => {
     setIsGeneratingAssets(true);
+    setAssetError(null);
     try {
       await api(`/api/v1/apps/${app.id}/promote/assets`, {
         method: "POST",
         json: { includeCopy: true, includeAdBanners: true },
       });
       await fetchData();
-    } catch {
-      // Asset generation is best-effort; the suggestions/accounts panels stay.
+    } catch (err) {
+      // The backend treats this as critical enough to refund credits on
+      // failure (e.g. 402 Insufficient Credits / 500), so surface the error
+      // instead of silently clearing the spinner and implying success.
+      setAssetError(
+        err instanceof ApiError || err instanceof Error
+          ? err.message
+          : t("cloud.appPromote.generateError", {
+              defaultValue: "Asset generation failed. Please try again.",
+            }),
+      );
     } finally {
       setIsGeneratingAssets(false);
     }
@@ -149,6 +160,11 @@ export function AppPromote({ app }: AppPromoteProps) {
           </Button>
         </div>
       </div>
+      {assetError && (
+        <p className="text-sm text-red-400" role="alert">
+          {assetError}
+        </p>
+      )}
 
       {/* Suggestions */}
       {suggestions && (
