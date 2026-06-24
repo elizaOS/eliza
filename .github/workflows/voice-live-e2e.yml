@@ -107,3 +107,192 @@ jobs:
 
       - name: Real TTS -> STT round-trip test
         run: bun run --cwd plugins/plugin-local-inference test:voice:roundtrip
+
+  voice-acoustic-matrix:
+    name: Real acoustic VAD + diarization + self-voice matrix (GPU)
+    runs-on: [self-hosted, gpu-cuda-12.6]
+    timeout-minutes: 120
+    # Non-blocking: real acoustic fixtures depend on the provisioned GPU runner
+    # and external generated-speech credentials.
+    continue-on-error: true
+    env:
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          show-progress: false
+
+      - name: Probe provisioned voice runner
+        run: |
+          set -euo pipefail
+          nvcc --version || true
+          nvidia-smi || true
+          ffmpeg -version | head -1 || true
+          if [ -z "${ELEVENLABS_API_KEY:-}" ]; then
+            echo "ELEVENLABS_API_KEY is required for real generated-speech lanes"
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Stage published acoustic GGUFs into a real bundle overlay
+        run: |
+          set -euo pipefail
+
+          require_file() {
+            local name="$1"
+            local path="$2"
+            if [ ! -f "$path" ]; then
+              echo "$name not found at $path"
+              exit 1
+            fi
+          }
+
+          require_dir() {
+            local name="$1"
+            local path="$2"
+            if [ ! -d "$path" ]; then
+              echo "$name not found at $path"
+              exit 1
+            fi
+          }
+
+          first_existing_dir() {
+            for path in "$@"; do
+              if [ -n "$path" ] && [ -d "$path" ]; then
+                printf '%s\n' "$path"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          first_existing_file() {
+            for path in "$@"; do
+              if [ -n "$path" ] && [ -f "$path" ]; then
+                printf '%s\n' "$path"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          download_sha() {
+            local url="$1"
+            local dest="$2"
+            local sha="$3"
+            mkdir -p "$(dirname "$dest")"
+            curl -fL --retry 3 --retry-delay 5 "$url" -o "$dest"
+            local actual
+            actual="$(sha256sum "$dest" | awk '{print $1}')"
+            if [ "$actual" != "$sha" ]; then
+              echo "sha256 mismatch for $dest"
+              echo "expected $sha"
+              echo "actual   $actual"
+              exit 1
+            fi
+          }
+
+          SRC_BUNDLE="$(first_existing_dir \
+            "${ELIZA_ASR_BUNDLE:-}" \
+            "$HOME/.eliza/local-inference/models/eliza-1-0_8b.bundle" \
+            "$HOME/.eliza/local-inference/models/eliza-1-2b.bundle")"
+          require_dir "ASR region" "$SRC_BUNDLE/asr"
+
+          FUSED_LIB="$(first_existing_file \
+            "${ELIZA_INFERENCE_LIBRARY:-}" \
+            "$SRC_BUNDLE/lib/libelizainference.so" \
+            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cuda-fused/libelizainference.so" \
+            "$HOME/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so")"
+
+          BUNDLE="$RUNNER_TEMP/eliza-voice-real.bundle"
+          rm -rf "$BUNDLE"
+          mkdir -p "$BUNDLE"
+          for entry in "$SRC_BUNDLE"/*; do
+            name="$(basename "$entry")"
+            case "$name" in
+              speaker|speaker-encoder|diariz|diarizer|vad|voice) ;;
+              *) ln -s "$entry" "$BUNDLE/$name" ;;
+            esac
+          done
+
+          base="https://huggingface.co/elizaos/eliza-1/resolve/main"
+          download_sha "$base/voice/speaker-encoder/wespeaker-resnet34-lm.gguf" \
+            "$BUNDLE/speaker/wespeaker-resnet34-lm.gguf" \
+            "ad066730b125f61a305c949f7f196d23681f387f3e3f916be7a4cd003aae6ae3"
+          download_sha "$base/voice/diarizer/pyannote-segmentation-3.0.gguf" \
+            "$BUNDLE/diariz/pyannote-segmentation-3.0.gguf" \
+            "30983eba41c0a99ab7eada564739ae8be74faeb21a31da759c870b5173cbd8a5"
+          download_sha "$base/voice/vad/silero-vad-v5.1.2.ggml.bin" \
+            "$BUNDLE/vad/silero-vad-v5.1.2.ggml.bin" \
+            "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf"
+          download_sha "$base/bundles/0_8b/vad/silero-vad-v5.gguf" \
+            "$BUNDLE/vad/silero-vad-v5.gguf" \
+            "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995"
+
+          {
+            echo "ELIZA_ASR_BUNDLE=$BUNDLE"
+            echo "ELIZA_INFERENCE_LIBRARY=$FUSED_LIB"
+            echo "ELIZA_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
+            echo "ELIZA_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0.gguf"
+            echo "ELIZA_TEST_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
+            echo "ELIZA_TEST_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0.gguf"
+            echo "ELIZA_VOICE_REAL_MODEL_DIR=$BUNDLE"
+            echo "VOICE_REAL_MATRIX_OUT=$RUNNER_TEMP/voice-real-matrix"
+          } >> "$GITHUB_ENV"
+
+          mkdir -p "$RUNNER_TEMP/voice-real-matrix"
+          {
+            echo "sourceBundle=$SRC_BUNDLE"
+            echo "overlayBundle=$BUNDLE"
+            echo "fusedLib=$FUSED_LIB"
+            find "$BUNDLE" -maxdepth 2 -type f -printf '%P %s bytes\n' | sort
+          } | tee "$RUNNER_TEMP/voice-real-matrix/provisioning.txt"
+
+      - name: Real fused attribution smoke
+        run: |
+          set -euo pipefail
+          bun packages/app-core/scripts/voice-attribution-smoke.ts \
+            --models "$ELIZA_VOICE_REAL_MODEL_DIR" \
+            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-attribution-smoke.log"
+
+      - name: Real plugin voice stack matrix
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-local-inference voicestack:real \
+            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voicestack-real.log"
+          bun run --cwd plugins/plugin-local-inference agentvoice:real \
+            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/agentvoice-real.log"
+          bun run --cwd plugins/plugin-local-inference robustness:real \
+            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/robustness-real.log"
+
+      - name: Real fused FFI vitest lanes
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-local-inference vitest run \
+            src/services/voice/speaker/encoder-fused.real.test.ts \
+            src/services/voice/speaker/diarizer-fused.real.test.ts \
+            src/services/voice/asr-timed.real.test.ts \
+            src/services/voice/kokoro/__tests__/kokoro-engine-bridge.real.test.ts \
+            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/fused-real-vitest.log"
+
+      - name: Upload real voice matrix logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: voice-real-acoustic-matrix
+          path: ${{ runner.temp }}/voice-real-matrix
+          if-no-files-found: error

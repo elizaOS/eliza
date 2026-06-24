@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -11,7 +11,16 @@ import { describe, expect, it } from "vitest";
 // silently regress. (To intentionally reintroduce one, you'd remove it here with
 // a justification — but the product decision is no blur.)
 
-const SRC_ROOT = import.meta.dirname;
+const SOURCE_ROOTS = [
+  {
+    label: "packages/ui/src",
+    root: import.meta.dirname,
+  },
+  {
+    label: "packages/app/src",
+    root: join(import.meta.dirname, "../../app/src"),
+  },
+] as const;
 
 // Match the Tailwind blur utilities, their arbitrary forms, the `supports-`
 // modifier, and the raw CSS / inline-style property spellings.
@@ -40,11 +49,16 @@ function collectSourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 describe("no backdrop-blur gate (#9141, battery)", () => {
-  it("no backdrop-filter / backdrop-blur survives anywhere in the UI source", () => {
+  it("no backdrop-filter / backdrop-blur survives anywhere in authored app UI source", () => {
     const offenders: string[] = [];
-    for (const file of collectSourceFiles(SRC_ROOT)) {
-      if (BACKDROP_FILTER.test(readFileSync(file, "utf8"))) {
-        offenders.push(file.slice(SRC_ROOT.length + 1).replace(/\\/g, "/"));
+    for (const { label, root } of SOURCE_ROOTS) {
+      if (!existsSync(root)) continue;
+      for (const file of collectSourceFiles(root)) {
+        if (BACKDROP_FILTER.test(readFileSync(file, "utf8"))) {
+          offenders.push(
+            `${label}/${file.slice(root.length + 1).replace(/\\/g, "/")}`,
+          );
+        }
       }
     }
     expect(

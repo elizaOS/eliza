@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VENDOR_OPTIMIZED_WALLET_TEST } from "../vite.config.ts";
+import { VENDOR_OPTIMIZED_WALLET_TEST } from "../vite/wallet-chunk-matcher.ts";
 
 describe("wallet optimized-deps chunk matcher", () => {
   it("matches flattened scoped wallet deps emitted by Vite", () => {

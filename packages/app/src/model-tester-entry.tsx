@@ -32,7 +32,7 @@ document.body.innerHTML = `
     :root { color-scheme: dark; font-family: "Poppins", "Poppins", Arial, system-ui, sans-serif; background:#08090b; color:#f5f7fb; }
     body { margin:0; min-height:100vh; background:#08090b; }
     .shell { min-height:100vh; display:flex; flex-direction:column; }
-    header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 18px; border-bottom:1px solid #242833; background:rgba(8,9,11,.92); backdrop-filter:blur(12px); }
+    header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 18px; border-bottom:1px solid #242833; background:#08090b; }
     h1 { margin:0; font-size:17px; line-height:1.2; }
     .sub { margin-top:4px; color:#9ba3b4; font-size:12px; }
     button { border:1px solid #3a4050; background:#161a22; color:#f5f7fb; border-radius:8px; padding:8px 11px; font-weight:650; cursor:pointer; }

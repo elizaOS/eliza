@@ -133,7 +133,7 @@ export function HomeSpringboardSurface({
       <div
         data-testid="home-springboard-rail"
         className={cn(
-          "absolute inset-0 flex w-[200%] will-change-transform",
+          "absolute inset-0 flex w-[200%]",
           "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
         )}
         style={railStyle}
