@@ -1,28 +1,31 @@
 import { Inbox } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
-import { WidgetSection } from "./shared";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
-// Compact home card for the cross-channel inbox: the unread threads that still
-// need a reply. Same data source the full InboxView owns —
+// Compact, icon-first home card for the cross-channel inbox: the ONE unread
+// thread that most needs a reply. Same data source the full InboxView owns —
 // GET {base}/api/lifeops/inbox (served by the personal-assistant routes) —
-// parsed by the same wire shape (InboxWire / InboxMessageWire in
-// plugins/plugin-inbox/src/components/inbox/InboxView.tsx). Renders null when
+// parsed by the same wire shape (LifeOpsInboxMessage in
+// packages/shared/src/contracts/personal-assistant.ts). Renders null when
 // nothing is unread, and self-publishes a `message`-weight home signal while
 // unread threads exist so the card floats up over quiet widgets.
 
 const INBOX_WIDGET_KEY = "inbox/inbox.unread";
 const INBOX_REFRESH_INTERVAL_MS = 20_000; // matches InboxView's INBOX_POLL_MS
-const MAX_VISIBLE_UNREAD = 4;
 
 interface UnreadThread {
   id: string;
   sender: string;
-  summary: string;
+  subject: string;
+  /** Coarse importance bucket from the PA priority scorer. */
+  important: boolean;
+  /** 0–100 priority score; higher = surfaces first. */
+  priorityScore: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -30,9 +33,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Extract unread threads from the `/api/lifeops/inbox` payload. The wire shape
- * is `{ messages: { id, sender: { displayName }, subject, snippet, unread } }`
- * — validated defensively because it's untrusted network input.
+ * Extract unread threads from the `/api/lifeops/inbox` payload (untrusted
+ * network input, so narrowed defensively). The wire shape mirrors
+ * `LifeOpsInboxMessage`: `{ id, sender: { displayName }, subject, snippet,
+ * unread, priorityScore?, priorityCategory? }`. "urgent / needs-reply" maps to
+ * the scorer's `important` bucket (category === "important"); there is no
+ * literal `classification` on the wire.
  */
 function parseUnread(payload: unknown): UnreadThread[] {
   if (!isRecord(payload) || !Array.isArray(payload.messages)) return [];
@@ -47,34 +53,44 @@ function parseUnread(payload: unknown): UnreadThread[] {
         ? message.sender.displayName
         : "Someone";
     const subject = typeof message.subject === "string" ? message.subject : "";
-    const snippet = typeof message.snippet === "string" ? message.snippet : "";
-    threads.push({ id, sender, summary: subject || snippet });
+    const priorityScore =
+      typeof message.priorityScore === "number" ? message.priorityScore : 0;
+    const important = message.priorityCategory === "important";
+    threads.push({ id, sender, subject, important, priorityScore });
   }
   return threads;
 }
 
-function UnreadRow({ thread }: { thread: UnreadThread }) {
-  return (
-    <li className="flex flex-col gap-0.5 px-1 py-1">
-      <span className="truncate text-xs font-medium text-txt">
-        {thread.sender}
-      </span>
-      {thread.summary ? (
-        <span className="truncate text-2xs text-muted">{thread.summary}</span>
-      ) : null}
-    </li>
-  );
+/**
+ * Shallow content equality so an unchanged 20s poll doesn't re-render — only the
+ * fields the card renders (count, top thread identity, importance) participate.
+ */
+function unreadEqual(a: UnreadThread[], b: UnreadThread[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((thread, i) => {
+    const other = b[i];
+    return (
+      thread.id === other.id &&
+      thread.sender === other.sender &&
+      thread.subject === other.subject &&
+      thread.important === other.important &&
+      thread.priorityScore === other.priorityScore
+    );
+  });
 }
 
 export function InboxUnreadWidget(_props: Partial<WidgetProps>) {
   const [unread, setUnread] = useState<UnreadThread[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const nav = useWidgetNavigation();
 
   const loadInbox = useCallback(async () => {
     try {
       const response = await fetch(`${client.getBaseUrl()}/api/lifeops/inbox`);
       if (!response.ok) return;
-      setUnread(parseUnread(await response.json()));
+      const next = parseUnread(await response.json());
+      // Skip the state update (and the re-render) when the poll is unchanged.
+      setUnread((prev) => (unreadEqual(prev, next) ? prev : next));
     } catch {
       // Best-effort: keep the last good data on a transient fetch failure.
     } finally {
@@ -97,35 +113,40 @@ export function InboxUnreadWidget(_props: Partial<WidgetProps>) {
     unread.length > 0 ? HOME_SIGNAL_WEIGHTS.message : null,
   );
 
+  // The single high-priority datum: the highest-scored unread thread. Computed
+  // once per snapshot change so an unchanged poll keeps a stable reference.
+  const top = useMemo<UnreadThread | null>(() => {
+    if (unread.length === 0) return null;
+    return unread.reduce((best, thread) =>
+      thread.priorityScore > best.priorityScore ? thread : best,
+    );
+  }, [unread]);
+  const hasImportant = useMemo(
+    () => unread.some((thread) => thread.important),
+    [unread],
+  );
+
   // Render nothing until the first load resolves with unread threads — the home
   // surface must not show an empty placeholder (#9143).
-  if (!loaded || unread.length === 0) return null;
+  if (!loaded || top == null) return null;
 
-  const visible = unread.slice(0, MAX_VISIBLE_UNREAD);
-  const overflow = unread.length - visible.length;
-
+  // One datum, icon-first: the top thread's sender (or its subject when the
+  // sender is unknown); the unread count is a badge; warn tone when any unread
+  // thread is in the scorer's "important" bucket. Tapping opens the Inbox view.
+  const datum =
+    top.sender !== "Someone" ? top.sender : top.subject || top.sender;
+  const tone = hasImportant ? "warn" : "default";
   return (
-    <WidgetSection
-      title="Inbox"
-      icon={<Inbox className="h-4 w-4" />}
+    <HomeWidgetCard
+      icon={<Inbox />}
+      label="Inbox"
+      value={datum}
+      badge={unread.length}
+      tone={tone}
       testId="chat-widget-inbox-unread"
-      action={
-        <span className="rounded-full bg-accent-subtle px-1.5 text-2xs font-medium text-accent">
-          {unread.length}
-        </span>
-      }
-    >
-      <ul className="flex flex-col gap-0.5">
-        {visible.map((thread) => (
-          <UnreadRow key={thread.id} thread={thread} />
-        ))}
-      </ul>
-      {overflow > 0 ? (
-        <p className="px-1 text-xs-tight text-muted">
-          +{overflow} more unread thread{overflow === 1 ? "" : "s"}
-        </p>
-      ) : null}
-    </WidgetSection>
+      ariaLabel={`Inbox: ${unread.length} unread thread${unread.length === 1 ? "" : "s"} need a reply, top from ${datum}. Open Inbox.`}
+      onActivate={() => nav.openView("/inbox", "inbox")}
+    />
   );
 }
 

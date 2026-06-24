@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { getBaseUrlMock, publishHomeAttentionSpy } = vi.hoisted(() => ({
@@ -13,6 +19,12 @@ vi.mock("../../../api", () => ({
 
 vi.mock("../../../widgets/home-attention-store", () => ({
   usePublishHomeAttention: publishHomeAttentionSpy,
+}));
+
+// useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
+// stub it so the click test isolates the navigation rail (the CustomEvent).
+vi.mock("../../../chat/useSlashCommandController", () => ({
+  reportUserViewSwitch: vi.fn(),
 }));
 
 import { HealthSleepWidget } from "./health-sleep";
@@ -82,26 +94,72 @@ beforeEach(() => {
 });
 
 describe("HealthSleepWidget (#9143)", () => {
-  it("renders the latest sleep episode and regularity classification", async () => {
+  it("shows ONE high-priority datum — the latest sleep duration — on a clickable card (minimal, icon-first)", async () => {
     mockSleep({
       episodes: [episode({ durationMin: 465 })],
       classification: "regular",
     });
 
-    render(<HealthSleepWidget pluginId="health" />);
+    render(<HealthSleepWidget slot="home" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("widget-health-sleep")).toBeTruthy();
     });
-    // 465 min -> "7h 45m" (formatDuration) + the regularity badge label.
-    expect(screen.getByText("7h 45m")).toBeTruthy();
-    expect(screen.getByText("Regular")).toBeTruthy();
+
+    const widget = screen.getByTestId("widget-health-sleep");
+    // The card is a button (whole-card clickable) and minimal: the single datum
+    // is the formatted duration (465 min -> "7h 45m"). A "regular" night is NOT
+    // off-rhythm, so no badge is shown.
+    expect(widget.tagName).toBe("BUTTON");
+    expect(widget.textContent).toContain("7h 45m");
+    expect(widget.textContent).not.toContain("Regular");
+    // The full meaning lives in the aria-label since visible text is minimal.
+    expect(widget.getAttribute("aria-label")).toMatch(/sleep/i);
+    expect(widget.getAttribute("aria-label")).toMatch(/7h 45m/);
+  });
+
+  it("shows the off-rhythm regularity as a badge when sleep is irregular", async () => {
+    mockSleep({
+      episodes: [episode({ durationMin: 345 })],
+      classification: "irregular",
+    });
+
+    render(<HealthSleepWidget slot="home" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("widget-health-sleep")).toBeTruthy();
+    });
+
+    const widget = screen.getByTestId("widget-health-sleep");
+    // 345 min -> "5h 45m"; off-rhythm -> "Irregular" badge.
+    expect(widget.textContent).toContain("5h 45m");
+    expect(widget.textContent).toContain("Irregular");
+  });
+
+  it("navigates to the Health view when the card is clicked", async () => {
+    mockSleep({ episodes: [episode()], classification: "regular" });
+
+    const navEvents: string[] = [];
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent<{ viewPath?: string }>).detail;
+      if (detail?.viewPath) navEvents.push(detail.viewPath);
+    };
+    window.addEventListener("eliza:navigate:view", onNav);
+
+    render(<HealthSleepWidget slot="home" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("widget-health-sleep")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("widget-health-sleep"));
+    window.removeEventListener("eliza:navigate:view", onNav);
+
+    expect(navEvents).toContain("/health");
   });
 
   it("renders nothing when there are no sleep episodes in the window", async () => {
     mockSleep({ episodes: [], classification: "regular" });
 
-    const { container } = render(<HealthSleepWidget pluginId="health" />);
+    const { container } = render(<HealthSleepWidget slot="home" />);
 
     await waitFor(() => {
       expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
@@ -116,7 +174,7 @@ describe("HealthSleepWidget (#9143)", () => {
       classification: "very_irregular",
     });
 
-    render(<HealthSleepWidget pluginId="health" />);
+    render(<HealthSleepWidget slot="home" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("widget-health-sleep")).toBeTruthy();
@@ -131,7 +189,7 @@ describe("HealthSleepWidget (#9143)", () => {
   it("publishes null (no boost) when sleep regularity is fine", async () => {
     mockSleep({ episodes: [episode()], classification: "regular" });
 
-    render(<HealthSleepWidget pluginId="health" />);
+    render(<HealthSleepWidget slot="home" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("widget-health-sleep")).toBeTruthy();

@@ -1,17 +1,15 @@
 import { Target } from "lucide-react";
 import type { ComponentType } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
-import { Badge } from "../../ui/badge";
-import { WidgetSection } from "./shared";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const GOALS_WIDGET_KEY = "goals/goals.attention";
 const GOALS_REFRESH_INTERVAL_MS = 20_000; // matches GoalsView's 20s background poll
-const MAX_VISIBLE_GOALS = 5;
 
 // ---------------------------------------------------------------------------
 // Wire shape — mirrors the JSON served by the PA goals route and parsed in
@@ -97,14 +95,6 @@ async function fetchGoals(): Promise<AttentionGoal[]> {
   return parseGoals(await response.json());
 }
 
-/** Sort order on the home card: at_risk → needs_attention → other active. */
-const REVIEW_RANK: Readonly<Record<GoalReviewState, number>> = {
-  at_risk: 0,
-  needs_attention: 1,
-  on_track: 2,
-  idle: 3,
-};
-
 /** Goals that belong on the home card: live (non-archived, non-satisfied). */
 function liveGoals(goals: AttentionGoal[]): AttentionGoal[] {
   return goals.filter(
@@ -112,78 +102,68 @@ function liveGoals(goals: AttentionGoal[]): AttentionGoal[] {
   );
 }
 
-/** Attention-first: at_risk, then needs_attention, then the rest by title. */
-function sortForWidget(goals: AttentionGoal[]): AttentionGoal[] {
-  return [...goals].sort((left, right) => {
-    const byReview =
-      REVIEW_RANK[left.reviewState] - REVIEW_RANK[right.reviewState];
-    if (byReview !== 0) return byReview;
-    return left.title.localeCompare(right.title);
+/**
+ * The single most-urgent goal for the home card: the first at_risk goal,
+ * otherwise the first needs_attention goal, otherwise null. Ties broken by
+ * title so the surfaced goal is deterministic across polls.
+ */
+function mostUrgentGoal(goals: AttentionGoal[]): AttentionGoal | null {
+  const live = liveGoals(goals);
+  const byTitle = (left: AttentionGoal, right: AttentionGoal) =>
+    left.title.localeCompare(right.title);
+  const atRisk = live
+    .filter((goal) => goal.reviewState === "at_risk")
+    .sort(byTitle);
+  if (atRisk.length > 0) return atRisk[0];
+  const needsAttention = live
+    .filter((goal) => goal.reviewState === "needs_attention")
+    .sort(byTitle);
+  if (needsAttention.length > 0) return needsAttention[0];
+  return null;
+}
+
+/** Count of live goals that need attention (at_risk or needs_attention). */
+function attentionCount(goals: AttentionGoal[]): number {
+  return liveGoals(goals).filter(
+    (goal) =>
+      goal.reviewState === "at_risk" || goal.reviewState === "needs_attention",
+  ).length;
+}
+
+/** Shallow content equality so an unchanged 20s poll doesn't re-render. */
+function goalsEqual(a: AttentionGoal[] | null, b: AttentionGoal[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  return a.every((goal, i) => {
+    const other = b[i];
+    return (
+      goal.id === other.id &&
+      goal.title === other.title &&
+      goal.status === other.status &&
+      goal.reviewState === other.reviewState
+    );
   });
 }
 
-function isUrgent(goal: AttentionGoal): boolean {
-  return (
-    goal.reviewState === "at_risk" || goal.reviewState === "needs_attention"
-  );
-}
-
-const REVIEW_BADGE_LABEL: Readonly<Record<GoalReviewState, string | null>> = {
-  at_risk: "At risk",
-  needs_attention: "Needs attention",
-  on_track: "On track",
-  idle: null,
-};
-
-function GoalRow({ goal }: { goal: AttentionGoal }) {
-  const badgeLabel = REVIEW_BADGE_LABEL[goal.reviewState];
-  const urgent = isUrgent(goal);
-  return (
-    <div className="flex items-center gap-2 px-1 py-1">
-      <span
-        className={`inline-block h-2 w-2 shrink-0 rounded-full ${
-          urgent
-            ? "bg-danger"
-            : goal.status === "active"
-              ? "bg-accent"
-              : "bg-muted"
-        }`}
-      />
-      <span className="min-w-0 flex-1 truncate text-xs font-medium text-txt">
-        {goal.title}
-      </span>
-      {badgeLabel ? (
-        <Badge
-          variant="secondary"
-          className={`shrink-0 text-3xs ${urgent ? "text-danger" : ""}`}
-        >
-          {badgeLabel}
-        </Badge>
-      ) : null}
-    </div>
-  );
-}
-
 /**
- * Frontpage Goals widget (#9143). Glanceable, home-only: surfaces the goals
- * needing attention (at_risk / needs_attention first), one line each. Fetches
- * the same `/api/lifeops/goals` endpoint GoalsView reads and floats itself up
- * via the home-attention store when any goal is at risk or needs attention.
+ * Frontpage Goals widget (#9143). Glanceable, home-only, icon-first: surfaces
+ * the SINGLE most-urgent goal (at_risk first, then needs_attention) as one
+ * datum, with a count badge. Fetches the same `/api/lifeops/goals` endpoint
+ * GoalsView reads and floats itself up via the home-attention store when any
+ * goal is at risk or needs attention. Tapping the card opens the Goals view.
  */
 export function GoalsAttentionWidget(_props: Partial<WidgetProps>) {
-  const [goals, setGoals] = useState<AttentionGoal[]>([]);
-  // Distinguish "first load still pending" from "loaded, empty" so the home
-  // surface renders nothing (not a card) until we actually know there's data.
-  const [loaded, setLoaded] = useState(false);
+  // `null` distinguishes "first load still pending" from "loaded, empty" so the
+  // home surface renders nothing (not a card) until we actually know the data.
+  const [goals, setGoals] = useState<AttentionGoal[] | null>(null);
+  const nav = useWidgetNavigation();
 
   const load = useCallback(async () => {
     try {
       const next = await fetchGoals();
-      setGoals(next);
+      // Skip the state update (and the re-render) when the poll is unchanged.
+      setGoals((prev) => (goalsEqual(prev, next) ? prev : next));
     } catch {
       // Silent fallback to the last good render (matches todo.tsx); never log.
-    } finally {
-      setLoaded(true);
     }
   }, []);
 
@@ -193,34 +173,35 @@ export function GoalsAttentionWidget(_props: Partial<WidgetProps>) {
   // Poll only while the document is visible, at the View's 20s cadence.
   useIntervalWhenDocumentVisible(() => void load(), GOALS_REFRESH_INTERVAL_MS);
 
-  const visible = sortForWidget(liveGoals(goals));
-  const hasUrgent = visible.some(isUrgent);
+  const urgent = useMemo(() => (goals ? mostUrgentGoal(goals) : null), [goals]);
+  const count = useMemo(() => (goals ? attentionCount(goals) : 0), [goals]);
 
   // Float the home card up while any goal is at risk / needs attention.
   usePublishHomeAttention(
     GOALS_WIDGET_KEY,
-    hasUrgent ? HOME_SIGNAL_WEIGHTS.escalation : null,
+    urgent ? HOME_SIGNAL_WEIGHTS.escalation : null,
   );
 
-  // Render nothing until the first load resolves, and nothing once loaded if
-  // there are no live goals — the home surface must not show empty placeholders
-  // (#9143).
-  if (!loaded || visible.length === 0) return null;
+  // Render nothing until the first load resolves, and nothing once loaded if no
+  // goal needs attention — the home surface must not show empty placeholders or
+  // on-track goals (#9143).
+  if (goals == null || urgent == null) return null;
 
-  const rows = visible.slice(0, MAX_VISIBLE_GOALS);
+  const tone = urgent.reviewState === "at_risk" ? "danger" : "warn";
+  const status =
+    urgent.reviewState === "at_risk" ? "at risk" : "needs attention";
 
   return (
-    <WidgetSection
-      title="Goals"
-      icon={<Target className="h-4 w-4" />}
+    <HomeWidgetCard
+      icon={<Target />}
+      label="Goals"
+      value={urgent.title}
+      badge={count > 1 ? `${count}` : undefined}
+      tone={tone}
       testId="widget-goals-attention"
-    >
-      <div className="flex flex-col gap-0.5">
-        {rows.map((goal) => (
-          <GoalRow key={goal.id} goal={goal} />
-        ))}
-      </div>
-    </WidgetSection>
+      ariaLabel={`Goals: ${count} need attention, top "${urgent.title}" ${status}. Open Goals.`}
+      onActivate={() => nav.openView("/goals", "goals")}
+    />
   );
 }
 

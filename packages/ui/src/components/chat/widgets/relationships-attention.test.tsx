@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   RelationshipsMergeCandidate,
   RelationshipsPersonSummary,
 } from "../../../api/client-types-relationships";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
+import type { WidgetProps } from "../../../widgets/types";
 
 const {
   getRelationshipsPeopleMock,
@@ -33,6 +40,12 @@ vi.mock("../../../hooks", () => ({
 vi.mock("../../../widgets/home-attention-store", () => ({
   usePublishHomeAttention: (widgetKey: string, weight: number | null) =>
     publishHomeAttentionMock(widgetKey, weight),
+}));
+
+// useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
+// stub it so the click test isolates the navigation rail (the CustomEvent).
+vi.mock("../../../chat/useSlashCommandController", () => ({
+  reportUserViewSwitch: vi.fn(),
 }));
 
 import { RelationshipsAttentionWidget } from "./relationships-attention";
@@ -80,6 +93,8 @@ function candidate(
   };
 }
 
+const fetchProps: Partial<WidgetProps> = { slot: "home" };
+
 describe("RelationshipsAttentionWidget (#9143)", () => {
   beforeEach(() => {
     getRelationshipsPeopleMock.mockReset();
@@ -91,7 +106,47 @@ describe("RelationshipsAttentionWidget (#9143)", () => {
     cleanup();
   });
 
-  it("renders pending-merge and stale-contact attention rows from seeded data", async () => {
+  it("shows ONE high-priority datum — Confirm merge? — when a merge is pending (minimal, icon-first)", async () => {
+    getRelationshipsPeopleMock.mockResolvedValue({
+      people: [
+        person({
+          groupId: "g-old",
+          displayName: "Old Friend",
+          lastInteractionAt: "2020-01-01T00:00:00.000Z",
+        }),
+      ],
+      stats: { totalPeople: 1, totalRelationships: 0, totalIdentities: 0 },
+    });
+    getRelationshipsCandidatesMock.mockResolvedValue([
+      candidate(),
+      candidate({ id: "c-2" }),
+    ]);
+
+    render(<RelationshipsAttentionWidget {...fetchProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-relationships")).toBeTruthy();
+    });
+
+    const widget = screen.getByTestId("chat-widget-relationships");
+    // The card is a button (whole-card clickable) and minimal: the pending
+    // merge wins, the stale contact is NOT shown (only the single datum).
+    expect(widget.tagName).toBe("BUTTON");
+    expect(widget.textContent).toContain("Confirm merge?");
+    expect(widget.textContent).not.toContain("Old Friend");
+    // The count is a badge.
+    expect(widget.textContent).toContain("2");
+    // The full meaning lives in the aria-label since visible text is minimal.
+    expect(widget.getAttribute("aria-label")).toMatch(/merge/i);
+
+    // Pending merge -> approval weight published.
+    expect(publishHomeAttentionMock).toHaveBeenLastCalledWith(
+      WIDGET_KEY,
+      HOME_SIGNAL_WEIGHTS.approval,
+    );
+  });
+
+  it("shows the stalest contact (minimal) + no boost when only contacts exist", async () => {
     getRelationshipsPeopleMock.mockResolvedValue({
       people: [
         person({
@@ -107,23 +162,26 @@ describe("RelationshipsAttentionWidget (#9143)", () => {
       ],
       stats: { totalPeople: 2, totalRelationships: 0, totalIdentities: 0 },
     });
-    getRelationshipsCandidatesMock.mockResolvedValue([candidate()]);
+    getRelationshipsCandidatesMock.mockResolvedValue([]);
 
-    render(
-      <RelationshipsAttentionWidget
-        slot="home"
-        events={[]}
-        clearEvents={() => undefined}
-      />,
-    );
+    render(<RelationshipsAttentionWidget {...fetchProps} />);
 
     await waitFor(() => {
       expect(screen.getByTestId("chat-widget-relationships")).toBeTruthy();
     });
-    // Section 1: pending merge prompt.
-    expect(screen.getByText("Confirm merge?")).toBeTruthy();
-    // Section 2: oldest-interaction contact surfaced.
-    expect(screen.getByText("Haven't talked to Old Friend")).toBeTruthy();
+
+    const widget = screen.getByTestId("chat-widget-relationships");
+    expect(widget.textContent).not.toContain("Confirm merge?");
+    // The stalest (oldest-interaction) contact is the single datum shown.
+    expect(widget.textContent).toContain("Old Friend");
+    expect(widget.textContent).not.toContain("Recent Pal");
+    expect(widget.getAttribute("aria-label")).toMatch(/Old Friend/);
+
+    // Last call carries no positive weight — overdue contacts don't float up.
+    const calls = publishHomeAttentionMock.mock.calls.filter(
+      ([key]) => key === WIDGET_KEY,
+    );
+    expect(calls.at(-1)?.[1]).toBeNull();
   });
 
   it("surfaces a never-interacted contact (lastInteractionAt undefined), not dropping it", async () => {
@@ -142,17 +200,37 @@ describe("RelationshipsAttentionWidget (#9143)", () => {
     });
     getRelationshipsCandidatesMock.mockResolvedValue([]);
 
-    render(
-      <RelationshipsAttentionWidget
-        slot="home"
-        events={[]}
-        clearEvents={() => undefined}
-      />,
-    );
+    render(<RelationshipsAttentionWidget {...fetchProps} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Haven't talked to Never Met")).toBeTruthy();
+      expect(screen.getByTestId("chat-widget-relationships")).toBeTruthy();
     });
+    expect(
+      screen.getByTestId("chat-widget-relationships").textContent,
+    ).toContain("Never Met");
+  });
+
+  it("navigates to the Relationships view when the card is clicked", async () => {
+    getRelationshipsPeopleMock.mockResolvedValue({
+      people: [],
+      stats: { totalPeople: 0, totalRelationships: 0, totalIdentities: 0 },
+    });
+    getRelationshipsCandidatesMock.mockResolvedValue([candidate()]);
+    const navEvents: string[] = [];
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent<{ viewPath?: string }>).detail;
+      if (detail?.viewPath) navEvents.push(detail.viewPath);
+    };
+    window.addEventListener("eliza:navigate:view", onNav);
+
+    render(<RelationshipsAttentionWidget {...fetchProps} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-relationships")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("chat-widget-relationships"));
+    window.removeEventListener("eliza:navigate:view", onNav);
+
+    expect(navEvents).toContain("/relationships");
   });
 
   it("renders null when there are no people and no pending candidates (#9143)", async () => {
@@ -163,11 +241,7 @@ describe("RelationshipsAttentionWidget (#9143)", () => {
     getRelationshipsCandidatesMock.mockResolvedValue([]);
 
     const { container } = render(
-      <RelationshipsAttentionWidget
-        slot="home"
-        events={[]}
-        clearEvents={() => undefined}
-      />,
+      <RelationshipsAttentionWidget {...fetchProps} />,
     );
 
     await waitFor(() => {
@@ -184,13 +258,7 @@ describe("RelationshipsAttentionWidget (#9143)", () => {
     });
     getRelationshipsCandidatesMock.mockResolvedValue([candidate()]);
 
-    render(
-      <RelationshipsAttentionWidget
-        slot="home"
-        events={[]}
-        clearEvents={() => undefined}
-      />,
-    );
+    render(<RelationshipsAttentionWidget {...fetchProps} />);
 
     await waitFor(() => {
       expect(publishHomeAttentionMock).toHaveBeenCalledWith(
@@ -208,16 +276,10 @@ describe("RelationshipsAttentionWidget (#9143)", () => {
     });
     getRelationshipsCandidatesMock.mockResolvedValue([]);
 
-    render(
-      <RelationshipsAttentionWidget
-        slot="home"
-        events={[]}
-        clearEvents={() => undefined}
-      />,
-    );
+    render(<RelationshipsAttentionWidget {...fetchProps} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Haven't talked to Alex")).toBeTruthy();
+      expect(screen.getByTestId("chat-widget-relationships")).toBeTruthy();
     });
     // Last call carries no positive weight — overdue contacts don't float up.
     const calls = publishHomeAttentionMock.mock.calls.filter(
