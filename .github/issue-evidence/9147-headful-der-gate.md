@@ -19,6 +19,16 @@ Scope:
   writes DER/WER/echo-rejection/owner-accuracy/impostor-accept JSON and Markdown
   reports, and fails rather than producing skip evidence when real dependencies
   are absent.
+- `voice:workbench --real` now uses a provisioned real services adapter instead
+  of passing `services: null`. The adapter generates distinct human speech with
+  ElevenLabs, uses fused local TTS for agent echoes, prepares WeSpeaker speaker
+  centroids from the generated corpus, runs fused ASR + pyannote, computes live
+  `selfVoiceSimilarity`, and feeds the same respond gate/scorers as the mock and
+  logic lanes.
+- The acoustic workflow now invokes `bun run --cwd plugins/plugin-local-inference
+  voice:workbench --real --out "$VOICE_REAL_MATRIX_OUT/voice-workbench-real"` so
+  the named `--real` acceptance lane produces a workbench JSON/Markdown report
+  in the uploaded `voice-real-acoustic-matrix` artifact.
 - The acoustic matrix job no longer has `continue-on-error: true`; missing real
   evidence is now a red nightly / workflow-dispatch result.
 
@@ -29,6 +39,11 @@ bunx @biomejs/biome check \
   packages/ui/src/voice/voice-selftest/voice-workbench-player.ts \
   packages/ui/src/voice/voice-selftest/VoiceWorkbenchShell.tsx \
   packages/app/test/ui-smoke/voice-workbench-cases.ts \
+  plugins/plugin-local-inference/scripts/voice-workbench.ts \
+  plugins/plugin-local-inference/src/services/voice/corpus-generator.ts \
+  plugins/plugin-local-inference/src/services/voice/workbench-headless-runner.ts \
+  plugins/plugin-local-inference/src/services/voice/workbench-real-services.ts \
+  plugins/plugin-local-inference/src/services/voice/VOICE_WORKBENCH.md \
   packages/benchmarks/voice/voice-real-ci-matrix.mjs \
   packages/benchmarks/voice/CLAUDE.md \
   packages/benchmarks/voice/AGENTS.md \
@@ -45,6 +60,23 @@ actionlint .github/workflows/voice-live-e2e.yml
 bun build packages/benchmarks/voice/voice-real-ci-matrix.mjs \
   --target=bun --outfile=/tmp/voice-real-ci-matrix.js
 
+bun build plugins/plugin-local-inference/scripts/voice-workbench.ts \
+  --target=bun --outfile=/tmp/voice-workbench.js
+
+bunx vitest run \
+  plugins/plugin-local-inference/src/services/voice/corpus-generator.test.ts \
+  plugins/plugin-local-inference/src/services/voice/workbench-headless-runner.test.ts \
+  plugins/plugin-local-inference/src/services/voice/workbench-logic-services.test.ts
+
+bun run --cwd plugins/plugin-local-inference typecheck
+
+bun run --cwd plugins/plugin-local-inference voice:workbench --logic \
+  --out /tmp/voice-workbench-logic
+
+ELIZA_ASR_BUNDLE=/tmp/eliza-missing-real-bundle ELEVENLABS_API_KEY=test \
+  bun run --cwd plugins/plugin-local-inference voice:workbench --real \
+  --out /tmp/voice-workbench-real-missing
+
 bun run verify
 ```
 
@@ -55,13 +87,19 @@ Result:
 - Focused Playwright diarization scenario: `1 passed`.
 - `actionlint`: pass.
 - Benchmark script bundle/syntax build: pass (`1361 modules`).
+- `voice:workbench` CLI bundle/syntax build: pass.
+- Focused workbench Vitest: pass (`23 passed`).
+- `plugins/plugin-local-inference` typecheck: pass.
+- `voice:workbench --logic`: pass (`15 ran, 0 skipped`).
+- `voice:workbench --real` missing-dependency honesty check: pass by expected
+  failure (`exit_status=1`, clear `missing ELIZA_ASR_BUNDLE` error).
 - Root `bun run verify`: pass (`509 successful, 509 total`).
 
 N/A:
 - No screenshot/video was captured because this change adds machine-readable
   report/DOM evidence and test enforcement only; it does not alter visible UI
   layout.
-- `voice-real-ci-matrix.mjs` was not executed locally because it requires the
-  provisioned self-hosted GPU runner, fused native library, real GGUF bundle,
-  and ElevenLabs secret. The workflow now runs it as part of the uploaded
-  `voice-real-acoustic-matrix` artifact.
+- `voice-real-ci-matrix.mjs` and `voice:workbench --real` were not executed
+  locally because they require the provisioned self-hosted GPU runner, fused
+  native library, real GGUF bundle, and ElevenLabs secret. The workflow now runs
+  both as part of the uploaded `voice-real-acoustic-matrix` artifact.

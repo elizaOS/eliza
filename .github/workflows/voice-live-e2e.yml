@@ -277,6 +277,13 @@ jobs:
           bun run --cwd plugins/plugin-local-inference robustness:real \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/robustness-real.log"
 
+      - name: Real voice workbench scenario matrix
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-local-inference voice:workbench --real \
+            --out "$VOICE_REAL_MATRIX_OUT/voice-workbench-real" \
+            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-workbench-real.log"
+
       - name: Real packages/benchmarks/voice matrix
         run: |
           set -euo pipefail
