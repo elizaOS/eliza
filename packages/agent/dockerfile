@@ -1,31 +1,29 @@
+# Use the node base image
 FROM node:23.3.0-slim AS builder
 
-RUN apt-get update && apt-get install -y \
-    python3 make g++ git && rm -rf /var/lib/apt/lists/*
-
+# Install dependencies
+RUN apt-get update && apt-get install -y python3 make g++ git && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@9.15.1
 
+# Set working directory to root
 WORKDIR /app
 
-# Point to the root directory for workspace files
-COPY ../../package.json ../../pnpm-workspace.yaml ../../pnpm-lock.yaml* ../../turbo.json* ./
+# Copy ALL files from the current build context (which we will set to root)
+COPY . .
 
-# Copy the agent package itself
-COPY package.json ./packages/agent/
-
+# Install dependencies
 RUN pnpm install --no-frozen-lockfile
 
-# Copy the rest of the project
-COPY ../../ .
-
+# Build the project
 RUN pnpm build
 
+# Final runtime stage
 FROM node:23.3.0-slim AS runner
-
 RUN npm install -g pnpm@9.15.1
 WORKDIR /app
 
-COPY --from=builder /app ./
+# Copy only the necessary build artifacts
+COPY --from=builder /app /app
 
 EXPOSE 3000
 
