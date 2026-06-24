@@ -288,6 +288,7 @@ function DisconnectedState({
       </div>
       <div style={{ maxWidth: 360 }}>
         <h2
+          title={error ? "Markets unavailable" : "No markets loaded"}
           style={{
             margin: 0,
             fontSize: 19,
@@ -295,7 +296,7 @@ function DisconnectedState({
             color: TXT,
           }}
         >
-          {error ? "Markets unavailable" : "No markets loaded"}
+          {error ? "Unavailable" : "No markets"}
         </h2>
         {error ? (
           <p

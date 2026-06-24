@@ -625,7 +625,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                   <PhoneIcon className="mx-auto h-12 w-12 text-muted" />
                   <div className="mt-3 text-sm font-medium text-txt">
                     {t("phone.recent.empty", {
-                      defaultValue: "No recent calls.",
+                      defaultValue: "No recent",
                     })}
                   </div>
                   <p className="sr-only mt-1 text-xs text-muted">

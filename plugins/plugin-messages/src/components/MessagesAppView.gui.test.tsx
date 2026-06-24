@@ -243,7 +243,7 @@ describe("MessagesAppView — empty state", () => {
 
     render(React.createElement(MessagesAppView, overlayContext()));
 
-    expect(await screen.findByText("No messages yet")).toBeTruthy();
+    expect(await screen.findByText("No messages")).toBeTruthy();
     // Empty-state stat chips: "0 threads" + the bridge mode chip (the bridge
     // label also appears as the header subtitle, hence getAllByText).
     expect(screen.getByText("0 threads")).toBeTruthy();

@@ -531,14 +531,11 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
             </div>
           ) : threads.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center px-6 pb-32 text-center">
-              <span
-                className="flex h-20 w-20 items-center justify-center rounded-3xl"
-                style={{ background: "var(--accent-subtle)" }}
-              >
+              <span className="flex h-20 w-20 items-center justify-center">
                 <ChatBubblesMotif />
               </span>
               <h2 className="mt-5 text-base font-semibold text-txt">
-                {t("messages.empty.title", { defaultValue: "No messages yet" })}
+                {t("messages.empty.title", { defaultValue: "No messages" })}
               </h2>
               <p className="sr-only mt-1 max-w-xs text-sm text-muted">
                 {t("messages.empty.body", {
