@@ -69,6 +69,11 @@ function IconTile({
   onLongPress,
 }: IconTileProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Every view shows its hero image (the endpoint returns a real image or a
+  // branded generated SVG). Fall back to the Lucide icon only if the image fails
+  // to load, so a tile is never blank.
+  const [imgFailed, setImgFailed] = useState(false);
+  const tileImage = imgFailed ? undefined : entry.imageUrl;
 
   const clear = () => {
     if (timer.current) {
@@ -96,18 +101,31 @@ function IconTile({
           onPointerUp={clear}
           onPointerLeave={clear}
           className={cn(
-            "grid h-16 w-16 place-items-center rounded-2xl",
-            "bg-bg-accent/60 text-foreground transition-colors",
-            "hover:bg-bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
+            "h-16 w-16 overflow-hidden rounded-2xl transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
+            tileImage
+              ? "bg-bg-accent/40"
+              : "grid place-items-center bg-bg-accent/60 text-foreground hover:bg-bg-accent",
             editing && "animate-pulse",
           )}
         >
-          <ViewIcon
-            icon={entry.icon}
-            label={entry.label}
-            id={entry.id}
-            className="h-7 w-7"
-          />
+          {tileImage ? (
+            <img
+              src={tileImage}
+              alt=""
+              draggable={false}
+              onError={() => setImgFailed(true)}
+              className="h-full w-full object-cover"
+              data-testid={`springboard-image-${entry.id}`}
+            />
+          ) : (
+            <ViewIcon
+              icon={entry.icon}
+              label={entry.label}
+              id={entry.id}
+              className="h-7 w-7"
+            />
+          )}
         </button>
         {editing ? (
           <button

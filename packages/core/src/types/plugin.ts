@@ -455,6 +455,16 @@ export interface PluginWidgetDeclaration {
 	 * component is registered for this declaration's `pluginId`/`id`.
 	 */
 	defaultWidget?: "notifications" | "messages" | "activity";
+	/**
+	 * Home-slot attention signals this widget responds to (#9143 priority). When
+	 * the home surface receives a live activity/notification signal of one of
+	 * these kinds, this widget's importance is boosted (decayed by recency) so it
+	 * bubbles up — that is how "what needs attention shows first" works. Kinds are
+	 * the keys of the home signal-weight table (e.g. `blocked`, `escalation`,
+	 * `approval`, `reminder`, `message`, `check-in`, `nudge`, `workflow`,
+	 * `activity`). Omit for widgets that should rank by static `order` only.
+	 */
+	signalKinds?: readonly string[];
 }
 
 export interface PluginAppUiExtension {

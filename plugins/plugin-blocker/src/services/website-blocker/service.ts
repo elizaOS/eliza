@@ -1,5 +1,11 @@
-import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
-import { logger, Service, stringToUuid } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  NotificationService,
+  Task,
+  TaskMetadata,
+  UUID,
+} from "@elizaos/core";
+import { logger, Service, ServiceType, stringToUuid } from "@elizaos/core";
 import {
   getSelfControlStatus,
   reconcileSelfControlBlockState,
@@ -343,6 +349,25 @@ export async function executeWebsiteBlockerExpiryTask(
   logger.warn(
     `[selfcontrol] Failed to remove the scheduled website block at ${descriptor.endsAt}; queued a retry in ${WEBSITE_BLOCKER_UNBLOCK_RETRY_MS / 1000}s: ${stopResult.error}`,
   );
+
+  // The block was supposed to end but couldn't be lifted automatically — the
+  // user's sites stay blocked past their scheduled end, which they need to
+  // know about. Fires once per stuck expiry (groupKey collapses retries).
+  runtime
+    .getService<NotificationService>(ServiceType.NOTIFICATION)
+    ?.notify({
+      title: "Website block didn't end on schedule",
+      body: `The block set to end at ${descriptor.endsAt} couldn't be removed automatically; retrying shortly.`,
+      category: "system",
+      priority: "high",
+      source: "blocker",
+      groupKey: `blocker:unblock-failed:${descriptor.endsAt}`,
+      deepLink: "/focus",
+      data: { endsAt: descriptor.endsAt, error: String(stopResult.error) },
+    })
+    .catch((error: unknown) => {
+      logger.debug({ src: "blocker", error }, "Unblock-failure notify failed");
+    });
 }
 
 export function registerWebsiteBlockerTaskWorker(runtime: IAgentRuntime): void {

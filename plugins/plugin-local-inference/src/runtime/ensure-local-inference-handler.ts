@@ -1020,7 +1020,7 @@ function getBionicHostLoader(runtime: IAgentRuntime): BionicHostLoader | null {
 }
 
 /** Pack a mono fp32 PCM buffer little-endian and base64-encode it for the UDS frame. */
-function float32ToBase64LE(pcm: Float32Array): string {
+export function float32ToBase64LE(pcm: Float32Array): string {
 	const buf = Buffer.allocUnsafe(pcm.length * 4);
 	for (let i = 0; i < pcm.length; i++) {
 		buf.writeFloatLE(pcm[i] ?? 0, i * 4);
@@ -1029,7 +1029,7 @@ function float32ToBase64LE(pcm: Float32Array): string {
 }
 
 /** Resolve a vision request to base64 image bytes for the bionic host. */
-async function imageRequestToBase64(image: {
+export async function imageRequestToBase64(image: {
 	kind: "dataUrl" | "url";
 	dataUrl?: string;
 	url?: string;

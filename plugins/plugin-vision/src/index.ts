@@ -2,6 +2,7 @@ import type { Plugin } from "@elizaos/core";
 import { logger, promoteSubactionsToActions } from "@elizaos/core";
 import { visionAction } from "./action";
 import { wireComputerUseOcrBridge } from "./computeruse-ocr-bridge";
+import { LinuxTesseractOcrService } from "./ocr-service-linux-tesseract";
 import { WindowsMediaOcrService } from "./ocr-service-windows";
 import {
   getOcrWithCoordsService,
@@ -51,11 +52,13 @@ export const visionPlugin: Plugin = {
     // bridge is skipped cleanly when computeruse is not installed).
     if (!getOcrWithCoordsService()) {
       // Prefer the native OS OCR engine where available (zero LLM tokens,
-      // NPU-accelerated): Windows.Media.Ocr on Windows; otherwise the docTR /
-      // Apple-Vision chain. Native providers can override via
-      // registerOcrWithCoordsService later.
+      // NPU-accelerated): Windows.Media.Ocr on Windows; the classic tesseract
+      // CLI on Linux when installed; otherwise the docTR / Apple-Vision chain.
+      // Native providers can override via registerOcrWithCoordsService later.
       if (WindowsMediaOcrService.isAvailable()) {
         registerOcrWithCoordsService(new WindowsMediaOcrService());
+      } else if (LinuxTesseractOcrService.isAvailable()) {
+        registerOcrWithCoordsService(new LinuxTesseractOcrService());
       } else {
         registerOcrWithCoordsService(new RapidOcrCoordAdapter());
       }

@@ -194,13 +194,24 @@ export function mergeManagedPublicBaseUrl(
 }
 
 /**
- * The cloud-managed inference defaults: the embedding endpoint + dimensions and
- * the Cerebras-direct small/large model pins. Pure and single-source-of-truth —
- * both the provision path (via prepareManagedElizaBaseEnvironment) and the
- * blue/green fleet-upgrade path (eliza-sandbox.ts) backfill these onto an
- * agent's stored env so an agent provisioned BEFORE these pins landed heals on
- * upgrade instead of carrying a stale 1536→dim_384 mismatch (#8434). Returns
- * ONLY these 5 keys; an explicit per-agent value always wins.
+ * The cloud-managed inference defaults: the embedding endpoint + the cloud
+ * embedding handler's OUTPUT dimensions, and the Cerebras-direct small/large
+ * model pins. Pure and single-source-of-truth — both the provision path (via
+ * prepareManagedElizaBaseEnvironment) and the blue/green fleet-upgrade path
+ * (eliza-sandbox.ts) backfill these onto an agent's stored env so an agent
+ * provisioned BEFORE these pins landed heals on upgrade (#8434). Returns ONLY
+ * these 5 keys; an explicit per-agent value always wins.
+ *
+ * NOTE on dimensions: EMBEDDING_DIMENSION / ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS
+ * set the width of the vectors the plugin-elizacloud TEXT_EMBEDDING handler
+ * EMITS (1536). They do NOT size the plugin-sql storage column — plugin-sql
+ * never reads either var. The storage column width is decided at boot by
+ * runtime.ensureEmbeddingDimension(), which probes the registered cloud
+ * embedding handler's actual vector length and snaps the column to dim1536.
+ * That probe must run before bundled docs are seeded; that boot ordering was
+ * the real no-memory bug (#8769) — fixed in packages/agent/src/runtime/eliza.ts,
+ * not here. Keeping these env pins ensures the handler emits 1536-wide vectors
+ * for the probe to detect.
  */
 export function applyManagedAgentInferenceEnvDefaults(
   existingEnv: Record<string, string>,
@@ -263,13 +274,16 @@ export async function prepareManagedElizaBaseEnvironment(
       // Cloud-managed inference defaults: pin embeddings to the elizacloud Worker
       // base (whose POST /embeddings serves 1536-dim text-embedding-3-small —
       // without it the plugin falls back to the Cerebras/BitRouter text base with
-      // no /embeddings route → 503), pin BOTH embedding dimensions to 1536 so the
-      // plugin-sql storage column (dim_384 by default) matches the cloud vectors
-      // instead of dropping every memory write, and pin the healthy Cerebras-direct
-      // small/large models so the container never resolves a tier to the `:nitro`
-      // default. Shared single-source helper so the fleet-upgrade path re-applies
-      // the same defaults (#8434). Each value still honors an explicit per-agent
-      // override in existingEnv.
+      // no /embeddings route → 503), pin BOTH embedding-output dimensions to 1536
+      // so the cloud TEXT_EMBEDDING handler EMITS 1536-wide vectors (these vars
+      // size the handler's output, NOT the plugin-sql storage column — plugin-sql
+      // ignores them; the column width is set at boot by the model-length probe,
+      // ensureEmbeddingDimension, see applyManagedAgentInferenceEnvDefaults above
+      // and the #8769 boot-order fix in packages/agent/src/runtime/eliza.ts), and
+      // pin the healthy Cerebras-direct small/large models so the container never
+      // resolves a tier to the `:nitro` default. Shared single-source helper so
+      // the fleet-upgrade path re-applies the same defaults (#8434). Each value
+      // still honors an explicit per-agent override in existingEnv.
       ...applyManagedAgentInferenceEnvDefaults(existingEnv),
       // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
       // the persistent /root/.eliza volume) instead of the shared cloud Postgres;

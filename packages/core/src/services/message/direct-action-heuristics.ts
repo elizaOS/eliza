@@ -147,14 +147,22 @@ export function findAvailableActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	names: readonly string[],
 ): string | undefined {
-	const wanted = new Set(names.map(normalizeActionIdentifier));
-	return actions.find((action) => {
-		if (wanted.has(normalizeActionIdentifier(action.name))) return true;
-		const similes = Array.isArray(action.similes) ? action.similes : [];
-		return similes.some((simile) =>
-			wanted.has(normalizeActionIdentifier(String(simile))),
-		);
-	})?.name;
+	// Resolve in `names` PRIORITY order, not action-registration order: for each
+	// wanted name in turn, return the first action whose name or simile matches.
+	// The leading preference wins — e.g. WEB_SEARCH (listed ahead of WEB_FETCH)
+	// is chosen for a web lookup even though WEB_FETCH registers first.
+	for (const want of names) {
+		const wanted = normalizeActionIdentifier(want);
+		const match = actions.find((action) => {
+			if (normalizeActionIdentifier(action.name) === wanted) return true;
+			const similes = Array.isArray(action.similes) ? action.similes : [];
+			return similes.some(
+				(simile) => normalizeActionIdentifier(String(simile)) === wanted,
+			);
+		});
+		if (match) return match.name;
+	}
+	return undefined;
 }
 
 export function inferDirectCurrentRequestCandidateActions(

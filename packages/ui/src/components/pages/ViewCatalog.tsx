@@ -12,11 +12,8 @@ import {
   ArrowDownAZ,
   Clock3,
   type LucideIcon,
-  Pencil,
-  Pin,
   Plus,
   Sparkles,
-  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -43,11 +40,7 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import {
-  readRecentViewIds,
-  recordRecentViewId,
-  TOP_VIEW_LIMIT,
-} from "../../view-recents";
+import { readRecentViewIds, recordRecentViewId } from "../../view-recents";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -157,10 +150,6 @@ function isVisibleCatalogView(
   return true;
 }
 
-function viewCatalogKey(view: Pick<ViewRegistryEntry, "id" | "viewType">) {
-  return `${view.viewType ?? "gui"}:${view.id}`;
-}
-
 function compareLabels(left: { label: string }, right: { label: string }) {
   return left.label.localeCompare(right.label, undefined, {
     numeric: true,
@@ -226,209 +215,6 @@ function SortControls({
         );
       })}
     </fieldset>
-  );
-}
-
-function ViewCardPinButton({
-  view,
-  onPin,
-}: {
-  view: ViewRegistryEntry;
-  onPin: (view: ViewRegistryEntry) => void;
-}) {
-  const { t } = useTranslation();
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `view-card-pin-${view.id}`,
-    role: "button",
-    label: t("viewmanager.card.pinAria", {
-      label: view.label,
-      defaultValue: "Pin {{label}} as desktop tab",
-    }),
-    group: "view-cards",
-    description: `Pin the ${view.label} view as a desktop tab`,
-    onActivate: () => onPin(view),
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      title={t("viewmanager.card.pinTitle", {
-        defaultValue: "Pin as desktop tab",
-      })}
-      onClick={(e) => {
-        e.stopPropagation();
-        onPin(view);
-      }}
-      className="flex h-6 w-6 items-center justify-center rounded-md bg-card/80 text-muted hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={t("viewmanager.card.pinAria", {
-        label: view.label,
-        defaultValue: "Pin {{label}} as desktop tab",
-      })}
-      {...agentProps}
-    >
-      <Pin className="h-3 w-3" />
-    </button>
-  );
-}
-
-function ViewCardEditButton({
-  view,
-  onEdit,
-}: {
-  view: ViewRegistryEntry;
-  onEdit: (view: ViewRegistryEntry) => void;
-}) {
-  const { t } = useTranslation();
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `view-card-edit-${view.id}`,
-    role: "button",
-    label: t("viewmanager.card.editAria", {
-      label: view.label,
-      defaultValue: "Edit {{label}}",
-    }),
-    group: "view-cards",
-    description: `Edit the ${view.label} dynamic view`,
-    onActivate: () => onEdit(view),
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      title={t("viewmanager.card.editTitle", {
-        defaultValue: "Edit dynamic view",
-      })}
-      onClick={(e) => {
-        e.stopPropagation();
-        onEdit(view);
-      }}
-      className="flex h-6 w-6 items-center justify-center rounded-md bg-card/80 text-muted hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={t("viewmanager.card.editAria", {
-        label: view.label,
-        defaultValue: "Edit {{label}}",
-      })}
-      {...agentProps}
-    >
-      <Pencil className="h-3 w-3" />
-    </button>
-  );
-}
-
-function ViewCardDeleteButton({
-  view,
-  onDelete,
-}: {
-  view: ViewRegistryEntry;
-  onDelete: (view: ViewRegistryEntry) => void;
-}) {
-  const { t } = useTranslation();
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `view-card-delete-${view.id}`,
-    role: "button",
-    label: t("viewmanager.card.deleteAria", {
-      label: view.label,
-      defaultValue: "Delete {{label}}",
-    }),
-    group: "view-cards",
-    description: `Delete the ${view.label} dynamic view`,
-    onActivate: () => onDelete(view),
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      title={t("viewmanager.card.deleteTitle", {
-        defaultValue: "Delete dynamic view",
-      })}
-      onClick={(e) => {
-        e.stopPropagation();
-        onDelete(view);
-      }}
-      className="flex h-6 w-6 items-center justify-center rounded-md bg-card/80 text-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={t("viewmanager.card.deleteAria", {
-        label: view.label,
-        defaultValue: "Delete {{label}}",
-      })}
-      {...agentProps}
-    >
-      <Trash2 className="h-3 w-3" />
-    </button>
-  );
-}
-
-function ViewCardOpenButton({
-  view,
-  onClick,
-  children,
-}: {
-  view: ViewRegistryEntry;
-  onClick: (view: ViewRegistryEntry) => void;
-  children: React.ReactNode;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `view-card-open-${view.id}`,
-    role: "button",
-    label: view.label,
-    group: "view-cards",
-    description: view.description ?? `Open the ${view.label} view`,
-    onActivate: () => onClick(view),
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={() => onClick(view)}
-      className="w-full focus:outline-none"
-      {...agentProps}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** A launcher tile: icon chip + label. No border, no description, no chips. */
-function ViewCard({
-  view,
-  onClick,
-  onPin,
-  onEdit,
-  onDelete,
-}: {
-  view: ViewRegistryEntry;
-  onClick: (view: ViewRegistryEntry) => void;
-  onPin?: (view: ViewRegistryEntry) => void;
-  onEdit?: (view: ViewRegistryEntry) => void;
-  onDelete?: (view: ViewRegistryEntry) => void;
-}) {
-  const isDesktop = isElectrobunRuntime();
-  const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
-  const showManagementButtons = Boolean(onEdit || onDelete);
-  const showHero = Boolean(view.hasHeroImage && view.heroImageUrl);
-
-  return (
-    <div className="group relative" data-testid={`view-card-${view.id}`}>
-      {(showPinButton || showManagementButtons) && (
-        <div className="absolute right-1.5 top-1.5 z-20 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          {showPinButton && <ViewCardPinButton view={view} onPin={onPin} />}
-          {onEdit && <ViewCardEditButton view={view} onEdit={onEdit} />}
-          {onDelete && <ViewCardDeleteButton view={view} onDelete={onDelete} />}
-        </div>
-      )}
-
-      <ViewCardOpenButton view={view} onClick={onClick}>
-        <div className="flex flex-col items-center gap-2 rounded-2xl px-2 py-4 text-center transition-colors hover:bg-bg-accent/70">
-          <ViewVisual
-            id={view.id}
-            icon={view.icon}
-            label={view.label}
-            heroUrl={view.heroImageUrl}
-            showHero={showHero}
-          />
-          <span className="line-clamp-2 max-w-full text-xs font-medium leading-4 text-txt transition-colors group-hover:text-accent">
-            {view.label}
-          </span>
-        </div>
-      </ViewCardOpenButton>
-    </div>
   );
 }
 
@@ -535,43 +321,6 @@ function CatalogSection({
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
         {entries.map((entry) => (
           <CatalogGetCard key={entry.key} entry={entry} onGet={onGet} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ViewSection({
-  title,
-  views,
-  onViewClick,
-  onViewPin,
-  onViewEdit,
-  onViewDelete,
-  testId,
-}: {
-  title?: string;
-  views: ViewRegistryEntry[];
-  onViewClick: (view: ViewRegistryEntry) => void;
-  onViewPin: (view: ViewRegistryEntry) => void;
-  onViewEdit?: (view: ViewRegistryEntry) => void;
-  onViewDelete?: (view: ViewRegistryEntry) => void;
-  testId?: string;
-}) {
-  if (views.length === 0) return null;
-  return (
-    <div className="mb-7" data-testid={testId}>
-      {title ? <SectionLabel>{title}</SectionLabel> : null}
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-        {views.map((view) => (
-          <ViewCard
-            key={viewCatalogKey(view)}
-            view={view}
-            onClick={onViewClick}
-            onPin={onViewPin}
-            onEdit={onViewEdit}
-            onDelete={onViewDelete}
-          />
         ))}
       </div>
     </div>
@@ -768,52 +517,8 @@ export function ViewCatalog() {
     () => sortViewsForMode(visibleViews, sortMode, recentViewIds),
     [visibleViews, recentViewIds, sortMode],
   );
-  const topViews = useMemo(() => {
-    const byId = new Map(visibleViews.map((view) => [view.id, view]));
-    const ordered: ViewRegistryEntry[] = [];
-    for (const tab of desktopTabs) {
-      if (!tab.pinned) continue;
-      const view = byId.get(tab.viewId);
-      if (
-        view &&
-        !ordered.some(
-          (existing) => viewCatalogKey(existing) === viewCatalogKey(view),
-        )
-      ) {
-        ordered.push(view);
-      }
-    }
-    for (const id of recentViewIds) {
-      const view = byId.get(id);
-      if (
-        view &&
-        !ordered.some(
-          (existing) => viewCatalogKey(existing) === viewCatalogKey(view),
-        )
-      ) {
-        ordered.push(view);
-      }
-      if (ordered.length >= TOP_VIEW_LIMIT) break;
-    }
-    return ordered.slice(0, TOP_VIEW_LIMIT);
-  }, [desktopTabs, recentViewIds, visibleViews]);
-  const sortedTopViews = useMemo(
-    () => sortViewsForMode(topViews, sortMode, recentViewIds),
-    [recentViewIds, sortMode, topViews],
-  );
-
   const totalVisible = visibleViews.length;
   const hasQuery = query.trim().length > 0;
-  const topViewKeys = useMemo(
-    () => new Set(topViews.map((view) => viewCatalogKey(view))),
-    [topViews],
-  );
-  const sectionViews = useMemo(() => {
-    if (hasQuery) return sortedAllViews;
-    return sortedAllViews.filter(
-      (view) => !topViewKeys.has(viewCatalogKey(view)),
-    );
-  }, [hasQuery, sortedAllViews, topViewKeys]);
   const isSearching = searchLoading && hasQuery;
   const availableEntries = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -892,22 +597,6 @@ export function ViewCatalog() {
     } catch {
       // sandboxed — best effort navigation
     }
-  }
-
-  function handleViewPin(view: ViewRegistryEntry) {
-    // Dispatch a navigate event with action="pin-tab" so the App shell's
-    // eliza:navigate:view handler adds this view to the desktop tab bar.
-    if (typeof window === "undefined") return;
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", {
-        detail: {
-          viewId: view.id,
-          viewPath: view.path ?? `/apps/${view.id}`,
-          viewLabel: view.label,
-          action: "pin-tab",
-        },
-      }),
-    );
   }
 
   function fillManagementForm(view: ViewRegistryEntry) {
@@ -1124,68 +813,24 @@ export function ViewCatalog() {
             <ViewsLoadingSkeleton />
           ) : totalVisible === 0 && availableEntries.length === 0 ? (
             <ViewsEmptyState hasQuery={query.trim().length > 0} />
-          ) : hasQuery ? (
-            // Searching: keep the sectioned, semantic-search result list with
-            // pin/edit/delete card affordances.
-            <>
-              <ViewSection
-                testId="views-top-section"
-                title={
-                  sortedTopViews.length > 0
-                    ? t("viewmanager.section.quickAccess", {
-                        defaultValue: "Quick access",
-                      })
-                    : undefined
-                }
-                views={sortedTopViews}
-                onViewClick={handleViewClick}
-                onViewPin={handleViewPin}
-                onViewEdit={
-                  canManageDynamicViews ? fillManagementForm : undefined
-                }
-                onViewDelete={
-                  canManageDynamicViews ? handleDeleteView : undefined
-                }
-              />
-              <ViewSection
-                title={
-                  sortedTopViews.length > 0
-                    ? t("viewmanager.section.all", { defaultValue: "All" })
-                    : undefined
-                }
-                views={sectionViews}
-                onViewClick={handleViewClick}
-                onViewPin={handleViewPin}
-                onViewEdit={
-                  canManageDynamicViews ? fillManagementForm : undefined
-                }
-                onViewDelete={
-                  canManageDynamicViews ? handleDeleteView : undefined
-                }
-              />
-              <CatalogSection
-                title={t("viewmanager.section.getMore", {
-                  defaultValue: "Get more",
-                })}
-                entries={availableEntries}
-                onGet={handleGet}
-              />
-            </>
           ) : (
-            // Default: the iOS-like springboard of loaded views (names-only,
-            // paged, favorites dock = desktop tabs), with the install catalog
-            // ("Get more") underneath.
+            // The Springboard IS the view catalog: an iOS-like grid of every view
+            // as an image tile, filtered IN PLACE by search (springboardEntries
+            // is already query-scoped, so typing narrows the tiles instead of
+            // dropping into a separate list). Pin/edit/delete live in the
+            // springboard's edit mode; the install catalog ("Get more") sits
+            // underneath. The frontpage home widgets show only on the unfiltered
+            // home (#9143).
             <>
-              {/* Frontpage widgets (#9143): plugins opt a widget onto the home
-                  by declaring the `home` slot. Renders nothing until populated
-                  (hideWhenEmpty), so the launcher grid is unaffected when empty. */}
-              <WidgetHost
-                slot="home"
-                layout="grid"
-                events={homeWidgetEvents}
-                clearEvents={clearHomeWidgetEvents}
-                className="px-1 pb-3"
-              />
+              {!hasQuery ? (
+                <WidgetHost
+                  slot="home"
+                  layout="grid"
+                  events={homeWidgetEvents}
+                  clearEvents={clearHomeWidgetEvents}
+                  className="px-1 pb-3"
+                />
+              ) : null}
               <Springboard
                 entries={springboardEntries}
                 onLaunch={handleSpringboardLaunch}
