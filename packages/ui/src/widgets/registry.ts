@@ -28,9 +28,14 @@ export {
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
+import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
+import { FINANCES_HOME_WIDGET } from "../components/chat/widgets/finances-alerts";
+import { GOALS_HOME_WIDGET } from "../components/chat/widgets/goals-attention";
+import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
 import { MessagesWidget } from "../components/chat/widgets/messages";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NotificationsWidget } from "../components/chat/widgets/notifications";
+import { RELATIONSHIPS_HOME_WIDGET } from "../components/chat/widgets/relationships-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 
 // -- Seed bundled widgets into the registry ----------------------------------
@@ -55,6 +60,21 @@ registerWidgetComponent(
 );
 // Messages (recent conversations) is likewise a core surface — always-visible.
 registerWidgetComponent("messages", "messages.recent", MessagesWidget);
+
+// Per-plugin frontpage widgets (#9143): each surfaces a compact, attention-
+// ranked slice of its plugin's own state on the home grid (a step up from the
+// generic default-widget sinks), self-hides when empty, and self-publishes a
+// home-attention signal so it floats up on its own data urgency. They resolve
+// only when the plugin is enabled+active in the runtime snapshot.
+for (const w of [
+  CALENDAR_HOME_WIDGET,
+  GOALS_HOME_WIDGET,
+  FINANCES_HOME_WIDGET,
+  HEALTH_HOME_WIDGET,
+  RELATIONSHIPS_HOME_WIDGET,
+]) {
+  registerWidgetComponent(w.pluginId, w.id, w.Component);
+}
 
 /**
  * Public API for plugins outside app-core to append widget declarations to the
@@ -181,17 +201,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     defaultEnabled: true,
     defaultWidget: "activity",
   },
-  // goals -> activity feed.
-  {
-    id: "goals.activity",
-    pluginId: "goals",
-    slot: "home",
-    label: "Goals",
-    icon: "Target",
-    order: 120,
-    defaultEnabled: true,
-    defaultWidget: "activity",
-  },
   // inbox -> messages sink (cross-channel triage surfaces as recent items).
   {
     id: "inbox.messages",
@@ -203,16 +212,60 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     defaultEnabled: true,
     defaultWidget: "messages",
   },
-  // calendar -> notifications sink (reminders are notification-like).
+  // -- Per-plugin real-data frontpage widgets (#9143) ------------------------
+  // These carry their own bundled component (registered above) showing a
+  // compact, attention-ranked slice of the plugin's state, replacing the
+  // generic default-widget sinks for plugins that warrant a richer card. Each
+  // self-hides when empty and self-publishes a home-attention signal.
   {
-    id: "calendar.notifications",
-    pluginId: "calendar",
+    id: RELATIONSHIPS_HOME_WIDGET.id,
+    pluginId: RELATIONSHIPS_HOME_WIDGET.pluginId,
     slot: "home",
-    label: "Calendar",
-    icon: "Calendar",
-    order: 140,
+    label: "Relationships",
+    icon: "Users",
+    order: RELATIONSHIPS_HOME_WIDGET.order,
     defaultEnabled: true,
-    defaultWidget: "notifications",
+    signalKinds: RELATIONSHIPS_HOME_WIDGET.signalKinds,
+  },
+  {
+    id: CALENDAR_HOME_WIDGET.id,
+    pluginId: CALENDAR_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Upcoming",
+    icon: "Clock",
+    order: CALENDAR_HOME_WIDGET.order,
+    defaultEnabled: true,
+    signalKinds: CALENDAR_HOME_WIDGET.signalKinds,
+  },
+  {
+    id: GOALS_HOME_WIDGET.id,
+    pluginId: GOALS_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Goals",
+    icon: "Target",
+    order: GOALS_HOME_WIDGET.order,
+    defaultEnabled: true,
+    signalKinds: GOALS_HOME_WIDGET.signalKinds,
+  },
+  {
+    id: FINANCES_HOME_WIDGET.id,
+    pluginId: FINANCES_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Bills & Balance",
+    icon: "Wallet",
+    order: FINANCES_HOME_WIDGET.order,
+    defaultEnabled: true,
+    signalKinds: FINANCES_HOME_WIDGET.signalKinds,
+  },
+  {
+    id: HEALTH_HOME_WIDGET.id,
+    pluginId: HEALTH_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Sleep",
+    icon: "Moon",
+    order: HEALTH_HOME_WIDGET.order,
+    defaultEnabled: true,
+    signalKinds: HEALTH_HOME_WIDGET.signalKinds,
   },
   // Browser workspace status — surfaces /browser state in the right rail.
   {

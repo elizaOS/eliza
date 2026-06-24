@@ -162,11 +162,12 @@ function resolveColor(
 function firstImageAttachment(attachments?: Media[]): Media | null {
 	if (!attachments?.length) return null;
 	for (const att of attachments) {
+		const url = typeof att.url === "string" ? att.url : "";
 		const looksImage =
 			att.contentType === "image" ||
-			/\.(png|jpe?g|gif|webp|avif|svg)(\?|#|$)/i.test(att.url) ||
-			att.url.startsWith("data:image/");
-		if (looksImage && att.url) return att;
+			/\.(png|jpe?g|gif|webp|avif|svg)(\?|#|$)/i.test(url) ||
+			url.startsWith("data:image/");
+		if (looksImage && url) return att;
 	}
 	return null;
 }

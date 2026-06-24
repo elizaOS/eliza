@@ -38,6 +38,13 @@ export interface WidgetProps {
   pluginState?: PluginInfo;
   events?: ActivityEvent[];
   clearEvents?: () => void;
+  /**
+   * The slot this instance is rendering in. Lets a widget shared between the
+   * chat sidebar and the home grid adapt — e.g. render `null` instead of an
+   * empty-state card on `home` (the home surface must not show empty
+   * placeholders; #9143).
+   */
+  slot?: WidgetSlot;
 }
 
 /**

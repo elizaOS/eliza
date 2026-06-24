@@ -12,7 +12,17 @@ import { resolveWidgetsForSlot, type WidgetPluginState } from "./registry";
 // IDs are the runtime plugin IDs (package name with `@elizaos/plugin-`
 // stripped — see plugin-discovery-helpers `workspacePluginIdFromPackageName`),
 // which is exactly what `PluginInfo.id` carries in the live plugin snapshot.
-const HOME_WIDGET_PLUGIN_IDS = ["todos", "goals", "inbox", "calendar"] as const;
+// `todos` + `inbox` opt into shared `defaultWidget` sinks; `calendar`, `goals`,
+// `finances`, `health`, `relationships` ship their own bundled home cards.
+const HOME_WIDGET_PLUGIN_IDS = [
+  "todos",
+  "inbox",
+  "calendar",
+  "goals",
+  "finances",
+  "health",
+  "relationships",
+] as const;
 
 function enabled(id: string): WidgetPluginState {
   return { id, enabled: true, isActive: true };
@@ -45,12 +55,13 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
 
   // Negative control (red-then-green proof): a manifest plugin that has NOT
   // opted into a home widget resolves none. This is the failure the gate
-  // catches — opting it in (a `home` declaration with `defaultWidget`) is what
-  // turns it green. `relationships` is deliberately left un-opted here.
+  // catches — opting it in (a `home` declaration) is what turns it green.
+  // `scheduling` is deliberately left un-opted here (it surfaces attention via
+  // the notification rail, not a home card).
   it("does NOT resolve a home widget for a plugin with no opt-in", () => {
-    const resolved = resolveWidgetsForSlot("home", [enabled("relationships")]);
+    const resolved = resolveWidgetsForSlot("home", [enabled("scheduling")]);
     expect(
-      resolved.some((r) => r.declaration.pluginId === "relationships"),
+      resolved.some((r) => r.declaration.pluginId === "scheduling"),
     ).toBe(false);
   });
 });

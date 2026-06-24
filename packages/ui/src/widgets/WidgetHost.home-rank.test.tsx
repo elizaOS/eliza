@@ -92,18 +92,25 @@ function renderedIds(): string[] {
 }
 
 describe("WidgetHost home-slot ranking (#9143)", () => {
-  it("renders only the top-6 home widgets, ranked by score (lower order first)", () => {
+  it("renders every home widget, ranked by score (lower order first)", () => {
     render(<WidgetHost slot="home" />);
 
     const ids = renderedIds();
-    expect(ids).toHaveLength(6);
-    // Lower `order` → higher base score → rendered first; top-6 are w0..w5.
-    expect(ids).toEqual(["w0", "w1", "w2", "w3", "w4", "w5"]);
-
-    // The four lowest-priority widgets are dropped.
-    for (const dropped of ["w6", "w7", "w8", "w9"]) {
-      expect(screen.queryByTestId(`widget-uispec-${dropped}`)).toBeNull();
-    }
+    // The home surface renders all declared widgets ranked by importance — each
+    // widget self-hides when empty, so the cap is only a safety bound. These
+    // uiSpec widgets always render, so all 10 appear in base-order.
+    expect(ids).toEqual([
+      "w0",
+      "w1",
+      "w2",
+      "w3",
+      "w4",
+      "w5",
+      "w6",
+      "w7",
+      "w8",
+      "w9",
+    ]);
   });
 
   it("is deterministic — the ranked order is stable across re-renders", () => {
@@ -114,13 +121,13 @@ describe("WidgetHost home-slot ranking (#9143)", () => {
     const second = renderedIds();
 
     expect(second).toEqual(first);
-    expect(first).toEqual(["w0", "w1", "w2", "w3", "w4", "w5"]);
+    expect(first[0]).toBe("w0");
   });
 
   it("a live high-weight activity event floats a subscribing low-base widget to the top", () => {
-    // w9 has the worst base (order 90) so it is normally dropped from the top-6.
-    // Subscribe it to `blocked` and feed a fresh blocked event: its decayed
-    // attention boost (weight 10) outranks every quiet widget's base (≤1).
+    // w9 has the worst base (order 90), so it normally ranks last. Subscribe it
+    // to `blocked` and feed a fresh blocked event: its attention boost
+    // (weight 10) outranks every quiet widget's base (≤1) → it sorts first.
     const subscribed = HOME_DECLS.map((d) =>
       d.id === "w9" ? { ...d, signalKinds: ["blocked"] as const } : d,
     );
