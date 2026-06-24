@@ -25,7 +25,10 @@ import {
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
 } from "../shared/src/runtime-env.ts";
-import { syncElizaEnvAliases } from "../shared/src/utils/env.ts";
+import {
+  DEFAULT_APP_ROUTE_PLUGIN_MODULES,
+  syncElizaEnvAliases,
+} from "../shared/src/utils/env.ts";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
@@ -843,17 +846,6 @@ const BRANDED_ENV = {
   viteOrigin: `${APP_ENV_PREFIX}_VITE_ORIGIN`,
   viteSettingsDebug: `VITE_${APP_ENV_PREFIX}_SETTINGS_DEBUG`,
 };
-const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
-  "@elizaos/plugin-vincent",
-  "@elizaos/plugin-shopify-ui",
-  "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-github",
-  "@elizaos/plugin-computeruse",
-  "@elizaos/plugin-elizacloud",
-  "@elizaos/plugin-workflow",
-];
-
 // Mirror branded app env into ELIZA_* before the shared runtime helpers resolve ports.
 syncElizaEnvAliases({
   brandedPrefix: APP_ENV_PREFIX,
