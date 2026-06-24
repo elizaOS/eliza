@@ -17,10 +17,11 @@
 import { ExternalLink, Loader2, Megaphone, Plus, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { PromoteAppDialog } from "../../../cloud-ui/components/promotion/promote-app-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
-import { api } from "../../lib/api-client";
+import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
 
@@ -81,8 +82,16 @@ export function AppPromote({ app }: AppPromoteProps) {
         json: { includeCopy: true, includeAdBanners: true },
       });
       await fetchData();
-    } catch {
-      // Asset generation is best-effort; the suggestions/accounts panels stay.
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError && error.status === 402
+          ? t("cloud.appPromote.assetsInsufficientCredits", {
+              defaultValue: "Insufficient credits to generate assets.",
+            })
+          : t("cloud.appPromote.assetsFailed", {
+              defaultValue: "Failed to generate assets. Try again.",
+            }),
+      );
     } finally {
       setIsGeneratingAssets(false);
     }
