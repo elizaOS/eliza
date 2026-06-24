@@ -23,6 +23,7 @@ import {
 	extractTextFromDocument,
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
+import { embedRecallQuery } from "./recall-embed.ts";
 import type {
 	AddDocumentOptions,
 	DocumentAddedFrom,
@@ -909,9 +910,13 @@ export class DocumentService extends Service {
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
 	): Promise<StoredDocument[]> {
-		const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-			text: queryText,
-		});
+		// Bound the recall embed and fail open to keyword/BM25 recall on a
+		// slow/unavailable embed (issue #47): a slow embed costs recall richness,
+		// never reply latency. `embedRecallQuery` caches + dedupes per turn.
+		const embedding = await embedRecallQuery(this.runtime, queryText);
+		if (!embedding) {
+			return this._keywordSearch(queryText, filterScope, message);
+		}
 
 		const fragments = await this.runtime.searchMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
@@ -996,9 +1001,14 @@ export class DocumentService extends Service {
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
 	): Promise<StoredDocument[]> {
-		const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-			text: queryText,
-		});
+		// Bound the recall embed and fail open to keyword/BM25 recall on a
+		// slow/unavailable embed (issue #47). `_keywordSearch` is the same BM25
+		// path hybrid would otherwise blend in, so a slow embed degrades
+		// gracefully to keyword-only recall instead of blocking the reply.
+		const embedding = await embedRecallQuery(this.runtime, queryText);
+		if (!embedding) {
+			return this._keywordSearch(queryText, filterScope, message);
+		}
 
 		// Fetch a larger candidate set so BM25 can re-rank meaningfully
 		const candidates = await this.runtime.searchMemories({

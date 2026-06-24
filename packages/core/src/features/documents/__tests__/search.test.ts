@@ -378,4 +378,101 @@ describe("DocumentService.searchDocuments", () => {
 			expect(results).toHaveLength(1);
 		});
 	});
+
+	// Issue #47: a slow recall embed must cost recall RICHNESS (keyword-only),
+	// never reply LATENCY. With an embedding model registered but a slow/failed
+	// embed, hybrid/vector search must fail open to the keyword/BM25 path.
+	describe("fail-open: slow recall embed (issue #47)", () => {
+		function buildSlowEmbedRuntime(opts: {
+			fragments: Memory[];
+			embed: () => Promise<number[]>;
+		}) {
+			const rt = buildRuntime({
+				hasEmbedding: true,
+				fragments: opts.fragments,
+			}) as ReturnType<typeof buildRuntime> & {
+				getCurrentRunId: () => string;
+			};
+			rt.useModel = vi.fn(opts.embed) as typeof rt.useModel;
+			rt.getCurrentRunId = () => "00000000-0000-0000-0000-0000000000aa";
+			return rt;
+		}
+
+		it("hybrid falls open to keyword (getMemories) when the embed exceeds the timeout", async () => {
+			vi.useFakeTimers();
+			try {
+				const fragments = [
+					makeFragment("frag-k", "typescript strongly typed language"),
+					makeFragment("frag-o", "cooking pasta recipe"),
+				];
+				const rt = buildSlowEmbedRuntime({
+					fragments,
+					// Never resolves before the recall-embed timeout fires.
+					embed: () =>
+						new Promise<number[]>((resolve) => {
+							setTimeout(() => resolve([0.1]), 60_000);
+						}),
+				});
+				const svc = buildService(rt);
+
+				const promise = svc.searchDocuments(
+					makeMessage("typescript"),
+					undefined,
+					"hybrid",
+				);
+				// Advance past RECALL_EMBED_TIMEOUT_MS so the embed race resolves null.
+				await vi.advanceTimersByTimeAsync(2_000);
+				const results = await promise;
+
+				// Failed open: keyword path (getMemories), NOT the vector path.
+				expect(rt.searchMemories).not.toHaveBeenCalled();
+				expect(rt.getMemories).toHaveBeenCalled();
+				expect(results[0].id).toBe("frag-k");
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("vector falls open to keyword when the embed throws (reply never blocked)", async () => {
+			const fragments = [makeFragment("frag-v", "vector test content")];
+			const rt = buildSlowEmbedRuntime({
+				fragments,
+				embed: async () => {
+					throw new Error("embeddings endpoint 500");
+				},
+			});
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("vector test"),
+				undefined,
+				"vector",
+			);
+
+			expect(rt.searchMemories).not.toHaveBeenCalled();
+			expect(rt.getMemories).toHaveBeenCalled();
+			expect(results).toHaveLength(1);
+		});
+
+		it("still uses the vector path when the embed is fast", async () => {
+			const fragments = [
+				makeFragment("frag-fast", "paris france capital", 0.9),
+			];
+			const rt = buildSlowEmbedRuntime({
+				fragments,
+				embed: async () => [0.1, 0.2, 0.3],
+			});
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("capital of France"),
+				undefined,
+				"vector",
+			);
+
+			// Fast embed → vector search ran (searchMemories), no keyword fallback.
+			expect(rt.searchMemories).toHaveBeenCalledOnce();
+			expect(results[0].id).toBe("frag-fast");
+		});
+	});
 });
