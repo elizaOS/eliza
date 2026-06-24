@@ -25686,6 +25686,14 @@
               children: editing ? "Done" : "Edit"
             }
           ) }),
+          favoriteEntries.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            "div",
+            {
+              "data-testid": "springboard-dock",
+              className: "mx-4 mt-1 mb-2 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/90 px-6 py-3",
+              children: favoriteEntries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { children: renderTile(entry, true) }, `dock-${entry.id}`))
+            }
+          ) : null,
           /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden", children: [
             /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
               motion.div,
@@ -25766,15 +25774,7 @@
               },
               `dot-${index}-${pageIds[0] ?? "empty"}`
             )) }) : null
-          ] }),
-          favoriteEntries.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-            "div",
-            {
-              "data-testid": "springboard-dock",
-              className: "mx-4 mb-4 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/90 px-6 py-3",
-              children: favoriteEntries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { children: renderTile(entry, true) }, `dock-${entry.id}`))
-            }
-          ) : null
+          ] })
         ]
       }
     );

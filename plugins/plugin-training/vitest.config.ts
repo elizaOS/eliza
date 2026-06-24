@@ -103,8 +103,36 @@ export default defineConfig({
         replacement: path.join(agentSrc, "$1"),
       },
       {
+        find: /^react-syntax-highlighter\/dist\/esm\/languages\/prism\/.+$/,
+        replacement: path.join(
+          here,
+          "test",
+          "syntax-highlighter-language.stub.ts",
+        ),
+      },
+      {
+        find: /^react-syntax-highlighter\/dist\/esm\/prism-light$/,
+        replacement: path.join(
+          here,
+          "test",
+          "syntax-highlighter-prism-light.stub.tsx",
+        ),
+      },
+      {
+        find: /^react-syntax-highlighter\/dist\/esm\/styles\/prism\/.+$/,
+        replacement: path.join(
+          here,
+          "test",
+          "syntax-highlighter-style.stub.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/ui$/,
         replacement: path.join(repoRoot, "packages/ui/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/ui/src/$1"),
       },
       {
         find: /^react$/,

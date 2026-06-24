@@ -110,7 +110,7 @@ describe("BackgroundView", () => {
     render(<BackgroundView />);
 
     fireEvent.click(screen.getByLabelText("Generate a background image"));
-    fireEvent.change(screen.getByPlaceholderText("Describe a background…"), {
+    fireEvent.change(screen.getByPlaceholderText("Describe a background..."), {
       target: { value: "a calm beach" },
     });
     fireEvent.click(screen.getByLabelText("Generate background from prompt"));
@@ -134,7 +134,7 @@ describe("BackgroundView", () => {
     render(<BackgroundView />);
 
     fireEvent.click(screen.getByLabelText("Generate a background image"));
-    fireEvent.change(screen.getByPlaceholderText("Describe a background…"), {
+    fireEvent.change(screen.getByPlaceholderText("Describe a background..."), {
       target: { value: "anything" },
     });
     fireEvent.click(screen.getByLabelText("Generate background from prompt"));

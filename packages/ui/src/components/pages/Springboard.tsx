@@ -364,6 +364,20 @@ export function Springboard({
         </button>
       </div>
 
+      {/* Featured / favorites row — pinned at the TOP of the springboard (not a
+          bottom iOS dock). The most-used / pinned views sit above the full
+          launcher grid so they're the first thing the eye lands on. */}
+      {favoriteEntries.length > 0 ? (
+        <div
+          data-testid="springboard-dock"
+          className="mx-4 mt-1 mb-2 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/90 px-6 py-3"
+        >
+          {favoriteEntries.map((entry) => (
+            <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
+          ))}
+        </div>
+      ) : null}
+
       {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
           never fights the in-tile drag-to-reorder gesture. */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -457,17 +471,6 @@ export function Springboard({
         ) : null}
       </div>
 
-      {/* Favorites dock. */}
-      {favoriteEntries.length > 0 ? (
-        <div
-          data-testid="springboard-dock"
-          className="mx-4 mb-4 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/90 px-6 py-3"
-        >
-          {favoriteEntries.map((entry) => (
-            <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

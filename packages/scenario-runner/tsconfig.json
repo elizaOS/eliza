@@ -33,6 +33,12 @@
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
@@ -56,6 +62,12 @@
       ],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-remote-manifest": [
+        "../plugin-remote-manifest/src/index.ts"
+      ],
+      "@elizaos/plugin-remote-manifest/*": [
+        "../plugin-remote-manifest/src/*"
       ],
       "@elizaos/plugin-worker-runtime": [
         "../plugin-worker-runtime/src/index.ts"

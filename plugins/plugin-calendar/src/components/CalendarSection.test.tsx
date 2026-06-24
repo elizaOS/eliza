@@ -79,6 +79,24 @@ vi.mock("@elizaos/ui", () => ({
   useMediaQuery: () => mediaQueryState.compact,
 }));
 
+vi.mock("@elizaos/ui/components", async () => {
+  return await vi.importMock<Record<string, unknown>>("@elizaos/ui");
+});
+
+vi.mock("@elizaos/ui/hooks", () => ({
+  useMediaQuery: () => mediaQueryState.compact,
+}));
+
+vi.mock("@elizaos/ui/state", () => ({
+  useApp: () => calendarSectionAppValue,
+  useAppSelector: <T,>(
+    selector: (value: typeof calendarSectionAppValue) => T,
+  ) => selector(calendarSectionAppValue),
+  useAppSelectorShallow: <T,>(
+    selector: (value: typeof calendarSectionAppValue) => T,
+  ) => selector(calendarSectionAppValue),
+}));
+
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
