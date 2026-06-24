@@ -350,6 +350,16 @@ export class AppRegistryService extends Service {
 		entry: AppRegistryEntry,
 		ctx: RegisterContext = {},
 	): Promise<void> {
+		// The slug comes from an untrusted app manifest and is later used to build
+		// a filesystem state path; reject anything but a plain identifier so a
+		// traversal slug (e.g. "../../etc") can never enter the registry.
+		if (!/^[a-zA-Z0-9_-]+$/.test(entry.slug)) {
+			throw new Error(
+				`[plugin-app-control] refusing to register app with unsafe slug ${JSON.stringify(
+					entry.slug,
+				)} (slug must match [a-zA-Z0-9_-]+)`,
+			);
+		}
 		const trust: AppTrust = ctx.trust ?? entry.trust ?? "external";
 		// External-app policy: apps loaded as `trust: "external"` default to
 		// `isolation: "worker"` even if they did not declare it. Apps

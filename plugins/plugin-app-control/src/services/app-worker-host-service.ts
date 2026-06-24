@@ -279,7 +279,10 @@ export class AppWorkerHostService extends Service {
 		const snapshot = await this.spawn({
 			slug,
 			isolation: "worker",
-			statePath: path.join(this.stateDir, "app-state", slug),
+			// path.basename contains the slug to a single segment so a traversal
+			// slug (e.g. "../../etc") from an untrusted app manifest cannot escape
+			// the app-state dir (defense-in-depth; register() also rejects it).
+			statePath: path.join(this.stateDir, "app-state", path.basename(slug)),
 			requestedPermissions: entry.requestedPermissions ?? null,
 			grantedNamespaces: view?.grantedNamespaces ?? [],
 			pluginEntryPath,
