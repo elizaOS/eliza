@@ -166,6 +166,7 @@ describe("isPrivateIpAddress: non-canonical IPv4 encodings (SSRF bypass vectors)
 			"2130706433", // decimal 32-bit 127.0.0.1
 			"127.1", // short form -> 127.0.0.1
 			"127.0.1", // 3-part short form
+			"::ffff:0177.0.0.1", // octal loopback inside an IPv4-mapped IPv6 literal
 		]) {
 			expect(isPrivateIpAddress(addr), addr).toBe(true);
 		}
@@ -181,6 +182,7 @@ describe("isPrivateIpAddress: non-canonical IPv4 encodings (SSRF bypass vectors)
 	it("does NOT over-block legitimate public addresses", () => {
 		for (const addr of [
 			"8.8.8.8",
+			"::ffff:8.8.8.8", // public IPv4-mapped IPv6 stays public
 			"1.1.1.1",
 			"203.0.113.10",
 			"172.15.0.1", // just below the 172.16/12 private range

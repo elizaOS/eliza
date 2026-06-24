@@ -205,7 +205,13 @@ export function isPrivateIpAddress(address: string): boolean {
 		const mapped = normalized.slice("::ffff:".length);
 		const ipv4 = parseIpv4FromMappedIpv6(mapped);
 		if (ipv4) {
-			return isPrivateIpv4(ipv4);
+			if (isPrivateIpv4(ipv4)) {
+				return true;
+			}
+			// inet_aton reading of an octal/hex/decimal mapped octet
+			// (e.g. ::ffff:0177.0.0.1) that the OS resolver would honor.
+			const loose = mapped.includes(".") ? parseIpv4Loose(mapped) : null;
+			return loose ? isPrivateIpv4(loose) : false;
 		}
 	}
 
