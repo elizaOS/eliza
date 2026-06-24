@@ -4,8 +4,8 @@ import {
   type FrameBudgetSummary,
 } from "../hooks/frame-budget";
 
-const PERF_FLAG = "__ELIZA_PERF__";
-/** Dispatch on `window` after flipping `window.__ELIZA_PERF__` to toggle live. */
+const PERF_FLAG = "__ELIZA_PERF_HUD__";
+/** Dispatch on `window` after flipping `window.__ELIZA_PERF_HUD__` to toggle live. */
 export const PERF_TOGGLE_EVENT = "eliza:perf-toggle";
 
 function perfEnabled(): boolean {
@@ -17,7 +17,9 @@ function perfEnabled(): boolean {
  * Dev-only FPS / long-task overlay (#9141 gap 1).
  *
  * Renders nothing — and starts NO rAF loop or observer — unless
- * `window.__ELIZA_PERF__ === true`. Flip that flag and dispatch
+ * `window.__ELIZA_PERF_HUD__ === true` (the same dev opt-in
+ * `useFrameBudgetMonitor` gates on, so the overlay and the telemetry monitor
+ * flip together). Flip that flag and dispatch
  * `window.dispatchEvent(new Event("eliza:perf-toggle"))` to turn it on at
  * runtime. Off by default ⇒ zero production cost (the prior view-lifecycle work
  * deliberately removed always-on rAF loops; this stays gated to honor that).

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration } from "./types";
 import { WidgetHost } from "./WidgetHost";
 
@@ -61,12 +62,22 @@ const HOME_DECLS = [
 ];
 
 vi.mock("./registry", () => ({
-  resolveWidgetsForSlot: (slot: string) =>
+  resolveWidgetsForSlot: vi.fn((slot: string) =>
     (slot === "home" ? HOME_DECLS : []).map((declaration) => ({
       declaration,
       Component: null,
     })),
+  ),
 }));
+
+beforeEach(() => {
+  vi.mocked(resolveWidgetsForSlot).mockImplementation((slot: string) =>
+    (slot === "home" ? HOME_DECLS : []).map((declaration) => ({
+      declaration,
+      Component: null,
+    })),
+  );
+});
 
 afterEach(() => {
   cleanup();
@@ -104,5 +115,38 @@ describe("WidgetHost home-slot ranking (#9143)", () => {
 
     expect(second).toEqual(first);
     expect(first).toEqual(["w0", "w1", "w2", "w3", "w4", "w5"]);
+  });
+
+  it("a live high-weight activity event floats a subscribing low-base widget to the top", () => {
+    // w9 has the worst base (order 90) so it is normally dropped from the top-6.
+    // Subscribe it to `blocked` and feed a fresh blocked event: its decayed
+    // attention boost (weight 10) outranks every quiet widget's base (≤1).
+    const subscribed = HOME_DECLS.map((d) =>
+      d.id === "w9" ? { ...d, signalKinds: ["blocked"] as const } : d,
+    );
+    vi.mocked(resolveWidgetsForSlot).mockImplementation((slot: string) =>
+      (slot === "home" ? subscribed : []).map((declaration) => ({
+        declaration,
+        Component: null,
+      })),
+    );
+
+    render(
+      <WidgetHost
+        slot="home"
+        events={[
+          {
+            id: "e1",
+            eventType: "blocked",
+            timestamp: Date.now(),
+            summary: "Run blocked",
+          },
+        ]}
+      />,
+    );
+
+    const ids = renderedIds();
+    expect(ids).toContain("w9");
+    expect(ids[0]).toBe("w9");
   });
 });

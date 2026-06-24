@@ -72,11 +72,13 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
   });
 
   it("collapses many pointermoves in a frame into ONE onDrag with the last value", () => {
-    let rafCb: ((t: number) => void) | null = null;
+    // Hold the captured callback on an object, not a closure-assigned `let`:
+    // the latter narrows to `never` at the call site under tsgo's flow analysis.
+    const raf: { cb: ((t: number) => void) | null } = { cb: null };
     vi.stubGlobal(
       "requestAnimationFrame",
       vi.fn((cb: (t: number) => void) => {
-        rafCb = cb;
+        raf.cb = cb;
         return 1;
       }),
     );
@@ -95,7 +97,7 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     // Nothing applied yet — the continuous update is deferred to the frame.
     expect(onDrag).not.toHaveBeenCalled();
 
-    rafCb?.(0); // the single scheduled frame fires
+    raf.cb?.(0); // the single scheduled frame fires
 
     // Exactly one apply, carrying only the latest offset (a 1000Hz pointer can't
     // make us run the fan-out more than once per painted frame).
@@ -104,11 +106,11 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
   });
 
   it("does not apply a stale coalesced value after release", () => {
-    let rafCb: ((t: number) => void) | null = null;
+    const raf: { cb: ((t: number) => void) | null } = { cb: null };
     vi.stubGlobal(
       "requestAnimationFrame",
       vi.fn((cb: (t: number) => void) => {
-        rafCb = cb;
+        raf.cb = cb;
         return 1;
       }),
     );
@@ -124,7 +126,7 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     b.onPointerUp(pointer(100, 270)); // release clears the pending frame
 
     expect(cancel).toHaveBeenCalled();
-    rafCb?.(0); // even if the captured frame fires, the pending value was cleared
+    raf.cb?.(0); // even if the captured frame fires, the pending value was cleared
     // The continuous 30px offset is never applied (only the release path runs).
     expect(onDrag).not.toHaveBeenCalledWith(30);
   });

@@ -14,9 +14,17 @@ import { isViewVisible } from "@elizaos/core/view-kind";
 import { Component, type ErrorInfo, type ReactNode, useMemo } from "react";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
+import { useNow } from "../hooks/useNow";
 import { useAppSelectorShallow } from "../state";
+import { useNotifications } from "../state/notifications/notification-store";
 import { useEnabledViewKinds } from "../state/useViewKinds";
-import { homeWidgetKey, rankHomeWidgets } from "./home-priority";
+import {
+  type HomeWidgetSignal,
+  homeSignalsFromEvents,
+  homeSignalsFromNotifications,
+  homeWidgetKey,
+  rankHomeWidgets,
+} from "./home-priority";
 import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
@@ -125,6 +133,10 @@ export function WidgetHost({
 }: WidgetHostProps) {
   const plugins = useAppSelectorShallow((s) => s.plugins);
   const enabledKinds = useEnabledViewKinds();
+  // Live importance inputs for the home ranker. Subscribed unconditionally
+  // (hooks can't be conditional) but only consumed for the `home` slot below.
+  const { notifications } = useNotifications();
+  const now = useNow();
 
   const resolved = useMemo(() => {
     const all = resolveWidgetsForSlot(slot, plugins ?? []);
@@ -134,29 +146,39 @@ export function WidgetHost({
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
   }, [slot, plugins, filter, enabledKinds]);
 
-  // The home surface must not render every declared widget — rank by current
-  // importance and show only the top-N (#9143). Live attention/decay signals
-  // aren't yet attributable to a specific widget from the activity stream, so
-  // ranking runs with no signals and reduces to deterministic base ordering
-  // (no reshuffle between renders). With an empty signal set `now` never feeds
-  // the decay math, so a fixed epoch keeps this render path deterministic (the
-  // UI-determinism gate forbids `Date.now()` in render) — when signal wiring
-  // lands, `now` will be threaded in off the render path. Other slots render
-  // every resolved widget unchanged.
+  // The home surface must not render every declared widget — it ranks by
+  // current importance and shows only the top-N (#9143). Importance = a stable
+  // base priority (declaration `order`) plus recent attention signals derived
+  // from the live activity stream and the unread-notification inbox, each
+  // attributed to the widgets whose `signalKinds` subscribe to that kind and
+  // decayed by recency. `now` comes from `useNow` (0 on first render, real
+  // clock installed in an effect) so the render path never calls `Date.now()`.
+  // Other slots render every resolved widget unchanged.
   const displayed = useMemo(() => {
     if (slot !== "home") return resolved;
+    const declarations = resolved.map((entry) => entry.declaration);
+    const signals: HomeWidgetSignal[] = [
+      ...homeSignalsFromEvents(events ?? [], declarations),
+      ...homeSignalsFromNotifications(
+        notifications.map((n) => ({
+          priority: n.priority,
+          timestamp: n.createdAt,
+          readAt: n.readAt,
+        })),
+        declarations,
+      ),
+    ];
     const byKey = new Map(
       resolved.map((entry) => [homeWidgetKey(entry.declaration), entry]),
     );
-    return rankHomeWidgets(
-      resolved.map((entry) => entry.declaration),
-      [],
-      { now: 0, maxVisible: HOME_MAX_VISIBLE },
-    ).flatMap((ranked) => {
+    return rankHomeWidgets(declarations, signals, {
+      now,
+      maxVisible: HOME_MAX_VISIBLE,
+    }).flatMap((ranked) => {
       const entry = byKey.get(homeWidgetKey(ranked.declaration));
       return entry ? [entry] : [];
     });
-  }, [slot, resolved]);
+  }, [slot, resolved, events, notifications, now]);
 
   const pluginById = useMemo(() => {
     const map = new Map<string, (typeof plugins)[number]>();

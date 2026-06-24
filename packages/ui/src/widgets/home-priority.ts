@@ -21,7 +21,7 @@ import type { PluginWidgetDeclaration } from "./types";
 /** Minimal declaration shape the ranking needs (decoupled from the full type). */
 export type RankableHomeWidget = Pick<
   PluginWidgetDeclaration,
-  "id" | "pluginId" | "order"
+  "id" | "pluginId" | "order" | "signalKinds"
 >;
 
 /** A live importance signal attributed to a single home widget. */
@@ -156,4 +156,183 @@ export function rankHomeWidgets<D extends RankableHomeWidget>(
     .sort((a, b) => b.score - a.score || a.key.localeCompare(b.key))
     .slice(0, Math.max(0, maxVisible))
     .map(({ declaration, score }) => ({ declaration, score }));
+}
+
+// ---------------------------------------------------------------------------
+// Live signal derivation — turn the app's activity-event stream and the
+// notification inbox into {@link HomeWidgetSignal}s attributed to the home
+// widgets that subscribe to each signal kind. This is the seam that makes the
+// pure ranker live: the home WidgetHost calls these to feed `rankHomeWidgets`.
+// Kept pure + deterministic (timestamps + `now` flow in from the caller).
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw activity-event `eventType` → canonical signal kind (a key of
+ * {@link HOME_SIGNAL_WEIGHTS}). The activity stream uses a wider vocabulary than
+ * the weight table; this reconciles it (e.g. `proactive-message → message`).
+ * Unmapped types fall through to `activity` (weight 1).
+ */
+export const EVENT_TYPE_TO_SIGNAL_KIND: Readonly<Record<string, string>> = {
+  blocked: "blocked",
+  escalation: "escalation",
+  approval: "approval",
+  reminder: "reminder",
+  message: "message",
+  "proactive-message": "message",
+  "check-in": "check-in",
+  nudge: "nudge",
+  workflow: "workflow",
+  // Orchestrator task lifecycle + tool/error noise — informational, low weight.
+  task_registered: "activity",
+  task_complete: "activity",
+  stopped: "activity",
+  tool_running: "activity",
+  blocked_auto_resolved: "activity",
+  error: "activity",
+};
+
+/** Map a raw activity-event type to its canonical signal kind. */
+export function signalKindForEventType(eventType: string): string {
+  return EVENT_TYPE_TO_SIGNAL_KIND[eventType] ?? "activity";
+}
+
+/** Notification inbox priority → signal kind (so urgent notifications rank like escalations). */
+export const NOTIFICATION_PRIORITY_TO_SIGNAL_KIND: Readonly<
+  Record<string, string>
+> = {
+  urgent: "escalation",
+  high: "approval",
+  normal: "message",
+  low: "activity",
+};
+
+// ---------------------------------------------------------------------------
+// Content-item priority *within* a single home widget (#9143). A "default" home
+// widget (notifications/messages/activity) shows a capped list, and the items
+// themselves carry priority — so the widget must surface the most
+// attention-worthy items first, not merely the most recent. This is the
+// content-level analogue of the widget-level ranker above. Pure + stable
+// (no clock; ties resolve by original order).
+// ---------------------------------------------------------------------------
+
+/** Notification priority → numeric rank (higher = more urgent). */
+export const NOTIFICATION_PRIORITY_RANK: Readonly<Record<string, number>> = {
+  urgent: 3,
+  high: 2,
+  normal: 1,
+  low: 0,
+};
+
+/** Minimal notification shape the content ranker needs. */
+export interface RankableContentNotification {
+  priority?: string;
+  /** Epoch-ms when created. */
+  createdAt: number;
+  /** Epoch-ms when read; unread (null/absent) ranks ahead of read. */
+  readAt?: number | null;
+}
+
+/**
+ * Order notifications inside a home widget by attention: unread before read,
+ * then higher priority, then most-recent first. Stable (equal items keep their
+ * original relative order) and pure (no `Date.now()`), so the home widget never
+ * reshuffles equal-importance items between renders.
+ */
+export function rankHomeNotifications<T extends RankableContentNotification>(
+  items: readonly T[],
+): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const aUnread = a.item.readAt ? 0 : 1;
+      const bUnread = b.item.readAt ? 0 : 1;
+      if (aUnread !== bUnread) return bUnread - aUnread;
+      const aPriority =
+        NOTIFICATION_PRIORITY_RANK[a.item.priority ?? "normal"] ?? 1;
+      const bPriority =
+        NOTIFICATION_PRIORITY_RANK[b.item.priority ?? "normal"] ?? 1;
+      if (aPriority !== bPriority) return bPriority - aPriority;
+      if (a.item.createdAt !== b.item.createdAt) {
+        return b.item.createdAt - a.item.createdAt;
+      }
+      return a.index - b.index;
+    })
+    .map((entry) => entry.item);
+}
+
+/** Minimal activity-event shape the signal derivation needs. */
+export interface RankableActivityEvent {
+  eventType: string;
+  timestamp: number;
+}
+
+/** Minimal notification shape the signal derivation needs. */
+export interface RankableNotification {
+  priority?: string;
+  /** Epoch-ms the notification was created. */
+  timestamp: number;
+  /** Whether the user has already seen it — read items don't boost. */
+  readAt?: string | number | null;
+}
+
+/**
+ * Attribute each activity event to every home widget whose `signalKinds`
+ * includes the event's canonical kind, producing recency-stamped signals the
+ * ranker decays. A widget with no `signalKinds` is never boosted (ranks by
+ * static `order` only).
+ */
+export function homeSignalsFromEvents(
+  events: readonly RankableActivityEvent[],
+  declarations: readonly RankableHomeWidget[],
+): HomeWidgetSignal[] {
+  const signals: HomeWidgetSignal[] = [];
+  for (const event of events) {
+    const kind = signalKindForEventType(event.eventType);
+    const weight = homeSignalWeight(kind);
+    for (const decl of declarations) {
+      if (!decl.signalKinds?.includes(kind)) continue;
+      signals.push({
+        widgetKey: homeWidgetKey(decl),
+        weight,
+        timestamp: event.timestamp,
+      });
+    }
+  }
+  return signals;
+}
+
+/**
+ * Attribute unread notifications to every home widget that subscribes to the
+ * notification's priority-derived kind (always at least `notification`, so a
+ * widget can opt in with `signalKinds: ["notification"]` to react to any
+ * notification regardless of priority).
+ */
+export function homeSignalsFromNotifications(
+  notifications: readonly RankableNotification[],
+  declarations: readonly RankableHomeWidget[],
+): HomeWidgetSignal[] {
+  const signals: HomeWidgetSignal[] = [];
+  for (const notification of notifications) {
+    if (notification.readAt) continue;
+    const priorityKind =
+      NOTIFICATION_PRIORITY_TO_SIGNAL_KIND[notification.priority ?? "normal"] ??
+      "message";
+    const kinds = new Set([priorityKind, "notification"]);
+    for (const decl of declarations) {
+      // A widget can subscribe to both the generic `notification` kind and the
+      // priority-specific kind; use the strongest matching weight so an urgent
+      // notification ranks at escalation strength rather than the generic floor.
+      let weight = 0;
+      for (const k of decl.signalKinds ?? []) {
+        if (kinds.has(k)) weight = Math.max(weight, homeSignalWeight(k));
+      }
+      if (weight === 0) continue;
+      signals.push({
+        widgetKey: homeWidgetKey(decl),
+        weight,
+        timestamp: notification.timestamp,
+      });
+    }
+  }
+  return signals;
 }

@@ -20,10 +20,11 @@ interface DbState {
   bySourceMessageId: Set<string>;
 }
 
-function makeRuntime(opts: {
-  modelResponse: string;
-  db?: Partial<DbState>;
-}): { runtime: IAgentRuntime; db: DbState; useModel: ReturnType<typeof vi.fn> } {
+function makeRuntime(opts: { modelResponse: string; db?: Partial<DbState> }): {
+  runtime: IAgentRuntime;
+  db: DbState;
+  useModel: ReturnType<typeof vi.fn>;
+} {
   const db: DbState = {
     inserted: [],
     triageRows: opts.db?.triageRows ?? [],
@@ -35,11 +36,12 @@ function makeRuntime(opts: {
     agentId: "22222222-2222-2222-2222-222222222222" as UUID,
     character: { name: "Eliza" },
     useModel,
+    // No NotificationService registered — triage's best-effort home-attention
+    // notify must be a clean no-op (it never blocks/affects persistence).
+    getService: () => null,
     adapter: {
       db: {
-        execute: async (query: {
-          queryChunks: Array<{ value?: unknown }>;
-        }) => {
+        execute: async (query: { queryChunks: Array<{ value?: unknown }> }) => {
           const chunk = query.queryChunks[0]?.value;
           const sql = Array.isArray(chunk) ? String(chunk[0]) : String(chunk);
           if (sql.startsWith("INSERT INTO")) {
@@ -83,7 +85,9 @@ function inbound(overrides: Partial<InboundMessage>): InboundMessage {
   };
 }
 
-function triageRow(overrides: Record<string, unknown>): Record<string, unknown> {
+function triageRow(
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
   return {
     id: "r1",
     agent_id: "22222222-2222-2222-2222-222222222222",
