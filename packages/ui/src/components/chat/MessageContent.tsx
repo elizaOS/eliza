@@ -37,13 +37,10 @@ import {
   splitInlineCode,
 } from "./message-parser-helpers";
 import { ThinkingBlock } from "./ThinkingBlock";
-import type { FormResultValue } from "./widgets/form-request";
 // Side effect: registers the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
-import {
-  getInlineWidget,
-  type InlineWidgetContext,
-} from "./widgets/inline-registry";
+import { getInlineWidget } from "./widgets/inline-registry";
+import { useInlineWidgetContext } from "./widgets/use-inline-widget-context";
 
 interface MessageContentProps {
   message: ConversationMessage;
@@ -824,54 +821,13 @@ export function MessageContent({
     }
   }, [message.text, analysisMode]);
 
-  const handleChoice = useCallback(
-    (value: string) => {
-      void sendActionMessage(value);
-    },
-    [sendActionMessage],
-  );
-
-  // Followup `navigate` chip: deliver the passive view-switch SUGGESTION as the
-  // same `eliza:navigate:view` event the VIEWS action uses. A `/`-prefixed
-  // payload is a viewPath; anything else is treated as a viewId.
-  const handleNavigate = useCallback((payload: string) => {
-    if (typeof window === "undefined") return;
-    const detail = payload.startsWith("/")
-      ? { viewPath: payload }
-      : { viewId: payload };
-    window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail }));
-  }, []);
-
-  // Followup `prompt` chip: prefill the composer (falls back to send inside the
-  // widget when no composer is mounted).
-  const handlePrompt = useCallback(
-    (payload: string) => {
-      setChatInput(payload);
-    },
-    [setChatInput],
-  );
-
-  // Generic in-chat form submit: send the structured result back as a message
-  // through the existing action-message pipeline.
-  const handleFormSubmit = useCallback(
-    (formId: string, values: Record<string, FormResultValue>) => {
-      void sendActionMessage(
-        `[form:submit ${formId}] ${JSON.stringify(values)}`,
-      );
-    },
-    [sendActionMessage],
-  );
-
-  // Handlers handed to every inline widget at render. Self-contained widgets
-  // (the task card) ignore them; interactive ones drive the chat surface.
-  const inlineWidgetCtx = useMemo<InlineWidgetContext>(
-    () => ({
-      sendAction: handleChoice,
-      navigate: handleNavigate,
-      prefillComposer: handlePrompt,
-      submitForm: handleFormSubmit,
-    }),
-    [handleChoice, handleNavigate, handlePrompt, handleFormSubmit],
+  // Handlers handed to every inline widget at render: the SAME shared contract
+  // the overlay surface (InlineWidgetText) uses, so a CHOICE pick / FOLLOWUPS
+  // chip / FORM submit behaves identically on both. Self-contained widgets (the
+  // task card) ignore them; interactive ones drive the chat surface.
+  const inlineWidgetCtx = useInlineWidgetContext(
+    sendActionMessage,
+    setChatInput,
   );
 
   const permissionRegistry = useMemo(
