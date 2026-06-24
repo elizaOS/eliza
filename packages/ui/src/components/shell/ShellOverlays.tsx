@@ -91,7 +91,7 @@ export function ShellOverlays({
   return (
     <>
       {/* Dev-only FPS/long-task overlay (#9141) — self-gates on
-          window.__ELIZA_PERF__, renders null + starts no loop when off. */}
+          window.__ELIZA_PERF_HUD__, renders null + starts no loop when off. */}
       <PerfOverlay />
       <CommandPalette />
       <RestartBanner />
