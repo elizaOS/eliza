@@ -48,6 +48,7 @@ export interface WorkbenchParticipant {
 
 /** Structural mirror of `VoiceScenarioTurn` (@elizaos/plugin-local-inference). */
 export interface WorkbenchTurn {
+  /** Ground-truth speaker identity that synthesized this turn's audio. */
   speaker: string;
   text?: string;
   audioRef?: string;
@@ -56,6 +57,17 @@ export interface WorkbenchTurn {
   expectRespond: boolean;
   expectedTranscript?: string;
   expectedSpeakerLabel?: string;
+  /**
+   * The speaker label a diarizer/attribution model is expected to PREDICT for
+   * this turn — distinct from the ground-truth `speaker`. When no live
+   * attribution model runs (`VoiceWorkbenchOptions.resolvePredictedSpeakerLabel`
+   * absent), this drives the diarization gate, so a scenario can encode a
+   * deliberate misattribution (`predictedSpeakerLabel !== expectedSpeakerLabel`)
+   * and the gate will correctly fail. The player NEVER falls back to `speaker`
+   * for the prediction — that would make the DER gate compare ground truth to
+   * itself (tautological). Absent → the turn is scored as a miss, never a pass.
+   */
+  predictedSpeakerLabel?: string;
   expectedEntity?: string;
 }
 
@@ -123,6 +135,18 @@ export interface VoiceWorkbenchOptions {
    * throws and the turn is reported `skipped`, never `pass`.
    */
   resolveTurnWav: (turn: WorkbenchTurn, index: number) => Promise<Uint8Array>;
+  /**
+   * Resolve the PREDICTED speaker label for a turn from an actual
+   * diarization/speaker-attribution output. When provided, its result — NOT the
+   * scenario's ground-truth `speaker` — drives the diarization gate, so the gate
+   * fails on a real misattribution. Return `null` when the model can't attribute
+   * the turn (scored as a miss, never a pass). When absent, the player uses the
+   * turn's explicit `predictedSpeakerLabel`; it never falls back to `speaker`.
+   */
+  resolvePredictedSpeakerLabel?: (
+    turn: WorkbenchTurn,
+    index: number,
+  ) => Promise<string | null> | string | null;
   /** TTS route to exercise. local for desktop/android, cloud for web. */
   ttsRoute: "/api/tts/local-inference" | "/api/tts/cloud";
   /** Extra TTS body fields (e.g. voiceId/modelId for the cloud route). */
@@ -232,7 +256,13 @@ async function runTurn(
   const t0 = now();
   const expectedTranscript = turnReference(turn);
   const expectedSpeakerLabel = turnSpeakerLabel(turn);
-  const predictedSpeakerLabel = turn.speaker.trim() || null;
+  // Predicted label comes from an actual attribution output (live model hook or
+  // an explicit per-turn `predictedSpeakerLabel`), NEVER from the ground-truth
+  // `turn.speaker` — comparing ground truth to itself made this gate tautological
+  // (#9427). Absent prediction → null → scored as a miss, never a pass.
+  const predictedSpeakerLabel =
+    (await opts.resolvePredictedSpeakerLabel?.(turn, index)) ??
+    (turn.predictedSpeakerLabel?.trim() || null);
   const speakerLabelOk = predictedSpeakerLabel === expectedSpeakerLabel;
   const werTolerance = opts.werTolerance ?? 0.34;
 
@@ -399,7 +429,7 @@ async function runTurn(
   };
 }
 
-function scoreWorkbenchDiarization(
+export function scoreWorkbenchDiarization(
   turns: ReadonlyArray<VoiceWorkbenchTurnReport>,
   maxDer = 0.2,
 ): VoiceWorkbenchReport["diarization"] {

@@ -104,10 +104,12 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 				},
 				wakeWordActive,
 				knownSpeakerEntityIds: known,
-				// Perfect-attribution assumption: an agent-echo turn's speaker
-				// embedding matches the agent's own TTS imprint. This exercises the
-				// acoustic self-voice gate (which catches a mis-transcribed echo the
-				// transcript word-overlap guard alone would miss).
+				// Explicitly de-scoped fixture (#9427): in this headless lane no
+				// real speaker-embedding similarity is computed, so an agent-echo
+				// turn is fed a fixed above-threshold value purely to exercise the
+				// downstream self-voice gate's PLUMBING (that it consumes the
+				// signal), NOT to validate acoustic self-voice matching — that
+				// needs a live speaker encoder and belongs to the real-audio lane.
 				...(label.isAgentEcho ? { selfVoiceSimilarity: 0.9 } : {}),
 			});
 			// The server gate suppresses unless `nextSpeaker === "agent"`, which folds
