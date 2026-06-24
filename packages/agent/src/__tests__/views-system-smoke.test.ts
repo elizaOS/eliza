@@ -354,7 +354,12 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
     expect(entry).toBeDefined();
     if (!entry) throw new Error("Expected smoke.main to be registered");
     const diskPath = getBundleDiskPath(entry);
-    expect(diskPath).toBe("/some/plugin/dir/dist/views/bundle.js");
+    // getBundleDiskPath returns a real on-disk path (path.resolve), so it is
+    // backslash/drive-rooted on Windows — compare against the platform-resolved
+    // path rather than a hardcoded POSIX string.
+    expect(diskPath).toBe(
+      path.resolve("/some/plugin/dir", "dist/views/bundle.js"),
+    );
   });
 
   it("serves relative chunks emitted beside the root bundle", async () => {
