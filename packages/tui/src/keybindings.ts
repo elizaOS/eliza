@@ -31,8 +31,6 @@ export type EditorAction =
   // Selection/autocomplete
   | "selectUp"
   | "selectDown"
-  | "selectPageUp"
-  | "selectPageDown"
   | "selectConfirm"
   | "selectCancel"
   // Clipboard
@@ -41,15 +39,7 @@ export type EditorAction =
   | "yank"
   | "yankPop"
   // Undo
-  | "undo"
-  // Tool output
-  | "expandTools"
-  // Session
-  | "toggleSessionPath"
-  | "toggleSessionSort"
-  | "renameSession"
-  | "deleteSession"
-  | "deleteSessionNoninvasive";
+  | "undo";
 
 // Re-export KeyId from keys.ts
 export type { KeyId };
@@ -92,8 +82,6 @@ export const DEFAULT_EDITOR_KEYBINDINGS: Required<EditorKeybindingsConfig> = {
   // Selection/autocomplete
   selectUp: "up",
   selectDown: "down",
-  selectPageUp: "pageUp",
-  selectPageDown: "pageDown",
   selectConfirm: "enter",
   selectCancel: ["escape", "ctrl+c"],
   // Clipboard
@@ -103,14 +91,6 @@ export const DEFAULT_EDITOR_KEYBINDINGS: Required<EditorKeybindingsConfig> = {
   yankPop: "alt+y",
   // Undo
   undo: "ctrl+-",
-  // Tool output
-  expandTools: "ctrl+o",
-  // Session
-  toggleSessionPath: "ctrl+p",
-  toggleSessionSort: "ctrl+s",
-  renameSession: "ctrl+r",
-  deleteSession: "ctrl+d",
-  deleteSessionNoninvasive: "ctrl+backspace",
 };
 
 /**
