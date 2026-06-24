@@ -35,6 +35,14 @@ import { Service, ServiceType } from "../types/service.ts";
 /** Max notifications retained per agent in the inbox (oldest evicted). */
 const MAX_NOTIFICATIONS = 300;
 
+/**
+ * True once a notification's explicit `expiresAt` (unix ms) has passed. Only
+ * caller-set expiry is honored — there is no per-category default retention.
+ */
+function isExpired(n: AgentNotification, now: number): boolean {
+	return n.expiresAt != null && n.expiresAt <= now;
+}
+
 /** Minimal structural view of the event bus we publish onto. */
 interface EventBusLike {
 	emit: (event: {
@@ -92,8 +100,10 @@ export class NotificationService extends Service {
 				this.cacheKey,
 			);
 			if (Array.isArray(stored)) {
+				const now = Date.now();
 				this.notifications = stored
 					.filter((n) => n && typeof n.id === "string" && n.title)
+					.filter((n) => !isExpired(n, now))
 					.slice(-MAX_NOTIFICATIONS);
 			}
 		} catch (error) {
@@ -131,6 +141,7 @@ export class NotificationService extends Service {
 			data: input.data,
 			createdAt: Date.now(),
 			readAt: null,
+			expiresAt: input.expiresAt ?? undefined,
 			agentId: input.agentId ?? (this.runtime.agentId as UUID),
 		};
 
@@ -141,6 +152,9 @@ export class NotificationService extends Service {
 				(n) => n.groupKey !== notification.groupKey,
 			);
 		}
+		// Drop any entries whose explicit expiry has passed before appending.
+		const nowMs = Date.now();
+		this.notifications = this.notifications.filter((n) => !isExpired(n, nowMs));
 		this.notifications.push(notification);
 		if (this.notifications.length > MAX_NOTIFICATIONS) {
 			this.notifications = this.notifications.slice(-MAX_NOTIFICATIONS);
@@ -182,7 +196,10 @@ export class NotificationService extends Service {
 
 	/** List notifications, newest first, with optional filtering. */
 	list(query: NotificationQuery = {}): AgentNotification[] {
-		let result = [...this.notifications].reverse();
+		const now = Date.now();
+		let result = [...this.notifications]
+			.filter((n) => !isExpired(n, now))
+			.reverse();
 		if (query.unreadOnly) {
 			result = result.filter((n) => !n.readAt);
 		}
@@ -196,9 +213,10 @@ export class NotificationService extends Service {
 	}
 
 	getUnreadCount(): number {
+		const now = Date.now();
 		let count = 0;
 		for (const n of this.notifications) {
-			if (!n.readAt) count++;
+			if (!n.readAt && !isExpired(n, now)) count++;
 		}
 		return count;
 	}

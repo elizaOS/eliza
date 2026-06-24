@@ -73,6 +73,12 @@ export interface AgentNotification {
 	createdAt: number;
 	/** Unix ms when the user marked it read; `null`/absent means unread. */
 	readAt?: number | null;
+	/**
+	 * Optional unix ms after which this notification self-destroys (dropped from
+	 * the inbox on the next hydrate/notify/read). Honored only when explicitly
+	 * set by the caller; `null`/absent means it never expires.
+	 */
+	expiresAt?: number | null;
 	/** Agent that produced it (multi-agent hosts). */
 	agentId?: UUID;
 }
@@ -91,6 +97,8 @@ export interface NotificationInput {
 	icon?: string;
 	groupKey?: string;
 	data?: Record<string, JsonValue>;
+	/** Optional unix ms self-destroy time; absent/null means it never expires. */
+	expiresAt?: number | null;
 	agentId?: UUID;
 }
 
