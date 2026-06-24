@@ -193,6 +193,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     ],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: autonomousStoreRef is a ref — its .current is read at call-time (always latest) and must NOT be a dependency, or this callback's identity churns on every autonomy merge and cascades into useStartupCoordinator's deps.
   const fetchAutonomyReplay = useCallback(async () => {
     if (autonomousReplayInFlightRef.current) return;
     autonomousReplayInFlightRef.current = true;
@@ -244,11 +245,13 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     } finally {
       autonomousReplayInFlightRef.current = false;
     }
+    // autonomousStoreRef.current is read at call-time inside the body — a ref
+    // read is always latest, so it must NOT be a dep (it would churn this
+    // callback's identity, cascading into useStartupCoordinator's deps).
   }, [
     applyAutonomyEventMerge,
     autonomousReplayInFlightRef,
     autonomousRunHealthByRunIdRef,
-    autonomousStoreRef.current,
     setAutonomousRunHealthByRunId,
   ]);
 

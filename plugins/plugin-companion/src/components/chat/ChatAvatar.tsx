@@ -124,6 +124,10 @@ export function ChatAvatar(_props: ChatAvatarProps) {
           >
             <VrmViewer
               vrmPath={vrmPath}
+              // Pause the WebGL engine when the avatar is hidden (sidebar
+              // collapsed → opacity 0). Opacity isn't geometric, so the
+              // viewer's IntersectionObserver can't catch this case.
+              active={avatarVisible}
               interactive
               interactiveMode="orbitZoom"
               companionVrmPowerMode={companionVrmPowerMode}

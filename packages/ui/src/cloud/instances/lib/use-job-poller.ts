@@ -97,6 +97,12 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
     let cancelled = false;
 
     const pollOnce = async () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
       if (pollInFlightRef.current) {
         return;
       }

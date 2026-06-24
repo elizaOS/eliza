@@ -338,6 +338,14 @@ export function bindReadyPhase(
   // the catch-all that hydrates once the agent is running if the live status
   // event was missed (e.g. status delivered via a non-WS source).
   ptyPollInterval = setInterval(() => {
+    // Skip the 5s network poll while the tab is hidden — the WS status events
+    // still hydrate on change; this interval is only the missed-event catch-all.
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState !== "visible"
+    ) {
+      return;
+    }
     const running = depsRef.current?.agentRunningRef.current ?? false;
     hydrateOnRunning(running);
     if (running && depsRef.current?.hasPtySessionsRef.current) doHydratePty();

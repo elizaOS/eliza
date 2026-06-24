@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { LogEntry } from "../../api";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -35,6 +35,75 @@ function logEntryKey(entry: LogEntry): string {
  * neither caller passed contentHeader/inModal — both props default to
  * the same shape the wrapper used to apply.
  */
+// Memoized so the live-tail (which appends entries and re-renders the list)
+// reconciles only NEW rows — each existing `entry` is a stable object, so memo
+// skips re-rendering (and re-formatting) every prior row on every tail update.
+const LogRow = memo(function LogRow({ entry }: { entry: LogEntry }) {
+  return (
+    <div
+      className="flex flex-col gap-1 px-3 py-3 text-sm md:flex-row md:items-start md:gap-3"
+      data-testid="log-entry"
+    >
+      {/* Timestamp */}
+      <span className="shrink-0 whitespace-nowrap text-xs-tight text-muted tabular-nums md:w-[5.75rem]">
+        {formatTime(entry.timestamp, { fallback: "—" })}
+      </span>
+
+      {/* Level */}
+      <span
+        className={`shrink-0 font-semibold uppercase tracking-[0.08em] text-xs-tight md:w-14 ${
+          entry.level === "error"
+            ? "text-danger"
+            : entry.level === "warn"
+              ? "text-warning"
+              : entry.level === "info"
+                ? "text-muted-strong"
+                : entry.level === "debug"
+                  ? "text-muted"
+                  : "text-muted"
+        }`}
+      >
+        {entry.level}
+      </span>
+
+      {/* Source */}
+      <span className="min-w-0 shrink-0 break-words text-xs-tight text-muted md:w-20 md:truncate">
+        [{entry.source}]
+      </span>
+
+      {/* Tag badges */}
+      <span className="inline-flex max-w-full shrink-0 flex-wrap gap-1 md:max-w-[14rem]">
+        {(entry.tags ?? []).map((t: string) => {
+          return (
+            <span
+              key={t}
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium ${
+                (
+                  {
+                    agent: "border-accent/25 bg-accent/10 text-accent-fg",
+                    cloud: "border-accent/20 bg-accent/8 text-accent",
+                    plugins: "border-accent/25 bg-accent/10 text-accent-fg",
+                  } as Record<string, string>
+                )[t] ?? "border-border/35 bg-bg-hover text-muted-strong"
+              }`}
+              style={{
+                fontFamily: "var(--font-body, sans-serif)",
+              }}
+            >
+              <span className="break-all">{t}</span>
+            </span>
+          );
+        })}
+      </span>
+
+      {/* Message */}
+      <span className="min-w-0 flex-1 break-words leading-6 text-txt">
+        {entry.message}
+      </span>
+    </div>
+  );
+});
+
 export function LogsView({
   contentHeader,
   inModal,
@@ -328,71 +397,7 @@ function LogsViewBody() {
         ) : (
           <PagePanel variant="inset" className="overflow-hidden rounded-sm">
             {filteredLogs.map((entry: LogEntry) => (
-              <div
-                key={logEntryKey(entry)}
-                className="flex flex-col gap-1 px-3 py-3 text-sm md:flex-row md:items-start md:gap-3"
-                data-testid="log-entry"
-              >
-                {/* Timestamp */}
-                <span className="shrink-0 whitespace-nowrap text-xs-tight text-muted tabular-nums md:w-[5.75rem]">
-                  {formatTime(entry.timestamp, { fallback: "—" })}
-                </span>
-
-                {/* Level */}
-                <span
-                  className={`shrink-0 font-semibold uppercase tracking-[0.08em] text-xs-tight md:w-14 ${
-                    entry.level === "error"
-                      ? "text-danger"
-                      : entry.level === "warn"
-                        ? "text-warning"
-                        : entry.level === "info"
-                          ? "text-muted-strong"
-                          : entry.level === "debug"
-                            ? "text-muted"
-                            : "text-muted"
-                  }`}
-                >
-                  {entry.level}
-                </span>
-
-                {/* Source */}
-                <span className="min-w-0 shrink-0 break-words text-xs-tight text-muted md:w-20 md:truncate">
-                  [{entry.source}]
-                </span>
-
-                {/* Tag badges */}
-                <span className="inline-flex max-w-full shrink-0 flex-wrap gap-1 md:max-w-[14rem]">
-                  {(entry.tags ?? []).map((t: string) => {
-                    return (
-                      <span
-                        key={t}
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium ${
-                          (
-                            {
-                              agent:
-                                "border-accent/25 bg-accent/10 text-accent-fg",
-                              cloud: "border-accent/20 bg-accent/8 text-accent",
-                              plugins:
-                                "border-accent/25 bg-accent/10 text-accent-fg",
-                            } as Record<string, string>
-                          )[t] ??
-                          "border-border/35 bg-bg-hover text-muted-strong"
-                        }`}
-                        style={{
-                          fontFamily: "var(--font-body, sans-serif)",
-                        }}
-                      >
-                        <span className="break-all">{t}</span>
-                      </span>
-                    );
-                  })}
-                </span>
-
-                {/* Message */}
-                <span className="min-w-0 flex-1 break-words leading-6 text-txt">
-                  {entry.message}
-                </span>
-              </div>
+              <LogRow key={logEntryKey(entry)} entry={entry} />
             ))}
           </PagePanel>
         )}

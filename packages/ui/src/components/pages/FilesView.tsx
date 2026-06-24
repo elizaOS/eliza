@@ -23,7 +23,7 @@ import {
   Share2,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { client, type StoredFile } from "../../api";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
@@ -111,7 +111,7 @@ interface FileCardProps {
   onDelete: (file: StoredFile) => void;
 }
 
-function FileCard({
+const FileCard = memo(function FileCard({
   file,
   kind,
   kindLabel,
@@ -222,7 +222,7 @@ function FileCard({
       </div>
     </li>
   );
-}
+});
 
 /* ── main view ────────────────────────────────────────────────────────── */
 
