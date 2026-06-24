@@ -64,6 +64,7 @@ interface ScenarioFacts {
   hasPerTurnAssert: boolean;
   hasPersonalityExpect: boolean;
   hasDeadPlannerAssert: boolean;
+  hasMessageAsGmailLabelExpectation: boolean;
 }
 
 // plannerIncludesAll / plannerIncludesAny / plannerExcludes are not in the
@@ -74,6 +75,8 @@ const DEAD_PLANNER_ASSERT =
 
 const PER_TURN_ASSERT =
   /\b(assertResponse|responseIncludesAny|responseIncludesAll|responseJudge|assertTurn)\b/;
+const MESSAGE_AS_GMAIL_LABEL_EXPECTATION =
+  /\b(?:addLabelIds|removeLabelIds)\s*:\s*["']MESSAGE["']/;
 // A non-empty finalChecks array: `finalChecks: [` followed by a non-`]`,
 // non-whitespace char. `finalChecks: []` does not match.
 const NON_EMPTY_FINAL_CHECKS = /finalChecks\s*:\s*\[\s*[^\]\s]/;
@@ -88,6 +91,8 @@ function analyze(file: string): ScenarioFacts {
     hasPerTurnAssert: PER_TURN_ASSERT.test(src),
     hasPersonalityExpect: /\bpersonalityExpect\s*:/.test(src),
     hasDeadPlannerAssert: DEAD_PLANNER_ASSERT.test(src),
+    hasMessageAsGmailLabelExpectation:
+      MESSAGE_AS_GMAIL_LABEL_EXPECTATION.test(src),
   };
 }
 
@@ -120,6 +125,14 @@ describe("scenario corpus assertion guard", () => {
       .map(rel)
       .sort();
     expect(misLaned).toEqual([]);
+  });
+
+  it('does not use action name "MESSAGE" as a Gmail label expectation', () => {
+    const offenders = facts
+      .filter((f) => f.hasMessageAsGmailLabelExpectation)
+      .map(rel)
+      .sort();
+    expect(offenders).toEqual([]);
   });
 
   // Ratchet against the dead plannerIncludes*/plannerExcludes fields. They are
