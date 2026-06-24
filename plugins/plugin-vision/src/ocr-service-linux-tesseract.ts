@@ -24,7 +24,7 @@
  */
 
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
@@ -252,19 +252,31 @@ export function resolveTesseract(): TesseractResolution {
   if (vendor && vendor.length > 0) {
     const root = join(vendor, "tesseract");
     const cand = join(root, "bin", "tesseract");
-    if (existsSync(cand)) {
+    const tessdata = join(root, "tessdata");
+    // Only select the vendor tier when the bundle is actually usable: a binary
+    // AND a language model. A half-staged dir (binary present, tessdata missing)
+    // would otherwise be chosen and then fail at OCR time; fall through to PATH
+    // so the system tesseract still works.
+    if (existsSync(cand) && hasTraineddata(tessdata)) {
       const lib = join(root, "lib");
       const prior = process.env.LD_LIBRARY_PATH;
       return {
         bin: cand,
         env: {
           LD_LIBRARY_PATH: prior ? `${lib}:${prior}` : lib,
-          TESSDATA_PREFIX: join(root, "tessdata"),
+          TESSDATA_PREFIX: tessdata,
         },
       };
     }
   }
   return { bin: "tesseract", env: {} };
+}
+
+/** A vendored tessdata dir is only usable if it carries at least one language
+ * model (`<lang>.traineddata`); otherwise selecting the bundle fails at OCR time. */
+function hasTraineddata(tessdataDir: string): boolean {
+  if (!existsSync(tessdataDir)) return false;
+  return readdirSync(tessdataDir).some((f) => f.endsWith(".traineddata"));
 }
 
 let availabilityCache: boolean | null = null;
