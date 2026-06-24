@@ -64,6 +64,7 @@ interface ScenarioFacts {
   hasPerTurnAssert: boolean;
   hasPersonalityExpect: boolean;
   hasDeadPlannerAssert: boolean;
+  hasExpectedActionParams: boolean;
 }
 
 // plannerIncludesAll / plannerIncludesAny / plannerExcludes are not in the
@@ -71,6 +72,7 @@ interface ScenarioFacts {
 // them have silently-ignored "assertions". Tracked in #9310.
 const DEAD_PLANNER_ASSERT =
   /\b(plannerIncludesAll|plannerIncludesAny|plannerExcludes)\s*:/;
+const DEAD_EXPECTED_ACTION_PARAMS = /\bexpectedActionParams\s*:/;
 
 const PER_TURN_ASSERT =
   /\b(assertResponse|responseIncludesAny|responseIncludesAll|responseJudge|assertTurn)\b/;
@@ -88,6 +90,7 @@ function analyze(file: string): ScenarioFacts {
     hasPerTurnAssert: PER_TURN_ASSERT.test(src),
     hasPersonalityExpect: /\bpersonalityExpect\s*:/.test(src),
     hasDeadPlannerAssert: DEAD_PLANNER_ASSERT.test(src),
+    hasExpectedActionParams: DEAD_EXPECTED_ACTION_PARAMS.test(src),
   };
 }
 
@@ -120,6 +123,14 @@ describe("scenario corpus assertion guard", () => {
       .map(rel)
       .sort();
     expect(misLaned).toEqual([]);
+  });
+
+  it("does not use dead expectedActionParams turn assertions", () => {
+    const offenders = facts
+      .filter((f) => f.hasExpectedActionParams)
+      .map(rel)
+      .sort();
+    expect(offenders).toEqual([]);
   });
 
   // Ratchet against the dead plannerIncludes*/plannerExcludes fields. They are
