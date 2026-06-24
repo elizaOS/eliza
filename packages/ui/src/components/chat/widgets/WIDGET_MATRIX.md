@@ -159,24 +159,32 @@ the open proposal.
 
 ## Coverage status
 
+`★` = added/extended in #9304. `▢` = documented follow-up (not yet shipped).
+
 | Widget | Unit/behavior | Story | E2E |
 |---|---|---|---|
-| Task | ✅ | ✅ (added #9304) | ✅ `task-widget-in-chat` |
+| Task | ✅ (+ registration gate ★) | ▢ store-backed | ✅ `task-widget-in-chat` |
 | Choice | ✅ | ✅ | — |
 | Followups | ✅ | ✅ | — |
 | Form | ✅ | ✅ | — |
-| Notifications | ✅ | ✅ (added #9304) | — |
-| Messages | ✅ | ✅ (added #9304) | — |
+| Notifications | ✅ | ▢ store-backed | — |
+| Messages | ✅ | ▢ store-backed | — |
 | Orchestrator activity | ✅ (e2e fixture) | ✅ | — |
 | Orchestrator accounts | ✅ (e2e fixture) | ✅ | — |
-| Grilling card | ✅ (added #9304) | ✅ | — |
-| Credential request | ✅ (added #9304) | ✅ | ✅ `sensitive-request-in-chat` |
-| Browser status | ✅ (added #9304) | — | — |
-| Music player | ✅ (added #9304) | — | — |
-| Topic chips bar | ✅ (added #9304) | ✅ | — |
-| Topic grouped transcript | ✅ (added #9304) | ✅ | — |
-| Home widgets (inbox/calendar/goals/finances/health/relationships) | ✅ + coverage gate | — | — |
+| Grilling card | ✅ ★ | ✅ | — |
+| Credential request | ✅ ★ | ✅ | ✅ `sensitive-request-in-chat` |
+| Topic chips bar | ✅ ★ | ✅ | — |
+| Topic grouped transcript | ✅ ★ | ✅ | — |
+| Browser status | ▢ (api-polled) | ▢ | — |
+| Music player | ▢ (audio/api state) | ▢ | — |
+| Home widgets (inbox/calendar/goals/finances/health/relationships) | ✅ + coverage gate | ▢ | — |
 
-`widgets/widget-coverage.test.ts` gates that the home-slot and the inline
-registry never silently lose a widget (extended in #9304): dropping a gated
-widget fails CI.
+Gates (all fail CI if a widget silently disappears):
+- `inline-registry.test.tsx` — built-in inline widgets (`choice`/`followups`/`form`) present.
+- `task-widget.test.tsx` — `registerTaskWidget()` wires the `task` kind. ★
+- `widget-coverage.test.ts` — every home-slot plugin resolves a widget (#9143), **and** every chat-sidebar widget resolves. ★
+
+**Follow-up tests (▢):** `browser-status` + `music-player` are API/audio-state
+backed and want a mocked-client render test; store-backed `Story` entries are
+covered live by `audit:app` (they render empty without an app provider, so a bare
+story is `needs-runtime`).
