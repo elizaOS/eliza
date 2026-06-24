@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "scope_global_vs_user.aggressive.allcaps.019",
   title:
     "scope :: user_overrides_persist_across_unrelated_turns :: aggressive :: allcaps :: 4-turn (19)",

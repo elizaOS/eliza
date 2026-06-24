@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "escalation.frank.multilang.013",
   title: "escalation :: less_emoji :: frank :: multilang :: 10-turn (13)",
   domain: "personality",

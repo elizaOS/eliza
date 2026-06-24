@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "escalation.polite.with_emojis.021",
   title: "escalation :: less_emoji :: polite :: with_emojis :: 10-turn (21)",
   domain: "personality",

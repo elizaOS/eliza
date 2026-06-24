@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "note_trait_unrelated.polite.short_text.031",
   title:
     "note_trait :: no_buddy_friend :: polite :: short_text :: 20-turn (31)",

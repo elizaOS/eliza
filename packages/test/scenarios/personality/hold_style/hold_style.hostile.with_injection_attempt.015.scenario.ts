@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "hold_style.hostile.with_injection_attempt.015",
   title:
     "hold_style :: shakespearean :: hostile :: with_injection_attempt :: 20-turn (15)",

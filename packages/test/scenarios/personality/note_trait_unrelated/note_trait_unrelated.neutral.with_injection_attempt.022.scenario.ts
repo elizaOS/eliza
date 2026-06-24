@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "note_trait_unrelated.neutral.with_injection_attempt.022",
   title:
     "note_trait :: prefers_short :: neutral :: with_injection_attempt :: 15-turn (22)",
