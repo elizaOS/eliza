@@ -447,6 +447,14 @@ export interface PluginWidgetDeclaration {
 	 * when rendering. Format: "<package-subpath>#<named-export>".
 	 */
 	componentExport?: string;
+	/**
+	 * Opt-in shared "default" widget sink for the `home` slot (#9143). A plugin
+	 * that has live state but no bundled React component of its own sets this to
+	 * surface that state through one of the shared frontpage widgets instead of
+	 * shipping a component. Ignored unless `slot` is `"home"` and no own
+	 * component is registered for this declaration's `pluginId`/`id`.
+	 */
+	defaultWidget?: "notifications" | "messages" | "activity";
 }
 
 export interface PluginAppUiExtension {
