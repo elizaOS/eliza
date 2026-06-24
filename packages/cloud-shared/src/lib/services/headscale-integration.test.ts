@@ -125,7 +125,6 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
   });
 });
 
-
 describe("normalizeHeadscaleSegment + registration-timeout default", () => {
   test("lowercases, trims, replaces invalid chars, collapses + strips hyphens", () => {
     expect(normalizeHeadscaleSegment("  HELLO  ")).toBe("hello");
