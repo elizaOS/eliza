@@ -536,6 +536,13 @@ export class LocalInferenceService {
 								maxTokens: request.maxTokens,
 								temperature: request.temperature,
 								signal: request.signal,
+								// Stream the description token-by-token when the caller wired
+								// a chunk sink (the IMAGE_DESCRIPTION handler forwards the
+								// runtime's onStreamChunk here); the engine/backend decode
+								// it through the same pipe as chat text when the fused lib
+								// exposes ABI-v13 streaming vision.
+								onTextChunk: request.onTextChunk,
+								maxTokensPerStep: request.maxTokensPerStep,
 							});
 							const trimmed = result.text.trim();
 							if (!trimmed) {

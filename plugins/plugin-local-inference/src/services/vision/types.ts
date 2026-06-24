@@ -64,6 +64,15 @@ export interface VisionDescribeRequest {
 	/** 0..1, default 0.2 (descriptions should be deterministic-ish). */
 	temperature?: number;
 	signal?: AbortSignal;
+	/**
+	 * Per-token callback. When set and the backend exposes streaming vision
+	 * (the fused ABI-v13 path), the description is decoded token-by-token and
+	 * each piece is delivered here as it generates — the same pipe as chat text.
+	 * Backends without streaming describe ignore it and return the final result.
+	 */
+	onTextChunk?: (chunk: string) => void | Promise<void>;
+	/** Per-step token cap for streaming describe (smaller = finer-grained UI). */
+	maxTokensPerStep?: number;
 }
 
 /** Backend response — same shape that ImageDescriptionResult expects. */
