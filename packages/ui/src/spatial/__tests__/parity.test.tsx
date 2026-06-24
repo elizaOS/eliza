@@ -20,8 +20,8 @@ describe("tri-modal parity — one view, three modalities", () => {
   it("IR: the authored view evaluates to a stable layout tree", () => {
     const tree = evaluateToSpatialTree(view) as SpatialBoxNode;
     expect(tree.type).toBe("box");
-    expect(tree.title).toBe("Agent");
-    expect(tree.border).toBe("round");
+    expect(tree.title).toBeUndefined();
+    expect(tree.border).toBe("none");
     // Card > [HStack(name/status), Field, Divider, List, HStack(buttons)]
     const kinds = tree.children.map((c) => c.type);
     expect(kinds).toEqual(["box", "field", "divider", "box", "box"]);
@@ -38,13 +38,12 @@ describe("tri-modal parity — one view, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Agent"); // title in the border
       expect(flat).toContain("Ada"); // name
       expect(flat).toContain("online"); // status
       expect(flat).toContain("eliza-1"); // model field
       expect(flat).toContain("research"); // first skill
       expect(flat).toContain("Configure"); // button
-      expect(flat).toMatch(/╭|╰/); // round border drawn
+      expect(flat).not.toMatch(/╭|╰/); // no decorative card frame
     }
   });
 

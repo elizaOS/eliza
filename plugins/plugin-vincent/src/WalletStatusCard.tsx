@@ -181,10 +181,7 @@ export const WalletStatusCard = memo(function WalletStatusCard({
 
   if (!hasAddresses && !walletBalances) {
     return (
-      <div
-        data-testid="vincent-wallet-status-card"
-        className="rounded-2xl border border-border/18 px-5 py-4"
-      >
+      <div data-testid="vincent-wallet-status-card" className="px-1 py-3">
         <div className="flex items-center gap-2">
           <Wallet className="h-4 w-4 text-muted/50" />
           <span className="text-sm text-muted">Wallet loading</span>
@@ -196,7 +193,7 @@ export const WalletStatusCard = memo(function WalletStatusCard({
   return (
     <div
       data-testid="vincent-wallet-status-card"
-      className="space-y-3 rounded-2xl border border-border/18 px-4 py-4"
+      className="space-y-3 px-1 py-3"
     >
       {/* Header row */}
       <div className="flex items-center justify-between gap-3">

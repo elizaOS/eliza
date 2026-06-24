@@ -66,7 +66,7 @@ export const VincentConnectionCard = memo(function VincentConnectionCard({
   });
 
   return (
-    <div className="rounded-2xl border border-border/18 px-4 py-4">
+    <div className="px-1 py-3">
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-1.5 text-xs font-semibold">
           <span
@@ -104,7 +104,7 @@ export const VincentConnectionCard = memo(function VincentConnectionCard({
               {...disconnect.agentProps}
               variant="outline"
               size="sm"
-              className="h-9 rounded-xl px-4 text-xs font-semibold text-status-danger border-status-danger/30 hover:bg-status-danger-bg hover:text-status-danger"
+              className="h-9 px-4 text-xs font-semibold text-status-danger border-status-danger/30 hover:bg-status-danger-bg hover:text-status-danger"
               onClick={() => void handleVincentDisconnect()}
               aria-label={disconnectLabel}
             >
@@ -117,7 +117,7 @@ export const VincentConnectionCard = memo(function VincentConnectionCard({
               {...connect.agentProps}
               variant="default"
               size="sm"
-              className="h-9 rounded-xl px-4 text-xs font-semibold"
+              className="h-9 px-4 text-xs font-semibold"
               onClick={() => void handleVincentLogin()}
               disabled={vincentLoginBusy}
               aria-label={connectLabel}
@@ -136,7 +136,7 @@ export const VincentConnectionCard = memo(function VincentConnectionCard({
       </div>
 
       {vincentLoginError && (
-        <div className="mt-3 rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-2 text-xs text-status-danger">
+        <div className="mt-3 px-1 py-2 text-xs text-status-danger">
           {vincentLoginError}
         </div>
       )}

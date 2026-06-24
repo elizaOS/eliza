@@ -43,7 +43,7 @@ export const TradingStrategyPanel = memo(function TradingStrategyPanel({
   });
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/18 px-4 py-4">
+    <div className="space-y-3 px-1 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-accent" />
@@ -109,7 +109,7 @@ export const TradingStrategyPanel = memo(function TradingStrategyPanel({
             {paramEntries.slice(0, 6).map(([key, val]) => (
               <span
                 key={key}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/25 bg-card/55 px-3 py-1.5 text-xs font-semibold text-muted"
+                className="inline-flex max-w-full items-center gap-1.5 px-1 py-1.5 text-xs font-semibold text-muted"
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-accent/70" />
                 <span className="truncate">{key}</span>
@@ -119,7 +119,7 @@ export const TradingStrategyPanel = memo(function TradingStrategyPanel({
               </span>
             ))}
             {paramEntries.length > 6 ? (
-              <span className="inline-flex items-center rounded-full border border-border/25 bg-card/55 px-3 py-1.5 text-xs font-semibold text-muted">
+              <span className="inline-flex items-center px-1 py-1.5 text-xs font-semibold text-muted">
                 +{paramEntries.length - 6}
               </span>
             ) : null}
@@ -129,7 +129,7 @@ export const TradingStrategyPanel = memo(function TradingStrategyPanel({
             asChild
             variant="outline"
             size="sm"
-            className="h-9 w-fit rounded-xl px-4 text-xs font-semibold"
+            className="h-9 w-fit px-4 text-xs font-semibold"
           >
             <a
               ref={openVincent.ref}

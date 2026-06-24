@@ -27,27 +27,27 @@ const MEDALLION: Record<
   { ring: string; icon: string; label: string }
 > = {
   idle: {
-    ring: "border-border/40 bg-card/40",
+    ring: "",
     icon: "text-muted/70",
     label: "text-muted/70",
   },
   active: {
-    ring: "border-accent bg-accent/15 shadow-[0_0_0_3px_var(--accent-subtle,rgba(255,88,0,0.14))]",
+    ring: "bg-accent/15 shadow-[0_0_0_3px_var(--accent-subtle,rgba(255,88,0,0.14))]",
     icon: "text-accent",
     label: "text-accent",
   },
   done: {
-    ring: "border-ok/55 bg-ok/12",
+    ring: "bg-ok/12",
     icon: "text-ok",
     label: "text-txt",
   },
   skipped: {
-    ring: "border-warn/45 bg-warn/10",
+    ring: "bg-warn/10",
     icon: "text-warn",
     label: "text-muted",
   },
   error: {
-    ring: "border-danger/55 bg-danger/12",
+    ring: "bg-danger/12",
     icon: "text-danger",
     label: "text-danger",
   },
@@ -81,13 +81,13 @@ export function PhaseChip({
       aria-current={selected ? "true" : undefined}
       {...agentProps}
       className={[
-        "group flex min-w-0 flex-col items-center gap-1.5 rounded-xl px-1 py-2 text-center transition-colors",
-        selected ? "bg-card/70 ring-1 ring-accent/40" : "hover:bg-card/40",
+        "group flex min-w-0 flex-col items-center gap-1 px-1 py-1.5 text-center transition-colors",
+        selected ? "text-accent" : "hover:text-txt",
       ].join(" ")}
     >
       <span
         className={[
-          "relative grid h-9 w-9 place-items-center rounded-full border-2 transition-all",
+          "relative grid h-9 w-9 place-items-center rounded-full transition-all",
           tone.ring,
           status === "active" ? "animate-pulse" : "",
         ].join(" ")}
@@ -104,7 +104,9 @@ export function PhaseChip({
         {phase}
       </span>
       {summary ? (
-        <span className="w-full truncate text-2xs text-muted">{summary}</span>
+        <span className="sr-only w-full truncate text-2xs text-muted">
+          {summary}
+        </span>
       ) : (
         <span className="h-1 w-1 rounded-full bg-muted/30" aria-hidden />
       )}

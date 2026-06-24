@@ -78,14 +78,14 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
           "@keyframes pmShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}"
         }
       </style>
-      <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center justify-between px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">
           <Button
             ref={back.ref}
             {...back.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-xl text-muted hover:text-txt"
+            className="h-9 w-9 shrink-0 text-muted hover:text-txt"
             onClick={exitToApps}
             aria-label={backLabel}
           >
@@ -103,8 +103,8 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       </div>
 
-      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-3 py-3 sm:px-5">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {selectedMarket ? (
             <MarketDetail
               market={selectedMarket}
@@ -217,10 +217,7 @@ function CapabilityChip({
         display: "inline-flex",
         alignItems: "center",
         gap: 7,
-        padding: "7px 12px",
-        borderRadius: 99,
-        border: `1px solid ${BORDER}`,
-        background: SURFACE,
+        padding: "4px 2px",
         fontSize: 13,
         fontWeight: 600,
         color: TXT,
@@ -286,19 +283,7 @@ function DisconnectedState({
         margin: "auto 0",
       }}
     >
-      <div
-        style={{
-          position: "relative",
-          width: 96,
-          height: 96,
-          borderRadius: 28,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "var(--accent-subtle, rgba(255,138,36,0.14))",
-          border: `1px solid ${BORDER}`,
-        }}
-      >
+      <div>
         <PolymarketGlyph size={52} />
       </div>
       <div style={{ maxWidth: 360 }}>
@@ -314,6 +299,7 @@ function DisconnectedState({
         </h2>
         {error ? (
           <p
+            className="sr-only"
             style={{
               margin: "8px 0 0",
               fontSize: 14,
@@ -346,6 +332,7 @@ function DisconnectedState({
       </div>
       {!trading && status?.trading.missing.length ? (
         <p
+          className="sr-only"
           style={{
             margin: 0,
             fontSize: 12,
@@ -368,9 +355,7 @@ function MarketSkeleton() {
   return (
     <div
       style={{
-        height: 86,
-        borderRadius: 16,
-        border: `1px solid ${BORDER}`,
+        height: 66,
         background: `linear-gradient(90deg, ${SURFACE} 0%, var(--bg-hover, rgba(0,0,0,0.06)) 50%, ${SURFACE} 100%)`,
         backgroundSize: "200% 100%",
         animation: "pmShimmer 1.4s ease-in-out infinite",
@@ -395,12 +380,7 @@ function OutcomeChip({
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        padding: "5px 10px",
-        borderRadius: 99,
-        border: `1px solid ${lead ? "var(--accent-subtle, rgba(255,138,36,0.3))" : BORDER}`,
-        background: lead
-          ? "var(--accent-subtle, rgba(255,138,36,0.14))"
-          : SURFACE,
+        padding: "2px 0",
         fontSize: 12.5,
         fontWeight: 600,
         color: TXT,
@@ -464,12 +444,10 @@ function MarketCard({
         gap: 12,
         width: "100%",
         textAlign: "left",
-        padding: 14,
-        borderRadius: 16,
-        border: `1px solid ${active ? ACCENT : BORDER}`,
-        background: active
-          ? "var(--accent-subtle, rgba(255,138,36,0.08))"
-          : "var(--card, #fff)",
+        padding: "10px 4px",
+        border: "none",
+        borderLeft: active ? `2px solid ${ACCENT}` : "2px solid transparent",
+        background: "transparent",
         cursor: "pointer",
         font: "inherit",
         color: TXT,
@@ -480,13 +458,10 @@ function MarketCard({
         style={{
           width: 40,
           height: 40,
-          borderRadius: 12,
           flexShrink: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: SURFACE,
-          border: `1px solid ${BORDER}`,
           overflow: "hidden",
         }}
       >
@@ -577,13 +552,10 @@ function MarketDetail({
           style={{
             width: 44,
             height: 44,
-            borderRadius: 12,
             flexShrink: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: SURFACE,
-            border: `1px solid ${BORDER}`,
             overflow: "hidden",
           }}
         >
@@ -646,7 +618,6 @@ function MarketDetail({
               key={outcome.name}
               style={{
                 padding: "11px 0",
-                borderTop: `1px solid ${BORDER}`,
                 display: "flex",
                 flexDirection: "column",
                 gap: 6,
@@ -673,7 +644,6 @@ function MarketDetail({
                 <div
                   style={{
                     height: 6,
-                    borderRadius: 99,
                     background: SURFACE,
                     overflow: "hidden",
                   }}
@@ -682,7 +652,6 @@ function MarketDetail({
                     style={{
                       width: `${pct}%`,
                       height: "100%",
-                      borderRadius: 99,
                       background: i === 0 ? ACCENT : MUTED,
                     }}
                   />

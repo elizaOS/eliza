@@ -84,9 +84,8 @@ function StatChip({
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
+      className="inline-flex items-center gap-1.5 px-1 py-1 text-xs font-medium"
       style={{
-        background: accent ? "var(--accent-subtle)" : "var(--surface)",
         color: accent ? "var(--accent)" : "var(--muted)",
       }}
     >
@@ -163,7 +162,7 @@ const MessagesThreadButton = memo(function MessagesThreadButton({
       type="button"
       onClick={() => onOpen(thread)}
       aria-current={selected ? "true" : undefined}
-      className="flex w-full items-start gap-3 border-b border-border/16 px-4 py-3 text-left transition-colors focus:outline-none"
+      className="flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors focus:outline-none"
       style={selected ? { background: "var(--accent-subtle)" } : undefined}
       data-testid={`messages-thread-${thread.id}`}
     >
@@ -178,10 +177,7 @@ const MessagesThreadButton = memo(function MessagesThreadButton({
           <span className="truncate text-sm font-semibold text-txt">
             {thread.address || "Unknown"}
           </span>
-          <span
-            className="shrink-0 rounded-full px-2 py-0.5 text-2xs text-muted"
-            style={{ background: "var(--surface)" }}
-          >
+          <span className="shrink-0 px-1 py-0.5 text-2xs text-muted">
             {formatTime(thread.lastMessage.date)}
           </span>
         </span>
@@ -411,14 +407,14 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
       data-testid="messages-shell"
       className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/24 bg-bg/90 px-4 py-3 backdrop-blur-sm">
+      <header className="flex shrink-0 items-center justify-between gap-3 px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">
           <Button
             ref={back.ref}
             {...back.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-lg text-muted hover:text-txt"
+            className="h-9 w-9 shrink-0 text-muted hover:text-txt"
             onClick={showComposer ? backToThreads : exitToApps}
             aria-label={backLabel}
           >
@@ -432,7 +428,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
             <h1 className="truncate text-base font-semibold text-txt">
               {title}
             </h1>
-            <p className="truncate text-xs text-muted">
+            <p className="sr-only truncate text-xs text-muted">
               {ownsSmsRole
                 ? t("messages.smsReady", { defaultValue: "Default SMS app" })
                 : t("messages.smsBridge", {
@@ -447,7 +443,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
             {...newMessage.agentProps}
             variant="default"
             size="sm"
-            className="rounded-lg"
+            className="px-3"
             onClick={openNewComposer}
             data-testid="messages-new"
           >
@@ -458,7 +454,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
       </header>
 
       {currentSmsRole && !ownsSmsRole ? (
-        <div className="shrink-0 border-b border-border/24 bg-bg-accent/40 px-4 py-3">
+        <div className="shrink-0 px-3 py-2">
           <div className="mx-auto flex max-w-5xl flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-start gap-3 text-sm">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
@@ -468,7 +464,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                     defaultValue: "SMS role is not assigned to this app",
                   })}
                 </div>
-                <div className="text-xs text-muted">
+                <div className="sr-only text-xs text-muted">
                   {t("messages.smsRoleBody", {
                     defaultValue:
                       "Reading and sending real SMS requires Android to grant the default SMS role.",
@@ -513,10 +509,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
         <div className="shrink-0 px-4 pt-3">
           <div
             role={error ? "alert" : "status"}
-            className={`mx-auto max-w-5xl rounded-lg border px-3 py-2 text-sm ${
-              error
-                ? "border-danger/40 bg-danger/10 text-danger"
-                : "border-border/30 bg-bg-accent text-muted"
+            className={`mx-auto max-w-5xl px-1 py-2 text-sm ${
+              error ? "text-danger" : "text-muted"
             }`}
           >
             {error ?? notice}
@@ -546,13 +540,13 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
               <h2 className="mt-5 text-base font-semibold text-txt">
                 {t("messages.empty.title", { defaultValue: "No messages yet" })}
               </h2>
-              <p className="mt-1 max-w-xs text-sm text-muted">
+              <p className="sr-only mt-1 max-w-xs text-sm text-muted">
                 {t("messages.empty.body", {
                   defaultValue:
                     "Start a conversation — texts you send and receive show up here.",
                 })}
               </p>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <div className="sr-only mt-4 flex flex-wrap items-center justify-center gap-2">
                 <StatChip
                   label={t("messages.threadCount", {
                     defaultValue: "0 threads",
@@ -564,7 +558,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                 {...emptyNewMessage.agentProps}
                 type="button"
                 onClick={openNewComposer}
-                className="mt-6 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-colors"
+                className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold transition-colors"
                 style={{
                   background: "var(--accent)",
                   color: "var(--accent-foreground)",
@@ -582,7 +576,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
             </div>
           ) : (
             <div className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto pb-32">
-              <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-3 px-3 py-2">
                 <StatChip
                   label={t("messages.threadCountN", {
                     defaultValue: `${threads.length} threads`,
@@ -615,7 +609,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
         >
           {showComposer ? (
             <>
-              <div className="shrink-0 border-b border-border/24 px-4 py-3">
+              <div className="shrink-0 px-3 py-2">
                 <label
                   htmlFor="messages-compose-address"
                   className="text-xs text-muted"
@@ -689,7 +683,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                           defaultValue: "Start a text message",
                         })}
                       </div>
-                      <p className="mt-1 text-xs text-muted">
+                      <p className="sr-only mt-1 text-xs text-muted">
                         {t("messages.composeBody", {
                           defaultValue:
                             "Enter a phone number and message body. Android handles carrier delivery through the SMS bridge.",
@@ -700,7 +694,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                 )}
               </div>
 
-              <div className="shrink-0 border-t border-border/24 bg-bg/95 px-4 py-3">
+              <div className="shrink-0 bg-bg/95 px-3 py-2">
                 <div className="mx-auto flex max-w-2xl items-end gap-2">
                   <Textarea
                     ref={bodyInput.ref}
@@ -718,7 +712,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                     ref={sendButton.ref}
                     {...sendButton.agentProps}
                     size="icon"
-                    className="h-11 w-11 shrink-0 rounded-lg"
+                    className="h-11 w-11 shrink-0"
                     onClick={() => void send()}
                     disabled={!canSend}
                     aria-label={t("messages.send", { defaultValue: "Send" })}
@@ -738,7 +732,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                     defaultValue: "Select a conversation",
                   })}
                 </div>
-                <p className="mt-1 text-xs text-muted">
+                <p className="sr-only mt-1 text-xs text-muted">
                   {t("messages.selectBody", {
                     defaultValue:
                       "Review existing SMS threads or start a new text message.",

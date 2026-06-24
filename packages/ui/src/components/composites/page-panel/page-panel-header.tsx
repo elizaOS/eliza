@@ -50,8 +50,8 @@ export function PanelHeader({
     <div
       className={cn(
         hasActions
-          ? "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 sm:px-5"
-          : "flex items-start gap-3 px-4 py-3 sm:px-5",
+          ? "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 px-1 py-2"
+          : "flex items-start gap-2 px-1 py-2",
         className,
       )}
       {...props}
@@ -72,19 +72,14 @@ export function PanelHeader({
           <div
             className={cn(
               "text-sm font-semibold text-txt-strong",
-              eyebrow && "mt-1",
+              eyebrow && "mt-0.5",
               headingClassName,
             )}
           >
             {heading}
           </div>
           {description ? (
-            <div
-              className={cn(
-                "mt-1 text-xs leading-relaxed text-muted",
-                descriptionClassName,
-              )}
-            >
+            <div className={cn("sr-only", descriptionClassName)}>
               {description}
             </div>
           ) : null}
@@ -105,14 +100,7 @@ export function SummaryCard({
   ...props
 }: SummaryCardProps) {
   return (
-    <div
-      className={cn(
-        "rounded-sm border border-border bg-card p-4",
-        compact && "p-3.5",
-        className,
-      )}
-      {...props}
-    />
+    <div className={cn("p-2", compact && "p-1.5", className)} {...props} />
   );
 }
 
@@ -120,7 +108,7 @@ export function PageActionRail({ className, ...props }: PageActionRailProps) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-card",
+        "inline-flex items-center gap-1 whitespace-nowrap",
         className,
       )}
       {...props}
@@ -138,14 +126,14 @@ export function PanelNotice({
   return (
     <div
       className={cn(
-        "rounded-sm border px-4 py-3 text-sm",
+        "px-1 py-2 text-sm",
         tone === "accent"
-          ? "border-accent bg-accent-subtle text-txt"
+          ? "text-txt"
           : tone === "warning"
-            ? "border-warn/30 bg-warn/10 text-txt"
+            ? "text-txt"
             : tone === "danger"
-              ? "border-danger/30 bg-danger/10 text-danger"
-              : "border-border bg-card text-muted",
+              ? "text-danger"
+              : "text-muted",
         className,
       )}
       {...props}

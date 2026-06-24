@@ -164,19 +164,12 @@ function renderView(exitToApps = vi.fn()) {
 
 // Returns the card <div> wrapping a volume slider, for scoped label/icon asserts.
 function volumeCard(stream: string): HTMLElement {
-  const slider = screen.getByTestId(`device-settings-volume-${stream}`);
-  // input -> flex row -> mt-3 wrapper's parent is the card div.
-  const card = slider.closest("div.rounded-lg") as HTMLElement | null;
-  if (!card) throw new Error(`volume card not found for ${stream}`);
-  return card;
+  return screen.getByTestId(`device-settings-volume-card-${stream}`);
 }
 
 // Returns the card <div> wrapping a role action button.
 function roleCard(role: string): HTMLElement {
-  const button = screen.getByTestId(`device-settings-request-role-${role}`);
-  const card = button.closest("div.rounded-lg") as HTMLElement | null;
-  if (!card) throw new Error(`role card not found for ${role}`);
-  return card;
+  return screen.getByTestId(`device-settings-role-card-${role}`);
 }
 
 afterEach(() => {
