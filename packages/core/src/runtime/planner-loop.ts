@@ -37,6 +37,7 @@ import {
 	extractJsonObjects,
 	parseJsonObject,
 	stringifyForModel,
+	stripJsonStructuralJunkReply,
 } from "./json-output";
 import {
 	assertRepeatedFailureLimit,
@@ -944,22 +945,28 @@ function parseJsonPlannerOutput(raw: string): {
 	const trimmed = raw.trim();
 	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
 	if (!parsed) {
+		// Non-JSON output: a weak model emitted prose and/or `<tool_call>` markup
+		// instead of the planner envelope. Recover the call it meant to make and
+		// strip the markup from the user-facing text instead of leaking it.
 		return {
-			toolCalls: [],
-			messageToUser: getNonEmptyString(trimmed),
+			toolCalls: recoverEmbeddedToolCalls(trimmed),
+			messageToUser: sanitizePlannerMessage(trimmed),
 			raw: { text: trimmed },
 		};
 	}
-	const messageToUser = getNonEmptyString(parsed.messageToUser ?? parsed.text);
+	const messageToUser = sanitizePlannerMessage(
+		parsed.messageToUser ?? parsed.text,
+	);
 	const toolCalls = normalizeToolCalls(parsed.toolCalls);
 	const bareActionCalls =
 		toolCalls.length === 0 ? normalizeBarePlannerAction(parsed) : [];
 	let resolvedCalls = toolCalls.length > 0 ? toolCalls : bareActionCalls;
 	// `parseJsonObject` only returns the FIRST top-level object, so a weak
-	// model that concatenated bare `{type, args}` calls would lose every one
-	// after the first. Recover the full set from the raw string.
+	// model that concatenated bare `{type, args}` calls — or emitted native
+	// `<tool_call>` markup — would lose every call. Recover the full set from
+	// the raw string.
 	if (resolvedCalls.length === 0) {
-		resolvedCalls = parseEmbeddedToolCalls(trimmed);
+		resolvedCalls = recoverEmbeddedToolCalls(trimmed);
 	}
 	return {
 		thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
@@ -2046,6 +2053,67 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 }
 
 /**
+ * Recover tool calls from the model's native `<tool_call>` markup —
+ * `<tool_call>ACTION<arg_key>k</arg_key><arg_value>v</arg_value>...</tool_call>`
+ * — emitted as text by weak open models (cerebras gpt-oss / zai) that fail to
+ * route a structured call. Sibling of {@link parseEmbeddedToolCalls} (which
+ * recovers JSON-object calls): same intent — honor the call the model meant to
+ * make instead of dropping it and answering blind — for the one serialization
+ * that isn't JSON. The same markup is removed from the user-facing message by
+ * {@link stripJsonStructuralJunkReply}, so a recovered call never double-shows
+ * as prose.
+ */
+function parseNativeMarkupToolCalls(
+	text: string | undefined,
+): PlannerToolCall[] {
+	if (!text?.includes("<tool_call")) {
+		return [];
+	}
+	const calls: PlannerToolCall[] = [];
+	const blockRe = /<tool_call\b[^>]*>([\s\S]*?)(?:<\/tool_call>|$)/gi;
+	const argRe =
+		/<arg_key>([\s\S]*?)<\/arg_key>\s*<arg_value>([\s\S]*?)<\/arg_value>/gi;
+	for (const block of text.matchAll(blockRe)) {
+		const body = block[1];
+		// The action name is the leading token before the first <arg_key>.
+		const name = body.match(/^\s*([A-Za-z][A-Za-z0-9_]*)/)?.[1];
+		if (!name) continue;
+		const params: Record<string, string> = {};
+		for (const arg of body.matchAll(argRe)) {
+			const key = arg[1].trim();
+			if (key) params[key] = arg[2].trim();
+		}
+		const call = normalizeToolCall({
+			action: name,
+			parameters: Object.keys(params).length > 0 ? params : undefined,
+		});
+		if (call) calls.push(call);
+	}
+	return calls;
+}
+
+/**
+ * Recover tool calls a weak model emitted as text — JSON objects first, then
+ * the native `<tool_call>` markup — when no structured call was parsed.
+ */
+function recoverEmbeddedToolCalls(text: string): PlannerToolCall[] {
+	const fromJson = parseEmbeddedToolCalls(text);
+	return fromJson.length > 0 ? fromJson : parseNativeMarkupToolCalls(text);
+}
+
+/**
+ * The user-facing planner message with any leaked tool-call / JSON-structural
+ * markup removed (see {@link stripJsonStructuralJunkReply}). Applied at the one
+ * parse boundary so every downstream consumer of `messageToUser` gets clean
+ * text without each having to re-sanitize.
+ */
+function sanitizePlannerMessage(value: unknown): string | undefined {
+	const text = getNonEmptyString(value);
+	if (!text) return undefined;
+	return getNonEmptyString(stripJsonStructuralJunkReply(text));
+}
+
+/**
  * Merge native tool calls with calls recovered from the model's text
  * narration, deduped by normalized name and parameters. Native calls are
  * authoritative and keep their order; text-recovered calls only fill in exact
@@ -2684,11 +2752,16 @@ function userSafeFinalMessage(
 	message: string | undefined,
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	const candidate = getNonEmptyString(message);
+	// Strip leaked tool-call / JSON-structural markup before the safety check so
+	// a message that is good prose with trailing leaked markup ("...let me look.
+	// <tool_call>WEB_FETCH...") becomes clean usable text instead of being
+	// rejected wholesale (or worse, sent verbatim when the unsafe-text heuristic
+	// doesn't match the markup shape).
+	const candidate = sanitizePlannerMessage(message);
 	if (candidate && !isUnsafeUserVisibleText(candidate)) {
 		return candidate;
 	}
-	const latest = latestToolResultText(trajectory);
+	const latest = sanitizePlannerMessage(latestToolResultText(trajectory));
 	if (latest && !isUnsafeUserVisibleText(latest)) {
 		return latest;
 	}
