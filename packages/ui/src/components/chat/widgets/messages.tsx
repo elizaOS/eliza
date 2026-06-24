@@ -21,7 +21,7 @@ export function MessagesWidget(_props: WidgetProps) {
   const conversations = useAppSelector((s) => s.conversations);
   const recent = useMemo(
     () =>
-      [...(conversations ?? [])]
+      (Array.isArray(conversations) ? [...conversations] : [])
         .sort(byUpdatedDesc)
         .slice(0, MAX_HOME_CONVERSATIONS),
     [conversations],

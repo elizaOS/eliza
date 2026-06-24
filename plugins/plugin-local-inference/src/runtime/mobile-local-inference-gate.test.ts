@@ -25,6 +25,31 @@ describe("shouldEnableMobileLocalInference", () => {
 		).toBe(true);
 	});
 
+	it("returns true when ELIZA_BIONIC_HOST_DELEGATED=1 (Android bionic delegation)", () => {
+		// The agent delegates inference to the in-process bionic Vulkan host over
+		// UDS; without this trigger ensureLocalInferenceHandler is skipped on the
+		// phone, so the bionic loader + TTS/TRANSCRIPTION/IMAGE_DESCRIPTION
+		// handlers never register and only the direct-reply chat path works (#8848).
+		expect(
+			shouldEnableMobileLocalInference(
+				{ ELIZA_BIONIC_HOST_DELEGATED: "1" },
+				"arm64",
+			),
+		).toBe(true);
+	});
+
+	it("ELIZA_DISABLE_FFI_LLAMA=1 does not block the bionic-host path (process-external UDS)", () => {
+		expect(
+			shouldEnableMobileLocalInference(
+				{
+					ELIZA_DISABLE_FFI_LLAMA: "1",
+					ELIZA_BIONIC_HOST_DELEGATED: "1",
+				},
+				"arm64",
+			),
+		).toBe(true);
+	});
+
 	it("auto-fires on riscv64 with no env flags", () => {
 		// node-llama-cpp has no riscv64 prebuild; the FFI loader (which dlopens
 		// the cross-built libllama.so) is the only in-process llama.cpp path

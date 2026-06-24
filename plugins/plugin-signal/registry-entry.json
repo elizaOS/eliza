@@ -5,15 +5,7 @@
   "npmName": "@elizaos/plugin-signal",
   "version": "2.0.0-beta.0",
   "source": "bundled",
-  "tags": [
-    "signal",
-    "messaging",
-    "secure",
-    "encrypted",
-    "connector",
-    "social",
-    "social-chat"
-  ],
+  "tags": ["signal", "messaging", "secure", "encrypted", "connector", "social", "social-chat"],
   "config": {
     "SIGNAL_CLI_PATH": {
       "type": "file-path",

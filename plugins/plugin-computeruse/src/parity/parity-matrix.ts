@@ -208,6 +208,22 @@ export const PARITY_MATRIX: readonly ParityCapability[] = [
     os: ALL_PLANNED,
   },
   {
+    id: "kill_app",
+    elizaVerb: "COMPUTER_USE_KILL_APP",
+    status: "have",
+    milestone: "M12",
+    note: "terminate by pid or process name (taskkill / kill / pkill)",
+    os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
+  },
+  {
+    id: "set_value",
+    elizaVerb: "COMPUTER_USE_SET_VALUE",
+    status: "have",
+    milestone: "M12",
+    note: "a11y value write: win32 UIAutomation ValuePattern fast-path + universal click→select-all→type fallback; real actuation in the interactive real lane",
+    os: ALL_PLANNED,
+  },
+  {
     id: "get_current_window_id",
     elizaVerb: "WINDOW_GET_CURRENT_WINDOW_ID",
     status: "have",
@@ -228,6 +244,22 @@ export const PARITY_MATRIX: readonly ParityCapability[] = [
     milestone: "M12",
     os: DESKTOP_COVERED_AOSP_NA_PLANNED(),
   },
+  {
+    id: "get_window_size",
+    elizaVerb: "WINDOW_GET_WINDOW_SIZE",
+    status: "have",
+    milestone: "M12",
+    note: "GetWindowRect (win32) / AppleScript size / xdotool geometry",
+    os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
+  },
+  {
+    id: "get_window_position",
+    elizaVerb: "WINDOW_GET_WINDOW_POSITION",
+    status: "have",
+    milestone: "M12",
+    note: "GetWindowRect (win32) / AppleScript position / xdotool geometry",
+    os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
+  },
 
   // ── M13: provider matrix (sandbox-only / RPC) ────────────────────────────
   {
@@ -243,6 +275,13 @@ export const PARITY_MATRIX: readonly ParityCapability[] = [
     milestone: "M13",
     note: "sandbox/remote-guest only (host routes through the FILE action)",
     os: ALL_PLANNED,
+  },
+  {
+    id: "filesystem_bytes",
+    status: "have",
+    milestone: "M13",
+    note: "read_bytes/write_bytes (base64) + create_dir + directory_exists + get_file_size — binary-safe guest I/O in file-ops.ts + executeFileAction; windows round-trip verified",
+    os: { windows: "covered", linux: "planned", macos: "planned", aosp: "na" },
   },
 
   // ── Explicitly N/A (don't chase) ─────────────────────────────────────────

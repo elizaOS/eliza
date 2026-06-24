@@ -44,4 +44,20 @@ describe("home frontpage widget slot (#9143)", () => {
     expect(msgs?.declaration.slot).toBe("home");
     expect(msgs?.Component).toBeTruthy();
   });
+
+  it("resolves the agent-orchestrator Apps widget on home (reused component)", () => {
+    const resolved = resolveWidgetsForSlot("home", enabledOrchestrator);
+    const apps = resolved.find(
+      (r) => r.declaration.id === "agent-orchestrator.apps",
+    );
+    expect(apps?.declaration.slot).toBe("home");
+    expect(apps?.Component).toBeTruthy();
+  });
+
+  it("resolves the Todos widget on home (per-plugin breadth opt-in)", () => {
+    const resolved = resolveWidgetsForSlot("home", []);
+    const todos = resolved.find((r) => r.declaration.id === "todo.items");
+    expect(todos?.declaration.slot).toBe("home");
+    expect(todos?.Component).toBeTruthy();
+  });
 });

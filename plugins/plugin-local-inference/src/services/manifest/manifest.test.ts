@@ -93,9 +93,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 		manifest.evals.mtp = { acceptanceRate: 0.72, speedup: 1.8, passed: true };
 		// Gemma 4 separate-drafter MTP: every MTP tier bundles its drafter GGUF
 		// at `mtp/drafter-<tier>.gguf` with its own lineage and declares the mode.
-		manifest.files.mtp = [
-			{ path: `mtp/drafter-${tier}.gguf`, sha256: SHA },
-		];
+		manifest.files.mtp = [{ path: `mtp/drafter-${tier}.gguf`, sha256: SHA }];
 		manifest.lineage.drafter = {
 			base: "eliza-1-drafter",
 			license: "apache-2.0",

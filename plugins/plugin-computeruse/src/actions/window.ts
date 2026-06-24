@@ -34,6 +34,8 @@ const WINDOW_ACTIONS = [
   "get_current_window_id",
   "get_application_windows",
   "set_bounds",
+  "get_window_size",
+  "get_window_position",
 ] as const satisfies readonly WindowActionType[];
 
 /**

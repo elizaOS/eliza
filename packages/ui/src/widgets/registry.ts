@@ -31,11 +31,16 @@ import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status
 import { MessagesWidget } from "../components/chat/widgets/messages";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NotificationsWidget } from "../components/chat/widgets/notifications";
+import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
 registerBuiltinWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
 registerBuiltinWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
+// Register the todo widget's component so it can be declared on the home slot
+// (#9143 per-plugin breadth — the todo plugin's frontpage opt-in). Idempotent
+// with the plugin's own runtime registration.
+registerBuiltinWidgets(TODO_PLUGIN_WIDGETS);
 registerWidgetComponent(
   "music-library",
   "music-library.playlists",
@@ -128,6 +133,28 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: 100,
     defaultEnabled: true,
   },
+  // Agent Orchestrator — running app instances on the home (#9143). Distinct
+  // from the launcher icons (which open views): this lists live app runs.
+  // Reuses the registered AppRunsWidget component (self-contained data).
+  {
+    id: "agent-orchestrator.apps",
+    pluginId: "agent-orchestrator",
+    slot: "home",
+    label: "Apps",
+    icon: "LayoutGrid",
+    order: 70,
+    defaultEnabled: true,
+  },
+  // Todos — the todo plugin's frontpage widget (#9143 per-plugin breadth).
+  {
+    id: "todo.items",
+    pluginId: "todo",
+    slot: "home",
+    label: "Todos",
+    icon: "ListTodo",
+    order: 80,
+    defaultEnabled: true,
+  },
   // Browser workspace status — surfaces /browser state in the right rail.
   {
     id: BROWSER_STATUS_WIDGET.id,
@@ -177,6 +204,9 @@ const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set([
   // plugin snapshot doesn't list them as plugins.
   "wallet",
   "browser-workspace",
+  // Todos render from the workbench store; show on the frontpage even before the
+  // runtime plugin snapshot lists the plugin (#9143).
+  "todo",
 ]);
 
 const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([

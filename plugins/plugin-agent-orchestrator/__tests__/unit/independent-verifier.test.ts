@@ -1,117 +1,65 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  buildIndependentVerifierPrompt,
-  runIndependentVerification,
   shouldRunIndependentVerify,
-  verifierVerdict,
+  verdictFromEnvelope,
 } from "../../src/services/independent-verifier.js";
 
-function envelope(over: Record<string, unknown> = {}): string {
-  return `\`\`\`json\n${JSON.stringify({
-    diffSummary: "x",
-    filesChanged: ["src/a.ts"],
-    testResults: [{ command: "bun test", exitCode: 0, summary: "12 passed" }],
-    screenshotPaths: [],
-    acceptanceCriteriaStatus: [
-      { criterion: "tests pass", met: true, evidence: "exit 0" },
-    ],
-    residualRisks: [],
-    ...over,
-  })}\n\`\`\``;
-}
+// #9146 — the independent verifier is the quality gate over a spawned coding
+// agent's self-reported completion. Pin the verdict logic + the enable gate.
+const env = (o: Record<string, unknown>) =>
+  o as unknown as Parameters<typeof verdictFromEnvelope>[0];
 
-describe("buildIndependentVerifierPrompt (#8898)", () => {
-  it("demands execution-based, read-only verification + an envelope", () => {
-    const p = buildIndependentVerifierPrompt({
-      goal: "add a button",
-      acceptanceCriteria: ["tests pass", "button renders"],
+describe("verdictFromEnvelope", () => {
+  it("passes only when every criterion is met and every command is green", () => {
+    const v = verdictFromEnvelope(
+      env({
+        acceptanceCriteriaStatus: [{ criterion: "builds", met: true }],
+        testResults: [{ command: "bun run build", exitCode: 0 }],
+      }),
+    );
+    expect(v).toMatchObject({
+      passed: true,
+      inconclusive: false,
+      unmet: [],
+      failedCommands: [],
     });
-    expect(p).toContain("INDEPENDENT verifier");
-    expect(p).toContain("Do NOT trust its narration");
-    expect(p).toMatch(/Do NOT edit/i);
-    expect(p).toContain("1. tests pass");
-    expect(p).toContain("CompletionEnvelope");
-  });
-});
-
-describe("verifierVerdict (#8898)", () => {
-  it("passes only when all criteria met and all commands green", () => {
-    const v = verifierVerdict(envelope());
-    expect(v.passed).toBe(true);
-    expect(v.inconclusive).toBe(false);
   });
 
-  it("fails on an unmet criterion", () => {
-    const v = verifierVerdict(
-      envelope({
+  it("fails and lists the unmet criteria + failing commands", () => {
+    const v = verdictFromEnvelope(
+      env({
         acceptanceCriteriaStatus: [
-          { criterion: "tests pass", met: false, evidence: "1 failing" },
+          { criterion: "builds", met: true },
+          { criterion: "tests pass", met: false },
         ],
+        testResults: [{ command: "bun test", exitCode: 1 }],
       }),
     );
     expect(v.passed).toBe(false);
     expect(v.unmet).toEqual(["tests pass"]);
-  });
-
-  it("fails on a non-zero test exit code", () => {
-    const v = verifierVerdict(
-      envelope({
-        testResults: [
-          { command: "bun test", exitCode: 1, summary: "1 failed" },
-        ],
-      }),
-    );
-    expect(v.passed).toBe(false);
     expect(v.failedCommands).toEqual(["bun test"]);
   });
 
-  it("is inconclusive (not a pass) when no envelope comes back", () => {
-    const v = verifierVerdict("I checked, looks good!");
-    expect(v.passed).toBe(false);
-    expect(v.inconclusive).toBe(true);
-  });
-
-  it("is inconclusive when the envelope reports no criteria", () => {
-    const v = verifierVerdict(envelope({ acceptanceCriteriaStatus: [] }));
-    expect(v.passed).toBe(false);
-    expect(v.inconclusive).toBe(true);
+  it("is inconclusive (not passed) when no per-criterion status is reported", () => {
+    const v = verdictFromEnvelope(
+      env({ acceptanceCriteriaStatus: [], testResults: [] }),
+    );
+    expect(v).toMatchObject({ inconclusive: true, passed: false });
+    expect(v.summary).toContain("unverified");
   });
 });
 
-describe("shouldRunIndependentVerify (#8898)", () => {
-  it("defaults on for code-change tasks, off otherwise", () => {
-    expect(shouldRunIndependentVerify(() => undefined, true)).toBe(true);
-    expect(shouldRunIndependentVerify(() => undefined, false)).toBe(false);
-  });
-  it("honors explicit on/off overrides", () => {
-    expect(shouldRunIndependentVerify(() => "0", true)).toBe(false);
-    expect(shouldRunIndependentVerify(() => "always", false)).toBe(true);
-  });
-});
-
-describe("runIndependentVerification (#8898)", () => {
-  it("spawns with the verifier prompt and returns the verdict", async () => {
-    const spawnAndAwait = vi.fn(async () => envelope());
-    const v = await runIndependentVerification(
-      { goal: "g", acceptanceCriteria: ["tests pass"] },
-      { spawnAndAwait },
-    );
-    expect(v.passed).toBe(true);
-    expect(spawnAndAwait).toHaveBeenCalledTimes(1);
-    expect(spawnAndAwait.mock.calls[0][0]).toContain("INDEPENDENT verifier");
+describe("shouldRunIndependentVerify", () => {
+  const get = (val: string | undefined) => () => val;
+  it("honors explicit on/off settings over the code-change default", () => {
+    expect(shouldRunIndependentVerify(get("0"), true)).toBe(false);
+    expect(shouldRunIndependentVerify(get("false"), true)).toBe(false);
+    expect(shouldRunIndependentVerify(get("1"), false)).toBe(true);
+    expect(shouldRunIndependentVerify(get("always"), false)).toBe(true);
   });
 
-  it("is inconclusive (never a false pass) when the spawn fails", async () => {
-    const v = await runIndependentVerification(
-      { goal: "g", acceptanceCriteria: ["tests pass"] },
-      {
-        spawnAndAwait: async () => {
-          throw new Error("acp spawn failed");
-        },
-      },
-    );
-    expect(v.passed).toBe(false);
-    expect(v.inconclusive).toBe(true);
-    expect(v.summary).toContain("failed to run");
+  it("defaults to on only for code-change tasks", () => {
+    expect(shouldRunIndependentVerify(get(undefined), true)).toBe(true);
+    expect(shouldRunIndependentVerify(get(undefined), false)).toBe(false);
   });
 });

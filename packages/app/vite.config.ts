@@ -29,6 +29,7 @@ import { syncElizaEnvAliases } from "../shared/src/utils/env.ts";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
+import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
@@ -1875,6 +1876,12 @@ export default defineConfig({
     ),
   },
   plugins: [
+    // Manifest-driven renderer side-effect plugin registration (#9178): resolves
+    // the `virtual:eliza-side-effect-app-modules` import in plugin-registrations.ts
+    // by scanning plugins/ for elizaos.appRegister markers. Without this the
+    // production web/mobile build fails to resolve the virtual module (the
+    // refactor added the import but never wired the providing plugin).
+    appSideEffectModulesPlugin([nativePluginsRoot]),
     // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), replace the
     // whole `@elizaos/ui/src/cloud` subtree with empty modules. The two lazy
     // cloud entry points are already aliased to passthrough stubs, but the main

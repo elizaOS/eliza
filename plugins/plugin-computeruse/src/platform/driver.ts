@@ -24,6 +24,7 @@ import {
   desktopScroll,
   desktopType,
   legacyGetCursorPosition,
+  win32TrySetValueByPattern,
 } from "./desktop.js";
 import {
   loadFailureReason,
@@ -203,6 +204,27 @@ export async function driverType(text: string): Promise<void> {
 export async function driverKeyPress(key: string): Promise<void> {
   if (selectedDriver() === "nutjs") return nutKeyPress(key);
   desktopKeyPress(key);
+}
+
+/**
+ * Set the value of the UI element at (x,y) (#9170 — trycua/cua `set_value`).
+ * On Windows, first try UI Automation `ValuePattern.SetValue` (direct, no
+ * keystrokes — best for text inputs / combo boxes). Universal fallback (all
+ * platforms, incl. elements without ValuePattern): click to focus, select-all,
+ * then type the value — composed of the already-verified click/key-combo/type
+ * primitives. `value` is validated by the underlying type primitive.
+ */
+export async function driverSetValue(
+  x: number,
+  y: number,
+  value: string,
+): Promise<void> {
+  if (process.platform === "win32" && win32TrySetValueByPattern(x, y, value)) {
+    return;
+  }
+  await driverClick(x, y);
+  await driverKeyCombo(process.platform === "darwin" ? "cmd+a" : "ctrl+a");
+  await driverType(value);
 }
 
 export async function driverKeyCombo(combo: string): Promise<void> {

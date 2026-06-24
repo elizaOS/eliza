@@ -1578,7 +1578,7 @@ type VoiceTurnSignalMetadata = {
 	model?: string;
 };
 
-function getVoiceTurnSignalMetadata(
+export function getVoiceTurnSignalMetadata(
 	message: Pick<Memory, "content">,
 ): VoiceTurnSignalMetadata | null {
 	const content = message.content;
@@ -1627,7 +1627,7 @@ function getVoiceTurnSignalMetadata(
  * EntityId`, the in-process engine path) or nested under `content.metadata`
  * (chat clients). Returns the trimmed id, or null when the speaker is unbound.
  */
-function getVoiceSpeakerEntityId(
+export function getVoiceSpeakerEntityId(
 	message: Pick<Memory, "content">,
 ): string | null {
 	const content = message.content;
@@ -1645,7 +1645,7 @@ function getVoiceSpeakerEntityId(
 	return trimmed.length > 0 ? trimmed : null;
 }
 
-function voiceTurnSignalSuppressesAgent(
+export function voiceTurnSignalSuppressesAgent(
 	signal: VoiceTurnSignalMetadata | null,
 ): boolean {
 	if (!signal) return false;
@@ -1665,7 +1665,7 @@ function voiceTurnSignalSuppressesAgent(
  * the user still talking. Used to PROMOTE an IGNORE to RESPOND; it never
  * overrides an explicit STOP or an already-RESPOND decision.
  */
-function voiceTurnSignalConfirmsAgent(
+export function voiceTurnSignalConfirmsAgent(
 	signal: VoiceTurnSignalMetadata | null,
 ): boolean {
 	if (!signal) return false;
@@ -5160,7 +5160,12 @@ export async function runShortcutGate(args: {
 		valid = await action.validate(args.runtime, args.message, args.state);
 	} catch (err) {
 		args.runtime.logger?.warn?.(
-			{ src: "shortcut-gate", shortcut: match.shortcut.id, action: action.name, err },
+			{
+				src: "shortcut-gate",
+				shortcut: match.shortcut.id,
+				action: action.name,
+				err,
+			},
 			"shortcut action validate() threw; falling through to pipeline",
 		);
 		return null;

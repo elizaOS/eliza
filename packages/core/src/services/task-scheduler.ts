@@ -73,9 +73,7 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 	adapter = adapterInstance;
 	if (timer) return;
 	timer = setInterval(() => {
-		tick().catch((err) =>
-			logger.error({ err }, "[TaskScheduler] tick failed"),
-		);
+		tick().catch((err) => logger.error({ err }, "[TaskScheduler] tick failed"));
 	}, TICK_INTERVAL_MS) as ReturnType<typeof setInterval>;
 }
 
