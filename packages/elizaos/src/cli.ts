@@ -92,10 +92,10 @@ program
 
 program
   .command("deploy")
-  .description("Print the Eliza Cloud deployment plan for this project")
+  .description("Deploy the linked app to Eliza Cloud and poll until READY")
   .option("--app-id <id>", "Eliza Cloud app UUID to include in the plan")
   .option("--domain <host>", "Custom domain to include in the plan")
-  .option("--dry-run", "Accepted for compatibility; deploy is always a preview")
+  .option("--dry-run", "Print the deployment plan without network calls")
   .option("--verbose", "Echo resolved deploy inputs to stderr")
   .action(deploy);
 
