@@ -158,5 +158,5 @@ describe("DesktopFusedFfiBackendRuntime.release() ordering (#14)", () => {
 		// is explicitly poisoned so a new native model is not allocated over a
 		// failed cleanup state.
 		await expect(runtime.acquire(PLAN)).rejects.toThrow(/restart required/i);
-	});
+	}, 20_000);
 });

@@ -44,8 +44,10 @@ afterEach(() => {
 });
 
 const SOCK = `eliza-bionic-test-${process.pid}`;
+const describeLinuxOnly =
+	process.platform === "linux" ? describe : describe.skip;
 
-describe("BionicHostLoader (real abstract-UDS)", () => {
+describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 	it("round-trips a buffered generate and returns the host completion", async () => {
 		let seen: Record<string, unknown> | null = null;
 		host = startHost(SOCK, (req) => {
