@@ -13,9 +13,12 @@ import {
 } from "../src/services/voice/first-line-cache";
 
 let tmpRoot: string;
+const openCaches: FirstLineCache[] = [];
 
 function makeCache(opts: Partial<ConstructorParameters<typeof FirstLineCache>[0]> = {}) {
-	return new FirstLineCache({ rootDir: tmpRoot, ...opts });
+	const cache = new FirstLineCache({ rootDir: tmpRoot, ...opts });
+	openCaches.push(cache);
+	return cache;
 }
 
 function makeKey(over: Partial<FirstLineCacheKey> = {}): FirstLineCacheKey {
@@ -42,7 +45,11 @@ beforeEach(() => {
 	tmpRoot = mkdtempSync(path.join(tmpdir(), "fl-cache-"));
 });
 afterEach(() => {
-	rmSync(tmpRoot, { recursive: true, force: true });
+	// Close every cache before removing its dir: an open SQLite (WAL) handle
+	// blocks rmSync on Windows (EBUSY/EPERM); POSIX tolerates open handles.
+	// close() is idempotent, so double-closing an already-closed cache is safe.
+	for (const cache of openCaches.splice(0)) cache.close();
+	rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 describe("hashCacheKey", () => {
