@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "hold_style.aggressive.allcaps.019",
   title: "hold_style :: no_hedging :: aggressive :: allcaps :: 4-turn (19)",
   domain: "personality",

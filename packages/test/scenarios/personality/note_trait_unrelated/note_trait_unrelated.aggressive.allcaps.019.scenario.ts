@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "note_trait_unrelated.aggressive.allcaps.019",
   title:
     "note_trait :: first_name_only :: aggressive :: allcaps :: 4-turn (19)",

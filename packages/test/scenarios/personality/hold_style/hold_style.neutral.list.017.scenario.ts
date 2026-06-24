@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "hold_style.neutral.list.017",
   title: "hold_style :: terse_one_sentence :: neutral :: list :: 2-turn (17)",
   domain: "personality",

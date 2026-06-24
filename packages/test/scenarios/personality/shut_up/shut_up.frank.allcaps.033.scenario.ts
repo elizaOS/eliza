@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "shut_up.frank.allcaps.033",
   title: "shut_up :: frank :: allcaps :: 1-turn (33)",
   domain: "personality",
