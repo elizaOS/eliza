@@ -30,6 +30,7 @@ function getBunRuntime(): BunLike | null {
 
 function isAutoInstallAllowed(): boolean {
 	if (process.env.ELIZA_NO_AUTO_INSTALL === "true") return false;
+	if (process.env.ELIZA_NO_PLUGIN_AUTO_INSTALL === "true") return false;
 	if (process.env.CI === "true") return false;
 	if (process.env.ELIZA_TEST_MODE === "true") return false;
 	if (process.env.NODE_ENV === "test") return false;
