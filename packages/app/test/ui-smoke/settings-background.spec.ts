@@ -529,6 +529,13 @@ test.describe("settings shares the unified app background (#9143)", () => {
     const imageSeam = await inspectSettingsSeam(page);
     console.log("SETTINGS_SEAM_IMAGE>", JSON.stringify(imageSeam));
 
+    // The text-dense Settings view gets a translucent readability scrim over the
+    // wallpaper (full viewport, incl. the safe area) so flat text stays legible
+    // while the wallpaper still reads through. Assert it WHILE on Settings —
+    // the scrim is gated to `isSettingsPage`, so it is (correctly) absent on the
+    // sparse springboard captured below.
+    await expect(page.getByTestId("app-background-scrim")).toBeAttached();
+
     await page.setViewportSize(MOBILE_VIEWPORT);
     await expect(page.getByTestId("settings-shell")).toBeVisible();
     await screenshot(page, "mobile-image");
@@ -591,9 +598,9 @@ test.describe("settings shares the unified app background (#9143)", () => {
       ).toBeNull();
     }
 
-    // The text-dense Settings view gets a translucent readability scrim over the
-    // wallpaper (full viewport, incl. the safe area) so flat text stays legible
-    // while the wallpaper still reads through. Sparse views (springboard) don't.
-    await expect(page.getByTestId("app-background-scrim")).toBeAttached();
+    // Sparse views (the springboard) get NO scrim — the scrim is gated to
+    // `isSettingsPage`, so on `/views` it must be absent. This confirms the
+    // readability scrim is scoped to text-dense Settings, not painted globally.
+    await expect(page.getByTestId("app-background-scrim")).toHaveCount(0);
   });
 });
