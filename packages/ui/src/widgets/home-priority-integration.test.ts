@@ -121,17 +121,26 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
     ).toBeLessThan(order.indexOf("notifications/notifications.recent"));
   });
 
-  it("treats orchestrator errors as blocked attention", () => {
+  it("floats orchestrator errors via workflow, not the escalation rail", () => {
     const signals = homeSignalsFromEvents(
       [{ eventType: "error", timestamp: NOW }],
       homeDeclarations(),
     );
 
+    // An error lifts the orchestrator card to the top of a quiet home, but at
+    // workflow strength — NOT the weight-10 blocked rail. Transient/recoverable
+    // orchestrator errors are common, so escalation-strength routing would
+    // manufacture false alarms; genuine urgency rides the `blocked` SessionEvent.
     expect(signals).toContainEqual({
       widgetKey: "agent-orchestrator/agent-orchestrator.activity",
-      weight: HOME_SIGNAL_WEIGHTS.blocked,
+      weight: HOME_SIGNAL_WEIGHTS.workflow,
       timestamp: NOW,
     });
+    expect(
+      signals.find(
+        (s) => s.widgetKey === "agent-orchestrator/agent-orchestrator.activity",
+      )?.weight,
+    ).toBeLessThan(HOME_SIGNAL_WEIGHTS.blocked);
     expect(rankedKeys(signals)[0]).toBe(
       "agent-orchestrator/agent-orchestrator.activity",
     );

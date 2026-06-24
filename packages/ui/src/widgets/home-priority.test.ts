@@ -154,7 +154,7 @@ describe("signalKindForEventType", () => {
     expect(signalKindForEventType("proactive-message")).toBe("message");
     expect(signalKindForEventType("task_complete")).toBe("workflow");
     expect(signalKindForEventType("tool_running")).toBe("workflow");
-    expect(signalKindForEventType("error")).toBe("blocked");
+    expect(signalKindForEventType("error")).toBe("workflow");
   });
 
   it("falls back to activity for unknown event types", () => {
@@ -212,18 +212,21 @@ describe("homeSignalsFromEvents", () => {
     ]);
   });
 
-  it("routes orchestrator errors through blocked attention", () => {
+  it("routes orchestrator errors through workflow (not the escalation rail)", () => {
     const signals = homeSignalsFromEvents(
       [{ eventType: "error", timestamp: NOW }],
       decls,
     );
     expect(signals).toEqual([
       {
-        widgetKey: "p/act",
-        weight: HOME_SIGNAL_WEIGHTS.blocked,
+        widgetKey: "p/workflow",
+        weight: HOME_SIGNAL_WEIGHTS.workflow,
         timestamp: NOW,
       },
     ]);
+    // Guardrail: a transient orchestrator error must never reach blocked weight,
+    // so liberal `error` SessionEvents cannot manufacture false top-of-home alarms.
+    expect(signals[0].weight).toBeLessThan(HOME_SIGNAL_WEIGHTS.blocked);
   });
 
   it("never boosts a widget without signalKinds", () => {
