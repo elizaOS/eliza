@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -115,32 +116,28 @@ describe("mtpSliceReuse", () => {
 
 describe("MTP_FORK_SRC_CANDIDATES (no drift vs the builder)", () => {
   it("mirrors build-llama-cpp-mtp.mjs: the in-repo fork + the ios-deps fallback, and nothing divergent", () => {
-    const forkSuffix = path.join(
-      "plugins",
-      "plugin-local-inference",
-      "native",
-      "llama.cpp",
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const repoRoot = path.resolve(here, "..", "..", "..");
+    expect(MTP_FORK_SRC_CANDIDATES).toEqual(
+      [
+        process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),
+        path.join(
+          repoRoot,
+          "plugins",
+          "plugin-local-inference",
+          "native",
+          "llama.cpp",
+        ),
+        path.join(
+          repoRoot,
+          "packages",
+          "native",
+          "ios-deps",
+          "llama.cpp",
+          "src",
+        ),
+      ].filter(Boolean),
     );
-    const iosDepsSuffix = path.join(
-      "packages",
-      "native",
-      "ios-deps",
-      "llama.cpp",
-      "src",
-    );
-    expect(MTP_FORK_SRC_CANDIDATES.some((c) => c.endsWith(forkSuffix))).toBe(
-      true,
-    );
-    expect(MTP_FORK_SRC_CANDIDATES.some((c) => c.endsWith(iosDepsSuffix))).toBe(
-      true,
-    );
-    // The previously-divergent `eliza/plugins` candidate (absent from the
-    // builder) must NOT reappear — that was the drift the builder never had.
-    expect(
-      MTP_FORK_SRC_CANDIDATES.some((c) =>
-        c.includes(path.join("eliza", "plugins", "plugin-local-inference")),
-      ),
-    ).toBe(false);
   });
 });
 
