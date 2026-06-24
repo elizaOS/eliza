@@ -58,9 +58,11 @@ Seeded by [`src/helpers/showcase.ts`](../src/helpers/showcase.ts)
   2. **Tagged ledger + reserved namespace** - every grant is stamped with
      `{ type: "showcase_seed", account: "ci-showcase", isolated: true, issue: 9300 }`
      and the account uses the reserved `@ci-showcase.elizacloud.test` email
-     namespace and `ci-showcase-` slug prefix. On real staging, revenue reporting
-     excludes activity matching that tag/namespace - auditable + excluded, never
-     silently mixed into real numbers.
+     namespace and `ci-showcase-` slug prefix, so revenue reporting CAN exclude
+     showcase activity by that tag/namespace - auditable + excludable, not silently
+     mixed into real numbers. (Adding that exclusion filter to the real revenue
+     dashboard is the operator step when the real-staging account is provisioned -
+     the tag is already emitted, so it is a query filter, not a schema change.)
 
 ## Where it runs
 

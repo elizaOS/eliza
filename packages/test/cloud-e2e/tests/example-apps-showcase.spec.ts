@@ -66,11 +66,11 @@
 import { randomUUID } from "node:crypto";
 import { appEarningsRepository } from "@elizaos/cloud-shared/db/repositories/app-earnings";
 import { containersRepository } from "@elizaos/cloud-shared/db/repositories/containers";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import {
   type AppDeploymentStatus,
   appKindFor,
 } from "@elizaos/cloud-shared/lib/services/app-deployments-helpers";
-import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import { deriveAppPublicUrl } from "@elizaos/cloud-shared/lib/services/app-url";
 import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
 import type { CreditBalanceResponse } from "@elizaos/cloud-shared/lib/types/cloud-api";
@@ -215,9 +215,10 @@ test.describe("example apps showcase (EDAD + Clone Ur Crush)", () => {
       "GET",
       "/api/v1/credits/balance",
     );
-    expect(startBalance.status, "showcase key authenticates (login works)").toBe(
-      200,
-    );
+    expect(
+      startBalance.status,
+      "showcase key authenticates (login works)",
+    ).toBe(200);
     expect(
       startBalance.json.balance,
       "showcase account is funded with effectively-infinite credits",
@@ -254,9 +255,10 @@ test.describe("example apps showcase (EDAD + Clone Ur Crush)", () => {
 
     const totalSpent = results.reduce((s, r) => s + r.totalCost, 0);
     const totalMarkup = results.reduce((s, r) => s + r.markup, 0);
-    expect(totalMarkup, "both apps produced a positive creator markup").toBeGreaterThan(
-      0,
-    );
+    expect(
+      totalMarkup,
+      "both apps produced a positive creator markup",
+    ).toBeGreaterThan(0);
 
     // The single showcase creator's redeemable balance equals the SUM of both
     // apps' computed markups (payout-ready), to the cent.
@@ -266,7 +268,9 @@ test.describe("example apps showcase (EDAD + Clone Ur Crush)", () => {
     );
     expect(finalRedeemable.status).toBe(200);
     expect(
-      Math.abs((finalRedeemable.json.balance?.availableBalance ?? 0) - totalMarkup),
+      Math.abs(
+        (finalRedeemable.json.balance?.availableBalance ?? 0) - totalMarkup,
+      ),
       "creator's redeemable balance equals both apps' markups exactly",
     ).toBeLessThan(1e-6);
 
@@ -277,7 +281,9 @@ test.describe("example apps showcase (EDAD + Clone Ur Crush)", () => {
       "/api/v1/credits/balance",
     );
     expect(
-      Math.abs(endBalance.json.balance - (startBalance.json.balance - totalSpent)),
+      Math.abs(
+        endBalance.json.balance - (startBalance.json.balance - totalSpent),
+      ),
       "showcase credits dropped by exactly the two computed charges",
     ).toBeLessThan(1e-6);
     expect(
@@ -377,10 +383,9 @@ async function deployAndMonetizeApp(ctx: {
 
   // The deployed link actually serves — no dead end.
   const live = await fetch(productionUrl);
-  expect(
-    live.status,
-    `${app.name}: deployed production_url is reachable`,
-  ).toBe(200);
+  expect(live.status, `${app.name}: deployed production_url is reachable`).toBe(
+    200,
+  );
   const liveJson = (await live.json()) as MockAppEnvelope;
   expect(liveJson).toMatchObject({
     success: true,

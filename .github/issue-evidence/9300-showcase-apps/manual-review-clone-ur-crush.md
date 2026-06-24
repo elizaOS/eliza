@@ -1,8 +1,8 @@
 # Aesthetic + UX review — Clone Ur Crush (`packages/examples/cloud/clone-ur-crush`)
 
-**Verdict: `good`** · reviewed live (desktop 1280×900 + mobile 390×844) on
-`next dev`, agent (Claude) screenshot + critique. Human sign-off: _pending_
-(see contact sheet).
+**Verdict: `good` (after a no-blue fix — see below)** · reviewed live (desktop
+1280×900 + mobile 390×844) on `next dev`, agent (Claude) screenshot + critique.
+Human sign-off: _pending_ (see contact sheet).
 
 Screenshots: [`clone-ur-crush-desktop.png`](clone-ur-crush-desktop.png) ·
 [`clone-ur-crush-desktop-step2.png`](clone-ur-crush-desktop-step2.png) ·
@@ -16,18 +16,27 @@ with an inline random-name (dice) action, a 5-step progress indicator, and a
 "Next →" CTA. Step 2: "Tell me about her" with a "✨ Generate" action and a
 description field, plus "← Back" / "Next →".
 
-## Brand / color
+## Brand / color — a real finding, now fixed
 
-- **No blue UI chrome.** Adversarial computed-style scan (excluding the Next dev
-  overlay) found **0** blue-dominant chrome elements. The background photograph
-  contains blue denim — that is photographic content, not UI, and registers no
-  blue computed color.
-- **Accent = pink↔purple gradient** (wordmark, primary CTA, progress fill,
-  Generate label). Clone Ur Crush is a standalone consumer creator app with its
-  own deliberate identity — the Eliza Cloud "orange platform accent" rule governs
-  the cloud dashboard (`cloud-frontend`), not a creator's own app. The discipline
-  that DOES carry over — no stray blue chrome, one cohesive accent family, legible
-  contrast, smooth hover — holds.
+- **Initial review missed a blue.** The brand gradient was
+  `linear-gradient(135deg, #ff4081 0%, #3f51b5 100%)` and the Tailwind `accent`
+  family was `#3f51b5 / #303f9f / #7986cb`. **`#3f51b5` is Material *indigo* — a
+  blue-family color.** A naive computed-`color` scan misses it because the
+  wordmark paints it via `background-image` (gradient text), and an
+  adversarial review (#9300) correctly flagged it. My first verdict's "zero blue"
+  claim was wrong.
+- **Fix applied** (`tailwind.config.ts`, `app/globals.css`): the `accent` family
+  is now a **no-blue purple** (`#9c27b0 / #7b1fa2 / #ce93d8`) and the wordmark
+  gradient ends at `#9c27b0`. The pink→purple identity is preserved; the indigo
+  is gone. Post-fix the gradient carries **no blue-dominant stop**.
+- **Scope note:** Clone Ur Crush is a standalone consumer app with its own pink
+  identity, not the Eliza Cloud dashboard (the strict orange-accent rule governs
+  `cloud-frontend`). The change applies the **"no blue"** half of the rule (an
+  easy, correct alignment) and deliberately does NOT force the platform orange,
+  which would be wrong for a "Clone Ur Crush" consumer app. Reversible if a
+  maintainer prefers the original indigo.
+- The blurred background photograph contains blue denim — photographic content,
+  not UI chrome.
 
 ## UX / flow (no dead ends)
 
@@ -50,7 +59,9 @@ description field, plus "← Back" / "Next →".
 
 ## Findings
 
-- None blocking. Follow-up (nice-to-have): confirm the "✨ Generate" path renders
-  a friendly inline error (not a thrown 500) when the upstream provider balance is
-  exhausted — `DEPLOY_AND_VALIDATE.md` already records the upstream 403→503 fix on
-  the cloud side; a matching client-side toast would close the loop.
+- **[fixed]** indigo `#3f51b5` in the brand gradient → recolored to no-blue
+  purple `#9c27b0`.
+- Follow-up (nice-to-have): confirm the "✨ Generate" path renders a friendly
+  inline error (not a thrown 500) when the upstream provider balance is exhausted
+  — `DEPLOY_AND_VALIDATE.md` already records the upstream 403→503 fix on the cloud
+  side; a matching client-side toast would close the loop.
