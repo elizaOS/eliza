@@ -22,7 +22,10 @@ type Story = StoryObj<typeof meta>;
 
 export const NeedsAttention: Story = {
   play: async ({ canvasElement }) => {
-    const card = await waitForTestId(canvasElement, "chat-widget-relationships");
+    const card = await waitForTestId(
+      canvasElement,
+      "chat-widget-relationships",
+    );
     assert(card instanceof HTMLButtonElement, "the whole card is a button");
   },
 };

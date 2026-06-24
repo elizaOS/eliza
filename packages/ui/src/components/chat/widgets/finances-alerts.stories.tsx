@@ -24,7 +24,10 @@ type Story = StoryObj<typeof meta>;
 /** Overdrawn — the highest-escalation finances signal (danger tone). */
 export const NeedsAttention: Story = {
   play: async ({ canvasElement }) => {
-    const card = await waitForTestId(canvasElement, "chat-widget-finances-alerts");
+    const card = await waitForTestId(
+      canvasElement,
+      "chat-widget-finances-alerts",
+    );
     assert(card instanceof HTMLButtonElement, "the whole card is a button");
     assert(
       /overdrawn/i.test(card.getAttribute("aria-label") ?? ""),
@@ -40,7 +43,10 @@ export const NeedsAttention: Story = {
  */
 export const ClickNavigatesToView: Story = {
   play: async ({ canvasElement }) => {
-    const card = await waitForTestId(canvasElement, "chat-widget-finances-alerts");
+    const card = await waitForTestId(
+      canvasElement,
+      "chat-widget-finances-alerts",
+    );
     const navigated: string[] = [];
     const onNav = (e: Event) => {
       const detail = (e as CustomEvent<{ viewPath?: string }>).detail;

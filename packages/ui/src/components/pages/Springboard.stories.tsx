@@ -1,11 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
-import { assert, waitForTestId } from "../../storybook/home-widget-decorator";
 import type { ViewEntry } from "../../hooks/view-catalog";
+import { assert, waitForTestId } from "../../storybook/home-widget-decorator";
 import { Springboard } from "./Springboard";
 
 /** Find a <button> by its exact trimmed text (the toolbar Edit/Done toggle). */
-function buttonByText(root: HTMLElement, text: string): HTMLButtonElement | null {
+function buttonByText(
+  root: HTMLElement,
+  text: string,
+): HTMLButtonElement | null {
   return (
     [...root.querySelectorAll("button")].find(
       (b) => b.textContent?.trim() === text,
@@ -95,7 +98,10 @@ export const TileLaunch: Story = {
     );
     assert(tile instanceof HTMLButtonElement, "wallet tile button exists");
     tile.click();
-    assert(launchedId === "wallet", `onLaunch fired for wallet (got ${launchedId})`);
+    assert(
+      launchedId === "wallet",
+      `onLaunch fired for wallet (got ${launchedId})`,
+    );
   },
 };
 
