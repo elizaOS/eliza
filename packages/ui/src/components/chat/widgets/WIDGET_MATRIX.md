@@ -91,16 +91,10 @@ ChatView today (see divergence D1).
 
 | Slot | Host mounted? | Widgets registered? | Verdict |
 |---|---|---|---|
-| `home` | yes, ViewCatalog | yes, many | active |
+| `home` | yes, HomeScreen | yes, many | active |
 | `chat-sidebar` | yes, TasksEventsPanel | yes, 5 | active |
 | `character` | yes, CharacterHubView | yes, 1 | active |
-| `heartbeats` | yes, HeartbeatsView | no | **empty mount - remove host or register a widget** |
-| `chat-inline` | no, never mounted | no | **dead slot - the inline-marker registry IS this concept; prune the enum value** |
-| `wallet` | no, never mounted | no | **dead slot** |
-| `browser` | no, never mounted | no | **dead slot** (browser uses `chat-sidebar`) |
-| `settings` | no, never mounted | no | **dead slot** |
-| `nav-page` | no, never mounted | no | **dead slot** |
-| `automations` | no, never mounted | no | **dead slot** |
+| `nav-page` | no WidgetHost mount | no component widgets | active app-navigation contract |
 
 ---
 

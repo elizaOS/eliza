@@ -17,9 +17,6 @@ import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { detectUiHostCapabilities } from "../../utils/host-capabilities";
-// Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
-// chunk-level circular dependency.
-import { WidgetHost } from "../../widgets/WidgetHost";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
@@ -824,7 +821,6 @@ function HeartbeatsLayout() {
         data-testid="heartbeats-shell"
         sidebar={heartbeatsSidebar}
         contentInnerClassName="mx-auto w-full max-w-[96rem]"
-        footer={<WidgetHost slot="heartbeats" className="py-3" />}
         mobileSidebarLabel={mobileSidebarLabel}
       >
         <div className="flex min-h-0 flex-1 flex-col">

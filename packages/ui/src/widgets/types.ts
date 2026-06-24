@@ -7,14 +7,8 @@ import type { ActivityEvent } from "../hooks/useActivityEvents";
 /** Named injection points where plugin widgets can render. */
 export type WidgetSlot =
   | "chat-sidebar"
-  | "chat-inline"
-  | "wallet"
-  | "browser"
-  | "heartbeats"
   | "character"
-  | "settings"
   | "nav-page"
-  | "automations"
   // Frontpage / Springboard home surface (#9143). Plugins opt a widget into the
   // home screen by declaring this slot; the Home/Springboard surface mounts it.
   | "home";
