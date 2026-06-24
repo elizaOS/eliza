@@ -60,8 +60,8 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
   // the notification rail, not a home card).
   it("does NOT resolve a home widget for a plugin with no opt-in", () => {
     const resolved = resolveWidgetsForSlot("home", [enabled("scheduling")]);
-    expect(
-      resolved.some((r) => r.declaration.pluginId === "scheduling"),
-    ).toBe(false);
+    expect(resolved.some((r) => r.declaration.pluginId === "scheduling")).toBe(
+      false,
+    );
   });
 });
