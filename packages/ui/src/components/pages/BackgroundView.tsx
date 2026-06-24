@@ -268,7 +268,7 @@ export function BackgroundView() {
                 onClick={() => undoBackgroundConfig()}
                 title="Undo"
                 aria-label="Undo background change"
-                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent"
                 {...undoButton.agentProps}
               >
                 <Undo2 className="h-5 w-5" aria-hidden />
