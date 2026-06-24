@@ -97,7 +97,6 @@ function buildEnvPairs(
       prefixed("CHAT_GENERATION_TIMEOUT_MS"),
       "ELIZA_CHAT_GENERATION_TIMEOUT_MS",
     ],
-    [prefixed("USE_PI_AI"), "ELIZA_USE_PI_AI"],
     [prefixed("SKIP_LOCAL_PLUGIN_ROLES"), "ELIZA_SKIP_LOCAL_PLUGIN_ROLES"],
     [prefixed("SETTINGS_DEBUG"), "ELIZA_SETTINGS_DEBUG"],
     [`VITE_${prefixed("SETTINGS_DEBUG")}`, "VITE_ELIZA_SETTINGS_DEBUG"],
@@ -123,14 +122,6 @@ function buildEnvPairs(
       "ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT",
     ],
     [prefixed("RENDERER_URL"), "ELIZA_RENDERER_URL"],
-    [
-      prefixed("TASK_AGENT_AUTH_TRUSTED_HOSTS"),
-      "ELIZA_TASK_AGENT_AUTH_TRUSTED_HOSTS",
-    ],
-    [
-      prefixed("TASK_AGENT_AUTH_API_BASE_URL"),
-      "ELIZA_TASK_AGENT_AUTH_API_BASE_URL",
-    ],
     [prefixed("APP_ROUTE_PLUGIN_MODULES"), "ELIZA_APP_ROUTE_PLUGIN_MODULES"],
     [prefixed("PORT"), "ELIZA_UI_PORT"],
   ];
