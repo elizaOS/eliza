@@ -128,7 +128,14 @@ export function HomeSpringboardSurface({
     <section
       data-testid="home-springboard-surface"
       data-page={page}
-      className={cn("absolute inset-0 z-[1] overflow-hidden", className)}
+      // `select-none`: this is a swipeable launcher (home ↔ springboard), so a
+      // horizontal drag must pan the rail, never text-select the tile labels /
+      // widget text underneath (which left a stray blue selection highlight).
+      // (Vertical scroll of the home widget list is untouched.)
+      className={cn(
+        "absolute inset-0 z-[1] select-none overflow-hidden",
+        className,
+      )}
     >
       <div
         data-testid="home-springboard-rail"

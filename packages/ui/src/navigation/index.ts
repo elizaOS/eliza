@@ -6,7 +6,7 @@ import { Capacitor } from "@capacitor/core";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
-  Gamepad2,
+  LayoutGrid,
   MessageSquare,
   Monitor,
   Phone,
@@ -229,7 +229,7 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     label: "Springboard",
     tabs: ["views", "apps", ...APPS_TOOL_TABS],
-    icon: Gamepad2,
+    icon: LayoutGrid,
     description:
       "The Springboard launcher — agent views, games, integrations, and app tools",
   },
