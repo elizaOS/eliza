@@ -1,6 +1,7 @@
 import type { AgentNotification } from "@elizaos/core";
 import { Bell } from "lucide-react";
 import { useNotifications } from "../../../state/notifications/notification-store";
+import { rankHomeNotifications } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
 import { WidgetSection } from "./shared";
 
@@ -33,7 +34,12 @@ function NotificationRow({
  */
 export function NotificationsWidget(_props: WidgetProps) {
   const { notifications, unreadCount } = useNotifications();
-  const recent = notifications.slice(0, MAX_HOME_NOTIFICATIONS);
+  // Rank by attention (unread → priority → recency) so an urgent notification
+  // surfaces ahead of a newer low-priority one, not merely the newest few.
+  const recent = rankHomeNotifications(notifications).slice(
+    0,
+    MAX_HOME_NOTIFICATIONS,
+  );
 
   // Render nothing until there's real activity. The always-visible home surface
   // (#9143) must not show an empty placeholder card — empty-state hints belong

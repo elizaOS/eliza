@@ -18,22 +18,38 @@ function assertApiBody(options: {
  * Behavior scenario for the `reminder_dispatch` LifeOps capability.
  *
  * When a scheduled reminder fires, the reminders mixin
- * (`buildReminderDispatchPrompt` in
+ * (`renderReminderBody` / `buildReminderDispatchPrompt` in
  * `plugins/plugin-personal-assistant/src/lifeops/service-mixin-reminders.ts`)
- * composes the natural-language nudge the owner actually receives. Its
- * instruction body is the GEPA-optimizable `reminder_dispatch` prompt:
+ * composes the natural-language nudge the owner receives. Its instruction body
+ * is the GEPA-optimizable `reminder_dispatch` prompt:
  * `REMINDER_DISPATCH_INSTRUCTIONS` is the wired baseline that
- * `resolveOptimizedPromptForRuntime` swaps for a registered
- * `reminder_dispatch` artifact.
+ * `resolveOptimizedPromptForRuntime(..., "reminder_dispatch", ...)` swaps for a
+ * registered `reminder_dispatch` artifact.
  *
- * Unlike a chat-turn planner capability, `reminder_dispatch` runs on the
- * delivery path, so this scenario seeds a due reminder definition and drives
- * `POST /api/lifeops/reminders/process` to fire it. The delivery assertion
- * (`delivered` on the `in_app` channel) confirms the dispatch path — and the
- * prompt that authors the reminder text — executed, so a regression in the
- * wired prompt or the firing pipeline surfaces as a failing scenario. It
- * mirrors `reminder.lifecycle.dismiss` but is scoped to the reminder-dispatch
- * capability.
+ * Unlike a chat-turn planner capability, reminder dispatch runs on the delivery
+ * path, so this scenario seeds a due reminder definition and drives
+ * `POST /api/lifeops/reminders/process` to fire it.
+ *
+ * What this scenario proves (machine-enforced):
+ *   - The firing pipeline runs and delivers a reminder on the `in_app` channel.
+ *     The executor enforces `expectedStatus` on both api turns and runs
+ *     `assertResponse(status, body)` on the process turn
+ *     (`packages/scenario-runner/src/executor.ts`); the body must contain
+ *     `"delivered"` and `"in_app"` or the turn fails. So a regression that
+ *     stops the reminder from being scheduled, matched, or delivered surfaces
+ *     as a failing scenario.
+ *
+ * What this scenario does NOT prove:
+ *   - It does not grade the LLM-authored reminder text. `renderReminderBody`
+ *     builds a static `fallback` body via `buildReminderBody` first and only
+ *     overlays the `reminder_dispatch` model output on top; on any model
+ *     failure (or a non-string response, or no `useModel`) it returns the
+ *     static fallback. Delivery therefore succeeds whether or not the
+ *     `reminder_dispatch` prompt produced usable text — this scenario asserts
+ *     the dispatch path reached delivery, not the quality of the authored copy.
+ *
+ * It mirrors `reminder.lifecycle.dismiss` but is scoped to the
+ * reminder-dispatch capability.
  */
 export default scenario({
   lane: "live-only",

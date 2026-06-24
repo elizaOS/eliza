@@ -90,6 +90,8 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     icon: "Bell",
     order: 50,
     defaultEnabled: true,
+    // Boosted by any notification; urgent ones map to escalation-level weight.
+    signalKinds: ["notification", "approval", "escalation"],
   },
   // Messages (recent conversations) — the shared "messages" home widget (#9143).
   {
@@ -100,6 +102,7 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     icon: "MessageSquare",
     order: 60,
     defaultEnabled: true,
+    signalKinds: ["message"],
   },
   // Agent Orchestrator — app runs
   {
@@ -132,6 +135,9 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     icon: "Activity",
     order: 100,
     defaultEnabled: true,
+    // The orchestrator activity card bubbles up when a run is blocked, escalated,
+    // or busy — the highest-attention home signals.
+    signalKinds: ["blocked", "escalation", "workflow", "activity"],
   },
   // Agent Orchestrator — running app instances on the home (#9143). Distinct
   // from the launcher icons (which open views): this lists live app runs.
@@ -144,6 +150,7 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     icon: "LayoutGrid",
     order: 70,
     defaultEnabled: true,
+    signalKinds: ["activity"],
   },
   // Todos — the todo plugin's frontpage widget (#9143 per-plugin breadth).
   {
@@ -154,6 +161,7 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     icon: "ListTodo",
     order: 80,
     defaultEnabled: true,
+    signalKinds: ["reminder", "check-in", "nudge"],
   },
   // -- Per-plugin opt-in sinks (#9143) ---------------------------------------
   // Manifest plugins that have live state but ship no bundled home component
