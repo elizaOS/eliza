@@ -71,7 +71,7 @@ describe("inline-widget matrix gate (#9304)", () => {
       const regions = def?.parse(SAMPLE[kind]) ?? [];
       expect(regions.length, `${kind} parse`).toBeGreaterThanOrEqual(1);
       expect(() =>
-        render(<>{def?.render(regions[0]?.data, ctx, `k-${kind}`)}</>),
+        render(<div>{def?.render(regions[0]?.data, ctx, `k-${kind}`)}</div>),
       ).not.toThrow();
     });
   }
