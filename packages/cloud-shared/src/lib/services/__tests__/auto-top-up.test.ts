@@ -154,3 +154,23 @@ describe("AutoTopUpService.executeAutoTopUp", () => {
     });
   });
 });
+
+describe("AutoTopUpService.validateSettings", () => {
+  const svc = new AutoTopUpService();
+  test("accepts in-range values incl. boundaries", () => {
+    expect(() => svc.validateSettings(1, 0)).not.toThrow();
+    expect(() => svc.validateSettings(1000, 1000)).not.toThrow();
+  });
+  test("rejects amount below $1", () => {
+    expect(() => svc.validateSettings(0.5, 5)).toThrow(/at least \$1/);
+  });
+  test("rejects amount above $1000", () => {
+    expect(() => svc.validateSettings(1001, 5)).toThrow(/cannot exceed \$1000/);
+  });
+  test("rejects negative threshold", () => {
+    expect(() => svc.validateSettings(10, -1)).toThrow(/threshold must be at least/);
+  });
+  test("rejects threshold above $1000", () => {
+    expect(() => svc.validateSettings(10, 1001)).toThrow(/threshold cannot exceed/);
+  });
+});

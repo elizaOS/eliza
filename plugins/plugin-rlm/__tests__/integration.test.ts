@@ -50,10 +50,8 @@ describe("RLM Integration", () => {
 
   describe("Python Environment", () => {
     it("should detect Python availability", () => {
-      // This test always passes, just logs the status
-      console.log(`Python available: ${hasPython}`);
-      console.log(`RLM module available: ${hasRLMModule}`);
-      expect(true).toBe(true);
+      expect(typeof hasPython).toBe("boolean");
+      expect(typeof hasRLMModule).toBe("boolean");
     });
   });
 

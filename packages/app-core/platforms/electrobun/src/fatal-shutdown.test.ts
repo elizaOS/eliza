@@ -10,12 +10,9 @@ vi.mock("electrobun/bun", () => ({
 
 // Rule (electrobun.md:601-610):
 //   Don't use process.exit() for shutdown — use Utils.quit() for graceful
-//   shutdown with CEF cleanup.
-//
-// Current code (src/fatal-shutdown.ts):
-//   export function shutdownAfterFatalError(): void {
-//     process.exit(1);
-//   }
+//   shutdown with CEF cleanup. shutdownAfterFatalError() must therefore call
+//   Utils.quit() (not process.exit) so CEF/native destructors run on a fatal
+//   startup error.
 
 describe("fatal startup shutdown", () => {
   it("does not call process.exit()", () => {
@@ -23,7 +20,6 @@ describe("fatal startup shutdown", () => {
 
     shutdownAfterFatalError();
 
-    // RED: currently calls process.exit(1) — should call Utils.quit()
     expect(processExitSpy).not.toHaveBeenCalled();
     expect(Utils.quit).toHaveBeenCalledOnce();
   });

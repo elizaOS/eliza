@@ -619,10 +619,10 @@ describe("Achievement Engine (checkProgress)", () => {
 
     await checkProgress("user-1", { type: "post_created" });
 
-    // post_created maps to daily_post, weekly_post, weekly_feed_engage
-    // With 0 progress, nothing should unlock
-    // No errors should be thrown
-    expect(true).toBe(true);
+    // post_created maps to daily_post, weekly_post, weekly_feed_engage.
+    // With 0 progress, nothing should unlock or broadcast.
+    expect(mockAwardReputation).not.toHaveBeenCalled();
+    expect(mockBroadcastToChannel).not.toHaveBeenCalled();
   });
 
   it("handles daily_login event", async () => {
