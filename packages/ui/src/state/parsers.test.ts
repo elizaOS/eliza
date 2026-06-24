@@ -124,6 +124,15 @@ describe("parseCustomActionParams", () => {
     );
     expect(params).toEqual({ input: "hello world" });
   });
+
+  it("binds quoted multi-word values to named args (double + single quotes)", () => {
+    expect(
+      parseCustomActionParams(
+        action([{ name: "to", required: true }, { name: "subject" }]),
+        "to=\"Alice Smith\" subject='Lunch plans'",
+      ).params,
+    ).toEqual({ to: "Alice Smith", subject: "Lunch plans" });
+  });
 });
 
 describe("streamed-text reconciliation", () => {
