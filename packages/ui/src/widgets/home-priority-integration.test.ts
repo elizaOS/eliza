@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
+  HOME_SIGNAL_WEIGHTS,
   type HomeWidgetSignal,
+  homeSignalsFromEvents,
   homeSignalsFromNotifications,
   homeWidgetKey,
   rankHomeWidgets,
@@ -96,6 +98,52 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
     const calendarRank = order.indexOf("calendar/calendar.upcoming");
     const financesRank = order.indexOf("finances/finances.alerts");
     expect(financesRank).toBeLessThan(calendarRank);
+  });
+
+  it("floats orchestrator activity for workflow lifecycle events", () => {
+    const signals = homeSignalsFromEvents(
+      [{ eventType: "tool_running", timestamp: NOW }],
+      homeDeclarations(),
+    );
+
+    expect(signals).toEqual([
+      {
+        widgetKey: "agent-orchestrator/agent-orchestrator.activity",
+        weight: HOME_SIGNAL_WEIGHTS.workflow,
+        timestamp: NOW,
+      },
+    ]);
+
+    const order = rankedKeys(signals);
+    expect(order[0]).toBe("agent-orchestrator/agent-orchestrator.activity");
+    expect(
+      order.indexOf("agent-orchestrator/agent-orchestrator.activity"),
+    ).toBeLessThan(order.indexOf("notifications/notifications.recent"));
+  });
+
+  it("floats orchestrator errors via workflow, not the escalation rail", () => {
+    const signals = homeSignalsFromEvents(
+      [{ eventType: "error", timestamp: NOW }],
+      homeDeclarations(),
+    );
+
+    // An error lifts the orchestrator card to the top of a quiet home, but at
+    // workflow strength — NOT the weight-10 blocked rail. Transient/recoverable
+    // orchestrator errors are common, so escalation-strength routing would
+    // manufacture false alarms; genuine urgency rides the `blocked` SessionEvent.
+    expect(signals).toContainEqual({
+      widgetKey: "agent-orchestrator/agent-orchestrator.activity",
+      weight: HOME_SIGNAL_WEIGHTS.workflow,
+      timestamp: NOW,
+    });
+    expect(
+      signals.find(
+        (s) => s.widgetKey === "agent-orchestrator/agent-orchestrator.activity",
+      )?.weight,
+    ).toBeLessThan(HOME_SIGNAL_WEIGHTS.blocked);
+    expect(rankedKeys(signals)[0]).toBe(
+      "agent-orchestrator/agent-orchestrator.activity",
+    );
   });
 
   it("with no live signals, ranks purely by base order (quiet home)", () => {
