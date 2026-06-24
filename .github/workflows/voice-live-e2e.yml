@@ -3,7 +3,7 @@ name: Voice Live E2E
 # Provisioned REAL voice lane. The keyless PR lanes stub voice entirely
 # (silent-WAV TTS, shimmed STT transcript), so genuinely-real voice coverage —
 # real speech synthesis + real transcription with real models — lives in this
-# GPU + model-heavy nightly / workflow_dispatch lane.
+# self-hosted model-heavy nightly / workflow_dispatch lane.
 #
 # What it proves (no mocks at any stage):
 #   - Real STT: whisper.cpp FFI transcribes a real speech WAV.
@@ -44,8 +44,8 @@ env:
 
 jobs:
   voice-roundtrip:
-    name: Real voice STT + TTS->STT round-trip (GPU)
-    runs-on: [self-hosted, gpu-cuda-12.6]
+    name: Real voice STT + TTS->STT round-trip (self-hosted)
+    runs-on: [self-hosted, Linux, X64, eliza]
     timeout-minutes: 90
     # Non-blocking: a missing GPU/model environment must not red-X the branch.
     continue-on-error: true
@@ -109,8 +109,8 @@ jobs:
         run: bun run --cwd plugins/plugin-local-inference test:voice:roundtrip
 
   voice-acoustic-matrix:
-    name: Real acoustic VAD + diarization + self-voice matrix (GPU)
-    runs-on: [self-hosted, gpu-cuda-12.6]
+    name: Real acoustic VAD + diarization + self-voice matrix (self-hosted)
+    runs-on: [self-hosted, Linux, X64, eliza]
     timeout-minutes: 120
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}

@@ -29,6 +29,10 @@ Scope:
   voice:workbench --real --out "$VOICE_REAL_MATRIX_OUT/voice-workbench-real"` so
   the named `--real` acceptance lane produces a workbench JSON/Markdown report
   in the uploaded `voice-real-acoustic-matrix` artifact.
+- The workflow now targets the online provisioned `self-hosted, Linux, X64,
+  eliza` runner pool instead of the absent `gpu-cuda-12.6` label. The real lane
+  still fails hard on missing bundle/library/GGUF/secret dependencies after the
+  job starts; the label change only makes the job schedulable.
 - The acoustic matrix job no longer has `continue-on-error: true`; missing real
   evidence is now a red nightly / workflow-dispatch result.
 
@@ -56,6 +60,9 @@ bun run --cwd packages/app test:e2e \
   test/ui-smoke/voice-workbench-diarization.spec.ts --project=chromium
 
 actionlint .github/workflows/voice-live-e2e.yml
+
+gh api --paginate repos/elizaOS/eliza/actions/runners \
+  --jq '.runners[] | select(([.labels[].name] | index("eliza"))) | {name,status,busy,labels:[.labels[].name]}'
 
 bun build packages/benchmarks/voice/voice-real-ci-matrix.mjs \
   --target=bun --outfile=/tmp/voice-real-ci-matrix.js
@@ -86,6 +93,8 @@ Result:
 - `packages/app` typecheck: pass.
 - Focused Playwright diarization scenario: `1 passed`.
 - `actionlint`: pass.
+- Runner placement audit: online `self-hosted, Linux, X64, eliza` runners exist;
+  no runner currently advertises `gpu-cuda-12.6`.
 - Benchmark script bundle/syntax build: pass (`1361 modules`).
 - `voice:workbench` CLI bundle/syntax build: pass.
 - Focused workbench Vitest: pass (`23 passed`).
@@ -100,6 +109,6 @@ N/A:
   report/DOM evidence and test enforcement only; it does not alter visible UI
   layout.
 - `voice-real-ci-matrix.mjs` and `voice:workbench --real` were not executed
-  locally because they require the provisioned self-hosted GPU runner, fused
+  locally because they require the provisioned self-hosted voice runner, fused
   native library, real GGUF bundle, and ElevenLabs secret. The workflow now runs
   both as part of the uploaded `voice-real-acoustic-matrix` artifact.
