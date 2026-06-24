@@ -64,7 +64,11 @@ export function buildAppDockerCreateCmd(params: BuildAppDockerCmdParams): string
     "--health-start-period 15s",
     "--health-retries 6",
     ...(input.memoryMb ? [`--memory ${shellQuote(`${Math.ceil(input.memoryMb)}m`)}`] : []),
-    `-p ${params.hostPort}:${input.port}`,
+    // Publish to loopback only: the node-local Caddy reverse-proxies to
+    // 127.0.0.1:hostPort, so the port must NOT be reachable across the shared
+    // private network (binding 0.0.0.0 would let any other node/container hit
+    // this tenant's app directly — a cross-tenant ingress bypass).
+    `-p 127.0.0.1:${params.hostPort}:${input.port}`,
     envFlags,
     shellQuote(input.image),
   ]

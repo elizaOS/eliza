@@ -52,9 +52,18 @@ describe("buildAppDockerCreateCmd", () => {
 
   test("maps the host port, sets memory, and runs the requested image", () => {
     const cmd = build();
-    expect(cmd).toContain("-p 49001:3000");
+    expect(cmd).toContain("-p 127.0.0.1:49001:3000");
     expect(cmd).toContain("--memory '512m'");
     expect(cmd).toContain("'ghcr.io/nubs/nubilio:latest'");
+  });
+
+  test("publishes ONLY to loopback so the port is not reachable across the private network", () => {
+    const cmd = build();
+    // The published mapping must be loopback-scoped, never a bare/0.0.0.0 bind
+    // (a bare `-p host:container` binds 0.0.0.0 -> cross-tenant ingress bypass).
+    expect(cmd).toContain("-p 127.0.0.1:49001:3000");
+    expect(cmd).not.toMatch(/-p (?!127\.0\.0\.1:)/);
+    expect(cmd).not.toContain("-p 0.0.0.0:");
   });
 
   test("never auto-injects DATABASE_URL, but forwards a caller-supplied one", () => {
@@ -72,7 +81,7 @@ describe("buildAppDockerCreateCmd", () => {
 
   test("honors a custom container port and health path", () => {
     const cmd = build({ port: 8080, healthCheckPath: "/healthz" });
-    expect(cmd).toContain("-p 49001:8080");
+    expect(cmd).toContain("-p 127.0.0.1:49001:8080");
     expect(cmd).toContain("localhost:8080/healthz");
   });
 });
