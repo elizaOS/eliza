@@ -2,9 +2,13 @@
 /**
  * Fails when production source adds new unsafe TypeScript escape hatches.
  *
- * The gate is deliberately narrow: it tracks explicit cast escapes that are
- * easy to classify by AST and were called out in #9474. Broader strict-mode
- * migrations should tighten this baseline over time.
+ * The gate is deliberately narrow: it tracks explicit cast escapes
+ * (`as any`, `as unknown as`) and the TypeScript error-suppression directives
+ * (expect-error and its legacy ignore form) that are easy to classify by AST
+ * and were called out in #9474. Suppressions are read from TypeScript's own
+ * `sourceFile.commentDirectives`, so a directive token inside a string or a
+ * comment about directives is not miscounted. Broader strict-mode migrations
+ * should tighten this baseline over time.
  */
 
 import { execFileSync } from "node:child_process";
@@ -31,6 +35,7 @@ const UPDATE_BASELINE = args.has("--update-baseline");
 const KIND_LABELS = {
   asUnknownAs: "as unknown as",
   asAny: "as any",
+  tsSuppress: "@ts-expect-error / @ts-ignore",
 };
 
 const EXCLUDED_SEGMENTS = new Set([
@@ -146,11 +151,28 @@ function collectUnsafeCasts(sourceText, relPath) {
   }
 
   visit(sourceFile);
+
+  // Type-error suppression directives, read from TypeScript's own directive
+  // table so we never miscount directive text that appears inside a string or
+  // an unrelated comment. Covers expect-error and its legacy ignore form.
+  for (const directive of sourceFile.commentDirectives ?? []) {
+    const pos = sourceFile.getLineAndCharacterOfPosition(directive.range.pos);
+    findings.push({
+      kind: "tsSuppress",
+      file: relPath,
+      line: pos.line + 1,
+      snippet: sourceText
+        .slice(directive.range.pos, directive.range.end)
+        .replace(/\s+/g, " ")
+        .slice(0, 160),
+    });
+  }
+
   return findings;
 }
 
 function summarize(findings) {
-  const counts = { asUnknownAs: 0, asAny: 0 };
+  const counts = { asUnknownAs: 0, asAny: 0, tsSuppress: 0 };
   for (const finding of findings) {
     counts[finding.kind] += 1;
   }
@@ -319,9 +341,18 @@ function runSelfTest() {
     // const four = value as unknown as Result;
     const five = value as unknown;
     const six = (value as unknown) as Result;
+    // @ts-expect-error self-test directive
+    const seven: string = 1;
+    // @ts-ignore self-test directive
+    const eight: number = "x";
+    const nine = "// @ts-ignore inside a string is not a directive";
   `;
   const counts = summarize(collectUnsafeCasts(sample, "sample.ts"));
-  if (counts.asUnknownAs !== 2 || counts.asAny !== 1) {
+  if (
+    counts.asUnknownAs !== 2 ||
+    counts.asAny !== 1 ||
+    counts.tsSuppress !== 2
+  ) {
     console.error(
       `[type-safety-ratchet] self-test failed: ${JSON.stringify(counts)}`,
     );
