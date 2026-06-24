@@ -69,13 +69,6 @@ final class ElizaBionicInferenceServer {
     private final Object residentLock = new Object();
     /** Hard decode ceiling for the resident stream (per-call cap is applied below). */
     private static final int RESIDENT_STREAM_MAX_TOKENS = 2048;
-    // Resident "mode": text-generate and vision-describe share residentCtx, but
-    // prefilling text on top of a vision (mtmd) eval — or reusing a stale text-KV
-    // prefix after one — aborts the native decode (SIGABRT). Track the last mode
-    // and rebuild the context only on a text<->vision switch, so continuous chat
-    // and continuous describe both stay warm.
-    private static final int MODE_NONE = 0, MODE_TEXT = 1, MODE_VISION = 2;
-    private int residentMode = MODE_NONE;
 
     ElizaBionicInferenceServer(String socketName, String defaultBundleDir) {
         this.socketName = socketName;
@@ -301,7 +294,7 @@ final class ElizaBionicInferenceServer {
     private String generateResident(String bundleDir, String prompt, int maxTokens)
             throws org.json.JSONException {
         synchronized (residentLock) {
-            enterResidentMode(MODE_TEXT, bundleDir);
+            ensureResidentCtx(bundleDir);
             final long t0 = android.os.SystemClock.elapsedRealtime();
             resetAndPrefillResident(prompt);
             final StringBuilder sb = new StringBuilder();
@@ -375,7 +368,7 @@ final class ElizaBionicInferenceServer {
         final StringBuilder sb = new StringBuilder();
         try {
             synchronized (residentLock) {
-                enterResidentMode(MODE_TEXT, bundleDir);
+                ensureResidentCtx(bundleDir);
                 final long t0 = android.os.SystemClock.elapsedRealtime();
                 resetAndPrefillResident(prompt);
                 int produced = 0;
@@ -438,22 +431,6 @@ final class ElizaBionicInferenceServer {
         return residentCtx;
     }
 
-    /**
-     * Enter text-generate or vision-describe on the resident context. The two
-     * share residentCtx's KV; mixing a text prefill with a vision (mtmd) eval in
-     * the same context aborts the native decode, so on a mode switch we tear the
-     * context down for a clean rebuild. Same-mode calls keep the warm context
-     * (continuous chat and continuous screen-describe pay no reload). Caller
-     * holds residentLock.
-     */
-    private void enterResidentMode(int mode, String bundleDir) {
-        if (residentMode != MODE_NONE && residentMode != mode) {
-            resetResident();
-        }
-        ensureResidentCtx(bundleDir);
-        residentMode = mode;
-    }
-
     /** Tear down the resident model/context/stream (on bundle change, failure, or stop). */
     private void resetResident() {
         synchronized (residentLock) {
@@ -467,7 +444,6 @@ final class ElizaBionicInferenceServer {
             }
             residentBundle = null;
             residentPrevTokens = null;
-            residentMode = MODE_NONE;
         }
     }
 
@@ -686,8 +662,7 @@ final class ElizaBionicInferenceServer {
             }
         }
         synchronized (residentLock) {
-            enterResidentMode(MODE_VISION, bundleDir);
-            final long ctx = residentCtx;
+            final long ctx = ensureResidentCtx(bundleDir);
             try {
                 String desc = ElizaVoiceNative.nativeDescribeImage(ctx, img, mmproj, prompt);
                 Log.i(TAG, "IMAGE from agent: " + img.length + " bytes (mmproj " + mmproj + ") -> \""
