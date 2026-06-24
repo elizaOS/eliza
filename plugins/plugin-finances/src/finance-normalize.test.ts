@@ -1,9 +1,9 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  FinancesServiceError,
   fail,
   financeErrorMessage,
-  FinancesServiceError,
   normalizeOptionalBoolean,
   normalizeOptionalString,
   requireAgentId,

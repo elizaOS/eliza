@@ -21,7 +21,7 @@ describe("parseCsv (RFC 4180)", () => {
   });
 
   it("handles CRLF and a quoted embedded newline", () => {
-    expect(parseCsv('a,b\r\n1,2\r\n')).toEqual([
+    expect(parseCsv("a,b\r\n1,2\r\n")).toEqual([
       ["a", "b"],
       ["1", "2"],
     ]);
@@ -53,15 +53,19 @@ describe("parseTransactionsCsv", () => {
       "Posted Date,Payee,Debit,Credit\n2026-01-15,Coffee,(4.50),\n2026-01-16,Refund,,10.00\n",
     );
     expect(r.transactions).toHaveLength(2);
-    expect(r.transactions[0]).toMatchObject({ direction: "debit", amountUsd: 4.5 });
-    expect(r.transactions[1]).toMatchObject({ direction: "credit", amountUsd: 10 });
+    expect(r.transactions[0]).toMatchObject({
+      direction: "debit",
+      amountUsd: 4.5,
+    });
+    expect(r.transactions[1]).toMatchObject({
+      direction: "credit",
+      amountUsd: 10,
+    });
     expect(r.transactions[0].postedAt).toBe("2026-01-15T00:00:00.000Z");
   });
 
   it("normalizes US-format and 2-digit-year dates to a 2026 calendar date", () => {
-    const r = parseTransactionsCsv(
-      "Date,Amount,Merchant\n1/16/26,-5,Gym\n",
-    );
+    const r = parseTransactionsCsv("Date,Amount,Merchant\n1/16/26,-5,Gym\n");
     expect(r.transactions).toHaveLength(1);
     // Exact time is timezone-dependent via Date.parse; assert the year only.
     expect(r.transactions[0].postedAt).toMatch(/^2026-01-1[56]T/);
@@ -78,10 +82,11 @@ describe("parseTransactionsCsv", () => {
   });
 
   it("honors explicit column option overrides", () => {
-    const r = parseTransactionsCsv(
-      "when,who,how_much\n2026-01-01,Gym,-30\n",
-      { dateColumn: "when", merchantColumn: "who", amountColumn: "how_much" },
-    );
+    const r = parseTransactionsCsv("when,who,how_much\n2026-01-01,Gym,-30\n", {
+      dateColumn: "when",
+      merchantColumn: "who",
+      amountColumn: "how_much",
+    });
     expect(r.transactions).toHaveLength(1);
     expect(r.transactions[0].merchantRaw).toBe("Gym");
   });
