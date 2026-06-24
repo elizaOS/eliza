@@ -55,6 +55,8 @@ const execAsync = promisify(exec);
 const VISION_CONTEXT_SERVICE_TYPE = "vision-context";
 const SCENE_CONTEXT_OPEN_APPS_LIMIT = 20;
 const SCENE_CONTEXT_RECENT_ACTIONS_LIMIT = 10;
+const SCENE_DESCRIPTION_OCR_LINE_LIMIT = 40;
+const SCENE_DESCRIPTION_OCR_TEXT_LIMIT = 2000;
 
 interface VisionContextSnapshot {
   openApps: string[];
@@ -101,13 +103,38 @@ function trimVisionContextForPrompt(
 
 function buildSceneDescriptionPrompt(
   context: VisionContextSnapshot | null,
+  ocrText?: string | null,
 ): string {
   const payload: Record<string, unknown> = {
     task: "describe_visual_scene",
     instructions: SCENE_DESCRIPTION_INSTRUCTIONS,
   };
   if (context) payload.context = trimVisionContextForPrompt(context);
+  const detectedText = normalizeOcrTextForPrompt(ocrText);
+  if (detectedText) payload.detectedText = detectedText;
   return JSON.stringify(payload, null, 2);
+}
+
+function normalizeOcrTextForPrompt(text?: string | null): string | null {
+  if (!text) return null;
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/\s+/g, " ").trim();
+    if (line.length === 0) continue;
+    const dedupeKey = line.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    lines.push(line);
+    if (lines.length >= SCENE_DESCRIPTION_OCR_LINE_LIMIT) break;
+  }
+
+  const normalized = lines
+    .join("\n")
+    .slice(0, SCENE_DESCRIPTION_OCR_TEXT_LIMIT)
+    .trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 interface CameraDevice {
@@ -1023,6 +1050,19 @@ export class VisionService extends Service {
     }
   }
 
+  private collectCurrentOcrTextForPrompt(): string | null {
+    const screenAnalysis = this.lastEnhancedScene?.screenAnalysis;
+    const candidates = [
+      screenAnalysis?.fullScreenOCR,
+      screenAnalysis?.activeTile?.ocr?.fullText,
+      screenAnalysis?.activeTile?.text,
+    ];
+    const text = candidates
+      .filter((candidate): candidate is string => Boolean(candidate?.trim()))
+      .join("\n");
+    return text.length > 0 ? text : null;
+  }
+
   private async describeSceneWithVLM(imageUrl: string): Promise<string> {
     return withStandaloneTrajectory(
       this.runtime,
@@ -1054,7 +1094,10 @@ export class VisionService extends Service {
       // has registered IMAGE_DESCRIPTION. plugin-vision no longer ships its
       // own VLM.
       const sceneContext = await this.collectVisionContext();
-      const prompt = buildSceneDescriptionPrompt(sceneContext);
+      const prompt = buildSceneDescriptionPrompt(
+        sceneContext,
+        this.collectCurrentOcrTextForPrompt(),
+      );
       try {
         const result = await this.runtime.useModel(
           ModelType.IMAGE_DESCRIPTION,
