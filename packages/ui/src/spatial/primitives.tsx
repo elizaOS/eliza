@@ -607,10 +607,45 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
         aria-hidden="true"
         data-spatial-kind="divider"
         style={{
-          width: "0.25rem",
+          width: 1,
           alignSelf: "stretch",
+          background: "var(--border, rgba(128,128,128,0.35))",
         }}
       />
+    );
+  }
+  // A labeled divider is a section header: the caption is meaningful content,
+  // so render it (not aria-hidden) between two decorative rules. The plain rule
+  // stays decorative/aria-hidden. (Restores rendering #9486 collapsed away.)
+  if (spec.label) {
+    return (
+      <div
+        data-spatial-kind="divider"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          opacity: 0.7,
+        }}
+      >
+        <div
+          aria-hidden="true"
+          style={{
+            flex: 1,
+            height: 1,
+            background: "var(--border, rgba(128,128,128,0.35))",
+          }}
+        />
+        <span style={{ fontSize: "0.75rem" }}>{spec.label}</span>
+        <div
+          aria-hidden="true"
+          style={{
+            flex: 1,
+            height: 1,
+            background: "var(--border, rgba(128,128,128,0.35))",
+          }}
+        />
+      </div>
     );
   }
   return (
@@ -618,8 +653,9 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
       aria-hidden="true"
       data-spatial-kind="divider"
       style={{
-        height: spec.label ? "0.25rem" : "0.125rem",
+        height: 1,
         alignSelf: "stretch",
+        background: "var(--border, rgba(128,128,128,0.35))",
       }}
     />
   );
