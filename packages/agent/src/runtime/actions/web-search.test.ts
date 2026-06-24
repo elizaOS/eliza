@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import type { IAgentRuntime, JsonValue, Memory, State } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   __setDnsLookupImplForTests,
@@ -53,7 +53,7 @@ function mockProviders(byHost: { parallel?: string; exa?: string }): void {
   });
 }
 
-async function runHandler(parameters: Record<string, unknown>): Promise<{
+async function runHandler(parameters: Record<string, JsonValue>): Promise<{
   result: { success: boolean; text?: string; data?: unknown };
   captured: { text?: string };
 }> {
