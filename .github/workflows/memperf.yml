@@ -70,7 +70,7 @@ jobs:
           esac
       - name: Upload memperf summary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: memperf-summary
           path: packages/benchmarks/memperf/results/summary/
