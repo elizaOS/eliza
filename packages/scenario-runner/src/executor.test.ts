@@ -229,6 +229,104 @@ describe("scenario executor action turns", () => {
     ]);
   });
 
+  it("matches RegExp patterns in responseIncludesAny assertions", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "VIEWS",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(
+            async (_runtime, _message, _state, _options, callback) => {
+              await callback?.({
+                text: "Please clarify which ledger you want opened.",
+              });
+              return { success: true };
+            },
+          ),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "response-includes-any-regexp-pass",
+        title: "Response includes any RegExp pass",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "open view",
+            actionName: "VIEWS",
+            responseIncludesAny: [/clarif/i],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(report.turns[0]?.failedAssertions).toEqual([]);
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("reports expected and actual response text for responseIncludesAny RegExp failures", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "VIEWS",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(
+            async (_runtime, _message, _state, _options, callback) => {
+              await callback?.({ text: "opened local notes instead" });
+              return { success: true };
+            },
+          ),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "response-includes-any-regexp-failure",
+        title: "Response includes any RegExp failure",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "open view",
+            actionName: "VIEWS",
+            responseIncludesAny: [/remote[- ]ledger/i],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(report.turns[0]?.failedAssertions).toEqual([
+      'responseIncludesAny: expected response to include any of [/remote[- ]ledger/i], saw "opened local notes instead"',
+    ]);
+  });
+
   it("uses action callback output directly before scenario assertions", async () => {
     const runtime = createRuntime(
       [
