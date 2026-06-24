@@ -231,9 +231,12 @@ describe("managed Eliza environment", () => {
   });
 
   test("pins both embedding dimensions to 1536 so the storage column and the cloud probe agree (#8769)", async () => {
-    // plugin-sql storage defaults to dim_384 unless EMBEDDING_DIMENSION is set,
-    // while the cloud embedding model returns 1536-d vectors — a drift to a
-    // single value re-introduces "Skipping embedding insert: dimension mismatch".
+    // Pinning EMBEDDING_DIMENSION + ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS=1536 makes
+    // the cloud TEXT_EMBEDDING handler EMIT 1536-wide vectors. plugin-sql does NOT
+    // read these vars; the storage column is sized at boot by the model-length
+    // probe (runtime.ensureEmbeddingDimension). Both must agree on 1536 or the boot
+    // probe snaps the column to a width the handler's output won't match —
+    // re-introducing "Skipping embedding insert: dimension mismatch" (#8769).
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 
     const result = await prepareManagedElizaBaseEnvironment({
