@@ -37,6 +37,13 @@ export interface ViewEntry {
   icon?: string;
   /** Real preview image URL, or undefined when only a generated fallback exists. */
   heroUrl?: string;
+  /**
+   * Always-available preview image URL — the hero endpoint, which returns a real
+   * image when one exists on disk and a deterministic branded SVG otherwise. Use
+   * this (not {@link heroUrl}) when every entry must show an image, e.g. the
+   * Springboard tiles. Undefined only for entries with no hero source at all.
+   */
+  imageUrl?: string;
   hasHero: boolean;
   category?: string;
   /** Presentation modality (`gui` for catalog apps until loaded). */
@@ -81,6 +88,7 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     description: view.description,
     icon: view.icon,
     heroUrl: hasHero ? view.heroImageUrl : undefined,
+    imageUrl: view.heroImageUrl,
     hasHero,
     modality: view.viewType ?? "gui",
     modalities: [view.viewType ?? "gui"],
@@ -104,6 +112,7 @@ function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
     description: app.description,
     icon: app.icon ?? undefined,
     heroUrl: app.heroImage ?? undefined,
+    imageUrl: app.heroImage ?? undefined,
     hasHero,
     category: app.category,
     // Catalog cards are a GUI install surface; the loaded view carries the real

@@ -178,6 +178,11 @@ export function AppDomains({ appId }: AppDomainsProps) {
     const primaryDomain = domains.find((d) => d.isPrimary);
     if (primaryDomain?.customDomain && !primaryDomain.customDomainVerified) {
       pollIntervalRef.current = setInterval(() => {
+        if (
+          typeof document !== "undefined" &&
+          document.visibilityState !== "visible"
+        )
+          return;
         checkDomainStatus(primaryDomain.customDomain ?? "", true);
       }, 15000);
 
@@ -947,7 +952,7 @@ function DnsConfigPanel({
           {lastChecked && (
             <span className="text-xs text-neutral-500 hidden sm:block">
               {t("cloud.appDomains.lastChecked", {
-                time: lastChecked.toLocaleTimeString(),
+                time: lastChecked.toLocaleTimeString("en-US"),
                 defaultValue: "Last checked: {{time}}",
               })}
             </span>

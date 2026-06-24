@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	MemoryType,
-	type Memory,
-	type MemoryMetadata,
-	type UUID,
-} from "./types";
-import {
 	createMessageMemory,
 	getMemoryText,
 	isCustomMetadata,
@@ -16,6 +10,12 @@ import {
 	isFragmentMetadata,
 	isMessageMetadata,
 } from "./memory.ts";
+import {
+	type Memory,
+	type MemoryMetadata,
+	MemoryType,
+	type UUID,
+} from "./types";
 
 /**
  * Memory metadata type guards drive how each record is stored, embedded, and

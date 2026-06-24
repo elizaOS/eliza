@@ -117,9 +117,9 @@ describe("record helpers", () => {
 
 describe("mergeMetadata privacy defaulting", () => {
   it("merges updates over current", () => {
-    expect(mergeMetadata({ a: 1 }, { b: 2, privacyClass: "team" })).toMatchObject(
-      { a: 1, b: 2, privacyClass: "team" },
-    );
+    expect(
+      mergeMetadata({ a: 1 }, { b: 2, privacyClass: "team" }),
+    ).toMatchObject({ a: 1, b: 2, privacyClass: "team" });
   });
 
   it("defaults privacyClass to private and blocks public context", () => {

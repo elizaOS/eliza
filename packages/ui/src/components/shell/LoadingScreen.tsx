@@ -101,10 +101,10 @@ export function LoadingScreen({
         <div className="flex items-center gap-4 w-full">
           <div className="flex-1 h-1 bg-bg-accent overflow-hidden relative">
             <div
-              className="h-full bg-accent relative "
+              className="h-full w-full origin-left bg-accent relative"
               style={{
-                width: `${progress}%`,
-                transition: "width 1.5s ease-out",
+                transform: `scaleX(${Math.min(100, Math.max(0, progress)) / 100})`,
+                transition: "transform 1.5s ease-out",
               }}
             />
           </div>

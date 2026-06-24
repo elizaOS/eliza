@@ -57,7 +57,9 @@ describe("isWithin — traversal containment", () => {
 describe("isWithinAnyRoot", () => {
   it("is false with no roots, true when contained by one", async () => {
     expect(await isWithinAnyRoot("/a/b/c", [])).toBe(false);
-    expect(await isWithinAnyRoot("/srv/app/x", ["/tmp", "/srv/app"])).toBe(true);
+    expect(await isWithinAnyRoot("/srv/app/x", ["/tmp", "/srv/app"])).toBe(
+      true,
+    );
     expect(await isWithinAnyRoot("/etc/passwd", ["/srv/app"])).toBe(false);
   });
 });

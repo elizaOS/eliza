@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract istft-verify two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke android-vulkan-graph-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-dispatch-smoke cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented mmproj-verify force clean
+.PHONY: all reference-test kernel-contract istft-verify two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke android-vulkan-graph-smoke metal metal-verify metal-verify-shipped metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-dispatch-smoke cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented mmproj-verify force clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -281,6 +281,34 @@ metal-verify: metal_verify reference-test
 	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json
 	@echo "[kernels/verify] metal polar pre-Hadamard query + QJL residual..."
 	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json
+
+# Runtime-source-of-truth gate. metal-verify above tests the verify-harness copy
+# under ../metal/; the SHIPPED kernels the fork actually embeds into
+# default.metallib live in the llama.cpp submodule under eliza-shipped/. Those two
+# copies MUST stay in lockstep — when they drifted (fork commit 412b8487b regressed
+# eliza-shipped/turbo3+turbo4 to 0/8 while ../metal/ stayed 8/8) the metal-verify
+# gate went green but the runtime shipped broken TBQ3_0/TBQ4_0 attention scores.
+# This target runs the same parity checks against the embedded kernels so the
+# regression class fails CI instead of shipping silently.
+SHIPPED_METAL := ../llama.cpp/ggml/src/ggml-metal/eliza-shipped
+metal-verify-shipped: metal_verify reference-test
+	@test -d $(SHIPPED_METAL) || { echo "[kernels/verify] $(SHIPPED_METAL) missing — run git submodule update --init"; exit 1; }
+	@echo "[kernels/verify] SHIPPED metal turbo3..."
+	./metal_verify $(SHIPPED_METAL)/turbo3.metal     kernel_turbo3_dot          fixtures/turbo3.json
+	@echo "[kernels/verify] SHIPPED metal turbo4..."
+	./metal_verify $(SHIPPED_METAL)/turbo4.metal     kernel_turbo4_dot          fixtures/turbo4.json
+	@echo "[kernels/verify] SHIPPED metal turbo3_tcq..."
+	./metal_verify $(SHIPPED_METAL)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json
+	@echo "[kernels/verify] SHIPPED metal qjl..."
+	./metal_verify $(SHIPPED_METAL)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json
+	@echo "[kernels/verify] SHIPPED metal polar (+QJL residual)..."
+	./metal_verify $(SHIPPED_METAL)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json
+	./metal_verify $(SHIPPED_METAL)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar_qjl.json
+	@echo "[kernels/verify] SHIPPED metal fused QJL-K + TBQ3-V..."
+	./metal_verify $(SHIPPED_METAL)/fused_attn_qjl_tbq.metal   kernel_fused_attn_qjl_tbq3_f32  fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] SHIPPED metal fused QJL-K + Q4_POLAR-V..."
+	./metal_verify $(SHIPPED_METAL)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json
+	@echo "[kernels/verify] SHIPPED metal set PASS — runtime-embedded kernels match the C reference"
 
 # Additive check for the long-context multi-block Metal entrypoints. These
 # are separate symbols from the compatibility entrypoints and need direct

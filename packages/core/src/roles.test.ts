@@ -1,4 +1,3 @@
-import type { IAgentRuntime, Memory } from "./types";
 import { describe, expect, it } from "vitest";
 import {
 	canModifyRole,
@@ -7,6 +6,7 @@ import {
 	matchEntityToConnectorAdminWhitelist,
 	normalizeRole,
 } from "./roles.ts";
+import type { IAgentRuntime, Memory } from "./types";
 
 /**
  * Role + permission helpers. canModifyRole is the privilege-escalation gate:

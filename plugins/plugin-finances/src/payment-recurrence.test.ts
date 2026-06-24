@@ -31,11 +31,26 @@ function tx(
 }
 
 /** Three monthly debits ~30 days apart, same amount, for one merchant. */
-function monthly(merchant: string, amount: number): LifeOpsPaymentTransaction[] {
+function monthly(
+  merchant: string,
+  amount: number,
+): LifeOpsPaymentTransaction[] {
   return [
-    tx({ postedAt: "2026-01-01T00:00:00Z", amountUsd: -amount, merchantNormalized: merchant }),
-    tx({ postedAt: "2026-01-31T00:00:00Z", amountUsd: -amount, merchantNormalized: merchant }),
-    tx({ postedAt: "2026-03-02T00:00:00Z", amountUsd: -amount, merchantNormalized: merchant }),
+    tx({
+      postedAt: "2026-01-01T00:00:00Z",
+      amountUsd: -amount,
+      merchantNormalized: merchant,
+    }),
+    tx({
+      postedAt: "2026-01-31T00:00:00Z",
+      amountUsd: -amount,
+      merchantNormalized: merchant,
+    }),
+    tx({
+      postedAt: "2026-03-02T00:00:00Z",
+      amountUsd: -amount,
+      merchantNormalized: merchant,
+    }),
   ];
 }
 
@@ -78,7 +93,11 @@ describe("detectRecurringCharges", () => {
     expect(detectRecurringCharges(credits)).toEqual([]);
     expect(
       detectRecurringCharges([
-        tx({ postedAt: "2026-01-01T00:00:00Z", amountUsd: -9.99, merchantNormalized: "once" }),
+        tx({
+          postedAt: "2026-01-01T00:00:00Z",
+          amountUsd: -9.99,
+          merchantNormalized: "once",
+        }),
       ]),
     ).toEqual([]);
   });
@@ -98,9 +117,21 @@ describe("detectRecurringCharges", () => {
     // Intervals (18d, 72d) average ~45d — outside every cadence band → irregular;
     // amounts 10/480/3 are dissimilar → below the 0.7 similarity floor → skipped.
     const charges = detectRecurringCharges([
-      tx({ postedAt: "2026-01-01T00:00:00Z", amountUsd: -10, merchantNormalized: "amazon" }),
-      tx({ postedAt: "2026-01-19T00:00:00Z", amountUsd: -480, merchantNormalized: "amazon" }),
-      tx({ postedAt: "2026-04-01T00:00:00Z", amountUsd: -3, merchantNormalized: "amazon" }),
+      tx({
+        postedAt: "2026-01-01T00:00:00Z",
+        amountUsd: -10,
+        merchantNormalized: "amazon",
+      }),
+      tx({
+        postedAt: "2026-01-19T00:00:00Z",
+        amountUsd: -480,
+        merchantNormalized: "amazon",
+      }),
+      tx({
+        postedAt: "2026-04-01T00:00:00Z",
+        amountUsd: -3,
+        merchantNormalized: "amazon",
+      }),
     ]);
     expect(charges).toEqual([]);
   });
@@ -110,6 +141,8 @@ describe("detectRecurringCharges", () => {
       ...t,
       merchantRaw: "  NETFLIX.COM  ",
     }));
-    expect(detectRecurringCharges(txns)[0]!.merchantDisplay).toBe("NETFLIX.COM");
+    expect(detectRecurringCharges(txns)[0]!.merchantDisplay).toBe(
+      "NETFLIX.COM",
+    );
   });
 });

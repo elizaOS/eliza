@@ -18,6 +18,16 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+// This suite drives an ISOLATED in-process PGlite (see docstring). When the
+// ambient DATABASE_URL is a real shared Postgres (e.g. CI's
+// postgresql://postgres@127.0.0.1:5432/postgres) it cannot get its own isolated
+// DB — and running drizzle-kit `pushSchema` against that shared connection both
+// crashes the bun test runner ("Pulling schema from database…" → hard exit) AND
+// would mutate the shared schema other suites depend on. Detect that here and
+// self-skip LOUDLY below (the file's stated contract: never silently pass).
+const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
+const CAN_USE_ISOLATED_PGLITE =
+  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
@@ -80,6 +90,13 @@ async function seedOrgAndUser(): Promise<{ organizationId: string; userId: strin
 }
 
 beforeAll(async () => {
+  if (!CAN_USE_ISOLATED_PGLITE) {
+    pgliteReady = false;
+    console.warn(
+      "[apps.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite isolation suite self-skips — drizzle-kit pushSchema against a shared connection crashes the bun runner and would mutate the shared schema.",
+    );
+    return;
+  }
   try {
     ({ appsService } = await import("../../../lib/services/apps"));
 

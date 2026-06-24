@@ -5,8 +5,8 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   decryptTokenEnvelope,
-  encryptTokenPayload,
   type EncryptedTokenEnvelope,
+  encryptTokenPayload,
   isEncryptedTokenEnvelope,
   resolveTokenEncryptionKey,
 } from "./token-encryption.js";

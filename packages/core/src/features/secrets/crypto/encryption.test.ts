@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { EncryptedSecret } from "../types.ts";
+import { EncryptionError } from "../types.ts";
 import {
 	decrypt,
 	decryptGcm,
@@ -13,8 +15,6 @@ import {
 	isEncryptedSecret,
 	secureCompare,
 } from "./encryption.ts";
-import type { EncryptedSecret } from "../types.ts";
-import { EncryptionError } from "../types.ts";
 
 /**
  * Core secrets encryption (AES-256-GCM). The security guarantees pinned here:

@@ -323,21 +323,21 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-19T00:00:00Z",
     hfRepo: "elizaos/eliza-1",
-    hfRevision: "pending",
+    hfRevision: "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
     preferredBackend: "ffi",
     deprecatedBackends: ["onnx"],
-    ggufAssets: [],
-    missingAssets: [
+    ggufAssets: [
       {
         filename: "voice/speaker-encoder/wespeaker-resnet34-lm.gguf",
+        sha256:
+          "ad066730b125f61a305c949f7f196d23681f387f3e3f916be7a4cd003aae6ae3",
+        sizeBytes: 26_525_824,
         quant: "gguf-fp32",
-        expectedSizeBytes: 27_000_000,
-        reason: "missing-from-hf-repo",
       },
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "0.2.0 — GGUF conversion via voice_speaker_to_gguf.py; ONNX file removed from HF.",
+      "0.2.0 — GGUF conversion via voice_speaker_to_gguf.py; ONNX file removed from HF. GGUF published to HF.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -367,21 +367,21 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-19T00:00:00Z",
     hfRepo: "elizaos/eliza-1",
-    hfRevision: "pending",
+    hfRevision: "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
     preferredBackend: "ffi",
     deprecatedBackends: ["onnx"],
-    ggufAssets: [],
-    missingAssets: [
+    ggufAssets: [
       {
         filename: "voice/diarizer/pyannote-segmentation-3.0.gguf",
+        sha256:
+          "30983eba41c0a99ab7eada564739ae8be74faeb21a31da759c870b5173cbd8a5",
+        sizeBytes: 5_975_424,
         quant: "gguf-fp32",
-        expectedSizeBytes: 6_000_000,
-        reason: "missing-from-hf-repo",
       },
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "0.2.0 — GGUF conversion via voice_diarizer_to_gguf.py; ONNX files removed from HF.",
+      "0.2.0 — GGUF conversion via voice_diarizer_to_gguf.py; ONNX files removed from HF. GGUF published to HF.",
     minBundleVersion: "0.0.0",
   },
   {

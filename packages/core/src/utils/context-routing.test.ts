@@ -1,5 +1,5 @@
-import type { Action, Provider } from "../types/components";
 import { describe, expect, it } from "vitest";
+import type { Action, Provider } from "../types/components";
 import {
 	deriveAvailableContexts,
 	getActiveRoutingContexts,

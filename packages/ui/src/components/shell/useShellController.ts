@@ -10,11 +10,9 @@ import {
   type VoiceControlEventDetail,
 } from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
-import {
-  useAppSelectorShallow,
-  useChatTurnStatus,
-  useConversationMessages,
-} from "../../state";
+import { useChatTurnStatus, useConversationMessages } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
+import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
@@ -223,11 +221,30 @@ function sameStringList(a?: string[], b?: string[]): boolean {
   return true;
 }
 
+// Granular shallow selection instead of useApp() so the shell controller only
+// re-renders when one of the exact fields it reads changes — not on every one of
+// the ~300 AppContext fields. typecheck enforces completeness: any `s.x` used
+// below but not selected here is a compile error, so this stays value-equivalent.
+const selectShellController = (s: AppContextValue) => ({
+  tab: s.tab,
+  chatSending: s.chatSending,
+  chatFirstTokenReceived: s.chatFirstTokenReceived,
+  sendChatText: s.sendChatText,
+  agentStatus: s.agentStatus,
+  uiLanguage: s.uiLanguage,
+  elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+  handleNewConversation: s.handleNewConversation,
+  handleSelectConversation: s.handleSelectConversation,
+  activeConversationId: s.activeConversationId,
+  conversations: s.conversations,
+  setTab: s.setTab,
+  handleChatStop: s.handleChatStop,
+  t: s.t,
+});
+
 export function useShellController(): ShellController {
-  // Granular shallow selector instead of useApp() so the shell controller
-  // re-renders only when one of the fields it actually reads changes, not on
-  // every app-store field update (#9141 gap 2 — useApp() → useAppSelector).
   const {
+    tab,
     chatSending,
     chatFirstTokenReceived,
     sendChatText,
@@ -241,23 +258,7 @@ export function useShellController(): ShellController {
     setTab,
     handleChatStop,
     t,
-    tab,
-  } = useAppSelectorShallow((s) => ({
-    chatSending: s.chatSending,
-    chatFirstTokenReceived: s.chatFirstTokenReceived,
-    sendChatText: s.sendChatText,
-    agentStatus: s.agentStatus,
-    uiLanguage: s.uiLanguage,
-    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
-    handleNewConversation: s.handleNewConversation,
-    handleSelectConversation: s.handleSelectConversation,
-    activeConversationId: s.activeConversationId,
-    conversations: s.conversations,
-    setTab: s.setTab,
-    handleChatStop: s.handleChatStop,
-    t: s.t,
-    tab: s.tab,
-  }));
+  } = useAppSelectorShallow(selectShellController);
   // Read per-token streaming messages from the isolated context so token updates
   // don't depend on the giant AppContext value identity.
   const { conversationMessages } = useConversationMessages();

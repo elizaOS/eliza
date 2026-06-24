@@ -114,6 +114,11 @@ const secondarySurfaceSchema = z.enum([
   "chat-apps-section",
   "companion-shell",
   "settings-integrations",
+  // OS-mode launcher. OS-level system entries (contacts, phone, wifi) set
+  // `visible: false` + `pinTo: ["os-shell"]` so they are hidden from the
+  // app/web/desktop catalogs and surface only when running as the device OS,
+  // where the native contacts/phone/wifi APIs are available.
+  "os-shell",
 ]);
 
 export const renderSchema = z.object({

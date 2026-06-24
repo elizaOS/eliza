@@ -461,10 +461,25 @@ export * from "./first-run/first-run-config";
 export * from "./first-run/mobile-runtime-mode";
 export * from "./first-run/pre-seed-local-runtime";
 export * from "./genui/index";
+export {
+  DEFAULT_FRAME_BUDGET,
+  type FrameBudget,
+  type FrameBudgetSummary,
+  type FrameBudgetTelemetryEvent,
+  frameBudgetMs,
+  shouldReportFrameBudget,
+  summarizeFrameSamples,
+} from "./hooks/frame-budget";
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";
 export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility";
+export {
+  type FrameBudgetMonitorOptions,
+  isPerfHudEnabled,
+  startFrameBudgetMonitor,
+  useFrameBudgetMonitor,
+} from "./hooks/useFrameBudgetMonitor";
 export { useMediaQuery } from "./hooks/useMediaQuery";
 export {
   type AnyRenderTelemetryEvent,
@@ -475,21 +490,6 @@ export {
   setRenderTelemetrySink,
   useRenderGuard,
 } from "./hooks/useRenderGuard";
-export {
-  type FrameBudget,
-  type FrameBudgetSummary,
-  type FrameBudgetTelemetryEvent,
-  DEFAULT_FRAME_BUDGET,
-  frameBudgetMs,
-  shouldReportFrameBudget,
-  summarizeFrameSamples,
-} from "./hooks/frame-budget";
-export {
-  type FrameBudgetMonitorOptions,
-  isPerfHudEnabled,
-  startFrameBudgetMonitor,
-  useFrameBudgetMonitor,
-} from "./hooks/useFrameBudgetMonitor";
 export { useTimeout } from "./hooks/useTimeout";
 export type { UiLanguage } from "./i18n/index";
 export * from "./i18n/index";

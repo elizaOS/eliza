@@ -148,3 +148,137 @@ export interface FrameBudgetTelemetryEvent {
   sequence: number;
   route?: string;
 }
+
+type RafLike = (cb: (now: number) => void) => number;
+type CancelRafLike = (handle: number) => void;
+
+export interface FrameBudgetSamplerOptions {
+  /** Max frame deltas retained in the rolling window. Default 120 (~1-2s). */
+  windowSize?: number;
+  /** Frame-rate target used by `summary()`. Default 60fps. */
+  budget?: FrameBudget;
+  /** Injectable rAF for tests; defaults to `requestAnimationFrame`. */
+  raf?: RafLike;
+  /** Injectable cancel for tests; defaults to `cancelAnimationFrame`. */
+  cancelRaf?: CancelRafLike;
+  /**
+   * Called on every sampled frame with the running sampler. The dev HUD polls
+   * `summary()` on an interval; the telemetry monitor uses this to flush + reset
+   * on a fixed time window. Kept optional so the sampler stays a pure collector.
+   */
+  onFrame?: (timestamp: number, sampler: FrameBudgetSampler) => void;
+  /**
+   * Observe `PerformanceObserver('longtask')` entries while running (default
+   * true). Long tasks block the main thread past a frame budget without ever
+   * showing up as a slow rAF delta, so they are a first-class budget signal.
+   */
+  observeLongTasks?: boolean;
+}
+
+/**
+ * The single rAF + longtask collector for the dashboard's frame-budget tooling.
+ * It records inter-frame deltas into a bounded rolling window and counts long
+ * tasks; `summary()` reduces them through {@link summarizeFrameSamples} so the
+ * dev overlay and the telemetry monitor read identical math. Inert until
+ * `start()`, so it costs nothing unless a caller explicitly turns it on.
+ *
+ * Pure except for the rAF/observer glue (both injectable), so it unit-tests by
+ * driving the injected rAF callback directly.
+ */
+export class FrameBudgetSampler {
+  private readonly windowSize: number;
+  private readonly budget: FrameBudget;
+  private readonly raf: RafLike;
+  private readonly cancelRaf: CancelRafLike;
+  private readonly onFrame?: (
+    timestamp: number,
+    sampler: FrameBudgetSampler,
+  ) => void;
+  private readonly observeLongTasks: boolean;
+  private deltas: number[] = [];
+  private lastTimestamp: number | null = null;
+  private longTaskCount = 0;
+  private handle: number | null = null;
+  private observer: PerformanceObserver | null = null;
+
+  constructor(options: FrameBudgetSamplerOptions = {}) {
+    this.windowSize = Math.max(1, options.windowSize ?? 120);
+    this.budget = options.budget ?? DEFAULT_FRAME_BUDGET;
+    this.onFrame = options.onFrame;
+    this.observeLongTasks = options.observeLongTasks ?? true;
+    this.raf =
+      options.raf ??
+      ((cb) =>
+        typeof requestAnimationFrame === "function"
+          ? requestAnimationFrame(cb)
+          : 0);
+    this.cancelRaf =
+      options.cancelRaf ??
+      ((handle) => {
+        if (typeof cancelAnimationFrame === "function") {
+          cancelAnimationFrame(handle);
+        }
+      });
+  }
+
+  get running(): boolean {
+    return this.handle !== null;
+  }
+
+  get longTasks(): number {
+    return this.longTaskCount;
+  }
+
+  /** Record one frame timestamp (ms). The first sample only seeds the baseline. */
+  push(timestamp: number): void {
+    if (this.lastTimestamp !== null) {
+      this.deltas.push(timestamp - this.lastTimestamp);
+      if (this.deltas.length > this.windowSize) {
+        this.deltas.splice(0, this.deltas.length - this.windowSize);
+      }
+    }
+    this.lastTimestamp = timestamp;
+  }
+
+  summary(): FrameBudgetSummary {
+    return summarizeFrameSamples(this.deltas, this.longTaskCount, this.budget);
+  }
+
+  start(): void {
+    if (this.handle !== null) return;
+    if (this.observeLongTasks && typeof PerformanceObserver === "function") {
+      try {
+        this.observer = new PerformanceObserver((list) => {
+          this.longTaskCount += list.getEntries().length;
+        });
+        this.observer.observe({ entryTypes: ["longtask"] });
+      } catch {
+        // `longtask` is unsupported in some engines (notably Safari) — feature
+        // detection at the boundary; frame deltas still measure framerate.
+        this.observer = null;
+      }
+    }
+    const tick = (now: number) => {
+      this.push(now);
+      this.onFrame?.(now, this);
+      this.handle = this.raf(tick);
+    };
+    this.handle = this.raf(tick);
+  }
+
+  stop(): void {
+    if (this.handle !== null) {
+      this.cancelRaf(this.handle);
+      this.handle = null;
+    }
+    this.observer?.disconnect();
+    this.observer = null;
+  }
+
+  /** Clear the rolling window and long-task count (start of a new time window). */
+  reset(): void {
+    this.deltas = [];
+    this.lastTimestamp = null;
+    this.longTaskCount = 0;
+  }
+}

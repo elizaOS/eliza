@@ -20,7 +20,8 @@ function freshDir(): string {
   return dir;
 }
 afterEach(() => {
-  for (const d of tmpDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  for (const d of tmpDirs.splice(0))
+    rmSync(d, { recursive: true, force: true });
 });
 
 describe("encrypt/decrypt round-trip", () => {
@@ -67,9 +68,9 @@ describe("integrity / authentication", () => {
     expect(() =>
       decryptTokenEnvelope({ ...env, __enc: "rot13" } as never, KEY),
     ).toThrow(/algorithm/i);
-    expect(() =>
-      decryptTokenEnvelope({ ...env, v: 99 } as never, KEY),
-    ).toThrow(/version/i);
+    expect(() => decryptTokenEnvelope({ ...env, v: 99 } as never, KEY)).toThrow(
+      /version/i,
+    );
   });
 });
 

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { Trajectory } from "./types.ts";
 import {
 	groupTrajectories,
 	toARTMessages,
 	validateARTCompatibility,
 } from "./art-format.ts";
+import type { Trajectory } from "./types.ts";
 
 /**
  * Core trajectory → ART (RL training) conversion. toARTMessages must emit the
