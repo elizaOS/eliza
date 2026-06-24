@@ -1,3 +1,4 @@
+import nodePath from "node:path";
 import { CapabilityError, type IAgentRuntime, type UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -384,7 +385,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(config.provider).toBe("e2b");
     expect(config.apiKey).toBe("key");
     expect(config.workdir).toBe("/work");
-    expect(config.hostWorkspaceRoot).toBe("/repo");
+    // hostWorkspaceRoot is a LOCAL host path (path.resolve'd in production),
+    // unlike workdir which is the remote Linux sandbox path. On Windows
+    // path.resolve("/repo") → "C:\\repo", so compare against the resolved form.
+    expect(config.hostWorkspaceRoot).toBe(nodePath.resolve("/repo"));
   });
 
   it("resolves Eliza Cloud runner settings", () => {
