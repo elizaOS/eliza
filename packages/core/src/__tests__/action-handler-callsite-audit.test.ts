@@ -86,6 +86,10 @@ const allowedCallsites = new Map<string, string>([
 		"VIEWS close-alias dispatcher (CLOSE_VIEW / CLOSE_ALL_VIEWS); forwards to the underlying VIEWS handler",
 	],
 	[
+		"plugins/plugin-commands/src/actions/handlers.ts",
+		"slash-command dispatcher (/compact -> COMPACT_CONVERSATION via runCompactAction); forwards the original callback to the dispatched action and returns result.text as a CommandResult reply",
+	],
+	[
 		"packages/core/src/services/message.ts",
 		"shortcut-gate (runShortcutGate, #8792): fires a slash-command action; its callback only captures content.text (emits nothing) and the captured text is returned as a Stage1 direct_reply, so the normal message-service voice rewrite still applies",
 	],

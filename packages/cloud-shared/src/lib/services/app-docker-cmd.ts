@@ -63,7 +63,20 @@ export function buildAppDockerCreateCmd(params: BuildAppDockerCmdParams): string
     "--health-timeout 5s",
     "--health-start-period 15s",
     "--health-retries 6",
-    ...(input.memoryMb ? [`--memory ${shellQuote(`${Math.ceil(input.memoryMb)}m`)}`] : []),
+    ...(input.memoryMb
+      ? [
+          `--memory ${shellQuote(`${Math.ceil(input.memoryMb)}m`)}`,
+          // Pin swap to the memory limit (i.e. no swap) so an untrusted image
+          // can't escape the --memory ceiling via swap on the shared node.
+          `--memory-swap ${shellQuote(`${Math.ceil(input.memoryMb)}m`)}`,
+        ]
+      : []),
+    // Hard CPU cap. `cpu` is ECS-style units (1024 = 1 vCPU), the same unit
+    // docker's --cpus takes once divided. Without this an untrusted tenant image
+    // can pin every core on the shared node and starve every co-tenant app (a
+    // cross-tenant availability break) — the dedicated-vCPU node sizing alone
+    // does NOT prevent in-node CPU theft.
+    ...(input.cpu > 0 ? [`--cpus ${input.cpu / 1024}`] : []),
     // Publish to loopback only: the node-local Caddy reverse-proxies to
     // 127.0.0.1:hostPort, so the port must NOT be reachable across the shared
     // private network (binding 0.0.0.0 would let any other node/container hit

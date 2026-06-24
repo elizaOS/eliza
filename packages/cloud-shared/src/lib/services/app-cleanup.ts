@@ -11,11 +11,14 @@
 import { and, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import type { App } from "../../db/repositories/apps";
+import { containersRepository } from "../../db/repositories/containers";
 import { appDomains } from "../../db/schemas/app-domains";
 import { managedDomains } from "../../db/schemas/managed-domains";
 import { secretBindings } from "../../db/schemas/secrets";
 import { logger } from "../utils/logger";
+import { type AppContainerTeardownDeps, stopAppContainers } from "./app-container-teardown";
 import { appsService } from "./apps";
+import { containerJobsWriter } from "./container-jobs-writer";
 import { githubReposService } from "./github-repos";
 
 interface CleanupResult {
@@ -26,6 +29,23 @@ interface CleanupResult {
     githubRepoDeleted: boolean;
     secretBindingsRemoved: number;
     managedDomainsUnlinked: number;
+    containersTornDown: number;
+  };
+}
+
+/**
+ * Wire the real container-teardown backend: the containers repo (lookup +
+ * stop-for-billing) and the shared container-jobs writer (the same SSH-free
+ * Worker-enqueues / daemon-executes path the suspend + deploy flows use). The
+ * pure orchestration lives in `app-container-teardown.ts` (injectable for tests).
+ */
+function defaultContainerTeardownDeps(): AppContainerTeardownDeps {
+  return {
+    findContainers: (organizationId, appId) =>
+      containersRepository.findUndeletedByProjectName(organizationId, appId),
+    markStoppedForBilling: (containerId, organizationId) =>
+      containersRepository.markStoppedForBilling(containerId, organizationId),
+    jobsWriter: containerJobsWriter,
   };
 }
 
@@ -34,6 +54,8 @@ interface CleanupOptions {
   deleteGitHubRepo?: boolean;
   /** Force cleanup even if some steps fail (default: true) */
   continueOnError?: boolean;
+  /** Container-teardown backend (DB repo + jobs writer). Injected in tests. */
+  containerTeardown?: AppContainerTeardownDeps;
 }
 
 /**
@@ -199,7 +221,11 @@ export async function cleanupAppResources(
   appId: string,
   options: CleanupOptions = {},
 ): Promise<CleanupResult> {
-  const { deleteGitHubRepo: shouldDeleteGitHub = true, continueOnError = true } = options;
+  const {
+    deleteGitHubRepo: shouldDeleteGitHub = true,
+    continueOnError = true,
+    containerTeardown = defaultContainerTeardownDeps(),
+  } = options;
 
   const errors: string[] = [];
   const cleaned = {
@@ -207,6 +233,7 @@ export async function cleanupAppResources(
     githubRepoDeleted: false,
     secretBindingsRemoved: 0,
     managedDomainsUnlinked: 0,
+    containersTornDown: 0,
   };
 
   logger.info("[AppCleanup] Starting comprehensive app cleanup", {
@@ -224,7 +251,18 @@ export async function cleanupAppResources(
     };
   }
 
-  // Step 1: Remove app domain records (before CASCADE deletes them)
+  // Step 1: Stop + tear down the deployed container(s). Done first so the org
+  // stops being metered (and the live container stops running) as early as
+  // possible, even if a later cleanup step fails.
+  const containerResult = await stopAppContainers(app, containerTeardown);
+  cleaned.containersTornDown = containerResult.tornDown;
+  errors.push(...containerResult.errors);
+
+  if (containerResult.errors.length > 0 && !continueOnError) {
+    return { success: false, errors, cleaned };
+  }
+
+  // Step 2: Remove app domain records (before CASCADE deletes them)
   const domainResult = await removeAppDomains(appId);
   cleaned.domainsRemoved = domainResult.removed;
   errors.push(...domainResult.errors);
@@ -233,7 +271,7 @@ export async function cleanupAppResources(
     return { success: false, errors, cleaned };
   }
 
-  // Step 2: Delete GitHub repository
+  // Step 3: Delete GitHub repository
   if (shouldDeleteGitHub) {
     const githubResult = await deleteGitHubRepo(app);
     cleaned.githubRepoDeleted = githubResult.deleted;
@@ -245,12 +283,12 @@ export async function cleanupAppResources(
     }
   }
 
-  // Step 3: Clean up secret bindings
+  // Step 4: Clean up secret bindings
   const secretResult = await cleanupSecretBindings(appId);
   cleaned.secretBindingsRemoved = secretResult.removed;
   errors.push(...secretResult.errors);
 
-  // Step 4: Unlink managed domains
+  // Step 5: Unlink managed domains
   const managedDomainsResult = await unlinkManagedDomains(appId);
   cleaned.managedDomainsUnlinked = managedDomainsResult.unlinked;
   errors.push(...managedDomainsResult.errors);
@@ -303,4 +341,5 @@ export const appCleanupService = {
   deleteGitHubRepo,
   cleanupSecretBindings,
   unlinkManagedDomains,
+  stopAppContainers,
 };
