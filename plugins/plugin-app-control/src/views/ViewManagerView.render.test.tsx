@@ -149,14 +149,14 @@ describe("ViewManagerView (gui/xr) render", () => {
 		});
 	});
 
-	it("renders the EmptyState ('No views') for an empty payload", async () => {
+	it("renders the EmptyState for an empty payload", async () => {
 		stubFetch(({ url }) => {
 			if (url === "/api/views") return jsonResponse({ views: [] });
 			throw new Error(`Unexpected request: ${url}`);
 		});
 
 		render(<ViewManagerView />);
-		await screen.findByText("No views");
+		await screen.findByText("None");
 		// No card buttons should be present.
 		expect(screen.queryByLabelText(/^Open /)).toBeNull();
 	});
@@ -170,10 +170,10 @@ describe("ViewManagerView (gui/xr) render", () => {
 
 		render(<ViewManagerView />);
 		await screen.findByText("HTTP 500");
-		expect(screen.queryByText("No views")).toBeNull();
+		expect(screen.queryByText("None")).toBeNull();
 	});
 
-	it("shows 'Loading views…' before the fetch resolves", async () => {
+	it("shows 'Loading' before the fetch resolves", async () => {
 		let resolveFetch: ((r: Response) => void) | undefined;
 		const pending = new Promise<Response>((r) => {
 			resolveFetch = r;
@@ -183,7 +183,7 @@ describe("ViewManagerView (gui/xr) render", () => {
 
 		render(<ViewManagerView />);
 		// Loading text is rendered synchronously before the promise resolves.
-		expect(screen.getByText("Loading views…")).toBeTruthy();
+		expect(screen.getByText("Loading")).toBeTruthy();
 		// The count span is hidden while loading.
 		expect(screen.queryByText("2")).toBeNull();
 

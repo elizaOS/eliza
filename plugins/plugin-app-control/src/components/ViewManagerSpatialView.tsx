@@ -58,7 +58,7 @@ export function ViewManagerSpatialView({
 						: `${available}/${snapshot.views.length} ready`}
 				</Text>
 				<Text style="caption" tone="muted">
-					registered views
+					views
 				</Text>
 			</HStack>
 
@@ -71,7 +71,7 @@ export function ViewManagerSpatialView({
 			<Divider label="views" />
 			{snapshot.views.length === 0 ? (
 				<Text tone="muted" align="center" style="caption">
-					No views registered
+					None
 				</Text>
 			) : (
 				<List gap={1}>

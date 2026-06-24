@@ -188,7 +188,7 @@ function EmptyState() {
 			}}
 		>
 			<PackageOpen size={48} strokeWidth={1.2} />
-			<div style={{ fontSize: 15, fontWeight: 500 }}>No views</div>
+			<div style={{ fontSize: 15, fontWeight: 500 }}>None</div>
 		</div>
 	);
 }
@@ -314,7 +314,7 @@ export function ViewManagerView() {
 							fontSize: 14,
 						}}
 					>
-						Loading views…
+						Loading
 					</div>
 				)}
 
