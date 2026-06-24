@@ -52,10 +52,16 @@ describe("runShell", () => {
     await fsp.rm(tmpDir, { recursive: true, force: true });
   });
 
+  // These host-exec tests verify ROUTING (host vs sandbox) + mode defaulting,
+  // not POSIX-shell semantics. `runShell` spawns command/args directly (no
+  // shell), so a hardcoded `/bin/sh` fails to spawn on Windows (exitCode -1,
+  // empty stdout). Use the running runtime binary (`process.execPath`, present
+  // on every platform) with `-e` to emit deterministic, separator-stable output
+  // (`console.log` writes LF, not CRLF, on Windows too).
   it("local-yolo runs commands on the host", async () => {
     const result = await runShell({
-      command: "/bin/sh",
-      args: ["-c", "printf hello"],
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('hello')"],
       toolName: "test:host",
       timeoutMs: 5_000,
     });
@@ -67,8 +73,8 @@ describe("runShell", () => {
 
   it("local-yolo defaults to local-yolo when no mode is set", async () => {
     const result = await runShell({
-      command: "/bin/sh",
-      args: ["-c", "echo hello"],
+      command: process.execPath,
+      args: ["-e", "console.log('hello')"],
       toolName: "test:default",
       timeoutMs: 5_000,
     });
@@ -346,9 +352,12 @@ describe("runShell", () => {
 
   it("honours timeoutMs by killing the child and reporting non-zero exit", async () => {
     const start = Date.now();
+    // A real long-running child the router must kill — `process.execPath` keeps
+    // the event loop alive for 5s on every platform (a `/bin/sh sleep` would be
+    // absent on Windows and exit fast, passing this test for the wrong reason).
     const result = await runShell({
-      command: "/bin/sh",
-      args: ["-c", "sleep 5"],
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => {}, 5000)"],
       toolName: "test:timeout",
       timeoutMs: 200,
     });
