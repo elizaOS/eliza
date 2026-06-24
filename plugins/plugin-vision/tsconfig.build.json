@@ -15,6 +15,10 @@
     "dist",
     "src/tests/**/*",
     "test/**/*",
-    "src/tests/e2e/run-local.ts"
+    "src/tests/e2e/run-local.ts",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }
