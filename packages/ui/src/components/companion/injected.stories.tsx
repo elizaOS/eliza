@@ -41,7 +41,7 @@ function MockAlertButton({
 function MockGlobalOverlay() {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-4 flex justify-center">
-      <div className="rounded-md bg-black/80 px-4 py-2 text-xs text-white shadow-lg">
+      <div className="rounded-md bg-black/80 px-4 py-2 text-xs text-white">
         Mock global companion overlay
       </div>
     </div>

@@ -397,7 +397,7 @@ export function DirectCryptoCreditCard({
 
   const isCloudSurface = surface === "cloud";
   const cardClassName = isCloudSurface
-    ? "rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md"
+    ? "rounded-xs border-black/12 bg-white/88 text-black"
     : "border-border bg-card text-card-fg";
   const mutedTextClassName = isCloudSurface ? "text-black/62" : "text-muted";
   const titleClassName = isCloudSurface ? "text-black" : "text-txt-strong";

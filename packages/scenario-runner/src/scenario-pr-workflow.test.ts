@@ -578,7 +578,7 @@ describe("scenario PR workflow contract", () => {
       "../../../plugins/plugin-app-control/src/index.ts",
     );
     expect(scenarioExecutor).toContain(
-      "actions: [mod.appAction, mod.homescreenAction, mod.viewsAction]",
+      "actions: [mod.appAction, mod.backgroundAction, mod.viewsAction]",
     );
     expect(appControlViewsManagement).toContain(
       "owner-gates mutating view management modes but allows window navigation validation",

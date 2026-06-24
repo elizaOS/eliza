@@ -76,10 +76,10 @@ export const SECTION_TONE_ICON_CLASS: Record<SettingsSectionTone, string> = {
  * accent + neutrals) so light and dark themes both work, and there is no blue.
  */
 export const SECTION_HUE_MEDALLION_CLASS: Record<SettingsSectionHue, string> = {
-  accent: "bg-accent/12 text-accent ring-1 ring-accent/20",
-  amber: "bg-warn/12 text-warn ring-1 ring-warn/20",
-  rose: "bg-[color-mix(in_oklab,var(--accent)_14%,var(--surface))] text-accent ring-1 ring-accent/15",
-  slate: "bg-surface text-txt-strong ring-1 ring-border",
+  accent: "bg-accent/12 text-accent  ",
+  amber: "bg-warn/12 text-warn  ",
+  rose: "bg-[color-mix(in_oklab,var(--accent)_14%,var(--surface))] text-accent  ",
+  slate: "bg-surface text-txt-strong  ",
 };
 
 /** Per-section visuals + component, keyed by the id declared in the meta list. */

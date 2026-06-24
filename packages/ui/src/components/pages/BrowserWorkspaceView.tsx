@@ -544,10 +544,8 @@ function BrowserTabRow({
           type="button"
           aria-label={`${closeTabLabel} ${label}`}
           title={`${closeTabLabel}: ${label}`}
-          className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger focus-visible:opacity-100 ${
-            active
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger  ${
+            active ? "opacity-100" : "opacity-0 group-hover:opacity-100 "
           }`}
           onClick={(event) => {
             event.preventDefault();
@@ -2520,7 +2518,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     >
       {watchBannerLabel ? (
         <div
-          className="absolute left-3 right-3 top-2 z-20 flex items-center gap-2 rounded-sm border border-border/40 bg-card/80 px-3 py-1.5 text-xs text-muted backdrop-blur-sm"
+          className="absolute left-3 right-3 top-2 z-20 flex items-center gap-2 rounded-sm border border-border/40 bg-card/95 px-3 py-1.5 text-xs text-muted"
           role="status"
           aria-live="polite"
           data-testid="browser-workspace-watch-banner"

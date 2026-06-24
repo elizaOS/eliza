@@ -193,7 +193,7 @@ function PasswordTab({
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
 const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[520px] overflow-hidden border border-border/60 bg-card/95 backdrop-blur-xl";
+  "relative z-10 w-full max-w-[520px] overflow-hidden border border-border/60 bg-card/95";
 
 export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
   const { t } = useTranslation();

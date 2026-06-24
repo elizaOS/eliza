@@ -342,15 +342,15 @@ async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
       "../../../plugins/plugin-app-control/src/index.ts"
     )) as {
       appAction?: Action;
-      homescreenAction?: Action;
+      backgroundAction?: Action;
       viewsAction?: Action;
     };
-    if (!mod.appAction || !mod.homescreenAction || !mod.viewsAction)
+    if (!mod.appAction || !mod.backgroundAction || !mod.viewsAction)
       return null;
     return {
       name: "app-control",
       description: "App control deterministic scenario actions",
-      actions: [mod.appAction, mod.homescreenAction, mod.viewsAction],
+      actions: [mod.appAction, mod.backgroundAction, mod.viewsAction],
     };
   }
 

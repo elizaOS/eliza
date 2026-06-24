@@ -276,8 +276,8 @@ function TileButton({
 }): React.JSX.Element {
   const cls = cn(
     "inline-flex h-7 w-7 items-center justify-center rounded-full",
-    "bg-black/45 text-white/90 backdrop-blur-sm transition-colors",
-    "hover:bg-black/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+    "bg-black/70 text-white/90 transition-colors",
+    "hover:bg-black/85   ",
   );
   if (href) {
     return (
@@ -328,7 +328,7 @@ function ImageTile({
       <button
         type="button"
         onClick={onExpand}
-        className="block w-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+        className="block w-full cursor-zoom-in   "
         aria-label={`Expand image ${label}`}
       >
         <img
@@ -382,7 +382,7 @@ function FileTile({
       download={kind === "link" ? undefined : downloadName(att, kind)}
       className={cn(
         "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
-        "text-white/90 transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+        "text-white/90 transition-colors hover:bg-white/[0.12]   ",
       )}
     >
       <Icon className="h-5 w-5 shrink-0 text-white/70" />
@@ -452,7 +452,7 @@ function PdfTile({
         data-testid="pdf-attachment-fallback"
         className={cn(
           "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
-          "text-white/90 transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+          "text-white/90 transition-colors hover:bg-white/[0.12]   ",
         )}
       >
         <FileText className="h-5 w-5 shrink-0 text-white/70" />
@@ -716,7 +716,7 @@ function CodeTile({
         data-testid="code-attachment-fallback"
         className={cn(
           "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
-          "text-white/90 transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+          "text-white/90 transition-colors hover:bg-white/[0.12]   ",
         )}
       >
         <Code2 className="h-5 w-5 shrink-0 text-white/70" />
@@ -814,7 +814,7 @@ function TranscriptTile({
       data-testid="transcript-attachment"
       className={cn(
         "group flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-left",
-        "text-white/90 transition-colors hover:bg-white/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+        "text-white/90 transition-colors hover:bg-white/[0.12]   ",
       )}
     >
       <ScrollText className="h-5 w-5 shrink-0 text-white/70" />
@@ -865,14 +865,14 @@ function Lightbox({
         type="button"
         aria-label="Close preview"
         onClick={onClose}
-        className="absolute inset-0 cursor-zoom-out bg-black/85 backdrop-blur-sm"
+        className="absolute inset-0 cursor-zoom-out bg-black/85"
       />
       <img
         src={src}
         alt={alt}
         // pointer-events fall through to the backdrop button, so clicking the
         // image closes too — standard lightbox behaviour.
-        className="pointer-events-none relative max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+        className="pointer-events-none relative max-h-full max-w-full rounded-lg object-contain"
       />
       <div className="absolute right-4 top-4 flex gap-2">
         <TileButton label="Download image" href={src} download={downloadAs}>

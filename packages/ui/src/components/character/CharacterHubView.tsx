@@ -342,7 +342,7 @@ export function CharacterHubView({
 
     function StatChip({ children }: { children: ReactNode }) {
       return (
-        <span className="rounded-full border border-border/40 bg-bg/60 px-2.5 py-1 text-xs font-medium text-muted backdrop-blur-sm">
+        <span className="rounded-full border border-border/40 bg-bg/60 px-2.5 py-1 text-xs font-medium text-muted">
           {children}
         </span>
       );
@@ -352,7 +352,7 @@ export function CharacterHubView({
     function PersonChip({ name }: { name: string }) {
       const Brand = getBrandIcon(name);
       return (
-        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/40 bg-bg/70 py-1 pl-1 pr-2.5 text-xs font-medium text-txt backdrop-blur-sm">
+        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/40 bg-bg/70 py-1 pl-1 pr-2.5 text-xs font-medium text-txt">
           <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-2xs font-semibold uppercase text-accent">
             {name.slice(0, 1)}
           </span>
@@ -837,7 +837,7 @@ export function CharacterHubView({
             <button
               type="button"
               onClick={() => navigateToSection("overview")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/50 py-1.5 pl-2 pr-3.5 text-sm font-medium text-muted transition-colors hover:border-accent/40 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/50 py-1.5 pl-2 pr-3.5 text-sm font-medium text-muted transition-colors hover:border-accent/40 hover:text-txt   "
               aria-label="Back to Character hub"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden />

@@ -100,7 +100,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
 
   return (
     <div className="space-y-6">
-      <Card className="border-border/70 bg-background/60 shadow-sm">
+      <Card className="border-border/70 bg-background/85">
         <CardHeader className="flex flex-col gap-3 p-6 pb-5">
           <div className="flex items-center gap-3">
             <CardTitle className="text-base font-semibold">
@@ -308,7 +308,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
       </Card>
 
       {alerts.length > 0 && (
-        <Card className="border-border/70 bg-background/60 shadow-sm">
+        <Card className="border-border/70 bg-background/85">
           <CardHeader className="p-6 pb-5">
             <CardTitle className="text-base font-semibold">
               {t("cloud.projectionsChart.projectionAlerts", {

@@ -102,8 +102,6 @@ export function CharacterRoster({
                   ? {
                       background:
                         "linear-gradient(180deg, color-mix(in srgb, var(--accent) 90%, white 10%) 0%, var(--accent) 100%)",
-                      boxShadow:
-                        "0 0 16px rgba(var(--accent-rgb, 240, 185, 11), 0.16)",
                     }
                   : {}),
               }}
@@ -160,13 +158,6 @@ export function CharacterRoster({
                     style={{
                       clipPath: INSET_CLIP,
                       textShadow: "0 2px 10px rgba(3,5,10,0.72)",
-                      ...(isSelected
-                        ? {
-                            boxShadow: useWhiteBorders
-                              ? "inset 0 1px 0 rgba(255,255,255,0.22)"
-                              : "inset 0 1px 0 rgba(255,255,255,0.1)",
-                          }
-                        : {}),
                     }}
                   >
                     {entry.name}

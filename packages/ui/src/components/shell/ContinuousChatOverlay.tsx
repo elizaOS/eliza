@@ -299,7 +299,7 @@ function SoftButton({
         // 44×44 hit target (WCAG 2.5.5) — comfortably thumb-tappable without
         // crowding the bar (split the difference back down from 48).
         "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+        "  ",
         active
           ? "border-white/40 bg-white/85 text-black"
           : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
@@ -344,7 +344,7 @@ function HeaderButton({
       onClick={onClick}
       className={cn(
         "grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+        "  ",
         disabled
           ? // On the view it targets: shown but inert + dimmed (we disable, not hide).
             "cursor-default border-white/10 bg-white/[0.05] text-white/35"
@@ -474,7 +474,7 @@ function SheetGrabber({
         // on the textarea and raises the keyboard (a programmatic focus from the
         // handle wouldn't). Pull gestures start from the bar / the upward zone.
         "before:absolute before:-inset-x-6 before:-top-16 before:bottom-0 before:content-['']",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:rounded-full",
+        "   ",
       )}
     >
       <span
@@ -543,7 +543,7 @@ function PillHandle({
         // let taps fall through to the composer textarea below it — otherwise its
         // tall hit zone steals the tap and the keyboard never opens.
         pilled ? "pointer-events-auto" : "pointer-events-none",
-        "focus-visible:rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50",
+        "   ",
       )}
     >
       <span
@@ -875,7 +875,7 @@ const ThreadLine = React.memo(function ThreadLine({
             type="button"
             data-testid="chat-no-provider-settings"
             onClick={() => onOpenSettings?.()}
-            className="rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            className="rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25   "
           >
             Open Settings
           </button>
@@ -982,7 +982,7 @@ const ThreadLine = React.memo(function ThreadLine({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: reduce ? 0 : 0.18 }}
-              className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black shadow"
+              className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
             >
               Copied
             </motion.span>
@@ -1896,8 +1896,7 @@ export function ContinuousChatOverlay({
     Math.min(1, Math.max(0, h / Math.max(1, openH))),
   );
   // At rest (threadHeight 0 = INPUT/CLOSED) the full-viewport dimming scrim sits
-  // at opacity 0 but stays a live composited layer the glass backdrop-filter
-  // samples through. Drive `visibility` off the SAME motion value so it drops out
+  // at opacity 0. Drive `visibility` off the SAME motion value so it drops out
   // of compositing/paint at rest (no reflow, compositor-only, zero re-render) and
   // flips back the instant the thread opens.
   const scrimVisibility = useTransform(threadHeight, (h) =>
@@ -1914,9 +1913,9 @@ export function ContinuousChatOverlay({
     clamp: true,
   });
   // --- Liquid-glass pill → input morph (driven by openProgress) ---------------
-  // The panel is ONE persistent element; the pill capsule and the full glass
-  // input crossfade by opacity (compositor-cheap — never tween backdrop-blur)
-  // while the whole panel scales up from a capsule. transform + opacity only.
+  // The panel is ONE persistent element; the pill capsule and the full
+  // input crossfade by opacity (compositor-cheap) while the whole panel scales
+  // up from a capsule. transform + opacity only.
   const panelScale = useTransform(openProgress, [0, 1], [0.9, 1]);
   // Glass surface + its content crossfade IN as the input forms (one wrapper, so
   // sheen/glow/thread/composer resolve together with the glass).
@@ -2851,7 +2850,7 @@ export function ContinuousChatOverlay({
             className={cn(
               "pointer-events-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
               "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warn/70",
+              "  ",
               FLOAT_SHADOW,
             )}
           >
@@ -2876,7 +2875,7 @@ export function ContinuousChatOverlay({
         >
           <span
             className={cn(
-              "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-medium text-white/85 backdrop-blur-sm",
+              "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-medium text-white/85",
               FLOAT_SHADOW,
             )}
           >
@@ -2918,10 +2917,9 @@ export function ContinuousChatOverlay({
               onClick={() => pickSuggestion(s)}
               className={cn(
                 "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
-                "text-[12px] text-white/80 backdrop-blur-xl transition-colors",
-                "shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_30px_-12px_rgba(0,0,0,0.6)]",
+                "text-[12px] text-white/80 transition-colors",
                 "hover:border-white/30 hover:bg-white/15 hover:text-white",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                "  ",
               )}
             >
               {s}
@@ -3000,38 +2998,23 @@ export function ContinuousChatOverlay({
             pointerEvents: pilled ? "none" : "auto",
           }}
           className={cn(
-            // overflow-VISIBLE on the outer fieldset: the glass layer's soft drop
-            // shadow + the pill's tall grab zone must bleed past the box. The
-            // rounded thread-clip lives on the inner content wrapper instead, so
-            // clipping the scroll never clips the shadow into a hard square edge.
+            // overflow-VISIBLE on the outer fieldset: the pill's tall grab zone
+            // must bleed past the box. The rounded thread-clip lives on the inner
+            // content wrapper instead, so clipping the scroll never clips a hard
+            // square edge over the content.
             "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0",
           )}
         >
-          {/* GLASS SURFACE — absolute fill; the blur/bg/border/shadow + the live
-              corner radius. Crossfades in by openProgress (compositor opacity —
-              never the blur radius, which would repaint per frame). */}
+          {/* SURFACE — absolute fill; the bg/border + the live corner radius.
+              Crossfades in by openProgress (compositor opacity). */}
           <motion.div
             aria-hidden="true"
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
               fullBleed ? "border-0" : "border border-white/[0.16]",
-              // Liquid glass: a near-clear tint that lets the backdrop show
-              // through, BLURRED + over-saturated + brightness-knocked-down so
-              // bright content (the orange ambient) stops white text from washing
-              // out — instead of a heavy dark fill. blur(16px)+saturate+brightness
-              // compose into ONE backdrop-filter pass (blur radius never animated,
-              // so it stays cheap on the per-frame-resizing surface). The base
-              // bg-black/45 is the legible fallback when backdrop-filter is
-              // unavailable; the supports- rule thins it to glass once the filter
-              // is doing the darkening.
-              "bg-black/45 backdrop-blur-lg backdrop-saturate-[1.8] backdrop-brightness-[0.68] supports-[backdrop-filter]:bg-black/[0.12]",
-              fullBleed
-                ? "shadow-none"
-                : // Keep the inset glass highlights; drop the heavy outer cast
-                  // shadow — over the warm ambient field it darkened the strip
-                  // below the composer into a distinct band. A small, soft, low-
-                  // alpha shadow keeps a hint of lift without the band.
-                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.26),inset_0_0_0_0.5px_rgba(255,255,255,0.08),0_6px_18px_-14px_rgba(0,0,0,0.35)]",
+              // A solid dark fill so white text stays legible over any view
+              // behind (a bright view, a dark view, or the warm ambient field).
+              "bg-black/45",
             )}
             style={{
               opacity: glassOpacity,
@@ -3232,7 +3215,7 @@ export function ContinuousChatOverlay({
                   // Horizontal-swipe navigation between conversations, sheet-open
                   // only (#8929). Deferred capture keeps vertical scroll native.
                   {...(sheetOpen ? conversationSwipe : {})}
-                  className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none] focus-visible:outline-none [&::-webkit-scrollbar]:hidden"
+                  className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none]  [&::-webkit-scrollbar]:hidden"
                 >
                   {/* Topic chips bar (#8928): the channel's current topics,
                       sticky above the scrolling transcript. Tap a chip to jump
@@ -3241,7 +3224,7 @@ export function ContinuousChatOverlay({
                     <TopicChipsBar
                       topics={channelTopics}
                       onSelectTopic={scrollToTopic}
-                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-black/40 to-transparent px-5 backdrop-blur-sm"
+                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-black/40 to-transparent px-5"
                     />
                   ) : null}
                   {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
@@ -3327,7 +3310,7 @@ export function ContinuousChatOverlay({
                           // Small visual disc, but a 44px-class hit zone via the
                           // invisible `before` overlay so it's thumb-tappable
                           // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 backdrop-blur transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
+                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
                         >
                           ×
                         </button>

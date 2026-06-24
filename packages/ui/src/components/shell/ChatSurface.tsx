@@ -121,7 +121,7 @@ export function ChatSurface({
           aria-label={t("chatsurface.messageLabel", {
             defaultValue: "Message {{appName}}",
           })}
-          className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1.5 text-sm text-txt placeholder:text-txt/50 focus-visible:outline-none focus-visible:ring-0 disabled:opacity-50"
+          className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1.5 text-sm text-txt placeholder:text-txt/50   disabled:opacity-50"
         />
         <GlassIconButton
           icon="mic"

@@ -1010,7 +1010,7 @@ function ViewStatusFrame({
   return (
     <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6">
       <div
-        className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 shadow-sm ${toneClass}`}
+        className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 ${toneClass}`}
       >
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-background/70">

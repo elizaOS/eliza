@@ -8,7 +8,7 @@ import { GeneratedViewHero } from "./GeneratedViewHero";
  */
 function CardFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="group aspect-[16/10] w-64 overflow-hidden rounded-xl border border-white/10 shadow-md">
+    <div className="group aspect-[16/10] w-64 overflow-hidden rounded-xl border border-white/10">
       {children}
     </div>
   );

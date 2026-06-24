@@ -149,6 +149,7 @@ function AppProviderInner({
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
       backgroundConfig,
+      canUndoBackground,
     },
     setUiTheme,
     setUiThemeMode,
@@ -156,6 +157,7 @@ function AppProviderInner({
     setCompanionAnimateWhenHidden,
     setCompanionHalfFramerateMode,
     setBackgroundConfig,
+    undoBackgroundConfig,
   } = displayPrefs;
 
   // Apply the host app's brand theme (set via BrandingConfig.theme).
@@ -1925,6 +1927,7 @@ function AppProviderInner({
       uiTheme,
       uiThemeMode,
       backgroundConfig,
+      canUndoBackground,
       companionVrmPowerMode,
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
@@ -2214,6 +2217,7 @@ function AppProviderInner({
       setUiTheme,
       setUiThemeMode,
       setBackgroundConfig,
+      undoBackgroundConfig,
       setCompanionVrmPowerMode,
       setCompanionAnimateWhenHidden,
       setCompanionHalfFramerateMode,
@@ -2344,6 +2348,7 @@ function AppProviderInner({
       uiTheme,
       uiThemeMode,
       backgroundConfig,
+      canUndoBackground,
       companionVrmPowerMode,
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
@@ -2640,6 +2645,7 @@ function AppProviderInner({
       setUiTheme,
       setUiThemeMode,
       setBackgroundConfig,
+      undoBackgroundConfig,
       setCompanionVrmPowerMode,
       setCompanionAnimateWhenHidden,
       setCompanionHalfFramerateMode,

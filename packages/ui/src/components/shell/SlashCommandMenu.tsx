@@ -224,7 +224,7 @@ export function SlashCommandMenu({
       return (
         <div
           className={cn(
-            "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl border border-white/12 bg-black/70 px-4 py-3 text-xs text-white/55 backdrop-blur-xl",
+            "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl border border-white/12 bg-black/85 px-4 py-3 text-xs text-white/55",
             FLOAT_SHADOW,
           )}
           role="status"
@@ -247,8 +247,7 @@ export function SlashCommandMenu({
       data-testid="slash-command-menu"
       className={cn(
         "absolute bottom-full left-0 right-0 z-10 mb-2 max-h-[min(46vh,22rem)] overflow-y-auto",
-        "rounded-2xl border border-white/14 bg-black/70 py-1.5 backdrop-blur-xl",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_50px_-16px_rgba(0,0,0,0.7)]",
+        "rounded-2xl border border-white/14 bg-black/85 py-1.5",
         "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
       )}
     >

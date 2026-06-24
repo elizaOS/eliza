@@ -38,7 +38,7 @@ export function TopicChipsBar({
             onClick={() => onSelectTopic?.(topic)}
             className={cn(
               "shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+              "  ",
               active
                 ? "border-white/40 bg-white/85 text-black"
                 : "border-white/15 bg-white/10 text-white/70 hover:bg-white/20 hover:text-white",

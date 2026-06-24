@@ -15,13 +15,16 @@ import {
   Loader2,
   Pipette,
   Sparkles,
+  Undo2,
 } from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import { useAppSelectorShallow } from "../../state/app-store";
 import {
+  BACKGROUND_PRESETS,
   type BackgroundConfig,
+  type BackgroundPreset,
   DEFAULT_BACKGROUND_COLOR,
 } from "../../state/ui-preferences";
 import { useBackgroundConfig } from "../../state/useBackgroundConfig";
@@ -31,49 +34,35 @@ import {
   fileToBackgroundDataUrl,
 } from "./background-image";
 
-/** Curated shader colors. The user can pick any color via the custom picker. */
-const PRESET_COLORS = [
-  DEFAULT_BACKGROUND_COLOR, // warm orange (default)
-  "#f59e0b", // amber
-  "#e11d48", // rose
-  "#7c3aed", // violet
-  "#2563eb", // blue
-  "#0891b2", // teal
-  "#059669", // green
-  "#334155", // slate
-  "#0a0a0a", // near-black
-  "#f4f4f5", // light
-];
-
 function ColorSwatch({
-  color,
+  preset,
   selected,
   onSelect,
 }: {
-  color: string;
+  preset: BackgroundPreset;
   selected: boolean;
   onSelect: (color: string) => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `background-color-${color.replace("#", "")}`,
+    id: `background-preset-${preset.id}`,
     role: "button",
-    label: `Set background color ${color}`,
+    label: `Set background to ${preset.label}`,
     group: "background-controls",
-    description: `Use ${color} as the shader background color`,
-    onActivate: () => onSelect(color),
+    description: `Use the ${preset.label.toLowerCase()} shader background`,
+    onActivate: () => onSelect(preset.color),
   });
   return (
     <button
       ref={ref}
       type="button"
-      onClick={() => onSelect(color)}
-      title={color}
-      aria-label={`Set background color ${color}`}
+      onClick={() => onSelect(preset.color)}
+      title={preset.label}
+      aria-label={`Set background to ${preset.label}`}
       aria-pressed={selected}
-      className={`relative h-9 w-9 shrink-0 rounded-full ring-offset-2 ring-offset-bg/0 transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        selected ? "ring-2 ring-txt" : "ring-1 ring-border/60"
+      className={`relative h-9 w-9 shrink-0 rounded-full   transition-transform hover:scale-110    ${
+        selected ? " " : " "
       }`}
-      style={{ backgroundColor: color }}
+      style={{ backgroundColor: preset.color }}
       {...agentProps}
     >
       {selected ? (
@@ -87,7 +76,12 @@ function ColorSwatch({
 }
 
 export function BackgroundView() {
-  const { backgroundConfig, setBackgroundConfig } = useBackgroundConfig();
+  const {
+    backgroundConfig,
+    setBackgroundConfig,
+    undoBackgroundConfig,
+    canUndoBackground,
+  } = useBackgroundConfig();
   const { cloudConnected, cloudAuthRejected } = useAppSelectorShallow((s) => ({
     cloudConnected: s.elizaCloudConnected,
     cloudAuthRejected: s.elizaCloudAuthRejected,
@@ -176,19 +170,27 @@ export function BackgroundView() {
     description: "Generate a background image from a text prompt (cloud)",
     onActivate: () => setPromptOpen((open) => !open),
   });
+  const undoButton = useAgentElement<HTMLButtonElement>({
+    id: "background-undo",
+    role: "button",
+    label: "Undo background change",
+    group: "background-controls",
+    description: "Revert to the previous background",
+    onActivate: () => undoBackgroundConfig(),
+  });
 
   return (
     <ShellViewAgentSurface viewId="background">
       <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center px-4 pb-28 pt-6">
         <h1 className="sr-only">Background</h1>
-        <div className="flex w-full max-w-sm flex-col items-center gap-5 rounded-3xl border border-border/40 bg-bg/55 p-6 shadow-xl backdrop-blur-2xl">
+        <div className="flex w-full max-w-sm flex-col items-center gap-5 rounded-3xl border border-border/40 bg-bg/95 p-6">
           {/* Shader colors */}
           <div className="flex flex-wrap items-center justify-center gap-2.5">
-            {PRESET_COLORS.map((color) => (
+            {BACKGROUND_PRESETS.map((preset) => (
               <ColorSwatch
-                key={color}
-                color={color}
-                selected={isShader && activeColor === color}
+                key={preset.id}
+                preset={preset}
+                selected={isShader && activeColor === preset.color}
                 onSelect={selectColor}
               />
             ))}
@@ -198,13 +200,13 @@ export function BackgroundView() {
               onClick={() => colorInputRef.current?.click()}
               title="Custom color"
               aria-label="Pick a custom background color"
-              className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-1 ring-border/60 transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full   transition-transform hover:scale-110   "
               style={{
                 background:
                   "conic-gradient(from 0deg, #ef5a1f, #f59e0b, #059669, #2563eb, #7c3aed, #e11d48, #ef5a1f)",
               }}
             >
-              <Pipette className="h-4 w-4 text-white drop-shadow" aria-hidden />
+              <Pipette className="h-4 w-4 text-white" aria-hidden />
             </button>
             <input
               ref={colorInputRef}
@@ -227,7 +229,7 @@ export function BackgroundView() {
               onClick={onUploadClick}
               title="Upload image"
               aria-label="Upload a background image"
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent   "
               {...uploadButton.agentProps}
             >
               <ImagePlus className="h-5 w-5" aria-hidden />
@@ -249,7 +251,7 @@ export function BackgroundView() {
                 title="Generate image"
                 aria-label="Generate a background image"
                 aria-pressed={promptOpen}
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-colors    ${
                   promptOpen
                     ? "bg-accent text-accent-foreground"
                     : "bg-bg-accent/70 text-txt hover:bg-bg-accent"
@@ -257,6 +259,19 @@ export function BackgroundView() {
                 {...generateButton.agentProps}
               >
                 <Sparkles className="h-5 w-5" aria-hidden />
+              </button>
+            ) : null}
+            {canUndoBackground ? (
+              <button
+                ref={undoButton.ref}
+                type="button"
+                onClick={() => undoBackgroundConfig()}
+                title="Undo"
+                aria-label="Undo background change"
+                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                {...undoButton.agentProps}
+              >
+                <Undo2 className="h-5 w-5" aria-hidden />
               </button>
             ) : null}
           </div>
@@ -282,14 +297,14 @@ export function BackgroundView() {
                 disabled={generating}
                 // biome-ignore lint/a11y/noAutofocus: focus the field the user just opened
                 autoFocus
-                className="min-w-0 flex-1 rounded-xl border border-border/50 bg-bg/60 px-3 py-2 text-sm text-txt placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-w-0 flex-1 rounded-xl border border-border/50 bg-bg/60 px-3 py-2 text-sm text-txt placeholder:text-muted   "
               />
               <button
                 type="submit"
                 disabled={generating || prompt.trim().length === 0}
                 title="Generate"
                 aria-label="Generate background from prompt"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground transition-colors hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground transition-colors hover:bg-accent/90    disabled:opacity-50"
               >
                 {generating ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

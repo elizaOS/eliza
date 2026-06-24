@@ -195,7 +195,7 @@ export function CameraPageView(): React.JSX.Element {
               defaultValue: "Open Settings",
             })}
             onRetry={retryStart}
-            className="max-w-sm border-white/20 bg-bg/95 shadow-2xl"
+            className="max-w-sm border-white/20 bg-bg/95"
             testId="camera-permission-callout"
           />
         </div>
@@ -252,7 +252,7 @@ export function CameraPageView(): React.JSX.Element {
               aria-label={t("camera.switch", { defaultValue: "Switch camera" })}
               onClick={handleSwitch}
               disabled={busy}
-              className="grid h-11 w-11 place-items-center rounded-full border border-white/[0.18] bg-black/35 text-white backdrop-blur-2xl transition-colors hover:bg-white/[0.16] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              className="grid h-11 w-11 place-items-center rounded-full border border-white/[0.18] bg-black/55 text-white transition-colors hover:bg-white/[0.16] disabled:opacity-50   "
             >
               <SwitchCamera className="h-5 w-5" aria-hidden />
             </button>
@@ -265,7 +265,7 @@ export function CameraPageView(): React.JSX.Element {
               aria-label={t("camera.capture", { defaultValue: "Take photo" })}
               onClick={handleCapture}
               disabled={busy}
-              className="grid h-[72px] w-[72px] place-items-center rounded-full border-4 border-white/90 bg-white/10 backdrop-blur-sm transition-transform active:scale-95 disabled:opacity-60 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              className="grid h-[72px] w-[72px] place-items-center rounded-full border-4 border-white/90 bg-white/10 transition-transform active:scale-95 disabled:opacity-60 motion-reduce:active:scale-100   "
             >
               {busy ? (
                 <Loader2

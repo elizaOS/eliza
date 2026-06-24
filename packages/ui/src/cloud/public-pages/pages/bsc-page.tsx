@@ -77,7 +77,7 @@ export default function BscPromoPage() {
                 defaultValue: "Buy cloud credit on BSC",
               })}
             </h1>
-            <p className="mt-5 inline-flex items-center gap-2 rounded-xs border border-black/14 bg-white/72 px-3 py-2 text-sm font-medium text-black backdrop-blur-sm">
+            <p className="mt-5 inline-flex items-center gap-2 rounded-xs border border-black/14 bg-white/72 px-3 py-2 text-sm font-medium text-black">
               <Gift className="size-4" />
               {t("cloud.bsc.bonusBadge", {
                 defaultValue: "$10+ in BSC = $5 bonus credit",
@@ -86,7 +86,7 @@ export default function BscPromoPage() {
           </div>
 
           <div className="space-y-4">
-            <Card className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md">
+            <Card className="rounded-xs border-black/12 bg-white/88 text-black">
               <CardHeader className="p-5 pb-4">
                 <CardTitle className="text-lg text-black">
                   {t("cloud.bsc.topUp", { defaultValue: "Top up credit" })}
@@ -108,7 +108,7 @@ export default function BscPromoPage() {
                       max={10000}
                       value={amount}
                       onChange={(event) => setAmount(event.target.value)}
-                      className="border-0 bg-transparent px-0 text-base text-black focus:border-0 focus:ring-0"
+                      className="border-0 bg-transparent px-0 text-base text-black  "
                     />
                   </div>
                 </label>
@@ -161,7 +161,7 @@ export default function BscPromoPage() {
             {!ready ? (
               <Card
                 aria-busy="true"
-                className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md"
+                className="rounded-xs border-black/12 bg-white/88 text-black"
               >
                 <CardContent className="space-y-3 p-5">
                   <div className="h-4 w-32 animate-pulse rounded-xs bg-black/10" />
@@ -170,7 +170,7 @@ export default function BscPromoPage() {
                 </CardContent>
               </Card>
             ) : !authenticated ? (
-              <Card className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md">
+              <Card className="rounded-xs border-black/12 bg-white/88 text-black">
                 <CardContent className="space-y-4 p-5">
                   <p className="text-sm leading-6 text-black/68">
                     {t("cloud.bsc.signInFirst", {
@@ -186,7 +186,7 @@ export default function BscPromoPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md">
+              <Card className="rounded-xs border-black/12 bg-white/88 text-black">
                 <CardContent className="space-y-4 p-5">
                   <p className="text-sm leading-6 text-black/68">
                     {t("cloud.bsc.checkoutInApp", {

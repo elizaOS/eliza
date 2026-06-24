@@ -90,7 +90,7 @@ function ThemeTileButton({
       className={cn(
         "flex min-h-10 flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors",
         isActive
-          ? "bg-accent/12 text-accent ring-1 ring-accent/30"
+          ? "bg-accent/12 text-accent  "
           : "text-muted hover:bg-surface hover:text-txt",
       )}
       {...agentProps}

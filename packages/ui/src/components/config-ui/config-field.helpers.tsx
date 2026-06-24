@@ -144,7 +144,7 @@ function PasswordFieldInner({ fp: props }: { fp: FieldRenderProps }) {
     <div className="flex">
       <input
         ref={inputRef}
-        className="flex-1 px-3 py-2 border border-border border-r-0 bg-card text-sm font-[var(--mono)] transition-all focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent box-border h-9 rounded-l-sm placeholder:text-muted placeholder:opacity-60"
+        className="flex-1 px-3 py-2 border border-border border-r-0 bg-card text-sm font-[var(--mono)] transition-all     box-border h-9 rounded-l-sm placeholder:text-muted placeholder:opacity-60"
         type={visible ? "text" : "password"}
         value={fieldValue}
         placeholder={placeholder}
@@ -579,7 +579,7 @@ function SearchableSelectInner({
             <div className="p-1.5">
               <input
                 ref={searchInputRef}
-                className="w-full px-2 py-1.5 border border-border bg-bg text-xs font-[var(--mono)] focus:border-accent focus:outline-none rounded-sm"
+                className="w-full px-2 py-1.5 border border-border bg-bg text-xs font-[var(--mono)]   rounded-sm"
                 type="text"
                 value={filter}
                 placeholder={`Search ${options.length} options...`}
@@ -1834,7 +1834,7 @@ function TableFieldInner(props: FieldRenderProps) {
                 {columns.map((col) => (
                   <td key={col.key} className="px-1 py-0.5">
                     <input
-                      className="w-full px-2 py-1 bg-transparent text-sm border-none outline-none focus:bg-bg-hover"
+                      className="w-full px-2 py-1 bg-transparent text-sm border-none outline-none "
                       value={row[col.key] ?? ""}
                       placeholder={col.label}
                       disabled={props.readonly}

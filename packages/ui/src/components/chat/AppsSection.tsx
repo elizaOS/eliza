@@ -24,15 +24,8 @@ import {
 } from "../ui/dropdown-menu";
 import { WidgetSection } from "./widgets/shared";
 
-// ---------------------------------------------------------------------------
-// Ring classes derived from AppRunSummary.health.state
-// ---------------------------------------------------------------------------
-
-function getRunRingClass(run: AppRunSummary): string {
-  const state = run.health?.state;
-  if (state === "healthy") return "ring-2 ring-ok/60";
-  if (state === "degraded") return "ring-2 ring-warn/60";
-  return "ring-2 ring-danger/60";
+function getRunRingClass(_run: AppRunSummary): string {
+  return "";
 }
 
 function isOverlayLaunchApp(app: RegistryAppInfo): boolean {
@@ -316,7 +309,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                       aria-label={`Actions for ${displayName}`}
                       data-testid={`apps-section-kebab-${app.name}`}
                       onClick={(event) => event.stopPropagation()}
-                      className="absolute -right-1 -top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-bg text-muted opacity-0 transition-opacity hover:text-txt focus:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
+                      className="absolute -right-1 -top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-bg text-muted opacity-0 transition-opacity hover:text-txt   group-hover:opacity-100"
                     >
                       <MoreHorizontal className="h-3 w-3" aria-hidden />
                     </button>
@@ -356,7 +349,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                     {isRunning ? (
                       <DropdownMenuItem
                         data-testid={`apps-section-stop-${app.name}`}
-                        className="text-danger focus:text-danger"
+                        className="text-danger "
                         onSelect={() => void handleStop(app)}
                       >
                         {t("settings.sections.apps.stop", {

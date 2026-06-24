@@ -279,7 +279,7 @@ function CatalogGetCard({
         label: entry.label,
         defaultValue: "Get {{label}}",
       })}
-      className="group flex flex-col items-center gap-2 rounded-2xl px-2 py-4 text-center transition-colors hover:bg-bg-accent/70 focus:outline-none disabled:cursor-not-allowed"
+      className="group flex flex-col items-center gap-2 rounded-2xl px-2 py-4 text-center transition-colors hover:bg-bg-accent/70  disabled:cursor-not-allowed"
     >
       <ViewVisual
         id={entry.id}
@@ -741,7 +741,7 @@ export function ViewCatalog() {
                 })}
                 value={formViewId}
                 onChange={(event) => setFormViewId(event.target.value)}
-                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted   "
                 placeholder={t("viewmanager.form.idPlaceholder", {
                   defaultValue: "View ID",
                 })}
@@ -754,7 +754,7 @@ export function ViewCatalog() {
                 })}
                 value={formTitle}
                 onChange={(event) => setFormTitle(event.target.value)}
-                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted   "
                 placeholder={t("viewmanager.form.titlePlaceholder", {
                   defaultValue: "Title",
                 })}
@@ -767,7 +767,7 @@ export function ViewCatalog() {
                 })}
                 value={formEntrypoint}
                 onChange={(event) => setFormEntrypoint(event.target.value)}
-                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted   "
                 placeholder="/dynamic-views/view.js"
                 {...formEntrypointInput.agentProps}
               />
@@ -778,7 +778,7 @@ export function ViewCatalog() {
                 })}
                 value={formDescription}
                 onChange={(event) => setFormDescription(event.target.value)}
-                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted   "
                 placeholder={t("viewmanager.form.descriptionPlaceholder", {
                   defaultValue: "Description",
                 })}

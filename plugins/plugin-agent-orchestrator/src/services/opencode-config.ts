@@ -12,19 +12,28 @@ const CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b";
 
 // `webfetch` is a read-only HTTP GET (opencode caps the response at 5MB and
-// never mutates the workspace). opencode defaults its permission to "ask", so
-// under the acpx "standard" approval preset (which answers non-interactive
-// permission prompts with "deny") a spawned sub-agent's web fetch is silently
-// denied — and the model, unable to reach the network, tends to confabulate an
-// answer instead of fetching live data. Allowing the read-only fetch lets
-// sub-agents retrieve real live data on any provider without granting
-// write/exec (`bash`, `edit`) permissions, which stay gated by the preset.
+// never mutates the workspace). `websearch` is opencode's general web-search
+// tool — a read-only query against the keyless Parallel.ai / Exa MCP search
+// endpoints (no PARALLEL_API_KEY required; the tool sends only a User-Agent
+// when none is set). opencode defaults BOTH permissions to "ask", so under the
+// acpx "standard" approval preset (which answers non-interactive permission
+// prompts with "deny") a spawned sub-agent's fetch AND search are silently
+// denied — and the model, unable to reach the network, either confabulates an
+// answer or falls back to `webfetch` on a guessed search URL (e.g.
+// google.com/search), which datacenter IPs get bot-blocked from ("trouble
+// accessing Google Search"). Allowing both read-only capabilities lets
+// sub-agents do real general web search + live fetches on any provider without
+// granting write/exec (`bash`, `edit`) permissions, which stay gated by the
+// preset.
 //
 // SECURITY: read-only does not mean safe-target. opencode's own SSRF guard is
 // what blocks fetches to loopback, private ranges, and cloud metadata
 // (169.254.169.254). This grant assumes that guard is deployed in the bundled
 // opencode build; without it a spawned sub-agent can reach internal endpoints.
-const OPENCODE_SPAWN_PERMISSION = { webfetch: "allow" } as const;
+const OPENCODE_SPAWN_PERMISSION = {
+  webfetch: "allow",
+  websearch: "allow",
+} as const;
 
 type RuntimeLike = Pick<IAgentRuntime, "getSetting">;
 

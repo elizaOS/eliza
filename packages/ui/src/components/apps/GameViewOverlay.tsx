@@ -215,8 +215,6 @@ export function GameViewOverlay() {
           resize: "both",
           background: "rgba(18, 22, 32, 0.96)",
           border: "1px solid rgba(240, 178, 50, 0.18)",
-          boxShadow:
-            "0 8px 60px rgba(0,0,0,0.6), 0 0 40px rgba(240,178,50,0.06)",
           ...style,
         }}
       >

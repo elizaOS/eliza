@@ -66,7 +66,7 @@ const GripIconSvg = ({ className }: { className?: string }) => (
 );
 
 const compactIconBtn =
-  "inline-flex h-7 w-7 items-center justify-center rounded-sm border border-border/35 text-muted transition-colors hover:border-border/70 hover:bg-bg-muted/70 hover:text-txt focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
+  "inline-flex h-7 w-7 items-center justify-center rounded-sm border border-border/35 text-muted transition-colors hover:border-border/70 hover:bg-bg-muted/70 hover:text-txt    disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
 
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
@@ -170,7 +170,7 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
           }
-          className="w-full resize-none min-h-[8rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+          className="w-full resize-none min-h-[8rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt  "
           {...bioAgentProps}
         />
       </div>
@@ -261,10 +261,8 @@ function StyleRuleRow({
         }
         onBlur={onCommit}
         aria-label={ruleLabel}
-        className={`h-8 min-w-0 flex-1 rounded-none border-0 border-b bg-transparent px-0 text-sm text-txt focus-visible:ring-0 ${
-          isDuplicate
-            ? "border-warning/60 focus-visible:border-warning"
-            : "border-border/30 focus-visible:border-accent/60"
+        className={`h-8 min-w-0 flex-1 rounded-none border-0 border-b bg-transparent px-0 text-sm text-txt  ${
+          isDuplicate ? "border-warning/60 " : "border-border/30 "
         }`}
         {...inputAgentProps}
       />
@@ -280,7 +278,7 @@ function StyleRuleRow({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted opacity-0 transition-colors hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
+        className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted opacity-0 transition-colors hover:text-danger group-hover:opacity-100 "
         onClick={onRemove}
         title={t("common.remove")}
         aria-label={`${t("common.remove")} ${ruleLabel}`}
@@ -346,13 +344,13 @@ function StyleAddRow({
             onAdd();
           }
         }}
-        className="h-9 min-w-0 flex-1 rounded-sm border border-border/40 bg-bg/70 px-3 text-sm text-txt outline-none focus:border-accent"
+        className="h-9 min-w-0 flex-1 rounded-sm border border-border/40 bg-bg/70 px-3 text-sm text-txt outline-none "
         {...inputAgentProps}
       />
       <button
         ref={addRef}
         type="button"
-        className="inline-flex h-9 shrink-0 items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        className="inline-flex h-9 shrink-0 items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10    disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
         onClick={onAdd}
         disabled={!pendingValue.trim()}
         title={addLabel}
@@ -546,7 +544,7 @@ function ConversationTurnTextarea({
       rows={2}
       aria-label={label}
       onChange={(e) => onChange(e.target.value)}
-      className="min-h-[3rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+      className="min-h-[3rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt  "
       {...agentProps}
     />
   );
@@ -589,7 +587,7 @@ function ConversationFooter({
       <button
         ref={addTurnRef}
         type="button"
-        className="inline-flex h-8 items-center gap-2 rounded-sm border border-border/40 px-2.5 text-xs font-medium text-txt transition-colors hover:bg-bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+        className="inline-flex h-8 items-center gap-2 rounded-sm border border-border/40 px-2.5 text-xs font-medium text-txt transition-colors hover:bg-bg-muted/70   "
         onClick={onAddTurn}
         title={addTurnLabel}
         aria-label={addTurnLabel}
@@ -704,7 +702,7 @@ function PostExampleRow({
           rows={3}
           aria-label={postLabel}
           onChange={(e) => onChange(e.target.value)}
-          className="min-h-[4.25rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+          className="min-h-[4.25rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt  "
           {...textAgentProps}
         />
       </div>
@@ -887,7 +885,7 @@ export function CharacterExamplesPanel({
         <button
           ref={addConversationRef}
           type="button"
-          className="inline-flex h-9 self-start items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+          className="inline-flex h-9 self-start items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10   "
           onClick={addConversation}
           title={addConversationLabel}
           aria-label={addConversationLabel}
@@ -985,7 +983,7 @@ export function CharacterExamplesPanel({
           <button
             ref={addPostRef}
             type="button"
-            className="mt-1 inline-flex h-9 self-start items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+            className="mt-1 inline-flex h-9 self-start items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10   "
             onClick={addPost}
             title={addPostLabel}
             aria-label={addPostLabel}

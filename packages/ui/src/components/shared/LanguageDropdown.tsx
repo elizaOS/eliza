@@ -40,12 +40,12 @@ export function LanguageDropdown({
   const current = LANGUAGES.find((l) => l.id === uiLanguage) ?? LANGUAGES[0];
   const triggerClassNameResolved =
     variant === "titlebar"
-      ? `inline-flex h-[2.375rem] min-h-[2.375rem] min-w-0 items-center justify-center rounded-sm border border-transparent !bg-transparent px-2.5 py-0 text-[11px] font-medium text-muted shadow-none ring-0 transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent data-[state=open]:!bg-transparent ${open ? "text-accent" : ""} ${triggerClassName ?? ""}`
-      : `inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-sm px-3.5 py-0 border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt gap-1.5 text-xs font-medium ${open ? "border-accent/80 bg-accent/12 text-txt " : ""} ${triggerClassName ?? ""}`;
+      ? `inline-flex h-[2.375rem] min-h-[2.375rem] min-w-0 items-center justify-center rounded-sm border border-transparent !bg-transparent px-2.5 py-0 text-[11px] font-medium text-muted shadow-none  transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent data-[state=open]:!bg-transparent ${open ? "text-accent" : ""} ${triggerClassName ?? ""}`
+      : `inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-sm px-3.5 py-0 border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt    transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt gap-1.5 text-xs font-medium ${open ? "border-accent/80 bg-accent/12 text-txt " : ""} ${triggerClassName ?? ""}`;
   const contentClassName =
     variant === "titlebar"
-      ? "w-40 overflow-hidden rounded-sm border border-border/70 bg-card/96 py-1 backdrop-blur-xl"
-      : "w-40 overflow-hidden rounded-sm border border-border/60 bg-card/95 py-1 backdrop-blur-xl";
+      ? "w-40 overflow-hidden rounded-sm border border-border/70 bg-card/96 py-1"
+      : "w-40 overflow-hidden rounded-sm border border-border/60 bg-card/95 py-1";
 
   return (
     <div
@@ -86,9 +86,6 @@ export function LanguageDropdown({
             variant === "companion"
               ? {
                   zIndex: 10001,
-                  backdropFilter: "blur(24px)",
-                  WebkitBackdropFilter: "blur(24px)",
-                  boxShadow: "var(--)",
                 }
               : undefined
           }

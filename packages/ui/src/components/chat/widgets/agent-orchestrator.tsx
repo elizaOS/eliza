@@ -249,7 +249,7 @@ function ActivityItemsContent({
             type="button"
             onClick={() => onSelectEvent(event)}
             aria-label={`${openLabel}: ${event.summary}`}
-            className="flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors hover:bg-bg-hover/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+            className="flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors hover:bg-bg-hover/40   "
           >
             <span className="shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted">
               {relativeDuration(event.timestamp)}

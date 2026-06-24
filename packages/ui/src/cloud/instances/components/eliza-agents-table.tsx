@@ -623,7 +623,7 @@ export function ElizaAgentsTable({
               })}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 border-white/10 bg-black/40 text-white placeholder:text-white/30 focus-visible:ring-[var(--brand-orange)]/50"
+              className="pl-9 h-9 border-white/10 bg-black/40 text-white placeholder:text-white/30 "
             />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>

@@ -199,7 +199,7 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
             }}
             // biome-ignore lint/a11y/noAutofocus: this is an inline rename input the user just clicked into; focus must follow.
             autoFocus
-            className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm transition-colors focus:border-accent focus:outline-none"
+            className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm transition-colors  "
             data-testid={`voice-profile-rename-input-${profile.id}`}
             aria-label={t("voiceprofile.renameAria", {
               defaultValue: "Rename voice profile",

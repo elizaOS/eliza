@@ -381,7 +381,7 @@ function AgentBridgeChat({ agent }: { agent: AgentDetailDto }) {
                         defaultValue: "Message this agent",
                       })
                 }
-                className="min-h-12 flex-1 resize-none border border-white/10 bg-black px-3 py-2 text-sm leading-6 text-white outline-none transition-colors placeholder:text-white/25 focus:border-[#FF5800]/60 disabled:cursor-not-allowed disabled:text-white/30"
+                className="min-h-12 flex-1 resize-none border border-white/10 bg-black px-3 py-2 text-sm leading-6 text-white outline-none transition-colors placeholder:text-white/25  disabled:cursor-not-allowed disabled:text-white/30"
               />
               <BrandButton
                 type="submit"

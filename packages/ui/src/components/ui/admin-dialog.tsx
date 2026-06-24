@@ -107,7 +107,7 @@ export const AdminInput = forwardRef<HTMLInputElement, AdminInputProps>(
       <Input
         ref={ref}
         className={cn(
-          "h-10 w-full rounded-sm border border-border bg-card px-3 text-sm font-mono text-txt transition-colors placeholder:text-muted/60 focus-visible:ring-accent",
+          "h-10 w-full rounded-sm border border-border bg-card px-3 text-sm font-mono text-txt transition-colors placeholder:text-muted/60 ",
           className,
         )}
         {...props}
@@ -123,7 +123,7 @@ export function AdminCodeEditor({ className, ...props }: AdminCodeEditorProps) {
   return (
     <textarea
       className={cn(
-        "h-full w-full resize-none border-0 bg-bg-hover p-5 font-mono text-sm leading-relaxed text-txt focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-inset",
+        "h-full w-full resize-none border-0 bg-bg-hover p-5 font-mono text-sm leading-relaxed text-txt    ",
         className,
       )}
       {...props}
