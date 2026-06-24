@@ -80,12 +80,61 @@ for (const so of readdirSync(libDir).filter((f) =>
 )) {
   cpSync(join(libDir, so), join(dest, "lib", so), { dereference: false });
 }
-// tessdata lives under usr/share/tesseract-ocr/<ver>/tessdata — copy the WHOLE
-// dir (traineddata + the REQUIRED configs/ + tessconfigs/).
-const shareTess = join(root, "usr/share/tesseract-ocr");
-const ver = readdirSync(shareTess).find((d) =>
-  existsSync(join(shareTess, d, "tessdata")),
+
+// Copy the FULL transitive shared-lib closure. libtesseract pulls in leptonica,
+// which pulls in libjpeg/png/tiff/webp/openjp2/gif/zlib/... — none of which the
+// two .debs above provide. Without them the bundled binary dlopen-fails on a
+// clean host, defeating the whole "no host install" goal. We let `ldd` resolve
+// the binary's deps with the bundle's own lib/ on the search path (so it can
+// find the libtesseract/leptonica we just staged and recurse into their deps),
+// then copy every resolved .so EXCEPT the glibc/loader set that every Linux
+// target is guaranteed to provide.
+const GLIBC_PROVIDED =
+  /^(ld-linux.*|linux-vdso|libc|libm|libdl|libpthread|librt|libresolv|libgcc_s|libstdc\+\+)\.so/;
+function lddClosure(binPath) {
+  let out = "";
+  try {
+    out = execFileSync("ldd", [binPath], {
+      encoding: "utf8",
+      env: { ...process.env, LD_LIBRARY_PATH: join(dest, "lib") },
+    });
+  } catch (err) {
+    // `ldd` is glibc-only; on a musl/non-glibc build host we can't compute the
+    // closure. Fail loud rather than silently shipping an incomplete bundle.
+    throw new Error(
+      `[vendor-tesseract] ldd failed (${err.message}); cannot compute the shared-lib closure on this host`,
+    );
+  }
+  const resolved = [];
+  for (const line of out.split("\n")) {
+    const m = line.match(/=>\s*(\/\S+\.so\S*)/);
+    if (m) resolved.push(m[1]);
+  }
+  return resolved;
+}
+let bundledExtra = 0;
+for (const soPath of lddClosure(join(dest, "bin", "tesseract"))) {
+  const base = soPath.split("/").pop();
+  if (GLIBC_PROVIDED.test(base)) continue;
+  const target = join(dest, "lib", base);
+  if (existsSync(target)) continue; // already staged (libtesseract/liblept)
+  // dereference: write the SONAME-named file with the real lib bytes, so the
+  // dynamic loader finds it by the name the binary asks for.
+  cpSync(soPath, target, { dereference: true });
+  bundledExtra++;
+}
+console.log(
+  `[vendor-tesseract] bundled ${bundledExtra} transitive shared lib(s) via ldd closure.`,
 );
+
+// tessdata lives under usr/share/tesseract-ocr/<ver>/tessdata — copy the WHOLE
+// dir (traineddata + the REQUIRED configs/ + tessconfigs/). Pick the HIGHEST
+// version dir (numeric-aware) so a host with multiple tesseract data versions
+// installed stages the newest, not whichever readdir happens to list first.
+const shareTess = join(root, "usr/share/tesseract-ocr");
+const ver = readdirSync(shareTess)
+  .filter((d) => existsSync(join(shareTess, d, "tessdata")))
+  .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))[0];
 if (!ver)
   throw new Error(
     "[vendor-tesseract] tessdata not found in downloaded package",

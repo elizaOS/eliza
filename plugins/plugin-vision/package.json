@@ -55,6 +55,7 @@
   "files": [
     "registry-entry.json",
     "dist",
+    "scripts",
     "README.md",
     ".npmignore",
     "package.json",

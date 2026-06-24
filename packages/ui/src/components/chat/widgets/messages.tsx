@@ -4,6 +4,7 @@ import type { Conversation } from "../../../api/client-types-chat";
 import { useAppSelector } from "../../../state";
 import { formatRelativeTime } from "../../../utils/format";
 import type { WidgetProps } from "../../../widgets/types";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 import { WidgetSection } from "./shared";
 
 const MAX_HOME_CONVERSATIONS = 4;
@@ -17,8 +18,9 @@ function byUpdatedDesc(a: Conversation, b: Conversation): number {
  * recent conversations (title + relative time), so the home surfaces quick
  * access to recent chats. Reads the app store's conversation list directly.
  */
-export function MessagesWidget(_props: WidgetProps) {
+export function MessagesWidget(props: WidgetProps) {
   const conversations = useAppSelector((s) => s.conversations);
+  const nav = useWidgetNavigation();
   const recent = useMemo(
     () =>
       (Array.isArray(conversations) ? [...conversations] : [])
@@ -32,6 +34,26 @@ export function MessagesWidget(_props: WidgetProps) {
   // belong on the dedicated view, not the home slot.
   if (recent.length === 0) {
     return null;
+  }
+
+  // Home slot: a single compact, icon-first, whole-card-clickable tile — the
+  // most-recent conversation's title as the one datum, total count as the
+  // badge. Tapping opens the Messages view. The sidebar keeps the full list.
+  if (props.slot === "home") {
+    const top = recent[0];
+    const title = top.title || "Untitled";
+    return (
+      <HomeWidgetCard
+        icon={<MessageSquare />}
+        label="Messages"
+        value={title}
+        meta={formatRelativeTime(top.updatedAt)}
+        badge={recent.length > 1 ? recent.length : undefined}
+        testId="widget-messages"
+        ariaLabel={`Messages: ${recent.length} recent, latest ${title}. Open Messages.`}
+        onActivate={() => nav.openView("/messages", "messages")}
+      />
+    );
   }
 
   return (

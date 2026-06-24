@@ -184,12 +184,17 @@ export const EVENT_TYPE_TO_SIGNAL_KIND: Readonly<Record<string, string>> = {
   workflow: "workflow",
   // Orchestrator lifecycle/tool events are workflow signals so active runs can
   // lift the owning home widget without needing a separate attention publish.
+  // `error` stays at workflow strength too: AcpService emits `error` SessionEvents
+  // liberally for transient/recoverable failures (auth prompts, ENOENT, transport
+  // hiccups, mid-stream ACP errors), so routing every one to the weight-10 blocked
+  // escalation rail would manufacture false top-of-home alarms. Genuine "act now"
+  // urgency is already carried by the orchestrator's dedicated `blocked` SessionEvent.
   task_registered: "workflow",
   task_complete: "workflow",
   stopped: "workflow",
   tool_running: "workflow",
   blocked_auto_resolved: "workflow",
-  error: "blocked",
+  error: "workflow",
 };
 
 /** Map a raw activity-event type to its canonical signal kind. */

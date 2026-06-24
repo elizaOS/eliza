@@ -22,6 +22,8 @@ export const dynamic = "force-dynamic";
 // Farcaster Mini App frame.
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://feed.elizacloud.ai";
 const OG_IMAGE_PATH = "/assets/images/og-image.png";
+const ENABLE_VERCEL_OBSERVABILITY =
+  process.env.NEXT_PUBLIC_ENABLE_VERCEL_OBSERVABILITY === "1";
 
 export const metadata: Metadata = {
   title: "Feed",
@@ -171,8 +173,12 @@ export default async function RootLayout({
             )}
           </div>
         </Providers>
-        <Analytics />
-        <GatedSpeedInsights disabled={isMinimalLayout} />
+        {ENABLE_VERCEL_OBSERVABILITY ? (
+          <>
+            <Analytics />
+            <GatedSpeedInsights disabled={isMinimalLayout} />
+          </>
+        ) : null}
       </body>
     </html>
   );

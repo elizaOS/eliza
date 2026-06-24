@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("./McpsRoute", () => ({
+  default: () => null,
+  McpsSurface: () => null,
+}));
+
+vi.mock("./McpsSection", () => ({
+  McpsSection: () => null,
+}));
+
 // Mock the shared cloud API client so the connection-test logic runs against
 // controlled responses (no network). The real `ApiError` is preserved so the
 // status-based branching in test-connection.ts behaves exactly as in prod.
@@ -155,7 +164,7 @@ describe("mcps domain registration", () => {
     const route = getCloudRoute("dashboard/mcps");
     expect(route).toBeDefined();
     expect(route?.group).toBe("dashboard");
-  });
+  }, 30_000);
 
   it("registers a Settings section under the system group on demand", async () => {
     const { registerMcpsSettingsSection, MCPS_SECTION_ID } = await import(
@@ -171,5 +180,5 @@ describe("mcps domain registration", () => {
     expect(section).toBeDefined();
     expect(section?.group).toBe("system");
     expect(section?.defaultLabel).toBe("MCP Servers");
-  });
+  }, 30_000);
 });

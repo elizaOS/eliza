@@ -38,11 +38,19 @@ describe("home frontpage widget slot (#9143)", () => {
     expect(notif?.Component).toBeTruthy();
   });
 
-  it("resolves the Messages widget on home even with NO plugins (always-visible)", () => {
+  it("does NOT resolve a Messages widget on home (removed #9304 — redundant with the chat overlay)", () => {
     const resolved = resolveWidgetsForSlot("home", []);
     const msgs = resolved.find((r) => r.declaration.id === "messages.recent");
-    expect(msgs?.declaration.slot).toBe("home");
-    expect(msgs?.Component).toBeTruthy();
+    expect(msgs).toBeUndefined();
+  });
+
+  it("keeps Notifications always-visible on home with NO plugins", () => {
+    const resolved = resolveWidgetsForSlot("home", []);
+    const notif = resolved.find(
+      (r) => r.declaration.id === "notifications.recent",
+    );
+    expect(notif?.declaration.slot).toBe("home");
+    expect(notif?.Component).toBeTruthy();
   });
 
   it("resolves the agent-orchestrator Apps widget on home (reused component)", () => {

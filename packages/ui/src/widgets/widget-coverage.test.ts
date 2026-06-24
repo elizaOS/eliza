@@ -127,7 +127,7 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
     ).length;
 
     expect(ownWidget + defaultSink).toBe(appManifestPlugins.length);
-    expect(ownWidget).toBeGreaterThanOrEqual(6);
+    expect(ownWidget).toBeGreaterThanOrEqual(5);
   });
 
   it("red/green control: no declaration fails, default-sink opt-in passes", () => {

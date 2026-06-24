@@ -113,10 +113,10 @@ async function build() {
   console.log("📝 Generating TypeScript declarations...");
   const dtsResult = await $`tsc --project tsconfig.build.json`.nothrow();
   if (dtsResult.exitCode !== 0) {
-    console.warn("⚠️ TypeScript declarations had warnings (non-blocking)");
-  } else {
-    console.log("✅ TypeScript declarations generated");
+    console.error("❌ TypeScript declarations failed");
+    process.exit(dtsResult.exitCode);
   }
+  console.log("✅ TypeScript declarations generated");
 
   console.log("✅ Build complete!");
 }

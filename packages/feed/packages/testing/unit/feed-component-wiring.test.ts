@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..", "..", "..");
 const FEED_CLIENT_PATH = join(ROOT, "apps/web/src/app/feed/FeedClient.tsx");
+const ROOT_LAYOUT_PATH = join(ROOT, "apps/web/src/app/layout.tsx");
 const COMPONENTS_INDEX_PATH = join(
   ROOT,
   "apps/web/src/app/feed/components/index.ts",
@@ -36,5 +37,16 @@ describe("feed component wiring", () => {
     const source = readFileSync(COMPONENTS_INDEX_PATH, "utf8");
 
     expect(source).not.toContain("NarrativeStoryList");
+  });
+
+  it("keeps Vercel observability opt-in from the root layout", () => {
+    const source = readFileSync(ROOT_LAYOUT_PATH, "utf8");
+
+    expect(source).toContain(
+      'process.env.NEXT_PUBLIC_ENABLE_VERCEL_OBSERVABILITY === "1"',
+    );
+    expect(source).toMatch(
+      /ENABLE_VERCEL_OBSERVABILITY \? \(\s*<>\s*<Analytics \/>\s*<GatedSpeedInsights disabled=\{isMinimalLayout\} \/>\s*<\/>/,
+    );
   });
 });

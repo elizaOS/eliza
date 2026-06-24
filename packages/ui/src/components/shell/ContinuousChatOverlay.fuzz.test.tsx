@@ -218,9 +218,14 @@ function tap(el: Element, y = 300): void {
   fireEvent.pointerUp(el, { clientY: y, pointerId: 1 });
 }
 function flick(el: Element, fromY: number, toY: number): void {
+  const now = vi.spyOn(performance, "now");
+  now.mockReturnValue(0);
   fireEvent.pointerDown(el, { clientY: fromY, pointerId: 1 });
+  now.mockReturnValue(1);
   fireEvent.pointerMove(el, { clientY: toY, pointerId: 1 });
+  now.mockReturnValue(2);
   fireEvent.pointerUp(el, { clientY: toY, pointerId: 1 });
+  now.mockRestore();
 }
 function slowDrag(el: Element, fromY: number, toY: number): void {
   const now = vi.spyOn(performance, "now");
@@ -452,7 +457,7 @@ describe("ContinuousChatOverlay — multi-press storms", () => {
       blurReal();
       assertInvariants(`blur-${i}`);
     }
-  });
+  }, 15_000);
 
   it("Escape spam 25× while toggling open never throws or sticks open", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);

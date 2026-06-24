@@ -11,7 +11,14 @@
  */
 
 import { isViewVisible } from "@elizaos/core";
-import { Component, type ErrorInfo, type ReactNode, useMemo } from "react";
+import type * as React from "react";
+import {
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+  useMemo,
+  useRef,
+} from "react";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useNow } from "../hooks/useNow";
@@ -184,6 +191,19 @@ export function WidgetHost({
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
   }, [slot, plugins, serverDeclarations, filter, enabledKinds]);
 
+  // Notification → signal inputs, memoized so the `now` tick (which re-runs the
+  // component) doesn't rebuild this array each minute — it changes only when the
+  // inbox itself changes.
+  const notificationSignalInputs = useMemo(
+    () =>
+      notifications.map((n) => ({
+        priority: n.priority,
+        timestamp: n.createdAt,
+        readAt: n.readAt,
+      })),
+    [notifications],
+  );
+
   // The home surface ranks every declared widget by current importance and
   // renders them in that order; each widget self-hides (renders `null`) when it
   // has nothing attention-worthy, so the visible set is naturally focused
@@ -195,20 +215,13 @@ export function WidgetHost({
   // `now` comes from `useNow` (0 on first render, real clock in an effect) so
   // the render path never calls `Date.now()`. Other slots render every resolved
   // widget unchanged.
-  const displayed = useMemo(() => {
+  const ranked = useMemo(() => {
     if (slot !== "home") return resolved;
     const renderable = resolved.filter((entry) => !entry.defaultWidgetSink);
     const declarations = renderable.map((entry) => entry.declaration);
     const signals: HomeWidgetSignal[] = [
       ...homeSignalsFromEvents(events ?? [], declarations),
-      ...homeSignalsFromNotifications(
-        notifications.map((n) => ({
-          priority: n.priority,
-          timestamp: n.createdAt,
-          readAt: n.readAt,
-        })),
-        declarations,
-      ),
+      ...homeSignalsFromNotifications(notificationSignalInputs, declarations),
       ...selfAttention.map((entry) => ({ ...entry, timestamp: now })),
     ];
     const byKey = new Map(
@@ -221,7 +234,34 @@ export function WidgetHost({
       const entry = byKey.get(homeWidgetKey(ranked.declaration));
       return entry ? [entry] : [];
     });
-  }, [slot, resolved, events, notifications, selfAttention, now]);
+  }, [slot, resolved, events, notificationSignalInputs, selfAttention, now]);
+
+  // `ranked` is recomputed on every `now` tick (decay math depends on `now`),
+  // but the rendered *set and order* only change at discrete thresholds. Keep
+  // the array reference stable across ticks that don't reorder: derive an
+  // order-key from the resolved widget keys and only swap `displayed` when that
+  // key changes. This stops the `.map` below — and therefore the widget
+  // children — from rebuilding every minute when nothing moved (#9304). Order
+  // still updates the instant a signal changes the ranking.
+  const orderKey = ranked
+    .map(({ declaration }) => homeWidgetKey(declaration))
+    .join("|");
+  const displayedRef = useRef<{
+    key: string;
+    resolved: typeof resolved;
+    entries: typeof ranked;
+  }>({ key: orderKey, resolved, entries: ranked });
+  // Refresh the held set when the order changes OR when the resolved widgets
+  // change identity (a plugin reload could keep the order but swap a
+  // declaration/Component). A bare `now` tick changes neither, so the reference
+  // — and the rendered children below — stay stable.
+  if (
+    displayedRef.current.key !== orderKey ||
+    displayedRef.current.resolved !== resolved
+  ) {
+    displayedRef.current = { key: orderKey, resolved, entries: ranked };
+  }
+  const displayed = displayedRef.current.entries;
 
   const pluginById = useMemo(() => {
     const map = new Map<string, (typeof plugins)[number]>();
@@ -229,7 +269,63 @@ export function WidgetHost({
     return map;
   }, [plugins]);
 
-  if (displayed.length === 0 && hideWhenEmpty) return null;
+  // The fields every widget shares this render — split out so the per-item props
+  // object is built from one stable base rather than re-derived inline.
+  const widgetPropsBase = useMemo(
+    () => ({ events, clearEvents, slot }),
+    [events, clearEvents, slot],
+  );
+
+  // The rendered children, memoized on the stable order-key + the stable prop
+  // inputs. A `now` tick that doesn't reorder leaves every dependency unchanged,
+  // so this memo returns the SAME element array and the widget children never
+  // re-render (locked by WidgetHost.render-storm.test.tsx). It rebuilds only
+  // when the order, the resolved set, the plugin snapshot, or the shared props
+  // actually change.
+  const children = useMemo(
+    () =>
+      displayed
+        .map(({ declaration, Component }) => {
+          const widgetKey = `${declaration.pluginId}/${declaration.id}`;
+          const widgetProps: WidgetProps = {
+            ...widgetPropsBase,
+            pluginId: declaration.pluginId,
+            pluginState: pluginById.get(declaration.pluginId),
+          };
+
+          if (Component) {
+            return (
+              <WidgetErrorBoundary key={widgetKey} widgetId={widgetKey}>
+                <Component {...widgetProps} />
+              </WidgetErrorBoundary>
+            );
+          }
+
+          if (declaration.uiSpec) {
+            return (
+              <WidgetErrorBoundary key={widgetKey} widgetId={widgetKey}>
+                <div
+                  className="min-w-0"
+                  data-testid={`widget-uispec-${declaration.id}`}
+                >
+                  <UiRenderer
+                    spec={declaration.uiSpec}
+                    onAction={(action, params) =>
+                      dispatchWidgetUiAction(declaration, action, params)
+                    }
+                  />
+                </div>
+              </WidgetErrorBoundary>
+            );
+          }
+
+          return null;
+        })
+        .filter((node): node is React.JSX.Element => node !== null),
+    [displayed, widgetPropsBase, pluginById],
+  );
+
+  if (children.length === 0 && hideWhenEmpty) return null;
 
   const layoutClass =
     layout === "grid"
@@ -238,51 +334,16 @@ export function WidgetHost({
 
   return (
     <div
+      // `contain: layout` (CSS containment): a widget reorder/resize repaints
+      // within this host and never reflows the surrounding page, so a ranking
+      // change doesn't jump the whole home (#9304).
       className={`${layoutClass} ${className ?? ""}`}
+      style={{ contain: "layout" }}
       data-testid={`widget-host-${slot}`}
       data-layout={layout}
       data-slot={slot}
     >
-      {displayed.map(({ declaration, Component }) => {
-        const widgetKey = `${declaration.pluginId}/${declaration.id}`;
-        const pluginState = pluginById.get(declaration.pluginId);
-
-        const widgetProps: WidgetProps = {
-          pluginId: declaration.pluginId,
-          pluginState,
-          events,
-          clearEvents,
-          slot,
-        };
-
-        if (Component) {
-          return (
-            <WidgetErrorBoundary key={widgetKey} widgetId={widgetKey}>
-              <Component {...widgetProps} />
-            </WidgetErrorBoundary>
-          );
-        }
-
-        if (declaration.uiSpec) {
-          return (
-            <WidgetErrorBoundary key={widgetKey} widgetId={widgetKey}>
-              <div
-                className="min-w-0"
-                data-testid={`widget-uispec-${declaration.id}`}
-              >
-                <UiRenderer
-                  spec={declaration.uiSpec}
-                  onAction={(action, params) =>
-                    dispatchWidgetUiAction(declaration, action, params)
-                  }
-                />
-              </div>
-            </WidgetErrorBoundary>
-          );
-        }
-
-        return null;
-      })}
+      {children}
     </div>
   );
 }

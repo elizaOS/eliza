@@ -177,6 +177,9 @@ describe("resolveTesseract — ships without a host install", () => {
     const root = join(dir, "tesseract");
     mkdirSync(join(root, "bin"), { recursive: true });
     writeFileSync(join(root, "bin", "tesseract"), "#!/bin/sh\n");
+    // A usable bundle needs a language model, not just the binary.
+    mkdirSync(join(root, "tessdata"), { recursive: true });
+    writeFileSync(join(root, "tessdata", "eng.traineddata"), "");
     process.env.ELIZA_VISION_VENDOR_DIR = dir;
     process.env.LD_LIBRARY_PATH = "/pre/existing";
     const r = resolveTesseract();
@@ -188,6 +191,17 @@ describe("resolveTesseract — ships without a host install", () => {
 
   it("falls back to PATH when the vendor dir has no bundled binary", () => {
     const dir = mkdtempSync(join(tmpdir(), "vendor-empty-"));
+    process.env.ELIZA_VISION_VENDOR_DIR = dir;
+    expect(resolveTesseract()).toEqual({ bin: "tesseract", env: {} });
+  });
+
+  it("falls back to PATH when a half-staged vendor dir has the binary but no tessdata", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vendor-half-"));
+    const root = join(dir, "tesseract");
+    mkdirSync(join(root, "bin"), { recursive: true });
+    writeFileSync(join(root, "bin", "tesseract"), "#!/bin/sh\n");
+    // No tessdata/<lang>.traineddata staged → the bundle would fail at OCR
+    // time, so resolution must NOT pick it; the system PATH tesseract wins.
     process.env.ELIZA_VISION_VENDOR_DIR = dir;
     expect(resolveTesseract()).toEqual({ bin: "tesseract", env: {} });
   });

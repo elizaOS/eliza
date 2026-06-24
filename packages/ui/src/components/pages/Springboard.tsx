@@ -457,7 +457,13 @@ export function Springboard({
           never fights the in-tile drag-to-reorder gesture. */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <motion.div
-          key={clampedPage}
+          // A stable identity (NOT `key={clampedPage}`): keying on the page
+          // index forced a full unmount/remount of the page — Reorder.Group and
+          // every tile — on each swipe, which janks the paging. The page content
+          // already swaps via `pages[clampedPage]`, and `dragSnapToOrigin`
+          // animates the drag back to origin, so the swap is smooth without a
+          // remount (#9304).
+          key="springboard-page"
           drag={editing ? false : "x"}
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.2}
