@@ -4,8 +4,12 @@ import {
   HOME_SIGNAL_WEIGHTS,
   type HomeWidgetSignal,
   homeSignalWeight,
+  homeSignalsFromEvents,
+  homeSignalsFromNotifications,
+  type RankableHomeWidget,
   rankHomeWidgets,
   scoreHomeWidget,
+  signalKindForEventType,
 } from "./home-priority";
 
 const NOW = 1_000_000_000_000;
@@ -139,5 +143,117 @@ describe("rankHomeWidgets — dynamic importance, top-N", () => {
     expect(
       rankHomeWidgets([widget("a")], [], { now: NOW, maxVisible: 0 }),
     ).toEqual([]);
+  });
+});
+
+describe("signalKindForEventType", () => {
+  it("passes through known kinds and normalizes aliases", () => {
+    expect(signalKindForEventType("blocked")).toBe("blocked");
+    expect(signalKindForEventType("proactive-message")).toBe("message");
+    expect(signalKindForEventType("task_complete")).toBe("activity");
+  });
+
+  it("falls back to activity for unknown event types", () => {
+    expect(signalKindForEventType("nonsense")).toBe("activity");
+  });
+});
+
+describe("homeSignalsFromEvents", () => {
+  const decls: RankableHomeWidget[] = [
+    { id: "act", pluginId: "p", order: 100, signalKinds: ["blocked", "activity"] },
+    { id: "msg", pluginId: "p", order: 60, signalKinds: ["message"] },
+    { id: "static", pluginId: "p", order: 50 }, // no signalKinds → never boosted
+  ];
+
+  it("attributes an event to every widget whose signalKinds match its kind", () => {
+    const signals = homeSignalsFromEvents(
+      [{ eventType: "blocked", timestamp: NOW }],
+      decls,
+    );
+    expect(signals).toEqual([
+      { widgetKey: "p/act", weight: HOME_SIGNAL_WEIGHTS.blocked, timestamp: NOW },
+    ]);
+  });
+
+  it("normalizes the event vocabulary before matching (proactive-message → message)", () => {
+    const signals = homeSignalsFromEvents(
+      [{ eventType: "proactive-message", timestamp: NOW }],
+      decls,
+    );
+    expect(signals.map((s) => s.widgetKey)).toEqual(["p/msg"]);
+    expect(signals[0].weight).toBe(HOME_SIGNAL_WEIGHTS.message);
+  });
+
+  it("never boosts a widget without signalKinds", () => {
+    const signals = homeSignalsFromEvents(
+      [{ eventType: "activity", timestamp: NOW }],
+      decls,
+    );
+    expect(signals.every((s) => s.widgetKey !== "p/static")).toBe(true);
+  });
+});
+
+describe("homeSignalsFromNotifications", () => {
+  const notifDecl: RankableHomeWidget[] = [
+    {
+      id: "notifications.recent",
+      pluginId: "notifications",
+      order: 50,
+      signalKinds: ["notification", "approval", "escalation"],
+    },
+  ];
+
+  it("maps an urgent notification to the escalation-weight signal", () => {
+    const signals = homeSignalsFromNotifications(
+      [{ priority: "urgent", timestamp: NOW }],
+      notifDecl,
+    );
+    expect(signals).toHaveLength(1);
+    // urgent → escalation kind, and the widget subscribes to escalation.
+    expect(signals[0].weight).toBe(HOME_SIGNAL_WEIGHTS.escalation);
+  });
+
+  it("ignores notifications the user has already read", () => {
+    const signals = homeSignalsFromNotifications(
+      [{ priority: "urgent", timestamp: NOW, readAt: NOW }],
+      notifDecl,
+    );
+    expect(signals).toEqual([]);
+  });
+
+  it("matches any-priority notifications via the generic 'notification' kind", () => {
+    const signals = homeSignalsFromNotifications(
+      [{ priority: "low", timestamp: NOW }],
+      notifDecl,
+    );
+    // low → activity kind (not subscribed) but the generic 'notification' kind is.
+    expect(signals).toHaveLength(1);
+    expect(signals[0].weight).toBe(HOME_SIGNAL_WEIGHTS.activity);
+  });
+});
+
+describe("rankHomeWidgets — end-to-end with derived signals", () => {
+  const decls: RankableHomeWidget[] = [
+    { id: "pinned", pluginId: "p", order: 0 }, // highest base, no signals
+    {
+      id: "notifications.recent",
+      pluginId: "notifications",
+      order: 90,
+      signalKinds: ["notification", "approval", "escalation"],
+    },
+  ];
+
+  it("an urgent notification floats the low-base notifications widget to the top", () => {
+    const signals = homeSignalsFromNotifications(
+      [{ priority: "urgent", timestamp: NOW }],
+      decls,
+    );
+    const ranked = rankHomeWidgets(decls, signals, { now: NOW });
+    expect(ranked[0].declaration.id).toBe("notifications.recent");
+  });
+
+  it("with no live signals, base order wins (the pinned widget leads)", () => {
+    const ranked = rankHomeWidgets(decls, [], { now: NOW });
+    expect(ranked[0].declaration.id).toBe("pinned");
   });
 });
