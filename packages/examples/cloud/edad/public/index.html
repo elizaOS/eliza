@@ -4,6 +4,20 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>eDad — the dad you never had</title>
+<meta name="description" content="eDad — the dad you never had. Warm, plain-spoken AI chat, powered by Eliza Cloud." />
+<meta name="theme-color" content="#0b0b0d" />
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="favicon.png" sizes="64x64" type="image/png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<!-- social card -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="eDad — the dad you never had" />
+<meta property="og:description" content="Warm, plain-spoken AI chat that gives advice, roasts you a little, and is proud of you. Powered by Eliza Cloud." />
+<meta property="og:image" content="og-image.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="eDad — the dad you never had" />
+<meta name="twitter:description" content="Warm, plain-spoken AI chat, powered by Eliza Cloud." />
+<meta name="twitter:image" content="og-image.png" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,24 +25,7 @@
 <div class="app">
 
   <aside class="dad">
-    <div class="silhouette" aria-hidden="true">
-      <svg viewBox="0 0 200 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="dad silhouette">
-        <defs>
-          <radialGradient id="g" cx="50%" cy="30%" r="70%">
-            <stop offset="0%" stop-color="#3a3a3a"/>
-            <stop offset="100%" stop-color="#0d0d0d"/>
-          </radialGradient>
-        </defs>
-        <rect width="200" height="260" fill="url(#g)"/>
-        <path d="M20 260 Q 40 180 100 180 Q 160 180 180 260 Z" fill="#000"/>
-        <rect x="85" y="155" width="30" height="30" fill="#000"/>
-        <ellipse cx="100" cy="110" rx="50" ry="58" fill="#000"/>
-        <path d="M55 85 Q 100 55 145 85 Q 135 75 100 70 Q 65 75 55 85 Z" fill="#0a0a0a"/>
-        <path d="M78 130 Q 100 138 122 130 Q 115 135 100 135 Q 85 135 78 130 Z" fill="#1a1a1a"/>
-        <path d="M70 200 L 100 220 L 130 200 L 130 210 L 100 228 L 70 210 Z" fill="#1a1a1a"/>
-        <path d="M98 220 L 102 220 L 108 260 L 92 260 Z" fill="#222"/>
-      </svg>
-    </div>
+    <img class="portrait" src="dad-portrait.svg" alt="eDad, a warm illustrated dad" width="180" height="234" />
     <h1 class="brand">eDad</h1>
     <p class="tagline">the dad you never had</p>
     <ul class="traits">
@@ -55,7 +52,7 @@
 
     <section class="messages" id="messages" aria-live="polite">
       <div class="msg dad-msg">
-        <div class="avatar">👨</div>
+        <div class="avatar"><img src="dad-avatar.svg" alt="eDad" width="34" height="34" /></div>
         <div class="bubble">
           <p>well look who finally came around, champ. pull up a chair. what's on your mind?</p>
         </div>
@@ -152,7 +149,12 @@ function addMessage(role, text) {
   wrap.className = "msg " + (role === "user" ? "user-msg" : "dad-msg");
   const avatar = document.createElement("div");
   avatar.className = "avatar";
-  avatar.textContent = role === "user" ? "🫵" : "👨";
+  const avatarImg = document.createElement("img");
+  avatarImg.src = role === "user" ? "you-avatar.svg" : "dad-avatar.svg";
+  avatarImg.alt = role === "user" ? "you" : "eDad";
+  avatarImg.width = 34;
+  avatarImg.height = 34;
+  avatar.appendChild(avatarImg);
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   const p = document.createElement("p");

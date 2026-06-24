@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="ogTitle ogDesc">
+  <title id="ogTitle">eDad social card</title>
+  <desc id="ogDesc">A dark premium social card for eDad with a gold wordmark, cream italic tagline, and illustrated eDad portrait.</desc>
+  <defs>
+    <radialGradient id="ogBg" cx="76%" cy="28%" r="72%">
+      <stop offset="0" stop-color="#262630"/>
+      <stop offset="0.45" stop-color="#1c1c22"/>
+      <stop offset="1" stop-color="#0b0b0d"/>
+    </radialGradient>
+    <radialGradient id="ogGlow" cx="67%" cy="17%" r="54%">
+      <stop offset="0" stop-color="#c79a3f" stop-opacity="0.38"/>
+      <stop offset="0.44" stop-color="#8a6a24" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#0b0b0d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ogFace" x1="820" y1="116" x2="1000" y2="414" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d3aa84"/>
+      <stop offset="0.6" stop-color="#c99d76"/>
+      <stop offset="1" stop-color="#b8845e"/>
+    </linearGradient>
+    <linearGradient id="ogSweater" x1="790" y1="502" x2="1075" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6a5842"/>
+      <stop offset="0.64" stop-color="#5b4a36"/>
+      <stop offset="1" stop-color="#332c26"/>
+    </linearGradient>
+    <filter id="ogShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#0b0b0d" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0b0b0d"/>
+  <rect width="1200" height="630" fill="url(#ogBg)"/>
+  <rect width="1200" height="630" fill="url(#ogGlow)"/>
+  <path d="M75 498c187 35 358 31 512-14 143-42 280-49 410-22 58 12 100 31 128 56v112H75z" fill="#0b0b0d" opacity="0.26"/>
+
+  <g transform="translate(88 105)">
+    <text x="0" y="110" fill="#c79a3f" font-family="Georgia, 'Times New Roman', serif" font-size="132" font-weight="700" letter-spacing="-2">eDad</text>
+    <text x="6" y="178" fill="#ebe6d9" font-family="Georgia, 'Times New Roman', serif" font-size="44" font-style="italic">the dad you never had</text>
+    <path d="M8 223h294" stroke="#8a6a24" stroke-width="4" stroke-linecap="round" opacity="0.62"/>
+    <text x="4" y="435" fill="#8a8579" font-family="Inter, Avenir, Helvetica, Arial, sans-serif" font-size="26" font-weight="600" letter-spacing="2">POWERED BY ELIZA CLOUD</text>
+  </g>
+
+  <g filter="url(#ogShadow)">
+    <ellipse cx="938" cy="316" rx="242" ry="260" fill="#1c1c22" opacity="0.62"/>
+    <ellipse cx="858" cy="142" rx="160" ry="138" fill="#c79a3f" opacity="0.06"/>
+
+    <path d="M744 630c9-74 44-123 105-147 36-15 77-18 117-8 91 21 144 76 156 155z" fill="#161417"/>
+    <path d="M765 630c11-53 41-88 88-105 28-10 59-12 90-5 67 15 106 53 116 110z" fill="url(#ogSweater)"/>
+    <path d="M822 528c36 38 72 70 109 94 37-24 73-56 109-94-33-21-69-31-109-31s-76 10-109 31z" fill="#76634d"/>
+    <path d="M858 488l73 102 74-102c-47 21-98 21-147 0z" fill="#c99d76"/>
+    <path d="M880 511l51 61 53-61c-34 11-69 11-104 0z" fill="#e1d7c8" opacity="0.9"/>
+    <path d="M891 404h80l5 80c-27 26-64 26-90 0z" fill="#c99d76"/>
+    <path d="M884 443c29 18 63 18 92 0l-4 32c-25 18-58 18-84 0z" fill="#8d5f42" opacity="0.2"/>
+
+    <path d="M817 249c-18-3-32 11-29 38 4 29 21 46 43 40z" fill="#bf8f67"/>
+    <path d="M1029 249c18-3 32 11 29 38-4 29-21 46-43 40z" fill="#b8845e"/>
+    <path d="M801 268c12 2 21 11 24 28" fill="none" stroke="#8d5f42" stroke-width="5" stroke-linecap="round" opacity="0.36"/>
+    <path d="M1045 268c-12 2-21 11-24 28" fill="none" stroke="#7b5238" stroke-width="5" stroke-linecap="round" opacity="0.3"/>
+
+    <path d="M923 110c69 0 115 52 115 144 0 88-45 159-115 159s-115-71-115-159c0-92 46-144 115-144z" fill="url(#ogFace)"/>
+    <path d="M830 276c5 60 39 104 93 104 52 0 86-40 93-101 4 70-33 126-93 133-62-7-100-64-93-136z" fill="#7b5238" opacity="0.16"/>
+    <ellipse cx="878" cy="307" rx="22" ry="12" fill="#d7a982" opacity="0.24"/>
+    <ellipse cx="968" cy="307" rx="22" ry="12" fill="#a87452" opacity="0.14"/>
+
+    <path d="M808 250c-8-65 15-115 64-142 42-23 101-22 140 2 39 24 58 72 49 136-19-44-48-70-86-77-18 21-48 32-90 30-34-1-60 15-77 51z" fill="#28292d"/>
+    <path d="M820 233c19-52 53-85 103-99 31-9 64-3 96 16-34-4-65 1-93 16-25 14-43 34-54 59-18 1-35 4-52 8z" fill="#55575a"/>
+    <path d="M844 154c23-27 56-42 98-46 21-2 44 3 67 15-35-4-66 2-94 17-24 12-43 28-58 48z" fill="#c9cbc4" opacity="0.38"/>
+    <path d="M820 236c22-24 36-53 40-87 13 28 39 42 76 43 42 1 74 16 98 46-4-71-43-115-112-115-68 0-107 44-102 113z" fill="#232428"/>
+    <path d="M826 232c-2-56 29-98 90-125" fill="none" stroke="#c79a3f" stroke-width="7" stroke-linecap="round" opacity="0.44"/>
+    <path d="M1033 232c10 22 13 48 7 78" fill="none" stroke="#c79a3f" stroke-width="5" stroke-linecap="round" opacity="0.28"/>
+    <path d="M862 156c15-12 32-20 52-25" fill="none" stroke="#ebe6d9" stroke-width="5" stroke-linecap="round" opacity="0.25"/>
+    <path d="M940 143c22 2 41 8 57 20" fill="none" stroke="#8a8579" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
+
+    <path d="M856 250c17-12 38-14 58-7" fill="none" stroke="#3c3d3f" stroke-width="7" stroke-linecap="round" opacity="0.78"/>
+    <path d="M932 243c20-7 41-5 58 7" fill="none" stroke="#3c3d3f" stroke-width="7" stroke-linecap="round" opacity="0.78"/>
+    <circle cx="887" cy="274" r="32" fill="#ebe6d9" opacity="0.07"/>
+    <circle cx="959" cy="274" r="32" fill="#ebe6d9" opacity="0.07"/>
+    <circle cx="887" cy="274" r="33" fill="none" stroke="#c79a3f" stroke-width="6"/>
+    <circle cx="959" cy="274" r="33" fill="none" stroke="#c79a3f" stroke-width="6"/>
+    <path d="M920 274h6" fill="none" stroke="#c79a3f" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M855 271l-30-12" fill="none" stroke="#c79a3f" stroke-width="4.5" stroke-linecap="round" opacity="0.78"/>
+    <path d="M991 271l30-12" fill="none" stroke="#c79a3f" stroke-width="4.5" stroke-linecap="round" opacity="0.78"/>
+    <ellipse cx="887" cy="276" rx="9.5" ry="12.5" fill="#151316"/>
+    <ellipse cx="959" cy="276" rx="9.5" ry="12.5" fill="#151316"/>
+    <circle cx="890" cy="271" r="2.8" fill="#f7f1e6"/>
+    <circle cx="962" cy="271" r="2.8" fill="#f7f1e6"/>
+
+    <path d="M924 292c-2 17-8 34-18 49 11 9 26 9 37 0" fill="none" stroke="#8d5f42" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.46"/>
+    <path d="M922 330c-22-15-50-13-68 5 20 22 49 23 70 3z" fill="#c9cbc4"/>
+    <path d="M925 330c22-15 50-13 68 5-20 22-49 23-70 3z" fill="#b8bab5"/>
+    <path d="M923 331c-14-7-31-7-48 0" fill="none" stroke="#7f817d" stroke-width="4.5" stroke-linecap="round" opacity="0.46"/>
+    <path d="M925 331c14-7 31-7 48 0" fill="none" stroke="#6f716e" stroke-width="4.5" stroke-linecap="round" opacity="0.46"/>
+    <path d="M897 366c17 15 38 15 55 0" fill="none" stroke="#6b3f33" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M908 382c13 5 27 5 40 0" fill="none" stroke="#e0b891" stroke-width="3.5" stroke-linecap="round" opacity="0.34"/>
+    <path d="M833 289c-1 79 43 132 100 126 52-6 83-54 82-126" fill="none" stroke="#0b0b0d" stroke-width="4.5" stroke-linecap="round" opacity="0.16"/>
+    <path d="M1041 470c32 34 54 82 62 160" fill="none" stroke="#c79a3f" stroke-width="4" stroke-linecap="round" opacity="0.32"/>
+  </g>
+</svg>

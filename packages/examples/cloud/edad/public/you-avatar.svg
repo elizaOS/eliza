@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="youAvatarTitle youAvatarDesc">
+  <title id="youAvatarTitle">Your avatar</title>
+  <desc id="youAvatarDesc">A simple gender-neutral cream person silhouette with a thin gold outline on a dark disc.</desc>
+  <circle cx="64" cy="64" r="61.5" fill="#2a2730" stroke="#c79a3f" stroke-width="3"/>
+  <circle cx="64" cy="48" r="24" fill="#ebe6d9"/>
+  <path d="M25 115c5-28 20-45 39-45s34 17 39 45z" fill="#ebe6d9"/>
+  <path d="M32 112c7-21 18-31 32-31s25 10 32 31" fill="none" stroke="#8a8579" stroke-width="5" stroke-linecap="round" opacity="0.36"/>
+  <path d="M44 30c7-8 15-12 25-11 8 1 15 5 20 11" fill="none" stroke="#c79a3f" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+</svg>
