@@ -5,15 +5,22 @@
   "npmName": "@elizaos/plugin-phone",
   "version": "2.0.3-beta.2",
   "source": "bundled",
-  "tags": ["device", "phone"],
+  "tags": [
+    "device",
+    "phone"
+  ],
   "config": {},
   "render": {
-    "visible": true,
-    "pinTo": [],
+    "visible": false,
+    "pinTo": [
+      "os-shell"
+    ],
     "style": "card",
     "icon": "Phone",
-    "group": "device",
-    "actions": ["enable"]
+    "group": "system",
+    "actions": [
+      "enable"
+    ]
   },
   "resources": {
     "homepage": "https://elizaos.ai",
