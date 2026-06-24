@@ -44,11 +44,14 @@ import {
 // ---------------------------------------------------------------------------
 
 let tmpRoot: string;
+const openCaches: FirstLineCache[] = [];
 
 function makeCache(
 	opts: Partial<ConstructorParameters<typeof FirstLineCache>[0]> = {},
 ): FirstLineCache {
-	return new FirstLineCache({ rootDir: tmpRoot, ...opts });
+	const cache = new FirstLineCache({ rootDir: tmpRoot, ...opts });
+	openCaches.push(cache);
+	return cache;
 }
 
 function makeKey(over: Partial<FirstLineCacheKey> = {}): FirstLineCacheKey {
@@ -99,7 +102,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	rmSync(tmpRoot, { recursive: true, force: true });
+	// Close caches before rmSync — an open SQLite (WAL) handle blocks directory
+	// removal on Windows (EBUSY/EPERM). close() is idempotent, so closing here
+	// after a test's own explicit close() is safe.
+	for (const cache of openCaches.splice(0)) cache.close();
+	rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 // ===========================================================================

@@ -16,9 +16,12 @@ import {
 } from "../src/services/voice/wrap-with-first-line-cache";
 
 let tmpRoot: string;
+const openCaches: FirstLineCache[] = [];
 
 function makeCache(disabled = false): FirstLineCache {
-	return new FirstLineCache({ rootDir: tmpRoot, disabled });
+	const cache = new FirstLineCache({ rootDir: tmpRoot, disabled });
+	openCaches.push(cache);
+	return cache;
 }
 
 function makeRuntime(): IAgentRuntime {
@@ -48,7 +51,10 @@ beforeEach(() => {
 	tmpRoot = mkdtempSync(path.join(tmpdir(), "fl-wrap-"));
 });
 afterEach(() => {
-	rmSync(tmpRoot, { recursive: true, force: true });
+	// Close caches before rmSync — an open SQLite (WAL) handle blocks directory
+	// removal on Windows (EBUSY/EPERM). close() is idempotent.
+	for (const cache of openCaches.splice(0)) cache.close();
+	rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 describe("wrapWithFirstLineCache — short-circuit conditions", () => {
