@@ -10,6 +10,9 @@ import { BottomNav } from "@/components/shared/BottomNav";
 import { MobileHeader } from "@/components/shared/MobileHeader";
 import { Sidebar } from "@/components/shared/Sidebar";
 
+const ENABLE_VERCEL_OBSERVABILITY =
+  process.env.NEXT_PUBLIC_ENABLE_VERCEL_OBSERVABILITY === "1";
+
 export function FullAppShellClient({
   children,
 }: {
@@ -57,8 +60,12 @@ export function FullAppShellClient({
           <FeedAuthBanner />
         </Suspense>
       </div>
-      <Analytics />
-      <GatedSpeedInsights />
+      {ENABLE_VERCEL_OBSERVABILITY ? (
+        <>
+          <Analytics />
+          <GatedSpeedInsights />
+        </>
+      ) : null}
     </Providers>
   );
 }

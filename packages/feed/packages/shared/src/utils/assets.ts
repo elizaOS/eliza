@@ -58,6 +58,28 @@ export function getStaticAssetUrl(path: string, cdnBaseUrl?: string): string {
 export const TOTAL_AGENT_DEFAULT_PROFILE_PICTURES = 150;
 
 const AGENT_DEFAULT_PROFILE_DIR = "/assets/user-pfps";
+const BUNDLED_DEFAULT_PROFILE_IMAGE = "/blankmonkey.png";
+
+function hasStaticAssetsCdn(cdnBaseUrl?: string): boolean {
+  return Boolean(
+    cdnBaseUrl ||
+      (typeof process !== "undefined" &&
+        process.env.NEXT_PUBLIC_STATIC_ASSETS_URL),
+  );
+}
+
+function getPresetProfileImageUrl(
+  index1Based: number,
+  cdnBaseUrl?: string,
+): string {
+  if (!hasStaticAssetsCdn(cdnBaseUrl)) {
+    return getStaticAssetUrl(BUNDLED_DEFAULT_PROFILE_IMAGE);
+  }
+  return getStaticAssetUrl(
+    `${AGENT_DEFAULT_PROFILE_DIR}/pfp-${String(index1Based).padStart(3, "0")}.png`,
+    cdnBaseUrl,
+  );
+}
 
 /**
  * Get deterministic fallback profile image based on ID
@@ -78,10 +100,7 @@ export function getFallbackProfileImageUrl(
     0,
   );
   const profileNum = (hash % TOTAL_AGENT_DEFAULT_PROFILE_PICTURES) + 1;
-  return getStaticAssetUrl(
-    `${AGENT_DEFAULT_PROFILE_DIR}/pfp-${String(profileNum).padStart(3, "0")}.png`,
-    cdnBaseUrl,
-  );
+  return getPresetProfileImageUrl(profileNum, cdnBaseUrl);
 }
 
 /**
@@ -96,10 +115,7 @@ export function getAgentDefaultProfileImageUrl(
     TOTAL_AGENT_DEFAULT_PROFILE_PICTURES,
     Math.max(1, Math.floor(index1Based)),
   );
-  return getStaticAssetUrl(
-    `${AGENT_DEFAULT_PROFILE_DIR}/pfp-${String(n).padStart(3, "0")}.png`,
-    cdnBaseUrl,
-  );
+  return getPresetProfileImageUrl(n, cdnBaseUrl);
 }
 
 /** Uniform random index in 1..TOTAL_AGENT_DEFAULT_PROFILE_PICTURES for new agent avatars. */
