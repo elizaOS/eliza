@@ -4,228 +4,64 @@ import {
 	selectVoiceBackend,
 } from "../runtime-selection";
 
+// OmniVoice TTS was retired — Kokoro is the only on-device TTS backend, so the
+// selector collapses to a single answer: Kokoro when its artifacts are present,
+// else a hard error (never a silent downgrade).
 describe("selectVoiceBackend", () => {
-	it("mobile: always picks Kokoro, ignoring mode and tier policy", () => {
-		const d = selectVoiceBackend({
-			mobile: true,
-			mode: "omnivoice",
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-			tierVoiceBackends: ["omnivoice"],
-		});
+	it("returns Kokoro when artifacts are present", () => {
+		const d = selectVoiceBackend({ kokoroAvailable: true });
+		expect(d.backend).toBe("kokoro");
+		expect(d.reason).toMatch(/Kokoro/);
+	});
+
+	it("returns Kokoro on mobile", () => {
+		const d = selectVoiceBackend({ mobile: true, kokoroAvailable: true });
 		expect(d.backend).toBe("kokoro");
 		expect(d.reason).toMatch(/mobile/);
 	});
 
-	it("mobile: throws when Kokoro artifacts are missing (no OmniVoice fallback)", () => {
+	it("returns Kokoro regardless of mode (kokoro and auto both resolve to Kokoro)", () => {
+		expect(
+			selectVoiceBackend({ mode: "kokoro", kokoroAvailable: true }).backend,
+		).toBe("kokoro");
+		expect(
+			selectVoiceBackend({ mode: "auto", kokoroAvailable: true }).backend,
+		).toBe("kokoro");
+	});
+
+	it("throws when Kokoro artifacts are missing — no fallback", () => {
+		expect(() => selectVoiceBackend({ kokoroAvailable: false })).toThrow(
+			/Kokoro model artifacts are not present/,
+		);
 		expect(() =>
-			selectVoiceBackend({
-				mobile: true,
-				kokoroAvailable: false,
-				omnivoiceAvailable: true,
-			}),
-		).toThrow(/mobile/);
-	});
-
-	it("forces Kokoro when mode=kokoro and artifacts are present", () => {
-		const d = selectVoiceBackend({
-			mode: "kokoro",
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-		});
-		expect(d.backend).toBe("kokoro");
-		expect(d.reason).toMatch(/forced/);
-	});
-
-	it("throws when mode=kokoro but artifacts are missing", () => {
-		expect(() =>
-			selectVoiceBackend({
-				mode: "kokoro",
-				kokoroAvailable: false,
-				omnivoiceAvailable: true,
-			}),
-		).toThrow(/Kokoro/);
-	});
-
-	it("forces OmniVoice when mode=omnivoice", () => {
-		const d = selectVoiceBackend({
-			mode: "omnivoice",
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-		});
-		expect(d.backend).toBe("omnivoice");
-	});
-
-	it("auto: requireVoiceCloning routes to OmniVoice", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			requireVoiceCloning: true,
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-		});
-		expect(d.backend).toBe("omnivoice");
-		expect(d.reason).toMatch(/cloning/);
-	});
-
-	it("auto: requireVoiceCloning with no OmniVoice throws", () => {
-		expect(() =>
-			selectVoiceBackend({
-				mode: "auto",
-				requireVoiceCloning: true,
-				kokoroAvailable: true,
-				omnivoiceAvailable: false,
-			}),
-		).toThrow(/cloning/);
-	});
-
-	it("auto: low targetTtfaMs (<200) prefers Kokoro", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			targetTtfaMs: 120,
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-		});
-		expect(d.backend).toBe("kokoro");
-		expect(d.reason).toMatch(/97ms/);
-	});
-
-	it("auto: low targetTtfaMs with no Kokoro falls back to OmniVoice", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			targetTtfaMs: 120,
-			kokoroAvailable: false,
-			omnivoiceAvailable: true,
-		});
-		expect(d.backend).toBe("omnivoice");
-	});
-
-	it("auto: Kokoro RTF beats OmniVoice by ≥10% → Kokoro", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			kokoroRtf: 2.5,
-			omnivoiceRtf: 2.0,
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-		});
-		expect(d.backend).toBe("kokoro");
-	});
-
-	it("auto: Kokoro RTF only marginally better → OmniVoice default", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			kokoroRtf: 2.05,
-			omnivoiceRtf: 2.0,
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-		});
-		expect(d.backend).toBe("omnivoice");
-	});
-
-	it("auto: Kokoro RTF measured but OmniVoice unmeasured → Kokoro", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			kokoroRtf: 1.5,
-			omnivoiceRtf: null,
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-		});
-		expect(d.backend).toBe("kokoro");
-	});
-
-	it("auto: OmniVoice missing but Kokoro present → Kokoro", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			kokoroAvailable: true,
-			omnivoiceAvailable: false,
-		});
-		expect(d.backend).toBe("kokoro");
-	});
-
-	it("auto: neither backend available throws", () => {
-		expect(() =>
-			selectVoiceBackend({
-				mode: "auto",
-				kokoroAvailable: false,
-				omnivoiceAvailable: false,
-			}),
-		).toThrow(/no TTS backend/);
-	});
-
-	it("auto: default (no overrides, no tier policy) picks OmniVoice", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-		});
-		expect(d.backend).toBe("omnivoice");
-		expect(d.reason).toMatch(/default/);
-	});
-
-	it("auto: tier policy [kokoro] picks Kokoro", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-			tierVoiceBackends: ["kokoro"],
-		});
-		expect(d.backend).toBe("kokoro");
-		expect(d.reason).toMatch(/tier default/);
-	});
-
-	it("auto: tier policy [kokoro, omnivoice] picks Kokoro (first wins)", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-			tierVoiceBackends: ["kokoro", "omnivoice"],
-		});
-		expect(d.backend).toBe("kokoro");
-	});
-
-	it("auto: tier policy [omnivoice] picks OmniVoice", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-			tierVoiceBackends: ["omnivoice"],
-		});
-		expect(d.backend).toBe("omnivoice");
-		expect(d.reason).toMatch(/tier default/);
-	});
-
-	it("auto: tier policy is overridden by requireVoiceCloning", () => {
-		const d = selectVoiceBackend({
-			mode: "auto",
-			kokoroAvailable: true,
-			omnivoiceAvailable: true,
-			tierVoiceBackends: ["kokoro"],
-			requireVoiceCloning: true,
-		});
-		expect(d.backend).toBe("omnivoice");
-		expect(d.reason).toMatch(/cloning/);
+			selectVoiceBackend({ mobile: true, kokoroAvailable: false }),
+		).toThrow(/Kokoro model artifacts are not present/);
 	});
 });
 
 describe("readVoiceBackendModeFromEnv", () => {
-	it("returns undefined when env var is unset", () => {
-		expect(readVoiceBackendModeFromEnv({})).toBeUndefined();
-	});
-
-	it("parses each valid value", () => {
+	it("parses 'kokoro' and 'auto'", () => {
 		expect(readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "kokoro" })).toBe(
 			"kokoro",
 		);
-		expect(
-			readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "OMNIVOICE" }),
-		).toBe("omnivoice");
-		expect(readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "auto" })).toBe(
+		expect(readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "AUTO" })).toBe(
 			"auto",
 		);
 	});
 
-	it("throws on an invalid value", () => {
+	it("returns undefined when unset", () => {
+		expect(readVoiceBackendModeFromEnv({})).toBeUndefined();
+	});
+
+	it("rejects the retired 'omnivoice' value with a migration message", () => {
 		expect(() =>
-			readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "garbage" }),
-		).toThrow();
+			readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "omnivoice" }),
+		).toThrow(/retired/);
+	});
+
+	it("rejects any other value", () => {
+		expect(() =>
+			readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "bogus" }),
+		).toThrow(/must be 'kokoro' or 'auto'/);
 	});
 });

@@ -47,11 +47,8 @@ import { resolveDefaultPoolSize } from "./session-pool";
 import type { InstalledModel } from "./types";
 import type { CoordinatorRuntime } from "./voice/cancellation-coordinator";
 import {
-	createKokoroSpeakerPreset,
-	createKokoroTtsBackend,
 	EngineVoiceBridge,
 	type EngineVoiceBridgeOptions,
-	isOmniVoiceBundleAvailable,
 	VoiceStartupError,
 } from "./voice/engine-bridge";
 import type { AsrWordTiming } from "./voice/ffi-bindings";
@@ -59,7 +56,6 @@ import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discover
 import {
 	readVoiceBackendModeFromEnv,
 	selectVoiceBackend,
-	type VoiceBackendChoice,
 } from "./voice/kokoro/runtime-selection";
 import type { VoicePipelineEvents } from "./voice/pipeline";
 import { type MtpTextRunner, mtpTextRunner } from "./voice/pipeline-impls";
@@ -182,31 +178,26 @@ export type GenerateArgs = BackendGenerateArgs;
 interface ActiveEliza1Bundle {
 	root: string;
 	tierId: Eliza1TierId;
-	voiceBackends?: ReadonlyArray<VoiceBackendChoice>;
 }
 
 function resolveActiveEliza1Bundle(
 	target: InstalledModel | undefined,
-	catalog: ReturnType<typeof findCatalogModel>,
 ): ActiveEliza1Bundle | null {
 	if (!target?.bundleRoot) return null;
 	if (!ELIZA_1_PLACEHOLDER_IDS.has(target.id)) return null;
 	return {
 		root: target.bundleRoot,
 		tierId: target.id as Eliza1TierId,
-		voiceBackends: catalog?.voiceBackends,
 	};
 }
 
 function resolveDirectEliza1Bundle(
 	args: LocalInferenceLoadArgs | undefined,
-	catalog: ReturnType<typeof findCatalogModel>,
 ): ActiveEliza1Bundle | null {
 	if (!args?.modelId || !ELIZA_1_PLACEHOLDER_IDS.has(args.modelId)) return null;
 	return {
 		root: path.dirname(path.dirname(args.modelPath)),
 		tierId: args.modelId as Eliza1TierId,
-		voiceBackends: catalog?.voiceBackends,
 	};
 }
 
@@ -580,8 +571,7 @@ export class LocalInferenceEngine {
 		// `bundleRoot` and an `eliza-1-<tier>` id. Reset on every load — a
 		// non-Eliza-1 model clears it.
 		this.activeEliza1Bundle =
-			resolveActiveEliza1Bundle(target, catalog) ??
-			resolveDirectEliza1Bundle(resolved, catalog);
+			resolveActiveEliza1Bundle(target) ?? resolveDirectEliza1Bundle(resolved);
 
 		// Resolved args (when provided) carry the merged catalog defaults +
 		// per-load overrides from the active-model coordinator. Project them
@@ -1035,67 +1025,21 @@ export class LocalInferenceEngine {
 					mode,
 					mobile: isMobilePlatform(),
 					kokoroAvailable: kokoro !== null,
-					omnivoiceAvailable: isOmniVoiceBundleAvailable(bundle.root),
-					tierVoiceBackends: bundle.voiceBackends,
 				});
 				logger.info(
 					`[voice] Selected ${decision.backend} backend for ${bundle.tierId}: ${decision.reason}`,
 				);
-				if (decision.backend === "kokoro") {
-					if (!kokoro) {
-						throw new VoiceStartupError(
-							"missing-bundle-root",
-							"[voice] Kokoro was selected but its model artifacts are not staged under <stateDir>/local-inference/models/kokoro/.",
-						);
-					}
-					bridge = this.startVoice({
-						bundleRoot: "",
-						useFfiBackend: false,
-						kokoroOnly: kokoro,
-					});
-				} else {
-					const { ensureSamanthaPresetReady } = await import(
-						"./voice/samantha-preset-regenerator"
+				if (!kokoro) {
+					throw new VoiceStartupError(
+						"missing-bundle-root",
+						"[voice] Kokoro was selected but its model artifacts are not staged under <stateDir>/local-inference/models/kokoro/.",
 					);
-					const outcome = await ensureSamanthaPresetReady(bundle.root);
-					if (outcome.kind === "regenerated") {
-						logger.info(
-							`[voice] regenerated Samantha preset on first boot: ${outcome.bytes} bytes (K=${outcome.K}, refT=${outcome.refT})`,
-						);
-					} else if (outcome.kind === "placeholder-no-regen") {
-						logger.warn(
-							`[voice] Samantha preset is the I-wave placeholder and on-the-fly regen is unavailable (reason=${outcome.reason}, detail=${outcome.detail}). Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md or plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs to produce a real preset.`,
-						);
-						if (
-							mode !== "omnivoice" &&
-							kokoro &&
-							bundle.voiceBackends?.includes("kokoro")
-						) {
-							logger.warn(
-								`[voice] Falling back to bundled Kokoro voice ${kokoro.defaultVoiceId} from ${kokoro.layout.root} because OmniVoice has only the placeholder Samantha preset.`,
-							);
-							bridge = this.startVoice({
-								bundleRoot: bundle.root,
-								useFfiBackend: true,
-								speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
-								ttsBackendOverride: createKokoroTtsBackend(kokoro, {
-									bundleRoot: bundle.root,
-								}),
-							});
-						} else if (mode !== "omnivoice") {
-							throw new VoiceStartupError(
-								"missing-speaker-preset",
-								`[voice] OmniVoice selected for ${bundle.tierId}, but its Samantha preset is still the placeholder and no bundle-supported Kokoro fallback is staged. ${outcome.detail}`,
-							);
-						}
-					}
-					if (!bridge) {
-						bridge = this.startVoice({
-							bundleRoot: bundle.root,
-							useFfiBackend: true,
-						});
-					}
 				}
+				bridge = this.startVoice({
+					bundleRoot: "",
+					useFfiBackend: false,
+					kokoroOnly: kokoro,
+				});
 			} else {
 				// No Eliza-1 bundle. Fall back to the Kokoro-only path when its
 				// artifacts are staged. No silent degrade: when both are absent
