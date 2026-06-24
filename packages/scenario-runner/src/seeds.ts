@@ -129,6 +129,22 @@ type GmailInboxSeed = {
   fixtures?: unknown;
   requiredMessageIds?: unknown;
   clearLedger?: unknown;
+  faultInjection?: unknown;
+};
+
+type GmailFaultInjectionSeed = {
+  mode?: unknown;
+  method?: unknown;
+  path?: unknown;
+  endpoint?: unknown;
+  limit?: unknown;
+};
+
+type GmailFaultInjectionConfig = {
+  mode: "auth_expired" | "rate_limit" | "server_error";
+  method: string;
+  path: string;
+  remaining?: number;
 };
 
 type MemoryContactSeed = {
@@ -483,6 +499,86 @@ async function clearGmailMockLedger(baseUrl: string): Promise<void> {
   }
 }
 
+async function clearGmailMockFault(baseUrl: string): Promise<void> {
+  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
+    method: "DELETE",
+  });
+  if (response.ok || response.status === 404) {
+    return;
+  }
+  throw new Error(`Gmail mock fault reset failed with HTTP ${response.status}`);
+}
+
+function normalizeGmailFaultMode(
+  value: unknown,
+): GmailFaultInjectionConfig["mode"] | null {
+  const mode = readNonEmptyString(value);
+  if (
+    mode === "auth_expired" ||
+    mode === "rate_limit" ||
+    mode === "server_error"
+  ) {
+    return mode;
+  }
+  return null;
+}
+
+function normalizeGmailFaultInjection(
+  value: unknown,
+): GmailFaultInjectionConfig | string | null {
+  if (value === undefined || value === null || value === false) {
+    return null;
+  }
+  if (!value || typeof value !== "object") {
+    return "gmailInbox faultInjection must be an object";
+  }
+  const seed = value as GmailFaultInjectionSeed;
+  const mode = normalizeGmailFaultMode(seed.mode);
+  if (!mode) {
+    return "gmailInbox faultInjection.mode must be auth_expired, rate_limit, or server_error";
+  }
+  const rawMethod = readNonEmptyString(seed.method);
+  const rawPath =
+    readNonEmptyString(seed.path) ?? readNonEmptyString(seed.endpoint);
+  const path = rawPath
+    ? rawPath.startsWith("/")
+      ? rawPath
+      : `/${rawPath}`
+    : "/gmail/v1/users/me/messages";
+  let remaining: number | undefined;
+  if (seed.limit !== undefined && seed.limit !== null) {
+    if (
+      typeof seed.limit !== "number" ||
+      !Number.isFinite(seed.limit) ||
+      seed.limit < 0
+    ) {
+      return "gmailInbox faultInjection.limit must be a non-negative number";
+    }
+    remaining = Math.floor(seed.limit);
+  }
+  return {
+    mode,
+    method: (rawMethod ?? "GET").toUpperCase(),
+    path,
+    ...(remaining !== undefined ? { remaining } : {}),
+  };
+}
+
+async function configureGmailMockFault(
+  baseUrl: string,
+  fault: GmailFaultInjectionConfig,
+): Promise<string | undefined> {
+  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fault),
+  });
+  if (response.ok) {
+    return undefined;
+  }
+  return `Gmail mock faultInjection setup failed with HTTP ${response.status}`;
+}
+
 async function requireMockGmailMessage(
   baseUrl: string,
   messageId: string,
@@ -504,6 +600,12 @@ async function seedGmailInbox(
     return "gmailInbox seed requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
   const mockBaseUrl = baseUrl;
+  const faultInjection = normalizeGmailFaultInjection(seed.faultInjection);
+  if (typeof faultInjection === "string") {
+    return faultInjection;
+  }
+
+  await clearGmailMockFault(mockBaseUrl);
 
   const requiredIds = new Set(readStringArray(seed.requiredMessageIds));
   for (const fixture of gmailSeedFixtureNames(seed)) {
@@ -525,6 +627,10 @@ async function seedGmailInbox(
 
   if (seed.clearLedger !== false) {
     await clearGmailMockLedger(mockBaseUrl);
+  }
+
+  if (faultInjection) {
+    return configureGmailMockFault(mockBaseUrl, faultInjection);
   }
 
   return undefined;
