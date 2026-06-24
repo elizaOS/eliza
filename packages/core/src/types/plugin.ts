@@ -1072,8 +1072,8 @@ export interface Plugin {
 	providers?: Provider[];
 	/**
 	 * Pre-LLM action shortcuts (#8791): deterministic slash/`!` commands and
-	 * (flag-gated) natural-language phrases that resolve to a target before the
-	 * first model call. Registered into the runtime's `ShortcutRegistry`.
+	 * confidence-floored natural-language phrases that resolve to a target before
+	 * the first model call. Registered into the runtime's `ShortcutRegistry`.
 	 */
 	shortcuts?: ShortcutDefinition[];
 	evaluators?: RegisteredEvaluator[];

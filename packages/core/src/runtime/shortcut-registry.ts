@@ -159,7 +159,7 @@ export function matchShortcut(
 		return explicit[0] ?? null;
 	}
 
-	// ── Tier 2: natural language — flag-gated, confidence-floored ────────────
+	// ── Tier 2: natural language — caller-enabled, confidence-floored ────────
 	if (!context.allowNatural) return null;
 	const normalized = normalizeForMatch(text);
 	if (!normalized) return null;

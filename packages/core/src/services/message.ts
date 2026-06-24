@@ -5165,8 +5165,8 @@ function collectPreviousActionResults(
  *
  * Matches the user's text against the runtime's `ShortcutRegistry` BEFORE any
  * model call. Explicit slash/`!` commands are always eligible (this is what
- * makes slash commands deterministic per #8790); natural-language shortcuts are
- * gated behind `ELIZA_SHORTCUTS_NL=1`. On a confident `action`-target match the
+ * makes slash commands deterministic per #8790); natural-language shortcuts use
+ * narrow/confidence-floored patterns. On a confident `action`-target match the
  * matched action runs and its reply is returned as a `direct_reply` — emitting
  * ZERO `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the
  * client (the slash menu already runs them locally) so the gate ignores them.
@@ -5192,7 +5192,7 @@ export async function runShortcutGate(args: {
 	const authorized = args.senderRole === "OWNER" || args.senderRole === "ADMIN";
 	const match = registry.match(text, {
 		actions: args.runtime.actions.map((action) => action.name),
-		allowNatural: process.env.ELIZA_SHORTCUTS_NL === "1",
+		allowNatural: true,
 		isAuthorized: authorized,
 		isElevated: args.senderRole === "OWNER",
 	});
@@ -9864,7 +9864,7 @@ export class DefaultMessageService implements IMessageService {
 
 		// #8791: pre-LLM action shortcut gate runs FIRST — before any direct hook,
 		// planner, or model call. An explicit slash/`!` command (always-on) or a
-		// flag-gated natural-language shortcut resolves to a deterministic action
+		// confident natural-language shortcut resolves to a deterministic action
 		// reply with zero inference. Placed here (ahead of the LifeOps/workflow
 		// direct hooks and the conditional v5 stage) so a slash command can never
 		// be pre-empted by another handler.
