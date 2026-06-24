@@ -22,6 +22,7 @@ import { logger } from "../utils/logger";
 import { AppContainerProvider, type AppContainerSsh } from "./app-container-provider";
 import { appContainerStore } from "./app-container-store";
 import type { BuildExec } from "./app-image-builder";
+import { appsService } from "./apps";
 import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
 import { allocateAppContainerHostPort } from "./docker-port-allocation";
@@ -173,6 +174,16 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
       listVerifiedAppOrigins(appId).then((origins) =>
         origins.map((origin) => origin.replace(/^https?:\/\//, "").replace(/\/+$/, "")),
       ),
+    markAppDeployed: async (appId, productionUrl) => {
+      // App ids are UUIDs; a non-UUID project_name (a plain /v1/containers row,
+      // which is not an app) is skipped so this never mis-updates or UUID-casts.
+      if (!/^[0-9a-f-]{36}$/i.test(appId)) return;
+      await appsService.update(appId, {
+        deployment_status: "deployed",
+        production_url: productionUrl,
+        last_deployed_at: new Date(),
+      });
+    },
     ...ingress,
   };
 }
