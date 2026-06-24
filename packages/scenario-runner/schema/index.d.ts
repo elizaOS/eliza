@@ -140,6 +140,7 @@ type CheckBase<Type extends string> = {
 };
 
 type StringMatcher = string | string[];
+type ResponsePattern = string | RegExp;
 
 export type ScenarioTurn = {
   kind?: string;
@@ -154,6 +155,7 @@ export type ScenarioTurn = {
   options?: Record<string, unknown>;
   assertResponse?: ScenarioAssertResponse;
   assertTurn?: (turn: ScenarioTurnExecution) => ScenarioCheckResult;
+  responseIncludesAny?: ResponsePattern[];
   responseJudge?: ScenarioJudgeRubric;
   plannerJudge?: ScenarioJudgeRubric;
   [key: string]: unknown;
