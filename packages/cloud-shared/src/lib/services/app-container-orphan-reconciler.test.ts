@@ -105,6 +105,57 @@ describe("computeOrphanAppContainersToReap", () => {
     );
     expect(orphans.map((o) => o.id).sort()).toEqual(["c-orph", "c-stop"]);
   });
+
+  // REGRESSION (#9234): `containers.name` has NO unique constraint, so one
+  // `app-<slug>` name maps to MANY rows (one per deploy) — routinely a mix like
+  // `[running, stopped]`. Collapsing to a single status per name (last-write-wins
+  // over an unordered `WHERE name IN (...)`) could pick the terminal row and
+  // `docker rm -f` a LIVE customer app. The diff must be FAIL-SAFE: if ANY row
+  // for a name is non-terminal, the live container is NEVER reaped — and the
+  // outcome must not depend on row order (no ORDER BY in the query).
+  test("does NOT reap a name with a running AND a stopped row — running order", () => {
+    const orphans = computeOrphanAppContainersToReap(
+      [container("app-dup", "c-live")],
+      [live("app-dup", "running"), live("app-dup", "stopped")],
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  test("does NOT reap a name with a stopped AND a running row — reversed order", () => {
+    // Same rows, opposite iteration order: a last-write-wins map would collapse
+    // to 'running' here and to 'stopped' above, making reaping order-dependent.
+    const orphans = computeOrphanAppContainersToReap(
+      [container("app-dup", "c-live")],
+      [live("app-dup", "stopped"), live("app-dup", "running")],
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  test("does NOT reap when ANY of several rows is non-terminal (running last)", () => {
+    const orphans = computeOrphanAppContainersToReap(
+      [container("app-dup", "c-live")],
+      [
+        live("app-dup", "failed"),
+        live("app-dup", "stopped"),
+        live("app-dup", "deleted"),
+        live("app-dup", "running"),
+      ],
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  test("reaps a name when EVERY row is terminal (multiple terminal rows)", () => {
+    const orphans = computeOrphanAppContainersToReap(
+      [container("app-dead", "c-dead")],
+      [live("app-dead", "stopped"), live("app-dead", "failed"), live("app-dead", "deleted")],
+    );
+    expect(orphans).toEqual([{ name: "app-dead", id: "c-dead", reason: "terminal_db_row" }]);
+  });
+
+  test("reaps a name with NO rows as no_db_row", () => {
+    const orphans = computeOrphanAppContainersToReap([container("app-gone", "c-gone")], []);
+    expect(orphans).toEqual([{ name: "app-gone", id: "c-gone", reason: "no_db_row" }]);
+  });
 });
 
 describe("reconcileOrphanAppContainers (orchestration)", () => {
