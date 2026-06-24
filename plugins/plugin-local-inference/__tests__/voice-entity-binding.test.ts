@@ -271,6 +271,56 @@ describe("handleLiveVoiceAttribution", () => {
     expect(signal.nextSpeaker).toBe("agent");
   });
 
+  it("acoustic self-voice suppresses even when a wake word fired", async () => {
+    const emitEvent = vi.fn(async () => {});
+    const runtime = { emitEvent } as unknown as IAgentRuntime;
+    const output = attributionOutput({
+      turnId: "agent-echo",
+      entityId: "ent_owner",
+      confidence: 0.95,
+    });
+
+    const signal = await handleLiveVoiceAttribution(runtime, output, {
+      ownerEntityId: "ent_owner",
+      knownSpeakerEntityIds: ["ent_owner"],
+      endOfTurnProbability: 0.95,
+      wakeWordActive: true,
+      agentSpeaking: true,
+      selfVoiceSimilarity: 0.91,
+    });
+
+    expect(signal.agentShouldSpeak).toBe(false);
+    expect(signal.nextSpeaker).toBe("user");
+    expect(
+      (signal as { metadata?: { provenance?: string } }).metadata?.provenance,
+    ).toBe("voice-bridge+self-voice");
+    expect(
+      (signal as { metadata?: { selfVoiceSimilarity?: number } }).metadata
+        ?.selfVoiceSimilarity,
+    ).toBeCloseTo(0.91);
+  });
+
+  it("does not apply self-voice similarity when the reply is stale", async () => {
+    const emitEvent = vi.fn(async () => {});
+    const runtime = { emitEvent } as unknown as IAgentRuntime;
+    const output = attributionOutput({
+      turnId: "stale-agent-like",
+      entityId: "ent_owner",
+      confidence: 0.95,
+    });
+
+    const signal = await handleLiveVoiceAttribution(runtime, output, {
+      ownerEntityId: "ent_owner",
+      knownSpeakerEntityIds: ["ent_owner"],
+      endOfTurnProbability: 0.95,
+      replyAgeMs: 60_000,
+      selfVoiceSimilarity: 0.95,
+    });
+
+    expect(signal.agentShouldSpeak).toBe(true);
+    expect(signal.nextSpeaker).toBe("agent");
+  });
+
   it("an UNKNOWN/unbound speaker is NOT suppressed (fail open)", async () => {
     const emitEvent = vi.fn(async () => {});
     const runtime = { emitEvent } as unknown as IAgentRuntime;

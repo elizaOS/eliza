@@ -194,6 +194,11 @@ export type TurnTranscriber = (
 	sampleRate: number,
 ) => Promise<string | null> | string | null;
 
+export type SelfVoiceSimilarityResolver = (
+	embedding: Float32Array,
+	output: VoiceAttributionOutput,
+) => Promise<number | null | undefined> | number | null | undefined;
+
 // ---------------------------------------------------------------------------
 // Consumer
 // ---------------------------------------------------------------------------
@@ -211,6 +216,12 @@ export interface AudioFrameConsumerDeps {
 	 * absent the path stays diarization-only (transcript `""`, as before).
 	 */
 	transcribe?: TurnTranscriber;
+	/**
+	 * Optional live acoustic self-voice resolver. When wired, the consumer passes
+	 * the turn's WeSpeaker embedding to the host's agent-TTS centroid matcher and
+	 * forwards the resulting cosine into the ambient gate.
+	 */
+	resolveSelfVoiceSimilarity?: SelfVoiceSimilarityResolver;
 }
 
 export interface AudioFrameConsumerConfig {
@@ -260,6 +271,7 @@ export class AudioFrameConsumer {
 	private readonly pipeline: AttributionPipelineLike;
 	private readonly runtime: RuntimeEventSink;
 	private readonly transcribe: TurnTranscriber | null;
+	private readonly resolveSelfVoiceSimilarity: SelfVoiceSimilarityResolver | null;
 	private readonly source: VoiceInputSource | undefined;
 	private readonly attributionOptions: HandleLiveVoiceAttributionOptions;
 	private readonly maxTurnSamples: number;
@@ -296,6 +308,7 @@ export class AudioFrameConsumer {
 		this.pipeline = deps.pipeline;
 		this.runtime = deps.runtime;
 		this.transcribe = deps.transcribe ?? null;
+		this.resolveSelfVoiceSimilarity = deps.resolveSelfVoiceSimilarity ?? null;
 		this.source = config.source;
 		this.attributionOptions = config.attributionOptions ?? {};
 		const sr = AUDIO_FRAME_PIPELINE_SAMPLE_RATE;
@@ -458,7 +471,7 @@ export class AudioFrameConsumer {
 		// carries the real text and live name/entity extraction can fire. ASR is
 		// best-effort: a decode failure degrades to a transcript-less turn (the
 		// diarized speaker is still emitted), never a dropped turn.
-		const opts = await this.resolveTurnOptions(args.pcm);
+		const opts = await this.resolveTurnOptions(args.pcm, output);
 		const signal = await handleLiveVoiceAttribution(
 			this.runtime as Parameters<typeof handleLiveVoiceAttribution>[0],
 			output,
@@ -483,21 +496,31 @@ export class AudioFrameConsumer {
 	 */
 	private async resolveTurnOptions(
 		pcm: Float32Array,
+		output: VoiceAttributionOutput,
 	): Promise<HandleLiveVoiceAttributionOptions> {
-		if (!this.transcribe) return this.attributionOptions;
+		let options = this.attributionOptions;
 		try {
-			const transcript = await this.transcribe(
-				pcm,
-				AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
-			);
-			const trimmed = transcript?.trim();
-			if (trimmed) {
-				return { ...this.attributionOptions, transcript: trimmed };
+			if (this.transcribe) {
+				const transcript = await this.transcribe(
+					pcm,
+					AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
+				);
+				const trimmed = transcript?.trim();
+				if (trimmed) {
+					options = { ...options, transcript: trimmed };
+				}
 			}
 		} catch {
 			this.transcriptionErrors += 1;
 		}
-		return this.attributionOptions;
+		const embedding = output.observation?.embedding;
+		if (this.resolveSelfVoiceSimilarity && embedding) {
+			const similarity = await this.resolveSelfVoiceSimilarity(embedding, output);
+			if (typeof similarity === "number" && Number.isFinite(similarity)) {
+				options = { ...options, selfVoiceSimilarity: similarity };
+			}
+		}
+		return options;
 	}
 
 	// ---- buffering ---------------------------------------------------------
