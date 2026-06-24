@@ -57,6 +57,10 @@ class ScreenCapturePlugin : Plugin() {
     private var virtualDisplay: VirtualDisplay? = null
     private var mediaRecorder: MediaRecorder? = null
     private var imageReader: ImageReader? = null
+    // Dimensions of the warm screenshot VirtualDisplay, so repeated captures at
+    // the same scale reuse it instead of re-creating it each frame.
+    private var screenshotVdWidth = 0
+    private var screenshotVdHeight = 0
 
     // Recording state
     private var isRecording = false
@@ -152,6 +156,17 @@ class ScreenCapturePlugin : Plugin() {
     fun captureScreenshot(call: PluginCall) {
         pendingCall = call
         pendingAction = "screenshot"
+
+        // Reuse an already-granted session projection instead of re-prompting
+        // the system consent dialog on every capture. Continuous screen
+        // understanding (EPIC #9105) captures repeatedly; tearing the projection
+        // down + re-consenting per frame is a battery/latency/UX killer. The
+        // projection is kept warm across captures and only released on
+        // background/destroy or when the system stops it.
+        if (mediaProjection != null) {
+            captureScreenshotInternal(call)
+            return
+        }
 
         val intent = mediaProjectionManager?.createScreenCaptureIntent()
         if (intent != null) {
@@ -353,6 +368,16 @@ class ScreenCapturePlugin : Plugin() {
                 if (isRecording) {
                     scope.launch { stopRecordingInternal() }
                 }
+                // The session projection is gone — drop our warm references so
+                // the next captureScreenshot re-acquires consent cleanly instead
+                // of using a dead projection.
+                virtualDisplay?.release()
+                virtualDisplay = null
+                imageReader?.close()
+                imageReader = null
+                screenshotVdWidth = 0
+                screenshotVdHeight = 0
+                mediaProjection = null
             }
         }, Handler(Looper.getMainLooper()))
 
@@ -370,23 +395,38 @@ class ScreenCapturePlugin : Plugin() {
         val quality = call.getInt("quality") ?: 100
         val scale = call.getFloat("scale") ?: 1f
 
-        val width = (screenWidth * scale).toInt()
-        val height = (screenHeight * scale).toInt()
+        val width = Math.max(1, (screenWidth * scale).toInt())
+        val height = Math.max(1, (screenHeight * scale).toInt())
 
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        // Reuse the warm VirtualDisplay + ImageReader when the requested size
+        // matches; only (re)create them when missing or the scale changed. The
+        // resize itself is native — the VirtualDisplay renders directly at the
+        // target resolution, so the agent never resizes pixels in JS.
+        val warm = virtualDisplay != null &&
+            imageReader != null &&
+            screenshotVdWidth == width &&
+            screenshotVdHeight == height
+        if (!warm) {
+            virtualDisplay?.release()
+            imageReader?.close()
+            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "ScreenCapture",
+                width,
+                height,
+                screenDensity,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader?.surface,
+                null,
+                null
+            )
+            screenshotVdWidth = width
+            screenshotVdHeight = height
+        }
 
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            width,
-            height,
-            screenDensity,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null,
-            null
-        )
-
-        // Brief delay to allow the VirtualDisplay to render a frame
+        // A freshly-created mirror needs ~250ms to render its first frame; a warm
+        // display is already mirroring continuously, so a short settle suffices.
+        val settleMs = if (warm) 60L else 250L
         Handler(Looper.getMainLooper()).postDelayed({
             try {
                 val image = imageReader?.acquireLatestImage()
@@ -412,7 +452,9 @@ class ScreenCapturePlugin : Plugin() {
 
                     val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
 
-                    cleanup()
+                    // Keep the projection + VirtualDisplay warm for the next
+                    // capture — do NOT cleanup() here (that stopped the
+                    // projection and forced a re-consent every frame).
 
                     call.resolve(JSObject().apply {
                         put("base64", base64)
@@ -422,16 +464,35 @@ class ScreenCapturePlugin : Plugin() {
                         put("timestamp", System.currentTimeMillis())
                     })
                 } else {
-                    cleanup()
+                    // Transient empty frame — keep the session warm, just fail
+                    // this one capture so the caller can retry on the next tick.
                     call.reject("Failed to capture screenshot")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Screenshot capture failed", e)
-                cleanup()
+                // A real error may have invalidated the projection — tear it all
+                // down so the next capture re-acquires cleanly.
+                releaseProjection()
                 notifyError("screenshot_failed", "Screenshot failed: ${e.message}")
                 call.reject("Screenshot failed: ${e.message}")
             }
-        }, 250) // 250ms delay to ensure frame is rendered
+        }, settleMs)
+    }
+
+    /**
+     * Full teardown of the warm screenshot projection + its mirror. Use on
+     * background/destroy or after an error invalidates the session. Recording
+     * has its own lifecycle via [cleanup].
+     */
+    private fun releaseProjection() {
+        virtualDisplay?.release()
+        virtualDisplay = null
+        imageReader?.close()
+        imageReader = null
+        screenshotVdWidth = 0
+        screenshotVdHeight = 0
+        mediaProjection?.stop()
+        mediaProjection = null
     }
 
     private fun imageToBitmap(image: Image, width: Int, height: Int): Bitmap {
@@ -755,6 +816,8 @@ class ScreenCapturePlugin : Plugin() {
         virtualDisplay = null
         imageReader?.close()
         imageReader = null
+        screenshotVdWidth = 0
+        screenshotVdHeight = 0
         mediaProjection?.stop()
         mediaProjection = null
     }

@@ -20,10 +20,25 @@ interface CaptureRequest {
   requestId: string;
   createdAt: number;
   displayId?: number;
+  /** Optional agent-requested downscale (0–1 of native resolution). */
+  scale?: number;
+  /** Optional agent-requested JPEG quality (1–100). */
+  quality?: number;
 }
 
 let started = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Frugal screen-understanding defaults: half-res, q70 → tens of KB per frame. */
+function clampScale(scale: number): number {
+  if (!Number.isFinite(scale)) return 0.5;
+  return Math.min(1, Math.max(0.1, scale));
+}
+
+function clampQuality(quality: number): number {
+  if (!Number.isFinite(quality)) return 70;
+  return Math.min(100, Math.max(1, Math.round(quality)));
+}
 
 function isNativeMobile(): boolean {
   try {
@@ -52,8 +67,19 @@ async function postScreenFrame(body: Record<string, unknown>): Promise<void> {
 
 async function serveRequest(request: CaptureRequest): Promise<void> {
   try {
+    // Capture as a scaled JPEG so the resize + encode happen NATIVELY (the
+    // VirtualDisplay renders at the target resolution and Skia compresses) —
+    // the agent never resizes or re-encodes pixels in JS. A ~half-res q70 JPEG
+    // of a phone screen is tens of KB (vs a multi-MB full PNG), which is what
+    // the IMAGE_DESCRIPTION (on-device GPU) describe path wants. Honour an
+    // optional per-request maxScale/quality from the agent, else use frugal
+    // defaults tuned for screen understanding + battery/latency.
+    const scale = clampScale(request.scale ?? 0.5);
+    const quality = clampQuality(request.quality ?? 70);
     const shot = await getScreenCapturePlugin().captureScreenshot({
-      format: "png",
+      format: "jpeg",
+      quality,
+      scale,
     });
     await postScreenFrame({
       requestId: request.requestId,
