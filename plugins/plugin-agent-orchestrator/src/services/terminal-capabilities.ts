@@ -42,15 +42,56 @@ export interface OrchestratorTerminalSupport {
 
 const ANDROID_PATH_ENTRIES = ["/system/bin", "/system/xbin", "/vendor/bin"];
 
-export function isAndroidRuntime(): boolean {
+/** Pure, injectable snapshot of the environment fields the support gate reads. */
+export interface TerminalSupportEnv {
+  platform?: string; // ELIZA_PLATFORM
+  buildVariant?: string; // ELIZA_BUILD_VARIANT
+  runtimeMode?: string; // ELIZA_RUNTIME_MODE | RUNTIME_MODE | LOCAL_RUNTIME_MODE
+  androidRoot?: string; // ANDROID_ROOT
+  androidData?: string; // ANDROID_DATA
+  aospBuild?: string; // ELIZA_AOSP_BUILD
+}
+
+function envPlatform(env: TerminalSupportEnv): string {
+  return env.platform?.trim().toLowerCase() ?? "";
+}
+
+function envIsAndroid(env: TerminalSupportEnv): boolean {
   return (
-    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "android" ||
-    Boolean(process.env.ANDROID_ROOT || process.env.ANDROID_DATA)
+    envPlatform(env) === "android" ||
+    Boolean(env.androidRoot || env.androidData)
   );
 }
 
-function isIosRuntime(): boolean {
-  return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
+function envIsIos(env: TerminalSupportEnv): boolean {
+  return envPlatform(env) === "ios";
+}
+
+function envIsStoreBuild(env: TerminalSupportEnv): boolean {
+  return (env.buildVariant ?? "").trim().toLowerCase() === "store";
+}
+
+function envRuntimeMode(env: TerminalSupportEnv): string {
+  return (env.runtimeMode ?? "").trim().toLowerCase();
+}
+
+/** Snapshot the live process env into a {@link TerminalSupportEnv}. */
+function readTerminalSupportEnv(): TerminalSupportEnv {
+  return {
+    platform: process.env.ELIZA_PLATFORM,
+    buildVariant: process.env.ELIZA_BUILD_VARIANT,
+    runtimeMode:
+      process.env.ELIZA_RUNTIME_MODE ??
+      process.env.RUNTIME_MODE ??
+      process.env.LOCAL_RUNTIME_MODE,
+    androidRoot: process.env.ANDROID_ROOT,
+    androidData: process.env.ANDROID_DATA,
+    aospBuild: process.env.ELIZA_AOSP_BUILD,
+  };
+}
+
+export function isAndroidRuntime(): boolean {
+  return envIsAndroid(readTerminalSupportEnv());
 }
 
 function isTruthyEnv(value: string | undefined): boolean {
@@ -58,20 +99,52 @@ function isTruthyEnv(value: string | undefined): boolean {
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
-function isStoreBuild(): boolean {
-  const variant = process.env.ELIZA_BUILD_VARIANT ?? "";
-  return variant.trim().toLowerCase() === "store";
-}
-
-function runtimeMode(): string {
-  return (
-    process.env.ELIZA_RUNTIME_MODE ??
-    process.env.RUNTIME_MODE ??
-    process.env.LOCAL_RUNTIME_MODE ??
-    ""
-  )
-    .trim()
-    .toLowerCase();
+/**
+ * Pure device-support classifier. Same precedence as
+ * detectOrchestratorTerminalSupport (store > ios > android-mode > android-shell)
+ * but with no process.env / fs reads — callers inject the env snapshot and, for
+ * Android, whether an executable shell is present. Used by the static device
+ * support matrix (#9146) and by detectOrchestratorTerminalSupport itself.
+ */
+export function classifyTerminalSupport(
+  env: TerminalSupportEnv,
+  opts: { androidShellAvailable?: boolean } = {},
+): OrchestratorTerminalSupport {
+  if (envIsStoreBuild(env)) {
+    return {
+      supported: false,
+      reason: "store_build",
+      message:
+        "Coding agents are unavailable in store builds because the OS sandbox blocks spawning local shells and developer CLIs.",
+    };
+  }
+  if (envIsIos(env)) {
+    return {
+      supported: false,
+      reason: "vanilla_mobile",
+      message:
+        "Coding agents are unavailable on iOS because the runtime does not expose shell, coding, or orchestrator subprocess capabilities.",
+    };
+  }
+  if (envIsAndroid(env)) {
+    if (envRuntimeMode(env) !== "local-yolo") {
+      return {
+        supported: false,
+        reason: "not_local_yolo",
+        message:
+          "Android direct/AOSP coding agents require ELIZA_RUNTIME_MODE=local-yolo so subprocesses run in the local agent environment.",
+      };
+    }
+    if (opts.androidShellAvailable === false) {
+      return {
+        supported: false,
+        reason: "missing_shell",
+        message:
+          "Android direct/AOSP coding agents require an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
+      };
+    }
+  }
+  return { supported: true };
 }
 
 export function isAospTerminalRuntime(): boolean {
@@ -205,33 +278,13 @@ export function missingToolMessage(tool: OrchestratorToolName): string {
 }
 
 export function detectOrchestratorTerminalSupport(): OrchestratorTerminalSupport {
-  if (isStoreBuild()) {
-    return {
-      supported: false,
-      reason: "store_build",
-      message:
-        "Coding agents are unavailable in store builds because the OS sandbox blocks spawning local shells and developer CLIs.",
-    };
-  }
-
-  if (isIosRuntime()) {
-    return {
-      supported: false,
-      reason: "vanilla_mobile",
-      message:
-        "Coding agents are unavailable on iOS because the runtime does not expose shell, coding, or orchestrator subprocess capabilities.",
-    };
-  }
-
-  if (isAndroidRuntime()) {
-    if (runtimeMode() !== "local-yolo") {
-      return {
-        supported: false,
-        reason: "not_local_yolo",
-        message:
-          "Android direct/AOSP coding agents require ELIZA_RUNTIME_MODE=local-yolo so subprocesses run in the local agent environment.",
-      };
-    }
+  const env = readTerminalSupportEnv();
+  // The pure classifier covers store / ios / not-local-yolo identically; pass
+  // androidShellAvailable:true so it does not pre-judge the shell — the live
+  // fs check below owns that, preserving the dynamic warning message.
+  const pre = classifyTerminalSupport(env, { androidShellAvailable: true });
+  if (!pre.supported) return pre;
+  if (envIsAndroid(env)) {
     const shell = resolveOrchestratorShell();
     if (!shell.available) {
       return {
@@ -243,6 +296,5 @@ export function detectOrchestratorTerminalSupport(): OrchestratorTerminalSupport
       };
     }
   }
-
   return { supported: true };
 }
