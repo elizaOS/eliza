@@ -10,6 +10,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "require": "./src/index.ts"
+    },
+    "./utils/snowflake": {
+      "types": "./src/utils/snowflake.ts",
+      "import": "./src/utils/snowflake.ts",
+      "require": "./src/utils/snowflake.ts"
     }
   },
   "scripts": {
