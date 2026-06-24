@@ -622,22 +622,29 @@ const SEEDED_TESTIDS = [
 ];
 
 /**
- * The DOM order of the WidgetSection cards inside widget-host-home. The host
- * renders each ranked widget as a direct child; the rendered widget's testid is
- * on its WidgetSection (the host wraps it in an error-boundary fragment, so the
- * WidgetSection is a descendant of the Nth host child). We read the order by
- * walking every known widget testid and sorting by its vertical position.
+ * The rank order of the widgets inside widget-host-home, read from DOM document
+ * order. The host renders each ranked widget as a direct child in importance
+ * order (WidgetHost.tsx `displayed.map`), each wrapped in an error boundary, so
+ * DOM order IS the rank order — robust to the responsive grid that puts two
+ * cards on the same visual row (sorting by getBoundingClientRect().top alone
+ * would tie row-mates). We collect each seeded widget's testid element and sort
+ * by their relative document position.
  */
 async function homeWidgetOrder(page: Page): Promise<string[]> {
   return page.evaluate((testIds: string[]) => {
     const host = document.querySelector('[data-testid="widget-host-home"]');
     if (!host) return [];
-    const present: Array<{ id: string; top: number }> = [];
+    const present: Array<{ id: string; el: Element }> = [];
     for (const id of testIds) {
       const el = host.querySelector(`[data-testid="${id}"]`);
-      if (el) present.push({ id, top: el.getBoundingClientRect().top });
+      if (el) present.push({ id, el });
     }
-    present.sort((a, b) => a.top - b.top);
+    present.sort((a, b) => {
+      if (a.el === b.el) return 0;
+      const position = a.el.compareDocumentPosition(b.el);
+      // DOCUMENT_POSITION_FOLLOWING (4): b comes after a → a first.
+      return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
     return present.map((entry) => entry.id);
   }, SEEDED_TESTIDS);
 }
