@@ -1,4 +1,4 @@
-import { Badge, Button, client, useAppSelector } from "@elizaos/ui";
+import { Button, client, useAppSelector } from "@elizaos/ui";
 import {
   CheckCircle2,
   Clock3,
@@ -263,17 +263,17 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
 
   if (mode !== "mobile") {
     return (
-      <div className="rounded-xl border border-border/60 bg-card/92 px-4 py-4 shadow-sm">
+      <div className="px-1 py-2">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/40">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center">
             <Smartphone className="h-5 w-5 text-muted" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <div className="font-bold text-sm text-txt">{title}</div>
-              <Badge variant="outline">
+              <span className="text-xs text-muted">
                 {translate(t, "permissionssection.mobileOnly", "Mobile only")}
-              </Badge>
+              </span>
             </div>
             <div className="text-xs-tight leading-5 text-muted">
               {translate(
@@ -289,33 +289,39 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
   }
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card/92 shadow-sm">
-      <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="px-1 py-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/40">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center">
             <ShieldBan className="h-5 w-5 text-txt" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <div className="font-bold text-sm text-txt">{title}</div>
-              <Badge variant={badge.variant}>
+              <span
+                className={`inline-flex items-center gap-1 text-xs ${
+                  badge.ready ? "text-ok" : "text-muted"
+                }`}
+              >
                 {badge.ready ? (
                   <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden />
                 ) : null}
                 {badge.label}
-              </Badge>
+              </span>
               {status?.platform ? (
-                <Badge variant="outline">{status.platform.toUpperCase()}</Badge>
+                <span className="text-xs text-muted">
+                  {status.platform.toUpperCase()}
+                </span>
               ) : null}
               {status?.active ? (
-                <Badge variant="secondary">
+                <span className="inline-flex items-center gap-1 text-xs text-muted">
                   <Timer className="mr-1 h-3 w-3" aria-hidden />
                   {translate(
                     t,
                     "permissionssection.appBlocking.active",
                     "Blocking",
                   )}
-                </Badge>
+                </span>
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2 text-xs-tight text-muted">
@@ -334,7 +340,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-bg/35 px-2 py-1 text-xs text-muted">
+              <span className="inline-flex items-center gap-1 text-xs text-muted">
                 <ListChecks className="h-3.5 w-3.5" aria-hidden />
                 {status?.active
                   ? `${status.blockedCount}`
@@ -342,7 +348,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 {translate(t, "permissionssection.appBlocking.apps", "apps")}
               </span>
               {status?.active && status.endsAt ? (
-                <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-bg/35 px-2 py-1 text-xs text-muted">
+                <span className="inline-flex items-center gap-1 text-xs text-muted">
                   <Clock3 className="h-3.5 w-3.5" aria-hidden />
                   {formatEndsAt(status.endsAt)}
                 </span>
@@ -408,7 +414,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
       </div>
 
       {loading ? (
-        <div className="border-t border-border/50 px-4 py-4 text-xs-tight text-muted">
+        <div className="py-3 text-xs-tight text-muted">
           {translate(
             t,
             "permissionssection.LoadingPermissions",
@@ -420,7 +426,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
       {!loading &&
       permission?.status === "granted" &&
       status?.platform === "android" ? (
-        <div className="border-t border-border/50 px-4 py-4">
+        <div className="py-3">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
             <div className="space-y-3">
               <label className="block">
@@ -445,7 +451,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                   />
                 </div>
               </label>
-              <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-bg/25 p-2">
+              <div className="max-h-72 space-y-1 overflow-y-auto">
                 {filteredApps.map((app) => {
                   const checked = selectedPackageNames.includes(
                     app.packageName,
@@ -484,7 +490,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
               </div>
             </div>
 
-            <div className="space-y-3 rounded-xl border border-border/60 bg-bg/25 p-3">
+            <div className="space-y-3">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-wide text-muted">
                   {translate(
@@ -552,7 +558,7 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
       {!loading &&
       permission?.status === "granted" &&
       status?.platform === "ios" ? (
-        <div className="border-t border-border/50 px-4 py-4">
+        <div className="py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <div className="text-xs font-semibold uppercase tracking-wide text-muted">
