@@ -184,7 +184,12 @@ export function HomeSpringboardSurface({
         <div
           data-testid="home-springboard-home-page"
           aria-hidden={page !== "home"}
-          className="relative h-full w-1/2 shrink-0"
+          // `touch-pan-y`: reserve vertical panning for the browser (the home
+          // widget list scrolls) but claim every horizontal gesture for the
+          // rail flick. Without it a touch device hands a horizontal drag to the
+          // browser's own scroll/back gesture, which fires `pointercancel`
+          // instead of `pointerup` — the flick silently never commits.
+          className="relative h-full w-1/2 shrink-0 touch-pan-y"
           onPointerDown={homeHandlers.onPointerDown}
           onPointerUp={homeHandlers.onPointerUp}
           onPointerCancel={homeHandlers.onPointerCancel}
@@ -195,7 +200,9 @@ export function HomeSpringboardSurface({
         <div
           data-testid="home-springboard-springboard-page"
           aria-hidden={page !== "springboard"}
-          className="relative h-full w-1/2 shrink-0"
+          // Same as the home half: vertical scroll (the tile grid) stays with
+          // the browser, horizontal flicks (right → back home) are ours.
+          className="relative h-full w-1/2 shrink-0 touch-pan-y"
           onPointerDown={springboardHandlers.onPointerDown}
           onPointerUp={springboardHandlers.onPointerUp}
           onPointerCancel={springboardHandlers.onPointerCancel}
