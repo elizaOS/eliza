@@ -66,12 +66,16 @@ describe("isWithinAnyRoot", () => {
 
 describe("normalizeAbsolute / relativeFromRoot", () => {
   it("normalizeAbsolute returns an absolute, collapsed path", () => {
-    const out = normalizeAbsolute("/a/b/../c");
-    expect(out).toBe("/a/c");
+    // path.resolve is platform-specific (drive letter + backslashes on Windows),
+    // so normalize separators before asserting the collapsed POSIX-style tail.
+    const out = normalizeAbsolute("/a/b/../c").replace(/\\/g, "/");
+    expect(out).not.toContain("/../");
+    expect(out.endsWith("/a/c")).toBe(true);
   });
 
   it("relativeFromRoot returns the path relative to root, or '.'", () => {
-    expect(relativeFromRoot("/a/b/c", "/a")).toBe("b/c");
+    // relativeFromRoot uses path.relative (backslashes on Windows) — normalize.
+    expect(relativeFromRoot("/a/b/c", "/a").replace(/\\/g, "/")).toBe("b/c");
     expect(relativeFromRoot("/a", "/a")).toBe(".");
   });
 });
