@@ -65,7 +65,8 @@ export interface WorkbenchTurn {
    * deliberate misattribution (`predictedSpeakerLabel !== expectedSpeakerLabel`)
    * and the gate will correctly fail. The player NEVER falls back to `speaker`
    * for the prediction — that would make the DER gate compare ground truth to
-   * itself (tautological). Absent → the turn is scored as a miss, never a pass.
+   * itself (tautological). Absent (and no live resolver) → the turn is
+   * UNATTRIBUTED: excluded from DER and the gate reports skipped, never a pass.
    */
   predictedSpeakerLabel?: string;
   expectedEntity?: string;
@@ -145,8 +146,9 @@ export interface VoiceWorkbenchOptions {
    * diarization/speaker-attribution output. When provided, its result — NOT the
    * scenario's ground-truth `speaker` — drives the diarization gate, so the gate
    * fails on a real misattribution. Return `null` when the model can't attribute
-   * the turn (scored as a miss, never a pass). When absent, the player uses the
-   * turn's explicit `predictedSpeakerLabel`; it never falls back to `speaker`.
+   * the turn (unattributed: excluded from DER, the gate reports skipped, never a
+   * pass). When absent, the player uses the turn's explicit
+   * `predictedSpeakerLabel`; it never falls back to `speaker`.
    */
   resolvePredictedSpeakerLabel?: (
     turn: WorkbenchTurn,
