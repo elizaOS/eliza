@@ -1,3 +1,4 @@
+import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import {
@@ -1094,29 +1095,45 @@ async function collectContactSection(
   const agentId = String(runtime.agentId);
   const day = localDayWindow(now, timezone);
   try {
+    // Interactions are keyed by the graph entityId; resolve display names from
+    // the runtime knowledge graph (there is no flat life_relationships table).
     const rows = await executeRawSql(
       runtime,
-      `SELECT COALESCE(rel.name, interaction.relationship_id) AS name,
-              interaction.channel,
-              interaction.direction,
-              interaction.summary,
-              interaction.occurred_at
-         FROM app_lifeops.life_relationship_interactions interaction
-         LEFT JOIN app_lifeops.life_relationships rel
-           ON rel.agent_id = interaction.agent_id
-          AND rel.id = interaction.relationship_id
-        WHERE interaction.agent_id = ${sqlQuote(agentId)}
-          AND interaction.occurred_at >= ${sqlQuote(day.start.toISOString())}
-          AND interaction.occurred_at < ${sqlQuote(day.end.toISOString())}
-        ORDER BY interaction.occurred_at DESC
+      `SELECT relationship_id,
+              channel,
+              direction,
+              summary,
+              occurred_at
+         FROM app_lifeops.life_relationship_interactions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurred_at >= ${sqlQuote(day.start.toISOString())}
+          AND occurred_at < ${sqlQuote(day.end.toISOString())}
+        ORDER BY occurred_at DESC
         LIMIT 30`,
     );
-    const uniqueNames = new Set(
-      rows.map((row) => toText(row.name)).filter(Boolean),
+    const entityStore = resolveKnowledgeGraphService(runtime)?.getEntityStore(
+      runtime.agentId,
     );
+    const nameByEntityId = new Map<string, string>();
+    if (entityStore) {
+      const entityIds = new Set(
+        rows.map((row) => toText(row.relationship_id)).filter(Boolean),
+      );
+      for (const entityId of entityIds) {
+        const entity = await entityStore.get(entityId);
+        if (entity) {
+          nameByEntityId.set(entityId, entity.preferredName);
+        }
+      }
+    }
+    const nameFor = (row: Record<string, unknown>): string => {
+      const entityId = toText(row.relationship_id);
+      return nameByEntityId.get(entityId) || entityId;
+    };
+    const uniqueNames = new Set(rows.map(nameFor).filter(Boolean));
     const items = sortBriefingItems(
       rows.map((row) => ({
-        title: `${toText(row.name) || "Unknown"} (${
+        title: `${nameFor(row) || "Unknown"} (${
           toText(row.channel) || "unknown"
         })`,
         detail: clip(toText(row.summary) || toText(row.direction)),
