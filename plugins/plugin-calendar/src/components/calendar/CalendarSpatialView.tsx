@@ -167,7 +167,7 @@ function CalendarAgendaBody({
   if (eventCount === 0) {
     return (
       <Text tone="muted" align="center" style="caption">
-        {snapshot.loading ? "Loading" : "No events"}
+        {snapshot.loading ? "Loading" : "None"}
       </Text>
     );
   }
