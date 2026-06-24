@@ -2556,11 +2556,13 @@ function buildV5PlannerActionSurface(params: {
 						name: r.name,
 						score: r.score,
 						rank: idx,
-						rrfScore: (r as unknown as { rrfScore?: number }).rrfScore,
-						matchedBy: (r as unknown as { matchedBy?: string[] }).matchedBy,
-						stageScores: (
-							r as unknown as { stageScores?: Record<string, number> }
-						).stageScores,
+						rrfScore: r.rrfScore,
+						matchedBy: r.matchedBy,
+						// stageScores is Partial<Record<RetrievalStageName, number>>;
+						// the telemetry field is the structurally-identical
+						// Record<string, number>, so a plain `as` suffices (no
+						// `as unknown as`).
+						stageScores: r.stageScores as Record<string, number>,
 					})),
 					tier: {
 						tierA: tieredSurface.sortedTierAParentNames,
