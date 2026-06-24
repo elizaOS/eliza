@@ -35,7 +35,6 @@ start, model won't download/run, a route won't render, cloud won't provision
   ELIZA_MOBILE_REPO_ROOT=/home/example/eliza \
   ELIZA_WEBVIEW_DEBUG=1 \
   ELIZA_BUN_RISCV64_OPTIONAL=1 \
-  ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 \
   bun run --cwd packages/app build:android
   # → packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
   ```
@@ -44,9 +43,6 @@ start, model won't download/run, a route won't render, cloud won't provision
     (else it walks up to the parent and builds the wrong app).
   - `ELIZA_WEBVIEW_DEBUG=1` flips `webContentsDebuggingEnabled` on so Playwright
     can attach to the WebView. Off for production/store builds.
-  - `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1` skips the arm64 MTP/vulkan llama lib
-    (a real-device optimization irrelevant to an x86_64 emulator; the standard
-    `libllama-cpp-x86_64.so` runs there).
   - `ELIZA_BUN_RISCV64_OPTIONAL=1` skips the (nonexistent) riscv64 Bun release.
 
 ## Hard-won environment facts

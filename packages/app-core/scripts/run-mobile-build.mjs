@@ -1420,6 +1420,7 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
       `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
     );
   }
+  dropRetiredLlamaCppFromAndroidGradle();
   reconcilePluginManifestWithGradle(targetAssets);
   // Verify the staged Android renderer is exactly the freshly built one. The
   // overlay above makes it so; this turns "should be fresh" into a hard,
@@ -1451,6 +1452,53 @@ function mirrorCapacitorWebPayloadIntoIosDir() {
   console.log(
     `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
   );
+}
+
+/**
+ * Remove the RETIRED llama-cpp-capacitor Android module from the gradle build
+ * entirely — the `include ':llama-cpp-capacitor'` + project line in
+ * capacitor.settings.gradle and the `implementation project(':llama-cpp-capacitor')`
+ * in app/capacitor.build.gradle. `cap sync` re-adds these on every sync because
+ * the package ships an android/ dir, but agent inference runs solely through the
+ * fused libelizainference.so and nothing on Android loads this plugin's separate
+ * libllama-cpp-arm64.so. Leaving the gradle project in only made gradle configure
+ * its CMake — which built a no-op stub and used to require the
+ * ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB opt-out. Dropping the project removes the
+ * stub build outright (no flag needed). iOS is untouched: ios-local-agent-kernel
+ * loads the package via a dynamic import, so the npm dependency stays.
+ *
+ * Opt back into the full second library (not the stub) with
+ * ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1. Idempotent.
+ */
+function dropRetiredLlamaCppFromAndroidGradle() {
+  if (
+    process.env.ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR === "1" ||
+    process.env.elizaIncludeLlamaCppCapacitor === "true"
+  ) {
+    return;
+  }
+  const targets = [
+    path.join(androidDir, "capacitor.settings.gradle"),
+    path.join(androidDir, "app", "capacitor.build.gradle"),
+  ];
+  let dropped = false;
+  for (const target of targets) {
+    if (!fs.existsSync(target)) continue;
+    const before = fs.readFileSync(target, "utf8");
+    const after = before
+      .split("\n")
+      .filter((line) => !line.includes("llama-cpp-capacitor"))
+      .join("\n");
+    if (after !== before) {
+      fs.writeFileSync(target, after, "utf8");
+      dropped = true;
+    }
+  }
+  if (dropped) {
+    console.log(
+      "[mobile-build] Dropped retired llama-cpp-capacitor from the Android gradle build (no stub CMake; libelizainference is the sole in-process inference lib).",
+    );
+  }
 }
 
 /**
@@ -1489,28 +1537,16 @@ function reconcilePluginManifestWithGradle(targetAssets) {
     String(pkg ?? "")
       .replace(/@/g, "")
       .replace(/\//g, "-");
-  // When ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 the llama-cpp-capacitor CMake builds
-  // a no-op stub (`ELIZA_SKIP_MTP_ANDROID_LIB`). The stub registers and
-  // System.loadLibrary()s fine, but its JNI methods have no implementation, so a
-  // native call (LlamaCpp.toggleNativeLog during WebView device-bridge init)
-  // raises java.lang.UnsatisfiedLinkError. The call site is now defended — the
-  // patches/llama-cpp-capacitor@0.1.5.patch hardening makes LlamaCpp.toggleNativeLog
-  // catch Throwable and reject the Capacitor call instead of letting the Error
-  // escape to crash MainActivity — so registering the stub no longer kills the
-  // app. We still drop it from the manifest here because a stub Capacitor plugin
-  // is pure dead weight: agent-side local inference (ELIZA_LOCAL_LLAMA, libllama
-  // via bun:ffi) does NOT use this Capacitor plugin, so the device-bridge import
-  // failing as a catchable "LlamaCpp plugin not implemented" JS error costs
-  // nothing and keeps the JS↔native surface honest.
-  // The llama-cpp-capacitor plugin is RETIRED: agent inference runs entirely
-  // through the single fused libelizainference.so, and nothing loads this
-  // plugin's separate libllama-cpp-arm64.so (its JS adapter is retired). Drop it
-  // from the manifest BY DEFAULT so the LlamaCpp class never registers / its
-  // static System.loadLibrary never runs — libelizainference is the only
-  // inference library loaded in-process. Opt back in (full second lib) only with
-  // ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1. (The old
-  // ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB flag also stubbed it; that is now the
-  // default and the flag is no longer required for this.)
+  // The llama-cpp-capacitor plugin is RETIRED on Android: agent inference runs
+  // entirely through the single fused libelizainference.so, and nothing loads
+  // this plugin's separate libllama-cpp-arm64.so (its JS adapter is retired).
+  // dropRetiredLlamaCppFromAndroidGradle() (called above) removes its gradle
+  // project outright, so its CMake never runs — there is no stub to register
+  // and no ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB opt-out to set. We also drop it from
+  // the plugins manifest here so the LlamaCpp class never auto-registers. The
+  // device-bridge's optional LlamaCpp import resolves to a catchable "plugin not
+  // implemented" JS error, which costs nothing. Opt the full second library back
+  // in (gradle project + manifest) only with ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1.
   const stubLlamaCpp =
     process.env.ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR !== "1" &&
     process.env.elizaIncludeLlamaCppCapacitor !== "true";
@@ -1827,33 +1863,19 @@ export function injectNativeLibLegacyPackaging(content) {
  * Fails local builds when no path is configured or the dir doesn't exist. The
  * Android Capacitor JNI wrapper links against these MTP libraries and cannot
  * honestly support Eliza-1/Gemma 4 without them. Cloud builds skip the task.
- * CI smoke builds that intentionally install no native deps can opt out with
- * -PelizaSkipForkLlamaLib=true or ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1.
+ * A build with no fresh source dir falls back to the already-staged fused lib
+ * set (the common dev case); only a genuinely missing arm64 lib is a hard error.
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
 function ensureCopyForkLlamaLibGuards(content) {
   if (!/\[copyForkLlamaLib\]/.test(content)) return content;
-  const hasCloudGuard = /skipped for cloud build/.test(content);
-  const hasExplicitSkipGuard =
-    /elizaSkipForkLlamaLib/.test(content) ||
-    /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/.test(content);
-  if (hasCloudGuard && hasExplicitSkipGuard) return content;
-  let guards = "";
-  if (!hasCloudGuard) {
-    guards +=
-      `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
-      `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
-      `            return\n` +
-      `        }\n`;
-  }
-  if (!hasExplicitSkipGuard) {
-    guards +=
-      `        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
-      `            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"\n` +
-      `            return\n` +
-      `        }\n`;
-  }
+  if (/skipped for cloud build/.test(content)) return content;
+  const guards =
+    `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
+    `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
+    `            return\n` +
+    `        }\n`;
   return content.replace(
     /(task copyForkLlamaLib\s*\{\s*\n\s*doLast\s*\{\s*\n)/,
     `$1${guards}`,
@@ -1948,10 +1970,6 @@ export function injectCopyForkLlamaLibTask(content) {
     `    doLast {\n` +
     `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
     `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
-    `            return\n` +
-    `        }\n` +
-    `        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
-    `            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"\n` +
     `            return\n` +
     `        }\n` +
     `        boolean stagedArm64 = false\n` +
