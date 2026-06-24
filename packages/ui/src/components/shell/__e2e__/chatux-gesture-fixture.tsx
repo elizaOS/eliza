@@ -8,14 +8,10 @@
  *   - ConversationSwiper — a horizontal swipe between adjacent conversations,
  *                     using the same usePullGesture deltaX/onSwipeLeft/onSwipeRight
  *                     the overlay binds (sheet-open only) in production.
- *   - ConversationUndoToast — the soft-undo affordance after a reset; swipe LEFT
- *                     to restore, or tap Undo.
  */
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import { ConversationUndoToast } from "../ConversationUndoToast";
-import { showConversationUndo } from "../conversation-undo-store";
 import { TopicChipsBar } from "../TopicChipsBar";
 import { TopicGroup } from "../TopicGroup";
 import { usePullGesture } from "../use-pull-gesture";
@@ -113,28 +109,6 @@ function ConversationSwiper(): React.JSX.Element {
   );
 }
 
-function UndoTrigger(): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      data-testid="fire-undo"
-      onClick={() =>
-        showConversationUndo({
-          label: "Conversation cleared",
-          actionLabel: "Undo",
-          onUndo: () => {
-            const el = document.querySelector('[data-testid="undo-result"]');
-            if (el) el.textContent = "restored";
-          },
-        })
-      }
-      className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white/85 hover:bg-white/20"
-    >
-      Reset conversation
-    </button>
-  );
-}
-
 function App(): React.JSX.Element {
   return (
     <div
@@ -153,9 +127,6 @@ function App(): React.JSX.Element {
     >
       <InteractiveTopicGroup />
       <ConversationSwiper />
-      <UndoTrigger />
-      <div data-testid="undo-result" style={{ display: "none" }} />
-      <ConversationUndoToast />
     </div>
   );
 }

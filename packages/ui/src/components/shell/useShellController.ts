@@ -35,7 +35,6 @@ import {
 } from "../../voice/voice-capture-factory";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
-import { requestConversationResetUndo } from "./conversation-undo-store";
 import { dispatchHomeSpringboardNavigation } from "./home-springboard-events";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
@@ -139,7 +138,7 @@ export interface ShellController {
    *  the mic isn't listening over the keyboard; clearing the draft (on send)
    *  resumes it — restoring the prior voice state without a re-tap. */
   setComposerHasDraft: (hasDraft: boolean) => void;
-  /** DEV-only: clear the conversation and start a fresh, greeted one. */
+  /** Clear the conversation and start a fresh, greeted one. */
   clearConversation: () => void;
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
    *  `no_provider` failure gate to let the user wire a provider in one tap. */
@@ -237,7 +236,6 @@ const selectShellController = (s: AppContextValue) => ({
   conversations: s.conversations,
   setTab: s.setTab,
   handleChatStop: s.handleChatStop,
-  t: s.t,
 });
 
 export function useShellController(): ShellController {
@@ -255,7 +253,6 @@ export function useShellController(): ShellController {
     conversations,
     setTab,
     handleChatStop,
-    t,
   } = useAppSelectorShallow(selectShellController);
   // Read per-token streaming messages from the isolated context so token updates
   // don't depend on the giant AppContext value identity.
@@ -278,30 +275,17 @@ export function useShellController(): ShellController {
     dispatchHomeSpringboardNavigation("springboard");
   }, [setTab]);
 
-  // DEV-only debug affordance: drop the current conversation and start a fresh,
-  // greeted one (handleNewConversation resets draft state + creates a new
-  // conversation with a bootstrap greeting).
+  // Clear the chat: drop the current conversation and start a fresh, greeted one
+  // (handleNewConversation resets draft state + creates a new conversation with a
+  // bootstrap greeting; an empty draft we just left is pruned, a non-empty
+  // conversation is kept and remains swipe-reachable).
   const clearConversation = React.useCallback(() => {
     // A fresh conversation's bootstrap greeting is NOT a reply to a voice turn —
     // clear the voice flag so the greeting isn't spoken aloud after a prior
     // voice session.
     setLastTurnVoice(false);
-    const previousConversationId = activeConversationId;
     void handleNewConversation();
-    // Soft-undo: let the user restore the conversation they just cleared (#8929).
-    requestConversationResetUndo({
-      previousConversationId,
-      restore: (id) => {
-        void handleSelectConversation(id);
-      },
-      translate: typeof t === "function" ? (key) => t(key) : undefined,
-    });
-  }, [
-    activeConversationId,
-    handleNewConversation,
-    handleSelectConversation,
-    t,
-  ]);
+  }, [handleNewConversation]);
 
   // Horizontal-swipe navigation between conversations (#8929). Computed by the
   // pure `buildConversationNav` helper (unit-tested) so the index-walk and

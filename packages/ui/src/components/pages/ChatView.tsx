@@ -204,8 +204,7 @@ export function ChatView({
     t: appTranslate,
   } = app;
   const { ptySessions } = usePtySessions();
-  // Reset-to-fresh-thread with soft-undo (#8929/#8930). Same path + undo
-  // affordance as the overlay header reset.
+  // Reset to a fresh greeted thread. Same path as the overlay header reset.
   const resetConversation = useConversationReset();
   // Per-token streaming messages come from the isolated context so token updates
   // don't ride on the giant AppContext value identity.

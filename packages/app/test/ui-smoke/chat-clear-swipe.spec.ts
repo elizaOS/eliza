@@ -1,10 +1,20 @@
-// Full-stack e2e for the continuous-chat overlay's #8929 gestures on the REAL
-// web app: open the sheet, SWIPE LEFT/RIGHT to navigate between conversations,
-// then RESET → soft-undo toast → restore. Runs against the live-stack-booted
-// app with the conversation list + per-conversation messages mocked at the
-// network layer for determinism. Drives genuine pointer gestures via the mouse
-// (pointerdown → moves → pointerup), so the overlay's real swipe/axis-lock and
-// the undo store run end-to-end. Record a video with E2E_RECORD=1.
+// Full-stack e2e for the continuous-chat overlay's clear + swipe behavior on the
+// REAL web app (runs on desktop chromium AND the Pixel-7 mobile-chromium lane —
+// the same WebView viewport that ships on Capacitor iOS/Android). Drives genuine
+// pointer gestures via the mouse (pointerdown → moves → pointerup), so the
+// overlay's real swipe/axis-lock runs end-to-end, and exercises three iOS-build
+// bug fixes:
+//
+//   1. Clearing a conversation shows NO "conversation cleared / undo" toast.
+//   2. Clearing lands on a fresh greeted chat (the regression where the new
+//      conversation was created server-side but never activated, leaving an
+//      empty collapsed sheet — root cause: the create epoch guard always fired).
+//   3. Swiping left/right navigates between conversations, and clearing an empty
+//      draft REPLACES it (a DELETE is issued) instead of piling up orphans.
+//
+// The conversation lifecycle (list / messages / create+greeting / delete /
+// cleanup) is mocked statefully at the network layer for determinism. Record a
+// video with E2E_RECORD=1.
 
 import { expect, test } from "@playwright/test";
 import {
@@ -14,15 +24,13 @@ import {
 } from "./helpers";
 
 const NOW = Date.now();
-const CONVOS = [
+const SEED = [
   { id: "conv-standup", title: "Today's standup", roomId: "room-standup" },
   { id: "conv-billing", title: "Billing thread", roomId: "room-billing" },
   { id: "conv-deploy", title: "Deploy notes", roomId: "room-deploy" },
 ];
-const MESSAGES: Record<
-  string,
-  Array<{ id: string; role: string; text: string; timestamp: number }>
-> = {
+type Msg = { id: string; role: string; text: string; timestamp: number };
+const SEED_MESSAGES: Record<string, Msg[]> = {
   "conv-standup": [
     {
       id: "s1",
@@ -67,39 +75,148 @@ const MESSAGES: Record<
   ],
 };
 
-function convRecord(
-  c: { id: string; title: string; roomId: string },
-  i: number,
-) {
-  const ts = new Date(NOW - i * 1000).toISOString();
-  return { ...c, createdAt: ts, updatedAt: ts };
+type ConvRecord = {
+  id: string;
+  title: string;
+  roomId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A stateful, in-memory conversation store mirroring the server contract. */
+function makeStore() {
+  const convos: ConvRecord[] = SEED.map((c, i) => {
+    const ts = new Date(NOW - i * 1000).toISOString();
+    return { ...c, createdAt: ts, updatedAt: ts };
+  });
+  const messages: Record<string, Msg[]> = structuredClone(SEED_MESSAGES);
+  return {
+    convos,
+    messages,
+    created: [] as string[],
+    deleted: [] as string[],
+    cleanupCalls: 0,
+  };
 }
 
-async function mockConversations(page: import("@playwright/test").Page) {
+type Store = ReturnType<typeof makeStore>;
+
+async function installConversationStore(
+  page: import("@playwright/test").Page,
+  store: Store,
+) {
+  // GET list / POST create (exact path — no trailing segment).
   await page.route("**/api/conversations", async (route) => {
-    if (route.request().method() === "GET") {
+    const method = route.request().method();
+    if (method === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ conversations: CONVOS.map(convRecord) }),
+        body: JSON.stringify({ conversations: store.convos }),
+      });
+      return;
+    }
+    if (method === "POST") {
+      const n = store.created.length + 1;
+      const id = `conv-fresh-${n}`;
+      const ts = new Date(NOW + n * 1000).toISOString();
+      const record: ConvRecord = {
+        id,
+        title: "New chat",
+        roomId: `room-fresh-${n}`,
+        createdAt: ts,
+        updatedAt: ts,
+      };
+      const greetingText = `FRESH START ${n} — how can I help?`;
+      store.convos.unshift(record);
+      store.messages[id] = [
+        {
+          id: `g-${id}`,
+          role: "assistant",
+          text: greetingText,
+          timestamp: NOW + n * 1000,
+        },
+      ];
+      store.created.push(id);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          conversation: record,
+          greeting: { text: greetingText },
+        }),
       });
       return;
     }
     await route.fallback();
   });
-  for (const c of CONVOS) {
-    await page.route(`**/api/conversations/${c.id}/messages`, async (route) => {
-      if (route.request().method() === "GET") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ messages: MESSAGES[c.id] ?? [] }),
-        });
-        return;
-      }
-      await route.fallback();
+
+  // POST cleanup-empty — registered before the id-level handler so it wins for
+  // this exact path (the single-segment id glob would otherwise match it). The
+  // client prunes its own empty drafts, so the server reports nothing extra.
+  await page.route("**/api/conversations/cleanup-empty", async (route) => {
+    store.cleanupCalls += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ deleted: [] }),
     });
-  }
+  });
+
+  // GET messages for a conversation.
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(route.request().url());
+    const id = url.pathname.split("/").slice(-2, -1)[0];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ messages: store.messages[id] ?? [] }),
+    });
+  });
+
+  // GET greeting fallback (used when the inline greeting is absent).
+  await page.route("**/api/conversations/*/greeting**", async (route) => {
+    const url = new URL(route.request().url());
+    const id = url.pathname.split("/").slice(-2, -1)[0];
+    const text = store.messages[id]?.[0]?.text ?? "Hi — how can I help?";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ text }),
+    });
+  });
+
+  // DELETE / PATCH a single conversation by id (single path segment — does NOT
+  // match the /messages or /greeting sub-paths).
+  await page.route("**/api/conversations/*", async (route) => {
+    const method = route.request().method();
+    const url = new URL(route.request().url());
+    const id = url.pathname.split("/").pop() ?? "";
+    if (method === "DELETE") {
+      store.deleted.push(id);
+      store.convos = store.convos.filter((c) => c.id !== id);
+      delete store.messages[id];
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
+      });
+      return;
+    }
+    if (method === "PATCH") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
+      });
+      return;
+    }
+    await route.fallback();
+  });
 }
 
 /** Drive a real pointer drag from a locator's centre by (dx, dy) over N steps. */
@@ -122,14 +239,17 @@ async function pointerDrag(
   await page.mouse.up();
 }
 
+let store: Store;
+
 test.beforeEach(async ({ page }) => {
+  store = makeStore();
   // Skip the first-run tour so its spotlight never covers the chat.
   await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
   await installDefaultAppRoutes(page);
-  await mockConversations(page);
+  await installConversationStore(page, store);
 });
 
-test("swipe navigates conversations + soft-undo restores (#8929)", async ({
+test("swipe navigates conversations; clear lands on a fresh greeted chat with no undo toast", async ({
   page,
 }) => {
   await openAppPath(page, "/chat");
@@ -149,7 +269,7 @@ test("swipe navigates conversations + soft-undo restores (#8929)", async ({
   await expect(thread).toContainText("STANDUP", { timeout: 15_000 });
   await dwell();
 
-  // Swipe LEFT → next conversation (standup → billing).
+  // Swipe LEFT → next (older) conversation (standup → billing).
   await pointerDrag(page, "#continuous-thread", -160, 0, 12);
   await expect(thread).toContainText("BILLING", { timeout: 15_000 });
   await dwell();
@@ -159,42 +279,68 @@ test("swipe navigates conversations + soft-undo restores (#8929)", async ({
   await expect(thread).toContainText("DEPLOY", { timeout: 15_000 });
   await dwell();
 
-  // Swipe RIGHT → previous conversation (deploy → billing).
+  // Swipe RIGHT → previous (newer) conversation (deploy → billing).
   await pointerDrag(page, "#continuous-thread", 160, 0, 12);
   await expect(thread).toContainText("BILLING", { timeout: 15_000 });
   await dwell();
 
-  // Expand to FULL so the reset control is in the header, then reset.
+  // Expand to FULL so the clear control is in the header, then clear.
   await pointerDrag(page, '[data-testid="chat-sheet-grabber"]', 0, -400, 8);
-  const reset = page.getByTestId("chat-full-clear");
-  await expect(reset).toBeVisible({ timeout: 15_000 });
-  await reset.click();
-  // Reset starts a fresh greeted conversation; the soft-undo toast appears at the
-  // app root — layered ABOVE the shell overlay so it is reachable (not occluded).
-  const toast = page.getByTestId("conversation-undo-toast");
-  await expect(toast).toBeVisible({ timeout: 15_000 });
-  await expect(toast).toContainText(/cleared/i);
+  const clear = page.getByTestId("chat-full-clear");
+  await expect(clear).toBeVisible({ timeout: 15_000 });
+  await clear.click();
+
+  // BUG 2 FIX: clearing creates AND activates a fresh greeted conversation — the
+  // thread now shows the new greeting, not the old billing messages, not an empty
+  // collapsed sheet. (Before the epoch-guard fix, handleNewConversation
+  // early-returned, so the new conversation was orphaned and never shown.)
+  await expect(thread).toContainText("FRESH START 1", { timeout: 15_000 });
+  await expect(thread).not.toContainText("BILLING");
   await dwell();
 
-  // Undo is actionable (hover pauses the 3s auto-dismiss) and RESTORES the
-  // conversation we cleared from.
-  const undo = page.getByTestId("conversation-undo-button");
-  await undo.hover();
-  await expect(undo).toBeEnabled();
-  await dwell();
-  await undo.click();
-  await expect(toast).toBeHidden({ timeout: 10_000 });
+  // BUG 1 FIX: NO "conversation cleared / undo" toast is ever shown.
+  await expect(page.getByTestId("conversation-undo-toast")).toHaveCount(0);
+  expect(store.created.length).toBe(1);
 
-  // The restored conversation is billing — proving the real reset →
-  // handleNewConversation → soft-undo → handleSelectConversation path end-to-end
-  // (it only works because the restore reads the LIVE active id, not a stale
-  // closure, and the greeting write guards against navigation-away). A grabber
-  // flick-up only opens/expands the sheet (never closes), so this is robust to
-  // whichever detent the reset left it in.
-  await pointerDrag(page, '[data-testid="chat-sheet-grabber"]', 0, -260, 8);
-  await expect(overlay).toHaveAttribute("data-open", "true", {
-    timeout: 15_000,
-  });
+  // BUG 3 FIX (kept): clearing a NON-empty conversation keeps it — billing was
+  // not deleted and stays swipe-reachable. The fresh chat sits at index 0, so
+  // swipe LEFT twice (fresh → standup → billing) returns to it.
+  expect(store.deleted).not.toContain("conv-billing");
+  await pointerDrag(page, "#continuous-thread", -160, 0, 12);
+  await expect(thread).toContainText("STANDUP", { timeout: 15_000 });
+  await dwell();
+  await pointerDrag(page, "#continuous-thread", -160, 0, 12);
   await expect(thread).toContainText("BILLING", { timeout: 15_000 });
   await dwell();
+});
+
+test("clearing an empty draft replaces it instead of piling up orphan conversations", async ({
+  page,
+}) => {
+  await openAppPath(page, "/chat");
+  const overlay = page.getByTestId("continuous-chat-overlay");
+  await expect(overlay).toBeVisible({ timeout: 60_000 });
+  await pointerDrag(page, '[data-testid="chat-sheet-grabber"]', 0, -400, 8);
+
+  const thread = page.locator("#continuous-thread");
+  const clear = page.getByTestId("chat-full-clear");
+
+  // First clear (from the seeded standup conversation) → fresh-1 (greeting only,
+  // an empty draft).
+  await expect(clear).toBeVisible({ timeout: 15_000 });
+  await clear.click();
+  await expect(thread).toContainText("FRESH START 1", { timeout: 15_000 });
+  expect(store.created).toEqual(["conv-fresh-1"]);
+  expect(store.deleted).not.toContain("conv-fresh-1");
+
+  // Clear AGAIN from the empty fresh-1 draft → fresh-2 is created and fresh-1 is
+  // DELETED (replaced), so empty drafts never accumulate.
+  await expect(clear).toBeVisible({ timeout: 15_000 });
+  await clear.click();
+  await expect(thread).toContainText("FRESH START 2", { timeout: 15_000 });
+  await expect
+    .poll(() => store.deleted.includes("conv-fresh-1"), { timeout: 15_000 })
+    .toBe(true);
+  // No undo toast on this path either.
+  await expect(page.getByTestId("conversation-undo-toast")).toHaveCount(0);
 });
