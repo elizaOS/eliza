@@ -797,7 +797,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React48 = require_react();
+      var React49 = require_react();
       function formatProdErrorMessage(code) {
         var url2 = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -837,7 +837,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React48.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React49.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -973,7 +973,7 @@
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React48 = require_react();
+      var React49 = require_react();
       var ReactDOM5 = require_react_dom();
       function formatProdErrorMessage(code) {
         var url2 = "https://react.dev/errors/" + code;
@@ -1164,7 +1164,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React48.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React49.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM5.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -1545,8 +1545,8 @@
           var hiddenUpdatesForLane = hiddenUpdates[index$7];
           if (null !== hiddenUpdatesForLane)
             for (hiddenUpdates[index$7] = null, index$7 = 0; index$7 < hiddenUpdatesForLane.length; index$7++) {
-              var update = hiddenUpdatesForLane[index$7];
-              null !== update && (update.lane &= -536870913);
+              var update2 = hiddenUpdatesForLane[index$7];
+              null !== update2 && (update2.lane &= -536870913);
             }
           remainingLanes &= ~lane;
         }
@@ -2745,43 +2745,43 @@
           concurrentQueues[i++] = null;
           var queue = concurrentQueues[i];
           concurrentQueues[i++] = null;
-          var update = concurrentQueues[i];
+          var update2 = concurrentQueues[i];
           concurrentQueues[i++] = null;
           var lane = concurrentQueues[i];
           concurrentQueues[i++] = null;
-          if (null !== queue && null !== update) {
+          if (null !== queue && null !== update2) {
             var pending = queue.pending;
-            null === pending ? update.next = update : (update.next = pending.next, pending.next = update);
-            queue.pending = update;
+            null === pending ? update2.next = update2 : (update2.next = pending.next, pending.next = update2);
+            queue.pending = update2;
           }
-          0 !== lane && markUpdateLaneFromFiberToRoot(fiber, update, lane);
+          0 !== lane && markUpdateLaneFromFiberToRoot(fiber, update2, lane);
         }
       }
-      function enqueueUpdate$1(fiber, queue, update, lane) {
+      function enqueueUpdate$1(fiber, queue, update2, lane) {
         concurrentQueues[concurrentQueuesIndex++] = fiber;
         concurrentQueues[concurrentQueuesIndex++] = queue;
-        concurrentQueues[concurrentQueuesIndex++] = update;
+        concurrentQueues[concurrentQueuesIndex++] = update2;
         concurrentQueues[concurrentQueuesIndex++] = lane;
         concurrentlyUpdatedLanes |= lane;
         fiber.lanes |= lane;
         fiber = fiber.alternate;
         null !== fiber && (fiber.lanes |= lane);
       }
-      function enqueueConcurrentHookUpdate(fiber, queue, update, lane) {
-        enqueueUpdate$1(fiber, queue, update, lane);
+      function enqueueConcurrentHookUpdate(fiber, queue, update2, lane) {
+        enqueueUpdate$1(fiber, queue, update2, lane);
         return getRootForUpdatedFiber(fiber);
       }
       function enqueueConcurrentRenderForLane(fiber, lane) {
         enqueueUpdate$1(fiber, null, null, lane);
         return getRootForUpdatedFiber(fiber);
       }
-      function markUpdateLaneFromFiberToRoot(sourceFiber, update, lane) {
+      function markUpdateLaneFromFiberToRoot(sourceFiber, update2, lane) {
         sourceFiber.lanes |= lane;
         var alternate = sourceFiber.alternate;
         null !== alternate && (alternate.lanes |= lane);
         for (var isHidden2 = false, parent = sourceFiber.return; null !== parent; )
           parent.childLanes |= lane, alternate = parent.alternate, null !== alternate && (alternate.childLanes |= lane), 22 === parent.tag && (sourceFiber = parent.stateNode, null === sourceFiber || sourceFiber._visibility & 1 || (isHidden2 = true)), sourceFiber = parent, parent = parent.return;
-        return 3 === sourceFiber.tag ? (parent = sourceFiber.stateNode, isHidden2 && null !== update && (isHidden2 = 31 - clz32(lane), sourceFiber = parent.hiddenUpdates, alternate = sourceFiber[isHidden2], null === alternate ? sourceFiber[isHidden2] = [update] : alternate.push(update), update.lane = lane | 536870912), parent) : null;
+        return 3 === sourceFiber.tag ? (parent = sourceFiber.stateNode, isHidden2 && null !== update2 && (isHidden2 = 31 - clz32(lane), sourceFiber = parent.hiddenUpdates, alternate = sourceFiber[isHidden2], null === alternate ? sourceFiber[isHidden2] = [update2] : alternate.push(update2), update2.lane = lane | 536870912), parent) : null;
       }
       function getRootForUpdatedFiber(sourceFiber) {
         if (50 < nestedUpdateCount)
@@ -3936,19 +3936,19 @@
       function createUpdate(lane) {
         return { lane, tag: 0, payload: null, callback: null, next: null };
       }
-      function enqueueUpdate(fiber, update, lane) {
+      function enqueueUpdate(fiber, update2, lane) {
         var updateQueue = fiber.updateQueue;
         if (null === updateQueue) return null;
         updateQueue = updateQueue.shared;
         if (0 !== (executionContext & 2)) {
           var pending = updateQueue.pending;
-          null === pending ? update.next = update : (update.next = pending.next, pending.next = update);
-          updateQueue.pending = update;
-          update = getRootForUpdatedFiber(fiber);
+          null === pending ? update2.next = update2 : (update2.next = pending.next, pending.next = update2);
+          updateQueue.pending = update2;
+          update2 = getRootForUpdatedFiber(fiber);
           markUpdateLaneFromFiberToRoot(fiber, null, lane);
-          return update;
+          return update2;
         }
-        enqueueUpdate$1(fiber, updateQueue, update, lane);
+        enqueueUpdate$1(fiber, updateQueue, update2, lane);
         return getRootForUpdatedFiber(fiber);
       }
       function entangleTransitions(root3, fiber, lane) {
@@ -4032,12 +4032,12 @@
                 next: null
               });
               a: {
-                var workInProgress2 = workInProgress$jscomp$0, update = pendingQueue;
+                var workInProgress2 = workInProgress$jscomp$0, update2 = pendingQueue;
                 updateLane = props;
                 var instance = instance$jscomp$0;
-                switch (update.tag) {
+                switch (update2.tag) {
                   case 1:
-                    workInProgress2 = update.payload;
+                    workInProgress2 = update2.payload;
                     if ("function" === typeof workInProgress2) {
                       newState = workInProgress2.call(instance, newState, updateLane);
                       break a;
@@ -4047,7 +4047,7 @@
                   case 3:
                     workInProgress2.flags = workInProgress2.flags & -65537 | 128;
                   case 0:
-                    workInProgress2 = update.payload;
+                    workInProgress2 = update2.payload;
                     updateLane = "function" === typeof workInProgress2 ? workInProgress2.call(instance, newState, updateLane) : workInProgress2;
                     if (null === updateLane || void 0 === updateLane) break a;
                     newState = assign({}, newState, updateLane);
@@ -4367,50 +4367,50 @@
         if (null === baseQueue) hook.memoizedState = pendingQueue;
         else {
           current = baseQueue.next;
-          var newBaseQueueFirst = baseFirst = null, newBaseQueueLast = null, update = current, didReadFromEntangledAsyncAction$60 = false;
+          var newBaseQueueFirst = baseFirst = null, newBaseQueueLast = null, update2 = current, didReadFromEntangledAsyncAction$60 = false;
           do {
-            var updateLane = update.lane & -536870913;
-            if (updateLane !== update.lane ? (workInProgressRootRenderLanes & updateLane) === updateLane : (renderLanes & updateLane) === updateLane) {
-              var revertLane = update.revertLane;
+            var updateLane = update2.lane & -536870913;
+            if (updateLane !== update2.lane ? (workInProgressRootRenderLanes & updateLane) === updateLane : (renderLanes & updateLane) === updateLane) {
+              var revertLane = update2.revertLane;
               if (0 === revertLane)
                 null !== newBaseQueueLast && (newBaseQueueLast = newBaseQueueLast.next = {
                   lane: 0,
                   revertLane: 0,
                   gesture: null,
-                  action: update.action,
-                  hasEagerState: update.hasEagerState,
-                  eagerState: update.eagerState,
+                  action: update2.action,
+                  hasEagerState: update2.hasEagerState,
+                  eagerState: update2.eagerState,
                   next: null
                 }), updateLane === currentEntangledLane && (didReadFromEntangledAsyncAction$60 = true);
               else if ((renderLanes & revertLane) === revertLane) {
-                update = update.next;
+                update2 = update2.next;
                 revertLane === currentEntangledLane && (didReadFromEntangledAsyncAction$60 = true);
                 continue;
               } else
                 updateLane = {
                   lane: 0,
-                  revertLane: update.revertLane,
+                  revertLane: update2.revertLane,
                   gesture: null,
-                  action: update.action,
-                  hasEagerState: update.hasEagerState,
-                  eagerState: update.eagerState,
+                  action: update2.action,
+                  hasEagerState: update2.hasEagerState,
+                  eagerState: update2.eagerState,
                   next: null
                 }, null === newBaseQueueLast ? (newBaseQueueFirst = newBaseQueueLast = updateLane, baseFirst = pendingQueue) : newBaseQueueLast = newBaseQueueLast.next = updateLane, currentlyRenderingFiber.lanes |= revertLane, workInProgressRootSkippedLanes |= revertLane;
-              updateLane = update.action;
+              updateLane = update2.action;
               shouldDoubleInvokeUserFnsInHooksDEV && reducer(pendingQueue, updateLane);
-              pendingQueue = update.hasEagerState ? update.eagerState : reducer(pendingQueue, updateLane);
+              pendingQueue = update2.hasEagerState ? update2.eagerState : reducer(pendingQueue, updateLane);
             } else
               revertLane = {
                 lane: updateLane,
-                revertLane: update.revertLane,
-                gesture: update.gesture,
-                action: update.action,
-                hasEagerState: update.hasEagerState,
-                eagerState: update.eagerState,
+                revertLane: update2.revertLane,
+                gesture: update2.gesture,
+                action: update2.action,
+                hasEagerState: update2.hasEagerState,
+                eagerState: update2.eagerState,
                 next: null
               }, null === newBaseQueueLast ? (newBaseQueueFirst = newBaseQueueLast = revertLane, baseFirst = pendingQueue) : newBaseQueueLast = newBaseQueueLast.next = revertLane, currentlyRenderingFiber.lanes |= updateLane, workInProgressRootSkippedLanes |= updateLane;
-            update = update.next;
-          } while (null !== update && update !== current);
+            update2 = update2.next;
+          } while (null !== update2 && update2 !== current);
           null === newBaseQueueLast ? baseFirst = pendingQueue : newBaseQueueLast.next = newBaseQueueFirst;
           if (!objectIs(pendingQueue, hook.memoizedState) && (didReceiveUpdate = true, didReadFromEntangledAsyncAction$60 && (reducer = currentEntangledActionThenable, null !== reducer)))
             throw reducer;
@@ -4429,10 +4429,10 @@
         var dispatch = queue.dispatch, lastRenderPhaseUpdate = queue.pending, newState = hook.memoizedState;
         if (null !== lastRenderPhaseUpdate) {
           queue.pending = null;
-          var update = lastRenderPhaseUpdate = lastRenderPhaseUpdate.next;
+          var update2 = lastRenderPhaseUpdate = lastRenderPhaseUpdate.next;
           do
-            newState = reducer(newState, update.action), update = update.next;
-          while (update !== lastRenderPhaseUpdate);
+            newState = reducer(newState, update2.action), update2 = update2.next;
+          while (update2 !== lastRenderPhaseUpdate);
           objectIs(newState, hook.memoizedState) || (didReceiveUpdate = true);
           hook.memoizedState = newState;
           null === hook.baseQueue && (hook.baseState = newState);
@@ -5013,7 +5013,7 @@
         dispatchSetStateInternal(fiber, queue, action, lane);
       }
       function dispatchSetStateInternal(fiber, queue, action, lane) {
-        var update = {
+        var update2 = {
           lane,
           revertLane: 0,
           gesture: null,
@@ -5022,20 +5022,20 @@
           eagerState: null,
           next: null
         };
-        if (isRenderPhaseUpdate(fiber)) enqueueRenderPhaseUpdate(queue, update);
+        if (isRenderPhaseUpdate(fiber)) enqueueRenderPhaseUpdate(queue, update2);
         else {
           var alternate = fiber.alternate;
           if (0 === fiber.lanes && (null === alternate || 0 === alternate.lanes) && (alternate = queue.lastRenderedReducer, null !== alternate))
             try {
               var currentState = queue.lastRenderedState, eagerState = alternate(currentState, action);
-              update.hasEagerState = true;
-              update.eagerState = eagerState;
+              update2.hasEagerState = true;
+              update2.eagerState = eagerState;
               if (objectIs(eagerState, currentState))
-                return enqueueUpdate$1(fiber, queue, update, 0), null === workInProgressRoot && finishQueueingConcurrentUpdates(), false;
+                return enqueueUpdate$1(fiber, queue, update2, 0), null === workInProgressRoot && finishQueueingConcurrentUpdates(), false;
             } catch (error51) {
             } finally {
             }
-          action = enqueueConcurrentHookUpdate(fiber, queue, update, lane);
+          action = enqueueConcurrentHookUpdate(fiber, queue, update2, lane);
           if (null !== action)
             return scheduleUpdateOnFiber(action, fiber, lane), entangleTransitionUpdate(action, queue, lane), true;
         }
@@ -5065,11 +5065,11 @@
         var alternate = fiber.alternate;
         return fiber === currentlyRenderingFiber || null !== alternate && alternate === currentlyRenderingFiber;
       }
-      function enqueueRenderPhaseUpdate(queue, update) {
+      function enqueueRenderPhaseUpdate(queue, update2) {
         didScheduleRenderPhaseUpdateDuringThisPass = didScheduleRenderPhaseUpdate = true;
         var pending = queue.pending;
-        null === pending ? update.next = update : (update.next = pending.next, pending.next = update);
-        queue.pending = update;
+        null === pending ? update2.next = update2 : (update2.next = pending.next, pending.next = update2);
+        queue.pending = update2;
       }
       function entangleTransitionUpdate(root3, queue, lane) {
         if (0 !== (lane & 4194048)) {
@@ -5395,27 +5395,27 @@
       var classComponentUpdater = {
         enqueueSetState: function(inst, payload, callback) {
           inst = inst._reactInternals;
-          var lane = requestUpdateLane(), update = createUpdate(lane);
-          update.payload = payload;
-          void 0 !== callback && null !== callback && (update.callback = callback);
-          payload = enqueueUpdate(inst, update, lane);
+          var lane = requestUpdateLane(), update2 = createUpdate(lane);
+          update2.payload = payload;
+          void 0 !== callback && null !== callback && (update2.callback = callback);
+          payload = enqueueUpdate(inst, update2, lane);
           null !== payload && (scheduleUpdateOnFiber(payload, inst, lane), entangleTransitions(payload, inst, lane));
         },
         enqueueReplaceState: function(inst, payload, callback) {
           inst = inst._reactInternals;
-          var lane = requestUpdateLane(), update = createUpdate(lane);
-          update.tag = 1;
-          update.payload = payload;
-          void 0 !== callback && null !== callback && (update.callback = callback);
-          payload = enqueueUpdate(inst, update, lane);
+          var lane = requestUpdateLane(), update2 = createUpdate(lane);
+          update2.tag = 1;
+          update2.payload = payload;
+          void 0 !== callback && null !== callback && (update2.callback = callback);
+          payload = enqueueUpdate(inst, update2, lane);
           null !== payload && (scheduleUpdateOnFiber(payload, inst, lane), entangleTransitions(payload, inst, lane));
         },
         enqueueForceUpdate: function(inst, callback) {
           inst = inst._reactInternals;
-          var lane = requestUpdateLane(), update = createUpdate(lane);
-          update.tag = 2;
-          void 0 !== callback && null !== callback && (update.callback = callback);
-          callback = enqueueUpdate(inst, update, lane);
+          var lane = requestUpdateLane(), update2 = createUpdate(lane);
+          update2.tag = 2;
+          void 0 !== callback && null !== callback && (update2.callback = callback);
+          callback = enqueueUpdate(inst, update2, lane);
           null !== callback && (scheduleUpdateOnFiber(callback, inst, lane), entangleTransitions(callback, inst, lane));
         }
       };
@@ -5489,19 +5489,19 @@
         lane.tag = 3;
         return lane;
       }
-      function initializeClassErrorUpdate(update, root3, fiber, errorInfo) {
+      function initializeClassErrorUpdate(update2, root3, fiber, errorInfo) {
         var getDerivedStateFromError = fiber.type.getDerivedStateFromError;
         if ("function" === typeof getDerivedStateFromError) {
           var error51 = errorInfo.value;
-          update.payload = function() {
+          update2.payload = function() {
             return getDerivedStateFromError(error51);
           };
-          update.callback = function() {
+          update2.callback = function() {
             logCaughtError(root3, fiber, errorInfo);
           };
         }
         var inst = fiber.stateNode;
-        null !== inst && "function" === typeof inst.componentDidCatch && (update.callback = function() {
+        null !== inst && "function" === typeof inst.componentDidCatch && (update2.callback = function() {
           logCaughtError(root3, fiber, errorInfo);
           "function" !== typeof getDerivedStateFromError && (null === legacyErrorBoundariesThatAlreadyFailed ? legacyErrorBoundariesThatAlreadyFailed = /* @__PURE__ */ new Set([this]) : legacyErrorBoundariesThatAlreadyFailed.add(this));
           var stack = errorInfo.stack;
@@ -11920,7 +11920,7 @@
       var estimatedBytesWithinLimit = 0;
       function waitForCommitToBeReady(state2, timeoutOffset) {
         state2.stylesheets && 0 === state2.count && insertSuspendedStylesheets(state2, state2.stylesheets);
-        return 0 < state2.count || 0 < state2.imgCount ? function(commit) {
+        return 0 < state2.count || 0 < state2.imgCount ? function(commit2) {
           var stylesheetTimer = setTimeout(function() {
             state2.stylesheets && insertSuspendedStylesheets(state2, state2.stylesheets);
             if (state2.unsuspend) {
@@ -11941,7 +11941,7 @@
             },
             (state2.imgBytes > estimatedBytesWithinLimit ? 50 : 800) + timeoutOffset
           );
-          state2.unsuspend = commit;
+          state2.unsuspend = commit2;
           return function() {
             state2.unsuspend = null;
             clearTimeout(stylesheetTimer);
@@ -12610,7 +12610,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1840 = React48.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1840 = React49.version;
       if ("19.2.5" !== isomorphicReactPackageVersion$jscomp$inline_1840)
         throw Error(
           formatProdErrorMessage(
@@ -14242,21 +14242,21 @@
           current[path[0]] = value;
         }
       }
-      function nestedRedact(store2, o, path, ns, censor, isCensorFct, censorFctTakesPath) {
+      function nestedRedact(store3, o, path, ns, censor, isCensorFct, censorFctTakesPath) {
         const target = get(o, path);
         if (target == null) return;
         const keys2 = Object.keys(target);
         const keysLength = keys2.length;
         for (var i = 0; i < keysLength; i++) {
           const key = keys2[i];
-          specialSet(store2, target, key, path, ns, censor, isCensorFct, censorFctTakesPath);
+          specialSet(store3, target, key, path, ns, censor, isCensorFct, censorFctTakesPath);
         }
-        return store2;
+        return store3;
       }
       function has(obj, prop) {
         return obj !== void 0 && obj !== null ? "hasOwn" in Object ? Object.hasOwn(obj, prop) : Object.prototype.hasOwnProperty.call(obj, prop) : false;
       }
-      function specialSet(store2, o, k, path, afterPath, censor, isCensorFct, censorFctTakesPath) {
+      function specialSet(store3, o, k, path, afterPath, censor, isCensorFct, censorFctTakesPath) {
         const afterPathLen = afterPath.length;
         const lastPathIndex = afterPathLen - 1;
         const originalKey = k;
@@ -14299,7 +14299,7 @@
               if (consecutive) {
                 redactPathCurrent = node(redactPathCurrent, wck, depth);
                 level2 = i;
-                ov = iterateNthLevel(wcov, level2 - 1, k, path, afterPath, censor, isCensorFct, censorFctTakesPath, originalKey, n, nv, ov, kIsWc, wck, i, lastPathIndex, redactPathCurrent, store2, o[originalKey], depth + 1);
+                ov = iterateNthLevel(wcov, level2 - 1, k, path, afterPath, censor, isCensorFct, censorFctTakesPath, originalKey, n, nv, ov, kIsWc, wck, i, lastPathIndex, redactPathCurrent, store3, o[originalKey], depth + 1);
               } else {
                 if (kIsWc || typeof wcov === "object" && wcov !== null && k in wcov) {
                   if (kIsWc) {
@@ -14310,7 +14310,7 @@
                   nv = i !== lastPathIndex ? ov : isCensorFct ? censorFctTakesPath ? censor(ov, [...path, originalKey, ...afterPath]) : censor(ov) : censor;
                   if (kIsWc) {
                     const rv = restoreInstr(node(redactPathCurrent, wck, depth), ov, o[originalKey]);
-                    store2.push(rv);
+                    store3.push(rv);
                     n[wck] = nv;
                   } else {
                     if (wcov[k] === nv) {
@@ -14319,7 +14319,7 @@
                     } else {
                       redactPathCurrent = node(redactPathCurrent, wck, depth);
                       const rv = restoreInstr(node(redactPathCurrent, k, depth + 1), ov, o[originalKey]);
-                      store2.push(rv);
+                      store3.push(rv);
                       wcov[k] = nv;
                     }
                   }
@@ -14334,7 +14334,7 @@
             if (has(n, k) && nv === ov || nv === void 0 && censor !== void 0) {
             } else {
               const rv = restoreInstr(redactPathCurrent, ov, o[originalKey]);
-              store2.push(rv);
+              store3.push(rv);
               n[k] = nv;
             }
             n = n[k];
@@ -14353,7 +14353,7 @@
         }
         return n;
       }
-      function iterateNthLevel(wcov, level2, k, path, afterPath, censor, isCensorFct, censorFctTakesPath, originalKey, n, nv, ov, kIsWc, wck, i, lastPathIndex, redactPathCurrent, store2, parent, depth) {
+      function iterateNthLevel(wcov, level2, k, path, afterPath, censor, isCensorFct, censorFctTakesPath, originalKey, n, nv, ov, kIsWc, wck, i, lastPathIndex, redactPathCurrent, store3, parent, depth) {
         if (level2 === 0) {
           if (kIsWc || typeof wcov === "object" && wcov !== null && k in wcov) {
             if (kIsWc) {
@@ -14364,14 +14364,14 @@
             nv = i !== lastPathIndex ? ov : isCensorFct ? censorFctTakesPath ? censor(ov, [...path, originalKey, ...afterPath]) : censor(ov) : censor;
             if (kIsWc) {
               const rv = restoreInstr(redactPathCurrent, ov, parent);
-              store2.push(rv);
+              store3.push(rv);
               n[wck] = nv;
             } else {
               if (wcov[k] === nv) {
               } else if (nv === void 0 && censor !== void 0 || has(wcov, k) && nv === ov) {
               } else {
                 const rv = restoreInstr(node(redactPathCurrent, k, depth + 1), ov, parent);
-                store2.push(rv);
+                store3.push(rv);
                 wcov[k] = nv;
               }
             }
@@ -14380,7 +14380,7 @@
         for (const key in wcov) {
           if (typeof wcov[key] === "object") {
             redactPathCurrent = node(redactPathCurrent, key, depth);
-            iterateNthLevel(wcov[key], level2 - 1, k, path, afterPath, censor, isCensorFct, censorFctTakesPath, originalKey, n, nv, ov, kIsWc, wck, i, lastPathIndex, redactPathCurrent, store2, parent, depth + 1);
+            iterateNthLevel(wcov[key], level2 - 1, k, path, afterPath, censor, isCensorFct, censorFctTakesPath, originalKey, n, nv, ov, kIsWc, wck, i, lastPathIndex, redactPathCurrent, store3, parent, depth + 1);
           }
         }
       }
@@ -14689,81 +14689,65 @@
 
   // packages/ui/src/components/pages/SpringboardSurface.tsx
   var import_core4 = __toESM(require_core(), 1);
-  var React = __toESM(require_react(), 1);
+  var React2 = __toESM(require_react(), 1);
 
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.views-stub.ts
+  function builtinView(id3, label, path, icon, visibleInManager = false) {
+    return {
+      id: id3,
+      label,
+      path,
+      icon,
+      viewType: "gui",
+      available: true,
+      pluginName: "@elizaos/builtin",
+      builtin: true,
+      // Non-system views must be manager-visible to appear in the springboard
+      // grid (system ids like settings/files/tasks are exempt from that gate).
+      visibleInManager,
+      viewKind: "release"
+    };
+  }
+  var GRID_ICONS = [
+    "Inbox",
+    "Mail",
+    "CalendarDays",
+    "Heart",
+    "Target",
+    "Network",
+    "Database",
+    "Terminal",
+    "Wallet",
+    "ShoppingBag",
+    "Rss",
+    "Bot",
+    "BrainCircuit",
+    "Monitor",
+    "Radio",
+    "ScrollText",
+    "Globe",
+    "Plug",
+    "Sparkles",
+    "Phone",
+    "Users",
+    "ImageIcon"
+  ];
   function useRoutableViews() {
+    const gridViews = GRID_ICONS.map(
+      (icon, i) => builtinView(`app${i}`, `App ${i}`, `/apps/app${i}`, icon, true)
+    );
     return {
       views: [
-        {
-          id: "chat",
-          label: "Chat",
-          path: "/chat",
-          viewType: "gui",
-          available: true,
-          pluginName: "@elizaos/builtin",
-          builtin: true,
-          visibleInManager: false,
-          viewKind: "release"
-        },
-        {
-          id: "views",
-          label: "Views",
-          path: "/views",
-          viewType: "gui",
-          available: true,
-          pluginName: "@elizaos/builtin",
-          builtin: true,
-          visibleInManager: false,
-          viewKind: "release"
-        },
-        {
-          id: "settings",
-          label: "Settings",
-          path: "/settings",
-          icon: "Settings",
-          viewType: "gui",
-          available: true,
-          pluginName: "@elizaos/builtin",
-          builtin: true,
-          visibleInManager: false,
-          viewKind: "release"
-        },
-        {
-          id: "notes",
-          label: "Notes",
-          path: "/notes",
-          icon: "Notebook",
-          viewType: "gui",
-          available: true,
-          pluginName: "@elizaos/plugin-notes",
-          visibleInManager: true,
-          viewKind: "release"
-        },
-        {
-          id: "tasks",
-          label: "Tasks",
-          path: "/tasks",
-          icon: "ListTodo",
-          viewType: "gui",
-          available: true,
-          pluginName: "@elizaos/builtin",
-          builtin: true,
-          visibleInManager: false,
-          viewKind: "release"
-        },
-        {
-          id: "files",
-          label: "Files",
-          path: "/files",
-          icon: "FileText",
-          viewType: "gui",
-          available: true,
-          pluginName: "@elizaos/builtin",
-          builtin: true,
-          visibleInManager: false,
-          viewKind: "release"
-        }
+        // chat/views are filtered out of the springboard (self-links) — kept so
+        // the e2e can assert their ABSENCE.
+        builtinView("chat", "Chat", "/chat"),
+        builtinView("views", "Views", "/views"),
+        // Dock favorites — DISTINCT per-view icons (#5 regression check).
+        builtinView("settings", "Settings", "/settings", "Settings"),
+        builtinView("activity", "Activity", "/activity", "Activity", true),
+        builtinView("files", "Files", "/apps/files", "FolderClosed"),
+        builtinView("tasks", "Tasks", "/apps/tasks", "ListTodo"),
+        ...gridViews
       ],
       loading: false,
       error: null,
@@ -14828,6 +14812,109 @@
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.platform-stub.ts
   function getActiveViewModality() {
     return "gui";
+  }
+
+  // packages/ui/src/state/shell-surface-store.ts
+  var React = __toESM(require_react(), 1);
+
+  // packages/ui/src/components/shell/home-springboard-events.ts
+  var HOME_SPRINGBOARD_NAV_EVENT = "eliza:home-springboard:navigate";
+
+  // packages/ui/src/state/shell-surface-store.ts
+  var INITIAL_STATE = {
+    page: "home",
+    springboardPage: 0,
+    springboardPageCount: 1,
+    springboardEditing: false
+  };
+  function normalize(next) {
+    const pageCount = Math.max(1, Math.floor(next.springboardPageCount));
+    if (next.page !== "springboard") {
+      return {
+        page: next.page,
+        springboardPage: 0,
+        springboardPageCount: pageCount,
+        springboardEditing: false
+      };
+    }
+    const springboardPage = Math.min(
+      Math.max(0, Math.floor(next.springboardPage)),
+      pageCount - 1
+    );
+    return {
+      page: "springboard",
+      springboardPage,
+      springboardPageCount: pageCount,
+      springboardEditing: next.springboardEditing
+    };
+  }
+  function statesEqual(a, b) {
+    return a.page === b.page && a.springboardPage === b.springboardPage && a.springboardPageCount === b.springboardPageCount && a.springboardEditing === b.springboardEditing;
+  }
+  function store2() {
+    const g = globalThis;
+    const k = /* @__PURE__ */ Symbol.for("elizaos.ui.shell-surface-store");
+    const existing = g[k];
+    if (existing) {
+      ensureWindowBridge(existing);
+      return existing;
+    }
+    const created = {
+      state: INITIAL_STATE,
+      listeners: /* @__PURE__ */ new Set()
+    };
+    g[k] = created;
+    ensureWindowBridge(created);
+    return created;
+  }
+  function ensureWindowBridge(s) {
+    if (typeof window !== "undefined") {
+      if (s.bridgedWindow === window) return;
+      window.addEventListener(HOME_SPRINGBOARD_NAV_EVENT, (event) => {
+        const detail = event.detail;
+        commit(s, { ...s.state, page: detail?.page ?? "home" });
+      });
+      s.bridgedWindow = window;
+    }
+  }
+  function commit(s, next) {
+    const normalized = normalize(next);
+    if (statesEqual(s.state, normalized)) return;
+    s.state = normalized;
+    for (const l of s.listeners) l();
+  }
+  function update(partial2) {
+    const s = store2();
+    commit(s, { ...s.state, ...partial2 });
+  }
+  function goHome() {
+    update({ page: "home" });
+  }
+  function goSpringboard() {
+    update({ page: "springboard" });
+  }
+  function setShellSurfacePage(page) {
+    update({ page });
+  }
+  function setSpringboardPage(index2) {
+    update({ springboardPage: index2 });
+  }
+  function setSpringboardPageCount(count3) {
+    update({ springboardPageCount: count3 });
+  }
+  function setSpringboardEditing(editing) {
+    update({ springboardEditing: editing });
+  }
+  function useShellSurface() {
+    const s = store2();
+    return React.useSyncExternalStore(
+      (l) => {
+        s.listeners.add(l);
+        return () => s.listeners.delete(l);
+      },
+      () => s.state,
+      () => s.state
+    );
   }
 
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.view-kinds-stub.ts
@@ -16182,7 +16269,7 @@
       acc[key] = createRenderStep(flagRunNextFrame, allowKeepAlive ? key : void 0);
       return acc;
     }, {});
-    const { setup: setup2, read, resolveKeyframes, preUpdate, update, preRender, render: render2, postRender } = steps;
+    const { setup: setup2, read, resolveKeyframes, preUpdate, update: update2, preRender, render: render2, postRender } = steps;
     const processBatch = () => {
       const useManualTiming = MotionGlobalConfig.useManualTiming;
       const timestamp = useManualTiming ? state2.timestamp : performance.now();
@@ -16196,7 +16283,7 @@
       read.process(state2);
       resolveKeyframes.process(state2);
       preUpdate.process(state2);
-      update.process(state2);
+      update2.process(state2);
       preRender.process(state2);
       render2.process(state2);
       postRender.process(state2);
@@ -16675,8 +16762,8 @@
   }
 
   // node_modules/.bun/motion-dom@12.40.0/node_modules/motion-dom/dist/es/animation/drivers/frame.mjs
-  var frameloopDriver = (update) => {
-    const passTimestamp = ({ timestamp }) => update(timestamp);
+  var frameloopDriver = (update2) => {
+    const passTimestamp = ({ timestamp }) => update2(timestamp);
     return {
       start: (keepAlive = true) => frame.update(passTimestamp, keepAlive),
       stop: () => cancelFrame(passTimestamp),
@@ -24814,7 +24901,7 @@
     let cacheSize = 0;
     let cache = /* @__PURE__ */ Object.create(null);
     let previousCache = /* @__PURE__ */ Object.create(null);
-    const update = (key, value) => {
+    const update2 = (key, value) => {
       cache[key] = value;
       cacheSize++;
       if (cacheSize > maxCacheSize) {
@@ -24830,7 +24917,7 @@
           return value;
         }
         if ((value = previousCache[key]) !== void 0) {
-          update(key, value);
+          update2(key, value);
           return value;
         }
       },
@@ -24838,7 +24925,7 @@
         if (key in cache) {
           cache[key] = value;
         } else {
-          update(key, value);
+          update2(key, value);
         }
       }
     };
@@ -27958,6 +28045,7 @@
   // packages/ui/src/components/pages/Springboard.tsx
   var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
   var LONG_PRESS_MS = 450;
+  var LONG_PRESS_MOVE_SLOP = 10;
   var SWIPE_THRESHOLD = 60;
   var IconTile = (0, import_react31.memo)(function IconTile2({
     entry,
@@ -27971,11 +28059,13 @@
     onLongPress
   }) {
     const timer = (0, import_react31.useRef)(null);
+    const pressStart = (0, import_react31.useRef)(null);
     const clear = () => {
       if (timer.current) {
         clearTimeout(timer.current);
         timer.current = null;
       }
+      pressStart.current = null;
     };
     return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
       "div",
@@ -27992,9 +28082,17 @@
                 onClick: () => {
                   if (!editing) onLaunch(entry);
                 },
-                onPointerDown: () => {
+                onPointerDown: (event) => {
                   clear();
+                  pressStart.current = { x: event.clientX, y: event.clientY };
                   timer.current = setTimeout(onLongPress, LONG_PRESS_MS);
+                },
+                onPointerMove: (event) => {
+                  const start = pressStart.current;
+                  if (!start) return;
+                  if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > LONG_PRESS_MOVE_SLOP) {
+                    clear();
+                  }
                 },
                 onPointerUp: clear,
                 onPointerLeave: clear,
@@ -28081,6 +28179,12 @@
     canManageView,
     onEditView,
     onDeleteView,
+    page: pageProp,
+    onPageChange,
+    onPageCountChange,
+    editing: editingProp,
+    onEditingChange,
+    showPageDots = true,
     className
   }) {
     const availableIds = (0, import_react31.useMemo)(() => entries2.map((e) => e.id), [entries2]);
@@ -28097,8 +28201,26 @@
         entries2.map((e) => e.id)
       );
     });
-    const [page, setPage] = (0, import_react31.useState)(0);
-    const [editing, setEditing] = (0, import_react31.useState)(false);
+    const pageControlled = pageProp !== void 0;
+    const [localPage, setLocalPage] = (0, import_react31.useState)(0);
+    const activePage = pageProp ?? localPage;
+    const setActivePage = (0, import_react31.useCallback)(
+      (next) => {
+        if (pageControlled) onPageChange?.(next);
+        else setLocalPage(next);
+      },
+      [pageControlled, onPageChange]
+    );
+    const editingControlled = editingProp !== void 0;
+    const [localEditing, setLocalEditing] = (0, import_react31.useState)(false);
+    const editing = editingProp ?? localEditing;
+    const setEditingState = (0, import_react31.useCallback)(
+      (next) => {
+        if (editingControlled) onEditingChange?.(next);
+        else setLocalEditing(next);
+      },
+      [editingControlled, onEditingChange]
+    );
     (0, import_react31.useEffect)(() => {
       setLayout(
         (prev) => reconcileLayout(
@@ -28108,10 +28230,11 @@
       );
     }, [availableIds, favorites]);
     (0, import_react31.useEffect)(() => {
+      if (pageControlled) return;
       const pageCount = layout2.pages.length > 0 ? layout2.pages.length : 1;
-      setPage((p) => p > pageCount - 1 ? pageCount - 1 : p);
-    }, [layout2.pages.length]);
-    const commit = (0, import_react31.useCallback)((next) => {
+      setLocalPage((p) => p > pageCount - 1 ? pageCount - 1 : p);
+    }, [layout2.pages.length, pageControlled]);
+    const commit2 = (0, import_react31.useCallback)((next) => {
       setLayout(next);
       writeSpringboardLayout(next);
     }, []);
@@ -28127,9 +28250,9 @@
           onToggleFavorite?.(id3);
           return;
         }
-        commit(reconcileLayout(toggleFavorite(layout2, id3), availableIds));
+        commit2(reconcileLayout(toggleFavorite(layout2, id3), availableIds));
       },
-      [controlled, onToggleFavorite, commit, layout2, availableIds, favorites]
+      [controlled, onToggleFavorite, commit2, layout2, availableIds, favorites]
     );
     const handleLaunch = (0, import_react31.useCallback)(
       (entry) => {
@@ -28146,20 +28269,23 @@
       if (!editing) {
         emitViewInteraction({ source: "springboard", action: "edit-mode-enter" });
       }
-      setEditing(true);
-    }, [editing]);
+      setEditingState(true);
+    }, [editing, setEditingState]);
     const toggleEditMode = (0, import_react31.useCallback)(() => {
       emitViewInteraction({
         source: "springboard",
         action: editing ? "edit-mode-exit" : "edit-mode-enter"
       });
-      setEditing((e) => !e);
-    }, [editing]);
+      setEditingState(!editing);
+    }, [editing, setEditingState]);
     const pages = (0, import_react31.useMemo)(
       () => layout2.pages.length > 0 ? layout2.pages : [[]],
       [layout2.pages]
     );
-    const clampedPage = Math.min(page, pages.length - 1);
+    (0, import_react31.useEffect)(() => {
+      onPageCountChange?.(pages.length);
+    }, [pages.length, onPageCountChange]);
+    const clampedPage = Math.min(activePage, pages.length - 1);
     const favoriteIdList = (0, import_react31.useMemo)(
       () => (favorites ?? layout2.favorites).slice(0, SPRINGBOARD_DOCK_LIMIT),
       [favorites, layout2.favorites]
@@ -28180,9 +28306,9 @@
           action: "reorder",
           count: pageIndex
         });
-        commit(next);
+        commit2(next);
       },
-      [layout2, commit]
+      [layout2, commit2]
     );
     const renderTile = (0, import_react31.useCallback)(
       (entry, favorited) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
@@ -28246,14 +28372,14 @@
                 onDragEnd: (_event, info) => {
                   if (editing) return;
                   if (info.offset.x < -SWIPE_THRESHOLD && clampedPage < pages.length - 1) {
-                    setPage(clampedPage + 1);
+                    setActivePage(clampedPage + 1);
                     emitViewInteraction({
                       source: "springboard",
                       action: "page-swipe",
                       count: clampedPage + 1
                     });
                   } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
-                    setPage(clampedPage - 1);
+                    setActivePage(clampedPage - 1);
                     emitViewInteraction({
                       source: "springboard",
                       action: "page-swipe",
@@ -28301,13 +28427,13 @@
               },
               clampedPage
             ),
-            pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index2) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+            showPageDots && pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index2) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
               "button",
               {
                 type: "button",
                 "aria-label": `Page ${index2 + 1}`,
                 "aria-current": index2 === clampedPage,
-                onClick: () => setPage(index2),
+                onClick: () => setActivePage(index2),
                 className: cn(
                   "h-2 w-2 rounded-full transition-colors",
                   index2 === clampedPage ? "bg-accent" : "bg-border"
@@ -28382,32 +28508,33 @@
     }
     return out;
   }
-  var SpringboardSurface = React.memo(function SpringboardSurface2({
+  var SpringboardSurface = React2.memo(function SpringboardSurface2({
     onNavigateHomeFromEdge
   }) {
     const { views, loading } = useRoutableViews();
     const { entries: catalogEntries, get: getCatalogEntry } = useViewCatalog();
     const enabledKinds = useEnabledViewKinds();
-    const activeModality = React.useMemo(() => getActiveViewModality(), []);
-    const loadedEntries = React.useMemo(
+    const activeModality = React2.useMemo(() => getActiveViewModality(), []);
+    const { springboardPage, springboardEditing } = useShellSurface();
+    const loadedEntries = React2.useMemo(
       () => views.filter(
         (view) => isVisibleSpringboardView(view, enabledKinds, activeModality)
       ).map(viewToEntry),
       [activeModality, enabledKinds, views]
     );
-    const availableEntries = React.useMemo(
+    const availableEntries = React2.useMemo(
       () => catalogEntries.filter((entry) => entry.state !== "loaded").filter((entry) => entry.modality === activeModality).sort(compareEntryLabels),
       [activeModality, catalogEntries]
     );
-    const entries2 = React.useMemo(
+    const entries2 = React2.useMemo(
       () => dedupeEntries([...loadedEntries, ...availableEntries]),
       [availableEntries, loadedEntries]
     );
-    const entryById = React.useMemo(
+    const entryById = React2.useMemo(
       () => new Map(entries2.map((entry) => [entry.id, entry])),
       [entries2]
     );
-    const handleLaunch = React.useCallback(
+    const handleLaunch = React2.useCallback(
       (entry) => {
         if (entry.state !== "loaded") {
           void getCatalogEntry(entry).catch(() => {
@@ -28435,105 +28562,109 @@
         entries: entries2,
         loading,
         onLaunch: (entry) => handleLaunch(entryById.get(entry.id) ?? entry),
-        onEdgeSwipeRight: onNavigateHomeFromEdge
+        onEdgeSwipeRight: onNavigateHomeFromEdge,
+        page: springboardPage,
+        onPageChange: setSpringboardPage,
+        onPageCountChange: setSpringboardPageCount,
+        editing: springboardEditing,
+        onEditingChange: setSpringboardEditing,
+        showPageDots: false
       }
     ) });
   });
 
   // packages/ui/src/components/shell/HomeSpringboardSurface.tsx
-  var React2 = __toESM(require_react(), 1);
-
-  // packages/ui/src/components/shell/home-springboard-events.ts
-  var HOME_SPRINGBOARD_NAV_EVENT = "eliza:home-springboard:navigate";
-
-  // packages/ui/src/components/shell/HomeSpringboardSurface.tsx
+  var React3 = __toESM(require_react(), 1);
   var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
-  var HOME_TO_SPRINGBOARD_THRESHOLD = 72;
-  var HOME_TO_SPRINGBOARD_ANGLE_RATIO = 1.25;
+  var RAIL_FLICK_THRESHOLD = 72;
+  var RAIL_FLICK_ANGLE_RATIO = 1.25;
   function HomeSpringboardSurface({
     home,
     springboard,
     initialPage = "home",
     className
   }) {
-    const [page, setPage] = React2.useState(initialPage);
-    const flickRef = React2.useRef({
+    const { page, springboardPage, springboardPageCount, springboardEditing } = useShellSurface();
+    React3.useEffect(() => {
+      setShellSurfacePage(initialPage);
+    }, [initialPage]);
+    const homeFlick = React3.useRef({
       startX: 0,
       startY: 0,
-      tracking: false,
-      moved: false
+      tracking: false
     });
-    const suppressNextClickRef = React2.useRef(false);
-    React2.useEffect(() => {
-      if (typeof window === "undefined") return;
-      const handleNavigation = (event) => {
-        const detail = event.detail;
-        setPage(detail?.page ?? "home");
-      };
-      window.addEventListener(HOME_SPRINGBOARD_NAV_EVENT, handleNavigation);
-      return () => window.removeEventListener(HOME_SPRINGBOARD_NAV_EVENT, handleNavigation);
-    }, []);
-    const openHome = React2.useCallback(() => setPage("home"), []);
-    const openSpringboard = React2.useCallback(() => setPage("springboard"), []);
-    const handleHomePointerDown = React2.useCallback(
-      (event) => {
-        if (!event.isPrimary) return;
-        flickRef.current = {
-          startX: event.clientX,
-          startY: event.clientY,
-          tracking: true,
-          moved: false
-        };
-      },
-      []
-    );
-    const handleHomePointerMove = React2.useCallback(
-      (event) => {
-        const state2 = flickRef.current;
-        if (!state2.tracking) return;
-        const dx = event.clientX - state2.startX;
-        const dy = event.clientY - state2.startY;
-        if (dx < -HOME_TO_SPRINGBOARD_THRESHOLD && Math.abs(dx) > Math.abs(dy) * HOME_TO_SPRINGBOARD_ANGLE_RATIO) {
-          state2.moved = true;
+    const springboardFlick = React3.useRef({
+      startX: 0,
+      startY: 0,
+      tracking: false
+    });
+    const suppressHomeClickRef = React3.useRef(false);
+    const suppressSpringboardClickRef = React3.useRef(false);
+    const makeFlickHandlers = (flick, suppress, direction, onCommit) => {
+      const committed = (dx, dy) => Math.abs(dx) > Math.abs(dy) * RAIL_FLICK_ANGLE_RATIO && (direction === "left" ? dx < -RAIL_FLICK_THRESHOLD : dx > RAIL_FLICK_THRESHOLD);
+      return {
+        onPointerDown: (event) => {
+          if (!event.isPrimary) return;
+          flick.current = {
+            startX: event.clientX,
+            startY: event.clientY,
+            tracking: true
+          };
+        },
+        onPointerUp: (event) => {
+          const state2 = flick.current;
+          if (!state2.tracking) return;
+          state2.tracking = false;
+          if (!committed(event.clientX - state2.startX, event.clientY - state2.startY)) {
+            return;
+          }
+          suppress.current = true;
+          onCommit();
+          window.setTimeout(() => {
+            suppress.current = false;
+          }, 0);
+        },
+        onPointerCancel: () => {
+          flick.current.tracking = false;
+        },
+        onClickCapture: (event) => {
+          if (!suppress.current) return;
+          suppress.current = false;
+          event.preventDefault();
+          event.stopPropagation();
         }
-      },
-      []
+      };
+    };
+    const homeHandlers = makeFlickHandlers(
+      homeFlick,
+      suppressHomeClickRef,
+      "left",
+      goSpringboard
     );
-    const handleHomePointerUp = React2.useCallback(
-      (event) => {
-        const state2 = flickRef.current;
-        if (!state2.tracking) return;
-        state2.tracking = false;
-        const dx = event.clientX - state2.startX;
-        const dy = event.clientY - state2.startY;
-        const shouldOpenSpringboard = dx < -HOME_TO_SPRINGBOARD_THRESHOLD && Math.abs(dx) > Math.abs(dy) * HOME_TO_SPRINGBOARD_ANGLE_RATIO;
-        if (!shouldOpenSpringboard) return;
-        suppressNextClickRef.current = true;
-        openSpringboard();
-        window.setTimeout(() => {
-          suppressNextClickRef.current = false;
-        }, 0);
-      },
-      [openSpringboard]
+    const springboardHandlers = makeFlickHandlers(
+      springboardFlick,
+      suppressSpringboardClickRef,
+      "right",
+      () => {
+        if (springboardPage === 0 || springboardEditing) goHome();
+      }
     );
-    const handleHomePointerCancel = React2.useCallback(() => {
-      flickRef.current.tracking = false;
-    }, []);
-    const handleHomeClickCapture = React2.useCallback(
-      (event) => {
-        if (!suppressNextClickRef.current) return;
-        suppressNextClickRef.current = false;
-        event.preventDefault();
-        event.stopPropagation();
-      },
-      []
-    );
-    const railStyle = React2.useMemo(
+    const railStyle = React3.useMemo(
       () => ({
         transform: page === "springboard" ? "translate3d(-50%,0,0)" : "translate3d(0,0,0)"
       }),
       [page]
     );
+    const totalDots = 1 + Math.max(1, springboardPageCount);
+    const activeDot = page === "home" ? 0 : 1 + springboardPage;
+    const jumpToDot = React3.useCallback((index2) => {
+      if (index2 <= 0) {
+        goHome();
+        return;
+      }
+      goSpringboard();
+      setSpringboardPage(index2 - 1);
+    }, []);
     return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
       "section",
       {
@@ -28560,11 +28691,10 @@
                     "data-testid": "home-springboard-home-page",
                     "aria-hidden": page !== "home",
                     className: "relative h-full w-1/2 shrink-0",
-                    onPointerDown: handleHomePointerDown,
-                    onPointerMove: handleHomePointerMove,
-                    onPointerUp: handleHomePointerUp,
-                    onPointerCancel: handleHomePointerCancel,
-                    onClickCapture: handleHomeClickCapture,
+                    onPointerDown: homeHandlers.onPointerDown,
+                    onPointerUp: homeHandlers.onPointerUp,
+                    onPointerCancel: homeHandlers.onPointerCancel,
+                    onClickCapture: homeHandlers.onClickCapture,
                     children: home
                   }
                 ),
@@ -28574,39 +28704,37 @@
                     "data-testid": "home-springboard-springboard-page",
                     "aria-hidden": page !== "springboard",
                     className: "relative h-full w-1/2 shrink-0",
-                    children: React2.cloneElement(springboard, {
-                      onNavigateHomeFromEdge: openHome
+                    onPointerDown: springboardHandlers.onPointerDown,
+                    onPointerUp: springboardHandlers.onPointerUp,
+                    onPointerCancel: springboardHandlers.onPointerCancel,
+                    onClickCapture: springboardHandlers.onClickCapture,
+                    children: React3.cloneElement(springboard, {
+                      onNavigateHomeFromEdge: goHome
                     })
                   }
                 )
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
             "div",
             {
-              "aria-hidden": "true",
-              className: "pointer-events-none absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+5.9rem)] z-[2] flex justify-center gap-1.5",
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-                  "span",
-                  {
-                    className: cn(
-                      "h-1.5 w-1.5 rounded-full transition-colors",
-                      page === "home" ? "bg-white/70" : "bg-white/25"
-                    )
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-                  "span",
-                  {
-                    className: cn(
-                      "h-1.5 w-1.5 rounded-full transition-colors",
-                      page === "springboard" ? "bg-white/70" : "bg-white/25"
-                    )
-                  }
-                )
-              ]
+              "data-testid": "home-springboard-indicator",
+              className: "pointer-events-auto absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+5.9rem)] z-[2] flex justify-center gap-1.5",
+              children: Array.from({ length: totalDots }, (_, index2) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+                "button",
+                {
+                  type: "button",
+                  "aria-label": index2 === 0 ? "Home" : `Apps page ${index2}`,
+                  "aria-current": index2 === activeDot,
+                  onClick: () => jumpToDot(index2),
+                  className: cn(
+                    "h-1.5 w-1.5 rounded-full transition-colors",
+                    index2 === activeDot ? "bg-white/70" : "bg-white/25"
+                  )
+                },
+                `shell-dot-${index2}`
+              ))
             }
           )
         ]
@@ -31743,7 +31871,7 @@
             })));
           }
         }
-
+        
         if (${id3}.value === undefined) {
           if (${k} in input) {
             newResult[${k}] = undefined;
@@ -31751,7 +31879,7 @@
         } else {
           newResult[${k}] = ${id3}.value;
         }
-
+        
       `);
         } else if (!isOptionalIn) {
           doc.write(`
@@ -31788,7 +31916,7 @@
             path: iss.path ? [${k}, ...iss.path] : [${k}]
           })));
         }
-
+        
         if (${id3}.value === undefined) {
           if (${k} in input) {
             newResult[${k}] = undefined;
@@ -31796,7 +31924,7 @@
         } else {
           newResult[${k}] = ${id3}.value;
         }
-
+        
       `);
         }
       }
@@ -43492,13 +43620,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/components/ui/confirm-dialog.tsx
-  var React33 = __toESM(require_react(), 1);
+  var React34 = __toESM(require_react(), 1);
 
   // node_modules/.bun/@radix-ui+react-slot@1.3.0+b2e33729a97476bf/node_modules/@radix-ui/react-slot/dist/index.mjs
-  var React4 = __toESM(require_react(), 1);
+  var React5 = __toESM(require_react(), 1);
 
   // node_modules/.bun/@radix-ui+react-compose-refs@1.1.3+b2e33729a97476bf/node_modules/@radix-ui/react-compose-refs/dist/index.mjs
-  var React3 = __toESM(require_react(), 1);
+  var React4 = __toESM(require_react(), 1);
   function setRef(ref, value) {
     if (typeof ref === "function") {
       return ref(value);
@@ -43531,13 +43659,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     };
   }
   function useComposedRefs(...refs) {
-    return React3.useCallback(composeRefs(...refs), refs);
+    return React4.useCallback(composeRefs(...refs), refs);
   }
 
   // node_modules/.bun/@radix-ui+react-slot@1.3.0+b2e33729a97476bf/node_modules/@radix-ui/react-slot/dist/index.mjs
   // @__NO_SIDE_EFFECTS__
   function createSlot(ownerName) {
-    const Slot22 = React4.forwardRef((props, forwardedRef) => {
+    const Slot22 = React5.forwardRef((props, forwardedRef) => {
       let { children, ...slotProps } = props;
       let slottableElement = null;
       let hasSlottable = false;
@@ -43545,7 +43673,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       if (isLazyComponent(children) && typeof use === "function") {
         children = use(children._payload);
       }
-      React4.Children.forEach(children, (maybeSlottable) => {
+      React5.Children.forEach(children, (maybeSlottable) => {
         if (isSlottable(maybeSlottable)) {
           hasSlottable = true;
           const slottable = maybeSlottable;
@@ -43560,13 +43688,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         }
       });
       if (slottableElement) {
-        slottableElement = React4.cloneElement(slottableElement, void 0, newChildren);
+        slottableElement = React5.cloneElement(slottableElement, void 0, newChildren);
       } else if (
         // A `Slottable` was found but it didn't resolve to a single element (e.g.
         // it wrapped multiple elements, text, or a render-prop `child` that
         // wasn't an element). Don't fall back to treating the `Slottable` wrapper
         // itself as the slot target — throw a descriptive error below instead.
-        !hasSlottable && React4.Children.count(children) === 1 && React4.isValidElement(children)
+        !hasSlottable && React5.Children.count(children) === 1 && React5.isValidElement(children)
       ) {
         slottableElement = children;
       }
@@ -43581,10 +43709,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         return children;
       }
       const mergedProps = mergeProps(slotProps, slottableElement.props ?? {});
-      if (slottableElement.type !== React4.Fragment) {
+      if (slottableElement.type !== React5.Fragment) {
         mergedProps.ref = forwardedRef ? composedRef : slottableElementRef;
       }
-      return React4.cloneElement(slottableElement, mergedProps);
+      return React5.cloneElement(slottableElement, mergedProps);
     });
     Slot22.displayName = `${ownerName}.Slot`;
     return Slot22;
@@ -43594,10 +43722,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var getSlottableElementFromSlottable = (slottable, child) => {
     if ("child" in slottable.props) {
       const child2 = slottable.props.child;
-      if (!React4.isValidElement(child2)) return null;
-      return React4.cloneElement(child2, void 0, slottable.props.children(child2.props.children));
+      if (!React5.isValidElement(child2)) return null;
+      return React5.cloneElement(child2, void 0, slottable.props.children(child2.props.children));
     }
-    return React4.isValidElement(child) ? child : null;
+    return React5.isValidElement(child) ? child : null;
   };
   function mergeProps(slotProps, childProps) {
     const overrideProps = { ...childProps };
@@ -43637,7 +43765,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     return element.props.ref || element.ref;
   }
   function isSlottable(child) {
-    return React4.isValidElement(child) && typeof child.type === "function" && "__radixId" in child.type && child.type.__radixId === SLOTTABLE_IDENTIFIER;
+    return React5.isValidElement(child) && typeof child.type === "function" && "__radixId" in child.type && child.type.__radixId === SLOTTABLE_IDENTIFIER;
   }
   var REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy");
   function isLazyComponent(element) {
@@ -43652,7 +43780,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var createSlottableError = (ownerName) => {
     return `${ownerName} failed to slot onto its \`Slottable\`. Expected \`Slottable\` to receive a single React element child.`;
   };
-  var use = React4[" use ".trim().toString()];
+  var use = React5[" use ".trim().toString()];
 
   // node_modules/.bun/class-variance-authority@0.7.1/node_modules/class-variance-authority/dist/index.mjs
   var falsyToString = (value) => typeof value === "boolean" ? `${value}` : value === 0 ? "0" : value;
@@ -43697,7 +43825,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   };
 
   // packages/ui/src/components/ui/button.tsx
-  var React5 = __toESM(require_react(), 1);
+  var React6 = __toESM(require_react(), 1);
   var import_jsx_runtime11 = __toESM(require_jsx_runtime(), 1);
   var buttonVariants = cva(
     "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium  transition-colors     disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
@@ -43729,7 +43857,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
     }
   );
-  var Button = React5.forwardRef(
+  var Button = React6.forwardRef(
     ({ className, variant, size: size4, asChild = false, style, type, ...props }, ref) => {
       const Comp = asChild ? Slot : "button";
       const resolvedType = asChild ? type : type ?? "button";
@@ -43748,7 +43876,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   Button.displayName = "Button";
 
   // node_modules/.bun/@radix-ui+react-dialog@1.1.17+119c4f3973a6d299/node_modules/@radix-ui/react-dialog/dist/index.mjs
-  var React27 = __toESM(require_react(), 1);
+  var React28 = __toESM(require_react(), 1);
 
   // node_modules/.bun/@radix-ui+primitive@1.1.4/node_modules/@radix-ui/primitive/dist/index.mjs
   var canUseDOM = !!(typeof window !== "undefined" && window.document && window.document.createElement);
@@ -43762,25 +43890,25 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/@radix-ui+react-context@1.1.4+b2e33729a97476bf/node_modules/@radix-ui/react-context/dist/index.mjs
-  var React6 = __toESM(require_react(), 1);
+  var React7 = __toESM(require_react(), 1);
   var import_jsx_runtime12 = __toESM(require_jsx_runtime(), 1);
   function createContextScope(scopeName, createContextScopeDeps = []) {
     let defaultContexts = [];
     function createContext32(rootComponentName, defaultContext) {
-      const BaseContext = React6.createContext(defaultContext);
+      const BaseContext = React7.createContext(defaultContext);
       BaseContext.displayName = rootComponentName + "Context";
       const index2 = defaultContexts.length;
       defaultContexts = [...defaultContexts, defaultContext];
       const Provider = (props) => {
         const { scope, children, ...context } = props;
         const Context = scope?.[scopeName]?.[index2] || BaseContext;
-        const value = React6.useMemo(() => context, Object.values(context));
+        const value = React7.useMemo(() => context, Object.values(context));
         return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(Context.Provider, { value, children });
       };
       Provider.displayName = rootComponentName + "Provider";
       function useContext23(consumerName, scope) {
         const Context = scope?.[scopeName]?.[index2] || BaseContext;
-        const context = React6.useContext(Context);
+        const context = React7.useContext(Context);
         if (context) return context;
         if (defaultContext !== void 0) return defaultContext;
         throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
@@ -43789,11 +43917,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
     const createScope = () => {
       const scopeContexts = defaultContexts.map((defaultContext) => {
-        return React6.createContext(defaultContext);
+        return React7.createContext(defaultContext);
       });
       return function useScope(scope) {
         const contexts = scope?.[scopeName] || scopeContexts;
-        return React6.useMemo(
+        return React7.useMemo(
           () => ({ [`__scope${scopeName}`]: { ...scope, [scopeName]: contexts } }),
           [scope, contexts]
         );
@@ -43816,7 +43944,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           const currentScope = scopeProps[`__scope${scopeName}`];
           return { ...nextScopes2, ...currentScope };
         }, {});
-        return React6.useMemo(() => ({ [`__scope${baseScope.scopeName}`]: nextScopes }), [nextScopes]);
+        return React7.useMemo(() => ({ [`__scope${baseScope.scopeName}`]: nextScopes }), [nextScopes]);
       };
     };
     createScope.scopeName = baseScope.scopeName;
@@ -43824,18 +43952,18 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/@radix-ui+react-id@1.1.2+b2e33729a97476bf/node_modules/@radix-ui/react-id/dist/index.mjs
-  var React8 = __toESM(require_react(), 1);
+  var React9 = __toESM(require_react(), 1);
 
   // node_modules/.bun/@radix-ui+react-use-layout-effect@1.1.2+b2e33729a97476bf/node_modules/@radix-ui/react-use-layout-effect/dist/index.mjs
-  var React7 = __toESM(require_react(), 1);
-  var useLayoutEffect22 = globalThis?.document ? React7.useLayoutEffect : () => {
+  var React8 = __toESM(require_react(), 1);
+  var useLayoutEffect22 = globalThis?.document ? React8.useLayoutEffect : () => {
   };
 
   // node_modules/.bun/@radix-ui+react-id@1.1.2+b2e33729a97476bf/node_modules/@radix-ui/react-id/dist/index.mjs
-  var useReactId = React8[" useId ".trim().toString()] || (() => void 0);
+  var useReactId = React9[" useId ".trim().toString()] || (() => void 0);
   var count = 0;
   function useId2(deterministicId) {
-    const [id3, setId] = React8.useState(useReactId());
+    const [id3, setId] = React9.useState(useReactId());
     useLayoutEffect22(() => {
       if (!deterministicId) setId((reactId) => reactId ?? String(count++));
     }, [deterministicId]);
@@ -43843,9 +43971,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/@radix-ui+react-use-controllable-state@1.2.3+b2e33729a97476bf/node_modules/@radix-ui/react-use-controllable-state/dist/index.mjs
-  var React9 = __toESM(require_react(), 1);
+  var React10 = __toESM(require_react(), 1);
   var React22 = __toESM(require_react(), 1);
-  var useInsertionEffect3 = React9[" useInsertionEffect ".trim().toString()] || useLayoutEffect22;
+  var useInsertionEffect3 = React10[" useInsertionEffect ".trim().toString()] || useLayoutEffect22;
   function useControllableState({
     prop,
     defaultProp,
@@ -43860,8 +43988,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     const isControlled = prop !== void 0;
     const value = isControlled ? prop : uncontrolledProp;
     if (true) {
-      const isControlledRef = React9.useRef(prop !== void 0);
-      React9.useEffect(() => {
+      const isControlledRef = React10.useRef(prop !== void 0);
+      React10.useEffect(() => {
         const wasControlled = isControlledRef.current;
         if (wasControlled !== isControlled) {
           const from = wasControlled ? "controlled" : "uncontrolled";
@@ -43873,7 +44001,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         isControlledRef.current = isControlled;
       }, [isControlled, caller]);
     }
-    const setValue = React9.useCallback(
+    const setValue = React10.useCallback(
       (nextValue) => {
         if (isControlled) {
           const value2 = isFunction(nextValue) ? nextValue(prop) : nextValue;
@@ -43892,13 +44020,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     defaultProp,
     onChange
   }) {
-    const [value, setValue] = React9.useState(defaultProp);
-    const prevValueRef = React9.useRef(value);
-    const onChangeRef = React9.useRef(onChange);
+    const [value, setValue] = React10.useState(defaultProp);
+    const prevValueRef = React10.useRef(value);
+    const onChangeRef = React10.useRef(onChange);
     useInsertionEffect3(() => {
       onChangeRef.current = onChange;
     }, [onChange]);
-    React9.useEffect(() => {
+    React10.useEffect(() => {
       if (prevValueRef.current !== value) {
         onChangeRef.current?.(value);
         prevValueRef.current = value;
@@ -43911,10 +44039,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/@radix-ui+react-dismissable-layer@1.1.13+119c4f3973a6d299/node_modules/@radix-ui/react-dismissable-layer/dist/index.mjs
-  var React13 = __toESM(require_react(), 1);
+  var React14 = __toESM(require_react(), 1);
 
   // node_modules/.bun/@radix-ui+react-primitive@2.1.6+119c4f3973a6d299/node_modules/@radix-ui/react-primitive/dist/index.mjs
-  var React10 = __toESM(require_react(), 1);
+  var React11 = __toESM(require_react(), 1);
   var ReactDOM = __toESM(require_react_dom(), 1);
   var import_jsx_runtime13 = __toESM(require_jsx_runtime(), 1);
   var NODES = [
@@ -43938,7 +44066,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   ];
   var Primitive = NODES.reduce((primitive, node) => {
     const Slot4 = createSlot(`Primitive.${node}`);
-    const Node2 = React10.forwardRef((props, forwardedRef) => {
+    const Node2 = React11.forwardRef((props, forwardedRef) => {
       const { asChild, ...primitiveProps } = props;
       const Comp = asChild ? Slot4 : node;
       if (typeof window !== "undefined") {
@@ -43954,20 +44082,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/@radix-ui+react-use-callback-ref@1.1.2+b2e33729a97476bf/node_modules/@radix-ui/react-use-callback-ref/dist/index.mjs
-  var React11 = __toESM(require_react(), 1);
+  var React12 = __toESM(require_react(), 1);
   function useCallbackRef(callback) {
-    const callbackRef = React11.useRef(callback);
-    React11.useEffect(() => {
+    const callbackRef = React12.useRef(callback);
+    React12.useEffect(() => {
       callbackRef.current = callback;
     });
-    return React11.useMemo(() => ((...args) => callbackRef.current?.(...args)), []);
+    return React12.useMemo(() => ((...args) => callbackRef.current?.(...args)), []);
   }
 
   // node_modules/.bun/@radix-ui+react-use-escape-keydown@1.1.2+b2e33729a97476bf/node_modules/@radix-ui/react-use-escape-keydown/dist/index.mjs
-  var React12 = __toESM(require_react(), 1);
+  var React13 = __toESM(require_react(), 1);
   function useEscapeKeydown(onEscapeKeyDownProp, ownerDocument = globalThis?.document) {
     const onEscapeKeyDown = useCallbackRef(onEscapeKeyDownProp);
-    React12.useEffect(() => {
+    React13.useEffect(() => {
       const handleKeyDown = (event) => {
         if (event.key === "Escape") {
           onEscapeKeyDown(event);
@@ -43985,7 +44113,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var POINTER_DOWN_OUTSIDE = "dismissableLayer.pointerDownOutside";
   var FOCUS_OUTSIDE = "dismissableLayer.focusOutside";
   var originalBodyPointerEvents;
-  var DismissableLayerContext = React13.createContext({
+  var DismissableLayerContext = React14.createContext({
     layers: /* @__PURE__ */ new Set(),
     layersWithOutsidePointerEventsDisabled: /* @__PURE__ */ new Set(),
     branches: /* @__PURE__ */ new Set(),
@@ -43996,7 +44124,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     // See https://github.com/radix-ui/primitives/issues/3346
     dismissableSurfaces: /* @__PURE__ */ new Set()
   });
-  var DismissableLayer = React13.forwardRef(
+  var DismissableLayer = React14.forwardRef(
     (props, forwardedRef) => {
       const {
         disableOutsidePointerEvents = false,
@@ -44008,10 +44136,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         onDismiss,
         ...layerProps
       } = props;
-      const context = React13.useContext(DismissableLayerContext);
-      const [node, setNode] = React13.useState(null);
+      const context = React14.useContext(DismissableLayerContext);
+      const [node, setNode] = React14.useState(null);
       const ownerDocument = node?.ownerDocument ?? globalThis?.document;
-      const [, force] = React13.useState({});
+      const [, force] = React14.useState({});
       const composedRefs = useComposedRefs(forwardedRef, (node2) => setNode(node2));
       const layers = Array.from(context.layers);
       const [highestLayerWithOutsidePointerEventsDisabled] = [...context.layersWithOutsidePointerEventsDisabled].slice(-1);
@@ -44019,7 +44147,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       const index2 = node ? layers.indexOf(node) : -1;
       const isBodyPointerEventsDisabled = context.layersWithOutsidePointerEventsDisabled.size > 0;
       const isPointerEventsEnabled = index2 >= highestLayerWithOutsidePointerEventsDisabledIndex;
-      const isDeferredPointerDownOutsideRef = React13.useRef(false);
+      const isDeferredPointerDownOutsideRef = React14.useRef(false);
       const pointerDownOutside = usePointerDownOutside(
         (event) => {
           const target = event.target;
@@ -44061,7 +44189,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           onDismiss();
         }
       }, ownerDocument);
-      React13.useEffect(() => {
+      React14.useEffect(() => {
         if (!node) return;
         if (disableOutsidePointerEvents) {
           if (context.layersWithOutsidePointerEventsDisabled.size === 0) {
@@ -44081,7 +44209,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           }
         };
       }, [node, ownerDocument, disableOutsidePointerEvents, context]);
-      React13.useEffect(() => {
+      React14.useEffect(() => {
         return () => {
           if (!node) return;
           context.layers.delete(node);
@@ -44089,7 +44217,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           dispatchUpdate();
         };
       }, [node, context]);
-      React13.useEffect(() => {
+      React14.useEffect(() => {
         const handleUpdate = () => force({});
         document.addEventListener(CONTEXT_UPDATE, handleUpdate);
         return () => document.removeEventListener(CONTEXT_UPDATE, handleUpdate);
@@ -44115,11 +44243,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   );
   DismissableLayer.displayName = DISMISSABLE_LAYER_NAME;
   var BRANCH_NAME = "DismissableLayerBranch";
-  var DismissableLayerBranch = React13.forwardRef((props, forwardedRef) => {
-    const context = React13.useContext(DismissableLayerContext);
-    const ref = React13.useRef(null);
+  var DismissableLayerBranch = React14.forwardRef((props, forwardedRef) => {
+    const context = React14.useContext(DismissableLayerContext);
+    const ref = React14.useRef(null);
     const composedRefs = useComposedRefs(forwardedRef, ref);
-    React13.useEffect(() => {
+    React14.useEffect(() => {
       const node = ref.current;
       if (node) {
         context.branches.add(node);
@@ -44132,9 +44260,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   });
   DismissableLayerBranch.displayName = BRANCH_NAME;
   function useDismissableLayerSurface() {
-    const context = React13.useContext(DismissableLayerContext);
-    const [node, setNode] = React13.useState(null);
-    React13.useEffect(() => {
+    const context = React14.useContext(DismissableLayerContext);
+    const [node, setNode] = React14.useState(null);
+    React14.useEffect(() => {
       if (!node) {
         return;
       }
@@ -44153,12 +44281,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       dismissableSurfaces
     } = args;
     const handlePointerDownOutside = useCallbackRef(onPointerDownOutside);
-    const isPointerInsideReactTreeRef = React13.useRef(false);
-    const isPointerDownOutsideRef = React13.useRef(false);
-    const interceptedOutsideInteractionEventsRef = React13.useRef(/* @__PURE__ */ new Map());
-    const handleClickRef = React13.useRef(() => {
+    const isPointerInsideReactTreeRef = React14.useRef(false);
+    const isPointerDownOutsideRef = React14.useRef(false);
+    const interceptedOutsideInteractionEventsRef = React14.useRef(/* @__PURE__ */ new Map());
+    const handleClickRef = React14.useRef(() => {
     });
-    React13.useEffect(() => {
+    React14.useEffect(() => {
       function resetOutsideInteraction() {
         isPointerDownOutsideRef.current = false;
         isDeferredPointerDownOutsideRef.current = false;
@@ -44260,8 +44388,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
   function useFocusOutside(onFocusOutside, ownerDocument = globalThis?.document) {
     const handleFocusOutside = useCallbackRef(onFocusOutside);
-    const isFocusInsideReactTreeRef = React13.useRef(false);
-    React13.useEffect(() => {
+    const isFocusInsideReactTreeRef = React14.useRef(false);
+    React14.useEffect(() => {
       const handleFocus = (event) => {
         if (event.target && !isFocusInsideReactTreeRef.current) {
           const eventDetail = { originalEvent: event };
@@ -44294,13 +44422,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/@radix-ui+react-focus-scope@1.1.10+119c4f3973a6d299/node_modules/@radix-ui/react-focus-scope/dist/index.mjs
-  var React14 = __toESM(require_react(), 1);
+  var React15 = __toESM(require_react(), 1);
   var import_jsx_runtime15 = __toESM(require_jsx_runtime(), 1);
   var AUTOFOCUS_ON_MOUNT = "focusScope.autoFocusOnMount";
   var AUTOFOCUS_ON_UNMOUNT = "focusScope.autoFocusOnUnmount";
   var EVENT_OPTIONS = { bubbles: false, cancelable: true };
   var FOCUS_SCOPE_NAME = "FocusScope";
-  var FocusScope = React14.forwardRef((props, forwardedRef) => {
+  var FocusScope = React15.forwardRef((props, forwardedRef) => {
     const {
       loop = false,
       trapped = false,
@@ -44308,12 +44436,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       onUnmountAutoFocus: onUnmountAutoFocusProp,
       ...scopeProps
     } = props;
-    const [container, setContainer] = React14.useState(null);
+    const [container, setContainer] = React15.useState(null);
     const onMountAutoFocus = useCallbackRef(onMountAutoFocusProp);
     const onUnmountAutoFocus = useCallbackRef(onUnmountAutoFocusProp);
-    const lastFocusedElementRef = React14.useRef(null);
+    const lastFocusedElementRef = React15.useRef(null);
     const composedRefs = useComposedRefs(forwardedRef, (node) => setContainer(node));
-    const focusScope = React14.useRef({
+    const focusScope = React15.useRef({
       paused: false,
       pause() {
         this.paused = true;
@@ -44322,7 +44450,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         this.paused = false;
       }
     }).current;
-    React14.useEffect(() => {
+    React15.useEffect(() => {
       if (trapped) {
         let handleFocusIn2 = function(event) {
           if (focusScope.paused || !container) return;
@@ -44358,7 +44486,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         };
       }
     }, [trapped, container, focusScope.paused]);
-    React14.useEffect(() => {
+    React15.useEffect(() => {
       if (container) {
         focusScopesStack.add(focusScope);
         const previouslyFocusedElement = document.activeElement;
@@ -44389,7 +44517,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         };
       }
     }, [container, onMountAutoFocus, onUnmountAutoFocus, focusScope]);
-    const handleKeyDown = React14.useCallback(
+    const handleKeyDown = React15.useCallback(
       (event) => {
         if (!loop && !trapped) return;
         if (focusScope.paused) return;
@@ -44498,13 +44626,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/@radix-ui+react-portal@1.1.12+119c4f3973a6d299/node_modules/@radix-ui/react-portal/dist/index.mjs
-  var React15 = __toESM(require_react(), 1);
+  var React16 = __toESM(require_react(), 1);
   var ReactDOM2 = __toESM(require_react_dom(), 1);
   var import_jsx_runtime16 = __toESM(require_jsx_runtime(), 1);
   var PORTAL_NAME = "Portal";
-  var Portal = React15.forwardRef((props, forwardedRef) => {
+  var Portal = React16.forwardRef((props, forwardedRef) => {
     const { container: containerProp, ...portalProps } = props;
-    const [mounted, setMounted] = React15.useState(false);
+    const [mounted, setMounted] = React16.useState(false);
     useLayoutEffect22(() => setMounted(true), []);
     const container = containerProp || mounted && globalThis?.document?.body;
     return container ? ReactDOM2.createPortal(/* @__PURE__ */ (0, import_jsx_runtime16.jsx)(Primitive.div, { ...portalProps, ref: forwardedRef }), container) : null;
@@ -44513,9 +44641,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 
   // node_modules/.bun/@radix-ui+react-presence@1.1.6+119c4f3973a6d299/node_modules/@radix-ui/react-presence/dist/index.mjs
   var React23 = __toESM(require_react(), 1);
-  var React16 = __toESM(require_react(), 1);
+  var React17 = __toESM(require_react(), 1);
   function useStateMachine(initialState, machine) {
-    return React16.useReducer((state2, event) => {
+    return React17.useReducer((state2, event) => {
       const nextState = machine[state2][event];
       return nextState ?? state2;
     }, initialState);
@@ -44672,11 +44800,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/@radix-ui+react-focus-guards@1.1.4+b2e33729a97476bf/node_modules/@radix-ui/react-focus-guards/dist/index.mjs
-  var React17 = __toESM(require_react(), 1);
+  var React18 = __toESM(require_react(), 1);
   var count2 = 0;
   var guards = null;
   function useFocusGuards() {
-    React17.useEffect(() => {
+    React18.useEffect(() => {
       if (!guards) {
         guards = { start: createFocusGuard(), end: createFocusGuard() };
       }
@@ -44742,10 +44870,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/react-remove-scroll@2.7.2+b2e33729a97476bf/node_modules/react-remove-scroll/dist/es2015/Combination.js
-  var React26 = __toESM(require_react());
+  var React27 = __toESM(require_react());
 
   // node_modules/.bun/react-remove-scroll@2.7.2+b2e33729a97476bf/node_modules/react-remove-scroll/dist/es2015/UI.js
-  var React20 = __toESM(require_react());
+  var React21 = __toESM(require_react());
 
   // node_modules/.bun/react-remove-scroll-bar@2.3.8+b2e33729a97476bf/node_modules/react-remove-scroll-bar/dist/es2015/constants.js
   var zeroRightClassName = "right-scroll-bar-position";
@@ -44792,8 +44920,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/use-callback-ref@1.3.3+b2e33729a97476bf/node_modules/use-callback-ref/dist/es2015/useMergeRef.js
-  var React18 = __toESM(require_react());
-  var useIsomorphicLayoutEffect2 = typeof window !== "undefined" ? React18.useLayoutEffect : React18.useEffect;
+  var React19 = __toESM(require_react());
+  var useIsomorphicLayoutEffect2 = typeof window !== "undefined" ? React19.useLayoutEffect : React19.useEffect;
   var currentValues = /* @__PURE__ */ new WeakMap();
   function useMergeRefs(refs, defaultValue) {
     var callbackRef = useCallbackRef2(defaultValue || null, function(newValue) {
@@ -44910,7 +45038,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // node_modules/.bun/use-sidecar@1.1.3+b2e33729a97476bf/node_modules/use-sidecar/dist/es2015/exports.js
-  var React19 = __toESM(require_react());
+  var React20 = __toESM(require_react());
   var SideCar = function(_a3) {
     var sideCar = _a3.sideCar, rest = __rest(_a3, ["sideCar"]);
     if (!sideCar) {
@@ -44920,7 +45048,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     if (!Target2) {
       throw new Error("Sidecar medium not found");
     }
-    return React19.createElement(Target2, __assign({}, rest));
+    return React20.createElement(Target2, __assign({}, rest));
   };
   SideCar.isSideCarExport = true;
   function exportSidecar(medium, exported) {
@@ -44935,9 +45063,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var nothing = function() {
     return;
   };
-  var RemoveScroll = React20.forwardRef(function(props, parentRef) {
-    var ref = React20.useRef(null);
-    var _a3 = React20.useState({
+  var RemoveScroll = React21.forwardRef(function(props, parentRef) {
+    var ref = React21.useRef(null);
+    var _a3 = React21.useState({
       onScrollCapture: nothing,
       onWheelCapture: nothing,
       onTouchMoveCapture: nothing
@@ -44946,11 +45074,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     var SideCar2 = sideCar;
     var containerRef = useMergeRefs([ref, parentRef]);
     var containerProps = __assign(__assign({}, rest), callbacks);
-    return React20.createElement(
-      React20.Fragment,
+    return React21.createElement(
+      React21.Fragment,
       null,
-      enabled && React20.createElement(SideCar2, { sideCar: effectCar, removeScrollBar, shards, noRelative, noIsolation, inert, setCallbacks, allowPinchZoom: !!allowPinchZoom, lockRef: ref, gapMode }),
-      forwardProps ? React20.cloneElement(React20.Children.only(children), __assign(__assign({}, containerProps), { ref: containerRef })) : React20.createElement(Container, __assign({}, containerProps, { className, ref: containerRef }), children)
+      enabled && React21.createElement(SideCar2, { sideCar: effectCar, removeScrollBar, shards, noRelative, noIsolation, inert, setCallbacks, allowPinchZoom: !!allowPinchZoom, lockRef: ref, gapMode }),
+      forwardProps ? React21.cloneElement(React21.Children.only(children), __assign(__assign({}, containerProps), { ref: containerRef })) : React21.createElement(Container, __assign({}, containerProps, { className, ref: containerRef }), children)
     );
   });
   RemoveScroll.defaultProps = {
@@ -44964,13 +45092,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   };
 
   // node_modules/.bun/react-remove-scroll@2.7.2+b2e33729a97476bf/node_modules/react-remove-scroll/dist/es2015/SideEffect.js
-  var React25 = __toESM(require_react());
+  var React26 = __toESM(require_react());
 
   // node_modules/.bun/react-remove-scroll-bar@2.3.8+b2e33729a97476bf/node_modules/react-remove-scroll-bar/dist/es2015/component.js
-  var React24 = __toESM(require_react());
+  var React25 = __toESM(require_react());
 
   // node_modules/.bun/react-style-singleton@2.2.3+b2e33729a97476bf/node_modules/react-style-singleton/dist/es2015/hook.js
-  var React21 = __toESM(require_react());
+  var React24 = __toESM(require_react());
 
   // node_modules/.bun/get-nonce@1.0.1/node_modules/get-nonce/dist/es2015/index.js
   var currentNonce;
@@ -45034,7 +45162,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var styleHookSingleton = function() {
     var sheet = stylesheetSingleton();
     return function(styles3, isDynamic) {
-      React21.useEffect(function() {
+      React24.useEffect(function() {
         sheet.add(styles3);
         return function() {
           sheet.remove();
@@ -45108,7 +45236,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     return isFinite(counter) ? counter : 0;
   };
   var useLockAttribute = function() {
-    React24.useEffect(function() {
+    React25.useEffect(function() {
       document.body.setAttribute(lockAttribute, (getCurrentUseCounter() + 1).toString());
       return function() {
         var newCounter = getCurrentUseCounter() - 1;
@@ -45123,10 +45251,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var RemoveScrollBar = function(_a3) {
     var noRelative = _a3.noRelative, noImportant = _a3.noImportant, _b = _a3.gapMode, gapMode = _b === void 0 ? "margin" : _b;
     useLockAttribute();
-    var gap = React24.useMemo(function() {
+    var gap = React25.useMemo(function() {
       return getGapWidth(gapMode);
     }, [gapMode]);
-    return React24.createElement(Style, { styles: getStyles(gap, !noRelative, gapMode, !noImportant ? "!important" : "") });
+    return React25.createElement(Style, { styles: getStyles(gap, !noRelative, gapMode, !noImportant ? "!important" : "") });
   };
 
   // node_modules/.bun/react-remove-scroll@2.7.2+b2e33729a97476bf/node_modules/react-remove-scroll/dist/es2015/aggresiveCapture.js
@@ -45267,16 +45395,16 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var idCounter = 0;
   var lockStack = [];
   function RemoveScrollSideCar(props) {
-    var shouldPreventQueue = React25.useRef([]);
-    var touchStartRef = React25.useRef([0, 0]);
-    var activeAxis = React25.useRef();
-    var id3 = React25.useState(idCounter++)[0];
-    var Style2 = React25.useState(styleSingleton)[0];
-    var lastProps = React25.useRef(props);
-    React25.useEffect(function() {
+    var shouldPreventQueue = React26.useRef([]);
+    var touchStartRef = React26.useRef([0, 0]);
+    var activeAxis = React26.useRef();
+    var id3 = React26.useState(idCounter++)[0];
+    var Style2 = React26.useState(styleSingleton)[0];
+    var lastProps = React26.useRef(props);
+    React26.useEffect(function() {
       lastProps.current = props;
     }, [props]);
-    React25.useEffect(function() {
+    React26.useEffect(function() {
       if (props.inert) {
         document.body.classList.add("block-interactivity-".concat(id3));
         var allow_1 = __spreadArray([props.lockRef.current], (props.shards || []).map(extractRef), true).filter(Boolean);
@@ -45292,7 +45420,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
       return;
     }, [props.inert, props.lockRef.current, props.shards]);
-    var shouldCancelEvent = React25.useCallback(function(event, parent) {
+    var shouldCancelEvent = React26.useCallback(function(event, parent) {
       if ("touches" in event && event.touches.length === 2 || event.type === "wheel" && event.ctrlKey) {
         return !lastProps.current.allowPinchZoom;
       }
@@ -45334,7 +45462,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       var cancelingAxis = activeAxis.current || currentAxis;
       return handleScroll(cancelingAxis, parent, event, cancelingAxis === "h" ? deltaX : deltaY, true);
     }, []);
-    var shouldPrevent = React25.useCallback(function(_event) {
+    var shouldPrevent = React26.useCallback(function(_event) {
       var event = _event;
       if (!lockStack.length || lockStack[lockStack.length - 1] !== Style2) {
         return;
@@ -45361,7 +45489,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         }
       }
     }, []);
-    var shouldCancel = React25.useCallback(function(name, delta, target, should) {
+    var shouldCancel = React26.useCallback(function(name, delta, target, should) {
       var event = { name, delta, target, should, shadowParent: getOutermostShadowParent(target) };
       shouldPreventQueue.current.push(event);
       setTimeout(function() {
@@ -45370,17 +45498,17 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         });
       }, 1);
     }, []);
-    var scrollTouchStart = React25.useCallback(function(event) {
+    var scrollTouchStart = React26.useCallback(function(event) {
       touchStartRef.current = getTouchXY(event);
       activeAxis.current = void 0;
     }, []);
-    var scrollWheel = React25.useCallback(function(event) {
+    var scrollWheel = React26.useCallback(function(event) {
       shouldCancel(event.type, getDeltaXY(event), event.target, shouldCancelEvent(event, props.lockRef.current));
     }, []);
-    var scrollTouchMove = React25.useCallback(function(event) {
+    var scrollTouchMove = React26.useCallback(function(event) {
       shouldCancel(event.type, getTouchXY(event), event.target, shouldCancelEvent(event, props.lockRef.current));
     }, []);
-    React25.useEffect(function() {
+    React26.useEffect(function() {
       lockStack.push(Style2);
       props.setCallbacks({
         onScrollCapture: scrollWheel,
@@ -45400,11 +45528,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       };
     }, []);
     var removeScrollBar = props.removeScrollBar, inert = props.inert;
-    return React25.createElement(
-      React25.Fragment,
+    return React26.createElement(
+      React26.Fragment,
       null,
-      inert ? React25.createElement(Style2, { styles: generateStyle(id3) }) : null,
-      removeScrollBar ? React25.createElement(RemoveScrollBar, { noRelative: props.noRelative, gapMode: props.gapMode }) : null
+      inert ? React26.createElement(Style2, { styles: generateStyle(id3) }) : null,
+      removeScrollBar ? React26.createElement(RemoveScrollBar, { noRelative: props.noRelative, gapMode: props.gapMode }) : null
     );
   }
   function getOutermostShadowParent(node) {
@@ -45423,8 +45551,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var sidecar_default = exportSidecar(effectCar, RemoveScrollSideCar);
 
   // node_modules/.bun/react-remove-scroll@2.7.2+b2e33729a97476bf/node_modules/react-remove-scroll/dist/es2015/Combination.js
-  var ReactRemoveScroll = React26.forwardRef(function(props, ref) {
-    return React26.createElement(RemoveScroll, __assign({}, props, { ref, sideCar: sidecar_default }));
+  var ReactRemoveScroll = React27.forwardRef(function(props, ref) {
+    return React27.createElement(RemoveScroll, __assign({}, props, { ref, sideCar: sidecar_default }));
   });
   ReactRemoveScroll.classNames = RemoveScroll.classNames;
   var Combination_default = ReactRemoveScroll;
@@ -45564,8 +45692,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       onOpenChange,
       modal = true
     } = props;
-    const triggerRef = React27.useRef(null);
-    const contentRef = React27.useRef(null);
+    const triggerRef = React28.useRef(null);
+    const contentRef = React28.useRef(null);
     const [open, setOpen] = useControllableState({
       prop: openProp,
       defaultProp: defaultOpen ?? false,
@@ -45583,7 +45711,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         descriptionId: useId2(),
         open,
         onOpenChange: setOpen,
-        onOpenToggle: React27.useCallback(() => setOpen((prevOpen) => !prevOpen), [setOpen]),
+        onOpenToggle: React28.useCallback(() => setOpen((prevOpen) => !prevOpen), [setOpen]),
         modal,
         children
       }
@@ -45591,7 +45719,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   };
   Dialog.displayName = DIALOG_NAME;
   var TRIGGER_NAME = "DialogTrigger";
-  var DialogTrigger = React27.forwardRef(
+  var DialogTrigger = React28.forwardRef(
     (props, forwardedRef) => {
       const { __scopeDialog, ...triggerProps } = props;
       const context = useDialogContext(TRIGGER_NAME, __scopeDialog);
@@ -45619,11 +45747,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var DialogPortal = (props) => {
     const { __scopeDialog, forceMount, children, container } = props;
     const context = useDialogContext(PORTAL_NAME2, __scopeDialog);
-    return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(PortalProvider, { scope: __scopeDialog, forceMount, children: React27.Children.map(children, (child) => /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Presence, { present: forceMount || context.open, children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Portal, { asChild: true, container, children: child }) })) });
+    return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(PortalProvider, { scope: __scopeDialog, forceMount, children: React28.Children.map(children, (child) => /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Presence, { present: forceMount || context.open, children: /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(Portal, { asChild: true, container, children: child }) })) });
   };
   DialogPortal.displayName = PORTAL_NAME2;
   var OVERLAY_NAME = "DialogOverlay";
-  var DialogOverlay = React27.forwardRef(
+  var DialogOverlay = React28.forwardRef(
     (props, forwardedRef) => {
       const portalContext = usePortalContext(OVERLAY_NAME, props.__scopeDialog);
       const { forceMount = portalContext.forceMount, ...overlayProps } = props;
@@ -45633,7 +45761,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   );
   DialogOverlay.displayName = OVERLAY_NAME;
   var Slot2 = createSlot("DialogOverlay.RemoveScroll");
-  var DialogOverlayImpl = React27.forwardRef(
+  var DialogOverlayImpl = React28.forwardRef(
     (props, forwardedRef) => {
       const { __scopeDialog, ...overlayProps } = props;
       const context = useDialogContext(OVERLAY_NAME, __scopeDialog);
@@ -45655,7 +45783,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
   );
   var CONTENT_NAME = "DialogContent";
-  var DialogContent = React27.forwardRef(
+  var DialogContent = React28.forwardRef(
     (props, forwardedRef) => {
       const portalContext = usePortalContext(CONTENT_NAME, props.__scopeDialog);
       const { forceMount = portalContext.forceMount, ...contentProps } = props;
@@ -45664,12 +45792,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
   );
   DialogContent.displayName = CONTENT_NAME;
-  var DialogContentModal = React27.forwardRef(
+  var DialogContentModal = React28.forwardRef(
     (props, forwardedRef) => {
       const context = useDialogContext(CONTENT_NAME, props.__scopeDialog);
-      const contentRef = React27.useRef(null);
+      const contentRef = React28.useRef(null);
       const composedRefs = useComposedRefs(forwardedRef, context.contentRef, contentRef);
-      React27.useEffect(() => {
+      React28.useEffect(() => {
         const content = contentRef.current;
         if (content) return hideOthers(content);
       }, []);
@@ -45698,11 +45826,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       );
     }
   );
-  var DialogContentNonModal = React27.forwardRef(
+  var DialogContentNonModal = React28.forwardRef(
     (props, forwardedRef) => {
       const context = useDialogContext(CONTENT_NAME, props.__scopeDialog);
-      const hasInteractedOutsideRef = React27.useRef(false);
-      const hasPointerDownOutsideRef = React27.useRef(false);
+      const hasInteractedOutsideRef = React28.useRef(false);
+      const hasPointerDownOutsideRef = React28.useRef(false);
       return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
         DialogContentImpl,
         {
@@ -45738,7 +45866,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       );
     }
   );
-  var DialogContentImpl = React27.forwardRef(
+  var DialogContentImpl = React28.forwardRef(
     (props, forwardedRef) => {
       const { __scopeDialog, trapFocus, onOpenAutoFocus, onCloseAutoFocus, ...contentProps } = props;
       const context = useDialogContext(CONTENT_NAME, __scopeDialog);
@@ -45770,7 +45898,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
   );
   var TITLE_NAME = "DialogTitle";
-  var DialogTitle = React27.forwardRef(
+  var DialogTitle = React28.forwardRef(
     (props, forwardedRef) => {
       const { __scopeDialog, ...titleProps } = props;
       const context = useDialogContext(TITLE_NAME, __scopeDialog);
@@ -45779,7 +45907,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   );
   DialogTitle.displayName = TITLE_NAME;
   var DESCRIPTION_NAME = "DialogDescription";
-  var DialogDescription = React27.forwardRef(
+  var DialogDescription = React28.forwardRef(
     (props, forwardedRef) => {
       const { __scopeDialog, ...descriptionProps } = props;
       const context = useDialogContext(DESCRIPTION_NAME, __scopeDialog);
@@ -45788,7 +45916,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   );
   DialogDescription.displayName = DESCRIPTION_NAME;
   var CLOSE_NAME = "DialogClose";
-  var DialogClose = React27.forwardRef(
+  var DialogClose = React28.forwardRef(
     (props, forwardedRef) => {
       const { __scopeDialog, ...closeProps } = props;
       const context = useDialogContext(CLOSE_NAME, __scopeDialog);
@@ -45809,10 +45937,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
 
   // packages/ui/src/components/ui/dialog.tsx
-  var React28 = __toESM(require_react(), 1);
+  var React29 = __toESM(require_react(), 1);
   var import_jsx_runtime18 = __toESM(require_jsx_runtime(), 1);
   var DialogPortal2 = DialogPortal;
-  var DialogOverlay2 = React28.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+  var DialogOverlay2 = React29.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     DialogOverlay,
     {
       ref,
@@ -45824,7 +45952,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
   ));
   DialogOverlay2.displayName = DialogOverlay.displayName;
-  var DialogContent2 = React28.forwardRef(
+  var DialogContent2 = React29.forwardRef(
     ({ className, children, container, showCloseButton = true, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(DialogPortal2, { container, children: [
       /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(DialogOverlay2, {}),
       /* @__PURE__ */ (0, import_jsx_runtime18.jsxs)(
@@ -45877,7 +46005,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
   );
   DialogFooter.displayName = "DialogFooter";
-  var DialogTitle2 = React28.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+  var DialogTitle2 = React29.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     DialogTitle,
     {
       ref,
@@ -45889,7 +46017,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
   ));
   DialogTitle2.displayName = DialogTitle.displayName;
-  var DialogDescription2 = React28.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
+  var DialogDescription2 = React29.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime18.jsx)(
     DialogDescription,
     {
       ref,
@@ -45900,13 +46028,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   DialogDescription2.displayName = DialogDescription.displayName;
 
   // packages/ui/src/components/ui/field.tsx
-  var React31 = __toESM(require_react(), 1);
+  var React32 = __toESM(require_react(), 1);
 
   // node_modules/.bun/@radix-ui+react-label@2.1.10+119c4f3973a6d299/node_modules/@radix-ui/react-label/dist/index.mjs
-  var React29 = __toESM(require_react(), 1);
+  var React30 = __toESM(require_react(), 1);
   var import_jsx_runtime19 = __toESM(require_jsx_runtime(), 1);
   var NAME = "Label";
-  var Label = React29.forwardRef((props, forwardedRef) => {
+  var Label = React30.forwardRef((props, forwardedRef) => {
     return /* @__PURE__ */ (0, import_jsx_runtime19.jsx)(
       Primitive.label,
       {
@@ -45925,10 +46053,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var Root = Label;
 
   // packages/ui/src/components/ui/label.tsx
-  var React30 = __toESM(require_react(), 1);
+  var React31 = __toESM(require_react(), 1);
   var import_jsx_runtime20 = __toESM(require_jsx_runtime(), 1);
   var LABEL_BASE_CLASS = "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70";
-  var Label2 = React30.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
+  var Label2 = React31.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime20.jsx)(
     Root,
     {
       ref,
@@ -45940,9 +46068,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 
   // packages/ui/src/components/ui/field.tsx
   var import_jsx_runtime21 = __toESM(require_jsx_runtime(), 1);
-  var Field = React31.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { ref, className: cn("space-y-2", className), ...props }));
+  var Field = React32.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)("div", { ref, className: cn("space-y-2", className), ...props }));
   Field.displayName = "Field";
-  var FieldLabel = React31.forwardRef(({ className, variant = "default", ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+  var FieldLabel = React32.forwardRef(({ className, variant = "default", ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
     Label2,
     {
       ref,
@@ -45954,7 +46082,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
   ));
   FieldLabel.displayName = "FieldLabel";
-  var FieldDescription = React31.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+  var FieldDescription = React32.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
     "p",
     {
       ref,
@@ -45963,7 +46091,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
   ));
   FieldDescription.displayName = "FieldDescription";
-  var FieldMessage = React31.forwardRef(({ className, tone = "default", ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
+  var FieldMessage = React32.forwardRef(({ className, tone = "default", ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime21.jsx)(
     "p",
     {
       ref,
@@ -45978,7 +46106,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   FieldMessage.displayName = "FieldMessage";
 
   // packages/ui/src/components/ui/input.tsx
-  var React32 = __toESM(require_react(), 1);
+  var React33 = __toESM(require_react(), 1);
   var import_jsx_runtime22 = __toESM(require_jsx_runtime(), 1);
   var inputVariants = cva(
     "w-full border text-sm transition-[border-color,box-shadow,background-color] disabled:cursor-not-allowed disabled:opacity-50",
@@ -46001,7 +46129,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
     }
   );
-  var Input = React32.forwardRef(
+  var Input = React33.forwardRef(
     ({ className, type, variant, density, hasError, ...props }, ref) => {
       return /* @__PURE__ */ (0, import_jsx_runtime22.jsx)(
         "input",
@@ -46024,7 +46152,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var import_jsx_runtime23 = __toESM(require_jsx_runtime(), 1);
 
   // packages/ui/src/components/ui/confirm-dialog.hooks.ts
-  var React34 = __toESM(require_react(), 1);
+  var React35 = __toESM(require_react(), 1);
 
   // packages/ui/src/config/boot-config-react.hooks.ts
   var import_react33 = __toESM(require_react(), 1);
@@ -46051,14 +46179,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     if (existing && typeof existing === "object" && "current" in existing) {
       return existing;
     }
-    const store2 = { current: DEFAULT_BOOT_CONFIG };
-    globalObject[BOOT_CONFIG_STORE_KEY] = store2;
-    globalObject[BOOT_CONFIG_WINDOW_KEY] = store2.current;
-    return store2;
+    const store3 = { current: DEFAULT_BOOT_CONFIG };
+    globalObject[BOOT_CONFIG_STORE_KEY] = store3;
+    globalObject[BOOT_CONFIG_WINDOW_KEY] = store3.current;
+    return store3;
   }
   function setBootConfig(config2) {
-    const store2 = getBootConfigStore();
-    store2.current = config2;
+    const store3 = getBootConfigStore();
+    store3.current = config2;
     getGlobalSlot()[BOOT_CONFIG_WINDOW_KEY] = config2;
   }
   function getBootConfig() {
@@ -48582,9 +48710,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     return globalThis.$adzeGlobal;
   }
   function getGlobal(cfg) {
-    const store2 = globalThis.$adzeGlobal;
-    if (isGlobalInitialized(store2)) {
-      return store2;
+    const store3 = globalThis.$adzeGlobal;
+    if (isGlobalInitialized(store3)) {
+      return store3;
     }
     const globalCtxt = new AdzeGlobal(cfg);
     globalThis.$adzeGlobal = globalCtxt;
@@ -52420,8 +52548,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       conversations: Array.isArray(parsed.conversations) ? parsed.conversations : []
     };
   }
-  function writeStore(store2) {
-    writeJson(CONVERSATIONS_KEY, store2);
+  function writeStore(store3) {
+    writeJson(CONVERSATIONS_KEY, store3);
   }
   function readBrowserWorkspaceStore() {
     const parsed = readJson(BROWSER_WORKSPACE_KEY, {
@@ -52431,8 +52559,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       tabs: Array.isArray(parsed.tabs) ? parsed.tabs : []
     };
   }
-  function writeBrowserWorkspaceStore(store2) {
-    writeJson(BROWSER_WORKSPACE_KEY, store2);
+  function writeBrowserWorkspaceStore(store3) {
+    writeJson(BROWSER_WORKSPACE_KEY, store3);
   }
   function normalizeBrowserWorkspaceUrl(rawUrl) {
     const value = typeof rawUrl === "string" ? rawUrl.trim() : "";
@@ -52465,8 +52593,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     };
     const kind = normalizeBrowserWorkspaceKind(body.kind);
     if (kind) tab.kind = kind;
-    const store2 = readBrowserWorkspaceStore();
-    const tabs = show ? store2.tabs.map((entry) => ({ ...entry, visible: false })) : store2.tabs;
+    const store3 = readBrowserWorkspaceStore();
+    const tabs = show ? store3.tabs.map((entry) => ({ ...entry, visible: false })) : store3.tabs;
     tabs.push(tab);
     writeBrowserWorkspaceStore({ tabs });
     return json2({ tab });
@@ -52479,14 +52607,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     if (!match) return null;
     const tabId = decodeURIComponent(match[1]).trim();
     const action = match[2] ?? null;
-    const store2 = readBrowserWorkspaceStore();
-    const index2 = store2.tabs.findIndex((tab) => tab.id === tabId);
+    const store3 = readBrowserWorkspaceStore();
+    const index2 = store3.tabs.findIndex((tab) => tab.id === tabId);
     if (index2 < 0) {
       return json2({ error: "Browser tab not found" }, 404);
     }
     if (!action && method === "DELETE") {
-      store2.tabs.splice(index2, 1);
-      writeBrowserWorkspaceStore(store2);
+      store3.tabs.splice(index2, 1);
+      writeBrowserWorkspaceStore(store3);
       return json2({ closed: true });
     }
     if (action === "snapshot" && method === "GET") {
@@ -52494,39 +52622,39 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
     if (action === "show" && method === "POST") {
       const now2 = nowIso();
-      store2.tabs = store2.tabs.map(
+      store3.tabs = store3.tabs.map(
         (tab) => tab.id === tabId ? { ...tab, visible: true, updatedAt: now2, lastFocusedAt: now2 } : { ...tab, visible: false }
       );
-      writeBrowserWorkspaceStore(store2);
-      return json2({ tab: store2.tabs[index2] });
+      writeBrowserWorkspaceStore(store3);
+      return json2({ tab: store3.tabs[index2] });
     }
     if (action === "hide" && method === "POST") {
       const now2 = nowIso();
-      store2.tabs[index2] = {
-        ...store2.tabs[index2],
+      store3.tabs[index2] = {
+        ...store3.tabs[index2],
         visible: false,
         updatedAt: now2
       };
-      writeBrowserWorkspaceStore(store2);
-      return json2({ tab: store2.tabs[index2] });
+      writeBrowserWorkspaceStore(store3);
+      return json2({ tab: store3.tabs[index2] });
     }
     if (action === "navigate" && method === "POST") {
       const body = await requestJson(request);
       const now2 = nowIso();
       const url2 = normalizeBrowserWorkspaceUrl(body.url);
-      store2.tabs[index2] = {
-        ...store2.tabs[index2],
+      store3.tabs[index2] = {
+        ...store3.tabs[index2],
         url: url2,
-        title: url2 === "about:blank" ? "New tab" : store2.tabs[index2].title,
+        title: url2 === "about:blank" ? "New tab" : store3.tabs[index2].title,
         updatedAt: now2,
         lastFocusedAt: now2,
         visible: true
       };
-      store2.tabs = store2.tabs.map(
-        (tab) => tab.id === tabId ? store2.tabs[index2] : { ...tab, visible: false }
+      store3.tabs = store3.tabs.map(
+        (tab) => tab.id === tabId ? store3.tabs[index2] : { ...tab, visible: false }
       );
-      writeBrowserWorkspaceStore(store2);
-      return json2({ tab: store2.tabs.find((tab) => tab.id === tabId) });
+      writeBrowserWorkspaceStore(store3);
+      return json2({ tab: store3.tabs.find((tab) => tab.id === tabId) });
     }
     return null;
   }
@@ -54745,9 +54873,9 @@ Assistant:`;
       }
     }
     if (method === "GET" && pathname === "/api/conversations") {
-      const store2 = readStore();
+      const store3 = readStore();
       return json2({
-        conversations: store2.conversations.map(conversationDto).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        conversations: store3.conversations.map(conversationDto).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       });
     }
     if (method === "POST" && pathname === "/api/conversations") {
@@ -54755,9 +54883,9 @@ Assistant:`;
       const conversation = createConversation(
         typeof body.title === "string" ? body.title : void 0
       );
-      const store2 = readStore();
-      store2.conversations.unshift(conversation);
-      writeStore(store2);
+      const store3 = readStore();
+      store3.conversations.unshift(conversation);
+      writeStore(store3);
       return json2({ conversation: conversationDto(conversation) });
     }
     const greetingMatch = pathname.match(
@@ -54778,8 +54906,8 @@ Assistant:`;
     );
     if (messageMatch) {
       const conversationId = decodeURIComponent(messageMatch[1]);
-      const store2 = readStore();
-      const conversation = store2.conversations.find(
+      const store3 = readStore();
+      const conversation = store3.conversations.find(
         (entry) => entry.id === conversationId
       );
       if (!conversation) return json2({ error: "Conversation not found" }, 404);
@@ -54797,7 +54925,7 @@ Assistant:`;
         const deletedCount = conversation.messages.length - deleteFrom;
         conversation.messages.splice(deleteFrom);
         conversation.updatedAt = nowIso();
-        writeStore(store2);
+        writeStore(store3);
         return json2({ ok: true, deletedCount });
       }
       if (method === "POST") {
@@ -54824,7 +54952,7 @@ Assistant:`;
         };
         conversation.messages.push(assistantMessage);
         conversation.updatedAt = nowIso();
-        writeStore(store2);
+        writeStore(store3);
         if (pathname.endsWith("/stream")) {
           return textEventStream([
             { type: "token", text: reply.text, fullText: reply.text },
@@ -54848,25 +54976,25 @@ Assistant:`;
     const conversationMatch = pathname.match(/^\/api\/conversations\/([^/]+)$/);
     if (conversationMatch) {
       const conversationId = decodeURIComponent(conversationMatch[1]);
-      const store2 = readStore();
-      const index2 = store2.conversations.findIndex(
+      const store3 = readStore();
+      const index2 = store3.conversations.findIndex(
         (entry) => entry.id === conversationId
       );
       if (index2 < 0) return json2({ error: "Conversation not found" }, 404);
       if (method === "DELETE") {
-        store2.conversations.splice(index2, 1);
-        writeStore(store2);
+        store3.conversations.splice(index2, 1);
+        writeStore(store3);
         return json2({ ok: true });
       }
       if (method === "PATCH") {
         const body = await requestJson(request);
         if (typeof body.title === "string" && body.title.trim()) {
-          store2.conversations[index2].title = body.title.trim();
+          store3.conversations[index2].title = body.title.trim();
         }
-        store2.conversations[index2].updatedAt = nowIso();
-        writeStore(store2);
+        store3.conversations[index2].updatedAt = nowIso();
+        writeStore(store3);
         return json2({
-          conversation: conversationDto(store2.conversations[index2])
+          conversation: conversationDto(store3.conversations[index2])
         });
       }
     }
@@ -65649,7 +65777,7 @@ Assistant:`;
       ...edit.agentName !== void 0 ? { agentName: edit.agentName } : {},
       ...edit.agentConfig !== void 0 ? { agentConfig: edit.agentConfig } : {}
     });
-    const normalize = (response) => ({
+    const normalize2 = (response) => ({
       success: response.success === true,
       ...response.error ? { error: response.error } : {},
       data: {
@@ -65658,7 +65786,7 @@ Assistant:`;
       }
     });
     const direct = await directCloudRequest(this, path, { method: "PATCH", body });
-    if (direct) return normalize(direct);
+    if (direct) return normalize2(direct);
     if (isNativeDirectCloudAuthMissing(this)) {
       return {
         success: false,
@@ -65668,7 +65796,7 @@ Assistant:`;
     }
     if (isDirectCloudBase(this)) {
       const response = await this.fetch(path, { method: "PATCH", body }, { allowNonOk: true });
-      return normalize(response);
+      return normalize2(response);
     }
     return this.fetch(`/api/cloud/compat/agents/${encodeURIComponent(agentId)}`, {
       method: "PATCH",
@@ -66745,13 +66873,13 @@ Assistant:`;
   }
 
   // node_modules/.bun/@radix-ui+react-checkbox@1.3.5+119c4f3973a6d299/node_modules/@radix-ui/react-checkbox/dist/index.mjs
-  var React37 = __toESM(require_react(), 1);
+  var React38 = __toESM(require_react(), 1);
 
   // node_modules/.bun/@radix-ui+react-use-previous@1.1.2+b2e33729a97476bf/node_modules/@radix-ui/react-use-previous/dist/index.mjs
-  var React35 = __toESM(require_react(), 1);
+  var React36 = __toESM(require_react(), 1);
   function usePrevious(value) {
-    const ref = React35.useRef({ value, previous: value });
-    return React35.useMemo(() => {
+    const ref = React36.useRef({ value, previous: value });
+    return React36.useMemo(() => {
       if (ref.current.value !== value) {
         ref.current.previous = ref.current.value;
         ref.current.value = value;
@@ -66761,9 +66889,9 @@ Assistant:`;
   }
 
   // node_modules/.bun/@radix-ui+react-use-size@1.1.2+b2e33729a97476bf/node_modules/@radix-ui/react-use-size/dist/index.mjs
-  var React36 = __toESM(require_react(), 1);
+  var React37 = __toESM(require_react(), 1);
   function useSize(element) {
-    const [size4, setSize] = React36.useState(void 0);
+    const [size4, setSize] = React37.useState(void 0);
     useLayoutEffect22(() => {
       if (element) {
         setSize({ width: element.offsetWidth, height: element.offsetHeight });
@@ -66823,9 +66951,9 @@ Assistant:`;
       onChange: onCheckedChange,
       caller: CHECKBOX_NAME
     });
-    const [control, setControl] = React37.useState(null);
-    const [bubbleInput, setBubbleInput] = React37.useState(null);
-    const hasConsumerStoppedPropagationRef = React37.useRef(false);
+    const [control, setControl] = React38.useState(null);
+    const [bubbleInput, setBubbleInput] = React38.useState(null);
+    const hasConsumerStoppedPropagationRef = React38.useRef(false);
     const isFormControl = control ? !!form || !!control.closest("form") : (
       // We set this to true by default so that events bubble to forms without JS (SSR)
       true
@@ -66856,7 +66984,7 @@ Assistant:`;
     );
   }
   var TRIGGER_NAME2 = "CheckboxTrigger";
-  var CheckboxTrigger = React37.forwardRef(
+  var CheckboxTrigger = React38.forwardRef(
     ({ __scopeCheckbox, onKeyDown, onClick, ...checkboxProps }, forwardedRef) => {
       const {
         control,
@@ -66871,8 +66999,8 @@ Assistant:`;
         bubbleInput
       } = useCheckboxContext(TRIGGER_NAME2, __scopeCheckbox);
       const composedRefs = useComposedRefs(forwardedRef, setControl);
-      const initialCheckedStateRef = React37.useRef(checked);
-      React37.useEffect(() => {
+      const initialCheckedStateRef = React38.useRef(checked);
+      React38.useEffect(() => {
         const form = control?.form;
         if (form) {
           const reset = () => setChecked(initialCheckedStateRef.current);
@@ -66908,7 +67036,7 @@ Assistant:`;
     }
   );
   CheckboxTrigger.displayName = TRIGGER_NAME2;
-  var Checkbox = React37.forwardRef(
+  var Checkbox = React38.forwardRef(
     (props, forwardedRef) => {
       const {
         __scopeCheckbox,
@@ -66956,7 +67084,7 @@ Assistant:`;
   );
   Checkbox.displayName = CHECKBOX_NAME;
   var INDICATOR_NAME = "CheckboxIndicator";
-  var CheckboxIndicator = React37.forwardRef(
+  var CheckboxIndicator = React38.forwardRef(
     (props, forwardedRef) => {
       const { __scopeCheckbox, forceMount, ...indicatorProps } = props;
       const context = useCheckboxContext(INDICATOR_NAME, __scopeCheckbox);
@@ -66980,7 +67108,7 @@ Assistant:`;
   );
   CheckboxIndicator.displayName = INDICATOR_NAME;
   var BUBBLE_INPUT_NAME = "CheckboxBubbleInput";
-  var CheckboxBubbleInput = React37.forwardRef(
+  var CheckboxBubbleInput = React38.forwardRef(
     ({ __scopeCheckbox, ...props }, forwardedRef) => {
       const {
         control,
@@ -66998,7 +67126,7 @@ Assistant:`;
       const composedRefs = useComposedRefs(forwardedRef, setBubbleInput);
       const prevChecked = usePrevious(checked);
       const controlSize = useSize(control);
-      React37.useEffect(() => {
+      React38.useEffect(() => {
         const input = bubbleInput;
         if (!input) return;
         const inputProto = window.HTMLInputElement.prototype;
@@ -67015,7 +67143,7 @@ Assistant:`;
           input.dispatchEvent(event);
         }
       }, [bubbleInput, prevChecked, checked, hasConsumerStoppedPropagationRef]);
-      const defaultCheckedRef = React37.useRef(isIndeterminate(checked) ? false : checked);
+      const defaultCheckedRef = React38.useRef(isIndeterminate(checked) ? false : checked);
       return /* @__PURE__ */ (0, import_jsx_runtime26.jsx)(
         Primitive.input,
         {
@@ -67058,9 +67186,9 @@ Assistant:`;
   }
 
   // packages/ui/src/components/ui/checkbox.tsx
-  var React38 = __toESM(require_react(), 1);
+  var React39 = __toESM(require_react(), 1);
   var import_jsx_runtime27 = __toESM(require_jsx_runtime(), 1);
-  var Checkbox2 = React38.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
+  var Checkbox2 = React39.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime27.jsx)(
     Checkbox,
     {
       ref,
@@ -67081,7 +67209,7 @@ Assistant:`;
   Checkbox2.displayName = Checkbox.displayName;
 
   // node_modules/.bun/@radix-ui+react-select@2.3.1+119c4f3973a6d299/node_modules/@radix-ui/react-select/dist/index.mjs
-  var React45 = __toESM(require_react(), 1);
+  var React46 = __toESM(require_react(), 1);
   var ReactDOM4 = __toESM(require_react_dom(), 1);
 
   // node_modules/.bun/@radix-ui+number@1.1.2/node_modules/@radix-ui/number/dist/index.mjs
@@ -67090,7 +67218,7 @@ Assistant:`;
   }
 
   // node_modules/.bun/@radix-ui+react-collection@1.1.10+119c4f3973a6d299/node_modules/@radix-ui/react-collection/dist/index.mjs
-  var React39 = __toESM(require_react(), 1);
+  var React40 = __toESM(require_react(), 1);
   var import_jsx_runtime28 = __toESM(require_jsx_runtime(), 1);
   var React210 = __toESM(require_react(), 1);
   var import_jsx_runtime29 = __toESM(require_jsx_runtime(), 1);
@@ -67103,14 +67231,14 @@ Assistant:`;
     );
     const CollectionProvider = (props) => {
       const { scope, children } = props;
-      const ref = React39.useRef(null);
-      const itemMap = React39.useRef(/* @__PURE__ */ new Map()).current;
+      const ref = React40.useRef(null);
+      const itemMap = React40.useRef(/* @__PURE__ */ new Map()).current;
       return /* @__PURE__ */ (0, import_jsx_runtime28.jsx)(CollectionProviderImpl, { scope, itemMap, collectionRef: ref, children });
     };
     CollectionProvider.displayName = PROVIDER_NAME2;
     const COLLECTION_SLOT_NAME = name + "CollectionSlot";
     const CollectionSlotImpl = createSlot(COLLECTION_SLOT_NAME);
-    const CollectionSlot = React39.forwardRef(
+    const CollectionSlot = React40.forwardRef(
       (props, forwardedRef) => {
         const { scope, children } = props;
         const context = useCollectionContext(COLLECTION_SLOT_NAME, scope);
@@ -67122,13 +67250,13 @@ Assistant:`;
     const ITEM_SLOT_NAME = name + "CollectionItemSlot";
     const ITEM_DATA_ATTR = "data-radix-collection-item";
     const CollectionItemSlotImpl = createSlot(ITEM_SLOT_NAME);
-    const CollectionItemSlot = React39.forwardRef(
+    const CollectionItemSlot = React40.forwardRef(
       (props, forwardedRef) => {
         const { scope, children, ...itemData } = props;
-        const ref = React39.useRef(null);
+        const ref = React40.useRef(null);
         const composedRefs = useComposedRefs(forwardedRef, ref);
         const context = useCollectionContext(ITEM_SLOT_NAME, scope);
-        React39.useEffect(() => {
+        React40.useEffect(() => {
           context.itemMap.set(ref, { ref, ...itemData });
           return () => void context.itemMap.delete(ref);
         });
@@ -67138,7 +67266,7 @@ Assistant:`;
     CollectionItemSlot.displayName = ITEM_SLOT_NAME;
     function useCollection2(scope) {
       const context = useCollectionContext(name + "CollectionConsumer", scope);
-      const getItems = React39.useCallback(() => {
+      const getItems = React40.useCallback(() => {
         const collectionNode = context.collectionRef.current;
         if (!collectionNode) return [];
         const orderedNodes = Array.from(collectionNode.querySelectorAll(`[${ITEM_DATA_ATTR}]`));
@@ -67158,16 +67286,16 @@ Assistant:`;
   }
 
   // node_modules/.bun/@radix-ui+react-direction@1.1.2+b2e33729a97476bf/node_modules/@radix-ui/react-direction/dist/index.mjs
-  var React40 = __toESM(require_react(), 1);
+  var React41 = __toESM(require_react(), 1);
   var import_jsx_runtime30 = __toESM(require_jsx_runtime(), 1);
-  var DirectionContext = React40.createContext(void 0);
+  var DirectionContext = React41.createContext(void 0);
   function useDirection(localDir) {
-    const globalDir = React40.useContext(DirectionContext);
+    const globalDir = React41.useContext(DirectionContext);
     return localDir || globalDir || "ltr";
   }
 
   // node_modules/.bun/@radix-ui+react-popper@1.3.1+119c4f3973a6d299/node_modules/@radix-ui/react-popper/dist/index.mjs
-  var React43 = __toESM(require_react(), 1);
+  var React44 = __toESM(require_react(), 1);
 
   // node_modules/.bun/@floating-ui+utils@0.2.11/node_modules/@floating-ui/utils/dist/floating-ui.utils.mjs
   var sides = ["top", "right", "bottom", "left"];
@@ -68693,7 +68821,7 @@ Assistant:`;
     refresh(true);
     return cleanup;
   }
-  function autoUpdate(reference, floating, update, options2) {
+  function autoUpdate(reference, floating, update2, options2) {
     if (options2 === void 0) {
       options2 = {};
     }
@@ -68707,12 +68835,12 @@ Assistant:`;
     const referenceEl = unwrapElement(reference);
     const ancestors = ancestorScroll || ancestorResize ? [...referenceEl ? getOverflowAncestors(referenceEl) : [], ...floating ? getOverflowAncestors(floating) : []] : [];
     ancestors.forEach((ancestor) => {
-      ancestorScroll && ancestor.addEventListener("scroll", update, {
+      ancestorScroll && ancestor.addEventListener("scroll", update2, {
         passive: true
       });
-      ancestorResize && ancestor.addEventListener("resize", update);
+      ancestorResize && ancestor.addEventListener("resize", update2);
     });
-    const cleanupIo = referenceEl && layoutShift ? observeMove(referenceEl, update) : null;
+    const cleanupIo = referenceEl && layoutShift ? observeMove(referenceEl, update2) : null;
     let reobserveFrame = -1;
     let resizeObserver = null;
     if (elementResize) {
@@ -68726,7 +68854,7 @@ Assistant:`;
             (_resizeObserver = resizeObserver) == null || _resizeObserver.observe(floating);
           });
         }
-        update();
+        update2();
       });
       if (referenceEl && !animationFrame) {
         resizeObserver.observe(referenceEl);
@@ -68743,17 +68871,17 @@ Assistant:`;
     function frameLoop() {
       const nextRefRect = getBoundingClientRect(reference);
       if (prevRefRect && !rectsAreEqual(prevRefRect, nextRefRect)) {
-        update();
+        update2();
       }
       prevRefRect = nextRefRect;
       frameId = requestAnimationFrame(frameLoop);
     }
-    update();
+    update2();
     return () => {
       var _resizeObserver2;
       ancestors.forEach((ancestor) => {
-        ancestorScroll && ancestor.removeEventListener("scroll", update);
-        ancestorResize && ancestor.removeEventListener("resize", update);
+        ancestorScroll && ancestor.removeEventListener("scroll", update2);
+        ancestorResize && ancestor.removeEventListener("resize", update2);
       });
       cleanupIo == null || cleanupIo();
       (_resizeObserver2 = resizeObserver) == null || _resizeObserver2.disconnect();
@@ -68787,7 +68915,7 @@ Assistant:`;
   };
 
   // node_modules/.bun/@floating-ui+react-dom@2.1.8+21ccd8898788a04d/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.mjs
-  var React41 = __toESM(require_react(), 1);
+  var React42 = __toESM(require_react(), 1);
   var import_react71 = __toESM(require_react(), 1);
   var ReactDOM3 = __toESM(require_react_dom(), 1);
   var isClient = typeof document !== "undefined";
@@ -68853,7 +68981,7 @@ Assistant:`;
     return Math.round(value * dpr) / dpr;
   }
   function useLatestRef(value) {
-    const ref = React41.useRef(value);
+    const ref = React42.useRef(value);
     index(() => {
       ref.current = value;
     });
@@ -68876,7 +69004,7 @@ Assistant:`;
       whileElementsMounted,
       open
     } = options2;
-    const [data, setData] = React41.useState({
+    const [data, setData] = React42.useState({
       x: 0,
       y: 0,
       strategy,
@@ -68884,19 +69012,19 @@ Assistant:`;
       middlewareData: {},
       isPositioned: false
     });
-    const [latestMiddleware, setLatestMiddleware] = React41.useState(middleware);
+    const [latestMiddleware, setLatestMiddleware] = React42.useState(middleware);
     if (!deepEqual(latestMiddleware, middleware)) {
       setLatestMiddleware(middleware);
     }
-    const [_reference, _setReference] = React41.useState(null);
-    const [_floating, _setFloating] = React41.useState(null);
-    const setReference = React41.useCallback((node) => {
+    const [_reference, _setReference] = React42.useState(null);
+    const [_floating, _setFloating] = React42.useState(null);
+    const setReference = React42.useCallback((node) => {
       if (node !== referenceRef.current) {
         referenceRef.current = node;
         _setReference(node);
       }
     }, []);
-    const setFloating = React41.useCallback((node) => {
+    const setFloating = React42.useCallback((node) => {
       if (node !== floatingRef.current) {
         floatingRef.current = node;
         _setFloating(node);
@@ -68904,14 +69032,14 @@ Assistant:`;
     }, []);
     const referenceEl = externalReference || _reference;
     const floatingEl = externalFloating || _floating;
-    const referenceRef = React41.useRef(null);
-    const floatingRef = React41.useRef(null);
-    const dataRef = React41.useRef(data);
+    const referenceRef = React42.useRef(null);
+    const floatingRef = React42.useRef(null);
+    const dataRef = React42.useRef(data);
     const hasWhileElementsMounted = whileElementsMounted != null;
     const whileElementsMountedRef = useLatestRef(whileElementsMounted);
     const platformRef = useLatestRef(platform5);
     const openRef = useLatestRef(open);
-    const update = React41.useCallback(() => {
+    const update2 = React42.useCallback(() => {
       if (!referenceRef.current || !floatingRef.current) {
         return;
       }
@@ -68949,7 +69077,7 @@ Assistant:`;
         }));
       }
     }, [open]);
-    const isMountedRef = React41.useRef(false);
+    const isMountedRef = React42.useRef(false);
     index(() => {
       isMountedRef.current = true;
       return () => {
@@ -68961,22 +69089,22 @@ Assistant:`;
       if (floatingEl) floatingRef.current = floatingEl;
       if (referenceEl && floatingEl) {
         if (whileElementsMountedRef.current) {
-          return whileElementsMountedRef.current(referenceEl, floatingEl, update);
+          return whileElementsMountedRef.current(referenceEl, floatingEl, update2);
         }
-        update();
+        update2();
       }
-    }, [referenceEl, floatingEl, update, whileElementsMountedRef, hasWhileElementsMounted]);
-    const refs = React41.useMemo(() => ({
+    }, [referenceEl, floatingEl, update2, whileElementsMountedRef, hasWhileElementsMounted]);
+    const refs = React42.useMemo(() => ({
       reference: referenceRef,
       floating: floatingRef,
       setReference,
       setFloating
     }), [setReference, setFloating]);
-    const elements = React41.useMemo(() => ({
+    const elements = React42.useMemo(() => ({
       reference: referenceEl,
       floating: floatingEl
     }), [referenceEl, floatingEl]);
-    const floatingStyles = React41.useMemo(() => {
+    const floatingStyles = React42.useMemo(() => {
       const initialStyles = {
         position: strategy,
         left: 0,
@@ -69002,13 +69130,13 @@ Assistant:`;
         top: y
       };
     }, [strategy, transform3, elements.floating, data.x, data.y]);
-    return React41.useMemo(() => ({
+    return React42.useMemo(() => ({
       ...data,
-      update,
+      update: update2,
       refs,
       elements,
       floatingStyles
-    }), [data, update, refs, elements, floatingStyles]);
+    }), [data, update2, refs, elements, floatingStyles]);
   }
   var arrow$1 = (options2) => {
     function isRef(value) {
@@ -69098,10 +69226,10 @@ Assistant:`;
   };
 
   // node_modules/.bun/@radix-ui+react-arrow@1.1.10+119c4f3973a6d299/node_modules/@radix-ui/react-arrow/dist/index.mjs
-  var React42 = __toESM(require_react(), 1);
+  var React43 = __toESM(require_react(), 1);
   var import_jsx_runtime31 = __toESM(require_jsx_runtime(), 1);
   var NAME2 = "Arrow";
-  var Arrow = React42.forwardRef((props, forwardedRef) => {
+  var Arrow = React43.forwardRef((props, forwardedRef) => {
     const { children, width = 10, height = 5, ...arrowProps } = props;
     return /* @__PURE__ */ (0, import_jsx_runtime31.jsx)(
       Primitive.svg,
@@ -69126,8 +69254,8 @@ Assistant:`;
   var [PopperProvider, usePopperContext] = createPopperContext(POPPER_NAME);
   var Popper = (props) => {
     const { __scopePopper, children } = props;
-    const [anchor, setAnchor] = React43.useState(null);
-    const [placementState, setPlacementState] = React43.useState(void 0);
+    const [anchor, setAnchor] = React44.useState(null);
+    const [placementState, setPlacementState] = React44.useState(void 0);
     return /* @__PURE__ */ (0, import_jsx_runtime32.jsx)(
       PopperProvider,
       {
@@ -69142,13 +69270,13 @@ Assistant:`;
   };
   Popper.displayName = POPPER_NAME;
   var ANCHOR_NAME = "PopperAnchor";
-  var PopperAnchor = React43.forwardRef(
+  var PopperAnchor = React44.forwardRef(
     (props, forwardedRef) => {
       const { __scopePopper, virtualRef, ...anchorProps } = props;
       const context = usePopperContext(ANCHOR_NAME, __scopePopper);
-      const ref = React43.useRef(null);
+      const ref = React44.useRef(null);
       const onAnchorChange = context.onAnchorChange;
-      const callbackRef = React43.useCallback(
+      const callbackRef = React44.useCallback(
         (node) => {
           ref.current = node;
           if (node) {
@@ -69158,8 +69286,8 @@ Assistant:`;
         [onAnchorChange]
       );
       const composedRefs = useComposedRefs(forwardedRef, callbackRef);
-      const anchorRef = React43.useRef(null);
-      React43.useEffect(() => {
+      const anchorRef = React44.useRef(null);
+      React44.useEffect(() => {
         if (!virtualRef) {
           return;
         }
@@ -69186,7 +69314,7 @@ Assistant:`;
   PopperAnchor.displayName = ANCHOR_NAME;
   var CONTENT_NAME2 = "PopperContent";
   var [PopperContentProvider, useContentContext] = createPopperContext(CONTENT_NAME2);
-  var PopperContent = React43.forwardRef(
+  var PopperContent = React44.forwardRef(
     (props, forwardedRef) => {
       const {
         __scopePopper,
@@ -69205,9 +69333,9 @@ Assistant:`;
         ...contentProps
       } = props;
       const context = usePopperContext(CONTENT_NAME2, __scopePopper);
-      const [content, setContent] = React43.useState(null);
+      const [content, setContent] = React44.useState(null);
       const composedRefs = useComposedRefs(forwardedRef, (node) => setContent(node));
-      const [arrow4, setArrow] = React43.useState(null);
+      const [arrow4, setArrow] = React44.useState(null);
       const arrowSize = useSize(arrow4);
       const arrowWidth = arrowSize?.width ?? 0;
       const arrowHeight = arrowSize?.height ?? 0;
@@ -69287,7 +69415,7 @@ Assistant:`;
       const arrowX = middlewareData.arrow?.x;
       const arrowY = middlewareData.arrow?.y;
       const cannotCenterArrow = middlewareData.arrow?.centerOffset !== 0;
-      const [contentZIndex, setContentZIndex] = React43.useState();
+      const [contentZIndex, setContentZIndex] = React44.useState();
       useLayoutEffect22(() => {
         if (content) setContentZIndex(window.getComputedStyle(content).zIndex);
       }, [content]);
@@ -69354,7 +69482,7 @@ Assistant:`;
     bottom: "top",
     left: "right"
   };
-  var PopperArrow = React43.forwardRef(function PopperArrow2(props, forwardedRef) {
+  var PopperArrow = React44.forwardRef(function PopperArrow2(props, forwardedRef) {
     const { __scopePopper, ...arrowProps } = props;
     const contentContext = useContentContext(ARROW_NAME, __scopePopper);
     const baseSide = OPPOSITE_SIDE[contentContext.placedSide];
@@ -69446,7 +69574,7 @@ Assistant:`;
   var Arrow2 = PopperArrow;
 
   // node_modules/.bun/@radix-ui+react-visually-hidden@1.2.6+119c4f3973a6d299/node_modules/@radix-ui/react-visually-hidden/dist/index.mjs
-  var React44 = __toESM(require_react(), 1);
+  var React45 = __toESM(require_react(), 1);
   var import_jsx_runtime33 = __toESM(require_jsx_runtime(), 1);
   var VISUALLY_HIDDEN_STYLES = Object.freeze({
     // See: https://github.com/twbs/bootstrap/blob/main/scss/mixins/_visually-hidden.scss
@@ -69462,7 +69590,7 @@ Assistant:`;
     wordWrap: "normal"
   });
   var NAME3 = "VisuallyHidden";
-  var VisuallyHidden = React44.forwardRef(
+  var VisuallyHidden = React45.forwardRef(
     (props, forwardedRef) => {
       return /* @__PURE__ */ (0, import_jsx_runtime33.jsx)(
         Primitive.span,
@@ -69510,9 +69638,9 @@ Assistant:`;
       internal_do_not_use_render
     } = props;
     const popperScope = usePopperScope(__scopeSelect);
-    const [trigger, setTrigger] = React45.useState(null);
-    const [valueNode, setValueNode] = React45.useState(null);
-    const [valueNodeHasChildren, setValueNodeHasChildren] = React45.useState(false);
+    const [trigger, setTrigger] = React46.useState(null);
+    const [valueNode, setValueNode] = React46.useState(null);
+    const [valueNodeHasChildren, setValueNodeHasChildren] = React46.useState(false);
     const direction = useDirection(dir);
     const [open, setOpen] = useControllableState({
       prop: openProp,
@@ -69526,15 +69654,15 @@ Assistant:`;
       onChange: onValueChange,
       caller: SELECT_NAME
     });
-    const triggerPointerDownPosRef = React45.useRef(null);
+    const triggerPointerDownPosRef = React46.useRef(null);
     const isFormControl = trigger ? !!form || !!trigger.closest("form") : true;
-    const [nativeOptionsSet, setNativeOptionsSet] = React45.useState(/* @__PURE__ */ new Set());
+    const [nativeOptionsSet, setNativeOptionsSet] = React46.useState(/* @__PURE__ */ new Set());
     const contentId = useId2();
     const nativeSelectKey = Array.from(nativeOptionsSet).map((option) => option.props.value).join(";");
-    const handleNativeOptionAdd = React45.useCallback((option) => {
+    const handleNativeOptionAdd = React46.useCallback((option) => {
       setNativeOptionsSet((prev) => new Set(prev).add(option));
     }, []);
-    const handleNativeOptionRemove = React45.useCallback((option) => {
+    const handleNativeOptionRemove = React46.useCallback((option) => {
       setNativeOptionsSet((prev) => {
         const optionsSet = new Set(prev);
         optionsSet.delete(option);
@@ -69596,7 +69724,7 @@ Assistant:`;
   };
   Select.displayName = SELECT_NAME;
   var TRIGGER_NAME3 = "SelectTrigger";
-  var SelectTrigger = React45.forwardRef(
+  var SelectTrigger = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, disabled = false, ...triggerProps } = props;
       const popperScope = usePopperScope(__scopeSelect);
@@ -69604,7 +69732,7 @@ Assistant:`;
       const isDisabled = context.disabled || disabled;
       const composedRefs = useComposedRefs(forwardedRef, context.onTriggerChange);
       const getItems = useCollection(__scopeSelect);
-      const pointerTypeRef = React45.useRef("touch");
+      const pointerTypeRef = React46.useRef("touch");
       const [searchRef, handleTypeaheadSearch, resetTypeahead] = useTypeaheadSearch((search) => {
         const enabledItems = getItems().filter((item) => !item.disabled);
         const currentItem = enabledItems.find((item) => item.value === context.value);
@@ -69674,7 +69802,7 @@ Assistant:`;
   );
   SelectTrigger.displayName = TRIGGER_NAME3;
   var VALUE_NAME = "SelectValue";
-  var SelectValue = React45.forwardRef(
+  var SelectValue = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, className, style, children, placeholder = "", ...valueProps } = props;
       const context = useSelectContext(VALUE_NAME, __scopeSelect);
@@ -69692,14 +69820,14 @@ Assistant:`;
           asChild: showPlaceholder ? false : valueProps.asChild,
           ref: composedRefs,
           style: { pointerEvents: "none" },
-          children: /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(React45.Fragment, { children: showPlaceholder ? placeholder : children }, showPlaceholder ? "placeholder" : "value")
+          children: /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(React46.Fragment, { children: showPlaceholder ? placeholder : children }, showPlaceholder ? "placeholder" : "value")
         }
       );
     }
   );
   SelectValue.displayName = VALUE_NAME;
   var ICON_NAME = "SelectIcon";
-  var SelectIcon = React45.forwardRef(
+  var SelectIcon = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, children, ...iconProps } = props;
       return /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(Primitive.span, { "aria-hidden": true, ...iconProps, ref: forwardedRef, children: children || "\u25BC" });
@@ -69716,12 +69844,12 @@ Assistant:`;
   };
   SelectPortal.displayName = PORTAL_NAME3;
   var CONTENT_NAME3 = "SelectContent";
-  var SelectContent = React45.forwardRef(
+  var SelectContent = React46.forwardRef(
     (props, forwardedRef) => {
       const portalContext = usePortalContext2(CONTENT_NAME3, props.__scopeSelect);
       const { forceMount = portalContext.forceMount, ...contentProps } = props;
       const context = useSelectContext(CONTENT_NAME3, props.__scopeSelect);
-      const [fragment, setFragment] = React45.useState();
+      const [fragment, setFragment] = React46.useState();
       useLayoutEffect22(() => {
         setFragment(new DocumentFragment());
       }, []);
@@ -69729,7 +69857,7 @@ Assistant:`;
     }
   );
   SelectContent.displayName = CONTENT_NAME3;
-  var SelectContentFragment = React45.forwardRef((props, forwardedRef) => {
+  var SelectContentFragment = React46.forwardRef((props, forwardedRef) => {
     const { __scopeSelect, children, fragment } = props;
     if (!fragment) return null;
     return ReactDOM4.createPortal(
@@ -69742,7 +69870,7 @@ Assistant:`;
   var [SelectContentProvider, useSelectContentContext] = createSelectContext(CONTENT_NAME3);
   var CONTENT_IMPL_NAME = "SelectContentImpl";
   var Slot3 = createSlot("SelectContent.RemoveScroll");
-  var SelectContentImpl = React45.forwardRef(
+  var SelectContentImpl = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect } = props;
       const {
@@ -69766,21 +69894,21 @@ Assistant:`;
         ...contentProps
       } = props;
       const context = useSelectContext(CONTENT_NAME3, __scopeSelect);
-      const [content, setContent] = React45.useState(null);
-      const [viewport, setViewport] = React45.useState(null);
+      const [content, setContent] = React46.useState(null);
+      const [viewport, setViewport] = React46.useState(null);
       const composedRefs = useComposedRefs(forwardedRef, (node) => setContent(node));
-      const [selectedItem, setSelectedItem] = React45.useState(null);
-      const [selectedItemText, setSelectedItemText] = React45.useState(
+      const [selectedItem, setSelectedItem] = React46.useState(null);
+      const [selectedItemText, setSelectedItemText] = React46.useState(
         null
       );
       const getItems = useCollection(__scopeSelect);
-      const [isPositioned, setIsPositioned] = React45.useState(false);
-      const firstValidItemFoundRef = React45.useRef(false);
-      React45.useEffect(() => {
+      const [isPositioned, setIsPositioned] = React46.useState(false);
+      const firstValidItemFoundRef = React46.useRef(false);
+      React46.useEffect(() => {
         if (content) return hideOthers(content);
       }, [content]);
       useFocusGuards();
-      const focusFirst2 = React45.useCallback(
+      const focusFirst2 = React46.useCallback(
         (candidates) => {
           const [firstItem, ...restItems] = getItems().map((item) => item.ref.current);
           const [lastItem] = restItems.slice(-1);
@@ -69796,17 +69924,17 @@ Assistant:`;
         },
         [getItems, viewport]
       );
-      const focusSelectedItem = React45.useCallback(
+      const focusSelectedItem = React46.useCallback(
         () => focusFirst2([selectedItem, content]),
         [focusFirst2, selectedItem, content]
       );
-      React45.useEffect(() => {
+      React46.useEffect(() => {
         if (isPositioned) {
           focusSelectedItem();
         }
       }, [isPositioned, focusSelectedItem]);
       const { onOpenChange, triggerPointerDownPosRef } = context;
-      React45.useEffect(() => {
+      React46.useEffect(() => {
         if (content) {
           let pointerMoveDelta = { x: 0, y: 0 };
           const handlePointerMove = (event) => {
@@ -69836,7 +69964,7 @@ Assistant:`;
           };
         }
       }, [content, onOpenChange, triggerPointerDownPosRef]);
-      React45.useEffect(() => {
+      React46.useEffect(() => {
         const close = () => onOpenChange(false);
         window.addEventListener("blur", close);
         window.addEventListener("resize", close);
@@ -69853,7 +69981,7 @@ Assistant:`;
           setTimeout(() => nextItem.ref.current?.focus());
         }
       });
-      const itemRefCallback = React45.useCallback(
+      const itemRefCallback = React46.useCallback(
         (node, value, disabled) => {
           const isFirstValidItem = !firstValidItemFoundRef.current && !disabled;
           const isSelectedItem = context.value !== void 0 && context.value === value;
@@ -69864,8 +69992,8 @@ Assistant:`;
         },
         [context.value]
       );
-      const handleItemLeave = React45.useCallback(() => content?.focus(), [content]);
-      const itemTextRefCallback = React45.useCallback(
+      const handleItemLeave = React46.useCallback(() => content?.focus(), [content]);
+      const itemTextRefCallback = React46.useCallback(
         (node, value, disabled) => {
           const isFirstValidItem = !firstValidItemFoundRef.current && !disabled;
           const isSelectedItem = context.value !== void 0 && context.value === value;
@@ -69976,18 +70104,18 @@ Assistant:`;
   );
   SelectContentImpl.displayName = CONTENT_IMPL_NAME;
   var ITEM_ALIGNED_POSITION_NAME = "SelectItemAlignedPosition";
-  var SelectItemAlignedPosition = React45.forwardRef((props, forwardedRef) => {
+  var SelectItemAlignedPosition = React46.forwardRef((props, forwardedRef) => {
     const { __scopeSelect, onPlaced, ...popperProps } = props;
     const context = useSelectContext(CONTENT_NAME3, __scopeSelect);
     const contentContext = useSelectContentContext(CONTENT_NAME3, __scopeSelect);
-    const [contentWrapper, setContentWrapper] = React45.useState(null);
-    const [content, setContent] = React45.useState(null);
+    const [contentWrapper, setContentWrapper] = React46.useState(null);
+    const [content, setContent] = React46.useState(null);
     const composedRefs = useComposedRefs(forwardedRef, (node) => setContent(node));
     const getItems = useCollection(__scopeSelect);
-    const shouldExpandOnScrollRef = React45.useRef(false);
-    const shouldRepositionRef = React45.useRef(true);
+    const shouldExpandOnScrollRef = React46.useRef(false);
+    const shouldRepositionRef = React46.useRef(true);
     const { viewport, selectedItem, selectedItemText, focusSelectedItem } = contentContext;
-    const position = React45.useCallback(() => {
+    const position = React46.useCallback(() => {
       if (context.trigger && context.valueNode && contentWrapper && content && viewport && selectedItem && selectedItemText) {
         const triggerRect = context.trigger.getBoundingClientRect();
         const contentRect = content.getBoundingClientRect();
@@ -70087,11 +70215,11 @@ Assistant:`;
       onPlaced
     ]);
     useLayoutEffect22(() => position(), [position]);
-    const [contentZIndex, setContentZIndex] = React45.useState();
+    const [contentZIndex, setContentZIndex] = React46.useState();
     useLayoutEffect22(() => {
       if (content) setContentZIndex(window.getComputedStyle(content).zIndex);
     }, [content]);
-    const handleScrollButtonChange = React45.useCallback(
+    const handleScrollButtonChange = React46.useCallback(
       (node) => {
         if (node && shouldRepositionRef.current === true) {
           position();
@@ -70140,7 +70268,7 @@ Assistant:`;
   });
   SelectItemAlignedPosition.displayName = ITEM_ALIGNED_POSITION_NAME;
   var POPPER_POSITION_NAME = "SelectPopperPosition";
-  var SelectPopperPosition = React45.forwardRef((props, forwardedRef) => {
+  var SelectPopperPosition = React46.forwardRef((props, forwardedRef) => {
     const {
       __scopeSelect,
       align = "start",
@@ -70175,13 +70303,13 @@ Assistant:`;
   SelectPopperPosition.displayName = POPPER_POSITION_NAME;
   var [SelectViewportProvider, useSelectViewportContext] = createSelectContext(CONTENT_NAME3, {});
   var VIEWPORT_NAME = "SelectViewport";
-  var SelectViewport = React45.forwardRef(
+  var SelectViewport = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, nonce, ...viewportProps } = props;
       const contentContext = useSelectContentContext(VIEWPORT_NAME, __scopeSelect);
       const viewportContext = useSelectViewportContext(VIEWPORT_NAME, __scopeSelect);
       const composedRefs = useComposedRefs(forwardedRef, contentContext.onViewportChange);
-      const prevScrollTopRef = React45.useRef(0);
+      const prevScrollTopRef = React46.useRef(0);
       return /* @__PURE__ */ (0, import_jsx_runtime34.jsxs)(import_jsx_runtime34.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(
           "style",
@@ -70244,7 +70372,7 @@ Assistant:`;
   SelectViewport.displayName = VIEWPORT_NAME;
   var GROUP_NAME = "SelectGroup";
   var [SelectGroupContextProvider, useSelectGroupContext] = createSelectContext(GROUP_NAME);
-  var SelectGroup = React45.forwardRef(
+  var SelectGroup = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, ...groupProps } = props;
       const groupId = useId2();
@@ -70253,7 +70381,7 @@ Assistant:`;
   );
   SelectGroup.displayName = GROUP_NAME;
   var LABEL_NAME = "SelectLabel";
-  var SelectLabel = React45.forwardRef(
+  var SelectLabel = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, ...labelProps } = props;
       const groupContext = useSelectGroupContext(LABEL_NAME, __scopeSelect);
@@ -70263,7 +70391,7 @@ Assistant:`;
   SelectLabel.displayName = LABEL_NAME;
   var ITEM_NAME = "SelectItem";
   var [SelectItemContextProvider, useSelectItemContext] = createSelectContext(ITEM_NAME);
-  var SelectItem = React45.forwardRef(
+  var SelectItem = React46.forwardRef(
     (props, forwardedRef) => {
       const {
         __scopeSelect,
@@ -70275,14 +70403,14 @@ Assistant:`;
       const context = useSelectContext(ITEM_NAME, __scopeSelect);
       const contentContext = useSelectContentContext(ITEM_NAME, __scopeSelect);
       const isSelected = context.value === value;
-      const [textValue, setTextValue] = React45.useState(textValueProp ?? "");
-      const [isFocused, setIsFocused] = React45.useState(false);
+      const [textValue, setTextValue] = React46.useState(textValueProp ?? "");
+      const [isFocused, setIsFocused] = React46.useState(false);
       const composedRefs = useComposedRefs(
         forwardedRef,
         (node) => contentContext.itemRefCallback?.(node, value, disabled)
       );
       const textId = useId2();
-      const pointerTypeRef = React45.useRef("touch");
+      const pointerTypeRef = React46.useRef("touch");
       const handleSelect = () => {
         if (!disabled) {
           context.onValueChange(value);
@@ -70297,7 +70425,7 @@ Assistant:`;
           disabled,
           textId,
           isSelected,
-          onItemTextChange: React45.useCallback((node) => {
+          onItemTextChange: React46.useCallback((node) => {
             setTextValue((prevTextValue) => prevTextValue || (node?.textContent ?? "").trim());
           }, []),
           children: /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(
@@ -70360,14 +70488,14 @@ Assistant:`;
   );
   SelectItem.displayName = ITEM_NAME;
   var ITEM_TEXT_NAME = "SelectItemText";
-  var SelectItemText = React45.forwardRef(
+  var SelectItemText = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, className, style, ...itemTextProps } = props;
       const context = useSelectContext(ITEM_TEXT_NAME, __scopeSelect);
       const contentContext = useSelectContentContext(ITEM_TEXT_NAME, __scopeSelect);
       const itemContext = useSelectItemContext(ITEM_TEXT_NAME, __scopeSelect);
       const nativeOptionsContext = useSelectNativeOptionsContext(ITEM_TEXT_NAME, __scopeSelect);
-      const [itemTextNode, setItemTextNode] = React45.useState(null);
+      const [itemTextNode, setItemTextNode] = React46.useState(null);
       const composedRefs = useComposedRefs(
         forwardedRef,
         (node) => setItemTextNode(node),
@@ -70375,7 +70503,7 @@ Assistant:`;
         (node) => contentContext.itemTextRefCallback?.(node, itemContext.value, itemContext.disabled)
       );
       const textContent = itemTextNode?.textContent;
-      const nativeOption = React45.useMemo(
+      const nativeOption = React46.useMemo(
         () => /* @__PURE__ */ (0, import_jsx_runtime34.jsx)("option", { value: itemContext.value, disabled: itemContext.disabled, children: textContent }, itemContext.value),
         [itemContext.disabled, itemContext.value, textContent]
       );
@@ -70392,7 +70520,7 @@ Assistant:`;
   );
   SelectItemText.displayName = ITEM_TEXT_NAME;
   var ITEM_INDICATOR_NAME = "SelectItemIndicator";
-  var SelectItemIndicator = React45.forwardRef(
+  var SelectItemIndicator = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, ...itemIndicatorProps } = props;
       const itemContext = useSelectItemContext(ITEM_INDICATOR_NAME, __scopeSelect);
@@ -70401,10 +70529,10 @@ Assistant:`;
   );
   SelectItemIndicator.displayName = ITEM_INDICATOR_NAME;
   var SCROLL_UP_BUTTON_NAME = "SelectScrollUpButton";
-  var SelectScrollUpButton = React45.forwardRef((props, forwardedRef) => {
+  var SelectScrollUpButton = React46.forwardRef((props, forwardedRef) => {
     const contentContext = useSelectContentContext(SCROLL_UP_BUTTON_NAME, props.__scopeSelect);
     const viewportContext = useSelectViewportContext(SCROLL_UP_BUTTON_NAME, props.__scopeSelect);
-    const [canScrollUp, setCanScrollUp] = React45.useState(false);
+    const [canScrollUp, setCanScrollUp] = React46.useState(false);
     const composedRefs = useComposedRefs(forwardedRef, viewportContext.onScrollButtonChange);
     useLayoutEffect22(() => {
       if (contentContext.viewport && contentContext.isPositioned) {
@@ -70435,10 +70563,10 @@ Assistant:`;
   });
   SelectScrollUpButton.displayName = SCROLL_UP_BUTTON_NAME;
   var SCROLL_DOWN_BUTTON_NAME = "SelectScrollDownButton";
-  var SelectScrollDownButton = React45.forwardRef((props, forwardedRef) => {
+  var SelectScrollDownButton = React46.forwardRef((props, forwardedRef) => {
     const contentContext = useSelectContentContext(SCROLL_DOWN_BUTTON_NAME, props.__scopeSelect);
     const viewportContext = useSelectViewportContext(SCROLL_DOWN_BUTTON_NAME, props.__scopeSelect);
-    const [canScrollDown, setCanScrollDown] = React45.useState(false);
+    const [canScrollDown, setCanScrollDown] = React46.useState(false);
     const composedRefs = useComposedRefs(forwardedRef, viewportContext.onScrollButtonChange);
     useLayoutEffect22(() => {
       if (contentContext.viewport && contentContext.isPositioned) {
@@ -70469,18 +70597,18 @@ Assistant:`;
     ) : null;
   });
   SelectScrollDownButton.displayName = SCROLL_DOWN_BUTTON_NAME;
-  var SelectScrollButtonImpl = React45.forwardRef((props, forwardedRef) => {
+  var SelectScrollButtonImpl = React46.forwardRef((props, forwardedRef) => {
     const { __scopeSelect, onAutoScroll, ...scrollIndicatorProps } = props;
     const contentContext = useSelectContentContext("SelectScrollButton", __scopeSelect);
-    const autoScrollTimerRef = React45.useRef(null);
+    const autoScrollTimerRef = React46.useRef(null);
     const getItems = useCollection(__scopeSelect);
-    const clearAutoScrollTimer = React45.useCallback(() => {
+    const clearAutoScrollTimer = React46.useCallback(() => {
       if (autoScrollTimerRef.current !== null) {
         window.clearInterval(autoScrollTimerRef.current);
         autoScrollTimerRef.current = null;
       }
     }, []);
-    React45.useEffect(() => {
+    React46.useEffect(() => {
       return () => clearAutoScrollTimer();
     }, [clearAutoScrollTimer]);
     useLayoutEffect22(() => {
@@ -70512,7 +70640,7 @@ Assistant:`;
     );
   });
   var SEPARATOR_NAME = "SelectSeparator";
-  var SelectSeparator = React45.forwardRef(
+  var SelectSeparator = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, ...separatorProps } = props;
       return /* @__PURE__ */ (0, import_jsx_runtime34.jsx)(Primitive.div, { "aria-hidden": true, ...separatorProps, ref: forwardedRef });
@@ -70520,7 +70648,7 @@ Assistant:`;
   );
   SelectSeparator.displayName = SEPARATOR_NAME;
   var ARROW_NAME2 = "SelectArrow";
-  var SelectArrow = React45.forwardRef(
+  var SelectArrow = React46.forwardRef(
     (props, forwardedRef) => {
       const { __scopeSelect, ...arrowProps } = props;
       const popperScope = usePopperScope(__scopeSelect);
@@ -70530,19 +70658,19 @@ Assistant:`;
   );
   SelectArrow.displayName = ARROW_NAME2;
   var BUBBLE_INPUT_NAME2 = "SelectBubbleInput";
-  var SelectBubbleInput = React45.forwardRef(
+  var SelectBubbleInput = React46.forwardRef(
     ({ __scopeSelect, ...props }, forwardedRef) => {
       const context = useSelectContext(BUBBLE_INPUT_NAME2, __scopeSelect);
       const { value, onValueChange, required: required2, disabled, name, autoComplete, form } = context;
       const { nativeOptions, nativeSelectKey } = context;
-      const ref = React45.useRef(null);
+      const ref = React46.useRef(null);
       const composedRefs = useComposedRefs(forwardedRef, ref);
       const selectValue = value ?? "";
       const prevValue = usePrevious(selectValue);
       const hasEmptyValueOption = Array.from(nativeOptions).some(
         (option) => (option.props.value ?? "") === ""
       );
-      React45.useEffect(() => {
+      React46.useEffect(() => {
         const select = ref.current;
         if (!select) return;
         const selectProto = window.HTMLSelectElement.prototype;
@@ -70590,9 +70718,9 @@ Assistant:`;
   }
   function useTypeaheadSearch(onSearchChange) {
     const handleSearchChange = useCallbackRef(onSearchChange);
-    const searchRef = React45.useRef("");
-    const timerRef = React45.useRef(0);
-    const handleTypeaheadSearch = React45.useCallback(
+    const searchRef = React46.useRef("");
+    const timerRef = React46.useRef(0);
+    const handleTypeaheadSearch = React46.useCallback(
       (key) => {
         const search = searchRef.current + key;
         handleSearchChange(search);
@@ -70604,11 +70732,11 @@ Assistant:`;
       },
       [handleSearchChange]
     );
-    const resetTypeahead = React45.useCallback(() => {
+    const resetTypeahead = React46.useCallback(() => {
       searchRef.current = "";
       window.clearTimeout(timerRef.current);
     }, []);
-    React45.useEffect(() => {
+    React46.useEffect(() => {
       return () => window.clearTimeout(timerRef.current);
     }, []);
     return [searchRef, handleTypeaheadSearch, resetTypeahead];
@@ -70630,11 +70758,11 @@ Assistant:`;
   }
 
   // packages/ui/src/components/ui/select.tsx
-  var React46 = __toESM(require_react(), 1);
+  var React47 = __toESM(require_react(), 1);
   var import_jsx_runtime35 = __toESM(require_jsx_runtime(), 1);
   var Select2 = Select;
   var SelectValue2 = SelectValue;
-  var SelectTrigger2 = React46.forwardRef(({ className, children, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(
+  var SelectTrigger2 = React47.forwardRef(({ className, children, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(
     SelectTrigger,
     {
       ref,
@@ -70650,7 +70778,7 @@ Assistant:`;
     }
   ));
   SelectTrigger2.displayName = SelectTrigger.displayName;
-  var SelectScrollUpButton2 = React46.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+  var SelectScrollUpButton2 = React47.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
     SelectScrollUpButton,
     {
       ref,
@@ -70663,7 +70791,7 @@ Assistant:`;
     }
   ));
   SelectScrollUpButton2.displayName = SelectScrollUpButton.displayName;
-  var SelectScrollDownButton2 = React46.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+  var SelectScrollDownButton2 = React47.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
     SelectScrollDownButton,
     {
       ref,
@@ -70676,7 +70804,7 @@ Assistant:`;
     }
   ));
   SelectScrollDownButton2.displayName = SelectScrollDownButton.displayName;
-  var SelectContent2 = React46.forwardRef(({ className, children, position = "popper", ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(SelectPortal, { children: /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(
+  var SelectContent2 = React47.forwardRef(({ className, children, position = "popper", ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(SelectPortal, { children: /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(
     SelectContent,
     {
       ref,
@@ -70705,7 +70833,7 @@ Assistant:`;
     }
   ) }));
   SelectContent2.displayName = SelectContent.displayName;
-  var SelectLabel2 = React46.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+  var SelectLabel2 = React47.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
     SelectLabel,
     {
       ref,
@@ -70714,7 +70842,7 @@ Assistant:`;
     }
   ));
   SelectLabel2.displayName = SelectLabel.displayName;
-  var SelectItem2 = React46.forwardRef(({ className, children, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(
+  var SelectItem2 = React47.forwardRef(({ className, children, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsxs)(
     SelectItem,
     {
       ref,
@@ -70730,7 +70858,7 @@ Assistant:`;
     }
   ));
   SelectItem2.displayName = SelectItem.displayName;
-  var SelectSeparator2 = React46.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+  var SelectSeparator2 = React47.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
     SelectSeparator,
     {
       ref,
@@ -73787,7 +73915,7 @@ Assistant:`;
   var import_react79 = __toESM(require_react(), 1);
 
   // packages/ui/src/chat/useSlashCommandController.ts
-  var React47 = __toESM(require_react(), 1);
+  var React48 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/components/settings/settings-section-tokens.ts
