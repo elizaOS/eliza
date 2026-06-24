@@ -1,8 +1,0 @@
-name: jax-map
-description: Apply elementwise mapping function
-inputs:
-  array: jax.Array
-  op: string
-outputs:
-  array: jax.Array
-implementation: jax_skills.map_op

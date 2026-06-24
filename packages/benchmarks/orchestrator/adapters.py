@@ -97,7 +97,6 @@ IGNORED_BENCHMARK_DIRS = {
     # Python package shim for benchmarks.registry, not a benchmark adapter dir.
     "registry",
     "scripts",
-    "skillsbench",
     "swe-bench-pro",
     "swe-bench-multilingual",
     "swe-bench-workspace",
