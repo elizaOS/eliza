@@ -43,6 +43,12 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
 
+      - name: Run type-safety ratchet self-test
+        run: bun run audit:type-safety-ratchet:self-test
+
+      - name: Run type-safety ratchet
+        run: bun run audit:type-safety-ratchet
+
       - name: Run lint
         run: bun run lint
 
