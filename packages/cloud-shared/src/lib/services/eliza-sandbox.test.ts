@@ -1,4 +1,4 @@
-import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, jest, mock, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -1047,6 +1047,44 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       // failure, not abandon-and-proceed.
       expect("timedOut" in res).toBe(false);
     } finally {
+      getProvider.mockRestore();
+    }
+  });
+
+  // The whole reason #9066 exists: a provider.stop that genuinely never
+  // settles (SSH connect / provider init wedge) must be cut off at the hard
+  // cap so a single stuck node can't hang the delete past the job watchdog and
+  // wedge the provisioning worker. The two tests above cover clean/error; this
+  // one drives the REAL withTimeout branch — a never-settling stop raced under
+  // fake timers — and asserts the abandon-and-proceed { error, timedOut }
+  // shape that deleteAgent keys "ABANDON + LEAK" on.
+  test("runBoundedSandboxStop cuts off a never-settling provider stop with { error, timedOut }", async () => {
+    const svc = await makeSvc();
+    // Never resolves and never rejects: the only way out is the timeout race.
+    const getProvider = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      stop: () => new Promise<void>(() => {}),
+    } as unknown as SandboxProvider);
+    jest.useFakeTimers();
+    try {
+      const pending = svc.runBoundedSandboxStop(SANDBOX_ID) as Promise<{
+        error: unknown;
+        timedOut?: true;
+      }>;
+      // Let getProvider() + the try-body microtasks settle so the timeout
+      // timer is actually armed, then blow past the 120s hard cap.
+      await Promise.resolve();
+      jest.advanceTimersByTime(120_001);
+      const res = await pending;
+      // Abandon-and-proceed: a genuine hang is reported as a TIMEOUT, distinct
+      // from a captured provider error (no `timedOut` flag on that path).
+      expect(res.timedOut).toBe(true);
+      expect(res.error).toBeInstanceOf(Error);
+      expect((res.error as Error).message).toContain("timed out after");
+    } finally {
+      jest.useRealTimers();
       getProvider.mockRestore();
     }
   });
