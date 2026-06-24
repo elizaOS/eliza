@@ -1,13 +1,49 @@
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
+import * as realHelpersNs from "../../db/helpers";
 import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import type { DockerNode } from "../../db/repositories/docker-nodes";
+import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import type { SandboxProvider } from "./sandbox-provider-types";
+
+// `executeUpgrade()`'s blue/green swap runs inside `dbWrite.transaction(...)`.
+// `dbWrite` is a Proxy whose `get` trap always re-resolves the live connection,
+// so `spyOn(dbWrite, "transaction")` does NOT intercept — the call falls through
+// to a real DB and throws. The only way to drive the real swap body offline is
+// to replace the `dbWrite` binding at the module that defines it. We spread the
+// REAL helpers and override ONLY `dbWrite` with a controllable transaction; the
+// repositories used elsewhere in this file are all `spyOn`-stubbed, so they
+// never touch this swapped `dbWrite`. The override is restored in `afterAll` so
+// it cannot leak into other files in the shared single-process run.
+type UpgradeTx = { execute: (query: unknown) => Promise<{ rows: Array<{ id: string }> }> };
+const realHelpers = { ...realHelpersNs };
+let upgradeTransactionImpl: (<T>(fn: (tx: UpgradeTx) => Promise<T>) => Promise<T>) | null = null;
+const upgradeDbWrite = {
+  ...(realHelpersNs.dbWrite as unknown as Record<string, unknown>),
+  transaction: <T>(fn: (tx: UpgradeTx) => Promise<T>): Promise<T> => {
+    if (!upgradeTransactionImpl) {
+      throw new Error(
+        "dbWrite.transaction called without an active upgradeTransactionImpl (test wiring bug)",
+      );
+    }
+    return upgradeTransactionImpl(fn);
+  },
+};
+mock.module("../../db/helpers", () => ({
+  ...realHelpers,
+  dbWrite: upgradeDbWrite,
+}));
+afterAll(() => {
+  mock.module("../../db/helpers", () => realHelpers);
+});
 
 const originalFetch = globalThis.fetch;
 const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
@@ -1111,3 +1147,640 @@ describe("buildRuntimeBootstrapAgent persona seed", () => {
     expect(agent.style).toEqual({ all: ["terse"] });
   });
 });
+
+// LARP H2 — provision() concurrent-create dedup + TOCTOU port-collision retry.
+// These drive the REAL provision() body (imported via ?actual) so each guarded
+// branch is exercised, not mocked away:
+//   1. trySetProvisioning lost the lock but the row is already running+reachable
+//      → REUSE the live container (never re-create).
+//   2. lock lost AND not running → "already being provisioned", no create.
+//   3. provider.create OK but the row-write hits a UNIQUE (port TOCTOU) on the
+//      first attempt → ghost stop + retry → second attempt succeeds.
+//   4. a NON-unique post-create error → markError + NO retry (one create only).
+//   5. all MAX_PROVISION_ATTEMPTS exhausted → "Provisioning failed after N".
+// The provider is a plain SandboxProvider fake; the post-create metadata uses a
+// real DockerSandboxMetadata shape so isDockerSandboxMetadata() genuinely passes.
+describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)", () => {
+  const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const ORG = "22222222-2222-4222-8222-222222222222";
+
+  // A row whose DB is already provisioned (database_status==="ready") so the
+  // provision() DB phase is skipped and control reaches the create/retry loop.
+  function provisioningReadyRow(): AgentSandbox {
+    return {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      status: "provisioning",
+      sandbox_id: null,
+      bridge_url: null,
+      health_url: null,
+      database_uri: "postgres://shared.example/railway",
+      database_status: "ready",
+      // Custom-tier so the post-create backup-restore HTTP 404 is tolerated and
+      // ensureRuntimeAgentStarted's list endpoint is not the gating factor (it
+      // is spied to a no-op below regardless).
+      execution_tier: "custom",
+    };
+  }
+
+  // Realistic provider handle: metadata is a genuine DockerSandboxMetadata so
+  // isDockerSandboxMetadata(handle.metadata) returns true in the real method.
+  function providerHandle() {
+    return {
+      sandboxId: "sandbox-blue-1",
+      bridgeUrl: "https://runtime-blue.example",
+      healthUrl: "https://runtime-blue.example/health",
+      metadata: {
+        provider: "docker" as const,
+        nodeId: "node-2",
+        hostname: "node-2.internal",
+        containerName: "agent-blue-1",
+        bridgePort: 21070,
+        webUiPort: 23900,
+        agentId: AGENT,
+        volumePath: "/var/lib/eliza/agent-blue-1",
+        dockerImage: "ghcr.io/example/bnancy:latest",
+        imageDigest: "sha256:bluebluebluebluebluebluebluebluebluebluebluebluebluebluebluebl01",
+      },
+    };
+  }
+
+  test("(1) lock lost but row already running+reachable → reuse, provider.create NEVER called", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const runningRow: AgentSandbox = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      status: "running",
+      bridge_url: "https://live-bridge.example",
+      health_url: "https://live-bridge.example/health",
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(runningRow);
+    // trySetProvisioning returns undefined: someone else holds the lock.
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(
+      undefined,
+    );
+    const create = mock(async () => providerHandle());
+    const provider: SandboxProvider = {
+      create,
+      stop: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    try {
+      const res = await new ElizaSandboxService(provider).provision(AGENT, ORG);
+      expect(res.success).toBe(true);
+      expect(res.sandboxRecord).toBe(runningRow);
+      expect(res.bridgeUrl).toBe("https://live-bridge.example");
+      expect(res.healthUrl).toBe("https://live-bridge.example/health");
+      // Reusing the live container is the whole point — a second create would
+      // double-provision and orphan a container.
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+    }
+  });
+
+  test("(2) lock lost AND not running → 'Agent is already being provisioned', no create", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const provisioningRow: AgentSandbox = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      status: "provisioning",
+      bridge_url: null,
+      health_url: null,
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      provisioningRow,
+    );
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(
+      undefined,
+    );
+    const create = mock(async () => providerHandle());
+    const provider: SandboxProvider = {
+      create,
+      stop: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    try {
+      const res = await new ElizaSandboxService(provider).provision(AGENT, ORG);
+      expect(res.success).toBe(false);
+      expect(res.error).toBe("Agent is already being provisioned");
+      expect(res.sandboxRecord).toBe(provisioningRow);
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+    }
+  });
+
+  test("(3) UNIQUE (port TOCTOU) on attempt 1 → ghost stop + retry → attempt 2 succeeds", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row = provisioningReadyRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    // The status-write is the row that races on the (node_id, bridge_port)
+    // UNIQUE constraint. Fail it with a PG 23505 once, then succeed.
+    let statusWrites = 0;
+    const finalRow: AgentSandbox = { ...row, status: "running" };
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => {
+        if (data.status === "running") {
+          statusWrites += 1;
+          if (statusWrites === 1) {
+            throw new Error('duplicate key value violates unique constraint "23505"');
+          }
+          return finalRow;
+        }
+        // Environment-vars persistence write (managedEnvironment.changed) — pass through.
+        return { ...row, ...data };
+      },
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const svc = new ElizaSandboxService();
+    // ensureRuntimeAgentStarted hits the runtime over HTTP — no-op it so the
+    // retry path under test is the row-write, not the runtime bring-up.
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const create = mock(async () => providerHandle());
+    const stop = mock(async () => {});
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({ create, stop, checkHealth: async () => true } as SandboxProvider);
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res.success).toBe(true);
+      expect(res.sandboxRecord).toBe(finalRow);
+      // Two create attempts: the first container became a ghost on the UNIQUE
+      // failure and was stopped; the second is the live one.
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(stop).toHaveBeenCalledWith("sandbox-blue-1");
+      expect(statusWrites).toBe(2);
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
+  test("(4) a NON-unique post-create error → markError, NO retry (one create), failure", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row = provisioningReadyRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue({
+      ...row,
+      status: "error",
+    });
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => {
+        if (data.status === "running") {
+          // A non-retryable write failure (NOT a unique violation).
+          throw new Error("connection terminated unexpectedly");
+        }
+        return { ...row, ...data };
+      },
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const svc = new ElizaSandboxService();
+    const markErrorSpy = spyOn(
+      svc as unknown as { markError: (rec: AgentSandbox, msg: string) => Promise<void> },
+      "markError",
+    ).mockResolvedValue(undefined);
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const create = mock(async () => providerHandle());
+    const stop = mock(async () => {});
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({ create, stop, checkHealth: async () => true } as SandboxProvider);
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res.success).toBe(false);
+      expect(res.error).toBe("connection terminated unexpectedly");
+      // A non-unique error is NOT a port collision — must not retry.
+      expect(create).toHaveBeenCalledTimes(1);
+      // Ghost cleanup still runs once for the single failed attempt.
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(markErrorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      findSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      markErrorSpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
+  test("(5) UNIQUE on every attempt → exhaustion → 'Provisioning failed after 3 attempts'", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row = provisioningReadyRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue({
+      ...row,
+      status: "error",
+    });
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    let statusWrites = 0;
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => {
+        if (data.status === "running") {
+          statusWrites += 1;
+          throw new Error("duplicate key value violates unique constraint (port collision)");
+        }
+        return { ...row, ...data };
+      },
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const svc = new ElizaSandboxService();
+    let markedMessage = "";
+    const markErrorSpy = spyOn(
+      svc as unknown as { markError: (rec: AgentSandbox, msg: string) => Promise<void> },
+      "markError",
+    ).mockImplementation(async (_rec, msg) => {
+      markedMessage = msg;
+    });
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const create = mock(async () => providerHandle());
+    const stop = mock(async () => {});
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({ create, stop, checkHealth: async () => true } as SandboxProvider);
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res.success).toBe(false);
+      // MAX_PROVISION_ATTEMPTS = 3: three creates, three ghost stops, then give up.
+      expect(create).toHaveBeenCalledTimes(3);
+      expect(stop).toHaveBeenCalledTimes(3);
+      expect(statusWrites).toBe(3);
+      expect(markedMessage).toContain("Provisioning failed after 3 attempts");
+    } finally {
+      findSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      markErrorSpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+});
+
+// LARP H3 — executeUpgrade() blue/green rollback, digest-mismatch, and the
+// compare-and-swap race guard that protects a LIVE billed agent row.
+// The provider MUST be a real DockerSandboxProvider instance (the method bails
+// with "only supported on docker provider" otherwise), so we construct one and
+// override its methods with spies — `instanceof DockerSandboxProvider` stays
+// true. Blue metadata is a genuine DockerSandboxMetadata so the real
+// isDockerSandboxMetadata() guard passes. The swap runs inside
+// dbWrite.transaction(); we drive it via upgradeTransactionImpl + spies on the
+// private lockLifecycle / getAgentForLifecycleMutation seams.
+describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LARP H3)", () => {
+  const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const ORG = "22222222-2222-4222-8222-222222222222";
+  const DOCKER_IMAGE = "ghcr.io/elizaos/eliza-agent:latest";
+  const FROM_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000aaa";
+  const TO_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
+
+  // A live fleet-managed agent: running, with an old node/container, and
+  // docker_image === null so the "custom image" guard does not reject it.
+  function liveAgentRow(): AgentSandbox {
+    return {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      status: "running",
+      sandbox_id: "sandbox-old-1",
+      node_id: "node-old",
+      container_name: "agent-old-1",
+      bridge_url: "https://old-bridge.example",
+      health_url: "https://old-bridge.example/health",
+      docker_image: null,
+      image_digest: FROM_DIGEST,
+    };
+  }
+
+  function oldNode(): DockerNode {
+    return {
+      node_id: "node-old",
+      hostname: "node-old.internal",
+      ssh_port: 22,
+      ssh_user: "root",
+      host_key_fingerprint: null,
+    } as unknown as DockerNode;
+  }
+
+  // A genuine DockerSandboxMetadata for blue — isDockerSandboxMetadata() passes.
+  function blueMetadata(imageDigest: string | null) {
+    return {
+      provider: "docker" as const,
+      nodeId: "node-new",
+      hostname: "node-new.internal",
+      containerName: "agent-new-1",
+      bridgePort: 21080,
+      webUiPort: 23950,
+      agentId: AGENT,
+      volumePath: "/var/lib/eliza/agent-new-1",
+      dockerImage: DOCKER_IMAGE,
+      imageDigest,
+    };
+  }
+
+  function blueHandle(imageDigest: string | null) {
+    return {
+      sandboxId: "sandbox-new-1",
+      bridgeUrl: "https://new-bridge.example",
+      healthUrl: "https://new-bridge.example/health",
+      metadata: blueMetadata(imageDigest),
+    };
+  }
+
+  // Build a real DockerSandboxProvider whose I/O methods are spies so
+  // `provider instanceof DockerSandboxProvider` holds in executeUpgrade().
+  async function makeDockerProvider(overrides: {
+    create: () => Promise<unknown>;
+    checkHealth: () => Promise<boolean>;
+  }) {
+    // Import WITHOUT `?actual` so this class identity matches the one
+    // executeUpgrade() resolves via its own `await import("./docker-sandbox-provider")`
+    // (no `?actual`) — otherwise `provider instanceof DockerSandboxProvider` is false.
+    const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
+    const provider = new DockerSandboxProvider();
+    const create = mock(overrides.create);
+    const checkHealth = mock(overrides.checkHealth);
+    const stop = mock(async () => {});
+    const stopOnSpecificNode = mock(async () => {});
+    Object.assign(provider, { create, checkHealth, stop, stopOnSpecificNode });
+    return {
+      provider: provider as unknown as SandboxProvider,
+      create,
+      checkHealth,
+      stop,
+      stopOnSpecificNode,
+    };
+  }
+
+  afterEach(() => {
+    upgradeTransactionImpl = null;
+  });
+
+  test("(a) blue health-check FAILS → blue torn down, row stays on OLD, rolled-back error", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, create, checkHealth, stop } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => false, // blue never comes up
+    });
+    // A swap must NOT be attempted on a failed health check.
+    let transactionCalled = false;
+    upgradeTransactionImpl = async () => {
+      transactionCalled = true;
+      return false as never;
+    };
+    try {
+      const res = await new ElizaSandboxService(provider).executeUpgrade(
+        AGENT,
+        ORG,
+        TO_DIGEST,
+        DOCKER_IMAGE,
+        FROM_DIGEST,
+      );
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("rolled back to old container");
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(checkHealth).toHaveBeenCalledTimes(1);
+      // The unhealthy blue is torn down...
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      // ...and the live row is never swapped.
+      expect(transactionCalled).toBe(false);
+      expect(res.oldNodeId).toBe("node-old");
+      expect(res.oldContainerName).toBe("agent-old-1");
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+    }
+  });
+
+  test("(b) blue digest MISMATCH → blue torn down, NO swap", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const WRONG_DIGEST = "sha256:dededededededededededededededededededededededededededededede0000";
+    const { provider, create, checkHealth, stop } = await makeDockerProvider({
+      create: async () => blueHandle(WRONG_DIGEST), // healthy but wrong image
+      checkHealth: async () => true,
+    });
+    let transactionCalled = false;
+    upgradeTransactionImpl = async () => {
+      transactionCalled = true;
+      return false as never;
+    };
+    try {
+      const res = await new ElizaSandboxService(provider).executeUpgrade(
+        AGENT,
+        ORG,
+        TO_DIGEST,
+        DOCKER_IMAGE,
+        FROM_DIGEST,
+      );
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("digest mismatch");
+      expect(res.error).toContain(TO_DIGEST);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(checkHealth).toHaveBeenCalledTimes(1);
+      // Serving the WRONG image would silently ship an unintended build — tear blue down.
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      // No swap of the live row.
+      expect(transactionCalled).toBe(false);
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+    }
+  });
+
+  test("(c) happy path → atomic swap writes blue's node/container/bridge + image_digest=toDigest", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    // Pin the lifecycle lock + the FOR-UPDATE read to a no-op / unchanged row so
+    // the CAS guard passes and control reaches the UPDATE.
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    // Capture the raw UPDATE the swap issues so we can assert the new values
+    // bound into it (drizzle SQL chunks carry the bound params).
+    let executedSql: unknown;
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async (query: unknown) => {
+          executedSql = query;
+          return { rows: [{ id: AGENT }] }; // RETURNING id → exactly one row
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const res = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
+      expect(res.success).toBe(true);
+      expect(res.newNodeId).toBe("node-new");
+      expect(res.newContainerName).toBe("agent-new-1");
+      expect(res.newDigest).toBe(TO_DIGEST);
+      // The swap's UPDATE binds blue's identity + the target digest.
+      const params = sqlBoundParams(executedSql);
+      expect(params).toContain("sandbox-new-1"); // blue sandbox id
+      expect(params).toContain("https://new-bridge.example"); // blue bridge_url
+      expect(params).toContain("node-new"); // blue node_id
+      expect(params).toContain("agent-new-1"); // blue container_name
+      expect(params).toContain(TO_DIGEST); // image_digest := toDigest
+      // The old container is best-effort torn down on its specific node; the
+      // blue is the live one and is NOT stopped.
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stop).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(checkHealth).toHaveBeenCalledTimes(1);
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+  });
+
+  test("(d) CAS guard: row moved under us → returns false → throws 'changed during upgrade', tears down orphaned blue", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    // The FOR-UPDATE read shows the row already moved (a concurrent restart put
+    // it on a different node/container) → the CAS guard rejects the swap.
+    const movedRow: AgentSandbox = {
+      ...agent,
+      node_id: "node-someone-else",
+      container_name: "agent-someone-else",
+    };
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(movedRow);
+    let executeCalled = false;
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async () => {
+          executeCalled = true;
+          return { rows: [{ id: AGENT }] };
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const res = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("Agent changed during upgrade");
+      // The guard short-circuits BEFORE the UPDATE — never writes a stale swap.
+      expect(executeCalled).toBe(false);
+      // The orphaned blue (built but never adopted) is torn down...
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      // ...and the old container is left running (it still serves traffic).
+      expect(stopOnSpecificNode).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(checkHealth).toHaveBeenCalledTimes(1);
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+  });
+});
+
+// Compile a drizzle SQL object to its bound parameter list so a test can assert
+// the values an UPDATE writes without coupling to SQL text. PgDialect.sqlToQuery
+// returns exactly the bound params in order (same introspection the enqueue
+// tests use).
+function sqlBoundParams(query: unknown): unknown[] {
+  if (!query || typeof query !== "object" || !("queryChunks" in query)) return [];
+  return new PgDialect().sqlToQuery(query as SQL).params;
+}
