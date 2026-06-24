@@ -89,13 +89,15 @@ export {
 // Drizzle Query Operators
 // ============================================================================
 
-// Re-export snowflake utilities from @feed/shared
+// Re-export snowflake utilities from the concrete module. Playwright validates
+// this barrel during test-file module load; using the shared barrel here can
+// trip named-export resolution before the tests run.
 export {
   generateSnowflakeId,
   isValidSnowflakeId,
   parseSnowflakeId,
   SnowflakeGenerator,
-} from "@feed/shared";
+} from "@feed/shared/utils/snowflake";
 export type { SQL } from "drizzle-orm";
 export {
   aliasedTable,

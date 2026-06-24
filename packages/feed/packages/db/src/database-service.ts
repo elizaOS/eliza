@@ -13,7 +13,7 @@
  * ```
  */
 
-import { generateSnowflakeId } from "@feed/shared";
+import { generateSnowflakeId } from "@feed/shared/utils/snowflake";
 import {
   and,
   count,
