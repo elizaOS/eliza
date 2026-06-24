@@ -885,6 +885,12 @@
   "pages-mediagalleryview--with-nav-and-header": [
     "scrollable-region-focusable"
   ],
+  "pages-springboard--favorite-into-dock": [
+    "color-contrast"
+  ],
+  "pages-springboard--long-press-to-edit": [
+    "color-contrast"
+  ],
   "permissions-streamingpermissions--mobile": [
     "color-contrast"
   ],
@@ -1266,6 +1272,9 @@
     "color-contrast"
   ],
   "shell-connectionfailedbanner--reconnecting-late": [
+    "color-contrast"
+  ],
+  "shell-home-dashboard--springboard-page": [
     "color-contrast"
   ],
   "shell-loadingscreen--initializing-agent": [
