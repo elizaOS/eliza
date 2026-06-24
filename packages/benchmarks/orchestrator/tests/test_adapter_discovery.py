@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 import types
 from pathlib import Path
 
@@ -89,7 +90,8 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
 
 
 def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
+    discovery = discover_adapters(_workspace_root())
+    adapters = discovery.adapters
 
     assert adapters["app-eval"].directory == "app-eval"
     assert adapters["openclaw_bench"].directory == "openclaw-benchmark"
@@ -100,9 +102,8 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["mmau"].directory == "mmau-audio"
     assert adapters["voicebench_quality"].directory == "voicebench-quality"
     assert adapters["voiceagentbench"].directory == "voiceagentbench"
-    discovered_dirs = discover_adapters(_workspace_root()).all_directories
-    assert "mmau" not in discovered_dirs
-    assert "elizaos_mmau" not in discovered_dirs
+    assert "mmau" not in discovery.all_directories
+    assert "elizaos_mmau" not in discovery.all_directories
 
 
 def test_voice_audio_defaults_do_not_publish_mock_fixture_runs(
@@ -1166,6 +1167,24 @@ def test_mmau_uses_canonical_audio_package_without_legacy_shims(tmp_path: Path) 
     benchmarks_root = _workspace_root() / "benchmarks"
     assert not (benchmarks_root / "mmau").exists()
     assert not (benchmarks_root / "elizaos_mmau").exists()
+
+    importlib.invalidate_caches()
+    benchmarks_package = importlib.import_module("benchmarks")
+    assert importlib.machinery.PathFinder.find_spec(
+        "benchmarks.mmau", list(benchmarks_package.__path__)
+    ) is None
+    assert (
+        importlib.machinery.PathFinder.find_spec("elizaos_mmau", [str(benchmarks_root)])
+        is None
+    )
+
+    pyproject = tomllib.loads(
+        (benchmarks_root / "mmau-audio" / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    assert pyproject["project"]["scripts"] == {
+        "mmau-audio": "elizaos_mmau_audio.cli:main",
+        "elizaos-mmau-audio": "elizaos_mmau_audio.cli:main",
+    }
 
     env = dict(os.environ)
     env["PYTHONPATH"] = str(benchmarks_root / "mmau-audio")
