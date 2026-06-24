@@ -119,6 +119,19 @@ export * from "./actor/index.js";
 // iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
 export * from "./mobile/index.js";
 export {
+  boxFromNormalized,
+  boxToNormalized,
+  clampNormalized,
+  fromNormalized,
+  NORMALIZED_COORD_MAX,
+  type NormalizedBox,
+  type NormalizedPoint,
+  normalizedBoxCenter,
+  type PixelBounds,
+  type PixelPoint,
+  toNormalized,
+} from "./platform/normalized-coords.js";
+export {
   listProcesses,
   type ProcessInfo,
   parsePsOutput,
