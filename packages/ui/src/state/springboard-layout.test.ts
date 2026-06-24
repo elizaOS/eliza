@@ -10,6 +10,7 @@ import {
   reconcileLayout,
   SPRINGBOARD_DOCK_LIMIT,
   SPRINGBOARD_STORAGE_KEY,
+  type SpringboardLayout,
   toggleFavorite,
   writeSpringboardLayout,
 } from "./springboard-layout.js";
@@ -91,6 +92,39 @@ describe("springboard-layout moveIcon", () => {
     const out = moveIcon(layout, "a", 0, 0, 4);
     expect(out.favorites).toEqual([]);
     expect(out.pages[0]).toEqual(["a", "b"]);
+  });
+
+  it("marks the layout manual so the drag order is preserved", () => {
+    const layout: SpringboardLayout = { favorites: [], pages: [["a", "b", "c"]] };
+    expect(layout.manual).toBeUndefined();
+    const out = moveIcon(layout, "c", 0, 0, 4);
+    expect(out.manual).toBe(true);
+    // And reconcile now keeps that manual order instead of catalog order.
+    const reconciled = reconcileLayout(out, ["a", "b", "c"], 4);
+    expect(reconciled.pages[0]).toEqual(["c", "a", "b"]);
+  });
+
+  it("moves an icon across pages, repacking the flattened order", () => {
+    // Two full pages of size 2; drag the last icon to the front of page 0.
+    const layout = {
+      favorites: [],
+      pages: [
+        ["a", "b"],
+        ["c", "d"],
+      ],
+    };
+    const out = moveIcon(layout, "d", 0, 0, 2);
+    expect(out.pages.flat()).toEqual(["d", "a", "b", "c"]);
+    expect(out.pages).toEqual([
+      ["d", "a"],
+      ["b", "c"],
+    ]);
+  });
+
+  it("clamps a target index beyond the page length to the end", () => {
+    const layout = { favorites: [], pages: [["a", "b"]] };
+    const out = moveIcon(layout, "a", 0, 99, 4);
+    expect(out.pages.flat()).toEqual(["b", "a"]);
   });
 });
 
