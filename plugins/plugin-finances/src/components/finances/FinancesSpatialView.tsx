@@ -152,7 +152,7 @@ function FinancesEmptyBody({
 }) {
   return (
     <>
-      <Text bold>No money sources connected</Text>
+      <Text bold>No sources</Text>
       <HStack gap={1}>
         <Button agent="connect" onPress={dispatch("connect")}>
           Connect

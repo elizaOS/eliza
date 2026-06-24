@@ -162,9 +162,7 @@ export function SmartglassesPanelView() {
         case "display-test":
         case "clear-display":
           // The transport is owned by the full dashboard; surface the next step.
-          setError(
-            "Open the Smartglasses dashboard to drive the headset transport.",
-          );
+          setError("Open Smartglasses.");
           return;
       }
     },

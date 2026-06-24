@@ -1497,7 +1497,7 @@ export function VectorBrowserView({
                 defaultValue: "No records match your search query.",
               })
             : t("vectorbrowserview.NoMemoryRecordsDetected", {
-                defaultValue: "No memory records detected in the database.",
+                defaultValue: "No records.",
               })}
         </div>
       ) : (

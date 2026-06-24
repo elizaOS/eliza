@@ -208,7 +208,7 @@ export function PhoneSpatialView({
       <Divider label="recent" />
       {snapshot.calls.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No recent calls
+          No recent
         </Text>
       ) : (
         <List gap={0}>

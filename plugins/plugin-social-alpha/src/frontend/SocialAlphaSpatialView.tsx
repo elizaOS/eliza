@@ -130,7 +130,7 @@ function ErrorBody({
 }
 
 function EmptyBody() {
-	return <Text bold>No callers yet</Text>;
+	return <Text bold>No callers</Text>;
 }
 
 function ReadyBody({

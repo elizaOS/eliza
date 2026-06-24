@@ -357,7 +357,7 @@ describe("ContactsAppView — vCard import", () => {
     const { container } = render(
       React.createElement(ContactsAppView, overlayCtx()),
     );
-    await screen.findByText("No contacts yet");
+    await screen.findByText("No contacts");
     expect(screen.getByRole("button", { name: "Import vCard" })).toBeTruthy();
 
     const fileInput = container.querySelector(
@@ -399,7 +399,7 @@ describe("ContactsAppView — error + non-native gate", () => {
     platform.isNative = false;
     render(React.createElement(ContactsAppView, overlayCtx()));
 
-    await screen.findByText("No contacts yet");
+    await screen.findByText("No contacts");
     expect(contactsBridge.listContacts).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).toBeNull();
   });

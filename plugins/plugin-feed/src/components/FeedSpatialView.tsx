@@ -147,7 +147,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
     return (
       <Card gap={1} padding={1}>
         <Text style="caption" tone="warning">
-          No session yet
+          No session
         </Text>
         <Button
           grow={1}
@@ -329,7 +329,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
 
       <HStack gap={1} align="center">
         <Text grow={1}>
-          {wallet ? formatCurrency(wallet.balance) : "Waiting for wallet"}
+          {wallet ? formatCurrency(wallet.balance) : "No wallet"}
         </Text>
         <Text style="caption" tone="muted">
           {`trading ${formatCurrency(tradingBalance)}`}

@@ -80,7 +80,7 @@ describe("FacewearSpatialView one source, three modalities", () => {
       />,
       50,
     ).join("\n");
-    expect(empty).toContain("No devices connected");
+    expect(empty).toContain("No devices");
     expect(empty).toContain("network down");
     expect(empty).toContain("No supported devices");
   });

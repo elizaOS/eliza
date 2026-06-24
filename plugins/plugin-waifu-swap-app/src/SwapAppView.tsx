@@ -224,7 +224,7 @@ export function SwapAppView({
         <div className="mx-auto max-w-xl space-y-3">
           {!config.agentTokenAddress && (
             <PagePanel.Notice tone="warning">
-              No agent is configured for swapping.
+              No agent configured.
             </PagePanel.Notice>
           )}
 

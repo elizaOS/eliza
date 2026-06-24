@@ -236,7 +236,7 @@ describe("FinancesView — states", () => {
         })}
       />,
     );
-    await screen.findByText("No money sources connected");
+    await screen.findByText("No sources");
     expect(agent("connect")).toBeTruthy();
     // No fabricated balance surfaces in the disconnected state.
     expect(screen.queryByText("$2,765.50")).toBeNull();
@@ -250,7 +250,7 @@ describe("FinancesView — states", () => {
         })}
       />,
     );
-    await screen.findByText("No money sources connected");
+    await screen.findByText("No sources");
     fireEvent.click(agent("connect"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });

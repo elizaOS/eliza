@@ -142,7 +142,7 @@ export function ImageGenAppView({
         <div className="mx-auto max-w-3xl space-y-3">
           {!config.agentTokenAddress && (
             <PagePanel.Notice tone="warning">
-              No agent is configured for image generation.
+              No agent configured.
             </PagePanel.Notice>
           )}
 

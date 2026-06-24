@@ -97,7 +97,7 @@ export function FacewearSpatialView({
         >
           {connectedCount > 0
             ? `${connectedCount} device${connectedCount === 1 ? "" : "s"} connected`
-            : "No devices connected"}
+            : "No devices"}
         </Text>
         <Text style="caption" tone="muted">
           {snapshot.loading ? "loading" : `${snapshot.profiles.length} models`}

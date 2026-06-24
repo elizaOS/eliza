@@ -112,10 +112,7 @@ export function HyperliquidSpatialView({
     return (
       <Card gap={1} padding={1}>
         <Text tone="muted" align="center">
-          Unavailable on this device
-        </Text>
-        <Text style="caption" tone="muted" align="center">
-          Markets and account reads run on a desktop or cloud agent.
+          Unavailable
         </Text>
         <Divider />
         <HStack gap={1} wrap>

@@ -111,7 +111,7 @@ describe("SocialAlphaSpatialView one source, three modalities", () => {
 			54,
 		);
 		for (const line of lines) expect(visibleWidth(line)).toBe(54);
-		expect(lines.join("\n")).toContain("No callers yet");
+		expect(lines.join("\n")).toContain("No callers");
 	});
 
 	it("error state renders the message and a Retry control", () => {

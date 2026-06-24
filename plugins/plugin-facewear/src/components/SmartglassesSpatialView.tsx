@@ -321,7 +321,7 @@ export function SmartglassesSpatialView({
       <Divider label="events" />
       {report.events.length === 0 ? (
         <Text style="caption" tone="muted" align="center">
-          No events yet
+          No events
         </Text>
       ) : (
         <List gap={0}>

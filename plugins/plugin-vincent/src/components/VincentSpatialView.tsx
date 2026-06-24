@@ -258,7 +258,7 @@ export function VincentSpatialView({
             </List>
           ) : (
             <Text tone="muted" style="caption">
-              No P&amp;L data yet.
+              No P&amp;L
             </Text>
           )}
           <HStack gap={1} wrap>
@@ -274,7 +274,7 @@ export function VincentSpatialView({
         </VStack>
       ) : (
         <Text tone="muted" align="center" style="caption">
-          No strategy configured
+          No strategy
         </Text>
       )}
     </Card>

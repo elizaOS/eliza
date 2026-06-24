@@ -392,12 +392,11 @@ function ContactList({
           <AddressBookMotif />
         </span>
         <div className="mt-2 text-base font-semibold text-txt">
-          {t("contacts.empty.title", { defaultValue: "No contacts yet" })}
+          {t("contacts.empty.title", { defaultValue: "No contacts" })}
         </div>
         <p className="sr-only">
           {t("contacts.empty.body", {
-            defaultValue:
-              "Import a vCard or add someone to start your address book.",
+            defaultValue: "Import vCard or add contact.",
           })}
         </p>
         <ImportVCardButton onImport={onImport} t={t} />

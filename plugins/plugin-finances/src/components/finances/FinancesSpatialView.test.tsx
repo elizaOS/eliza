@@ -117,7 +117,7 @@ describe("FinancesSpatialView one source, three modalities", () => {
         <FinancesSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No money sources connected");
+    expect(html).toContain("No sources");
     expect(html).toContain('data-agent-id="connect"');
   });
 
