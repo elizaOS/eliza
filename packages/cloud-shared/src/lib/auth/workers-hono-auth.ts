@@ -17,6 +17,7 @@ import type { UserWithOrganization } from "../../db/repositories/users";
 import type { AppContext, AuthedUser, Bindings } from "../../types/cloud-worker-env";
 import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
+import { timingSafeEqualSecret } from "./cron";
 import {
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
@@ -341,8 +342,8 @@ export function requireCronSecret(c: AppContext): void {
   const provided =
     c.req.header("authorization")?.replace(/^Bearer\s+/i, "") ||
     c.req.header("x-cron-secret") ||
-    null;
-  if (provided !== expected) {
+    "";
+  if (!timingSafeEqualSecret(provided, expected)) {
     throw AuthenticationError("Invalid cron secret");
   }
 }
