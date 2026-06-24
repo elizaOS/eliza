@@ -1625,7 +1625,10 @@ function collapseDescriptionRepetition(text: string): string {
 	const seen = new Set<string>();
 	const kept: string[] = [];
 	for (const sentence of sentences) {
-		const key = sentence.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+		const key = sentence
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, " ")
+			.trim();
 		if (key && seen.has(key)) {
 			continue;
 		}
