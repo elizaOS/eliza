@@ -152,7 +152,9 @@ describe("signalKindForEventType", () => {
   it("passes through known kinds and normalizes aliases", () => {
     expect(signalKindForEventType("blocked")).toBe("blocked");
     expect(signalKindForEventType("proactive-message")).toBe("message");
-    expect(signalKindForEventType("task_complete")).toBe("activity");
+    expect(signalKindForEventType("task_complete")).toBe("workflow");
+    expect(signalKindForEventType("tool_running")).toBe("workflow");
+    expect(signalKindForEventType("error")).toBe("blocked");
   });
 
   it("falls back to activity for unknown event types", () => {
@@ -168,6 +170,7 @@ describe("homeSignalsFromEvents", () => {
       order: 100,
       signalKinds: ["blocked", "activity"],
     },
+    { id: "workflow", pluginId: "p", order: 80, signalKinds: ["workflow"] },
     { id: "msg", pluginId: "p", order: 60, signalKinds: ["message"] },
     { id: "static", pluginId: "p", order: 50 }, // no signalKinds → never boosted
   ];
@@ -193,6 +196,34 @@ describe("homeSignalsFromEvents", () => {
     );
     expect(signals.map((s) => s.widgetKey)).toEqual(["p/msg"]);
     expect(signals[0].weight).toBe(HOME_SIGNAL_WEIGHTS.message);
+  });
+
+  it("routes orchestrator lifecycle events through workflow", () => {
+    const signals = homeSignalsFromEvents(
+      [{ eventType: "tool_running", timestamp: NOW }],
+      decls,
+    );
+    expect(signals).toEqual([
+      {
+        widgetKey: "p/workflow",
+        weight: HOME_SIGNAL_WEIGHTS.workflow,
+        timestamp: NOW,
+      },
+    ]);
+  });
+
+  it("routes orchestrator errors through blocked attention", () => {
+    const signals = homeSignalsFromEvents(
+      [{ eventType: "error", timestamp: NOW }],
+      decls,
+    );
+    expect(signals).toEqual([
+      {
+        widgetKey: "p/act",
+        weight: HOME_SIGNAL_WEIGHTS.blocked,
+        timestamp: NOW,
+      },
+    ]);
   });
 
   it("never boosts a widget without signalKinds", () => {
