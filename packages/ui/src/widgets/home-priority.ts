@@ -206,6 +206,58 @@ export const NOTIFICATION_PRIORITY_TO_SIGNAL_KIND: Readonly<
   low: "activity",
 };
 
+// ---------------------------------------------------------------------------
+// Content-item priority *within* a single home widget (#9143). A "default" home
+// widget (notifications/messages/activity) shows a capped list, and the items
+// themselves carry priority — so the widget must surface the most
+// attention-worthy items first, not merely the most recent. This is the
+// content-level analogue of the widget-level ranker above. Pure + stable
+// (no clock; ties resolve by original order).
+// ---------------------------------------------------------------------------
+
+/** Notification priority → numeric rank (higher = more urgent). */
+export const NOTIFICATION_PRIORITY_RANK: Readonly<Record<string, number>> = {
+  urgent: 3,
+  high: 2,
+  normal: 1,
+  low: 0,
+};
+
+/** Minimal notification shape the content ranker needs. */
+export interface RankableContentNotification {
+  priority?: string;
+  /** Epoch-ms when created. */
+  createdAt: number;
+  /** Epoch-ms when read; unread (null/absent) ranks ahead of read. */
+  readAt?: number | null;
+}
+
+/**
+ * Order notifications inside a home widget by attention: unread before read,
+ * then higher priority, then most-recent first. Stable (equal items keep their
+ * original relative order) and pure (no `Date.now()`), so the home widget never
+ * reshuffles equal-importance items between renders.
+ */
+export function rankHomeNotifications<T extends RankableContentNotification>(
+  items: readonly T[],
+): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const aUnread = a.item.readAt ? 0 : 1;
+      const bUnread = b.item.readAt ? 0 : 1;
+      if (aUnread !== bUnread) return bUnread - aUnread;
+      const aPriority = NOTIFICATION_PRIORITY_RANK[a.item.priority ?? "normal"] ?? 1;
+      const bPriority = NOTIFICATION_PRIORITY_RANK[b.item.priority ?? "normal"] ?? 1;
+      if (aPriority !== bPriority) return bPriority - aPriority;
+      if (a.item.createdAt !== b.item.createdAt) {
+        return b.item.createdAt - a.item.createdAt;
+      }
+      return a.index - b.index;
+    })
+    .map((entry) => entry.item);
+}
+
 /** Minimal activity-event shape the signal derivation needs. */
 export interface RankableActivityEvent {
   eventType: string;

@@ -6,7 +6,9 @@ import {
   homeSignalWeight,
   homeSignalsFromEvents,
   homeSignalsFromNotifications,
+  type RankableContentNotification,
   type RankableHomeWidget,
+  rankHomeNotifications,
   rankHomeWidgets,
   scoreHomeWidget,
   signalKindForEventType,
@@ -255,5 +257,46 @@ describe("rankHomeWidgets — end-to-end with derived signals", () => {
   it("with no live signals, base order wins (the pinned widget leads)", () => {
     const ranked = rankHomeWidgets(decls, [], { now: NOW });
     expect(ranked[0].declaration.id).toBe("pinned");
+  });
+});
+
+describe("rankHomeNotifications — content-item priority", () => {
+  const n = (
+    id: string,
+    patch: Partial<RankableContentNotification> = {},
+  ): RankableContentNotification & { id: string } => ({
+    id,
+    priority: "normal",
+    createdAt: NOW,
+    ...patch,
+  });
+
+  it("ranks unread ahead of read regardless of recency", () => {
+    const ranked = rankHomeNotifications([
+      n("read-new", { createdAt: NOW, readAt: NOW }),
+      n("unread-old", { createdAt: NOW - 1_000 }),
+    ]);
+    expect(ranked.map((x) => x.id)).toEqual(["unread-old", "read-new"]);
+  });
+
+  it("ranks higher priority ahead of newer-but-lower priority (attention first)", () => {
+    const ranked = rankHomeNotifications([
+      n("low-new", { priority: "low", createdAt: NOW }),
+      n("urgent-old", { priority: "urgent", createdAt: NOW - 5_000 }),
+    ]);
+    expect(ranked.map((x) => x.id)).toEqual(["urgent-old", "low-new"]);
+  });
+
+  it("breaks priority ties by recency (newest first)", () => {
+    const ranked = rankHomeNotifications([
+      n("older", { priority: "high", createdAt: NOW - 1_000 }),
+      n("newer", { priority: "high", createdAt: NOW }),
+    ]);
+    expect(ranked.map((x) => x.id)).toEqual(["newer", "older"]);
+  });
+
+  it("is stable for fully-equal items (preserves input order)", () => {
+    const ranked = rankHomeNotifications([n("a"), n("b"), n("c")]);
+    expect(ranked.map((x) => x.id)).toEqual(["a", "b", "c"]);
   });
 });
