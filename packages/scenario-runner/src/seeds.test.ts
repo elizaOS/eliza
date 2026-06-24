@@ -270,7 +270,9 @@ describe("scenario memory seeds", () => {
       },
       { displayName: "Alex Lee" },
     );
-    expect(relationships.addHandle.mock.calls.map((call) => call[1])).toEqual([
+    const addHandleCalls = relationships.addHandle.mock
+      .calls as unknown as Array<[string, unknown]>;
+    expect(addHandleCalls.map(([, handle]) => handle)).toEqual([
       expect.objectContaining({
         platform: "gmail",
         identifier: "alex.lee@quanta.com",

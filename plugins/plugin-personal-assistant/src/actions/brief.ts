@@ -32,6 +32,7 @@ import {
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { BRIEF_NARRATIVE_INSTRUCTIONS } from "../lifeops/optimized-prompt-instructions.js";
 import type {
   LifeOpsBriefing,
   LifeOpsBriefingCalendarItem,
@@ -42,6 +43,8 @@ import type {
   LifeOpsBriefingPeriod,
   LifeOpsBriefingSections,
 } from "../types/briefing.js";
+
+export { BRIEF_NARRATIVE_INSTRUCTIONS } from "../lifeops/optimized-prompt-instructions.js";
 
 const ACTION_NAME = "BRIEF";
 
@@ -452,11 +455,6 @@ function newBriefingId(): string {
 // artifact, when present, replaces it; otherwise this inline baseline is used,
 // so the absence of an artifact is a no-op. The dynamic header line and the data
 // payload are composed around the resolved instructions, never optimized away.
-export const BRIEF_NARRATIVE_INSTRUCTIONS = `Render a concise narrative paragraph (2-5 sentences). Lead with the
-schedule-changing or reply-needed items first. Mention each non-empty domain
-once. If a domain is empty, omit it rather than saying "nothing to report".
-No invented facts; only describe items in the data below.`;
-
 export function buildNarrativePrompt(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;

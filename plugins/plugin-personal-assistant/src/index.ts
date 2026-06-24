@@ -25,13 +25,11 @@ export {
   blockAction,
   blockAction as websiteBlockAction,
 } from "./actions/block.js";
-export { BRIEF_NARRATIVE_INSTRUCTIONS } from "./actions/brief.js";
 export { calendarAction } from "./actions/calendar.js";
 export { connectorAction } from "./actions/connector.js";
 export { credentialsAction } from "./actions/credentials.js";
 export { entityAction } from "./actions/entity.js";
 export { calendlyAction } from "./actions/lib/calendly-handler.js";
-export { SCHEDULE_PLAN_INSTRUCTIONS } from "./actions/lib/scheduling-handler.js";
 export {
   ownerAlarmsAction,
   ownerFinancesAction,
@@ -48,7 +46,6 @@ export { resolveRequestAction } from "./actions/resolve-request.js";
 export { voiceCallAction } from "./actions/voice-call.js";
 export * from "./api/client-lifeops.js";
 export * from "./client.js";
-export { MEETING_PREP_INSTRUCTIONS } from "./default-packs/executive-assistant.js";
 export * from "./inbox/types.js";
 export {
   type ApprovalQueueOptions,
@@ -56,11 +53,17 @@ export {
   PgApprovalQueue,
 } from "./lifeops/approval-queue.js";
 export * from "./lifeops/index.js";
-export { GMAIL_PLAN_INSTRUCTIONS } from "./lifeops/llm/extract-gmail-plan.js";
 export * from "./lifeops/messaging/index.js";
+export {
+  BRIEF_NARRATIVE_INSTRUCTIONS,
+  GMAIL_PLAN_INSTRUCTIONS,
+  GMAIL_QUERY_EXTRACTION_INSTRUCTIONS,
+  MEETING_PREP_INSTRUCTIONS,
+  REMINDER_DISPATCH_INSTRUCTIONS,
+  SCHEDULE_PLAN_INSTRUCTIONS,
+} from "./lifeops/optimized-prompt-instructions.js";
 export { LifeOpsRepository } from "./lifeops/repository.js";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
-export { REMINDER_DISPATCH_INSTRUCTIONS } from "./lifeops/service-mixin-reminders.js";
 export * from "./platform/index.js";
 export type {
   LifeOpsRouteContext,

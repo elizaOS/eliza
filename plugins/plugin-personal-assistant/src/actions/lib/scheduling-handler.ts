@@ -36,6 +36,7 @@ import {
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
+import { SCHEDULE_PLAN_INSTRUCTIONS } from "../../lifeops/optimized-prompt-instructions.js";
 import {
   type LifeOpsMeetingPreferences,
   type LifeOpsMeetingPreferencesBlackout,
@@ -51,6 +52,8 @@ import {
   renderLifeOpsActionReply,
 } from "../../lifeops/voice/grounded-reply.js";
 
+export { SCHEDULE_PLAN_INSTRUCTIONS } from "../../lifeops/optimized-prompt-instructions.js";
+
 const MS_PER_MINUTE = 60_000;
 const MAX_DAYS_LOOKAHEAD = 60;
 const DEFAULT_DAYS_LOOKAHEAD = 7;
@@ -60,29 +63,6 @@ const SLOT_STEP_MINUTES = 15;
 async function loadLifeOpsServiceModule() {
   return import("../../lifeops/service.js");
 }
-
-export const SCHEDULE_PLAN_INSTRUCTIONS = [
-  "Plan the scheduling negotiation action for this request.",
-  "The user may speak in any language.",
-  "Use the current request, the structured parameters, and recent conversation context.",
-  "Return JSON only as a single object with exactly these fields:",
-  "  subaction: one of start, propose, respond, finalize, cancel, list_active, list_proposals, or null",
-  "  shouldAct: boolean",
-  "  response: short natural-language reply when shouldAct is false or clarification is needed",
-  "",
-  "Use start when beginning a new negotiation.",
-  "Use propose when submitting a concrete proposed slot for an existing negotiation.",
-  "Use respond when recording accepted, declined, or expired against a proposal.",
-  "Use finalize when confirming the winning proposal.",
-  "Use cancel when stopping an active negotiation.",
-  "Use list_active for listing negotiations.",
-  "Use list_proposals for listing proposals in one negotiation.",
-  "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR or MESSAGE with the appropriate inbox/draft operation instead.",
-  "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
-  "",
-  'Example: {"subaction":"start","shouldAct":true,"response":null}',
-  'Example clarification: {"subaction":null,"shouldAct":false,"response":"Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?"}',
-].join("\n");
 
 export type ProposedMeetingSlot = {
   startAt: string;
