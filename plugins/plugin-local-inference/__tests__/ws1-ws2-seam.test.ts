@@ -55,6 +55,7 @@ import {
 	VisionBackendUnavailableError,
 	loadAospVisionBackend,
 	loadCapacitorLlamaVisionBackend,
+	type VisionDescribeRequest,
 } from "../src/services/vision";
 import { SharedResourceRegistry } from "../src/services/voice/shared-resources";
 
@@ -70,6 +71,7 @@ interface FakeVisionState {
 	described: number;
 	prompts: string[];
 	receivedProjected: boolean[];
+	lastRequest?: VisionDescribeRequest;
 }
 
 function makeFakeBackend(state: FakeVisionState): VisionDescribeBackend {
@@ -78,6 +80,7 @@ function makeFakeBackend(state: FakeVisionState): VisionDescribeBackend {
 		async describe(req, args) {
 			state.described += 1;
 			state.prompts.push(req.prompt ?? "<no prompt>");
+			state.lastRequest = req;
 			state.receivedProjected.push(Boolean(args?.projectedTokens));
 			return {
 				title: "A small image",
@@ -182,6 +185,56 @@ describe("WS1↔WS2 seam — provider IMAGE_DESCRIPTION uses the arbiter when ca
 			title: "A small image",
 			description: "seam-what is this",
 		});
+	});
+
+	it("forwards image-description streaming only when explicitly requested", async () => {
+		const arbiter = new MemoryArbiter({
+			registry: new SharedResourceRegistry(),
+			visionCache: new VisionEmbeddingCache(),
+		});
+		const state: FakeVisionState = {
+			loaded: [],
+			disposed: 0,
+			described: 0,
+			prompts: [],
+			receivedProjected: [],
+		};
+		const reg = createVisionCapabilityRegistration({
+			arbiterCache: arbiter,
+			loader: async (k) => {
+				state.loaded.push(k);
+				return makeFakeBackend(state);
+			},
+		});
+		arbiter.registerCapability(reg);
+
+		const { runtime } = runtimeWithArbiter(arbiter);
+		const handlers = createLocalInferenceModelHandlers();
+		const onStreamChunk = vi.fn();
+		const dataUrl = `data:image/png;base64,${Buffer.from(tinyPngBytes()).toString("base64")}`;
+
+		await handlers[ModelType.IMAGE_DESCRIPTION]?.(runtime as never, {
+			imageUrl: dataUrl,
+			prompt: "hidden preprocessing",
+			onStreamChunk,
+		} as never);
+		const firstPayload = state.lastRequest as
+			| { onTextChunk?: (chunk: string) => void | Promise<void> }
+			| undefined;
+		expect(firstPayload?.onTextChunk).toBeUndefined();
+
+		await handlers[ModelType.IMAGE_DESCRIPTION]?.(runtime as never, {
+			imageUrl: dataUrl,
+			prompt: "visible describe",
+			stream: true,
+			onStreamChunk,
+		} as never);
+		const secondPayload = state.lastRequest as
+			| { onTextChunk?: (chunk: string) => void | Promise<void> }
+			| undefined;
+		expect(typeof secondPayload?.onTextChunk).toBe("function");
+		await secondPayload?.onTextChunk?.("token");
+		expect(onStreamChunk).toHaveBeenCalledWith("token");
 	});
 
 	it("falls through to legacy describeImage when the arbiter has no vision-describe capability", async () => {
