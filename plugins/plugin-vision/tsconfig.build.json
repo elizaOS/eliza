@@ -14,9 +14,6 @@
   "exclude": [
     "node_modules",
     "dist",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.e2e.test.ts",
     "src/tests/**/*",
     "test/**/*",
     "src/tests/e2e/run-local.ts",
