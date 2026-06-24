@@ -647,7 +647,11 @@ async function handleTextWithModelType(
     return result.text;
   } catch (error) {
     logTextFailure("generateText", modelType, modelIdForLog || "(unknown)", baseURL, error);
-    return "Error generating text. Please try again later.";
+    // Throw, never fabricate a reply. A hardcoded "Error generating text…" string
+    // would be persisted to memory and sent to the user as the agent's response —
+    // in the wrong language/voice — and would bypass core's grounded failure-reply
+    // path (buildFailureReplyPrompt). The canonical providers all throw here.
+    throw error;
   }
 }
 

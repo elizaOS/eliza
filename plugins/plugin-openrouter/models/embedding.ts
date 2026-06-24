@@ -31,14 +31,18 @@ export async function handleTextEmbedding(
   let text: string;
   if (typeof params === "string") {
     text = params;
-  } else if (typeof params === "object" && params.text) {
+  } else if (typeof params === "object" && typeof params.text === "string") {
     text = params.text;
   } else {
-    throw new Error("[OpenRouter] Invalid input format for embedding");
+    const errorMsg = "Invalid input format for embedding";
+    logger.error(errorMsg);
+    throw new Error(errorMsg);
   }
 
   if (!text.trim()) {
-    throw new Error("[OpenRouter] Empty text for embedding");
+    const errorMsg = "Empty text for embedding";
+    logger.error(errorMsg);
+    throw new Error(errorMsg);
   }
 
   // Truncate to stay within embedding model token limits (~4 chars per token)

@@ -40,6 +40,15 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",
   "@elizaos/plugin-background-runner",
   "@elizaos/plugin-device-filesystem",
+  // Screen understanding on mobile (EPIC #9105): the GET_SCREEN op + the
+  // renderer-pulled screen-capture bridge + the IMAGE_DESCRIPTION describe
+  // path. plugin-vision is now mobile-safe — `sharp` is lazy-loaded with a
+  // pure-JS fallback and the native YOLO/face detectors are dynamic-imported,
+  // so module-eval no longer pulls a native addon. VisionService degrades
+  // gracefully on a phone (camera mode finds no capture tool → warns, never
+  // starts a processing loop), and its computeruse OCR/set-of-marks bridges
+  // are best-effort dynamic imports that no-op without plugin-computeruse.
+  "@elizaos/plugin-vision",
 ];
 
 /**

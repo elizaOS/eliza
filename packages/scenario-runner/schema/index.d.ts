@@ -128,6 +128,19 @@ export type ScenarioSeedStep =
       [key: string]: unknown;
     };
 
+export type ScenarioCleanupStep =
+  | {
+      type: "gmailDeleteDrafts";
+      name?: string;
+      [key: string]: unknown;
+    }
+  | {
+      type: "selfControlClearBlocks";
+      name?: string;
+      profile?: string;
+      [key: string]: unknown;
+    };
+
 export type ScenarioJudgeRubric = {
   rubric: string;
   minimumScore?: number;
@@ -141,6 +154,18 @@ type CheckBase<Type extends string> = {
 
 type StringMatcher = string | string[];
 type TurnMatcher = string | RegExp;
+type DefinitionCountRequiredSlot = {
+  label?: string;
+  minuteOfDay?: number;
+};
+type DefinitionCountWebsiteAccess = {
+  groupKey?: string;
+  websites?: string[];
+  unlockMode?: string;
+  unlockDurationMinutes?: number;
+  callbackKey?: string | null;
+  reason?: string;
+};
 
 export type ScenarioTurn = {
   kind?: string;
@@ -240,6 +265,23 @@ export type ScenarioFinalCheck =
       table: StringMatcher;
       minCount?: number;
     })
+  | (CheckBase<"memoryExists"> & {
+      table?: StringMatcher;
+      content?: unknown;
+      minCount?: number;
+      expected?: boolean;
+    })
+  | (CheckBase<"goalCountDelta"> & {
+      title: string;
+      titleAliases?: string[];
+      delta?: number;
+      expectedStatus?: string;
+      expectedReviewState?: string;
+      expectedGroundingState?: string;
+      requireDescription?: boolean;
+      requireSuccessCriteria?: boolean;
+      requireSupportStrategy?: boolean;
+    })
   | (CheckBase<"gmailActionArguments"> & {
       actionName?: StringMatcher;
       subaction?: StringMatcher;
@@ -275,6 +317,30 @@ export type ScenarioFinalCheck =
       workflowId?: string;
       expected?: boolean;
       minCount?: number;
+    })
+  | (CheckBase<"definitionCountDelta"> & {
+      title: string;
+      titleAliases?: string[];
+      delta?: number;
+      cadenceKind?: "once" | "daily" | "weekly" | "times_per_day" | "interval";
+      requiredSlots?: DefinitionCountRequiredSlot[];
+      requiredWeekdays?: number[];
+      requiredWindows?: string[];
+      requiredEveryMinutes?: number;
+      requiredMaxOccurrencesPerDay?: number;
+      expectedTimeZone?: string;
+      requireReminderPlan?: boolean;
+      websiteAccess?: DefinitionCountWebsiteAccess;
+    })
+  | (CheckBase<"reminderIntensity"> & {
+      title: string;
+      titleAliases?: string[];
+      expected:
+        | "minimal"
+        | "normal"
+        | "persistent"
+        | "high_priority_only"
+        | "escalated";
     })
   | (CheckBase<"judgeRubric"> & {
       name: string;
@@ -313,6 +379,7 @@ export type ScenarioDefinition = {
   lane?: ScenarioLane;
   turns: ScenarioTurn[];
   seed?: ScenarioSeedStep[];
+  cleanup?: ScenarioCleanupStep[];
   finalChecks?: ScenarioFinalCheck[];
   [key: string]: unknown;
 };

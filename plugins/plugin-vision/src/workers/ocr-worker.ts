@@ -1,5 +1,5 @@
 import { parentPort, workerData } from "node:worker_threads";
-import sharp from "sharp";
+import { getSharp } from "../image/sharp-compat";
 import { OCRService } from "../ocr-service";
 import type { OCRResult } from "../types";
 import { logger } from "./worker-logger";
@@ -179,6 +179,7 @@ class OCRWorker {
     }
 
     // Convert to PNG for OCR
+    const sharp = await getSharp();
     const pngBuffer = await sharp(screenData, {
       raw: {
         width: metadata.width,
@@ -221,6 +222,7 @@ class OCRWorker {
     }
 
     // Convert to PNG for OCR
+    const sharp = await getSharp();
     const pngBuffer = await sharp(regionData, {
       raw: {
         width,

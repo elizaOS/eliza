@@ -24,8 +24,27 @@ describe("bucket (#8796 no-blue / orange detection)", () => {
   it("buckets the brand orange as orange", () => {
     expect(bucket("rgb(230, 126, 34)")).toBe("orange");
   });
-  it("buckets a blue as blue (the banned color)", () => {
+  // Regression (#9304): the SHIPPED brand accent is `--accent-rgb: 255,88,0`
+  // (base.css / theme.css). The old `g>90` channel threshold misclassified it
+  // as `neutral`, so the no-blue / orange-hover detector silently skipped the
+  // real brand button. Hue-based bucketing fixes this.
+  it("buckets the SHIPPED brand accent 255,88,0 (#ff5800) as orange", () => {
+    expect(bucket("rgb(255, 88, 0)")).toBe("orange");
+    expect(bucket("rgba(255, 88, 0, 1)")).toBe("orange");
+  });
+  it("buckets the brand-orange #ff8a24 and the gold theme accent as orange", () => {
+    expect(bucket("rgb(255, 138, 36)")).toBe("orange"); // --brand-orange #ff8a24
+    expect(bucket("rgb(240, 185, 11)")).toBe("orange"); // brand-gold #f0b90b
+  });
+  it("buckets blues across the band (incl. azure / dodgerblue) as blue", () => {
     expect(bucket("rgb(40, 90, 230)")).toBe("blue");
+    expect(bucket("rgb(30, 144, 255)")).toBe("blue"); // dodgerblue ~210°
+    expect(bucket("rgb(99, 102, 241)")).toBe("blue"); // indigo-500 ~239°
+  });
+  it("catches a saturated DARK navy as blue (not black) — the brand violation must surface", () => {
+    // hue ~240°, lum < 0.08 — old code returned `black` via the early luminance
+    // return, letting a dark-blue brand violation escape the no-blue rule.
+    expect(bucket("rgb(10, 10, 40)")).toBe("blue");
   });
   it("buckets near-black and pure white", () => {
     expect(bucket("rgb(10, 10, 10)")).toBe("black");
@@ -34,6 +53,18 @@ describe("bucket (#8796 no-blue / orange detection)", () => {
   it("buckets fully transparent and low-saturation gray", () => {
     expect(bucket("rgba(0, 0, 255, 0)")).toBe("transparent");
     expect(bucket("rgb(128, 128, 128)")).toBe("neutral");
+    expect(bucket("rgb(200, 200, 205)")).toBe("neutral"); // light gray, not white
+  });
+  it("non-brand chromatic colors (red/yellow/green/cyan) are neutral, never blue/orange", () => {
+    expect(bucket("rgb(255, 0, 0)")).toBe("neutral"); // hue 0° — outside orange band
+    expect(bucket("rgb(255, 255, 0)")).toBe("neutral"); // yellow 60°
+    expect(bucket("rgb(0, 200, 0)")).toBe("neutral"); // green 120°
+    expect(bucket("rgb(0, 200, 200)")).toBe("neutral"); // cyan/teal 180° — NOT blue
+  });
+  it("orange/blue hue band boundaries", () => {
+    // ~9° (just below orange band) is neutral; ~12° is orange.
+    expect(bucket("rgb(255, 40, 0)")).not.toBe("orange");
+    expect(bucket("rgb(255, 70, 0)")).toBe("orange");
   });
   it("unparseable colors fall back to neutral (never blue)", () => {
     expect(bucket("not-a-color")).toBe("neutral");

@@ -218,7 +218,13 @@ async function executeInstall(
 		});
 
 		return await new Promise((resolve) => {
-			const child = spawn("sh", ["-c", command], {
+			// `sh` does not exist natively on Windows; use cmd /c so the install
+			// command resolves (npm/bun/cargo are .cmd/.exe found by cmd). The
+			// command string is unchanged. (brew/apt are POSIX-only and still fail
+			// on Windows, as those package managers do not exist there anyway.)
+			const shellBin = process.platform === "win32" ? "cmd" : "sh";
+			const shellFlag = process.platform === "win32" ? "/c" : "-c";
+			const child = spawn(shellBin, [shellFlag, command], {
 				stdio: ["pipe", "pipe", "pipe"],
 				timeout,
 			});
