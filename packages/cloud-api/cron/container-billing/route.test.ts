@@ -21,6 +21,10 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type {
+  ContainerBillingRepository,
+  RecordSuccessfulBillingInput,
+} from "@/db/repositories/container-billing";
 
 // ── Repo/data seam mocks (the ONLY things stubbed) ─────────────────────────────
 
@@ -33,6 +37,9 @@ const listBillingOrganizations = mock(
 const scheduleShutdownWarning = mock(async () => undefined);
 const recordBillingFailure = mock(async () => undefined);
 const suspendContainer = mock(async () => undefined);
+type RecordSuccessfulBillingResult = Awaited<
+  ReturnType<ContainerBillingRepository["recordSuccessfulDailyBilling"]>
+>;
 
 /**
  * Faithful stand-in for the real `recordSuccessfulDailyBilling`: it returns the
@@ -41,12 +48,9 @@ const suspendContainer = mock(async () => undefined);
  * (already-billed / throwing) is overridden in individual tests.
  */
 const recordSuccessfulDailyBilling = mock(
-  async (input: {
-    newBalance: number;
-    fromCredits: number;
-    fromEarnings: number;
-    dailyCost: number;
-  }) => ({
+  async (
+    input: RecordSuccessfulBillingInput,
+  ): Promise<RecordSuccessfulBillingResult> => ({
     newBalance: input.newBalance,
     transactionId: "tx-mock",
     alreadyBilled: false,
