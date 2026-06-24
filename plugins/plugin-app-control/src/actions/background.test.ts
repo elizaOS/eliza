@@ -66,6 +66,14 @@ describe("inferBackgroundPlan", () => {
 		});
 	});
 
+	it("does not throw on attachment records without a URL", () => {
+		expect(() =>
+			inferBackgroundPlan("set the background from this attachment", [
+				{} as Media,
+			]),
+		).not.toThrow();
+	});
+
 	it("generates from a description when no color resolves", () => {
 		const plan = inferBackgroundPlan(
 			"generate a misty forest background",

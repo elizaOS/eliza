@@ -174,3 +174,55 @@ The `mtp: "separate-drafter"` manifest + `mtp/drafter-<tier>.gguf` contract (PR
 #9172) stays as-is; this GGUF becomes `mtp/drafter-2b.gguf` once the arch loads.
 Staged locally at `~/.local/state/eliza/models/drafts/gemma-4-E2B-mtp-amaranus.gguf`.
 
+### VALIDATED on Metal via upstream llama.cpp (2026-06-23)
+
+Upstream `ggml-org/llama.cpp` (b1-ac4105d) already implements the whole path —
+`LLM_ARCH_GEMMA4_ASSISTANT`, `src/models/gemma4-assistant.cpp` (the NextN graph:
+`x = tok_embd[next]·√d`; `xh = concat(x, target_hidden)`; `nextn_proj_pre·xh` →
+4 attention blocks → `nextn_proj_post` → logits), and `--spec-type draft-mtp`
+with the `ctx_other` target-context link. Built it with Metal and ran the real
+amaranus drafter against the eliza-1 gemma-4-E2B target on an Apple M4 Max:
+
+```
+llama-cli -m <eliza-1 gemma-4-E2B> -md <amaranus MTP-Q8_0> -ngl 99 -ngld 99 -fa on \
+          --spec-type draft-mtp --spec-draft-n-max 3
+  baseline (no drafter):     105.5 tok/s
+  amaranus draft-mtp:        136.2 tok/s   →  1.29× speedup, coherent output
+```
+
+The drafter **loads, accepts draft tokens, and accelerates** — even though it is
+trained for `gemma-4-E2B-it-assistant` while drafting the eliza-1 *base* here.
+So "one working math" is proven: a real, released Gemma-4 MTP drafter works on
+Metal, no training.
+
+**Speedup is target-cost-dependent (honest caveat).** Re-running against the
+*matched* `google/gemma-4-E2B-it-qat-q4_0` target gave the opposite — baseline
+145 t/s vs draft-mtp 106 t/s (a regression): on a fast Q4 target the per-step
+drafter cost outweighs the acceptance benefit. The amaranus head is QAT-derived
+from INT4 weights, so its acceptance ceiling is modest (~the 35% the LiteRT
+extraction reports); it nets a win on a *slow* target (Q8 eliza-1: 1.29×) but not
+on the fast Q4 mobile entry tier. So: a working drafter exists today **for free**
+and helps the larger/Q8 tiers; a **bigger, uniform speedup across all tiers**
+(especially the Q4 2b) is where a from-scratch BF16-distilled drafter on an H200
+— or applying TurboQuant to a higher-acceptance head — would pay off. That is the
+only place H200 spend is still justified, and it is an optimization, not a
+blocker.
+
+**Integration into eliza = bring `gemma4-assistant` into the fork.** Two options,
+both bounded (no training):
+1. **Rebase the fork onto recent upstream** (the AGENTS.md "deferred rebase"),
+   which brings `gemma4-assistant` + the upstream `draft-mtp`/`ctx_other` engine
+   wholesale. Cleanest; also lands the other upstream gemma-4 fixes.
+2. **Targeted port**: copy `src/models/gemma4-assistant.cpp`, the
+   `LLM_ARCH_GEMMA4_ASSISTANT` enum + `LLM_TENSOR_NEXTN_PROJ_{PRE,POST}` +
+   `nextn_predict_layers`/`*_length_swa` hparams, and the `ctx_other` draft-mtp
+   link, adapting to the fork's `llm_graph` API. Note the fork's current
+   `draft-mtp` is the `dflash-draft` (cross-attention) design, distinct from the
+   upstream `ctx_other` NextN design, so the speculative-engine link is the part
+   that needs care.
+
+Once the fork loads `gemma4-assistant`, the amaranus GGUF becomes
+`mtp/drafter-2b.gguf` and the `mtp: "separate-drafter"` manifest (PR #9172) ships
+release-shaped — no H200, no in-house distillation.
+Evidence: `native/verify/evidence/platform/amaranus-draft-mtp-metal.log`.
+
