@@ -244,7 +244,17 @@ export class AutoTopUpService {
 
     if (paymentIntent.status === "succeeded") {
       const previousBalance = Number(org.credit_balance);
-      const newBalance = previousBalance + amount;
+      const { creditsService } = await import("./credits");
+      const { newBalance } = await creditsService.addCredits({
+        organizationId,
+        amount,
+        description: `Auto top-up - $${amount.toFixed(2)}`,
+        metadata: {
+          ...metadata,
+          payment_intent_id: paymentIntent.id,
+        },
+        stripePaymentIntentId: paymentIntent.id,
+      });
 
       logger.info(
         `[AutoTopUp] ✓ Auto top-up succeeded for org ${organizationId}. Payment: ${paymentIntent.id}`,
