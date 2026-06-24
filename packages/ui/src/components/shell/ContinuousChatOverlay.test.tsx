@@ -1362,7 +1362,7 @@ describe("ContinuousChatOverlay swipe-nav", () => {
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("a");
   });
 
-  it("lights an edge hint with the live drag offset while swiping", () => {
+  it("lights an edge hint with the live drag offset while swiping", async () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
@@ -1374,7 +1374,9 @@ describe("ContinuousChatOverlay swipe-nav", () => {
     fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 3 });
     fireEvent.pointerMove(el, { clientX: 240, clientY: 302, pointerId: 3 });
 
-    const hint = screen.getByTestId("conversation-swipe-hint-right");
+    const hint = await waitFor(() =>
+      screen.getByTestId("conversation-swipe-hint-right"),
+    );
     expect(hint).toBeTruthy();
     // Opacity scales with the drag distance (60px of 96px ≈ 0.625).
     expect(Number.parseFloat(hint.style.opacity)).toBeGreaterThan(0);
