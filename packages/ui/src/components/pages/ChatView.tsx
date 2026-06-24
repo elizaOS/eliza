@@ -1094,6 +1094,14 @@ export function TerminalChannelPanel({
  * uses, and routes outbound replies back through the runtime's
  * source-specific send handlers.
  */
+// Module-level stable identity: an inline arrow here would change every render
+// and break ChatMessage's arePropsEqual (renderContent compare), re-parsing
+// markdown for every inbox message on any panel re-render. (Inbox doesn't use
+// analysisMode, so unlike the main path this needs no closure.)
+function renderInboxMessageContent(message: ChatMessageData) {
+  return <MessageContent message={message as ConversationMessage} />;
+}
+
 function InboxChatPanel({
   activeInboxChat,
   variant,
@@ -1448,9 +1456,7 @@ function InboxChatPanel({
             variant={variant}
             messages={messages}
             userMessagesOnRight={false}
-            renderMessageContent={(message) => (
-              <MessageContent message={message as ConversationMessage} />
-            )}
+            renderMessageContent={renderInboxMessageContent}
           />
         )}
       </div>
