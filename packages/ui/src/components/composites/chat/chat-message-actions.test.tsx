@@ -36,4 +36,13 @@ describe("ChatMessageActions copy", () => {
     );
     expect(screen.getByRole("button", { name: "Copy text" })).toBeTruthy();
   });
+
+  it("invokes onDelete when the delete button is enabled and clicked", async () => {
+    const onDelete = vi.fn();
+    render(<ChatMessageActions canDelete onDelete={onDelete} />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Delete message" }),
+    );
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
 });

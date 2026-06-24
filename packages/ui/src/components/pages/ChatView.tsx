@@ -705,6 +705,7 @@ export function ChatView({
         onEdit={handleEditMessage}
         onSpeak={handleSpeakMessage}
         onCopy={handleCopyMessageText}
+        onDelete={removeConversationMessage}
         onDismissSuggestion={handleDismissSuggestion}
         onAcceptSuggestion={handleAcceptSuggestion}
         renderMessageContent={renderChatMessageContent}
