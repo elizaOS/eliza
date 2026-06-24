@@ -1,121 +1,371 @@
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type {
 	CapturedAction,
-	ScenarioCheckResult,
+	ScenarioContext,
 	ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+	listViews,
+	registerPluginViews,
+	unregisterPluginViews,
+} from "@elizaos/agent/api/views-registry";
+import {
+	jsonResponse,
+	registerAppControlHttpHandler,
+	resetAppControlHttpLoopback,
+} from "../../../../packages/scenario-runner/test/scenarios/_helpers/app-control-http-loopback";
 
-type Pattern = string | RegExp;
+const VIEW_ID = "lifecycle-sketch";
+const DISPLAY_NAME = "Lifecycle Sketch";
+const PLUGIN_NAME = "@scenario/plugin-lifecycle-sketch";
+const REPO_SOURCE_ROOT = path.resolve(import.meta.dirname, "../../../..");
+const MIN_PLUGIN_TEMPLATE = path.join(
+	REPO_SOURCE_ROOT,
+	"packages",
+	"elizaos",
+	"templates",
+	"min-plugin",
+);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+let scenarioRepoRoot = "";
+let previousElizaRepoRoot: string | undefined;
+
+type RuntimeAction = {
+	name: string;
+	validate?: (...args: unknown[]) => Promise<boolean> | boolean;
+	handler?: (...args: unknown[]) => Promise<unknown> | unknown;
+};
+
+type RuntimeRoute = {
+	type: string;
+	path: string;
+	handler: (...args: unknown[]) => Promise<void> | void;
+};
+
+type ScenarioRuntimeHarness = {
+	actions?: RuntimeAction[];
+	routes?: RuntimeRoute[];
+	useModel?: (...args: unknown[]) => Promise<unknown>;
+	__viewsCrudUseModelPatched?: boolean;
+};
+
+function toRecord(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
 }
 
-function readString(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+function readPath(value: unknown, pathExpression: string): unknown {
+	let current = value;
+	for (const segment of pathExpression.split(".").filter(Boolean)) {
+		if (Array.isArray(current) && /^\d+$/.test(segment)) {
+			current = current[Number(segment)];
+			continue;
+		}
+		current = toRecord(current)[segment];
+	}
+	return current;
 }
 
-function actionBlob(action: CapturedAction): string {
-	const parts: string[] = [action.actionName];
-	if (action.parameters) parts.push(JSON.stringify(action.parameters));
-	if (action.result?.values) parts.push(JSON.stringify(action.result.values));
-	if (action.result?.data) parts.push(JSON.stringify(action.result.data));
-	if (action.result?.text) parts.push(action.result.text);
-	if (action.error?.message) parts.push(action.error.message);
-	return parts.join(" | ");
+function actionParameters(action: CapturedAction): Record<string, unknown> {
+	const params = toRecord(action.parameters);
+	return toRecord(params.parameters ?? params);
 }
 
-function matchesPattern(value: string, pattern: Pattern): boolean {
-	return typeof pattern === "string"
-		? value.toLowerCase().includes(pattern.toLowerCase())
-		: pattern.test(value);
+function valuesEqual(actual: unknown, expected: unknown): boolean {
+	return JSON.stringify(actual) === JSON.stringify(expected);
 }
 
-function actionMode(action: CapturedAction): string | undefined {
-	const params = isRecord(action.parameters) ? action.parameters : {};
-	const values = isRecord(action.result?.values) ? action.result.values : {};
-	return (
-		readString(params.action) ??
-		readString(params.mode) ??
-		readString(params.subaction) ??
-		readString(values.mode) ??
-		readString(values.subMode)
+function expectViewsAction(
+	execution: ScenarioTurnExecution,
+	expected: {
+		parameters?: Record<string, unknown>;
+		responseIncludes?: string[];
+		resultFields?: Record<string, unknown>;
+		success?: boolean;
+	},
+): string | undefined {
+	const action = execution.actionsCalled.find(
+		(candidate) => candidate.actionName === "VIEWS",
+	);
+	if (!action) {
+		return `expected VIEWS action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
+	}
+
+	for (const [key, expectedValue] of Object.entries(expected.parameters ?? {})) {
+		const actual = actionParameters(action)[key];
+		if (!valuesEqual(actual, expectedValue)) {
+			return `expected VIEWS parameter ${key}=${JSON.stringify(expectedValue)}, saw ${JSON.stringify(actual)}`;
+		}
+	}
+
+	if (
+		typeof expected.success === "boolean" &&
+		action.result?.success !== expected.success
+	) {
+		return `expected VIEWS result.success=${expected.success}, saw ${JSON.stringify(action.result)}`;
+	}
+
+	for (const snippet of expected.responseIncludes ?? []) {
+		if (!execution.responseText?.includes(snippet)) {
+			return `expected response to include ${JSON.stringify(snippet)}, saw ${JSON.stringify(execution.responseText)}`;
+		}
+	}
+
+	for (const [pathExpression, expectedValue] of Object.entries(
+		expected.resultFields ?? {},
+	)) {
+		const actual = readPath(action.result, pathExpression);
+		if (!valuesEqual(actual, expectedValue)) {
+			return `expected VIEWS result.${pathExpression}=${JSON.stringify(expectedValue)}, saw ${JSON.stringify(actual)}`;
+		}
+	}
+
+	return undefined;
+}
+
+function catalogViews() {
+	return listViews({ includeAllKinds: true }).map((view) => ({
+		id: view.id,
+		label: view.label,
+		path: view.path,
+		pluginName: view.pluginName,
+		viewType: view.viewType,
+		available: view.available,
+		viewKind: view.viewKind,
+	}));
+}
+
+function assertCatalogMembership(
+	status: number,
+	body: unknown,
+	expected: "present" | "absent",
+): string | undefined {
+	if (status !== 200) return `expected GET /api/views status 200, saw ${status}`;
+	const views = Array.isArray(toRecord(body).views) ? toRecord(body).views : [];
+	const match = views
+		.map((view) => toRecord(view))
+		.find((view) => view.id === VIEW_ID && view.pluginName === PLUGIN_NAME);
+	if (expected === "present" && !match) {
+		return `expected ${VIEW_ID} (${PLUGIN_NAME}) to be present in /api/views, saw ${JSON.stringify(views)}`;
+	}
+	if (expected === "absent" && match) {
+		return `expected ${VIEW_ID} (${PLUGIN_NAME}) to be absent from /api/views, saw ${JSON.stringify(views)}`;
+	}
+	return undefined;
+}
+
+function readTaskParameters(options: unknown): Record<string, unknown> {
+	const record = toRecord(options);
+	return toRecord(record.parameters);
+}
+
+function parseSourceDir(task: unknown): string | undefined {
+	if (typeof task !== "string") return undefined;
+	return /^sourceDir:\s*(.+)$/m.exec(task)?.[1]?.trim();
+}
+
+async function registerLifecycleView(workdir: string) {
+	await registerPluginViews(
+		{
+			name: PLUGIN_NAME,
+			description: "Synthetic plugin view registered by the CRUD lifecycle scenario.",
+			views: [
+				{
+					id: VIEW_ID,
+					label: DISPLAY_NAME,
+					description:
+						"Synthetic lifecycle view used to prove create, edit, and delete affect the view catalog.",
+					path: `/${VIEW_ID}`,
+					viewType: "gui",
+					viewKind: "release",
+					bundleUrl:
+						"data:text/javascript;charset=utf-8,export%20default%20function%20LifecycleSketch()%20%7B%20return%20null%3B%20%7D",
+					tags: ["scenario", "crud", "lifecycle"],
+				},
+			],
+		},
+		workdir,
 	);
 }
 
-function expectViewsMode({
-	modes,
-	includesAll = [],
-}: {
-	modes: string | string[];
-	includesAll?: Pattern[];
-}) {
-	const acceptedModes = Array.isArray(modes) ? modes : [modes];
-	return (turn: ScenarioTurnExecution): ScenarioCheckResult => {
-		const viewsCalls = turn.actionsCalled.filter(
-			(action) => action.actionName === "VIEWS",
-		);
-		if (viewsCalls.length === 0) {
-			return "expected this turn to call VIEWS";
-		}
-		const match = viewsCalls.find((action) => {
-			const mode = actionMode(action);
-			return mode ? acceptedModes.includes(mode) : false;
-		});
-		if (!match) {
-			return `expected VIEWS mode [${acceptedModes.join(", ")}], saw [${viewsCalls
-				.map((action) => actionMode(action) ?? "(unknown)")
-				.join(", ")}]`;
-		}
-		const blob = actionBlob(match);
-		for (const pattern of includesAll) {
-			if (!matchesPattern(blob, pattern)) {
-				return `expected VIEWS ${acceptedModes.join("/")} payload to include ${String(
-					pattern,
-				)}; saw ${blob}`;
-			}
-		}
-		return undefined;
-	};
+async function ensureScenarioRepoRoot(): Promise<string> {
+	scenarioRepoRoot = await fs.mkdtemp(
+		path.join(os.tmpdir(), "views-crud-lifecycle-"),
+	);
+	await fs.mkdir(
+		path.join(scenarioRepoRoot, "packages", "elizaos", "templates"),
+		{ recursive: true },
+	);
+	await fs.cp(
+		MIN_PLUGIN_TEMPLATE,
+		path.join(
+			scenarioRepoRoot,
+			"packages",
+			"elizaos",
+			"templates",
+			"min-plugin",
+		),
+		{ recursive: true },
+	);
+	await fs.mkdir(path.join(scenarioRepoRoot, "plugins"), { recursive: true });
+	previousElizaRepoRoot = process.env.ELIZA_REPO_ROOT;
+	process.env.ELIZA_REPO_ROOT = scenarioRepoRoot;
+	return scenarioRepoRoot;
 }
 
-/**
- * VIEWS owner-authoring routing through the live planner: create -> edit ->
- * explicitly confirmed delete.
- *
- * This is the first scenario that drives all three owner-authoring sub-modes of
- * the unified VIEWS action (`plugins/plugin-app-control/src/actions/views.ts`)
- * in one run. Existing view scenarios (`views-list`, `views-show`,
- * `views-search`, `views-voice-navigate`) are read/navigate only.
- *
- * What this validates (Tier 1):
- *   - the live planner routes each create / edit / delete utterance to VIEWS
- *     with the matching sub-mode argument on that same turn, and
- *   - the assistant responds HONESTLY for each — it acknowledges scaffolding /
- *     dispatching a coding agent (create), dispatching an edit (edit), and
- *     handles an explicitly confirmed delete request without falsely claiming a
- *     view was deleted if no matching deletable view exists.
- *
- * What this does NOT yet validate (Tier 2 — tracked in #9478):
- *   The *materialization* of a created view in `GET /api/views`, or the
- *   *disappearance* of a deleted view, cannot be asserted here because:
- *     - create/edit dispatch a coding sub-agent via START_CODING_TASK, which is
- *       NOT registered in the scenario runtime
- *       (`packages/scenario-runner/src/runtime-factory.ts`), so a new view never
- *       actually registers in a default run; and
- *     - delete needs a non-protected installed view to remove, and the scenario
- *       runtime only has first-party (protected) plugins.
- *   Asserting the catalog membership delta needs a test-only synthetic-view
- *   registration seam in `packages/agent/src/api/views-registry.ts`. That is the
- *   follow-up enhancement; this scenario is the honest routing/dispatch floor it
- *   will build on.
- */
+function installSyntheticCatalogApi(runtime: ScenarioRuntimeHarness) {
+	runtime.routes ??= [];
+	if (
+		runtime.routes.some(
+			(route) => route.type === "GET" && route.path === "/api/views",
+		)
+	) {
+		return;
+	}
+	runtime.routes.push({
+		type: "GET",
+		path: "/api/views",
+		handler: (_req: unknown, res: unknown) => {
+			const response = res as {
+				statusCode?: number;
+				setHeader?: (name: string, value: string) => void;
+				end?: (body: string) => void;
+			};
+			response.statusCode = 200;
+			response.setHeader?.("Content-Type", "application/json; charset=utf-8");
+			response.end?.(JSON.stringify({ views: catalogViews() }));
+		},
+	});
+}
+
+function installLoopbackCatalog() {
+	resetAppControlHttpLoopback();
+	registerAppControlHttpHandler((request) => {
+		if (request.method === "GET" && request.pathname === "/api/views") {
+			return jsonResponse({ views: catalogViews() });
+		}
+		if (
+			request.method === "POST" &&
+			request.pathname === "/api/plugins/uninstall"
+		) {
+			const body = toRecord(request.body);
+			const name = typeof body.name === "string" ? body.name : "";
+			if (name !== PLUGIN_NAME) {
+				return jsonResponse(
+					{ ok: false, error: `Unexpected uninstall target: ${name}` },
+					422,
+				);
+			}
+			unregisterPluginViews(PLUGIN_NAME);
+			return jsonResponse({
+				ok: true,
+				message: `Plugin ${PLUGIN_NAME} uninstalled.`,
+			});
+		}
+		return undefined;
+	});
+}
+
+function installNameExtractionFixture(runtime: ScenarioRuntimeHarness) {
+	if (runtime.__viewsCrudUseModelPatched || !runtime.useModel) return;
+	const originalUseModel = runtime.useModel.bind(runtime);
+	runtime.useModel = async (...args: unknown[]) => {
+		const prompt = String(toRecord(args[1]).prompt ?? "");
+		if (
+			prompt.includes("You name a brand-new elizaOS UI view plugin") &&
+			prompt.includes("lifecycle sketch")
+		) {
+			return `name: ${VIEW_ID}\ndisplayName: ${DISPLAY_NAME}`;
+		}
+		return originalUseModel(...args);
+	};
+	runtime.__viewsCrudUseModelPatched = true;
+}
+
+function installCodingTaskStub(runtime: ScenarioRuntimeHarness) {
+	runtime.actions ??= [];
+	const original = runtime.actions.find(
+		(action) => action.name === "START_CODING_TASK",
+	);
+	const fakeAction = {
+		name: "START_CODING_TASK",
+		validate: async (...args: unknown[]) =>
+			original?.validate ? Boolean(await original.validate(...args)) : true,
+		handler: async (...args: unknown[]) => {
+			const options = args[3];
+			const parameters = readTaskParameters(options);
+			const label =
+				typeof parameters.label === "string"
+					? parameters.label
+					: "coding-task";
+			const task = parameters.task;
+			const workdir =
+				parseSourceDir(task) ??
+				path.join(scenarioRepoRoot, "plugins", `plugin-${VIEW_ID}`);
+
+			if (
+				label === `create-view:${VIEW_ID}` ||
+				label === `edit-view:${VIEW_ID}`
+			) {
+				if (label === `create-view:${VIEW_ID}`) {
+					await registerLifecycleView(workdir);
+				}
+				return {
+					success: true,
+					data: {
+						agents: [
+							{
+								sessionId: `scenario-${label}`,
+								agentType: "codex",
+								workdir,
+								label,
+								status: "running",
+								workspaceId: "scenario-workspace",
+								branch: "scenario/views-crud-lifecycle",
+							},
+						],
+					},
+				};
+			}
+
+			if (original?.handler) return original.handler(...args);
+			return {
+				success: false,
+				text: `Unexpected coding task label in views CRUD scenario: ${label}`,
+			};
+		},
+	};
+	const index = runtime.actions.findIndex(
+		(action) => action.name === "START_CODING_TASK",
+	);
+	if (index >= 0) runtime.actions.splice(index, 1, fakeAction);
+	else runtime.actions.push(fakeAction);
+}
+
+async function cleanupScenario(): Promise<string | undefined> {
+	unregisterPluginViews(PLUGIN_NAME);
+	resetAppControlHttpLoopback();
+	if (previousElizaRepoRoot === undefined) {
+		delete process.env.ELIZA_REPO_ROOT;
+	} else {
+		process.env.ELIZA_REPO_ROOT = previousElizaRepoRoot;
+	}
+	if (scenarioRepoRoot) {
+		await fs.rm(scenarioRepoRoot, { recursive: true, force: true });
+	}
+	return undefined;
+}
+
 export default scenario({
 	lane: "live-only",
 	id: "views-crud-lifecycle",
-	title: "VIEWS lifecycle — create, edit, then delete a view",
+	title: "VIEWS create, edit, delete lifecycle updates the view catalog",
 	domain: "app-control",
-	tags: ["app-control", "views", "create", "edit", "delete", "crud"],
+	tags: ["app-control", "views", "create", "edit", "delete", "catalog"],
 	isolation: "per-scenario",
 	requires: {
 		plugins: ["@elizaos/plugin-app-control"],
@@ -123,40 +373,159 @@ export default scenario({
 	rooms: [
 		{
 			id: "main",
-			source: "telegram",
+			source: "chat",
 			title: "Views CRUD Lifecycle",
+		},
+	],
+	seed: [
+		{
+			type: "custom",
+			name: "install synthetic lifecycle view harness",
+			apply: async (ctx: ScenarioContext) => {
+				const runtime = ctx.runtime as ScenarioRuntimeHarness | undefined;
+				if (!runtime) return "scenario runtime unavailable";
+
+				unregisterPluginViews(PLUGIN_NAME);
+				await ensureScenarioRepoRoot();
+				installSyntheticCatalogApi(runtime);
+				installLoopbackCatalog();
+				installNameExtractionFixture(runtime);
+				installCodingTaskStub(runtime);
+				return undefined;
+			},
 		},
 	],
 	turns: [
 		{
-			kind: "message",
-			name: "user-creates-view",
-			text: "create a new scratch metrics view",
-			assertTurn: expectViewsMode({
-				modes: "create",
-				includesAll: ["scratch", "metrics"],
-			}),
+			kind: "action",
+			name: "create lifecycle view",
+			text: "Create a new lifecycle sketch view for validating view CRUD.",
+			actionName: "VIEWS",
+			options: {
+				action: "create",
+				intent: "Create a lifecycle sketch view for validating view CRUD.",
+			},
+			responseIncludesAny: [`Started view create task for ${DISPLAY_NAME}`],
+			responseExcludes: ["already running", "Navigated to"],
+			assertTurn: (execution) =>
+				expectViewsAction(execution, {
+					parameters: {
+						action: "create",
+						intent: "Create a lifecycle sketch view for validating view CRUD.",
+					},
+					responseIncludes: [`Started view create task for ${DISPLAY_NAME}`],
+					success: true,
+					resultFields: {
+						"values.mode": "create",
+						"values.subMode": "new",
+						"values.name": VIEW_ID,
+						"values.displayName": DISPLAY_NAME,
+						"data.task.label": `create-view:${VIEW_ID}`,
+					},
+				}),
 		},
 		{
-			kind: "message",
-			name: "user-edits-view",
-			text: "edit the scratch metrics view to change its title to Scratch Board",
-			assertTurn: expectViewsMode({
-				modes: "edit",
-				includesAll: ["scratch", "metrics", "Scratch Board"],
-			}),
+			kind: "api",
+			name: "catalog contains lifecycle view after create",
+			method: "GET",
+			path: "/api/views",
+			assertResponse: (status, body) =>
+				assertCatalogMembership(status, body, "present"),
 		},
 		{
-			kind: "message",
-			name: "user-deletes-view",
-			text: "delete the scratch metrics view, confirm true",
-			assertTurn: expectViewsMode({
-				modes: ["delete", "remove"],
-				includesAll: ["scratch", "metrics", /confirm/i],
-			}),
+			kind: "action",
+			name: "edit lifecycle view",
+			text: "Edit the lifecycle sketch view to show an edited validation state.",
+			actionName: "VIEWS",
+			options: {
+				action: "edit",
+				view: VIEW_ID,
+				intent: "Show an edited validation state in the lifecycle sketch view.",
+			},
+			responseIncludesAny: [`Started view edit task for ${DISPLAY_NAME}`],
+			assertTurn: (execution) =>
+				expectViewsAction(execution, {
+					parameters: {
+						action: "edit",
+						view: VIEW_ID,
+						intent:
+							"Show an edited validation state in the lifecycle sketch view.",
+					},
+					responseIncludes: [`Started view edit task for ${DISPLAY_NAME}`],
+					success: true,
+					resultFields: {
+						"values.mode": "edit",
+						"values.viewId": VIEW_ID,
+						"values.taskSessionId": `scenario-edit-view:${VIEW_ID}`,
+						"data.task.label": `edit-view:${VIEW_ID}`,
+					},
+				}),
+		},
+		{
+			kind: "action",
+			name: "delete lifecycle view asks for confirmation",
+			text: "Delete the lifecycle sketch view.",
+			actionName: "VIEWS",
+			options: {
+				action: "delete",
+				view: VIEW_ID,
+			},
+			responseIncludesAny: [
+				`Are you sure you want to delete the ${DISPLAY_NAME} view`,
+			],
+			assertTurn: (execution) =>
+				expectViewsAction(execution, {
+					parameters: {
+						action: "delete",
+						view: VIEW_ID,
+					},
+					responseIncludes: [
+						`Are you sure you want to delete the ${DISPLAY_NAME} view`,
+					],
+					success: true,
+					resultFields: {
+						"values.mode": "delete",
+						"values.subMode": "confirm",
+						"values.viewId": VIEW_ID,
+						"values.pluginName": PLUGIN_NAME,
+					},
+				}),
+		},
+		{
+			kind: "action",
+			name: "confirm lifecycle view delete",
+			text: "yes",
+			actionName: "VIEWS",
+			responseIncludesAny: [`Deleted ${DISPLAY_NAME}`],
+			responseExcludes: ["Deletion partially failed"],
+			assertTurn: (execution) =>
+				expectViewsAction(execution, {
+					responseIncludes: [`Deleted ${DISPLAY_NAME}`],
+					success: true,
+					resultFields: {
+						"values.mode": "delete",
+						"values.viewId": VIEW_ID,
+						"values.pluginName": PLUGIN_NAME,
+						"data.unloadResult.ok": true,
+					},
+				}),
+		},
+		{
+			kind: "api",
+			name: "catalog excludes lifecycle view after delete",
+			method: "GET",
+			path: "/api/views",
+			assertResponse: (status, body) =>
+				assertCatalogMembership(status, body, "absent"),
 		},
 	],
 	finalChecks: [
+		{
+			type: "actionCalled",
+			actionName: "VIEWS",
+			status: "success",
+			minCount: 4,
+		},
 		{
 			type: "selectedAction",
 			actionName: "VIEWS",
@@ -164,19 +533,25 @@ export default scenario({
 		{
 			type: "selectedActionArguments",
 			actionName: "VIEWS",
-			includesAll: [/create/i, /edit/i, /delete|remove/i],
-		},
-		{
-			type: "actionCalled",
-			actionName: "VIEWS",
-			minCount: 3,
+			includesAll: [
+				/"create"/,
+				/"edit"/,
+				/"delete"/,
+				new RegExp(VIEW_ID),
+				new RegExp(PLUGIN_NAME.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+			],
 		},
 		{
 			type: "judgeRubric",
-			name: "honest-crud-lifecycle",
+			name: "views-crud-full-lifecycle",
 			rubric:
-				"Across the three turns the assistant must (1) acknowledge starting to CREATE a view — scaffolding a plugin, spawning a coding agent, or reporting that scaffolding/template is unavailable; (2) acknowledge starting to EDIT the view — dispatching a coding agent or reporting it could not; and (3) handle the explicitly confirmed DELETE request — deleting only if a matching deletable view exists, or honestly reporting the view could not be found / cannot be deleted. It MUST NOT falsely claim a view is already created, running, edited, or deleted. (START_CODING_TASK is not registered in this test runtime, so 'could not dispatch a coding agent' and 'no matching view' are acceptable, honest outcomes.)",
-			minimumScore: 0.6,
+				"The trajectory must show one owner-gated VIEWS lifecycle for the same synthetic view: create dispatch succeeds without claiming the view is already running, GET /api/views contains the new lifecycle-sketch view after create, edit dispatch succeeds for that same view, delete asks for confirmation, the yes turn reports Deleted rather than partial failure, and GET /api/views no longer contains the view after delete.",
+			minimumScore: 0.7,
+		},
+		{
+			type: "custom",
+			name: "cleanup synthetic lifecycle fixture",
+			predicate: cleanupScenario,
 		},
 	],
 });

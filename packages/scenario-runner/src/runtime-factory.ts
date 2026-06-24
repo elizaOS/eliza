@@ -353,6 +353,17 @@ export async function createScenarioRuntime(
   };
   await runtime.registerPlugin(pluginSql);
 
+  const { KnowledgeGraphService, knowledgeGraphSchema } = (await import(
+    "@elizaos/agent"
+  )) as typeof import("@elizaos/agent");
+  await runtime.registerPlugin({
+    name: "@elizaos/scenario-runner-knowledge-graph",
+    description:
+      "Scenario-runner runtime knowledge graph service and schema for LifeOps fixtures.",
+    services: [KnowledgeGraphService],
+    schema: knowledgeGraphSchema,
+  });
+
   // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
   // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
   // (TaskService, EmbeddingGenerationService). advancedCapabilities also

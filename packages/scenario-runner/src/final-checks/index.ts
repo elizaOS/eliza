@@ -5,7 +5,6 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { LifeOpsService } from "@elizaos/plugin-personal-assistant/lifeops/service";
 import {
   REMINDER_ESCALATION_INDEX_METADATA_KEY,
   REMINDER_LIFECYCLE_METADATA_KEY,
@@ -247,6 +246,15 @@ function isDefinitionListingService(
     return false;
   }
   return typeof value.listDefinitions === "function";
+}
+
+async function createLifeOpsService(runtime: IAgentRuntime): Promise<unknown> {
+  const { LifeOpsService } = (await import(
+    "@elizaos/plugin-personal-assistant/lifeops/service"
+  )) as {
+    LifeOpsService: new (runtime: IAgentRuntime) => unknown;
+  };
+  return new LifeOpsService(runtime);
 }
 
 function definitionRecordFromValue(
@@ -966,7 +974,7 @@ registerFinalCheckHandler(
         detail: "definitionCountDelta requires a non-empty title",
       };
     }
-    const service = new LifeOpsService(runtime);
+    const service = await createLifeOpsService(runtime);
     if (!isDefinitionListingService(service)) {
       return {
         status: "failed",
@@ -1857,7 +1865,7 @@ async function checkStoredReminderIntensity(
   titleCandidates: string[],
   expected: string,
 ): Promise<FinalCheckOutcome> {
-  const service = new LifeOpsService(runtime);
+  const service = await createLifeOpsService(runtime);
   if (!isReminderPreferenceService(service)) {
     return {
       status: "skipped-dependency-missing",
