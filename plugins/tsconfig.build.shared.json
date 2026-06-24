@@ -26,6 +26,10 @@
       "@elizaos/ui/api/*": ["../packages/ui/dist/api/*"],
       "@elizaos/ui/components": ["../packages/ui/dist/components/index.d.ts"],
       "@elizaos/ui/components/*": ["../packages/ui/dist/components/*"],
+      "@elizaos/ui/spatial": ["../packages/ui/dist/spatial/index.d.ts"],
+      "@elizaos/ui/spatial/tui": [
+        "../packages/ui/dist/spatial/tui/index.d.ts"
+      ],
       "@elizaos/ui/utils": ["../packages/ui/dist/utils/index.d.ts"],
       "@elizaos/ui/*": ["../packages/ui/dist/*"],
       "@elizaos/plugin-task-coordinator": [
