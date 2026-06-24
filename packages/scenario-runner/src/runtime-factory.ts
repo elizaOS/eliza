@@ -74,6 +74,35 @@ export async function loadScenarioTestMocksForTests() {
 const DETERMINISTIC_LLM_PROXY_PROVIDER_NAME =
   "deterministic-llm-proxy" as const;
 
+async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
+  const agentPackageName: string = "@elizaos/agent";
+  const agentModule = (await import(agentPackageName)) as Record<
+    string,
+    unknown
+  >;
+  const KnowledgeGraphService = agentModule.KnowledgeGraphService;
+  const knowledgeGraphSchema = agentModule.knowledgeGraphSchema;
+  if (
+    typeof KnowledgeGraphService !== "function" ||
+    knowledgeGraphSchema === null ||
+    typeof knowledgeGraphSchema !== "object"
+  ) {
+    throw new Error(
+      "[scenario-runner] @elizaos/agent did not expose KnowledgeGraphService and knowledgeGraphSchema",
+    );
+  }
+
+  return {
+    name: "scenario-runner-knowledge-graph",
+    description:
+      "Scenario-runner runtime knowledge graph service and schema bootstrap.",
+    schema: knowledgeGraphSchema as Plugin["schema"],
+    services: [
+      KnowledgeGraphService as NonNullable<Plugin["services"]>[number],
+    ],
+  };
+}
+
 export interface RuntimeFactoryResult {
   runtime: AgentRuntime;
   pgliteDir: string;
@@ -352,17 +381,7 @@ export async function createScenarioRuntime(
     default: Plugin;
   };
   await runtime.registerPlugin(pluginSql);
-
-  const { KnowledgeGraphService, knowledgeGraphSchema } = (await import(
-    "@elizaos/agent"
-  )) as typeof import("@elizaos/agent");
-  await runtime.registerPlugin({
-    name: "@elizaos/scenario-runner-knowledge-graph",
-    description:
-      "Scenario-runner runtime knowledge graph service and schema for LifeOps fixtures.",
-    services: [KnowledgeGraphService],
-    schema: knowledgeGraphSchema,
-  });
+  await runtime.registerPlugin(await createScenarioKnowledgeGraphPlugin());
 
   // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
   // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
