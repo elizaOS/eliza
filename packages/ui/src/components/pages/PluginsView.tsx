@@ -940,9 +940,9 @@ function PluginListView({
    * labels between grids). Used when the "All" filter chip is active so the
    * single pane keeps section context without a nav sidebar.
    */
-  const renderGroupedPlugins = (plugins: PluginInfo[]) => {
+  const groupedVisiblePlugins = useMemo(() => {
     const groupMap = new Map<string, PluginInfo[]>();
-    for (const plugin of plugins) {
+    for (const plugin of visiblePlugins) {
       const groupId = subgroupForPlugin(plugin);
       const bucket = groupMap.get(groupId);
       if (bucket) bucket.push(plugin);
@@ -957,24 +957,27 @@ function PluginListView({
       )
         orderedGroups.push(id as (typeof SUBGROUP_DISPLAY_ORDER)[number]);
     }
+    return orderedGroups.map((groupId) => ({
+      groupId,
+      plugins: groupMap.get(groupId) ?? [],
+    }));
+  }, [visiblePlugins]);
 
-    return (
-      <div className="space-y-6">
-        {orderedGroups.map((groupId) => {
-          const groupPlugins = groupMap.get(groupId) ?? [];
-          if (groupPlugins.length === 0) return null;
-          return (
-            <section key={groupId}>
-              <h3 className="mb-3 text-sm font-medium text-txt-strong">
-                {SUBGROUP_LABELS[groupId] ?? groupId}
-              </h3>
-              {renderPluginGrid(groupPlugins)}
-            </section>
-          );
-        })}
-      </div>
-    );
-  };
+  const renderGroupedPlugins = () => (
+    <div className="space-y-6">
+      {groupedVisiblePlugins.map(({ groupId, plugins: groupPlugins }) => {
+        if (groupPlugins.length === 0) return null;
+        return (
+          <section key={groupId}>
+            <h3 className="mb-3 text-sm font-medium text-txt-strong">
+              {SUBGROUP_LABELS[groupId] ?? groupId}
+            </h3>
+            {renderPluginGrid(groupPlugins)}
+          </section>
+        );
+      })}
+    </div>
+  );
 
   // Resolve the plugin whose settings dialog is currently open.
   // Exclude ai-provider plugins — those are configured in Settings.
@@ -1415,7 +1418,7 @@ function PluginListView({
                 })}
               />
             ) : isAllFilter && !pluginSearch.trim() ? (
-              renderGroupedPlugins(visiblePlugins)
+              renderGroupedPlugins()
             ) : (
               renderPluginGrid(visiblePlugins)
             )}

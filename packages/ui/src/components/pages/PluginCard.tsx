@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { useAppSelector } from "../../state";
@@ -35,7 +36,7 @@ export interface PluginCardProps {
   notInstalledLabel: string;
 }
 
-export function PluginCard({
+export const PluginCard = memo(function PluginCard({
   plugin: p,
   allowCustomOrder,
   pluginSettingsOpen,
@@ -219,4 +220,4 @@ export function PluginCard({
       )}
     </li>
   );
-}
+});
