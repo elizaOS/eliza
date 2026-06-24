@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { HeadscaleClient } from "./headscale-client";
 import {
+  DEFAULT_REGISTRATION_TIMEOUT_MS,
   HeadscaleIntegration,
   inferHeadscaleUser,
   inferTailscaleHostname,
+  normalizeHeadscaleSegment,
 } from "./headscale-integration";
 
 const savedEnv = { ...process.env };
@@ -120,5 +122,25 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
 
     expect(lookups).toEqual([nodeName]);
     expect(deletedId).toBe("node-9");
+  });
+});
+
+
+describe("normalizeHeadscaleSegment + registration-timeout default", () => {
+  test("lowercases, trims, replaces invalid chars, collapses + strips hyphens", () => {
+    expect(normalizeHeadscaleSegment("  HELLO  ")).toBe("hello");
+    expect(normalizeHeadscaleSegment("hello@world!")).toBe("hello-world");
+    expect(normalizeHeadscaleSegment("hello---world")).toBe("hello-world");
+    expect(normalizeHeadscaleSegment("-hello-")).toBe("hello");
+  });
+
+  test("returns null for empty / whitespace-only / undefined", () => {
+    expect(normalizeHeadscaleSegment("")).toBeNull();
+    expect(normalizeHeadscaleSegment("   ")).toBeNull();
+    expect(normalizeHeadscaleSegment(undefined)).toBeNull();
+  });
+
+  test("DEFAULT_REGISTRATION_TIMEOUT_MS falls back to 180s when env is unset", () => {
+    expect(DEFAULT_REGISTRATION_TIMEOUT_MS).toBe(180_000);
   });
 });

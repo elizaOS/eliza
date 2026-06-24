@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   MTP_FORK_SRC_CANDIDATES,
+  mtpBuilderRepoRoot,
   mtpForceRebuildRequested,
   mtpSliceReuse,
 } from "./run-mobile-build.mjs";
@@ -118,6 +119,21 @@ describe("MTP_FORK_SRC_CANDIDATES (no drift vs the builder)", () => {
   it("mirrors build-llama-cpp-mtp.mjs: the in-repo fork + the ios-deps fallback, and nothing divergent", () => {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.resolve(here, "..", "..", "..");
+    const forkSuffix = path.join(
+      "plugins",
+      "plugin-local-inference",
+      "native",
+      "llama.cpp",
+    );
+    const iosDepsSuffix = path.join(
+      "packages",
+      "native",
+      "ios-deps",
+      "llama.cpp",
+      "src",
+    );
+
+    expect(repoRoot).toBe(mtpBuilderRepoRoot);
     expect(MTP_FORK_SRC_CANDIDATES).toEqual(
       [
         process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),
@@ -138,6 +154,25 @@ describe("MTP_FORK_SRC_CANDIDATES (no drift vs the builder)", () => {
         ),
       ].filter(Boolean),
     );
+    expect(MTP_FORK_SRC_CANDIDATES.some((c) => c.endsWith(forkSuffix))).toBe(
+      true,
+    );
+    expect(MTP_FORK_SRC_CANDIDATES.some((c) => c.endsWith(iosDepsSuffix))).toBe(
+      true,
+    );
+    // The previously-divergent `eliza/plugins` candidate (absent from the
+    // builder) must NOT reappear — that was the drift the builder never had.
+    // Check the path RELATIVE to the repo root: the legit candidate resolves to
+    // `plugins/plugin-local-inference/…`; the old divergent one resolved to a
+    // nested `eliza/plugins/plugin-local-inference/…`. (An absolute substring
+    // check false-positives because the repo root itself is named `eliza`.)
+    expect(
+      MTP_FORK_SRC_CANDIDATES.some((c) =>
+        path
+          .relative(mtpBuilderRepoRoot, c)
+          .includes(path.join("eliza", "plugins", "plugin-local-inference")),
+      ),
+    ).toBe(false);
   });
 });
 

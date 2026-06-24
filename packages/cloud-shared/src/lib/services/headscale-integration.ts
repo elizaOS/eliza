@@ -234,7 +234,7 @@ export function inferTailscaleHostname(
   return `${base}-${suffix}`.slice(0, 63).replace(/-+$/g, "") || "agent";
 }
 
-function normalizeHeadscaleSegment(value: string | undefined): string | null {
+export function normalizeHeadscaleSegment(value: string | undefined): string | null {
   const normalized = value
     ?.trim()
     .toLowerCase()

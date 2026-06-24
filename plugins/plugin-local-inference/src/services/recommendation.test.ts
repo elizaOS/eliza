@@ -1,12 +1,16 @@
 import type { CatalogModel, HardwareProbe } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
+import { MODEL_CATALOG } from "./catalog.js";
 import {
+	assessCatalogModelFit,
 	canBundleBeDefaultOnDevice,
 	catalogDownloadSizeBytes,
 	catalogDownloadSizeGb,
+	chooseSmallerFallbackModel,
 	classifyRecommendationPlatform,
 	deviceCapsFromProbe,
 	selectBestQuantizationVariant,
+	selectRecommendedModelForSlot,
 } from "./recommendation.js";
 
 /**
@@ -177,5 +181,36 @@ describe("canBundleBeDefaultOnDevice gate (#8848)", () => {
 		);
 		expect(result.canBeDefault).toBe(false);
 		expect(result.reason).toBe("not-verified-on-device");
+	});
+});
+
+describe("model-fit + smaller-fallback ladder (#8848)", () => {
+	const bySize = [...MODEL_CATALOG].sort(
+		(a, b) => catalogDownloadSizeGb(a) - catalogDownloadSizeGb(b),
+	);
+	const smallest = bySize[0];
+	const largest = bySize[bySize.length - 1];
+	const tiny = probe({ totalRamGb: 1, freeRamGb: 0.5 });
+	const huge = probe({ totalRamGb: 128, freeRamGb: 100 });
+
+	it("won't fit even the smallest catalog model on a 1 GB device, but fits on a big one", () => {
+		expect(assessCatalogModelFit(tiny, smallest)).toBe("wontfit");
+		expect(assessCatalogModelFit(huge, smallest)).toBe("fits");
+	});
+
+	it("has no smaller fallback on a 1 GB device, and a strictly-smaller one on a big device", () => {
+		expect(chooseSmallerFallbackModel(largest.id, tiny)).toBeNull();
+		const fallback = chooseSmallerFallbackModel(largest.id, huge);
+		expect(fallback).not.toBeNull();
+		expect(fallback?.id).not.toBe(largest.id);
+		expect(catalogDownloadSizeGb(fallback as CatalogModel)).toBeLessThan(
+			catalogDownloadSizeGb(largest),
+		);
+	});
+
+	it("selectRecommendedModelForSlot picks a real, fitting catalog model on a capable host", () => {
+		const sel = selectRecommendedModelForSlot("TEXT_LARGE", huge);
+		expect(sel.model).not.toBeNull();
+		expect(MODEL_CATALOG.some((m) => m.id === sel.model?.id)).toBe(true);
 	});
 });
