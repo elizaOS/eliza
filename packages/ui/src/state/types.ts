@@ -367,6 +367,8 @@ export interface AppState {
   uiThemeMode: UiThemeMode;
   /** The unified home/app background, shared across the home and every view. */
   backgroundConfig: BackgroundConfig;
+  /** True when there is a previous background config to undo to. */
+  canUndoBackground: boolean;
   ownerName: string | null;
   /** VRM quality vs GPU use: always full quality, battery-aware (default), or always efficient. */
   companionVrmPowerMode: CompanionVrmPowerMode;
@@ -821,6 +823,8 @@ export interface AppActions {
   setUiTheme: (theme: UiTheme) => void;
   setUiThemeMode: (mode: UiThemeMode) => void;
   setBackgroundConfig: (config: BackgroundConfig) => void;
+  /** Restore the most recent previous background config (no-op when empty). */
+  undoBackgroundConfig: () => void;
   setCompanionVrmPowerMode: (mode: CompanionVrmPowerMode) => void;
   setCompanionAnimateWhenHidden: (enabled: boolean) => void;
   setCompanionHalfFramerateMode: (mode: CompanionHalfFramerateMode) => void;

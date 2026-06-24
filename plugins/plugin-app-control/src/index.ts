@@ -14,7 +14,7 @@
 
 import type { Plugin } from "@elizaos/core";
 import { appAction, createAppAction } from "./actions/app.js";
-import { homescreenAction } from "./actions/homescreen.js";
+import { backgroundAction } from "./actions/background.js";
 import {
 	closeAllViewsAction,
 	closeViewAction,
@@ -38,13 +38,14 @@ import { viewNavigationShortcuts } from "./shortcuts.js";
 
 export type { AppMode } from "./actions/app.js";
 export type {
-	HomescreenEventPayload,
-	HomescreenMode,
-} from "./actions/homescreen.js";
+	BackgroundApplyOp,
+	BackgroundApplyPayload,
+} from "./actions/background.js";
 export {
-	createHomescreenAction,
-	homescreenAction,
-} from "./actions/homescreen.js";
+	backgroundAction,
+	createBackgroundAction,
+	inferBackgroundPlan,
+} from "./actions/background.js";
 export {
 	__matcherData,
 	MATCHER_VIEW_IDS,
@@ -124,7 +125,7 @@ export const appControlPlugin: Plugin = {
 		viewsAction,
 		closeViewAction,
 		closeAllViewsAction,
-		homescreenAction,
+		backgroundAction,
 	],
 	shortcuts: viewNavigationShortcuts,
 	// Three-stage view-switch cascade:

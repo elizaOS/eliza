@@ -24,12 +24,16 @@ function seed(
   opts: {
     cloud?: boolean;
     setBackgroundConfig?: (config: unknown) => void;
+    undoBackgroundConfig?: () => void;
+    canUndo?: boolean;
     color?: string;
   } = {},
 ) {
   __setAppValueForTests({
     backgroundConfig: { mode: "shader", color: opts.color ?? "#ef5a1f" },
     setBackgroundConfig: opts.setBackgroundConfig ?? vi.fn(),
+    undoBackgroundConfig: opts.undoBackgroundConfig ?? vi.fn(),
+    canUndoBackground: opts.canUndo ?? false,
     elizaCloudConnected: opts.cloud ?? false,
     elizaCloudAuthRejected: false,
   } as never);
@@ -46,11 +50,25 @@ describe("BackgroundView", () => {
     const setBackgroundConfig = vi.fn();
     seed({ setBackgroundConfig });
     render(<BackgroundView />);
-    fireEvent.click(screen.getByLabelText("Set background color #2563eb"));
+    fireEvent.click(screen.getByLabelText("Set background to Blue"));
     expect(setBackgroundConfig).toHaveBeenCalledWith({
       mode: "shader",
       color: "#2563eb",
     });
+  });
+
+  it("hides Undo when there is no history", () => {
+    seed({ canUndo: false });
+    render(<BackgroundView />);
+    expect(screen.queryByLabelText("Undo background change")).toBeNull();
+  });
+
+  it("shows Undo and reverts the background when history exists", () => {
+    const undoBackgroundConfig = vi.fn();
+    seed({ canUndo: true, undoBackgroundConfig });
+    render(<BackgroundView />);
+    fireEvent.click(screen.getByLabelText("Undo background change"));
+    expect(undoBackgroundConfig).toHaveBeenCalledTimes(1);
   });
 
   it("hides Generate when cloud is unavailable", () => {

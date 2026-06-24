@@ -36,3 +36,44 @@ export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "shader",
   color: DEFAULT_BACKGROUND_COLOR,
 };
+
+/** A named default background — a curated shader color the user can pick. */
+export interface BackgroundPreset {
+  /** Stable slug used by chat ("use the teal background") and tests. */
+  id: string;
+  /** Human-readable name shown to screen readers and the agent. */
+  label: string;
+  /** 6-digit hex color driving the shader field. */
+  color: string;
+}
+
+/**
+ * The curated default backgrounds. This is the single source of truth shared by
+ * the Background view (swatches) and the agent's BACKGROUND action (so "use the
+ * teal background" maps to the same color the swatch sets). Each preset is a
+ * live, breathing shader field — not a flat fill.
+ */
+export const BACKGROUND_PRESETS: readonly BackgroundPreset[] = [
+  { id: "orange", label: "Orange", color: DEFAULT_BACKGROUND_COLOR },
+  { id: "amber", label: "Amber", color: "#f59e0b" },
+  { id: "rose", label: "Rose", color: "#e11d48" },
+  { id: "violet", label: "Violet", color: "#7c3aed" },
+  { id: "blue", label: "Blue", color: "#2563eb" },
+  { id: "teal", label: "Teal", color: "#0891b2" },
+  { id: "green", label: "Green", color: "#059669" },
+  { id: "slate", label: "Slate", color: "#334155" },
+  { id: "black", label: "Black", color: "#0a0a0a" },
+  { id: "light", label: "Light", color: "#f4f4f5" },
+];
+
+/** Structural equality for two background configs (skips history no-ops). */
+export function backgroundConfigsEqual(
+  a: BackgroundConfig,
+  b: BackgroundConfig,
+): boolean {
+  return (
+    a.mode === b.mode &&
+    a.color === b.color &&
+    (a.imageUrl ?? "") === (b.imageUrl ?? "")
+  );
+}

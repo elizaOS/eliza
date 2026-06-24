@@ -74,7 +74,7 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
 
 /** Expected action names for each imported core plugin (verified against live imports). */
 const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
-  "@elizaos/plugin-app-control": ["APP", "HOMESCREEN", "VIEWS"],
+  "@elizaos/plugin-app-control": ["APP", "BACKGROUND", "VIEWS"],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
   "@elizaos/plugin-commands": [
     "COMMANDS_COMMAND",
@@ -235,6 +235,7 @@ const KNOWN_UNCOVERED: readonly string[] = [
  */
 const COVERED_ACTIONS: readonly string[] = [
   "APP",
+  "BACKGROUND",
   "BROWSER_CLICK",
   "BROWSER_CLOSE",
   "BROWSER_GET",
@@ -256,7 +257,6 @@ const COVERED_ACTIONS: readonly string[] = [
   "GITHUB_NOTIFICATION_TRIAGE",
   "GITHUB_PR_LIST",
   "GITHUB_PR_REVIEW",
-  "HOMESCREEN",
   "MCP",
   "MCP_CALL_TOOL",
   "MCP_LIST_CONNECTIONS",
@@ -762,7 +762,7 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
  * Covered actions that are not yet strict natural-language routed. This
  * baseline may only shrink as actions move to STRICT_LLM_ROUTED_ACTIONS.
  */
-const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = ["HOMESCREEN"];
+const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = ["BACKGROUND"];
 
 function collectActionNames(plugin: Plugin): string[] {
   return sorted(
