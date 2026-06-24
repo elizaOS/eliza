@@ -1071,11 +1071,8 @@ function appendMessageHistoryCompactionTelemetry(
 		...state,
 		data: {
 			...state.data,
-			messageHistoryCompaction: telemetry as unknown as State["data"][string],
-			messageHistoryCompactionHistory: [
-				...history,
-				telemetry as unknown as State["data"][string],
-			].slice(-10) as unknown as State["data"][string],
+			messageHistoryCompaction: telemetry,
+			messageHistoryCompactionHistory: [...history, telemetry].slice(-10),
 		},
 	};
 }

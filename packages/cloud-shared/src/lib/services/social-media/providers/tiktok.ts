@@ -326,7 +326,10 @@ export const tiktokProvider: SocialMediaProvider = {
         },
         fetchedAt: new Date(),
       };
-    } catch {
+    } catch (error) {
+      logger.warn("[TikTok] getMetrics failed", {
+        error: extractErrorMessage(error),
+      });
       return null;
     }
   },
@@ -352,7 +355,10 @@ export const tiktokProvider: SocialMediaProvider = {
         },
         fetchedAt: new Date(),
       };
-    } catch {
+    } catch (error) {
+      logger.warn("[TikTok] getAccountAnalytics failed", {
+        error: extractErrorMessage(error),
+      });
       return null;
     }
   },

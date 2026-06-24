@@ -46,7 +46,10 @@ export function useUIStream(
     onError,
     onComplete: onComplete
       ? (spec: OfficialSpec) => {
-          onComplete(spec as unknown as ElizaGenUiSpec | null);
+          // Convert the json-render OfficialSpec (keyed `elements`) into the
+          // ElizaGenUiSpec (array `components`) consumers are typed against —
+          // the same conversion applied to the returned `spec` below.
+          onComplete(officialSpecToEliza(spec));
         }
       : undefined,
   });
