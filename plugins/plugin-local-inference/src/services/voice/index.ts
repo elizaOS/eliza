@@ -34,6 +34,13 @@ export {
 	type MockSnapshotSource,
 } from "./checkpoint-manager";
 export {
+	computeDiarizationErrorRate,
+	type DerOptions,
+	type DerResult,
+	type DiarizationSegment,
+	diarizationWithinBudget,
+} from "./diarization-error-rate";
+export {
 	type BuildDeterministicFn,
 	type BuildMessageDependentFn,
 	type ContextPartial,
