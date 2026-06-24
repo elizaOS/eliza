@@ -62,12 +62,24 @@ per token frame). Heavy list leaves (`PluginCard`, `FileCard`, `SkillRowButton`,
 `TrajectoryDetailView`'s event pipeline + `PluginsView`/`SkillsView` derivations
 are moved out of the render body into `useMemo`.
 
-## Still deferred (one item, with reason)
+## List "virtualization" — measured, and the right call is NOT to ship it
 
-**True list windowing/virtualization** for the unbounded lists (`LogsView` 1–5k
-rows, `TrajectoryDetailView` call list). The row components are now memoized (so
-reconciliation cost is bounded), but DOM-count windowing is intentionally left to
-a focused follow-up: fixed-height windowing over the variable-height rows here
-would risk introducing the exact scroll jank / "objects jumping on screen" this
-work is meant to eliminate, so it needs a proper measured, scroll-recorded pass
-(react-virtual or a dynamic-height implementation) rather than landing blind.
+The row components are memoized (reconciliation cost bounded). For DOM-count
+reduction I implemented the browser-native option — `content-visibility: auto`
+(the existing `.cv-auto` utility in `base.css`) on the heavy list rows — and
+**measured it** with a 3000-row scroll KPI spec rather than landing it blind:
+
+```
+plain-3000-rows     109fps · p95 16.7ms · worst 25.0ms · dropped 17/261
+cv-auto-3000-rows    90fps · p95 17.7ms · worst 33.4ms · dropped 42/249
+```
+
+`content-visibility` made **scroll worse**, not better: it trades initial-mount
+layout for *on-scroll* layout (rows lay out as they enter the viewport), adding
+per-frame layout spikes (worst 25→33ms) — exactly the "objects moving / jank on
+scroll" this work is meant to eliminate. So it was **reverted** — measurement
+made the call. The same on-scroll-layout tradeoff applies to fixed-height JS
+windowing, so true DOM-windowing is only worth it if a *specific* huge list's
+**initial mount** (not its scroll) is measured as a real freeze, and then only
+with a dynamic-height implementation + a scroll-recorded visual pass. The
+memoizations are the net-positive win here; DOM windowing is not, by measurement.
