@@ -5,6 +5,8 @@ import { Command } from "commander";
 import {
   capabilityRouterConnect,
   create,
+  DEPLOY_COMMAND_DESCRIPTION,
+  DEPLOY_DRY_RUN_DESCRIPTION,
   deploy,
   info,
   registerPluginsCommand,
@@ -92,10 +94,10 @@ program
 
 program
   .command("deploy")
-  .description("Print the Eliza Cloud deployment plan for this project")
+  .description(DEPLOY_COMMAND_DESCRIPTION)
   .option("--app-id <id>", "Eliza Cloud app UUID to include in the plan")
   .option("--domain <host>", "Custom domain to include in the plan")
-  .option("--dry-run", "Accepted for compatibility; deploy is always a preview")
+  .option("--dry-run", DEPLOY_DRY_RUN_DESCRIPTION)
   .option("--verbose", "Echo resolved deploy inputs to stderr")
   .action(deploy);
 
