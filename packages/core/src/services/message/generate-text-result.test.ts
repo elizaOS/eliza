@@ -58,9 +58,9 @@ describe("extractGenerateTextContentText (#9155)", () => {
 	});
 
 	it("returns a flat string content directly", () => {
-		expect(
-			extractGenerateTextContentText({ text: "", content: "flat" }),
-		).toBe("flat");
+		expect(extractGenerateTextContentText({ text: "", content: "flat" })).toBe(
+			"flat",
+		);
 	});
 
 	it("skips parts whose type is not a text type", () => {

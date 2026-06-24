@@ -5160,7 +5160,12 @@ export async function runShortcutGate(args: {
 		valid = await action.validate(args.runtime, args.message, args.state);
 	} catch (err) {
 		args.runtime.logger?.warn?.(
-			{ src: "shortcut-gate", shortcut: match.shortcut.id, action: action.name, err },
+			{
+				src: "shortcut-gate",
+				shortcut: match.shortcut.id,
+				action: action.name,
+				err,
+			},
 			"shortcut action validate() threw; falling through to pipeline",
 		);
 		return null;
