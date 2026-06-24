@@ -604,48 +604,21 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
   if (spec.orientation === "vertical") {
     return (
       <div
+        aria-hidden="true"
         data-spatial-kind="divider"
         style={{
-          width: "0.375rem",
+          width: "0.25rem",
           alignSelf: "stretch",
         }}
       />
     );
   }
-  if (spec.label) {
-    return (
-      <div
-        data-spatial-kind="divider"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          opacity: 0.7,
-        }}
-      >
-        <div
-          style={{
-            flex: 1,
-            height: 1,
-            background: "var(--border, rgba(128,128,128,0.35))",
-          }}
-        />
-        <span style={{ fontSize: "0.75rem" }}>{spec.label}</span>
-        <div
-          style={{
-            flex: 1,
-            height: 1,
-            background: "var(--border, rgba(128,128,128,0.35))",
-          }}
-        />
-      </div>
-    );
-  }
   return (
     <div
+      aria-hidden="true"
       data-spatial-kind="divider"
       style={{
-        height: "0.375rem",
+        height: spec.label ? "0.25rem" : "0.125rem",
         alignSelf: "stretch",
       }}
     />

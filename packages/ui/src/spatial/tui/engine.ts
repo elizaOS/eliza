@@ -274,18 +274,8 @@ function renderField(node: SpatialFieldNode, width: number): string[] {
   return out;
 }
 
-function renderDivider(node: SpatialDividerNode, width: number): string[] {
-  if (node.orientation === "vertical") {
-    return [sgr("│", [90])];
-  }
-  if (node.label) {
-    const caption = ` ${node.label} `;
-    const remaining = Math.max(0, width - visibleWidth(caption));
-    const left = Math.floor(remaining / 2);
-    const right = remaining - left;
-    return [sgr("─".repeat(left) + caption + "─".repeat(right), [90])];
-  }
-  return [sgr("─".repeat(width), [90])];
+function renderDivider(_node: SpatialDividerNode, width: number): string[] {
+  return [blank(width)];
 }
 
 function renderSpacer(_node: SpatialSpacerNode, width: number): string[] {
