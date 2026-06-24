@@ -129,6 +129,43 @@ describe("EmbeddingGenerationService processBatch", () => {
 		await service.stop();
 	});
 
+	test("an empty vector in the batch is failed, not falsely succeeded or persisted", async () => {
+		const written: { id: string; embedding: number[] }[] = [];
+		const runtime = makeRuntime({
+			batch: true,
+			// Middle item comes back as an empty vector (malformed/partial batch).
+			batchHandler: async ({ texts }) =>
+				texts.map((_, i) => (i === 1 ? [] : [i, i + 1])),
+			updateMemory: async ({ id, embedding }) => {
+				written.push({ id, embedding });
+			},
+		});
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+		// biome-ignore lint/suspicious/noExplicitAny: drive the private batch processor directly
+		const processBatch = (service as any).batchQueue.options.processBatch as (
+			items: unknown[],
+		) => Promise<{ item: { memory: { id: string } }; success: boolean }[]>;
+
+		const items = [
+			makeItem("id-a", "alpha"),
+			makeItem("id-b", "beta"),
+			makeItem("id-c", "gamma"),
+		];
+		const outcomes = await processBatch(items);
+
+		const byId = new Map(outcomes.map((o) => [o.item.memory.id, o.success]));
+		// The empty vector must NOT be reported as a successful embedding.
+		expect(byId.get("id-b")).toBe(false);
+		expect(byId.get("id-a")).toBe(true);
+		expect(byId.get("id-c")).toBe(true);
+		// And it must never be written back to the store.
+		expect(written.map((w) => w.id).sort()).toEqual(["id-a", "id-c"]);
+
+		await service.stop();
+	});
+
 	test("skips empty / already-embedded items but still embeds the rest in one call", async () => {
 		let batchCalls = 0;
 		let lastTexts: string[] = [];

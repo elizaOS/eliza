@@ -35,6 +35,7 @@ const SYNTHETIC_CASE: PromptBenchmarkCase = {
   basePrompt: "schedule lunch with Dana tomorrow at noon",
   prompt: "schedule lunch with Dana tomorrow at noon",
   benchmarkContext: "",
+  optimizationTask: "calendar_extract",
   variantId: "direct",
   variantLabel: "Direct",
   axes: [],
@@ -67,9 +68,9 @@ function makeResult(
 describe("LifeOps prompt-benchmark harness — activation", () => {
   it("scores a matching action as a pass and a wrong action as a fail", () => {
     expect(makeResult(SYNTHETIC_CASE, "CALENDAR").pass).toBe(true);
-    expect(makeResult(SYNTHETIC_CASE, "__DEFINITELY_NOT_AN_ACTION__").pass).toBe(
-      false,
-    );
+    expect(
+      makeResult(SYNTHETIC_CASE, "__DEFINITELY_NOT_AN_ACTION__").pass,
+    ).toBe(false);
   });
 
   it("honors forbidden actions", () => {
