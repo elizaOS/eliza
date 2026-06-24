@@ -89,12 +89,14 @@ export function SurfaceEmptyState({
   body,
 }: {
   title: string;
-  body: string;
+  body?: string;
 }) {
   return (
     <div className="px-1 py-2">
       <div className="text-xs-tight font-semibold text-muted">{title}</div>
-      <p className="mt-1 text-xs leading-5 text-muted-strong">{body}</p>
+      {body ? (
+        <p className="mt-1 text-xs leading-5 text-muted-strong">{body}</p>
+      ) : null}
     </div>
   );
 }

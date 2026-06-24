@@ -50,20 +50,10 @@ function DeviceCard({
     });
 
   return (
-    <div
-      className={`rounded-lg border p-4 transition-colors ${
-        isConnected
-          ? "border-green-500/30 bg-green-500/5"
-          : "border-border/60 bg-card hover:border-border"
-      }`}
-    >
+    <div className="py-3 transition-colors">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${
-              isConnected ? "bg-green-500/15" : "bg-muted/20"
-            }`}
-          >
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center">
             <Icon
               className={`h-5 w-5 ${isConnected ? "text-green-500" : "text-muted"}`}
             />
@@ -76,17 +66,14 @@ function DeviceCard({
           </div>
         </div>
         <span
-          className={`flex-shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${
-            isConnected
-              ? "bg-green-500/10 text-green-600 dark:text-green-400"
-              : "bg-muted/20 text-muted"
+          className={`flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium ${
+            isConnected ? "text-green-600 dark:text-green-400" : "text-muted"
           }`}
         >
-          {isConnected ? "Connected" : "Disconnected"}
+          {isConnected ? "On" : "Off"}
         </span>
       </div>
-      <p className="mt-2 text-xs text-muted">{profile.description}</p>
-      <div className="mt-3 flex items-center justify-between gap-2">
+      <div className="mt-2 flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 text-xs text-muted">
           <ConnectionIcon connectionType={profile.connectionType} />
           {profile.connectionType}
@@ -96,7 +83,7 @@ function DeviceCard({
           type="button"
           onClick={() => onConnect(profile.type)}
           aria-label={actionLabel}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
+          className="inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
           {...connectAgentProps}
         >
           {isConnected ? "Manage" : "Connect"}
@@ -172,7 +159,7 @@ export function FacewearAppView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-bg text-txt">
-      <div className="border-b border-border/60 px-4 py-3">
+      <div className="px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -181,16 +168,14 @@ export function FacewearAppView() {
             </div>
           </div>
           <span
-            className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium ${
+            className={`inline-flex h-7 items-center gap-1.5 px-1.5 text-xs font-medium ${
               activeCount > 0
-                ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
-                : "border-border bg-muted/20 text-muted"
+                ? "text-green-700 dark:text-green-300"
+                : "text-muted"
             }`}
           >
             <Zap className="h-3.5 w-3.5" />
-            {activeCount > 0
-              ? `${activeCount} device${activeCount === 1 ? "" : "s"} connected`
-              : "No devices connected"}
+            {activeCount > 0 ? `${activeCount} on` : "0 on"}
           </span>
         </div>
       </div>
@@ -203,28 +188,26 @@ export function FacewearAppView() {
         )}
 
         {error && (
-          <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            {error}
-          </div>
+          <div className="mb-4 px-1 py-2 text-xs text-destructive">{error}</div>
         )}
 
         {!loading && (
           <>
             {activeCount > 0 && (
-              <div className="mb-4 rounded-lg border border-green-500/20 bg-green-500/5 p-3">
-                <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mb-3">
+                <div className="flex flex-wrap gap-2">
                   {status.devices
                     .slice(0, ACTIVE_DEVICE_LIMIT)
                     .map((device) => (
                       <span
                         key={device.id}
-                        className="inline-flex items-center gap-1 rounded-md bg-green-500/10 px-2 py-0.5 text-xs text-green-700 dark:text-green-300"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-green-700 dark:text-green-300"
                       >
                         {device.deviceType ?? device.kind}
                       </span>
                     ))}
                   {status.devices.length > ACTIVE_DEVICE_LIMIT ? (
-                    <span className="inline-flex items-center rounded-md bg-muted/20 px-2 py-0.5 text-xs text-muted">
+                    <span className="inline-flex items-center px-1.5 py-0.5 text-xs text-muted">
                       +{status.devices.length - ACTIVE_DEVICE_LIMIT}
                     </span>
                   ) : null}
@@ -234,26 +217,24 @@ export function FacewearAppView() {
 
             <div className="grid gap-3">
               {FACEWEAR_DEVICE_PROFILES.map((profile) => (
-                <div key={profile.type}>
-                  <DeviceCard
-                    profile={profile}
-                    connectedDevices={status.devices}
-                    onConnect={handleConnect}
-                  />
-                </div>
+                <DeviceCard
+                  key={profile.type}
+                  profile={profile}
+                  connectedDevices={status.devices}
+                  onConnect={handleConnect}
+                />
               ))}
             </div>
 
-            <div className="mt-4 rounded-lg border border-border/60 bg-card p-4">
-              <h2 className="text-sm font-semibold">Actions</h2>
-              <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4">
+              <div className="flex flex-wrap gap-2">
                 <a
                   ref={xrConnectRef}
                   href="/api/xr/connect"
                   target="_blank"
                   rel="noreferrer"
                   aria-label="XR connect"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
+                  className="inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
                   {...xrConnectAgentProps}
                 >
                   <Zap className="h-3.5 w-3.5" />
@@ -265,7 +246,7 @@ export function FacewearAppView() {
                   target="_blank"
                   rel="noreferrer"
                   aria-label="XR status"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
+                  className="inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
                   {...xrStatusAgentProps}
                 >
                   Status
@@ -275,7 +256,7 @@ export function FacewearAppView() {
                   type="button"
                   onClick={() => void fetchStatus()}
                   aria-label="Refresh"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
+                  className="inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium hover:bg-muted/20 transition-colors"
                   {...refreshAgentProps}
                 >
                   Refresh
@@ -294,7 +275,7 @@ export function FacewearTuiView() {
     <TerminalPluginView
       id="facewear"
       label="Facewear TUI"
-      description="Facewear device status endpoints"
+      description="Status"
       commands={[]}
       endpoints={[
         "/api/facewear/status",
@@ -310,7 +291,7 @@ export function SmartglassesTuiView() {
     <TerminalPluginView
       id="smartglasses"
       label="Smartglasses TUI"
-      description="Smartglasses status endpoints"
+      description="Status"
       commands={[]}
       endpoints={["/api/facewear/status", "/api/facewear/devices"]}
     />
