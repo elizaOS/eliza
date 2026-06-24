@@ -1290,10 +1290,18 @@ function routedShellMainClass(tab: string): string {
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
-  // Springboard and the Background view share the unified app background;
-  // every other routed view keeps its own opaque shell.
+  // Springboard, the Background view, and Settings share the unified app
+  // background (mounted once at the shell root), so their shell is transparent
+  // and the wallpaper shows through seamlessly — including the status-bar safe
+  // area. An opaque `bg-bg` shell would paint only the content box below the
+  // safe area, leaving the unified background peeking through the top strip
+  // (the seam #9143 follow-up fixes for Settings). Every other routed view
+  // keeps its own opaque shell.
   const shellClass =
-    props.tab === "views" || props.tab === "apps" || props.tab === "background"
+    props.tab === "views" ||
+    props.tab === "apps" ||
+    props.tab === "background" ||
+    props.tab === "settings"
       ? APP_SHELL_CLASS_TRANSPARENT
       : APP_SHELL_CLASS;
   return (
