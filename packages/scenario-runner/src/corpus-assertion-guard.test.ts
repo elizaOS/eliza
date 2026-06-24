@@ -24,6 +24,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -66,6 +67,7 @@ interface ScenarioFacts {
   hasDeadPlannerAssert: boolean;
   hasMessageAsGmailLabelExpectation: boolean;
   hasExpectedActionParams: boolean;
+  deadTurnAssertionFields: string[];
 }
 
 // plannerIncludesAll / plannerIncludesAny / plannerExcludes are not in the
@@ -74,6 +76,12 @@ interface ScenarioFacts {
 const DEAD_PLANNER_ASSERT =
   /\b(plannerIncludesAll|plannerIncludesAny|plannerExcludes)\s*:/;
 const DEAD_EXPECTED_ACTION_PARAMS = /\bexpectedActionParams\s*:/;
+const DEAD_TURN_ASSERTION_FIELD_FIXES = {
+  acceptedActions: "expectedActions",
+  includesAny: "responseIncludesAny",
+  waitForDefinitionTitle: "finalChecks/custom predicate",
+  waitForDefinitionTitleAliases: "finalChecks/custom predicate",
+} as const;
 
 const PER_TURN_ASSERT =
   /\b(assertResponse|responseIncludesAny|responseIncludesAll|responseJudge|assertTurn)\b/;
@@ -83,9 +91,58 @@ const MESSAGE_AS_GMAIL_LABEL_EXPECTATION =
 // non-whitespace char. `finalChecks: []` does not match.
 const NON_EMPTY_FINAL_CHECKS = /finalChecks\s*:\s*\[\s*[^\]\s]/;
 
+function propertyNameText(name: ts.PropertyName): string | undefined {
+  if (
+    ts.isIdentifier(name) ||
+    ts.isStringLiteral(name) ||
+    ts.isNumericLiteral(name)
+  ) {
+    return name.text;
+  }
+  return undefined;
+}
+
+function collectDirectTurnKeys(src: string, file: string): Set<string> {
+  const sourceFile = ts.createSourceFile(
+    file,
+    src,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const keys = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isPropertyAssignment(node) &&
+      propertyNameText(node.name) === "turns" &&
+      ts.isArrayLiteralExpression(node.initializer)
+    ) {
+      for (const element of node.initializer.elements) {
+        if (!ts.isObjectLiteralExpression(element)) continue;
+        for (const prop of element.properties) {
+          if (
+            ts.isPropertyAssignment(prop) ||
+            ts.isMethodDeclaration(prop) ||
+            ts.isShorthandPropertyAssignment(prop)
+          ) {
+            const key = propertyNameText(prop.name);
+            if (key) keys.add(key);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return keys;
+}
+
 function analyze(file: string): ScenarioFacts {
   const src = readFileSync(file, "utf8");
   const laneMatch = src.match(/\blane:\s*"([^"]+)"/);
+  const directTurnKeys = collectDirectTurnKeys(src, file);
   return {
     file,
     lane: laneMatch ? laneMatch[1] : "live-only", // schema default is live-only
@@ -96,6 +153,9 @@ function analyze(file: string): ScenarioFacts {
     hasMessageAsGmailLabelExpectation:
       MESSAGE_AS_GMAIL_LABEL_EXPECTATION.test(src),
     hasExpectedActionParams: DEAD_EXPECTED_ACTION_PARAMS.test(src),
+    deadTurnAssertionFields: Object.keys(
+      DEAD_TURN_ASSERTION_FIELD_FIXES,
+    ).filter((field) => directTurnKeys.has(field)),
   };
 }
 
@@ -144,6 +204,40 @@ describe("scenario corpus assertion guard", () => {
       .map(rel)
       .sort();
     expect(offenders).toEqual([]);
+  });
+
+  it("does not grow unenforced turn assertion typo fields", () => {
+    const DEAD_TURN_ASSERTION_BASELINE = {
+      acceptedActions: 31,
+      includesAny: 31,
+      waitForDefinitionTitle: 1,
+      waitForDefinitionTitleAliases: 1,
+    } as const satisfies Record<
+      keyof typeof DEAD_TURN_ASSERTION_FIELD_FIXES,
+      number
+    >;
+
+    for (const [field, replacement] of Object.entries(
+      DEAD_TURN_ASSERTION_FIELD_FIXES,
+    )) {
+      const users = facts
+        .filter((f) => f.deadTurnAssertionFields.includes(field))
+        .map(rel)
+        .sort();
+      const baseline =
+        DEAD_TURN_ASSERTION_BASELINE[
+          field as keyof typeof DEAD_TURN_ASSERTION_BASELINE
+        ];
+      if (users.length > baseline) {
+        throw new Error(
+          `unenforced turn assertion field ${field} grew to ${users.length} ` +
+            `(baseline ${baseline}). The executor ignores turn-level ${field}; ` +
+            `use ${replacement} or a real finalCheck instead. New offenders:\n` +
+            users.slice(baseline).join("\n"),
+        );
+      }
+      expect(users.length).toBeLessThanOrEqual(baseline);
+    }
   });
 
   // Ratchet against the dead plannerIncludes*/plannerExcludes fields. They are
