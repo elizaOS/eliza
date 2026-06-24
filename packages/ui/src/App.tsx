@@ -370,6 +370,12 @@ type ShellMode =
   | "kiosk"
   | "full";
 
+declare global {
+  interface Window {
+    ELIZAOS_SHELL_MODE?: string;
+  }
+}
+
 function readShellMode(): ShellMode {
   if (typeof window === "undefined") return "full";
   const params = new URLSearchParams(
@@ -378,7 +384,7 @@ function readShellMode(): ShellMode {
   const raw =
     params.get("shellMode") ??
     params.get("shell-mode") ??
-    (window as unknown as { ELIZAOS_SHELL_MODE?: string }).ELIZAOS_SHELL_MODE ??
+    window.ELIZAOS_SHELL_MODE ??
     "";
   if (raw === "chat-overlay") return "chat-overlay";
   if (raw === "onboarding-overlay") return "onboarding-overlay";
