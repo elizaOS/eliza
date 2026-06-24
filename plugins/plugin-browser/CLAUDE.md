@@ -73,6 +73,9 @@ src/
     workspace-setup.ts             Workspace setup routes
     workspace.ts                   Workspace routes
     workspace-account-gate.ts      Account gate middleware
+  parity/
+    browser-matrix.ts              Machine-checkable BROWSER action parity matrix (#9476)
+    index.ts                       Parity tooling barrel
   targets/
     bridge-target.ts               `bridge` BrowserTarget — dispatches to Chrome/Safari companion
     stagehand-target.ts            `stagehand` BrowserTarget — Playwright/Stagehand fallback
