@@ -361,12 +361,18 @@ export function getSharedSourceAliases(
   const packageRoot = path.dirname(sourceRoot);
 
   return [
-    ...getWorkspacePackageExportAliases("shared", packageRoot),
     {
       // Subpath imports (e.g. @elizaos/shared/contracts/first-run-options) must
       // map to source files; without this the bare-string alias below
       // prefix-replaces them into "<src>/index.ts/<subpath>" -> ENOTDIR.
       // Mirrors the agent/app-core/ui subpath aliases above.
+      //
+      // This src catch-all MUST precede the export-map aliases below: those
+      // resolve subpaths to the built dist, whose ESM output emits extensionless
+      // relative imports (e.g. local-inference/device-fit.js -> "./catalog")
+      // that vitest's resolver cannot follow — so a test transitively pulling
+      // such a subpath fails to load. Source resolution sidesteps the dist; the
+      // export aliases remain as a fallback for subpaths with no 1:1 source file.
       find: /^@elizaos\/shared\/(.+)$/,
       replacement: toPosix(path.join(sourceRoot, "$1")),
     },
@@ -374,6 +380,7 @@ export function getSharedSourceAliases(
       includeElizaAlias: options.includeElizaAlias,
       rootReplacement: path.join(sourceRoot, "index.ts"),
     }),
+    ...getWorkspacePackageExportAliases("shared", packageRoot),
   ];
 }
 
