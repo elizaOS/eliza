@@ -36,13 +36,12 @@ vi.mock("motion/react", () => ({
   motion: new Proxy(
     {},
     {
-      get:
-        () => (props: { children?: ReactNode; onDragEnd?: unknown }) => {
-          if (props.onDragEnd) {
-            bus.onDragEnd = props.onDragEnd as typeof bus.onDragEnd;
-          }
-          return props.children ?? null;
-        },
+      get: () => (props: { children?: ReactNode; onDragEnd?: unknown }) => {
+        if (props.onDragEnd) {
+          bus.onDragEnd = props.onDragEnd as typeof bus.onDragEnd;
+        }
+        return props.children ?? null;
+      },
     },
   ),
   Reorder: {
