@@ -15,13 +15,16 @@ import {
   Loader2,
   Pipette,
   Sparkles,
+  Undo2,
 } from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import { useAppSelectorShallow } from "../../state/app-store";
 import {
+  BACKGROUND_PRESETS,
   type BackgroundConfig,
+  type BackgroundPreset,
   DEFAULT_BACKGROUND_COLOR,
 } from "../../state/ui-preferences";
 import { useBackgroundConfig } from "../../state/useBackgroundConfig";
@@ -31,49 +34,35 @@ import {
   fileToBackgroundDataUrl,
 } from "./background-image";
 
-/** Curated shader colors. The user can pick any color via the custom picker. */
-const PRESET_COLORS = [
-  DEFAULT_BACKGROUND_COLOR, // warm orange (default)
-  "#f59e0b", // amber
-  "#e11d48", // rose
-  "#7c3aed", // violet
-  "#2563eb", // blue
-  "#0891b2", // teal
-  "#059669", // green
-  "#334155", // slate
-  "#0a0a0a", // near-black
-  "#f4f4f5", // light
-];
-
 function ColorSwatch({
-  color,
+  preset,
   selected,
   onSelect,
 }: {
-  color: string;
+  preset: BackgroundPreset;
   selected: boolean;
   onSelect: (color: string) => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `background-color-${color.replace("#", "")}`,
+    id: `background-preset-${preset.id}`,
     role: "button",
-    label: `Set background color ${color}`,
+    label: `Set background to ${preset.label}`,
     group: "background-controls",
-    description: `Use ${color} as the shader background color`,
-    onActivate: () => onSelect(color),
+    description: `Use the ${preset.label.toLowerCase()} shader background`,
+    onActivate: () => onSelect(preset.color),
   });
   return (
     <button
       ref={ref}
       type="button"
-      onClick={() => onSelect(color)}
-      title={color}
-      aria-label={`Set background color ${color}`}
+      onClick={() => onSelect(preset.color)}
+      title={preset.label}
+      aria-label={`Set background to ${preset.label}`}
       aria-pressed={selected}
       className={`relative h-9 w-9 shrink-0 rounded-full ring-offset-2 ring-offset-bg/0 transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         selected ? "ring-2 ring-txt" : "ring-1 ring-border/60"
       }`}
-      style={{ backgroundColor: color }}
+      style={{ backgroundColor: preset.color }}
       {...agentProps}
     >
       {selected ? (
@@ -87,7 +76,12 @@ function ColorSwatch({
 }
 
 export function BackgroundView() {
-  const { backgroundConfig, setBackgroundConfig } = useBackgroundConfig();
+  const {
+    backgroundConfig,
+    setBackgroundConfig,
+    undoBackgroundConfig,
+    canUndoBackground,
+  } = useBackgroundConfig();
   const { cloudConnected, cloudAuthRejected } = useAppSelectorShallow((s) => ({
     cloudConnected: s.elizaCloudConnected,
     cloudAuthRejected: s.elizaCloudAuthRejected,
@@ -176,6 +170,14 @@ export function BackgroundView() {
     description: "Generate a background image from a text prompt (cloud)",
     onActivate: () => setPromptOpen((open) => !open),
   });
+  const undoButton = useAgentElement<HTMLButtonElement>({
+    id: "background-undo",
+    role: "button",
+    label: "Undo background change",
+    group: "background-controls",
+    description: "Revert to the previous background",
+    onActivate: () => undoBackgroundConfig(),
+  });
 
   return (
     <ShellViewAgentSurface viewId="background">
@@ -184,11 +186,11 @@ export function BackgroundView() {
         <div className="flex w-full max-w-sm flex-col items-center gap-5 rounded-3xl border border-border/40 bg-bg/95 p-6">
           {/* Shader colors */}
           <div className="flex flex-wrap items-center justify-center gap-2.5">
-            {PRESET_COLORS.map((color) => (
+            {BACKGROUND_PRESETS.map((preset) => (
               <ColorSwatch
-                key={color}
-                color={color}
-                selected={isShader && activeColor === color}
+                key={preset.id}
+                preset={preset}
+                selected={isShader && activeColor === preset.color}
                 onSelect={selectColor}
               />
             ))}
@@ -257,6 +259,19 @@ export function BackgroundView() {
                 {...generateButton.agentProps}
               >
                 <Sparkles className="h-5 w-5" aria-hidden />
+              </button>
+            ) : null}
+            {canUndoBackground ? (
+              <button
+                ref={undoButton.ref}
+                type="button"
+                onClick={() => undoBackgroundConfig()}
+                title="Undo"
+                aria-label="Undo background change"
+                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                {...undoButton.agentProps}
+              >
+                <Undo2 className="h-5 w-5" aria-hidden />
               </button>
             ) : null}
           </div>
