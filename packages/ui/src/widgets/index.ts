@@ -4,6 +4,7 @@ export {
   activityEventSink,
   activityEventsToHomeSignals,
 } from "./activity-signals";
+export { HomeWidgetsSurface } from "./HomeWidgetsSurface";
 export {
   baseHomeScore,
   HOME_SIGNAL_WEIGHTS,

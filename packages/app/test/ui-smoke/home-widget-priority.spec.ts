@@ -435,7 +435,7 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
   );
 
   // The plugin snapshot drives which per-plugin home widgets resolve.
-  await page.route("**/api/plugins", async (route) => {
+  await page.route("**/api/plugins**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -670,7 +670,7 @@ test.describe("home widget priority (#9143)", () => {
     // <WidgetHost slot="home"> above the launcher grid when no search query is
     // active (ViewCatalog.tsx).
     await openAppPath(page, "/views");
-    await expect(page.getByRole("heading", { name: "Views" })).toBeVisible({
+    await expect(page.getByText("Calendar").first()).toBeVisible({
       timeout: 30_000,
     });
 

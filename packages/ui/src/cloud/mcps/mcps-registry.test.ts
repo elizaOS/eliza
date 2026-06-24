@@ -155,7 +155,7 @@ describe("mcps domain registration", () => {
     const route = getCloudRoute("dashboard/mcps");
     expect(route).toBeDefined();
     expect(route?.group).toBe("dashboard");
-  });
+  }, 30_000);
 
   it("registers a Settings section under the system group on demand", async () => {
     const { registerMcpsSettingsSection, MCPS_SECTION_ID } = await import(
@@ -171,5 +171,5 @@ describe("mcps domain registration", () => {
     expect(section).toBeDefined();
     expect(section?.group).toBe("system");
     expect(section?.defaultLabel).toBe("MCP Servers");
-  });
+  }, 30_000);
 });

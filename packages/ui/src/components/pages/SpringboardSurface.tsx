@@ -10,6 +10,7 @@ import {
 } from "../../platform/platform-guards";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { recordRecentViewId } from "../../view-recents";
+import { HomeWidgetsSurface } from "../../widgets/HomeWidgetsSurface";
 import { Springboard } from "./Springboard";
 
 const HIDDEN_SPRINGBOARD_VIEW_IDS = new Set([
@@ -152,12 +153,15 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
 
   return (
     <div className="absolute inset-0 flex min-h-0 flex-col px-0 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]">
-      <Springboard
-        entries={entries}
-        loading={loading}
-        onLaunch={(entry) => handleLaunch(entryById.get(entry.id) ?? entry)}
-        onEdgeSwipeRight={onNavigateHomeFromEdge}
-      />
+      <HomeWidgetsSurface className="px-5 pt-4" />
+      <div className="min-h-0 flex-1">
+        <Springboard
+          entries={entries}
+          loading={loading}
+          onLaunch={(entry) => handleLaunch(entryById.get(entry.id) ?? entry)}
+          onEdgeSwipeRight={onNavigateHomeFromEdge}
+        />
+      </div>
     </div>
   );
 });

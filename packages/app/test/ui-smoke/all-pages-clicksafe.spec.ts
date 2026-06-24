@@ -142,7 +142,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "apps catalog",
     path: "/apps",
-    readyChecks: [{ text: "Views" }, { text: "No views available" }],
+    readyChecks: [{ text: "Companion" }, { text: "Contacts" }],
     timeoutMs: 60_000,
   },
   {
@@ -193,7 +193,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "rolodex",
     path: "/rolodex",
-    readyChecks: [{ text: "Views" }],
+    readyChecks: [{ text: "Companion" }, { text: "Contacts" }],
     timeoutMs: 60_000,
   },
   {
@@ -237,7 +237,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "views catalog deep link",
     path: "/views",
-    readyChecks: [{ text: "Views" }, { text: "No views available" }],
+    readyChecks: [{ text: "Companion" }, { text: "Contacts" }],
     timeoutMs: 60_000,
   },
   {
