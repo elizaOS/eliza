@@ -209,6 +209,12 @@ export interface LocalInferenceBackend {
 		maxTokens?: number;
 		temperature?: number;
 		signal?: AbortSignal;
+		/** Per-token callback for streaming vision describe (ABI v13). When set and
+		 * the backend supports streaming, the description is decoded token-by-token
+		 * through the same pipe as chat text; otherwise the backend returns the
+		 * full description and ignores it. */
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		maxTokensPerStep?: number;
 	}): Promise<{
 		text: string;
 		projectorMs?: number;

@@ -864,6 +864,16 @@ export interface ImageGenerationParams {
 export interface ImageDescriptionParams {
 	imageUrl: string;
 	prompt?: string;
+	/**
+	 * Opt-in token-by-token streaming of the generated description. When a vision
+	 * call runs inside a streaming reply turn, {@link AgentRuntime.useModel}
+	 * auto-injects `onStreamChunk` from the ambient text-streaming context for
+	 * local providers, so the description flows into the dashboard through the
+	 * SAME SSE pipe as chat text. Handlers that lack a streaming describe backend
+	 * ignore these and return the final {@link ImageDescriptionResult}.
+	 */
+	stream?: boolean;
+	onStreamChunk?: StreamChunkCallback;
 }
 export interface ImageDescriptionResult {
 	title: string;
@@ -880,6 +890,16 @@ export interface TranscriptionParams {
 	audioUrl: string;
 	prompt?: string;
 	signal?: AbortSignal;
+	/**
+	 * Opt-in streaming of partial transcripts as audio is decoded. When a
+	 * transcription call runs inside a streaming reply turn,
+	 * {@link AgentRuntime.useModel} auto-injects `onStreamChunk` from the ambient
+	 * text-streaming context for local providers, so partial transcripts flow
+	 * into the dashboard through the SAME SSE pipe as chat text. Handlers that
+	 * lack an incremental ASR backend ignore these and return the final string.
+	 */
+	stream?: boolean;
+	onStreamChunk?: StreamChunkCallback;
 }
 
 /**
