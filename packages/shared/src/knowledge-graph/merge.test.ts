@@ -27,8 +27,18 @@ const ident = (o: Partial<EntityIdentity>): EntityIdentity =>
     ...o,
   }) as EntityIdentity;
 
-const entity = (id: string, identities: EntityIdentity[]): Entity =>
-  ({ entityId: id, identities, tags: [], attributes: {}, state: {} }) as Entity;
+const entity = (id: string, identities: EntityIdentity[]): Entity => ({
+  entityId: id,
+  type: "person",
+  preferredName: id,
+  identities,
+  tags: [],
+  attributes: {},
+  state: {},
+  visibility: "owner_agent_admin",
+  createdAt: "2026-01-01",
+  updatedAt: "2026-01-01",
+});
 
 describe("findIdentityMatches", () => {
   it("matches case-insensitively on platform + handle", () => {
