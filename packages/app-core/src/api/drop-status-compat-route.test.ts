@@ -1,7 +1,6 @@
 import http from "node:http";
 import { Socket } from "node:net";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 
 const mocks = vi.hoisted(() => ({
   ensureCompatSensitiveRouteAuthorized: vi.fn(),
@@ -48,12 +47,25 @@ function fakeRes(): http.ServerResponse {
   return new http.ServerResponse(fakeReq());
 }
 
+// This suite runs under `isolate: false` (vitest.config.ts), so app-core test
+// files share one module registry and several mock `./auth`. If the route
+// module was first imported under another file's `./auth` mock (e.g.
+// dev-route-catalog's hardcoded `() => true`), its `ensureCompatSensitiveRoute…`
+// binding is frozen to that mock. Reset the registry and re-import the route per
+// test so it binds to THIS file's controllable mock (#9464).
+async function loadRoute() {
+  vi.resetModules();
+  const mod = await import("./drop-status-compat-route");
+  return mod.handleDropStatusCompatRoute;
+}
+
 describe("handleDropStatusCompatRoute", () => {
   beforeEach(() => {
     mocks.ensureCompatSensitiveRouteAuthorized.mockReset();
   });
 
-  it("ignores non-drop-status routes", () => {
+  it("ignores non-drop-status routes", async () => {
+    const handleDropStatusCompatRoute = await loadRoute();
     const handled = handleDropStatusCompatRoute(
       fakeReq("/api/agent/status"),
       fakeRes(),
@@ -65,8 +77,9 @@ describe("handleDropStatusCompatRoute", () => {
     expect(mocks.ensureCompatSensitiveRouteAuthorized).not.toHaveBeenCalled();
   });
 
-  it("handles unauthorized drop status requests locally", () => {
+  it("handles unauthorized drop status requests locally", async () => {
     mocks.ensureCompatSensitiveRouteAuthorized.mockReturnValue(false);
+    const handleDropStatusCompatRoute = await loadRoute();
     const req = fakeReq();
     const res = fakeRes();
 
@@ -84,8 +97,9 @@ describe("handleDropStatusCompatRoute", () => {
     );
   });
 
-  it("falls through for authorized drop status requests", () => {
+  it("falls through for authorized drop status requests", async () => {
     mocks.ensureCompatSensitiveRouteAuthorized.mockReturnValue(true);
+    const handleDropStatusCompatRoute = await loadRoute();
     const req = fakeReq();
     const res = fakeRes();
 

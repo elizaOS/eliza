@@ -130,6 +130,14 @@ export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types (type-only, safe for browser)
 export * from "./types";
+export {
+	ConnectorAccountHealth,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAuthMethod,
+} from "./types";
+export * from "./types/message-service";
+export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 export type {
 	EnabledViewKinds,
 	ViewKind,
@@ -143,14 +151,6 @@ export {
 	VIEW_KIND_META,
 	VIEW_KINDS,
 } from "./types/view-kind";
-export {
-	ConnectorAccountHealth,
-	ConnectorAccountPurpose,
-	ConnectorAccountRole,
-	ConnectorAuthMethod,
-} from "./types";
-export * from "./types/message-service";
-export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export {
