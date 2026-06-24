@@ -83,6 +83,9 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
     assert ".pytest_cache" not in discovery.all_directories
     assert "memperf" not in discovery.all_directories
     assert "mobile-resource" not in discovery.all_directories
+    assert "skillsbench" not in discovery.all_directories
+    assert "skillsbench" not in orchestrator_adapters.IGNORED_BENCHMARK_DIRS
+    assert not (_workspace_root() / "benchmarks" / "skillsbench").exists()
     assert "swe-bench-pro" not in discovery.all_directories
     assert "swe-bench-workspace" not in discovery.all_directories
     assert not any("gaia" in name.lower() for name in discovery.all_directories)
