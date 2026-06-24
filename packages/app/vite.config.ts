@@ -34,6 +34,7 @@ import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
 } from "./vite/native-module-stub-plugin.ts";
+import { rendererBuildManifestPlugin } from "./vite/renderer-build-manifest-plugin.ts";
 import { VENDOR_OPTIMIZED_WALLET_TEST } from "./vite/wallet-chunk-matcher.ts";
 import { resolveViteDevServerRuntime } from "./vite-dev-origin.ts";
 
@@ -2044,6 +2045,7 @@ export default defineConfig({
       },
     },
     appShellMetadataPlugin(),
+    rendererBuildManifestPlugin(),
     appDevWsBasePlugin(),
     companionAssetsPlugin(),
     elizaCoreBrowserEntryFallbackPlugin(),

@@ -70,11 +70,17 @@ import {
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
 import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
+import {
+  assertStagedRendererMatchesBuild,
+  overlayFreshRendererIntoPublic,
+  readRendererBuildManifest,
+} from "./lib/renderer-build-manifest.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   RUNTIME_PROVENANCE_FILENAME,
   stageAndroidAgentRuntime,
 } from "./lib/stage-android-agent.mjs";
+import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -930,14 +936,69 @@ export function resolveMobileBuildPolicy(platform) {
 
 async function buildWeb(platform) {
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
-    const indexPath = path.join(appDir, "dist", "index.html");
+    const distDir = path.join(appDir, "dist");
+    const indexPath = path.join(distDir, "index.html");
     if (!fs.existsSync(indexPath)) {
       throw new Error(
         `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 but ${indexPath} is missing.`,
       );
     }
+    // Never SILENTLY reuse a stale renderer (issue #9309). The skip flag is an
+    // explicit "reuse the existing dist" request, but it must still fail loudly
+    // when that dist is stale relative to sources or was built for a different
+    // variant/target than this build needs. A deliberate stale reuse can be
+    // forced with ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1.
+    const allowStale =
+      process.env.ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE === "1";
+    const policy = resolveMobileBuildPolicy(platform);
+    const expectedVariant =
+      process.env.ELIZA_BUILD_VARIANT || policy.buildVariant;
+    const expectedTarget = policy.capacitorTarget;
+    const manifest = readRendererBuildManifest(distDir);
+    const problems = [];
+    if (!manifest) {
+      problems.push(
+        `no ${path.join("dist", "eliza-renderer-build.json")} (renderer not built with the build-manifest plugin)`,
+      );
+    } else {
+      if (
+        expectedVariant &&
+        manifest.variant != null &&
+        manifest.variant !== expectedVariant
+      ) {
+        problems.push(
+          `dist built for variant '${manifest.variant}' but this build targets '${expectedVariant}'`,
+        );
+      }
+      if (
+        expectedTarget &&
+        manifest.capacitorTarget != null &&
+        manifest.capacitorTarget !== expectedTarget
+      ) {
+        problems.push(
+          `dist built for capacitor target '${manifest.capacitorTarget}' but this build targets '${expectedTarget}'`,
+        );
+      }
+    }
+    if (viteRendererBuildNeeded(appDir, repoRoot)) {
+      problems.push("dist is older than renderer sources (stale)");
+    }
+    if (problems.length > 0) {
+      const detail = problems.map((p) => `  - ${p}`).join("\n");
+      if (!allowStale) {
+        throw new Error(
+          `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 refused — the existing web build is stale or mismatched:\n${detail}\n` +
+            `Drop ELIZA_MOBILE_SKIP_WEB_BUILD to rebuild, or set ` +
+            `ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1 to ship this dist anyway (NOT recommended).`,
+        );
+      }
+      console.warn(
+        `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1 — shipping a renderer flagged as stale/mismatched:\n${detail}`,
+      );
+    }
     console.log(
-      `[mobile-build] Reusing existing web build: ${path.relative(repoRoot, path.dirname(indexPath))}`,
+      `[mobile-build] Reusing existing web build: ${path.relative(repoRoot, distDir)}` +
+        (manifest ? ` (buildId=${manifest.buildId.slice(0, 12)})` : ""),
     );
     return;
   }
@@ -1322,6 +1383,36 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     );
   }
   reconcilePluginManifestWithGradle(targetAssets);
+  // Verify the staged Android renderer is exactly the freshly built one. The
+  // overlay above makes it so; this turns "should be fresh" into a hard,
+  // build-failing guarantee (issue #9309).
+  if (fs.existsSync(path.join(freshWeb, "index.html"))) {
+    assertStagedRendererMatchesBuild(freshWeb, targetPublic, {
+      label: "android",
+    });
+  }
+}
+
+/**
+ * iOS stale-web guard — the iOS counterpart to
+ * mirrorCapacitorWebPayloadIntoAndroidDir. `cap sync ios` (and a skipped sync)
+ * have both been observed to leave a STALE `ios/App/App/public` — an old entry
+ * hash shipping an ancient UI despite a fresh `dist`. The freshly vite-built
+ * bundle is the source of truth, so overlay it unconditionally: clear the hashed
+ * assets/ then copy dist over public. The on-device agent payload
+ * (`public/agent`) and PGlite root extension assets staged by
+ * stageIosAgentRuntime live OUTSIDE dist and survive — we only clear
+ * `public/assets` and cpSync never deletes existing non-dist files. After the
+ * overlay we assert the staged renderer matches the build so a stale/missing UI
+ * FAILS THE BUILD instead of shipping (issue #9309).
+ */
+function mirrorCapacitorWebPayloadIntoIosDir() {
+  const freshWeb = path.join(appDir, "dist");
+  const targetPublic = path.join(iosDir, "App", "public");
+  overlayFreshRendererIntoPublic(freshWeb, targetPublic, { label: "ios" });
+  console.log(
+    `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
+  );
 }
 
 /**
@@ -7411,6 +7502,11 @@ async function buildIos({ local = false } = {}) {
   } else {
     await runCapacitor(["sync", "ios"]);
   }
+  // Overlay the freshly built renderer onto ios/App/App/public and assert it
+  // matches the build — never ship a stale UI whether sync ran, was skipped, or
+  // left old hashed assets behind (issue #9309). Runs before the post-sync agent
+  // re-stage so the agent payload remains the final authority on public/agent.
+  mirrorCapacitorWebPayloadIntoIosDir();
   if (includesLocalAgentPayload) {
     stageIosAgentRuntime({
       appStoreBuild: isIosAppStoreBuild() && !local,
