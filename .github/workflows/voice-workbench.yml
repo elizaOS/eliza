@@ -21,7 +21,10 @@ on:
       - "plugins/plugin-local-inference/src/services/voice/e2e-harness.ts"
       - "plugins/plugin-local-inference/src/services/voice/corpus-generator.ts"
       - "plugins/plugin-local-inference/src/services/voice/wav-codec.ts"
+      - "plugins/plugin-local-inference/src/services/voice/acoustic-speaker-attribution.ts"
+      - "plugins/plugin-local-inference/src/services/voice/acoustic-speaker-attribution.test.ts"
       - "plugins/plugin-local-inference/src/services/voice/workbench-*.ts"
+      - "plugins/plugin-local-inference/src/services/voice/__test-helpers__/synthetic-speech.ts"
       - "plugins/plugin-local-inference/src/services/voice/corpus-augment.ts"
       - "plugins/plugin-local-inference/src/services/voice/voice-workbench-report.ts"
       - "plugins/plugin-local-inference/scripts/voice-workbench.ts"
@@ -36,7 +39,10 @@ on:
       - "plugins/plugin-local-inference/src/services/voice/e2e-harness.ts"
       - "plugins/plugin-local-inference/src/services/voice/corpus-generator.ts"
       - "plugins/plugin-local-inference/src/services/voice/wav-codec.ts"
+      - "plugins/plugin-local-inference/src/services/voice/acoustic-speaker-attribution.ts"
+      - "plugins/plugin-local-inference/src/services/voice/acoustic-speaker-attribution.test.ts"
       - "plugins/plugin-local-inference/src/services/voice/workbench-*.ts"
+      - "plugins/plugin-local-inference/src/services/voice/__test-helpers__/synthetic-speech.ts"
       - "plugins/plugin-local-inference/src/services/voice/corpus-augment.ts"
       - "plugins/plugin-local-inference/src/services/voice/voice-workbench-report.ts"
       - "plugins/plugin-local-inference/scripts/voice-workbench.ts"
@@ -74,6 +80,7 @@ jobs:
             src/services/voice/wav-codec.test.ts \
             src/services/voice/corpus-generator.test.ts \
             src/services/voice/corpus-augment.test.ts \
+            src/services/voice/acoustic-speaker-attribution.test.ts \
             src/services/voice/workbench-headless-runner.test.ts \
             src/services/voice/workbench-logic-services.test.ts \
             src/services/voice/workbench-entrypoint.test.ts \

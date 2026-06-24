@@ -266,7 +266,7 @@ async function runTurn(
   // Predicted label comes from an actual attribution output (live model hook or
   // an explicit per-turn `predictedSpeakerLabel`), NEVER from the ground-truth
   // `turn.speaker` — comparing ground truth to itself made this gate tautological
-  // (#9427). Absent prediction → null → scored as a miss, never a pass.
+  // (#9427). Absent prediction → null → unattributed/skipped, never a pass.
   const predictedSpeakerLabel =
     (await opts.resolvePredictedSpeakerLabel?.(turn, index)) ??
     (turn.predictedSpeakerLabel?.trim() || null);
