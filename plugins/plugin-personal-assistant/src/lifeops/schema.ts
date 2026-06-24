@@ -974,27 +974,11 @@ export const lifeopsFeaturesTable = appLifeopsPgSchema.table(
   },
 );
 
-export const lifeRelationships = appLifeopsPgSchema.table(
-  "life_relationships",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    name: text("name").notNull(),
-    primaryChannel: text("primary_channel").notNull(),
-    primaryHandle: text("primary_handle").notNull(),
-    email: text("email"),
-    phone: text("phone"),
-    notes: text("notes").notNull().default(""),
-    tagsJson: text("tags_json").notNull().default("[]"),
-    relationshipType: text("relationship_type").notNull(),
-    lastContactedAt: text("last_contacted_at"),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [unique().on(t.agentId, t.primaryChannel, t.primaryHandle)],
-);
-
+// Contacts (people) live in the runtime knowledge graph
+// (`@elizaos/agent` KnowledgeGraphService: life_entities / life_entity_* /
+// life_relationships_v2) — there is no flat `life_relationships` table.
+// `life_relationship_interactions` below remains as the per-edge interaction
+// audit log, keyed by the graph entityId.
 export const lifeRelationshipInteractions = appLifeopsPgSchema.table(
   "life_relationship_interactions",
   {
@@ -1592,7 +1576,6 @@ export const lifeOpsSchema = {
   lifeEscalationStates,
   lifeIntents,
   lifeCheckinReports,
-  lifeRelationships,
   lifeRelationshipInteractions,
   // life_entities / life_entity_* / life_relationships_v2 /
   // life_relationship_audit_events are now owned by the runtime

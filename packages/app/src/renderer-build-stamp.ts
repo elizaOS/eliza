@@ -12,14 +12,18 @@
  * silent and never blocks boot. This is observability at a real runtime
  * boundary, not error-swallowing business logic.
  */
+/** Mirrors the canonical manifest written by buildRendererManifest() in
+ * `@elizaos/app-core/scripts/lib/renderer-build-manifest.mjs`. */
 export interface RendererBuildStamp {
   schema: string;
   buildId: string;
   indexHtmlSha256: string;
+  assetCount: number;
   builtAt: string;
   commit: string | null;
   variant: string | null;
   capacitorTarget: string | null;
+  runtimeMode: string | null;
 }
 
 declare global {
@@ -31,9 +35,17 @@ declare global {
 const MANIFEST_FILENAME = "eliza-renderer-build.json";
 
 export async function loadRendererBuildStamp(): Promise<RendererBuildStamp | null> {
+  // The manifest is only emitted by production `vite build`, never the dev
+  // server. Skip the fetch in dev so we don't log a spurious 404 (which would
+  // also trip e2e smokes that assert zero console errors).
+  if (import.meta.env?.DEV) {
+    window.__ELIZA_RENDERER_BUILD__ = null;
+    return null;
+  }
   try {
     // Resolve against the document base so it works on web, Capacitor
-    // (capacitor://localhost/), and Electrobun static hosting alike.
+    // (https://localhost/ via the configured scheme), and Electrobun static
+    // hosting alike.
     const url = new URL(MANIFEST_FILENAME, document.baseURI).toString();
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {

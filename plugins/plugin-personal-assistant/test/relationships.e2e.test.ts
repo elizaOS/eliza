@@ -8,7 +8,8 @@
  * lives on `SCHEDULED_TASK` and is covered by `scheduled-task-action.test.ts`.
  */
 
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
+import type { AgentRuntime, IAgentRuntime, Plugin } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
@@ -27,6 +28,18 @@ import {
 } from "./helpers/lifeops-identity-merge-fixtures.ts";
 
 const AGENT_ID = "lifeops-relationships-agent";
+
+/**
+ * Minimal stand-in for the production "eliza" plugin: registers the
+ * knowledge-graph schema + KnowledgeGraphService so contacts (which live in
+ * the runtime graph) resolve through `resolveKnowledgeGraphService`.
+ */
+const knowledgeGraphPlugin: Plugin = {
+  name: "eliza",
+  description: "Test-only knowledge-graph schema + service registration.",
+  schema: knowledgeGraphSchema,
+  services: [KnowledgeGraphService],
+};
 
 function makeMessage(runtime: IAgentRuntime, text: string) {
   return {
@@ -51,7 +64,10 @@ describe("relationships handler — real PGLite", () => {
   let testResult: RealTestRuntimeResult;
 
   beforeAll(async () => {
-    testResult = await createRealTestRuntime({ characterName: AGENT_ID });
+    testResult = await createRealTestRuntime({
+      characterName: AGENT_ID,
+      plugins: [knowledgeGraphPlugin],
+    });
     runtime = testResult.runtime;
     await LifeOpsRepository.bootstrapSchema(runtime);
     service = new LifeOpsService(runtime);
