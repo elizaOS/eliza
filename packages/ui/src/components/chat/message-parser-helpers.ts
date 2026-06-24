@@ -47,6 +47,9 @@ export type Segment =
   | { kind: "text"; text: string }
   | { kind: "config"; pluginId: string }
   | { kind: "ui-spec"; spec: UiSpec; raw: string }
+  // A fenced (```lang ... ```) or inline (`...`) code span lifted out of the
+  // prose so it can render in the CodeBlock primitive with a copy button.
+  | { kind: "code"; code: string; lang?: string; inline: boolean }
   // Any registry-driven inline widget (choice/followups/form/task/plugin).
   | { kind: "widget"; widgetKind: string; data: unknown }
   | { kind: "permission"; payload: PermissionCardPayload }
@@ -56,6 +59,21 @@ export type Segment =
 
 export const CONFIG_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
 export const FENCED_JSON_RE = /```(?:json)?\s*\n([\s\S]*?)```/g;
+
+/**
+ * Any fenced code block ```` ```lang\n…``` ````. Captures the (optional)
+ * language tag and the body. Detected after the UiSpec/patch passes so a fenced
+ * UiSpec JSON is rendered as an interactive widget, not raw code; overlapping
+ * regions are dropped before this pass claims them.
+ */
+export const FENCED_CODE_RE = /```([^\n`]*)\n([\s\S]*?)```/g;
+
+/**
+ * Inline `code` spans inside otherwise plain prose. Backticked runs that contain
+ * a newline are excluded (those are fenced blocks, handled above), and the body
+ * must be non-empty so a stray pair of backticks isn't lifted out.
+ */
+export const INLINE_CODE_RE = /`([^`\n]+)`/g;
 
 export const HIDDEN_TAG_BLOCK_RE =
   /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
@@ -273,6 +291,40 @@ export function findPatchRegions(
   return results;
 }
 
+/** A run of message text split into plain prose and inline `code` spans. */
+export type InlineTextPart =
+  | { kind: "text"; text: string }
+  | { kind: "code"; code: string };
+
+/**
+ * Split a plain-text run into alternating prose and inline `code` parts so the
+ * renderer can wrap backticked spans in the code primitive while keeping them in
+ * the flow of the sentence. Empty backtick pairs (` `` `) are treated as prose.
+ * Pure + synchronous so it unit-tests without the DOM.
+ */
+export function splitInlineCode(text: string): InlineTextPart[] {
+  const parts: InlineTextPart[] = [];
+  let cursor = 0;
+  INLINE_CODE_RE.lastIndex = 0;
+  let match: RegExpExecArray | null = INLINE_CODE_RE.exec(text);
+  while (match !== null) {
+    const code = match[1];
+    if (code.trim().length > 0) {
+      if (match.index > cursor) {
+        parts.push({ kind: "text", text: text.slice(cursor, match.index) });
+      }
+      parts.push({ kind: "code", code });
+      cursor = match.index + match[0].length;
+    }
+    match = INLINE_CODE_RE.exec(text);
+  }
+  if (cursor < text.length) {
+    parts.push({ kind: "text", text: text.slice(cursor) });
+  }
+  if (parts.length === 0) parts.push({ kind: "text", text });
+  return parts;
+}
+
 export function parseSegments(text: string, analysisMode: boolean): Segment[] {
   // If analysis mode is enabled, we parse the raw text to extract XML blocks,
   // otherwise we use the normalized text which strips them.
@@ -372,6 +424,36 @@ export function parseSegments(text: string, analysisMode: boolean): Segment[] {
     }
   }
 
+  // 4. Find fenced code blocks. Runs after the UiSpec/patch passes so a fenced
+  // UiSpec JSON renders as an interactive widget, not raw code; any fence that
+  // overlaps an already-claimed region (UiSpec, config marker, …) is dropped.
+  // Inline `code` is NOT lifted to a segment here — it stays in the text and is
+  // rendered inline by `MessageTextBody` so it keeps its place in the sentence;
+  // only block code gets the CodeBlock copy affordance.
+  const overlapsExisting = (start: number, end: number): boolean =>
+    regions.some((r) => start < r.end && end > r.start);
+  FENCED_CODE_RE.lastIndex = 0;
+  m = FENCED_CODE_RE.exec(targetText);
+  while (m !== null) {
+    const start = m.index;
+    const end = m.index + m[0].length;
+    const lang = m[1].trim();
+    const code = m[2].replace(/\n$/, "");
+    if (code.length > 0 && !overlapsExisting(start, end)) {
+      regions.push({
+        start,
+        end,
+        segment: {
+          kind: "code",
+          code,
+          inline: false,
+          ...(lang ? { lang } : {}),
+        },
+      });
+    }
+    m = FENCED_CODE_RE.exec(targetText);
+  }
+
   // No special content found — return plain text
   if (regions.length === 0) {
     return [{ kind: "text", text: targetText }];
@@ -402,6 +484,38 @@ export function parseSegments(text: string, analysisMode: boolean): Segment[] {
   }
 
   return segments;
+}
+
+// ── Conversation transcript ─────────────────────────────────────────
+
+/** One message projected to its `Speaker: text` transcript line. */
+export interface ConversationTranscriptMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+/**
+ * Render a conversation as a plain-text transcript for "copy conversation".
+ * Each turn becomes a `Speaker: text` block (blank line between turns), using
+ * the display name for the speaker (the agent name for assistant turns, "You"
+ * for the user). Empty/whitespace-only turns are skipped. Pure + DOM-free so it
+ * unit-tests without React and both chat surfaces share one definition.
+ */
+export function conversationTranscriptText(
+  messages: ReadonlyArray<ConversationTranscriptMessage>,
+  options: { agentName?: string; userName?: string } = {},
+): string {
+  const agentName = options.agentName?.trim() || "Assistant";
+  const userName = options.userName?.trim() || "You";
+  return messages
+    .map((message) => {
+      const text = message.text.trim();
+      if (!text) return "";
+      const speaker = message.role === "assistant" ? agentName : userName;
+      return `${speaker}: ${text}`;
+    })
+    .filter((line) => line.length > 0)
+    .join("\n\n");
 }
 
 // ── InlinePluginConfig helpers ──────────────────────────────────────

@@ -57,6 +57,7 @@ import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay"
 import { ConversationUndoToast } from "./components/shell/ConversationUndoToast";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
+import { HomeSpringboardSurface } from "./components/shell/HomeSpringboardSurface";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { NotificationCenter } from "./components/shell/NotificationCenter";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
@@ -148,6 +149,7 @@ import {
 // remaining page views are lazy-split below.
 import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
+import { SpringboardSurface } from "./components/pages/SpringboardSurface";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
@@ -158,10 +160,6 @@ import {
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
 import { useEnabledViewKinds } from "./state/useViewKinds";
 
-const ViewCatalog = lazyNamedView(
-  () => import("./components/pages/ViewCatalog"),
-  "ViewCatalog",
-);
 const BackgroundView = lazyNamedView(
   () => import("./components/pages/BackgroundView"),
   "BackgroundView",
@@ -890,11 +888,7 @@ function ViewLayoutSurface({
  * launcher, not a chat surface.
  */
 function ViewUnavailableFallback(): ReactNode {
-  return (
-    <TabContentView>
-      <ViewCatalog />
-    </TabContentView>
-  );
+  return <HomeScreenMount initialPage="springboard" />;
 }
 
 function renderPhoneSurface(
@@ -912,9 +906,12 @@ function renderPhoneSurface(
 
 function renderAppsSurface(navigationPath: string): ReactNode {
   if (!APPS_ENABLED) return <ViewUnavailableFallback />;
+  if (!getAppSlugFromPath(navigationPath)) {
+    return <HomeScreenMount initialPage="springboard" />;
+  }
   return (
     <TabContentView>
-      {getAppSlugFromPath(navigationPath) ? <AppsPageView /> : <ViewCatalog />}
+      <AppsPageView />
     </TabContentView>
   );
 }
@@ -1209,7 +1206,7 @@ function greetingForTimeOfDay(): string {
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
 
-// The home and the Views catalog opt into the unified app background (mounted
+// Home/Springboard and Background opt into the unified app background (mounted
 // once at the shell root), so their shell is transparent — no `bg-bg` to paint
 // over it. Every other view keeps the opaque shell (its own background).
 const APP_SHELL_CLASS_TRANSPARENT =
@@ -1257,7 +1254,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   return (
     <div key="chat-shell" className={APP_SHELL_CLASS_TRANSPARENT}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
-        <HomeScreenMount />
+        <HomeScreenMount initialPage="home" />
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -1294,10 +1291,10 @@ function routedShellMainClass(tab: string): string {
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
-  // The Views catalog and the Background view share the unified app background;
+  // Springboard and the Background view share the unified app background;
   // every other routed view keeps its own opaque shell.
   const shellClass =
-    props.tab === "views" || props.tab === "background"
+    props.tab === "views" || props.tab === "apps" || props.tab === "background"
       ? APP_SHELL_CLASS_TRANSPARENT
       : APP_SHELL_CLASS;
   return (
@@ -1407,7 +1404,11 @@ function ContinuousChatOverlayMount(): ReactNode {
  * behind the always-present chat overlay. Wires tile taps to the real nav:
  * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
  */
-function HomeScreenMount(): ReactNode {
+function HomeScreenMount({
+  initialPage = "home",
+}: {
+  initialPage?: "home" | "springboard";
+}): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
   const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
@@ -1436,8 +1437,21 @@ function HomeScreenMount(): ReactNode {
     [setTab, views],
   );
   const Home = HomeScreenOverride ?? HomeScreen;
+  const home = useMemo(
+    () => (
+      <Home onOpenTile={onOpenTile} showNativeOsTiles={isAospShellEnabled()} />
+    ),
+    [Home, onOpenTile],
+  );
+  const springboard = useMemo(() => <SpringboardSurface />, []);
   return (
-    <Home onOpenTile={onOpenTile} showNativeOsTiles={isAospShellEnabled()} />
+    <div className="relative min-h-0 min-w-0 flex-1 self-stretch overflow-hidden">
+      <HomeSpringboardSurface
+        home={home}
+        springboard={springboard}
+        initialPage={initialPage}
+      />
+    </div>
   );
 }
 
@@ -1653,7 +1667,7 @@ export function App() {
   // Handle agent-dispatched view navigation events.
   // The VIEWS action (and future agent commands) dispatch this event to navigate
   // the user to a specific view by path or view ID.
-  // When the target is "/views" or "/apps" (the ViewCatalog), we also
+  // When the target is "/views" or "/apps" (legacy launcher aliases), we also
   // directly set the tab so the nav bar becomes visible.
   // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {

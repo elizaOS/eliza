@@ -1,8 +1,8 @@
 /**
  * Real-browser screenshot e2e for the iOS-style HomeScreen — no app server.
  * Bundles home-screen-fixture.tsx with esbuild (stubbing the data sources), loads
- * it in headless chromium, and asserts the clock / widgets / tiles render +
- * captures mobile + desktop screenshots.
+ * it in headless chromium, and asserts the Home/Springboard consolidation +
+ * captures mobile + desktop screenshots plus a mobile interaction recording.
  *
  * Run: bun run --cwd packages/ui test:home-screen-e2e
  */
@@ -28,6 +28,9 @@ function assert(cond, msg) {
 const stubResolver = {
   name: "home-stub-resolver",
   setup(b) {
+    b.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
+      path: join(here, "home-screen-fixture.core-stub.ts"),
+    }));
     b.onResolve({ filter: /\/api$/ }, (a) =>
       a.importer.includes("HomeScreen")
         ? { path: join(here, "home-screen-fixture.api-stub.ts") }
@@ -41,6 +44,15 @@ const stubResolver = {
     }));
     b.onResolve({ filter: /useAvailableViews$/ }, () => ({
       path: join(here, "home-screen-fixture.views-stub.ts"),
+    }));
+    b.onResolve({ filter: /useViewCatalog$/ }, () => ({
+      path: join(here, "home-screen-fixture.catalog-stub.ts"),
+    }));
+    b.onResolve({ filter: /useViewKinds$/ }, () => ({
+      path: join(here, "home-screen-fixture.view-kinds-stub.ts"),
+    }));
+    b.onResolve({ filter: /platform-guards$/ }, () => ({
+      path: join(here, "home-screen-fixture.platform-stub.ts"),
     }));
   },
 };
@@ -75,16 +87,39 @@ async function snap(p, name) {
   await p.screenshot({ path: join(outDir, file) });
   console.log(`  📸 ${file}`);
 }
+async function swipeLeft(locator) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("missing swipe target bounds");
+  const y = box.y + box.height * 0.45;
+  const startX = box.x + box.width * 0.78;
+  const endX = box.x + box.width * 0.22;
+  await locator.page().mouse.move(startX, y);
+  await locator.page().mouse.down();
+  await locator.page().mouse.move(endX, y, { steps: 8 });
+  await locator.page().mouse.up();
+}
 try {
   // Mobile (Pixel-ish) — the primary target.
-  const mobile = await browser.newPage({
+  const mobileContext = await browser.newContext({
     viewport: { width: 402, height: 874 },
     deviceScaleFactor: 2,
+    recordVideo: {
+      dir: outDir,
+      size: { width: 402, height: 874 },
+    },
   });
+  const mobile = await mobileContext.newPage();
   mobile.on("pageerror", (e) => sink.errors.push(String(e)));
   await mobile.goto(`${url}?native`);
+  await mobile.waitForSelector('[data-testid="home-springboard-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
   await mobile.waitForTimeout(600);
+  assert(
+    (await mobile.getByTestId("home-springboard-surface").getAttribute(
+      "data-page",
+    )) === "home",
+    "combined surface starts on Home",
+  );
   assert(
     (await mobile.getByTestId("home-clock").count()) === 0,
     "no clock (home kept minimal)",
@@ -105,8 +140,8 @@ try {
     (await mobile.getByText("Alex Rivera").count()) > 0,
     "message threads render",
   );
-  // No general quick-access tiles anymore — Home/Views/Settings moved to the
-  // chat nav. The only tiles left are the AOSP native-OS surfaces, shown here
+  // No general quick-access tiles anymore — Springboard is the adjacent
+  // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
   // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
   for (const id of ["messages", "phone", "contacts", "camera"]) {
     assert(
@@ -122,6 +157,26 @@ try {
     );
   }
   await snap(mobile, "mobile-home");
+  await swipeLeft(mobile.getByTestId("home-springboard-home-page"));
+  await mobile.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="home-springboard-surface"]')
+        ?.getAttribute("data-page") === "springboard",
+  );
+  assert(
+    await mobile.getByTestId("springboard-tile-settings").isVisible(),
+    "Settings renders inside Springboard favorites",
+  );
+  assert(
+    (await mobile.getByTestId("springboard-tile-chat").count()) === 0,
+    "Chat self-link is absent from Springboard",
+  );
+  assert(
+    (await mobile.getByTestId("springboard-tile-views").count()) === 0,
+    "Views self-link is absent from Springboard",
+  );
+  await snap(mobile, "mobile-springboard");
   // The home is a clean, action-driven dashboard: no Edit chrome, no "Pinned"
   // label (edit-dashboard is an agent action, not a button).
   assert(
@@ -132,7 +187,13 @@ try {
     (await mobile.getByText("Pinned", { exact: true }).count()) === 0,
     'no "Pinned" label',
   );
+  const mobileVideo = await mobile.video();
   await mobile.close();
+  await mobileContext.close();
+  if (mobileVideo) {
+    const videoPath = await mobileVideo.path();
+    console.log(`  🎥 ${videoPath}`);
+  }
 
   // Desktop width
   const desktop = await browser.newPage({
@@ -140,6 +201,7 @@ try {
   });
   desktop.on("pageerror", (e) => sink.errors.push(String(e)));
   await desktop.goto(url);
+  await desktop.waitForSelector('[data-testid="home-springboard-surface"]');
   await desktop.waitForSelector('[data-testid="home-screen"]');
   await desktop.waitForTimeout(500);
   // Off-AOSP: no pinned tiles at all — the tile grid is omitted entirely.
@@ -152,6 +214,14 @@ try {
     "phone tile hidden when native disabled",
   );
   await snap(desktop, "desktop-home");
+  await swipeLeft(desktop.getByTestId("home-springboard-home-page"));
+  await desktop.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="home-springboard-surface"]')
+        ?.getAttribute("data-page") === "springboard",
+  );
+  await snap(desktop, "desktop-springboard");
   await desktop.close();
 } finally {
   await browser.close();

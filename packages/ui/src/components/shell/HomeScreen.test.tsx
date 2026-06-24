@@ -87,8 +87,8 @@ describe("HomeScreen", () => {
     expect(screen.getByText("Finished the build")).toBeTruthy();
     // Messages card appears once the (async) inbox fetch resolves with a chat.
     expect(await screen.findByTestId("home-widget-messages")).toBeTruthy();
-    // Off-AOSP: zero tiles — Home/Views/Settings live in the chat nav now, and
-    // the tile grid is omitted entirely (not an empty section).
+    // Off-AOSP: zero tiles — Springboard is the adjacent launcher now, and the
+    // tile grid is omitted entirely (not an empty section).
     expect(tileIds(container)).toEqual([]);
     expect(screen.queryByTestId("home-tiles")).toBeNull();
   });

@@ -314,8 +314,8 @@ vi.mock("./components/character/CharacterEditor", () => ({
   ),
 }));
 
-vi.mock("./components/pages/ViewCatalog", () => ({
-  ViewCatalog: () => <div data-testid="view-manager-page" />,
+vi.mock("./components/pages/SpringboardSurface", () => ({
+  SpringboardSurface: () => <div data-testid="springboard-surface" />,
 }));
 
 vi.mock("./components/settings/SecretsManagerSection", () => ({
@@ -559,14 +559,14 @@ describe("App navigate-view event wiring", () => {
     });
   });
 
-  it("keeps /views on the built-in manager page instead of the remote manager bundle", async () => {
+  it("keeps /views on the built-in Springboard instead of the remote manager bundle", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/views");
 
     const { getByTestId, queryByTestId } = render(<App />);
 
     await waitFor(() => {
-      expect(getByTestId("view-manager-page")).toBeTruthy();
+      expect(getByTestId("springboard-surface")).toBeTruthy();
     });
     expect(queryByTestId("dynamic-view-loader")).toBeNull();
     expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();

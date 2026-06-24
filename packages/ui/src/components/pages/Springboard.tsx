@@ -1,5 +1,5 @@
 /**
- * Springboard — iOS-like home-screen view catalog.
+ * Springboard — iOS-like app/view launcher.
  *
  * Renders every available view as a names-only icon on swipeable pages plus a
  * pinned favorites dock. Tap launches; the Edit toggle (or long-press) enters
@@ -7,15 +7,14 @@
  * for manageable (dynamic developer) views — edited or deleted. Page order is
  * persisted via the pure `springboard-layout` model. Favorites are
  * controlled-optional: when `onToggleFavorite` is supplied the dock reflects the
- * caller's `favoriteIds` (the app wires this to desktop tabs, so favoriting a
- * view pins it as a tab); otherwise favorites are kept locally. Fully
+ * caller's `favoriteIds`; otherwise favorites are kept locally. Fully
  * token-themed (light/dark + overrides) and renders no background of its own —
  * the shared root `AppBackground` shows through, matching the home screen.
  */
 
 import { Pencil, Trash2 } from "lucide-react";
 import { motion, Reorder } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import {
@@ -30,7 +29,9 @@ import { ViewIcon } from "../views/ViewIcon";
 
 export interface SpringboardProps {
   entries: ViewEntry[];
+  loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
+  onEdgeSwipeRight?: () => void;
   /** When set, favorites are controlled by the caller (e.g. desktop tabs). */
   favoriteIds?: string[];
   onToggleFavorite?: (id: string) => void;
@@ -57,7 +58,7 @@ const LONG_PRESS_MS = 450;
 /** Horizontal drag distance (px) needed to flip to the adjacent page. */
 const SWIPE_THRESHOLD = 60;
 
-function IconTile({
+const IconTile = memo(function IconTile({
   entry,
   editing,
   favorited,
@@ -168,11 +169,13 @@ function IconTile({
       </span>
     </div>
   );
-}
+});
 
 export function Springboard({
   entries,
+  loading = false,
   onLaunch,
+  onEdgeSwipeRight,
   favoriteIds,
   onToggleFavorite,
   canManageView,
@@ -198,6 +201,7 @@ export function Springboard({
   });
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState(false);
+  const startEditing = useCallback(() => setEditing(true), []);
 
   // Re-reconcile when the available views or controlled favorites change.
   useEffect(() => {
@@ -225,12 +229,23 @@ export function Springboard({
     [controlled, onToggleFavorite, commit, layout, availableIds],
   );
 
-  const pages = layout.pages.length > 0 ? layout.pages : [[]];
+  const pages = useMemo(
+    () => (layout.pages.length > 0 ? layout.pages : [[]]),
+    [layout.pages],
+  );
   const clampedPage = Math.min(page, pages.length - 1);
   const favoriteIdList = favorites ?? layout.favorites;
-  const favoriteEntries = favoriteIdList
-    .map((id) => byId.get(id))
-    .filter((e): e is ViewEntry => e != null);
+  const favoriteIdSet = useMemo(
+    () => new Set(favoriteIdList),
+    [favoriteIdList],
+  );
+  const favoriteEntries = useMemo(
+    () =>
+      favoriteIdList
+        .map((id) => byId.get(id))
+        .filter((e): e is ViewEntry => e != null),
+    [byId, favoriteIdList],
+  );
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
@@ -244,18 +259,29 @@ export function Springboard({
     [layout, commit],
   );
 
-  const renderTile = (entry: ViewEntry, favorited: boolean) => (
-    <IconTile
-      entry={entry}
-      editing={editing}
-      favorited={favorited}
-      manageable={canManageView?.(entry.id) ?? false}
-      onLaunch={onLaunch}
-      onToggleFavorite={toggleFav}
-      onEdit={onEditView}
-      onDelete={onDeleteView}
-      onLongPress={() => setEditing(true)}
-    />
+  const renderTile = useCallback(
+    (entry: ViewEntry, favorited: boolean) => (
+      <IconTile
+        entry={entry}
+        editing={editing}
+        favorited={favorited}
+        manageable={canManageView?.(entry.id) ?? false}
+        onLaunch={onLaunch}
+        onToggleFavorite={toggleFav}
+        onEdit={onEditView}
+        onDelete={onDeleteView}
+        onLongPress={startEditing}
+      />
+    ),
+    [
+      canManageView,
+      editing,
+      onDeleteView,
+      onEditView,
+      onLaunch,
+      startEditing,
+      toggleFav,
+    ],
   );
 
   return (
@@ -296,32 +322,48 @@ export function Springboard({
               setPage(clampedPage + 1);
             } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
               setPage(clampedPage - 1);
+            } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage === 0) {
+              onEdgeSwipeRight?.();
             }
           }}
           className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 py-6"
         >
-          <Reorder.Group
-            axis="y"
-            values={pages[clampedPage] ?? []}
-            onReorder={(next) => handleReorder(clampedPage, next as string[])}
-            className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5"
-          >
-            {(pages[clampedPage] ?? []).map((id) => {
-              const entry = byId.get(id);
-              if (!entry) return null;
-              return (
-                <Reorder.Item
+          {loading && entries.length === 0 ? (
+            <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5">
+              {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
+                <div
                   key={id}
-                  value={id}
-                  drag={editing}
-                  dragListener={editing}
-                  className="flex justify-center"
+                  className="flex flex-col items-center gap-1.5 opacity-60"
                 >
-                  {renderTile(entry, favoriteIdList.includes(id))}
-                </Reorder.Item>
-              );
-            })}
-          </Reorder.Group>
+                  <div className="h-16 w-16 rounded-2xl bg-bg-accent/50" />
+                  <div className="h-2.5 w-12 rounded-full bg-bg-accent/50" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Reorder.Group
+              axis="y"
+              values={pages[clampedPage] ?? []}
+              onReorder={(next) => handleReorder(clampedPage, next as string[])}
+              className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5"
+            >
+              {(pages[clampedPage] ?? []).map((id) => {
+                const entry = byId.get(id);
+                if (!entry) return null;
+                return (
+                  <Reorder.Item
+                    key={id}
+                    value={id}
+                    drag={editing}
+                    dragListener={editing}
+                    className="flex justify-center"
+                  >
+                    {renderTile(entry, favoriteIdSet.has(id))}
+                  </Reorder.Item>
+                );
+              })}
+            </Reorder.Group>
+          )}
         </motion.div>
 
         {/* Page dots. */}

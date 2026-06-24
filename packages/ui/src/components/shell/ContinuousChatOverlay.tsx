@@ -2,7 +2,6 @@ import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   FileText,
   Film,
-  Home,
   LayoutGrid,
   Loader2,
   Maximize2,
@@ -11,7 +10,6 @@ import {
   Music,
   RotateCcw,
   SendHorizontal,
-  Settings as SettingsIcon,
 } from "lucide-react";
 import {
   AnimatePresence,
@@ -1032,7 +1030,6 @@ export function ContinuousChatOverlay({
     unlockAudio,
     openSettings,
     navigateHome,
-    navigateToViews,
     currentTab,
     clearConversation,
     stop,
@@ -3050,9 +3047,9 @@ export function ContinuousChatOverlay({
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
               Left: Maximize (toggle edge-to-edge full-screen) + Clear (reset to
               a fresh greeted thread, RotateCcw — it resets, it doesn't delete).
-              Right: Home | Views | Settings. Each is always shown but DISABLED
-              (dimmed, inert) while already on its target screen — never hidden,
-              so the row never reflows. */}
+              Right: one Springboard/Home launcher. Settings lives inside the
+              Springboard favorites dock, so the chat header stops acting like a
+              second app nav bar. */}
             {!pilled ? (
               <motion.div
                 // Always mounted (when not pilled) so it can FADE + LERP its
@@ -3110,25 +3107,10 @@ export function ContinuousChatOverlay({
                 ) : null}
                 <div className="flex items-center gap-1.5">
                   <HeaderButton
-                    icon={Home}
-                    label="home"
-                    disabled={currentTab === "chat"}
-                    onClick={() => navigateAndClose(() => navigateHome?.())}
-                    testId="chat-full-home"
-                  />
-                  <HeaderButton
                     icon={LayoutGrid}
-                    label="views"
-                    disabled={currentTab === "views"}
-                    onClick={() => navigateAndClose(() => navigateToViews?.())}
-                    testId="chat-full-views"
-                  />
-                  <HeaderButton
-                    icon={SettingsIcon}
-                    label="settings"
-                    disabled={currentTab === "settings"}
-                    onClick={() => navigateAndClose(() => openSettings())}
-                    testId="chat-full-settings"
+                    label="springboard"
+                    onClick={() => navigateAndClose(() => navigateHome?.())}
+                    testId="chat-full-springboard"
                   />
                 </div>
               </motion.div>

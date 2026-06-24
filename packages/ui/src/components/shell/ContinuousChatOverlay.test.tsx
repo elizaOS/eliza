@@ -288,8 +288,8 @@ describe("ContinuousChatOverlay", () => {
         fireEvent.pointerUp(grabber, { clientY: toY, pointerId: 1 });
       };
       pull(420, 280); // collapsed → half
-      expect(screen.getByTestId("chat-full-home")).toBeTruthy();
-      fireEvent.click(screen.getByTestId("chat-full-home"));
+      expect(screen.getByTestId("chat-full-springboard")).toBeTruthy();
+      fireEvent.click(screen.getByTestId("chat-full-springboard"));
       unmount();
 
       act(() => {
@@ -1097,11 +1097,11 @@ describe("ContinuousChatOverlay", () => {
     expect(grabber.getAttribute("aria-hidden")).toBe("true");
   });
 
-  // ── chat-full Home | Views | Settings nav-gating. The header row always shows
-  // all three buttons (so the row never reflows) but DISABLES the one for the
-  // screen you're already on — never hides it. An enabled button navigates +
-  // collapses the chat; the disabled one is inert.
-  it("disables only the chat-full Home button while on the chat tab, leaving Views/Settings live", () => {
+  // ── chat-full Springboard launcher. The header row no longer exposes Home /
+  // Views / Settings as a mini app nav. It keeps one Springboard icon that
+  // returns to the combined Home/Springboard surface; Settings lives in the
+  // Springboard favorites dock.
+  it("renders only the Springboard launcher in the chat-full header", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -1109,59 +1109,12 @@ describe("ContinuousChatOverlay", () => {
         } as Partial<ShellController>)}
       />,
     );
-    const home = screen.getByTestId("chat-full-home");
-    const views = screen.getByTestId("chat-full-views");
-    const settings = screen.getByTestId("chat-full-settings");
 
-    // Already on chat → Home is the inert target; Views/Settings stay live.
-    expect((home as HTMLButtonElement).disabled).toBe(true);
-    expect(home.getAttribute("aria-disabled")).toBe("true");
-    expect((views as HTMLButtonElement).disabled).toBe(false);
-    expect(views.getAttribute("aria-disabled")).toBeNull();
-    expect((settings as HTMLButtonElement).disabled).toBe(false);
-    expect(settings.getAttribute("aria-disabled")).toBeNull();
-  });
-
-  it("disables only the chat-full Views button while on the views tab", () => {
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          currentTab: "views",
-        } as Partial<ShellController>)}
-      />,
-    );
-    expect(
-      (screen.getByTestId("chat-full-views") as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(
-      screen.getByTestId("chat-full-views").getAttribute("aria-disabled"),
-    ).toBe("true");
-    // The other two targets remain reachable.
-    expect(
-      (screen.getByTestId("chat-full-home") as HTMLButtonElement).disabled,
-    ).toBe(false);
-    expect(
-      (screen.getByTestId("chat-full-settings") as HTMLButtonElement).disabled,
-    ).toBe(false);
-  });
-
-  it("disables only the chat-full Settings button while on the settings tab", () => {
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          currentTab: "settings",
-        } as Partial<ShellController>)}
-      />,
-    );
-    expect(
-      (screen.getByTestId("chat-full-settings") as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(
-      (screen.getByTestId("chat-full-home") as HTMLButtonElement).disabled,
-    ).toBe(false);
-    expect(
-      (screen.getByTestId("chat-full-views") as HTMLButtonElement).disabled,
-    ).toBe(false);
+    const springboard = screen.getByTestId("chat-full-springboard");
+    expect((springboard as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId("chat-full-home")).toBeNull();
+    expect(screen.queryByTestId("chat-full-views")).toBeNull();
+    expect(screen.queryByTestId("chat-full-settings")).toBeNull();
   });
 
   // Open the sheet to the HALF detent so the chat-full header is revealed and
@@ -1177,54 +1130,22 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
   }
 
-  it("routes each ENABLED chat-full header button to its navigation callback", async () => {
+  it("routes the chat-full Springboard button to the home callback", async () => {
     const navigateHome = vi.fn();
-    const navigateToViews = vi.fn();
-    const openSettings = vi.fn();
     render(
       <ContinuousChatOverlay
         controller={makeController({
-          // On the views tab: Home + Settings are enabled, Views is the inert one.
-          currentTab: "views",
+          currentTab: "settings",
           navigateHome,
-          navigateToViews,
-          openSettings,
         } as Partial<ShellController>)}
       />,
     );
     openSheetToHalf();
-
-    // The disabled (current-tab) button is a native no-op: clicking Views here
-    // must not fire its navigate callback (asserted first, before any deferral).
-    fireEvent.click(screen.getByTestId("chat-full-views"));
-    expect(navigateToViews).not.toHaveBeenCalled();
 
     // navigateAndClose collapses the sheet then defers the navigation a frame
     // (so the close animates first), so the callback fires on a short timer.
-    fireEvent.click(screen.getByTestId("chat-full-home"));
+    fireEvent.click(screen.getByTestId("chat-full-springboard"));
     await vi.waitFor(() => expect(navigateHome).toHaveBeenCalledTimes(1));
-
-    openSheetToHalf();
-    fireEvent.click(screen.getByTestId("chat-full-settings"));
-    await vi.waitFor(() => expect(openSettings).toHaveBeenCalledTimes(1));
-
-    // The disabled button never navigated across the whole interaction.
-    expect(navigateToViews).not.toHaveBeenCalled();
-  });
-
-  it("routes the chat-full Views button to navigateToViews when enabled (on a non-views tab)", async () => {
-    const navigateToViews = vi.fn();
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          currentTab: "chat",
-          navigateToViews,
-        } as Partial<ShellController>)}
-      />,
-    );
-    openSheetToHalf();
-    fireEvent.click(screen.getByTestId("chat-full-views"));
-    await vi.waitFor(() => expect(navigateToViews).toHaveBeenCalledTimes(1));
   });
 
   // ── Rich turn-status indicator (#8813) ──────────────────────────────────

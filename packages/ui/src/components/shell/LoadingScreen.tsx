@@ -44,6 +44,8 @@ export function LoadingScreen({
   useEffect(() => {
     if (!vrmUrl) return;
     const controller = new AbortController();
+    let isMounted = true;
+    let isSettled = false;
 
     (async () => {
       try {
@@ -53,6 +55,7 @@ export function LoadingScreen({
         );
 
         if (!contentLength || !response.body) {
+          if (!isMounted || controller.signal.aborted) return;
           setVrmCached(true);
           return;
         }
@@ -64,16 +67,29 @@ export function LoadingScreen({
           const { done, value } = await reader.read();
           if (done) break;
           received += value.byteLength;
+          if (!isMounted || controller.signal.aborted) return;
           setFetchProgress(Math.min(received / contentLength, 1));
         }
 
+        if (!isMounted || controller.signal.aborted) return;
         setVrmCached(true);
       } catch {
+        if (controller.signal.aborted) return;
         // Non-blocking — VRM will load normally later.
+      } finally {
+        isSettled = true;
       }
     })();
 
-    return () => controller.abort();
+    return () => {
+      isMounted = false;
+      if (isSettled || controller.signal.aborted) return;
+      try {
+        controller.abort();
+      } catch {
+        // Node's undici can throw synchronously while aborting fetch in jsdom.
+      }
+    };
   }, [vrmUrl]);
 
   const meta = PHASE_META[phase];

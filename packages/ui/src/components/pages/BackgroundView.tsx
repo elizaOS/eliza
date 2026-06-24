@@ -4,8 +4,8 @@
  * A minimal, wordless surface for setting the unified app background: pick a
  * shader color, upload an image, or (when cloud is connected) generate one. The
  * view itself is transparent, so the live wallpaper shows behind the controls
- * and updates the instant a choice is made — the same background the home and
- * Views catalog share. Almost all controls are icons.
+ * and updates the instant a choice is made — the same background Home and
+ * Springboard share. Almost all controls are icons.
  */
 
 import {

@@ -37,6 +37,7 @@ import {
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import { requestConversationResetUndo } from "./conversation-undo-store";
+import { dispatchHomeSpringboardNavigation } from "./home-springboard-events";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
@@ -144,14 +145,11 @@ export interface ShellController {
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
    *  `no_provider` failure gate to let the user wire a provider in one tap. */
   openSettings: () => void;
-  /** Return to the home dashboard (the /chat route). Drives the chat header's
-   *  Home button, which is disabled while already on the home screen. */
+  /** Return to the combined Home/Springboard surface and select Home. */
   navigateHome?: () => void;
-  /** Open the Views catalog. Drives the chat header's Views button, which is
-   *  disabled while already on the views screen. */
+  /** Open the combined Home/Springboard surface and select Springboard. */
   navigateToViews?: () => void;
-  /** The active app tab. Lets the chat header DISABLE the Home button on the
-   *  home screen ("chat"), Views on "views", and Settings on "settings". */
+  /** The active app tab. */
   currentTab?: string;
   /** Stop an in-flight reply stream (the composer's stop control). */
   stop: () => void;
@@ -218,11 +216,17 @@ export function useShellController(): ShellController {
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
-  // Return to the home dashboard (the /chat route) from the chat header's Home
-  // button. Stable identity.
-  const navigateHome = React.useCallback(() => setTab("chat"), [setTab]);
-  // Open the Views catalog from the chat header's Views button. Stable identity.
-  const navigateToViews = React.useCallback(() => setTab("views"), [setTab]);
+  // Return to the combined Home/Springboard route and reset its internal page.
+  // If the route is not mounted yet, the next mount starts on Home; if it is
+  // already mounted on Springboard, this event flips it without a remount.
+  const navigateHome = React.useCallback(() => {
+    setTab("chat");
+    dispatchHomeSpringboardNavigation("home");
+  }, [setTab]);
+  const navigateToViews = React.useCallback(() => {
+    setTab("chat");
+    dispatchHomeSpringboardNavigation("springboard");
+  }, [setTab]);
 
   // DEV-only debug affordance: drop the current conversation and start a fresh,
   // greeted one (handleNewConversation resets draft state + creates a new

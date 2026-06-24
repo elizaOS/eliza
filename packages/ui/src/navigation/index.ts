@@ -425,7 +425,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "chat";
   }
 
-  // /views — the views tab (ViewCatalog)
+  // /views — legacy launcher alias; renders the combined Home/Springboard.
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
   }

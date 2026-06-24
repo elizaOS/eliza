@@ -57,9 +57,9 @@ interface HomeTile {
   nativeOs?: boolean;
 }
 
-// The home screen carries NO general quick-access tiles: Home, Views, and
-// Settings live in the chat header now (the always-present nav), so pinning them
-// here too was redundant clutter. The only tiles left are the AOSP ElizaOS
+// The home screen carries NO general quick-access tiles: Springboard is the
+// adjacent launcher page, with Settings in its dock, so pinning those actions
+// here too would be redundant clutter. The only tiles left are the AOSP ElizaOS
 // fork's native-OS surfaces (messages, phone, contacts, camera) — real OS apps,
 // `nativeOs` so they stay hidden on every non-AOSP build (where the tile grid
 // renders nothing at all).

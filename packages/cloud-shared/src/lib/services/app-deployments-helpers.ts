@@ -6,7 +6,7 @@
  * @elizaos/core and the rest of the runtime).
  */
 
-import type { AppDeploymentStatus } from "../../db/schemas/apps";
+import type { App, AppDeploymentStatus } from "../../db/schemas/apps";
 import { ApiError } from "../api/cloud-worker-errors";
 
 export type { AppDeploymentStatus };
@@ -58,4 +58,48 @@ export function assertDeployable(app: { deployment_status: AppDeploymentStatus }
       "A deployment is already in progress for this app",
     );
   }
+}
+
+/**
+ * Modeled local-vs-remote distinction for an app (#9145, Problem #2 / Q3).
+ *
+ * The `apps` schema has no explicit `local`/`remote` column; the distinction
+ * is derived from deployment state. An app is REMOTE once it has reached a
+ * deploy lifecycle that yields a managed-container URL. Otherwise it is LOCAL:
+ * it runs only in the desktop/device runtime against its own `app_url`.
+ *
+ * This is the single source of truth for the distinction — UI, CLI, and parity
+ * checks should derive `local` vs `remote` through here rather than re-deriving
+ * `deployment_status !== "draft"` ad hoc.
+ */
+export type AppKind = "local" | "remote";
+
+/** Fields required to classify an app as local or remote. */
+export type AppKindInput = Pick<App, "deployment_status" | "production_url">;
+
+/**
+ * An app is REMOTE iff it has reached a deploy lifecycle that yields a managed
+ * container URL: `deployed` (live), or in-flight `building`/`deploying` once a
+ * `production_url` has been assigned. `draft` and `failed` are LOCAL — `failed`
+ * has no live container, and a build that never produced a `production_url`
+ * stays LOCAL until one is assigned.
+ */
+export function appKindFor(app: AppKindInput): AppKind {
+  if (app.deployment_status === "deployed") return "remote";
+  if (
+    (app.deployment_status === "building" || app.deployment_status === "deploying") &&
+    typeof app.production_url === "string" &&
+    app.production_url.length > 0
+  ) {
+    return "remote";
+  }
+  return "local";
+}
+
+export function isRemoteApp(app: AppKindInput): boolean {
+  return appKindFor(app) === "remote";
+}
+
+export function isLocalApp(app: AppKindInput): boolean {
+  return appKindFor(app) === "local";
 }

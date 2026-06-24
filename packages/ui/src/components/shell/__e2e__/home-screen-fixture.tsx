@@ -6,6 +6,8 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { ShaderBackground } from "../../../backgrounds/ShaderBackground";
+import { SpringboardSurface } from "../../pages/SpringboardSurface";
+import { HomeSpringboardSurface } from "../HomeSpringboardSurface";
 import { HomeScreen, type HomeTileTarget } from "../HomeScreen";
 
 const params =
@@ -21,11 +23,16 @@ function Harness(): React.JSX.Element {
       style={{ position: "fixed", inset: 0, overflow: "hidden" }}
     >
       <ShaderBackground />
-      <HomeScreen
-        onOpenTile={(t: HomeTileTarget) =>
-          console.log(`[fixture] open ${JSON.stringify(t)}`)
+      <HomeSpringboardSurface
+        home={
+          <HomeScreen
+            onOpenTile={(t: HomeTileTarget) =>
+              console.log(`[fixture] open ${JSON.stringify(t)}`)
+            }
+            showNativeOsTiles={showNativeOsTiles}
+          />
         }
-        showNativeOsTiles={showNativeOsTiles}
+        springboard={<SpringboardSurface />}
       />
     </div>
   );

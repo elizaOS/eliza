@@ -13,6 +13,7 @@ export type WidgetSlot =
   | "heartbeats"
   | "character"
   | "settings"
+  | "home"
   | "nav-page"
   | "automations";
 

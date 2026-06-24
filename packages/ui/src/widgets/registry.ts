@@ -28,17 +28,33 @@ export {
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
+import { MessagesWidget } from "../components/chat/widgets/messages";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
+import { NotificationsWidget } from "../components/chat/widgets/notifications";
+import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
 registerBuiltinWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
 registerBuiltinWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
+// Register the todo widget's component so it can be declared on the home slot
+// (#9143 per-plugin breadth — the todo plugin's frontpage opt-in). Idempotent
+// with the plugin's own runtime registration.
+registerBuiltinWidgets(TODO_PLUGIN_WIDGETS);
 registerWidgetComponent(
   "music-library",
   "music-library.playlists",
   MusicLibraryCharacterWidget,
 );
+// Notifications is a core feature (no separate plugin), so its frontpage widget
+// always resolves (see ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS). (#9143)
+registerWidgetComponent(
+  "notifications",
+  "notifications.recent",
+  NotificationsWidget,
+);
+// Messages (recent conversations) is likewise a core surface — always-visible.
+registerWidgetComponent("messages", "messages.recent", MessagesWidget);
 
 /**
  * Public API for plugins outside app-core to append widget declarations to the
@@ -65,6 +81,26 @@ export function registerBuiltinWidgetDeclarations(
 // available client-side for zero-config rendering.
 
 export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
+  // Notifications — the first-class "default" frontpage widget (#9143).
+  {
+    id: "notifications.recent",
+    pluginId: "notifications",
+    slot: "home",
+    label: "Notifications",
+    icon: "Bell",
+    order: 50,
+    defaultEnabled: true,
+  },
+  // Messages (recent conversations) — the shared "messages" home widget (#9143).
+  {
+    id: "messages.recent",
+    pluginId: "messages",
+    slot: "home",
+    label: "Messages",
+    icon: "MessageSquare",
+    order: 60,
+    defaultEnabled: true,
+  },
   // Agent Orchestrator — app runs
   {
     id: "agent-orchestrator.apps",
@@ -83,6 +119,40 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     label: "Activity",
     icon: "Activity",
     order: 300,
+    defaultEnabled: true,
+  },
+  // Agent Orchestrator — activity surfaced on the home/frontpage too (#9143).
+  // Same pluginId+id reuses the registered component; the `home` slot is a
+  // separate resolveWidgetsForSlot pass, so this doesn't disturb the sidebar.
+  {
+    id: "agent-orchestrator.activity",
+    pluginId: "agent-orchestrator",
+    slot: "home",
+    label: "Activity",
+    icon: "Activity",
+    order: 100,
+    defaultEnabled: true,
+  },
+  // Agent Orchestrator — running app instances on the home (#9143). Distinct
+  // from the launcher icons (which open views): this lists live app runs.
+  // Reuses the registered AppRunsWidget component (self-contained data).
+  {
+    id: "agent-orchestrator.apps",
+    pluginId: "agent-orchestrator",
+    slot: "home",
+    label: "Apps",
+    icon: "LayoutGrid",
+    order: 70,
+    defaultEnabled: true,
+  },
+  // Todos — the todo plugin's frontpage widget (#9143 per-plugin breadth).
+  {
+    id: "todo.items",
+    pluginId: "todo",
+    slot: "home",
+    label: "Todos",
+    icon: "ListTodo",
+    order: 80,
     defaultEnabled: true,
   },
   // Browser workspace status — surfaces /browser state in the right rail.
@@ -134,9 +204,20 @@ const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set([
   // plugin snapshot doesn't list them as plugins.
   "wallet",
   "browser-workspace",
+  // Todos render from the workbench store; show on the frontpage even before the
+  // runtime plugin snapshot lists the plugin (#9143).
+  "todo",
 ]);
 
-const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set(["music-player"]);
+const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
+  "music-player",
+  // Notifications is a core runtime feature (NotificationService), not a
+  // loadable plugin, so its frontpage widget must render regardless of the
+  // plugin snapshot. (#9143)
+  "notifications",
+  // Messages (recent conversations) is likewise a core surface. (#9143)
+  "messages",
+]);
 
 interface ResolvedWidget {
   declaration: PluginWidgetDeclaration;
@@ -184,6 +265,26 @@ function isWidgetEnabled(
  * Merges built-in declarations with any server-provided declarations
  * (from PluginInfo.widgets), deduplicating by declaration ID.
  */
+/**
+ * Maps a declaration's `defaultWidget` opt-in (#9143) to the registered shared
+ * frontpage sink component (already registered above via
+ * `registerWidgetComponent`). A `home`-slot plugin with no own component renders
+ * one of these shared widgets instead of shipping its own.
+ */
+const DEFAULT_WIDGET_SINK_COMPONENT: Readonly<
+  Record<
+    NonNullable<PluginWidgetDeclaration["defaultWidget"]>,
+    { pluginId: string; id: string }
+  >
+> = {
+  notifications: { pluginId: "notifications", id: "notifications.recent" },
+  messages: { pluginId: "messages", id: "messages.recent" },
+  activity: {
+    pluginId: "agent-orchestrator",
+    id: "agent-orchestrator.activity",
+  },
+};
+
 export function resolveWidgetsForSlot(
   slot: WidgetSlot,
   plugins: readonly WidgetPluginState[],
@@ -223,7 +324,21 @@ export function resolveWidgetsForSlot(
   for (const { declaration, source } of declarationMap.values()) {
     if (!isWidgetEnabled(declaration, plugins, source)) continue;
 
-    const Component = getWidgetComponent(declaration.pluginId, declaration.id);
+    let Component = getWidgetComponent(declaration.pluginId, declaration.id);
+
+    // Home-slot opt-in sink (#9143): a plugin with no own component but a
+    // `defaultWidget` renders the shared sink component for that kind. Borrows
+    // only the component — the declaration keeps its own pluginId/id/order so
+    // ranking + dedupe treat it as distinct. Fallback-only: never overrides an
+    // own component, never fires off the home slot.
+    if (
+      !Component &&
+      declaration.slot === "home" &&
+      declaration.defaultWidget
+    ) {
+      const sink = DEFAULT_WIDGET_SINK_COMPONENT[declaration.defaultWidget];
+      Component = getWidgetComponent(sink.pluginId, sink.id);
+    }
 
     // Include if we have a React component OR a uiSpec fallback
     if (Component || declaration.uiSpec) {
