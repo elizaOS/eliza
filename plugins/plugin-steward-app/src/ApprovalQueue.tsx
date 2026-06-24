@@ -64,7 +64,7 @@ function PendingApprovalActions({
         {...approveElement.agentProps}
         variant="default"
         size="sm"
-        className="h-9 rounded-xl bg-accent px-4 text-xs font-semibold text-accent-fg hover:bg-accent/90"
+        className="h-9 rounded-md bg-accent px-4 text-xs font-semibold text-accent-fg hover:bg-accent/90"
         onClick={() => onApprove(txId)}
         aria-label={`Approve transaction ${txId}`}
       >
@@ -76,7 +76,7 @@ function PendingApprovalActions({
         {...rejectElement.agentProps}
         variant="outline"
         size="sm"
-        className="h-9 rounded-xl border-status-danger/30 px-4 text-xs font-semibold text-status-danger hover:bg-status-danger-bg hover:text-status-danger"
+        className="h-9 rounded-md border-status-danger/30 px-4 text-xs font-semibold text-status-danger hover:bg-status-danger-bg hover:text-status-danger"
         onClick={() => onReject(txId)}
         aria-label={`Reject transaction ${txId}`}
       >
@@ -117,7 +117,7 @@ function RejectReasonInput({
       onChange={(e) => onChange(e.target.value)}
       placeholder="e.g., Unauthorized recipient"
       aria-label="Rejection reason"
-      className="mt-1 h-9 w-full rounded-lg border border-border/40 bg-card/60 px-3 text-sm text-txt placeholder:text-muted/40 focus:border-accent/40 focus:outline-none"
+      className="mt-1 h-9 w-full rounded-md border border-border/40 bg-transparent px-3 text-sm text-txt placeholder:text-muted/40 focus:border-accent/40 focus:outline-none"
     />
   );
 }
@@ -390,7 +390,7 @@ export function ApprovalQueue({
         <PagePanel.Toolbar>
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-txt">Pending</span>
-            <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-accent px-1.5 py-0.5 text-2xs font-bold text-accent-fg">
+            <span className="text-2xs font-bold text-muted">
               {items.length}
             </span>
           </div>
@@ -398,7 +398,7 @@ export function ApprovalQueue({
       ) : null}
 
       {/* Approval rows */}
-      <div className="divide-y divide-border/15">
+      <div className="space-y-3">
         {items.map((item) => {
           const tx = item.transaction;
           const reasons = getPolicyReasons(tx.policyResults ?? []);
@@ -471,7 +471,7 @@ export function ApprovalQueue({
 
               {/* Reject reason dialog inline */}
               {rejectDialogTxId === tx.id && (
-                <div className="mt-3 flex items-end gap-2 border-t border-border/15 pt-3">
+                <div className="mt-3 flex items-end gap-2 pt-3">
                   <div className="flex-1">
                     <label
                       className="block text-2xs font-medium text-muted mb-1"
