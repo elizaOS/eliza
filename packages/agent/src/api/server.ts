@@ -458,7 +458,6 @@ import {
   handleMiscRoutes,
   handleMobileOptionalRoutes,
   handleModelsRoutes,
-  handleNfaRoutes,
   handlePermissionRoutes,
   handlePermissionsExtraRoutes,
   handleProviderSwitchRoutes,
@@ -2498,19 +2497,6 @@ async function handleRequest(
       readDir: fs.readdirSync,
       unlinkFile: fs.unlinkSync,
       joinPath: path.join,
-    })
-  ) {
-    return;
-  }
-
-  if (
-    await handleNfaRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      json,
-      error,
     })
   ) {
     return;
