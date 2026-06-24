@@ -30,6 +30,7 @@ import {
   type OptimizedPromptTask,
 } from "@elizaos/core";
 import { CALENDAR_PLAN_INSTRUCTIONS } from "../../plugin-calendar/src/actions/optimized-prompt-instructions.ts";
+import { GMAIL_PLAN_INSTRUCTIONS } from "../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts";
 import { getTrainingUseModelAdapter } from "../src/core/cerebras-eval-model.ts";
 import {
   createPromptScorer,
@@ -75,6 +76,21 @@ function calendarPlannerInput(args: CalendarPlannerInputArgs): string {
 
 function expectedCalendarPlan(fields: Record<string, unknown>): string {
   return JSON.stringify(fields);
+}
+
+function gmailPlannerInput(currentMessage: string): string {
+  return ["Current request:", currentMessage.trim() || "(empty)"].join("\n");
+}
+
+function expectedGmailPlan(fields: Record<string, unknown>): string {
+  return Object.entries(fields)
+    .map(([key, value]) => {
+      if (Array.isArray(value)) {
+        return `${key}: ${value.join(" || ")}`;
+      }
+      return `${key}: ${value === null ? "null" : String(value)}`;
+    })
+    .join("\n");
 }
 
 export const SEED_TASKS: Record<string, SeedTask> = {
@@ -230,6 +246,109 @@ export const SEED_TASKS: Record<string, SeedTask> = {
       },
     ],
   },
+  // inbox_triage is the live Gmail/inbox planner. The baseline returns
+  // line-based fields (not JSON), so the seed expectations mirror that wire
+  // format and the scorer accepts structured `key: value` output.
+  inbox_triage: {
+    task: "inbox_triage",
+    baseline: GMAIL_PLAN_INSTRUCTIONS,
+    dataset: [
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Clean up my inbox and show me anything urgent first.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "triage",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Tell me which legal or finance threads still need a reply today.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "needs_response",
+          shouldAct: true,
+          queries: ["legal", "finance"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Find the vendor renewal invoice email from Northstar.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "search",
+          shouldAct: true,
+          queries: ["vendor renewal invoice Northstar", "Northstar invoice"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Read me Taylor's boarding pass email for the Denver flight.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "read",
+          shouldAct: true,
+          queries: [
+            "Taylor boarding pass Denver",
+            "Denver flight boarding pass",
+          ],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Draft a reply to Mia saying I can meet at 2pm and asking her to send the deck.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "draft_reply",
+          shouldAct: true,
+          queries: ["Mia deck meeting 2pm", "from:Mia deck"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Reply to Alex that I approved the contractor quote, but do not mention budget details.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "send_reply",
+          shouldAct: true,
+          queries: ["Alex contractor quote", "from:Alex quote"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput(
+            "Busca el correo de Ana sobre la factura de renovación y dime si necesita respuesta.",
+          ),
+        },
+        expectedOutput: expectedGmailPlan({
+          subaction: "needs_response",
+          shouldAct: true,
+          queries: ["Ana factura renovación", "Ana renewal invoice"],
+        }),
+      },
+      {
+        input: {
+          user: gmailPlannerInput("Can you do something with my email?"),
+        },
+        expectedOutput: expectedGmailPlan({
+          shouldAct: false,
+        }),
+      },
+    ],
+  },
 };
 
 export function parseBoundedIntegerArg(
@@ -285,24 +404,37 @@ function validateOptimizedPromptForTask(
   task: OptimizedPromptTask,
   prompt: string,
 ): string[] {
-  if (task !== "calendar_extract") {
-    return [];
-  }
-  const requiredFragments = [
-    "subaction",
-    "shouldAct",
-    "queries",
-    "title",
-    "timeMin",
-    "timeMax",
-    "feed",
-    "next_event",
-    "search_events",
-    "create_event",
-    "update_event",
-    "delete_event",
-    "trip_window",
-  ];
+  const requiredFragmentsByTask: Partial<
+    Record<OptimizedPromptTask, string[]>
+  > = {
+    calendar_extract: [
+      "subaction",
+      "shouldAct",
+      "queries",
+      "title",
+      "timeMin",
+      "timeMax",
+      "feed",
+      "next_event",
+      "search_events",
+      "create_event",
+      "update_event",
+      "delete_event",
+      "trip_window",
+    ],
+    inbox_triage: [
+      "subaction",
+      "shouldAct",
+      "queries",
+      "triage",
+      "needs_response",
+      "search",
+      "read",
+      "draft_reply",
+      "send_reply",
+    ],
+  };
+  const requiredFragments = requiredFragmentsByTask[task] ?? [];
   const normalized = prompt.toLowerCase();
   return requiredFragments
     .filter((fragment) => !normalized.includes(fragment.toLowerCase()))

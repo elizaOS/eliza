@@ -20,6 +20,13 @@ function makeResult(
 }
 
 describe("lifeops-gepa-seed", () => {
+  it("exposes calendar and inbox seed tasks", () => {
+    expect(Object.keys(SEED_TASKS).sort()).toEqual([
+      "calendar_extract",
+      "inbox_triage",
+    ]);
+  });
+
   it("uses the live calendar planner baseline and schema-shaped examples", () => {
     const seed = SEED_TASKS.calendar_extract;
     expect(seed.baseline).toContain("Plan the calendar action");
@@ -39,6 +46,37 @@ describe("lifeops-gepa-seed", () => {
       expect(parsed).not.toHaveProperty("date");
       expect(parsed).not.toHaveProperty("startTime");
       expect(parsed).not.toHaveProperty("endTime");
+    }
+  });
+
+  it("uses the live Gmail planner baseline and line-shaped examples", () => {
+    const seed = SEED_TASKS.inbox_triage;
+    expect(seed.baseline).toContain("Plan the Gmail/inbox triage action");
+    expect(seed.baseline).toContain("subaction");
+    expect(seed.baseline).toContain("queries");
+
+    expect(seed.dataset.length).toBeGreaterThanOrEqual(6);
+    expect(
+      seed.dataset.some((example) =>
+        example.expectedOutput.includes("subaction: needs_response"),
+      ),
+    ).toBe(true);
+    expect(
+      seed.dataset.some((example) =>
+        example.expectedOutput.includes("subaction: draft_reply"),
+      ),
+    ).toBe(true);
+    expect(
+      seed.dataset.some((example) =>
+        example.expectedOutput.includes("shouldAct: false"),
+      ),
+    ).toBe(true);
+
+    for (const example of seed.dataset) {
+      expect(example.input.user).toContain("Current request:");
+      expect(example.expectedOutput).toMatch(/shouldAct: (true|false)/);
+      expect(example.expectedOutput).not.toContain("{");
+      expect(example.expectedOutput).not.toContain("}");
     }
   });
 
@@ -88,6 +126,21 @@ describe("lifeops-gepa-seed", () => {
     const malformed = validatePersistableResult(
       seed,
       makeResult("Return JSON with subaction and shouldAct.", 0.9, 0.1),
+    );
+    expect(malformed).toEqual(
+      expect.arrayContaining([expect.stringContaining('"queries"')]),
+    );
+
+    expect(
+      validatePersistableResult(seed, makeResult(seed.baseline, 0.9, 0.1)),
+    ).toEqual([]);
+  });
+
+  it("blocks malformed inbox prompts from persistence", () => {
+    const seed = SEED_TASKS.inbox_triage;
+    const malformed = validatePersistableResult(
+      seed,
+      makeResult("Return fields for subaction and shouldAct.", 0.9, 0.1),
     );
     expect(malformed).toEqual(
       expect.arrayContaining([expect.stringContaining('"queries"')]),

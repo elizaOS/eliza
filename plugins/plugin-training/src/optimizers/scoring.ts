@@ -281,8 +281,8 @@ function tokenize(text: string): Set<string> {
 // LifeOps per-capability scorers (#8795 item 4).
 //
 // The LifeOps optimization tasks split into two scoring shapes:
-//   - Extraction tasks emit a structured JSON object (calendar event fields,
-//     a triage classification, a reminder dispatch decision, ...). These are
+//   - Extraction tasks emit structured fields (JSON objects for most tasks,
+//     line-based `key: value` fields for a few legacy planners). These are
 //     graded on structured-field exact-match — the fraction of expected fields
 //     the model reproduced. Date/time/recurrence/recipient are exactly the
 //     fields that must be right, so partial-credit-by-field is the right signal.
@@ -320,12 +320,16 @@ const LIFEOPS_EXTRACTION_TASKS: ReadonlySet<string> = new Set(
   LIFEOPS_STRUCTURED_SCORER_TASKS,
 );
 
-/** Parse a JSON object out of a completion, tolerating ```json fences/prose. */
-function parseJsonLoose(text: string): Record<string, unknown> | null {
-  const trimmed = text
+function stripFence(text: string): string {
+  return text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "");
+}
+
+/** Parse a JSON object out of a completion, tolerating ```json fences/prose. */
+function parseJsonLoose(text: string): Record<string, unknown> | null {
+  const trimmed = stripFence(text);
   const start = trimmed.indexOf("{");
   const end = trimmed.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) return null;
@@ -339,6 +343,27 @@ function parseJsonLoose(text: string): Record<string, unknown> | null {
   }
 }
 
+/** Parse legacy line-based planner output: `field: value` per line. */
+function parseLineFieldsLoose(text: string): Record<string, unknown> | null {
+  const fields: Record<string, string> = {};
+  let parsedLines = 0;
+  for (const line of stripFence(text).split(/\r?\n/u)) {
+    const match = /^([a-zA-Z_][a-zA-Z0-9_-]*)\s*:\s*(.*)$/u.exec(line.trim());
+    if (!match) continue;
+    const key = match[1]?.trim();
+    if (!key) continue;
+    fields[key] = match[2]?.trim() ?? "";
+    parsedLines += 1;
+  }
+  return parsedLines > 0 ? fields : null;
+}
+
+function parseStructuredFieldsLoose(
+  text: string,
+): Record<string, unknown> | null {
+  return parseJsonLoose(text) ?? parseLineFieldsLoose(text);
+}
+
 function normalizeScalar(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "object") return JSON.stringify(value);
@@ -348,7 +373,7 @@ function normalizeScalar(value: unknown): string {
 /**
  * Structured-field exact-match score in `[0, 1]`: the fraction of expected
  * fields whose value the actual output reproduced. Both inputs are parsed as
- * JSON (tolerating fences/prose). When `fields` is supplied only those keys are
+ * JSON or line-based fields (tolerating fences/prose). When `fields` is supplied only those keys are
  * scored; otherwise every key in `expected` is scored. Returns 0 when expected
  * is unparseable (nothing to credit) and 1 when both parse to empty objects.
  */
@@ -357,9 +382,9 @@ export function scoreStructuredFields(
   expected: string,
   fields?: readonly string[],
 ): number {
-  const expectedObj = parseJsonLoose(expected);
+  const expectedObj = parseStructuredFieldsLoose(expected);
   if (!expectedObj) return 0;
-  const actualObj = parseJsonLoose(actual) ?? {};
+  const actualObj = parseStructuredFieldsLoose(actual) ?? {};
   const keys =
     fields && fields.length > 0 ? [...fields] : Object.keys(expectedObj);
   if (keys.length === 0) {
@@ -376,7 +401,7 @@ export function scoreStructuredFields(
 
 /** Tokenize an output into an action/label set (JSON fields or raw words). */
 function actionTokens(text: string): Set<string> {
-  const obj = parseJsonLoose(text);
+  const obj = parseStructuredFieldsLoose(text);
   const source = obj
     ? [
         obj.action,

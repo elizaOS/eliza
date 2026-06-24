@@ -53,6 +53,34 @@ describe("scoreStructuredFields", () => {
     ).toBe(1);
   });
 
+  it("scores line-based planner fields", () => {
+    const expected = [
+      "subaction: needs_response",
+      "shouldAct: true",
+      "queries: legal || finance",
+    ].join("\n");
+    const actual = [
+      "subaction: needs_response",
+      "shouldAct: true",
+      "queries: legal || finance",
+    ].join("\n");
+    expect(scoreStructuredFields(actual, expected)).toBe(1);
+  });
+
+  it("gives partial credit for line-based planner fields", () => {
+    const expected = [
+      "subaction: draft_reply",
+      "shouldAct: true",
+      "queries: Mia deck",
+    ].join("\n");
+    const actual = [
+      "subaction: search",
+      "shouldAct: true",
+      "queries: Mia deck",
+    ].join("\n");
+    expect(scoreStructuredFields(actual, expected)).toBeCloseTo(2 / 3, 5);
+  });
+
   it("scores only the requested fields when given", () => {
     const expected = JSON.stringify({ start: "noon", end: "1pm", note: "x" });
     const actual = JSON.stringify({ start: "noon", end: "9pm", note: "y" });
