@@ -16,7 +16,7 @@
       "@elizaos/ui": ["../../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../../../packages/ui/dist/*"],
       "@elizaos/plugin-facewear": [
-        "../../../plugins/plugin-facewear/dist/index.d.ts"
+        "../../../plugins/plugin-facewear/dist/index.js"
       ],
       "@elizaos/plugin-facewear/*": ["../../../plugins/plugin-facewear/dist/*"]
     }
