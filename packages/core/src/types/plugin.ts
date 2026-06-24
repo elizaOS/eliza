@@ -418,13 +418,22 @@ export interface PluginAppNavTab {
  * client-side type in `@elizaos/app-core/widgets` but lives here so plugins
  * can self-declare without depending on app-core.
  */
+export const PLUGIN_WIDGET_SLOTS = [
+	"chat-sidebar",
+	"character",
+	"nav-page",
+	"home",
+] as const;
+
+export type PluginWidgetSlot = (typeof PLUGIN_WIDGET_SLOTS)[number];
+
 export interface PluginWidgetDeclaration {
 	/** Unique within the owning plugin, e.g. "lifeops-overview". */
 	id: string;
 	/** Owning plugin ID. */
 	pluginId: string;
 	/** Where this widget renders. */
-	slot: "chat-sidebar" | "character" | "nav-page" | "home";
+	slot: PluginWidgetSlot;
 	/** Human-readable label. */
 	label: string;
 	/** Lucide icon name. */
