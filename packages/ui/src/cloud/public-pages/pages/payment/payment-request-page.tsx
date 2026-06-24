@@ -195,7 +195,7 @@ export default function PaymentRequestPage() {
         id="main"
         className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center"
       >
-        <section className="w-full border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/30 sm:p-7">
+        <section className="w-full border border-white/10 bg-white/[0.06] p-5 sm:p-7">
           <div className="flex flex-col items-center text-center">
             <div className="flex h-16 w-16 items-center justify-center border border-orange-400/30 bg-orange-400/10">
               <CreditCard className="h-7 w-7 text-orange-200" />

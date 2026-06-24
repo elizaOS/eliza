@@ -489,8 +489,6 @@
   border: 0;
   background: var(--logs-toolbar-button-bg);
   color: var(--muted-strong);
-  box-shadow: var(--logs-toolbar-button-shadow);
-  backdrop-filter: blur(12px);
   transition:
     background-color 200ms,
     color 200ms,
@@ -509,11 +507,6 @@
 .logs-toolbar-button:disabled:hover {
   background: var(--logs-toolbar-button-bg);
   color: var(--muted-strong);
-}
-
-[data-theme="dark"] .logs-toolbar-button,
-.dark .logs-toolbar-button {
-  box-shadow: var(--logs-toolbar-button-shadow-dark);
 }
 
 /* Component-level theme overrides removed — use theme variables directly. */

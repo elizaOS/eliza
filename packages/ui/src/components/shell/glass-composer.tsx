@@ -89,7 +89,7 @@ export function GlassIconButton({
     >
       <svg
         viewBox="0 0 36 36"
-        className="pointer-events-none h-full w-full drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)]"
+        className="pointer-events-none h-full w-full"
         aria-hidden="true"
       >
         <path

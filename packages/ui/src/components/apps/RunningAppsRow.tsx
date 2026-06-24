@@ -80,7 +80,7 @@ const RunningAppCard = memo(function RunningAppCard({
       {needsAttention ? (
         <span
           title={attentionReasons[0]}
-          className="pointer-events-none absolute right-10 top-3.5 inline-flex items-center rounded-full border border-warn/40 bg-black/40 px-2 py-0.5 text-[0.56rem] font-semibold uppercase tracking-[0.2em] text-warn backdrop-blur-sm"
+          className="pointer-events-none absolute right-10 top-3.5 inline-flex items-center rounded-full border border-warn/40 bg-black/40 px-2 py-0.5 text-[0.56rem] font-semibold uppercase tracking-[0.2em] text-warn"
         >
           !
         </span>
@@ -92,7 +92,7 @@ const RunningAppCard = memo(function RunningAppCard({
           data-testid={`running-app-stop-${run.runId}`}
           aria-label={`Stop ${run.displayName}`}
           disabled={isStopping}
-          className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white/90 backdrop-blur-sm transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white/90 transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           onClick={(event: MouseEvent<HTMLButtonElement>) => {
             event.stopPropagation();
             onStopRun(run);

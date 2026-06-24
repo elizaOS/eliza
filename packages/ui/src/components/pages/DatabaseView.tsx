@@ -499,7 +499,7 @@ export function DatabaseView({
                     <Button
                       variant="ghost"
                       key={q}
-                      className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
+                      className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
                       onClick={() => setQueryText(q)}
                     >
                       <span className="truncate">{q}</span>
@@ -687,7 +687,7 @@ export function DatabaseView({
       )}
 
       {dbStatus && !dbStatus.connected && (
-        <div className="p-4 border border-border/40 bg-card/60 backdrop-blur-md rounded-sm text-muted text-sm ">
+        <div className="p-4 border border-border/40 bg-card/95 rounded-sm text-muted text-sm ">
           <p className="m-0 mb-2 font-medium text-txt tracking-wide">
             {t("databaseview.DatabaseNotAvailab")}
           </p>
@@ -698,7 +698,7 @@ export function DatabaseView({
       )}
 
       {errorMessage && (
-        <div className="p-3 border border-danger/50 bg-danger/10 text-danger text-sm rounded-sm mb-2 flex items-center justify-between backdrop-blur-md">
+        <div className="p-3 border border-danger/50 bg-danger/20 text-danger text-sm rounded-sm mb-2 flex items-center justify-between">
           <span className="font-medium tracking-wide">{errorMessage}</span>
           <Button
             variant="ghost"
@@ -716,7 +716,7 @@ export function DatabaseView({
         <div className="flex flex-1 min-h-0 gap-4">
           {(showExternalSidebar || !sidebarCollapsed) && (
             <aside
-              className={`overflow-hidden rounded-sm border flex min-h-0 w-full shrink-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md ${
+              className={`overflow-hidden rounded-sm border flex min-h-0 w-full shrink-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] ${
                 showExternalSidebar
                   ? "w-[21rem] max-w-[352px] shrink-0"
                   : "w-[220px] flex-shrink-0"
@@ -918,7 +918,7 @@ export function DatabaseView({
         /* ── SQL Editor ────────────────────────────────────────── */
         <div className="flex flex-1 min-h-0 gap-4">
           {showExternalSidebar && (
-            <aside className="w-[21rem] max-w-[352px] shrink-0 overflow-hidden rounded-sm border border-border/34 flex min-h-0 w-full flex-col bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md ">
+            <aside className="w-[21rem] max-w-[352px] shrink-0 overflow-hidden rounded-sm border border-border/34 flex min-h-0 w-full flex-col bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] ">
               <div className="flex min-h-0 flex-1 flex-col px-3 pb-4 pt-3">
                 {sidebarSummary}
                 <div className="space-y-3 pt-4">
@@ -944,7 +944,7 @@ export function DatabaseView({
                       <Button
                         variant="ghost"
                         key={q}
-                        className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
+                        className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
                         onClick={() => setQueryText(q)}
                       >
                         <span className="truncate">{q}</span>

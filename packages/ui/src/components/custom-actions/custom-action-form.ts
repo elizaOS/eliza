@@ -34,7 +34,7 @@ const METHODS_SET = new Set<string>(HTTP_METHODS);
 /* ── CSS class names ───────────────────────────────────────────────── */
 
 export const editorDialogContentClassName =
-  "w-[min(calc(100%_-_2rem),48rem)] max-h-[min(90vh,56rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0 backdrop-blur-xl";
+  "w-[min(calc(100%_-_2rem),48rem)] max-h-[min(90vh,56rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0";
 export const editorFieldLabelClassName = "text-xs text-muted";
 export const editorInputClassName =
   "rounded-sm border-border bg-surface text-txt placeholder:text-muted/50 focus-visible:ring-accent/25";

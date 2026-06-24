@@ -148,9 +148,8 @@ function HomeCard({
     <section
       data-testid={testId}
       className={cn(
-        // Liquid glass — same language as the chat panel + tiles.
-        "relative rounded-3xl border border-white/[0.14] bg-black/30 p-4 backdrop-blur-2xl backdrop-saturate-150",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_50px_-26px_rgba(0,0,0,0.7)]",
+        // Dark card — same language as the chat panel + tiles.
+        "relative rounded-3xl border border-white/[0.14] bg-black/70 p-4",
       )}
     >
       <header className="mb-2.5 flex items-center gap-2">
@@ -343,10 +342,8 @@ export function HomeScreen({
                     data-testid={`home-tile-${tile.id}`}
                     onClick={() => onOpenTile(tile.target)}
                     className={cn(
-                      // Liquid glass, matching the chat panel: translucent dark
-                      // pane, strong blur + saturation, a bright top specular edge.
-                      "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/25 px-1 py-3.5 backdrop-blur-2xl backdrop-saturate-150",
-                      "shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]",
+                      // Dark tile, matching the chat panel: a solid dark pane.
+                      "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/70 px-1 py-3.5",
                       // Tactile press: a quick scale-down on tap (stilled for
                       // reduce-motion users), plus the glass brightening on hover.
                       "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",

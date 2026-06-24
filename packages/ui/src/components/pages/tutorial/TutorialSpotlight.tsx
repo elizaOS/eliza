@@ -232,7 +232,7 @@ function SpotlightCard({
 }): React.ReactElement {
   return (
     <div
-      className="absolute w-[300px] max-w-[calc(100vw-28px)] rounded-2xl border border-white/12 bg-neutral-950/95 p-4 text-white shadow-2xl backdrop-blur-md motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
+      className="absolute w-[300px] max-w-[calc(100vw-28px)] rounded-2xl border border-white/12 bg-neutral-950/95 p-4 text-white motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       style={{ ...cardStyle, pointerEvents: "auto" }}
       data-testid="tutorial-card"
       role="dialog"

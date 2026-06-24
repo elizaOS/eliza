@@ -97,7 +97,7 @@ function IconTile({
           onPointerLeave={clear}
           className={cn(
             "grid h-16 w-16 place-items-center rounded-2xl",
-            "bg-bg-accent/60 text-foreground backdrop-blur-xl transition-colors",
+            "bg-bg-accent/60 text-foreground transition-colors",
             "hover:bg-bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
             editing && "animate-pulse",
           )}
@@ -349,7 +349,7 @@ export function Springboard({
       {favoriteEntries.length > 0 ? (
         <div
           data-testid="springboard-dock"
-          className="mx-4 mb-4 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/60 px-6 py-3 backdrop-blur-2xl"
+          className="mx-4 mb-4 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/90 px-6 py-3"
         >
           {favoriteEntries.map((entry) => (
             <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>

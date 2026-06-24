@@ -93,7 +93,7 @@ function UndoToastCard({
       transition={{ type: "spring", stiffness: 420, damping: 32 }}
       className={cn(
         "pointer-events-auto flex items-center gap-3 rounded-full px-4 py-2.5",
-        "border border-white/15 bg-black/70 text-white/90 shadow-2xl backdrop-blur-xl",
+        "border border-white/15 bg-black/85 text-white/90",
         "touch-pan-y select-none",
       )}
       onPointerEnter={clearTimer}

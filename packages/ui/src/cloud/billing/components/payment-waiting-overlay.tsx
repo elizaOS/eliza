@@ -93,9 +93,9 @@ export function PaymentWaitingOverlay({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
     >
-      <div className="w-full max-w-md border border-white/10 bg-[#0b0d11] p-6 text-white shadow-2xl">
+      <div className="w-full max-w-md border border-white/10 bg-[#0b0d11] p-6 text-white">
         <div className="flex flex-col items-center text-center">
           {isConfirmed ? (
             <CheckCircle2 className="h-12 w-12 text-emerald-300" />

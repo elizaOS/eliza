@@ -342,7 +342,7 @@ export function CharacterHubView({
 
     function StatChip({ children }: { children: ReactNode }) {
       return (
-        <span className="rounded-full border border-border/40 bg-bg/60 px-2.5 py-1 text-xs font-medium text-muted backdrop-blur-sm">
+        <span className="rounded-full border border-border/40 bg-bg/60 px-2.5 py-1 text-xs font-medium text-muted">
           {children}
         </span>
       );
@@ -352,7 +352,7 @@ export function CharacterHubView({
     function PersonChip({ name }: { name: string }) {
       const Brand = getBrandIcon(name);
       return (
-        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/40 bg-bg/70 py-1 pl-1 pr-2.5 text-xs font-medium text-txt backdrop-blur-sm">
+        <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/40 bg-bg/70 py-1 pl-1 pr-2.5 text-xs font-medium text-txt">
           <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-2xs font-semibold uppercase text-accent">
             {name.slice(0, 1)}
           </span>

@@ -257,7 +257,7 @@ export function SettingsSegmentedRow({
               className={cn(
                 "flex h-9 flex-1 items-center justify-center rounded-sm px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-50",
                 active
-                  ? "bg-card text-txt-strong shadow-sm"
+                  ? "bg-card text-txt-strong"
                   : "text-muted hover:bg-card/60 hover:text-txt",
               )}
             >
