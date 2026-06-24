@@ -10,6 +10,48 @@ export interface ValidateToolArgsResult {
 	errors: string[];
 }
 
+/**
+ * Cap on the input length a (plugin-supplied) schema `pattern` is tested
+ * against. A malformed/malicious pattern with nested quantifiers can backtrack
+ * catastrophically (ReDoS); since a JS regex runs synchronously and cannot be
+ * interrupted by a timer, we bound the input length instead so the worst case
+ * stays manageable.
+ */
+const MAX_PATTERN_INPUT_LENGTH = 50_000;
+
+/**
+ * Defensively compile + test an untrusted `pattern` (from a plugin parameter
+ * schema) against `value`. The pattern may be an invalid regex (which would
+ * otherwise throw an uncaught SyntaxError) or a ReDoS pattern. Returns ok:true
+ * on match; ok:false with a reason when it doesn't match, the pattern is
+ * invalid, or the value is too long to test safely.
+ */
+export function testSchemaPattern(
+	pattern: string,
+	value: string,
+): { ok: true } | { ok: false; reason: string } {
+	let regex: RegExp;
+	try {
+		regex = new RegExp(pattern);
+	} catch (err) {
+		return {
+			ok: false,
+			reason: `has an invalid pattern ${pattern}: ${
+				err instanceof Error ? err.message : String(err)
+			}`,
+		};
+	}
+	if (value.length > MAX_PATTERN_INPUT_LENGTH) {
+		return {
+			ok: false,
+			reason: `is too long to validate against pattern ${pattern}`,
+		};
+	}
+	return regex.test(value)
+		? { ok: true }
+		: { ok: false, reason: `does not match pattern ${pattern}` };
+}
+
 function describeType(value: unknown): string {
 	if (value === null) {
 		return "null";
@@ -204,10 +246,10 @@ export function validateSchema(
 			}
 			validateEnum(schema, value, path, errors);
 			if (schema.pattern !== undefined) {
-				const regex = new RegExp(schema.pattern);
-				if (!regex.test(value)) {
+				const result = testSchemaPattern(schema.pattern, value);
+				if (!result.ok) {
 					errors.push(
-						`Argument '${formatPath(path)}' value '${value}' does not match pattern ${schema.pattern}`,
+						`Argument '${formatPath(path)}' value '${value}' ${result.reason}`,
 					);
 				}
 			}

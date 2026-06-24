@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
 import type { Action, ActionParameterSchema } from "../../types";
-import { validateToolArgs } from "../validate-tool-args.ts";
+import { testSchemaPattern, validateToolArgs } from "../validate-tool-args.ts";
 
 function makeAction(overrides: Partial<Action>): Action {
 	return {
@@ -169,5 +169,27 @@ describe("validateToolArgs", () => {
 
 		expect(result.valid).toBe(false);
 		expect(result.errors).toContain("Unexpected argument '__subaction'");
+	});
+});
+
+describe("testSchemaPattern (untrusted-pattern hardening)", () => {
+	it("matches and rejects valid patterns normally", () => {
+		expect(testSchemaPattern("^\\d+$", "123")).toEqual({ ok: true });
+		expect(testSchemaPattern("^\\d+$", "abc").ok).toBe(false);
+	});
+
+	it("returns a validation error for an invalid regex instead of throwing", () => {
+		const r = testSchemaPattern("(", "x");
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.reason).toMatch(/invalid pattern/);
+	});
+
+	it("refuses to test an over-long value without running the pattern", () => {
+		const long = "a".repeat(60_000); // > MAX_PATTERN_INPUT_LENGTH
+		const start = Date.now();
+		const r = testSchemaPattern("(a+)+$", long);
+		expect(Date.now() - start).toBeLessThan(500);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.reason).toMatch(/too long/);
 	});
 });
