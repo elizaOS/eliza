@@ -26,6 +26,12 @@ const localPackages = [
   "eliza/packages/core",
   "eliza/packages/contracts",
   "eliza/packages/cloud-routing",
+  // @elizaos/app-core's registry/index.ts eagerly re-exports
+  // `@elizaos/registry/first-party` (#9190 moved the curated app/plugin/connector
+  // registry out of app-core into this package). It must be linked or the agent
+  // boot crashes with "Cannot find package '@elizaos/registry' imported from
+  // .../app-core/dist/registry/index.js". Foundational, so listed up here.
+  "eliza/packages/registry",
   // @elizaos/agent's remote-plugin-bridge imports the `./error` subpath of
   // plugin-worker-runtime eagerly at boot. Without linking it here its
   // node_modules entry is never established, so boot crashes with
