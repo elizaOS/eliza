@@ -3,12 +3,19 @@ import { ensureEmbeddingDimension } from "../provisioning";
 import type { IAgentRuntime } from "../types/runtime";
 
 /**
- * ensureEmbeddingDimension (the boot embedding-dim probe #8769 depends on) has
- * two silent early-returns — no TEXT_EMBEDDING model, and an unset/invalid
- * EMBEDDING_DIMENSION — plus the happy path that snaps the storage column to the
- * configured width. None were covered; a regression dropping the model-or-dim
- * guard would call adapter.ensureEmbeddingDimension with a wrong/default width
- * and ship silently.
+ * ensureEmbeddingDimension in core/provisioning.ts — the EMBEDDING_DIMENSION-
+ * setting probe used by the daemon-composition path (createRuntimes({ provision:
+ * true }) → provisionAgent). It has two silent early-returns — no TEXT_EMBEDDING
+ * model, and an unset/invalid EMBEDDING_DIMENSION — plus the happy path that
+ * snaps the storage column to the configured width. None were covered; a
+ * regression dropping the model-or-dim guard would call
+ * adapter.ensureEmbeddingDimension with a wrong/default width and ship silently.
+ *
+ * NOTE: managed cloud agents do NOT take this path — they boot
+ * `new AgentRuntime(...)` + `runtime.initialize()` and snap the column via
+ * `runtime.ensureEmbeddingDimension()`. #8769 (the managed-boot ordering bug) is
+ * covered by packages/agent/src/runtime/eliza-embedding-boot-order.test.ts, not
+ * here; this file is valid standalone coverage for the daemon-path function.
  */
 function makeRuntime(opts: {
 	hasModel: boolean;
@@ -26,7 +33,7 @@ function makeRuntime(opts: {
 	return { runtime, ensureDim };
 }
 
-describe("ensureEmbeddingDimension (#8769 boot probe)", () => {
+describe("ensureEmbeddingDimension (core/provisioning.ts daemon-composition probe)", () => {
 	it("skips when no TEXT_EMBEDDING model is registered", async () => {
 		const { runtime, ensureDim } = makeRuntime({
 			hasModel: false,
