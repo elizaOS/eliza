@@ -468,7 +468,6 @@ export function Springboard({
           </div>
         ) : null}
       </div>
-
     </div>
   );
 }
