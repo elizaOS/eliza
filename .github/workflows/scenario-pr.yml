@@ -157,6 +157,9 @@ jobs:
       - name: Actual app assistant pill browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"
 
+      - name: Actual app onboarding-to-home browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/onboarding-to-home.spec.ts --project=chromium
+
       - name: Actual app assistant voice browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "drives the assistant home voice path with a scripted browser STT turn"
 
