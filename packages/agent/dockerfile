@@ -1,30 +1,25 @@
-# Use the node base image
-FROM node:23.3.0-slim AS builder
+# Use the official Bun image
+FROM oven/bun:1.1.26-slim AS builder
 
-# Install dependencies
-RUN apt-get update && apt-get install -y python3 make g++ git && rm -rf /var/lib/apt/lists/*
-RUN npm install -g pnpm@9.15.1
-
-# Set working directory to root
 WORKDIR /app
 
-# Copy ALL files from the current build context (which we will set to root)
+# Copy everything from the root
 COPY . .
 
-# Install dependencies
-RUN pnpm install --no-frozen-lockfile
+# Install dependencies using Bun
+RUN bun install --frozen-lockfile
 
-# Build the project
-RUN pnpm build
+# Build the project (assuming your scripts use bun)
+RUN bun run build
 
 # Final runtime stage
-FROM node:23.3.0-slim AS runner
-RUN npm install -g pnpm@9.15.1
+FROM oven/bun:1.1.26-slim AS runner
 WORKDIR /app
 
-# Copy only the necessary build artifacts
+# Copy built files
 COPY --from=builder /app /app
 
 EXPOSE 3000
 
-CMD ["pnpm", "--filter", "@elizaos/agent", "start"]
+# Start the agent using bun
+CMD ["bun", "run", "--filter", "@elizaos/agent", "start"]
