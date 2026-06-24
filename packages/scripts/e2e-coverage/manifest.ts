@@ -237,6 +237,11 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
     reason:
       "vincent routes broker the Lit/Vincent agent-wallet backend over live credentials; no deterministic fixture exists for the keyless lane yet.",
   },
+  "plugin-vision": {
+    status: "exempt",
+    reason:
+      "vision's HTTP routes (/api/vision/capture-requests, /api/vision/screen-frame) are a renderer↔agent screen-capture bridge queue backed by ScreenCaptureBridgeService; they only drain/settle in-process capture requests against a live on-device screen-capture + vision backend (verified on Pixel 9a in #9105/#9356) and have no deterministic keyless fixture, so a keyless route e2e cannot stand them up.",
+  },
 };
 
 /**
