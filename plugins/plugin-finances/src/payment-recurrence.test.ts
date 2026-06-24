@@ -73,7 +73,8 @@ describe("detectRecurringCharges", () => {
   it("detects a monthly subscription with cadence + annualized cost", () => {
     const charges = detectRecurringCharges(monthly("netflix", 9.99));
     expect(charges).toHaveLength(1);
-    const c = charges[0]!;
+    const c = charges[0];
+    if (!c) throw new Error("expected recurring charge");
     expect(c.merchantNormalized).toBe("netflix");
     expect(c.cadence).toBe("monthly");
     expect(c.occurrenceCount).toBe(3);
@@ -141,7 +142,7 @@ describe("detectRecurringCharges", () => {
       ...t,
       merchantRaw: "  NETFLIX.COM  ",
     }));
-    expect(detectRecurringCharges(txns)[0]!.merchantDisplay).toBe(
+    expect(detectRecurringCharges(txns)[0]?.merchantDisplay).toBe(
       "NETFLIX.COM",
     );
   });
