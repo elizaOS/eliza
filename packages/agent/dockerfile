@@ -1,25 +1,23 @@
-# Use the official Bun image
 FROM oven/bun:1.1.26-slim AS builder
 
 WORKDIR /app
 
-# Copy everything from the root
+# Copy EVERYTHING from the root context
 COPY . .
 
-# Install dependencies using Bun
+# Now Bun can see pnpm-workspace.yaml and install the full monorepo
 RUN bun install --frozen-lockfile
 
-# Build the project (assuming your scripts use bun)
+# Build everything
 RUN bun run build
 
-# Final runtime stage
 FROM oven/bun:1.1.26-slim AS runner
 WORKDIR /app
 
-# Copy built files
+# Copy the built files from the builder stage
 COPY --from=builder /app /app
 
 EXPOSE 3000
 
-# Start the agent using bun
+# Run the agent specifically
 CMD ["bun", "run", "--filter", "@elizaos/agent", "start"]
