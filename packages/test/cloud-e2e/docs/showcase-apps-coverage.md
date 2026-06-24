@@ -19,8 +19,8 @@ runs, for **each** app, with an explicit assertion at every hop:
 | 2 | deploy container | a control-plane provision job stands a Hetzner **mock** node up (`initializing -> running`, observable server-count +1) AND a real `containers` row is bound to the app (`project_name = appId`) via `containersRepository.create`. |
 | 3 | **app subdomain** configured + live | the container's `public_hostname` is the real `<shortid>.apps.elizacloud.ai` (`deriveAppPublicUrl`), and the Caddy on-demand-TLS gate `GET /api/v1/apps-ingress/ask?domain=<host>` authorizes a cert for the live host (**200**) while refusing an unknown host (**404**). This is the app link being wired + ready to serve TLS. |
 | 4 | enable monetization | `PUT /api/v1/apps/:id/monetization` (markup + purchase share); `GET` reads back `monetizationEnabled: true`. |
-| 5 | **monetized transaction** | the showcase org is debited the full base+markup charge through the real credit ledger (`creditsService.deductCredits`); the balance moves by exactly `base + markup`. |
-| 6 | usage -> creator earning | the app's inference markup is recorded to BOTH the app-scoped earnings ledger (`appEarningsRepository.addInferenceEarnings`; `GET /api/v1/apps/:id/earnings` summary climbs by exactly the markup) AND the creator's REDEEMABLE balance (`redeemableEarningsService.addEarnings`, source `app_owner_revenue_share`). |
+| 5 | **monetized transaction** | the showcase org is debited the full base+markup charge through the real per-app billing service (`appCreditsService.deductCredits`); the balance moves by exactly `base + computed markup`. |
+| 6 | usage -> creator earning | the app's inference markup is recorded to BOTH the app-scoped earnings ledger (`appEarningsRepository.addInferenceEarnings`; `GET /api/v1/apps/:id/earnings` summary climbs by exactly the computed markup) AND the creator's REDEEMABLE balance (`redeemableEarningsService.addEarnings`, source `app_owner_revenue_share`). |
 | 7 | redeemable / payout-ready | `GET /api/v1/redemptions/balance` reflects the accrued, withdrawable earning. |
 
 Account-level invariants the showcase exists to guarantee:

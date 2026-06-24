@@ -13,11 +13,12 @@
  * ## Why "effectively infinite" instead of a literal bypass
  *
  * Granting a very large real balance ($1,000,000) keeps EVERY downstream check
- * honest: each monetized transaction runs `creditsService.deductCredits` against
- * the same `FOR UPDATE` ledger a paying customer hits, the balance moves, and the
- * account simply never runs dry across a run. A special-cased "skip billing"
- * branch would do the opposite - it would route the showcase account around the
- * code we most want to keep green.
+ * honest: each monetized transaction runs `appCreditsService.deductCredits`, which
+ * debits the same `FOR UPDATE` org ledger a paying customer hits, computes the
+ * creator markup from app settings, and records the creator earning. The account
+ * simply never runs dry across a run. A special-cased "skip billing" branch would
+ * do the opposite - it would route the showcase account around the code we most
+ * want to keep green.
  *
  * ## Isolation from real revenue
  *
