@@ -136,7 +136,11 @@ extraction (`SeatownSin/...`, which has only `q_proj`/`o_proj` per block and
 fuses token+activation in one `pre_proj`), so the extraction's weights cannot be
 loaded into the milady arch. Producing a loadable drafter therefore requires
 either (a) running `distill_dflash_drafter.py` against an SFT'd Gemma-4 target on
-an H200, or (b) the emerging **EAGLE3 head** path (`LLM_ARCH_EAGLE3` in the fork;
+an H200, or (b) the **EAGLE3 head** path (`LLM_ARCH_EAGLE3` in the fork;
 develop's manifest schema already accepts an `eagle3` block referencing
-`RedHatAI/gemma-4-E2B-EAGLE3-head`). Both are training/publish tasks, not blocked
-by the runtime — which is fully built and Metal-validated above.
+`RedHatAI/gemma-4-E2B-EAGLE3-head`). EAGLE3 is forward-looking, not yet runnable:
+the referenced head is **not published** (placeholder id, 404 on HF) and the fork
+explicitly logs *"--spec-type=draft-eagle3 is not yet implemented in this build"*
+(`common/speculative.cpp`). So today every drafter path — DFlash distillation,
+the Google LiteRT extraction, and EAGLE3 — is either training- or publish-gated.
+None is blocked by the runtime, which is fully built and Metal-validated above.
