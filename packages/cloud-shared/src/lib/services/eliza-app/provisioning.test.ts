@@ -6,8 +6,13 @@ import { elizaSandboxService } from "../eliza-sandbox";
 const listByOrganization = mock();
 const createAgent = mock();
 const enqueueAgentProvision = mock();
+const deleteSandbox = mock();
 const hasElizaAppInitialFreeCredits = mock();
 const addCredits = mock();
+
+const deleteSandboxSpy = spyOn(agentSandboxesRepository, "delete").mockImplementation(
+  (...args) => deleteSandbox(...args) as never,
+);
 
 // Spread the real containersEnv so this process-global mock.module only
 // overrides defaultAgentImage. bun's mock.module leaks across files in a
@@ -72,6 +77,7 @@ mock.module("../provisioning-jobs", () => ({
 afterAll(() => {
   listByOrganizationSpy.mockRestore();
   createAgentSpy.mockRestore();
+  deleteSandboxSpy.mockRestore();
 });
 
 const { ensureElizaAppProvisioning } = await import(
@@ -83,6 +89,7 @@ describe("ensureElizaAppProvisioning", () => {
     listByOrganization.mockReset();
     createAgent.mockReset();
     enqueueAgentProvision.mockReset();
+    deleteSandbox.mockReset();
     hasElizaAppInitialFreeCredits.mockReset();
     addCredits.mockReset();
   });
@@ -95,9 +102,8 @@ describe("ensureElizaAppProvisioning", () => {
       newBalance: 5,
     });
     createAgent.mockResolvedValue({
-      id: "agent-1",
-      status: "provisioning",
-      bridge_url: null,
+      agent: { id: "agent-1", status: "provisioning", bridge_url: null },
+      idempotent: false,
     });
 
     const result = await ensureElizaAppProvisioning({
@@ -122,6 +128,7 @@ describe("ensureElizaAppProvisioning", () => {
       userId: "user-1",
       agentName: "Eliza",
       dockerImage: "ghcr.io/elizaos/eliza:stable",
+      reuseExistingNonTerminal: true,
     });
     expect(enqueueAgentProvision).toHaveBeenCalledWith({
       agentId: "agent-1",
@@ -134,6 +141,48 @@ describe("ensureElizaAppProvisioning", () => {
       agentId: "agent-1",
       bridgeUrl: null,
     });
+  });
+
+  test("reuses an in-flight sandbox without enqueuing a second provision job", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
+    listByOrganization.mockResolvedValue([]);
+    createAgent.mockResolvedValue({
+      agent: { id: "agent-1", status: "provisioning", bridge_url: null },
+      idempotent: true,
+    });
+
+    const result = await ensureElizaAppProvisioning({
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+
+    // The org-scoped guard already had an agent + its job in flight, so a retry
+    // must not mint a second job.
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: "provisioning",
+      agentId: "agent-1",
+    });
+  });
+
+  test("deletes the just-created sandbox when the provision enqueue throws", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
+    listByOrganization.mockResolvedValue([]);
+    createAgent.mockResolvedValue({
+      agent: { id: "agent-1", status: "pending", bridge_url: null },
+      idempotent: false,
+    });
+    enqueueAgentProvision.mockRejectedValue(new Error("queue down"));
+    deleteSandbox.mockResolvedValue(true);
+
+    await expect(
+      ensureElizaAppProvisioning({ organizationId: "org-1", userId: "user-1" }),
+    ).rejects.toThrow("queue down");
+
+    // A throw between the insert-commit and the enqueue would otherwise strand a
+    // job-less `pending` row the reuse guard then hands back forever — so the
+    // orphan is deleted, letting a retry mint a fresh agent + job.
+    expect(deleteSandbox).toHaveBeenCalledWith("agent-1", "org-1");
   });
 
   test("does not grant duplicate starter credits when an existing transaction is present", async () => {

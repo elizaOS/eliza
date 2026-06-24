@@ -94,24 +94,48 @@ app.post("/", async (c) => {
     }
 
     // No sandbox yet — create one and enqueue provisioning.
-    const sandbox = await elizaSandboxService.createAgent({
-      organizationId: session.organizationId,
-      userId: session.userId,
-      agentName: DEFAULT_AGENT_NAME,
-      dockerImage: DEFAULT_DOCKER_IMAGE,
-    });
+    const { agent: sandbox, idempotent } =
+      await elizaSandboxService.createAgent({
+        organizationId: session.organizationId,
+        userId: session.userId,
+        agentName: DEFAULT_AGENT_NAME,
+        dockerImage: DEFAULT_DOCKER_IMAGE,
+        reuseExistingNonTerminal: true,
+      });
 
-    await provisioningJobService.enqueueAgentProvision({
-      agentId: sandbox.id,
-      organizationId: session.organizationId,
-      userId: session.userId,
-      agentName: DEFAULT_AGENT_NAME,
-    });
+    // The org-scoped guard reused an in-flight sandbox; its provision job is
+    // already queued, so don't enqueue a second one.
+    if (!idempotent) {
+      // createAgent committed a `pending` row, but the daemon only claims rows
+      // that already have an `agent_provision` job. A throw here would strand
+      // the row, and the reuse guard would then hand that job-less row back on
+      // every later call (idempotent:true → skip enqueue), making it permanent.
+      // Delete the just-created row on failure so a retry mints a fresh agent.
+      try {
+        await provisioningJobService.enqueueAgentProvision({
+          agentId: sandbox.id,
+          organizationId: session.organizationId,
+          userId: session.userId,
+          agentName: DEFAULT_AGENT_NAME,
+        });
+      } catch (err) {
+        await agentSandboxesRepository.delete(
+          sandbox.id,
+          session.organizationId,
+        );
+        throw err;
+      }
+    }
 
-    logger.info("[eliza-app provisioning-agent] Provisioning kicked off", {
-      agentId: sandbox.id,
-      orgId: session.organizationId,
-    });
+    logger.info(
+      idempotent
+        ? "[eliza-app provisioning-agent] Reusing in-flight sandbox"
+        : "[eliza-app provisioning-agent] Provisioning kicked off",
+      {
+        agentId: sandbox.id,
+        orgId: session.organizationId,
+      },
+    );
 
     return c.json({
       success: true,

@@ -143,7 +143,9 @@ app.post("/", async (c) => {
       }
     }
 
-    const agent = await elizaSandboxService.createAgent({
+    // Compat is a multi-agent-per-org flow (each call mints a distinct agent),
+    // so the reuse guard stays off and createAgent always reports a fresh row.
+    const { agent } = await elizaSandboxService.createAgent({
       organizationId: user.organization_id,
       userId: user.id,
       agentName: parsed.data.agentName,

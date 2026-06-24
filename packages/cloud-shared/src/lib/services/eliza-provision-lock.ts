@@ -18,3 +18,15 @@ export function elizaProvisionAdvisoryLockSql(organizationId: string, agentId: s
 export function elizaCodingContainerImageAdvisoryLockSql(organizationId: string, image: string) {
   return sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId}), hashtext(${`coding-container:${image}`}))`;
 }
+
+/**
+ * Per-organization agent-create lock. Serializes the idempotent createAgent
+ * path so two near-simultaneous creates for the same org can't each mint a
+ * fresh sandbox (each = a container + per-tenant DB + ingress). Keyed on the
+ * org only — unlike the coding-container lock it deliberately ignores the
+ * image so it serializes ALL standard creates for the org. The fixed second
+ * key keeps the same two-int4 form as the other helpers.
+ */
+export function elizaAgentCreateAdvisoryLockSql(organizationId: string) {
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId}), hashtext(${"agent-create"}))`;
+}

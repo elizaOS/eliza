@@ -353,7 +353,7 @@ app.post("/", async (c) => {
     }
   }
 
-  const agent = await elizaSandboxService.createAgent({
+  const { agent, idempotent } = await elizaSandboxService.createAgent({
     organizationId: user.organization_id,
     userId: user.id,
     agentName: parsed.data.agentName,
@@ -364,7 +364,36 @@ app.post("/", async (c) => {
       : sanitizedConfig,
     environmentVars: parsed.data.environmentVars,
     executionTier,
+    reuseExistingNonTerminal: true,
   });
+
+  // Idempotent reuse: the org already had a non-terminal agent, so createAgent
+  // returned it instead of minting a duplicate. It is already provisioned (or
+  // its provision job is in flight) — do NOT enqueue a second job, do NOT run
+  // the orphan-cleanup wrapper (that would tear down a live agent), and return
+  // 200 (reuse) rather than the fresh-create 201/202.
+  if (idempotent) {
+    logger.info("[agent-api] Reusing existing non-terminal agent", {
+      agentId: agent.id,
+      orgId: user.organization_id,
+      status: agent.status,
+    });
+    return c.json(
+      {
+        success: true,
+        created: false,
+        data: {
+          id: agent.id,
+          agentId: agent.id,
+          agentName: agent.agent_name,
+          status: agent.status,
+          createdAt: agent.created_at,
+          executionTier: agent.execution_tier,
+        },
+      },
+      200,
+    );
+  }
 
   // Atomicity guard: createAgent already committed a pending row — any throw before the job is enqueued must roll it back (see withOrphanCleanup).
   return await withOrphanCleanup(agent.id, user.organization_id, async () => {
