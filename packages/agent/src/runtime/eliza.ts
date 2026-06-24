@@ -4557,6 +4557,26 @@ export async function startEliza(
     }
   };
 
+  const registerWebSearchActionIfEnabled = async (): Promise<void> => {
+    try {
+      const { webSearch, isWebSearchEnabled } = await import(
+        "./actions/web-search.ts"
+      );
+      if (!isWebSearchEnabled()) {
+        logger.info(
+          "[eliza] WEB_SEARCH action disabled via ELIZA_WEB_SEARCH=0|false|off",
+        );
+        return;
+      }
+      runtime.registerAction(webSearch);
+      logger.info("[eliza] Registered keyless WEB_SEARCH action");
+    } catch (err) {
+      logger.debug(
+        `[eliza] WEB_SEARCH action registration skipped: ${formatError(err)}`,
+      );
+    }
+  };
+
   const isAutonomyEnabled = (): boolean =>
     ["true", "1"].includes((process.env.ENABLE_AUTONOMY ?? "").toLowerCase());
 
@@ -4925,26 +4945,19 @@ export async function startEliza(
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
     await registerConversationProximityProvider();
-    await seedBundledDocumentsIfEnabled();
-    await runStewardEvmPostBoot();
-    await installServerSideWebSearchIfAvailable();
-    await registerWebFetchActionIfEnabled();
-    bootTimer.lap("deferred:post-init");
-
-    const autonomyLoopEnabled = isAutonomyEnabled();
-    await startAutonomyServiceIfEnabled(true);
-    await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
-    startAgentSkillsWarmup();
-    startEmbeddingWarmup();
-    // Re-probe the embedding dimension now that the deferred plugin waves have
-    // registered the cloud TEXT_EMBEDDING handler (plugin-elizacloud). The probe
-    // in runtime.initialize() runs ~38s earlier — before that deferred handler
-    // exists — so on a cloud agent it finds no TEXT_EMBEDDING model and the SQL
-    // adapter keeps its hardcoded dim384 default; every 1536-dim cloud vector is
-    // then dropped on a "dimension mismatch with configured column (dim384)".
+    // Probe the embedding dimension BEFORE seeding bundled documents (#8769).
+    // The deferred plugin waves above register the cloud TEXT_EMBEDDING handler
+    // (plugin-elizacloud, 1536-dim); the probe in runtime.initialize() ran ~38s
+    // earlier, before that handler existed, so the SQL adapter kept its
+    // hardcoded dim384 default. seedBundledDocumentsIfEnabled() embeds its docs
+    // at 1536 via the cloud handler, so if the column is still dim384 every
+    // bundled-doc vector is dropped on a "dimension mismatch with configured
+    // column (dim384)" and the agent boots with no recall memory. Snapping the
+    // column to dim1536 here — after the handler is registered, before the seed
+    // writes — lets those embeddings (and all later memory) persist.
     // ensureEmbeddingDimension() is public, idempotent, and self-guarding (it
-    // no-ops when no handler is registered, e.g. cloud-proxied agents), so this
-    // safely snaps the column to dim1536 and lets memory embeddings persist.
+    // no-ops when no TEXT_EMBEDDING handler is registered, e.g. cloud-proxied
+    // agents), so this is safe on every boot path.
     try {
       await runtime.ensureEmbeddingDimension();
     } catch (err) {
@@ -4954,6 +4967,18 @@ export async function startEliza(
         }`,
       );
     }
+    await seedBundledDocumentsIfEnabled();
+    await runStewardEvmPostBoot();
+    await installServerSideWebSearchIfAvailable();
+    await registerWebFetchActionIfEnabled();
+    await registerWebSearchActionIfEnabled();
+    bootTimer.lap("deferred:post-init");
+
+    const autonomyLoopEnabled = isAutonomyEnabled();
+    await startAutonomyServiceIfEnabled(true);
+    await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
+    startAgentSkillsWarmup();
+    startEmbeddingWarmup();
     // Trigger the lazy wallet singleton fire-and-forget. This is a safety net
     // — if no wallet route or signing flow triggers it earlier, wallets are
     // still generated here. The singleton keeps this harmless if already

@@ -99,11 +99,31 @@ function extractValue(body: string, extract: string | undefined): string {
 
 export const webFetch: Action & Record<string, unknown> = {
   name: "WEB_FETCH",
-  similes: ["LOOKUP_WEB", "WEB_LOOKUP", "FETCH_URL", "HTTP_GET", "GET_URL"],
+  similes: [
+    "LOOKUP_WEB",
+    "WEB_LOOKUP",
+    "FETCH_URL",
+    "HTTP_GET",
+    "GET_URL",
+    "LIVE_INFO",
+    "CURRENT_PRICE",
+    "CHECK_PRICE",
+    "CURRENT_WEATHER",
+  ],
+  // Declaring the `web` context attaches the catalog's live-info keyword docs
+  // (price/how-much/current/latest/news/weather) so action retrieval surfaces
+  // WEB_FETCH for natural live-info phrasings ("whats the price of btc",
+  // "weather in tokyo") — without it WEB_FETCH had NO keyword terms and scored
+  // 0, so those turns fell through to a coding sub-agent spawn.
+  contexts: ["web"],
   suppressInitialMessage: true,
   description:
-    "Fetch the contents of a public https URL or JSON data API and return the result inline. " +
-    "Use for live information — current data, status pages, public REST/JSON endpoints — when you already know (or can construct) the exact URL. " +
+    "Fetch one specific URL and return its contents — a JSON API, data file, or page whose address you already have or can construct exactly. " +
+    "Prefer a JSON API over an HTML page so the value parses cleanly, and fetch it inline THIS turn — " +
+    "e.g. https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd, " +
+    "https://wttr.in/Tokyo?format=j1, " +
+    "https://nodejs.org/dist/index.json. " +
+    "Optionally pass `extract` (a dotted JSON path) to return a single field. Returns the contents inline. " +
     "No API key required. Requests are https-only, GET-only, and SSRF-guarded (internal/private hosts are blocked).",
 
   parameters: [
