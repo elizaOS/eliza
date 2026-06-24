@@ -1782,12 +1782,61 @@ export class EngineVoiceBridge {
 	async transcribePcm(
 		args: TranscriptionAudio,
 		signal?: AbortSignal,
+		onPartial?: (delta: string) => void,
 	): Promise<string> {
 		this.assertVoiceOn("transcribe audio");
 		if (signal?.aborted) {
 			throw signal.reason instanceof Error
 				? signal.reason
 				: new DOMException("Aborted", "AbortError");
+		}
+		// Streaming path: when the caller wants partial transcripts (the
+		// TRANSCRIPTION model handler forwards the runtime's onStreamChunk here),
+		// drive the fused streaming-ASR session and emit each running partial as a
+		// delta — the same per-token pipe as chat text. Feed in ~1s windows so the
+		// decode surfaces partials progressively. Degrades gracefully: when the
+		// fused build's streaming-ASR decoder is a stub, createStreamingTranscriber
+		// resolves the fused batch adapter and the final transcript is emitted once.
+		if (onPartial) {
+			const transcriber = this.createStreamingTranscriber();
+			let shown = 0;
+			const emit = (full: string): void => {
+				if (typeof full === "string" && full.length > shown) {
+					const delta = full.slice(shown);
+					shown = full.length;
+					onPartial(delta);
+				}
+			};
+			const unsub = transcriber.on((ev) => {
+				if (ev.kind === "partial" || ev.kind === "final") {
+					emit(ev.update.partial);
+				}
+			});
+			const abort = () => transcriber.dispose();
+			try {
+				signal?.addEventListener("abort", abort, { once: true });
+				const win = Math.max(1600, Math.round(args.sampleRate));
+				for (let off = 0; off < args.pcm.length; off += win) {
+					if (signal?.aborted) break;
+					transcriber.feed({
+						pcm: args.pcm.subarray(off, Math.min(off + win, args.pcm.length)),
+						sampleRate: args.sampleRate,
+						timestampMs: Math.round((off / args.sampleRate) * 1000),
+					});
+				}
+				const final = await transcriber.flush();
+				emit(final.partial);
+				if (signal?.aborted) {
+					throw signal.reason instanceof Error
+						? signal.reason
+						: new DOMException("Aborted", "AbortError");
+				}
+				return final.partial;
+			} finally {
+				unsub();
+				signal?.removeEventListener("abort", abort);
+				transcriber.dispose();
+			}
 		}
 		const backendBatch = this.backend as OmniVoiceBackend & {
 			transcribe?: (args: TranscriptionAudio) => Promise<string>;
