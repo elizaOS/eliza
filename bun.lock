@@ -3176,6 +3176,7 @@
         "vitest": "^4.0.17",
       },
       "peerDependencies": {
+        "@elizaos/plugin-sql": "workspace:*",
         "react": "*",
         "react-dom": "*",
       },
