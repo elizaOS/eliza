@@ -68,6 +68,15 @@ export interface VoiceTurnObservation {
 
 export interface VoiceWorkbenchServices {
 	/**
+	 * Optional one-shot hook before a scenario's turns are scored. Real services
+	 * use this to enroll speaker centroids from the generated corpus; mock
+	 * services can omit it.
+	 */
+	prepareScenario?(args: {
+		scenario: VoiceScenario;
+		corpus: GeneratedVoiceCorpus;
+	}): Promise<void> | void;
+	/**
 	 * Feed one turn's audio slice through the real services and report what was
 	 * observed. The `label` carries the turn's ground truth (so a mock can echo
 	 * it); the real adapter ignores it and measures.
@@ -158,6 +167,7 @@ export async function runVoiceScenarioHeadless(
 
 	const assertions = scenario.assertions ?? {};
 	const cases: VoiceE2eCaseResult[] = [];
+	await services.prepareScenario?.({ scenario, corpus });
 
 	// When a capture sink is active, write the full corpus once + each per-turn
 	// slice as `.wav` artifacts and record their (run-dir-relative) paths.
