@@ -3,6 +3,7 @@ import { Bell } from "lucide-react";
 import { useNotifications } from "../../../state/notifications/notification-store";
 import { rankHomeNotifications } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 import { WidgetSection } from "./shared";
 
 const MAX_HOME_NOTIFICATIONS = 4;
@@ -32,20 +33,44 @@ function NotificationRow({
  * activity out of the box rather than only launcher icons. Reads the shared
  * notification store directly (no per-widget polling).
  */
-export function NotificationsWidget(_props: WidgetProps) {
+export function NotificationsWidget(props: WidgetProps) {
   const { notifications, unreadCount } = useNotifications();
+  const nav = useWidgetNavigation();
   // Rank by attention (unread → priority → recency) so an urgent notification
   // surfaces ahead of a newer low-priority one, not merely the newest few.
-  const recent = rankHomeNotifications(notifications).slice(
-    0,
-    MAX_HOME_NOTIFICATIONS,
-  );
+  const ranked = rankHomeNotifications(notifications);
+  const recent = ranked.slice(0, MAX_HOME_NOTIFICATIONS);
 
   // Render nothing until there's real activity. The always-visible home surface
   // (#9143) must not show an empty placeholder card — empty-state hints belong
   // on the dedicated view, not the home slot.
   if (recent.length === 0) {
     return null;
+  }
+
+  // Home slot: a single compact, icon-first, whole-card-clickable tile —
+  // the top (highest-priority, unread-first) notification as the one datum,
+  // unread count as the badge, urgent → danger. Tapping opens the notification's
+  // own deep link if it has one, else the inbox. The sidebar keeps the list.
+  if (props.slot === "home") {
+    const top = recent[0];
+    const urgent = top.priority === "urgent";
+    return (
+      <HomeWidgetCard
+        icon={<Bell />}
+        label="Notifications"
+        value={top.title}
+        badge={unreadCount > 0 ? unreadCount : undefined}
+        tone={urgent ? "danger" : top.priority === "high" ? "warn" : "default"}
+        testId="widget-notifications"
+        ariaLabel={`Notifications: ${unreadCount} unread, latest ${top.title}. Open inbox.`}
+        onActivate={() =>
+          top.deepLink
+            ? nav.openView(top.deepLink, "inbox")
+            : nav.openView("/inbox", "inbox")
+        }
+      />
+    );
   }
 
   return (
