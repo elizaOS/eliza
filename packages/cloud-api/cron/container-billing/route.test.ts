@@ -42,11 +42,16 @@ const suspendContainer = mock(async () => undefined);
  */
 const recordSuccessfulDailyBilling = mock(
   async (input: {
+    containerId: string;
     newBalance: number;
     fromCredits: number;
     fromEarnings: number;
     dailyCost: number;
-  }) => ({
+  }): Promise<{
+    newBalance: number;
+    transactionId: string | null;
+    alreadyBilled: boolean;
+  }> => ({
     newBalance: input.newBalance,
     transactionId: "tx-mock",
     alreadyBilled: false,
