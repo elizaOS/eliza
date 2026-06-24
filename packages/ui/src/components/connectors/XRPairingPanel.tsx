@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { client, type XRPairState } from "../../api";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -44,11 +45,13 @@ export function XRPairingPanel() {
     }
   }, []);
 
+  // Fetch once on mount; poll only while the tab is visible so a backgrounded
+  // connectors page doesn't hit the network every 5s (the interval is cleared on
+  // hide and re-established on show).
   useEffect(() => {
     void refresh();
-    const interval = setInterval(() => void refresh(), 5000);
-    return () => clearInterval(interval);
   }, [refresh]);
+  useIntervalWhenDocumentVisible(() => void refresh(), 5000);
 
   const openConnectPage = useCallback(() => {
     const base = client.baseUrl || "";

@@ -126,8 +126,43 @@ export function getCached<T>(
   return undefined;
 }
 
+/**
+ * Conservative deep equality for cached payloads. Cache values are fetched JSON
+ * (no functions/symbols/cycles), so a stringify compare is correct and cheap
+ * relative to the re-render it prevents. Anything non-serializable or stringify
+ * that throws falls through to "not equal" so a real update is never skipped.
+ */
+function cacheDataEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (
+    typeof a !== "object" ||
+    typeof b !== "object" ||
+    a === null ||
+    b === null
+  )
+    return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
 /** Overwrite the cached value for a key and notify subscribers. */
 export function setCached<T>(key: string, data: T, persist = false): void {
+  // A poll that returns an unchanged payload (the common case) must not churn
+  // the snapshot reference — useSyncExternalStore compares by reference, so a
+  // fresh-but-equal entry re-renders every consumer (e.g. the router + tab bar
+  // every 30s for useAvailableViews). Refresh freshness in place and skip the
+  // notify, keeping the same snapshot object the CacheEntry contract promises.
+  const existing = store.get(key) as CacheEntry<T> | undefined;
+  if (existing && cacheDataEqual(existing.data, data)) {
+    const now = Date.now();
+    existing.updatedAt = now;
+    if (existing.snapshot) existing.snapshot.updatedAt = now;
+    if (persist) writePersisted(key, { data: existing.data, updatedAt: now });
+    return;
+  }
   const entry: CacheEntry<T> = { data, updatedAt: Date.now() };
   store.set(key, entry);
   if (persist) writePersisted(key, { data, updatedAt: entry.updatedAt });

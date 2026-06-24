@@ -74,6 +74,11 @@ export function useSandboxStatusPoll(
         cleanup();
         return;
       }
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      )
+        return;
 
       setResult((prev) => ({ ...prev, isLoading: true }));
 
@@ -212,6 +217,11 @@ export function useSandboxListPoll(
 
     const poll = async () => {
       if (cancelled) return;
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      )
+        return;
 
       try {
         const res = await fetch("/api/v1/eliza/agents");

@@ -26,6 +26,7 @@ import {
   refreshVrmDesktopBatteryPixelPolicy,
   VRM_DESKTOP_BATTERY_POLL_MS,
 } from "./vrm-desktop-energy";
+import { computeVrmPausePolicy } from "./vrm-pause-policy";
 
 /** Resolved lazily — boot config may not be set at module-load time (bundled builds). */
 function getDefaultVrmPath(): string {
@@ -167,6 +168,10 @@ export function VrmViewer(props: VrmViewerProps) {
   const pointerParallaxRef = useRef<boolean>(props.pointerParallax ?? false);
   const lastStateEmitMsRef = useRef<number>(0);
   const mountedRef = useRef(true);
+  // Whether the canvas is actually on screen. Defaults true (SSR / no
+  // IntersectionObserver → behave as before); an observer flips it so a
+  // scrolled-away / occluded canvas pauses the GPU loop, not just a hidden tab.
+  const onScreenRef = useRef(true);
   const currentVrmPathRef = useRef<string>("");
   const rendererInitFailedRef = useRef(false);
   const pointerStateRef = useRef<{
@@ -216,12 +221,18 @@ export function VrmViewer(props: VrmViewerProps) {
     if (!engine || rendererInitFailedRef.current) return;
     const docVisible =
       typeof document === "undefined" || document.visibilityState === "visible";
-    const active = activeRef.current;
-    const animateHidden = companionAnimateWhenHiddenRef.current;
-    const shouldPause = !active || (!docVisible && !animateHidden);
-    const minimalWhileRunning = Boolean(animateHidden) && !docVisible && active;
-    engine.setPaused(shouldPause);
-    engine.setMinimalBackgroundMode(minimalWhileRunning);
+    const { paused, halfFramerateWhileHidden } = computeVrmPausePolicy({
+      active: activeRef.current,
+      onScreen: onScreenRef.current,
+      docVisible,
+      animateHidden: companionAnimateWhenHiddenRef.current,
+    });
+    engine.setPaused(paused);
+    // "animate when hidden": the old setMinimalBackgroundMode() was a no-op (the
+    // flag is read nowhere in the loop), so the engine ran FULL rate on a hidden
+    // tab. Use the real half-framerate throttle instead; the visible-path battery
+    // policy below restores the correct rate when the tab returns.
+    if (halfFramerateWhileHidden) engine.setHalfFramerateMode(true);
     if (docVisible) {
       void refreshVrmDesktopBatteryPixelPolicy(engine, {
         companionVrmPowerMode: companionVrmPowerModeRef.current,
@@ -364,6 +375,22 @@ export function VrmViewer(props: VrmViewerProps) {
         ? new ResizeObserver(() => resize())
         : null;
     resizeObserver?.observe(canvas);
+    // Pause the GPU render loop whenever the canvas leaves the viewport (scrolled
+    // away / behind another view), not just when the browser tab is hidden — the
+    // avatar is the heaviest GPU/battery cost in the app.
+    const intersectionObserver =
+      typeof IntersectionObserver !== "undefined"
+        ? new IntersectionObserver(
+            (entries) => {
+              const onScreen = entries.some((e) => e.isIntersecting);
+              if (onScreen === onScreenRef.current) return;
+              onScreenRef.current = onScreen;
+              applyVisibilityAndBackgroundPolicy();
+            },
+            { threshold: 0 },
+          )
+        : null;
+    intersectionObserver?.observe(canvas);
     window.addEventListener("resize", resize);
     void engine.whenReady().then(
       () => {
@@ -404,6 +431,7 @@ export function VrmViewer(props: VrmViewerProps) {
       window.clearInterval(batteryTimer);
       window.removeEventListener("resize", resize);
       resizeObserver?.disconnect();
+      intersectionObserver?.disconnect();
 
       engine.dispose();
       if (engineRef.current === engine) {

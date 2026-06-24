@@ -178,6 +178,11 @@ export function AppDomains({ appId }: AppDomainsProps) {
     const primaryDomain = domains.find((d) => d.isPrimary);
     if (primaryDomain?.customDomain && !primaryDomain.customDomainVerified) {
       pollIntervalRef.current = setInterval(() => {
+        if (
+          typeof document !== "undefined" &&
+          document.visibilityState !== "visible"
+        )
+          return;
         checkDomainStatus(primaryDomain.customDomain ?? "", true);
       }, 15000);
 

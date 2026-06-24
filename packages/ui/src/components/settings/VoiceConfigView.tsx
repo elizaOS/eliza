@@ -530,10 +530,12 @@ function WakeWordSection({
         handle = await getSwabblePlugin().addListener(
           "audioLevel",
           (evt: { level: number }) => {
-            // Write the meter width directly to the DOM to avoid a React
-            // re-render of the whole section on every (tens-of-Hz) mic frame.
+            // Write the meter directly to the DOM to avoid a React re-render of
+            // the whole section on every (tens-of-Hz) mic frame. Drive a
+            // compositor-only transform (scaleX) rather than `width` so the
+            // per-frame update doesn't force layout.
             if (meterRef.current) {
-              meterRef.current.style.width = `${Math.min(evt.level * 100, 100)}%`;
+              meterRef.current.style.transform = `scaleX(${Math.min(Math.max(evt.level, 0), 1)})`;
             }
           },
         );
@@ -784,8 +786,8 @@ function WakeWordSection({
         <div className="h-2 w-full overflow-hidden rounded-full bg-border/70">
           <div
             ref={meterRef}
-            className="h-full rounded-full bg-ok transition-all duration-75"
-            style={{ width: "0%" }}
+            className="h-full w-full origin-left rounded-full bg-ok transition-transform duration-75"
+            style={{ transform: "scaleX(0)" }}
           />
         </div>
       </div>

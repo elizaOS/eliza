@@ -49,6 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 
@@ -259,33 +260,33 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
     fetchAnalytics();
   }, [fetchAnalytics]);
 
-  useEffect(() => {
-    if (activeTab === "overview") {
-      const interval = setInterval(() => {
-        fetchAnalytics(false);
-      }, AUTO_REFRESH_INTERVAL);
-      return () => clearInterval(interval);
-    }
-  }, [activeTab, fetchAnalytics]);
+  useIntervalWhenDocumentVisible(
+    () => fetchAnalytics(false),
+    AUTO_REFRESH_INTERVAL,
+    activeTab === "overview",
+  );
 
   useEffect(() => {
     if (activeTab === "requests" || activeTab === "visitors") {
       fetchRequestStats();
-      const interval = setInterval(fetchRequestStats, AUTO_REFRESH_INTERVAL);
-      return () => clearInterval(interval);
     }
   }, [activeTab, fetchRequestStats]);
+  useIntervalWhenDocumentVisible(
+    fetchRequestStats,
+    AUTO_REFRESH_INTERVAL,
+    activeTab === "requests" || activeTab === "visitors",
+  );
 
   useEffect(() => {
     if (activeTab === "logs") {
       fetchRequestLogs(logsPage);
-      const interval = setInterval(
-        () => fetchRequestLogs(logsPage),
-        AUTO_REFRESH_INTERVAL,
-      );
-      return () => clearInterval(interval);
     }
   }, [activeTab, logsPage, fetchRequestLogs]);
+  useIntervalWhenDocumentVisible(
+    () => fetchRequestLogs(logsPage),
+    AUTO_REFRESH_INTERVAL,
+    activeTab === "logs",
+  );
 
   if (isLoading) {
     return (

@@ -978,10 +978,10 @@ const ThreadLine = React.memo(function ThreadLine({
             <motion.span
               key="copied"
               data-testid="thread-line-copied"
-              initial={{ opacity: 0, y: 4 }}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
+              transition={{ duration: reduce ? 0 : 0.18 }}
               className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black shadow"
             >
               Copied
@@ -1686,14 +1686,33 @@ export function ContinuousChatOverlay({
   const [bottomPad, setBottomPad] = React.useState(0);
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const sync = () => {
-      setViewport(readViewport());
+    const commit = () => {
+      // Bail out of the re-render when the viewport values are unchanged — vv
+      // `scroll` fires constantly while the keyboard animates but the height/
+      // inset frequently don't actually move between events.
+      setViewport((prev) => {
+        const next = readViewport();
+        return prev.height === next.height &&
+          prev.keyboardInset === next.keyboardInset &&
+          prev.innerHeight === next.innerHeight
+          ? prev
+          : next;
+      });
       const el = overlayRef.current;
       if (el) {
-        setBottomPad(
-          Number.parseFloat(getComputedStyle(el).paddingBottom) || 0,
-        );
+        const pad = Number.parseFloat(getComputedStyle(el).paddingBottom) || 0;
+        setBottomPad((prev) => (prev === pad ? prev : pad));
       }
+    };
+    // Coalesce the high-rate vv `scroll` to at most one commit per frame so the
+    // keyboard-animation storm can't drive >60 forced style reads + setStates/s.
+    let rafId = 0;
+    const sync = () => {
+      if (rafId !== 0) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        commit();
+      });
     };
     // A viewport SIZE change (rotation) must never strand the pill↔input morph
     // mid-crossfade — rotation often cancels the in-flight pointer with no
@@ -1711,8 +1730,9 @@ export function ContinuousChatOverlay({
     const vv = window.visualViewport;
     window.addEventListener("resize", syncAndSettle);
     vv?.addEventListener("resize", syncAndSettle);
-    vv?.addEventListener("scroll", sync);
+    vv?.addEventListener("scroll", sync, { passive: true });
     return () => {
+      if (rafId !== 0) cancelAnimationFrame(rafId);
       window.removeEventListener("resize", syncAndSettle);
       vv?.removeEventListener("resize", syncAndSettle);
       vv?.removeEventListener("scroll", sync);

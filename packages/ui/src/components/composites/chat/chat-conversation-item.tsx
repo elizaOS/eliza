@@ -1,6 +1,7 @@
 import { MoreHorizontal, PencilLine, X } from "lucide-react";
 import type React from "react";
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -123,7 +124,7 @@ export interface ChatConversationItemProps {
   variant?: ChatVariant;
 }
 
-export function ChatConversationItem({
+export const ChatConversationItem = memo(function ChatConversationItem({
   conversation,
   deleting = false,
   displayTitle,
@@ -331,4 +332,4 @@ export function ChatConversationItem({
       ) : null}
     </div>
   );
-}
+});
