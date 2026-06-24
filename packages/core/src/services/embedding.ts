@@ -212,31 +212,7 @@ export class EmbeddingGenerationService extends Service {
 				"Generated embedding",
 			);
 
-			if (memory.id) {
-				await this.runtime.updateMemory({
-					id: memory.id,
-					embedding,
-				});
-
-				await this.runtime.log({
-					entityId: this.runtime.agentId,
-					roomId: memory.roomId || this.runtime.agentId,
-					type: "embedding_event",
-					body: {
-						runId: item.runId,
-						memoryId: memory.id,
-						status: "completed",
-						duration,
-						source: "embeddingService",
-					},
-				});
-
-				await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
-					runtime: this.runtime,
-					memory: { ...memory, embedding },
-					source: "embeddingService",
-				});
-			}
+			await this.persistEmbedding(item, embedding, duration);
 		} catch (error) {
 			this.runtime.logger.error(
 				{
@@ -249,6 +225,42 @@ export class EmbeddingGenerationService extends Service {
 			);
 			throw error;
 		}
+	}
+
+	/**
+	 * Persist a generated vector to its memory and emit the completion event.
+	 * Extracted from {@link generateEmbedding} so the write-back lives in one place.
+	 */
+	private async persistEmbedding(
+		item: EmbeddingQueueItem,
+		embedding: number[],
+		durationMs: number,
+	): Promise<void> {
+		const { memory } = item;
+		if (!memory.id) {
+			return;
+		}
+		await this.runtime.updateMemory({
+			id: memory.id,
+			embedding,
+		});
+		await this.runtime.log({
+			entityId: this.runtime.agentId,
+			roomId: memory.roomId || this.runtime.agentId,
+			type: "embedding_event",
+			body: {
+				runId: item.runId,
+				memoryId: memory.id,
+				status: "completed",
+				duration: durationMs,
+				source: "embeddingService",
+			},
+		});
+		await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
+			runtime: this.runtime,
+			memory: { ...memory, embedding },
+			source: "embeddingService",
+		});
 	}
 
 	async stop(): Promise<void> {
