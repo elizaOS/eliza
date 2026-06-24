@@ -33,6 +33,12 @@ for (const envFile of [
 // `seedTestUser()` throws "ELIZA_KMS_BACKEND=steward requires steward.{...}".
 process.env.NODE_ENV ??= "test";
 process.env.ELIZA_KMS_BACKEND ??= "memory";
+const bunSourceCondition = "--conditions=eliza-source";
+if (!process.env.BUN_OPTIONS?.includes(bunSourceCondition)) {
+  process.env.BUN_OPTIONS = process.env.BUN_OPTIONS?.trim()
+    ? `${process.env.BUN_OPTIONS} ${bunSourceCondition}`
+    : bunSourceCondition;
+}
 
 const frontendUrl = process.env.E2E_FRONTEND_URL ?? "http://127.0.0.1:0";
 const recording = !!process.env.E2E_RECORD;
