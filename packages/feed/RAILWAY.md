@@ -35,6 +35,19 @@ not just `packages/feed`.
 - Start: `bash packages/feed/scripts/railway-start.sh` (ensures the schema, then
   `next start` binding `$PORT`).
 
+## Canonical host: feed.elizacloud.ai
+
+Use `https://feed.elizacloud.ai` as the public Feed origin in production. Set
+`NEXT_PUBLIC_APP_URL=https://feed.elizacloud.ai` on the web service so Next.js
+metadata, Open Graph cards, and Farcaster Mini App frame URLs all point at the
+same canonical host.
+
+The Cloudflare Worker route for `*.elizacloud.ai/*` makes `cloud-api` the
+default origin for every subdomain. Because Feed is served from its own Railway
+origin, the `feed.elizacloud.ai/*` host must be carved out of that wildcard
+route in Cloudflare: either add a more-specific Workers route with Worker =
+None, or make the `feed` DNS record DNS-only.
+
 ## 1. Create the project + services
 
 ```bash
