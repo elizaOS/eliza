@@ -2,8 +2,6 @@
 // into the (Entity, Relationship) graph so both surfaces stay in sync.
 import crypto from "node:crypto";
 import type {
-  LifeOpsFollowUp,
-  LifeOpsFollowUpStatus,
   LifeOpsMessageChannel,
   LifeOpsRelationship,
   LifeOpsRelationshipInteraction,
@@ -194,65 +192,6 @@ export function withRelationships<
       }
       const diffMs = Date.now() - lastMs;
       return Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
-    }
-
-    async createFollowUp(
-      input: Omit<
-        LifeOpsFollowUp,
-        "id" | "agentId" | "status" | "createdAt" | "updatedAt"
-      > & { status?: LifeOpsFollowUpStatus },
-    ): Promise<LifeOpsFollowUp> {
-      const now = isoNow();
-      const record: LifeOpsFollowUp = {
-        id: crypto.randomUUID(),
-        agentId: this.agentId(),
-        relationshipId: input.relationshipId,
-        dueAt: input.dueAt,
-        reason: input.reason,
-        status: input.status ?? "pending",
-        priority: input.priority,
-        draft: input.draft ?? null,
-        completedAt: input.completedAt ?? null,
-        metadata: input.metadata,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await this.repository.upsertFollowUp(record);
-      return record;
-    }
-
-    async completeFollowUp(id: string): Promise<void> {
-      await this.repository.updateFollowUpStatus(
-        this.agentId(),
-        id,
-        "completed",
-        isoNow(),
-      );
-    }
-
-    async snoozeFollowUp(id: string, newDueAt: string): Promise<void> {
-      await this.repository.updateFollowUpDueAt(this.agentId(), id, newDueAt);
-      await this.repository.updateFollowUpStatus(this.agentId(), id, "snoozed");
-    }
-
-    async listFollowUps(opts?: {
-      status?: LifeOpsFollowUpStatus;
-      dueOnOrBefore?: string;
-      limit?: number;
-    }): Promise<LifeOpsFollowUp[]> {
-      return this.repository.listFollowUps(this.agentId(), opts);
-    }
-
-    async getDailyFollowUpQueue(opts?: {
-      date?: string;
-      limit?: number;
-    }): Promise<LifeOpsFollowUp[]> {
-      const date = opts?.date ?? isoNow();
-      return this.repository.listFollowUps(this.agentId(), {
-        status: "pending",
-        dueOnOrBefore: date,
-        limit: opts?.limit,
-      });
     }
   }
 

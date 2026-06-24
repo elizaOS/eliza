@@ -1010,21 +1010,6 @@ export const lifeRelationshipInteractions = appLifeopsPgSchema.table(
   },
 );
 
-export const lifeFollowUps = appLifeopsPgSchema.table("life_follow_ups", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  relationshipId: text("relationship_id").notNull(),
-  dueAt: text("due_at").notNull(),
-  reason: text("reason").notNull(),
-  status: text("status").notNull(),
-  priority: integer("priority").notNull().default(3),
-  draftJson: text("draft_json"),
-  completedAt: text("completed_at"),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
 // Knowledge graph tables (life_entities, life_entity_identities,
 // life_entity_attributes, life_relationships_v2,
 // life_relationship_audit_events) are now runtime-owned: their drizzle
@@ -1609,7 +1594,6 @@ export const lifeOpsSchema = {
   lifeCheckinReports,
   lifeRelationships,
   lifeRelationshipInteractions,
-  lifeFollowUps,
   // life_entities / life_entity_* / life_relationships_v2 /
   // life_relationship_audit_events are now owned by the runtime
   // (`@elizaos/agent` KnowledgeGraphService schema) — registered there,

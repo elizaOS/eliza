@@ -22,6 +22,7 @@ import type {
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import { FinancesRepository } from "@elizaos/plugin-finances/db/finances-repository";
 import type {
   LifeOpsPaymentSource,
   LifeOpsPaymentTransaction,
@@ -31,7 +32,6 @@ import type {
   LifeOpsSubscriptionCancellation,
   LifeOpsSubscriptionCandidate,
 } from "@elizaos/plugin-finances/subscriptions-types";
-import { FinancesRepository } from "@elizaos/plugin-finances/db/finances-repository";
 import { inboxDbSchema } from "@elizaos/plugin-inbox/db/schema";
 import type {
   LifeOpsXDm,
@@ -52,8 +52,6 @@ import {
   type LifeOpsCircadianState,
   type LifeOpsConnectorGrant,
   type LifeOpsConnectorSide,
-  type LifeOpsCrossChannelDraft,
-  type LifeOpsFollowUp,
   type LifeOpsGmailMessageSummary,
   type LifeOpsGmailSpamReviewItem,
   type LifeOpsGmailSpamReviewStatus,
@@ -485,25 +483,6 @@ function parseRelationshipInteraction(
     occurredAt: toText(row.occurred_at),
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
-  };
-}
-
-function parseFollowUp(row: Record<string, unknown>): LifeOpsFollowUp {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    relationshipId: toText(row.relationship_id),
-    dueAt: toText(row.due_at),
-    reason: toText(row.reason),
-    status: toText(row.status) as LifeOpsFollowUp["status"],
-    priority: toNumber(row.priority, 3),
-    draft: row.draft_json
-      ? parseJsonValue<LifeOpsCrossChannelDraft | null>(row.draft_json, null)
-      : null,
-    completedAt: row.completed_at ? toText(row.completed_at) : null,
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
   };
 }
 
@@ -6156,116 +6135,6 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(relationshipId)}
           AND (last_contacted_at IS NULL OR last_contacted_at < ${sqlQuote(timestamp)})`,
-    );
-  }
-
-  async upsertFollowUp(fu: LifeOpsFollowUp): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_follow_ups (
-         id, agent_id, relationship_id, due_at, reason, status, priority,
-         draft_json, completed_at, metadata_json, created_at, updated_at
-       ) VALUES (
-         ${sqlQuote(fu.id)},
-         ${sqlQuote(fu.agentId)},
-         ${sqlQuote(fu.relationshipId)},
-         ${sqlQuote(fu.dueAt)},
-         ${sqlQuote(fu.reason)},
-         ${sqlQuote(fu.status)},
-         ${sqlInteger(fu.priority)},
-         ${fu.draft ? sqlJson(fu.draft) : "NULL"},
-         ${sqlText(fu.completedAt)},
-         ${sqlJson(fu.metadata)},
-         ${sqlQuote(fu.createdAt)},
-         ${sqlQuote(fu.updatedAt)}
-       )
-       ON CONFLICT (id) DO UPDATE SET
-         relationship_id = EXCLUDED.relationship_id,
-         due_at = EXCLUDED.due_at,
-         reason = EXCLUDED.reason,
-         status = EXCLUDED.status,
-         priority = EXCLUDED.priority,
-         draft_json = EXCLUDED.draft_json,
-         completed_at = EXCLUDED.completed_at,
-         metadata_json = EXCLUDED.metadata_json,
-         updated_at = EXCLUDED.updated_at`,
-    );
-  }
-
-  async getFollowUp(
-    agentId: string,
-    id: string,
-  ): Promise<LifeOpsFollowUp | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_follow_ups
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseFollowUp(row) : null;
-  }
-
-  async listFollowUps(
-    agentId: string,
-    opts?: { status?: string; dueOnOrBefore?: string; limit?: number },
-  ): Promise<LifeOpsFollowUp[]> {
-    const clauses = [`agent_id = ${sqlQuote(agentId)}`];
-    if (opts?.status) {
-      clauses.push(`status = ${sqlQuote(opts.status)}`);
-    }
-    if (opts?.dueOnOrBefore) {
-      clauses.push(`due_at <= ${sqlQuote(opts.dueOnOrBefore)}`);
-    }
-    const limitClause =
-      typeof opts?.limit === "number" ? `LIMIT ${sqlInteger(opts.limit)}` : "";
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_follow_ups
-        WHERE ${clauses.join(" AND ")}
-        ORDER BY due_at ASC
-        ${limitClause}`,
-    );
-    return rows.map(parseFollowUp);
-  }
-
-  async updateFollowUpStatus(
-    agentId: string,
-    id: string,
-    status: string,
-    completedAt?: string,
-  ): Promise<void> {
-    const now = isoNow();
-    const completedClause = completedAt
-      ? `, completed_at = ${sqlQuote(completedAt)}`
-      : "";
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_follow_ups
-          SET status = ${sqlQuote(status)},
-              updated_at = ${sqlQuote(now)}
-              ${completedClause}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}`,
-    );
-  }
-
-  async updateFollowUpDueAt(
-    agentId: string,
-    id: string,
-    dueAt: string,
-  ): Promise<void> {
-    const now = isoNow();
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_follow_ups
-          SET due_at = ${sqlQuote(dueAt)},
-              updated_at = ${sqlQuote(now)}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}`,
     );
   }
 
