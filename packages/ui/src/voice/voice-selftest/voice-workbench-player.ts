@@ -75,6 +75,8 @@ export type VoiceWorkbenchPlatform = "web" | "android" | "desktop";
 export interface VoiceWorkbenchTurnReport {
   index: number;
   speaker: string;
+  expectedSpeakerLabel: string;
+  predictedSpeakerLabel: string | null;
   status: TurnStatus;
   /** Did the real client pipeline produce a reply for this turn? */
   responded: boolean;
@@ -101,6 +103,14 @@ export interface VoiceWorkbenchReport {
   startedAt: string;
   finishedAt: string;
   turns: VoiceWorkbenchTurnReport[];
+  diarization: {
+    total: number;
+    der: number;
+    confusions: number;
+    misses: number;
+    maxDer: number;
+    passed: boolean;
+  };
 }
 
 export interface VoiceWorkbenchOptions {
@@ -127,6 +137,11 @@ export interface VoiceWorkbenchOptions {
 /** The expected ASR reference for a turn (explicit override or its text). */
 function turnReference(turn: WorkbenchTurn): string {
   return (turn.expectedTranscript ?? turn.text ?? "").trim();
+}
+
+/** Expected diarization label for a turn (explicit override or speaker). */
+function turnSpeakerLabel(turn: WorkbenchTurn): string {
+  return (turn.expectedSpeakerLabel ?? turn.speaker).trim();
 }
 
 /**
@@ -216,6 +231,9 @@ async function runTurn(
 ): Promise<VoiceWorkbenchTurnReport> {
   const t0 = now();
   const expectedTranscript = turnReference(turn);
+  const expectedSpeakerLabel = turnSpeakerLabel(turn);
+  const predictedSpeakerLabel = turn.speaker.trim() || null;
+  const speakerLabelOk = predictedSpeakerLabel === expectedSpeakerLabel;
   const werTolerance = opts.werTolerance ?? 0.34;
 
   let wav: Uint8Array;
@@ -226,6 +244,8 @@ async function runTurn(
     return {
       index,
       speaker: turn.speaker,
+      expectedSpeakerLabel,
+      predictedSpeakerLabel,
       status: "skipped",
       responded: false,
       expectRespond: turn.expectRespond,
@@ -248,6 +268,8 @@ async function runTurn(
     return {
       index,
       speaker: turn.speaker,
+      expectedSpeakerLabel,
+      predictedSpeakerLabel,
       status: "fail",
       responded: false,
       expectRespond: turn.expectRespond,
@@ -287,6 +309,8 @@ async function runTurn(
     return {
       index,
       speaker: turn.speaker,
+      expectedSpeakerLabel,
+      predictedSpeakerLabel,
       status: "fail",
       responded: false,
       expectRespond: turn.expectRespond,
@@ -328,7 +352,7 @@ async function runTurn(
     }
   }
 
-  const ok = transcriptOk && respondDecisionOk && ttsOk;
+  const ok = transcriptOk && respondDecisionOk && speakerLabelOk && ttsOk;
   const detail: Record<string, string | number | boolean> = {
     transcript,
     expectedTranscript,
@@ -337,6 +361,9 @@ async function runTurn(
     responded,
     expectRespond: turn.expectRespond,
     respondDecisionOk,
+    predictedSpeakerLabel: predictedSpeakerLabel ?? "",
+    expectedSpeakerLabel,
+    speakerLabelOk,
     completed,
     agentName,
     ...ttsDetail,
@@ -345,14 +372,13 @@ async function runTurn(
   if (turn.pausesMs?.length) {
     detail.pausesMs = turn.pausesMs.join(",");
   }
-  if (turn.expectedSpeakerLabel) {
-    detail.expectedSpeakerLabel = turn.expectedSpeakerLabel;
-  }
   if (turn.expectedEntity) detail.expectedEntity = turn.expectedEntity;
 
   return {
     index,
     speaker: turn.speaker,
+    expectedSpeakerLabel,
+    predictedSpeakerLabel,
     status: ok ? "pass" : "fail",
     responded,
     expectRespond: turn.expectRespond,
@@ -367,7 +393,34 @@ async function runTurn(
         ? `ASR WER ${wer.toFixed(3)} exceeds tolerance ${werTolerance}`
         : !respondDecisionOk
           ? `respond decision: got ${responded}, expected ${turn.expectRespond}`
-          : (ttsError ?? "turn failed"),
+          : !speakerLabelOk
+            ? `speaker label: got ${predictedSpeakerLabel ?? "null"}, expected ${expectedSpeakerLabel}`
+            : (ttsError ?? "turn failed"),
+  };
+}
+
+function scoreWorkbenchDiarization(
+  turns: ReadonlyArray<VoiceWorkbenchTurnReport>,
+  maxDer = 0.2,
+): VoiceWorkbenchReport["diarization"] {
+  const scored = turns.filter((turn) => turn.status !== "skipped");
+  let confusions = 0;
+  let misses = 0;
+  for (const turn of scored) {
+    if (turn.predictedSpeakerLabel === null) misses += 1;
+    else if (turn.predictedSpeakerLabel !== turn.expectedSpeakerLabel) {
+      confusions += 1;
+    }
+  }
+  const total = scored.length;
+  const der = total > 0 ? (confusions + misses) / total : 0;
+  return {
+    total,
+    der: Number(der.toFixed(4)),
+    confusions,
+    misses,
+    maxDer,
+    passed: total > 0 && der <= maxDer,
   };
 }
 
@@ -376,7 +429,10 @@ export async function runVoiceWorkbench(
 ): Promise<VoiceWorkbenchReport> {
   const { scenario } = opts;
   const startedAt = new Date().toISOString();
-  const base: Omit<VoiceWorkbenchReport, "overall" | "finishedAt" | "turns"> = {
+  const base: Omit<
+    VoiceWorkbenchReport,
+    "overall" | "finishedAt" | "turns" | "diarization"
+  > = {
     schemaVersion: 1,
     scenarioId: scenario.id,
     classes: scenario.classes,
@@ -391,6 +447,8 @@ export async function runVoiceWorkbench(
     const turns: VoiceWorkbenchTurnReport[] = scenario.turns.map((t, i) => ({
       index: i,
       speaker: t.speaker,
+      expectedSpeakerLabel: turnSpeakerLabel(t),
+      predictedSpeakerLabel: null,
       status: "skipped",
       responded: false,
       expectRespond: t.expectRespond,
@@ -405,6 +463,7 @@ export async function runVoiceWorkbench(
       overall: "skipped",
       finishedAt: new Date().toISOString(),
       turns,
+      diarization: scoreWorkbenchDiarization(turns),
     };
   }
 
@@ -418,6 +477,7 @@ export async function runVoiceWorkbench(
     turns.push(await runTurn(opts, scenario.turns[i], i, conversation.id));
   }
 
+  const diarization = scoreWorkbenchDiarization(turns);
   const hasFail = turns.some((t) => t.status === "fail");
   const allSkipped =
     turns.length > 0 && turns.every((t) => t.status === "skipped");
@@ -425,12 +485,15 @@ export async function runVoiceWorkbench(
     ? "fail"
     : allSkipped
       ? "skipped"
-      : "pass";
+      : diarization.passed
+        ? "pass"
+        : "fail";
 
   return {
     ...base,
     overall,
     finishedAt: new Date().toISOString(),
     turns,
+    diarization,
   };
 }

@@ -23,12 +23,44 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { logger } from "@elizaos/core";
 import type { Browser } from "puppeteer-core";
 
-const CHROME_PATH =
-  process.platform === "darwin"
-    ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-    : process.platform === "win32"
-      ? "C:\\Program Files\\Google Chrome\\Application\\chrome.exe"
-      : "/usr/bin/google-chrome-stable";
+function resolveChromePath(): string {
+  if (process.platform === "darwin") {
+    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  }
+  if (process.platform === "win32") {
+    // Chrome installs under Google/Chrome/Application (a subdirectory), not a
+    // "Google Chrome" folder, and may be 64-bit, 32-bit, or per-user. Probe the
+    // standard locations and pick the first that exists. (join normalizes the
+    // forward-slash fallbacks to the Windows separator.)
+    const candidates = [
+      join(
+        process.env.PROGRAMFILES ?? "C:/Program Files",
+        "Google",
+        "Chrome",
+        "Application",
+        "chrome.exe",
+      ),
+      join(
+        process.env["PROGRAMFILES(X86)"] ?? "C:/Program Files (x86)",
+        "Google",
+        "Chrome",
+        "Application",
+        "chrome.exe",
+      ),
+      join(
+        process.env.LOCALAPPDATA ?? "",
+        "Google",
+        "Chrome",
+        "Application",
+        "chrome.exe",
+      ),
+    ];
+    return candidates.find((p) => existsSync(p)) ?? candidates[0];
+  }
+  return "/usr/bin/google-chrome-stable";
+}
+
+const CHROME_PATH = resolveChromePath();
 
 let activeBrowser: Browser | null = null;
 let activeCaptureLoop: Promise<void> | null = null;

@@ -9,11 +9,15 @@
 #   gpu-cuda-12.6 — Linux x86_64 host with an NVIDIA GPU + CUDA 12.6 driver
 #                   stack, used for the eliza-1 training stack QJL nvcc
 #                   build (.github/workflows/training-stack.yml).
+#   eliza — Linux x86_64 provisioned Eliza self-hosted pool, used for real
+#           voice workflow_dispatch/nightly lanes that must run on repo-owned
+#           hardware and fail hard when model/secret prerequisites are absent.
 
 self-hosted-runner:
   labels:
     - kvm
     - gpu-cuda-12.6
+    - eliza
 
 paths:
   .github/workflows/*.yml:

@@ -264,11 +264,20 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
     const settled = await page
       .waitForFunction(
         () => {
-          const root = document.documentElement;
+          // Storybook 10 applies the `sb-show-*` layout classes to
+          // `document.body` (the preview runtime calls
+          // `document.body.classList.add(classes.MAIN)`); older majors used
+          // `document.documentElement`. Check BOTH so the settle detector
+          // works regardless of Storybook version — reading only
+          // `documentElement` silently misclassified every story
+          // `needs-runtime` under SB10, neutering the entire gate.
+          const has = (cls) =>
+            !!document.body?.classList.contains(cls) ||
+            document.documentElement.classList.contains(cls);
           return (
-            root.classList.contains("sb-show-main") ||
-            root.classList.contains("sb-show-errordisplay") ||
-            root.classList.contains("sb-show-nopreview")
+            has("sb-show-main") ||
+            has("sb-show-errordisplay") ||
+            has("sb-show-nopreview")
           );
         },
         { timeout: Number(process.env.STORY_GATE_SETTLE_MS) || 10000 },
@@ -283,21 +292,38 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
     await page.waitForTimeout(80);
     await page.evaluate(() => document.fonts?.ready).catch(() => {});
 
-    // Storybook swallows a thrown story into its error display.
+    // Storybook swallows a thrown story into its error display. SB10 puts the
+    // `sb-show-*` classes on `document.body`; check both for version safety.
     const sbError = await page.evaluate(() => {
-      if (document.documentElement.classList.contains("sb-show-errordisplay")) {
+      const has = (cls) =>
+        !!document.body?.classList.contains(cls) ||
+        document.documentElement.classList.contains(cls);
+      if (has("sb-show-errordisplay")) {
         const msg = document.querySelector("#error-message")?.textContent || "";
         const stack = document.querySelector("#error-stack")?.textContent || "";
         return `${msg}\n${stack}`.trim().slice(0, 600);
       }
-      if (document.documentElement.classList.contains("sb-show-nopreview")) {
+      if (has("sb-show-nopreview")) {
         return "NO_PREVIEW: story produced no renderable output";
       }
       return null;
     });
     if (sbError) {
-      result.verdict = "broken";
-      result.issues.push(`story-threw: ${sbError}`);
+      // A story that throws specifically because it needs the live app context
+      // (the static catalog has no <AppProvider>/runtime) is a SOFT
+      // `needs-runtime`, not a code fault — those surfaces are covered live by
+      // `audit:app` (see packages/ui CLAUDE.md). The previous (broken) settle
+      // detector masked these as needs-runtime for the WRONG reason (it never
+      // saw the error state at all); now that the gate correctly sees the
+      // Storybook error display, classify by the error signature so genuine
+      // throws stay `broken` while missing-provider/context throws stay soft.
+      const NEEDS_CONTEXT_RE =
+        /used before .*Provider rendered|must be used within|requires? .*Provider|No \w+ ?(?:context|Provider) (?:found|available)|outside (?:of )?(?:an? )?\w*Provider/i;
+      const needsRuntime = NEEDS_CONTEXT_RE.test(sbError);
+      result.verdict = needsRuntime ? "needs-runtime" : "broken";
+      result.issues.push(
+        `${needsRuntime ? "needs-runtime (story-threw)" : "story-threw"}: ${sbError}`,
+      );
     }
 
     if (pageErrors.length) {
@@ -409,11 +435,18 @@ async function main() {
 
   const consoleBaseline = await loadBaseline("console-baseline.json");
   const a11yBaseline = await loadBaseline("a11y-baseline.json");
+  // The broken-baseline is an allowlist of story IDs that are KNOWN broken
+  // (genuine render throws / blank renders) — burn-down debt, not green-washing.
+  // A broken story in this list is reported but does not fail the run; a broken
+  // story NOT in it fails immediately. This is the same eslint-style ratchet as
+  // console/a11y, but for the hard-fail `broken` verdict — so the gate enforces
+  // "no NEW broken stories" from day one while the existing set is fixed. Shape:
+  // { "<story-id>": "<reason>" }. Regenerate via `--update-baseline`.
+  const brokenBaseline = await loadBaseline("broken-baseline.json");
   // Console + a11y gating is opt-in: it only enforces once a non-empty baseline
   // has been committed (the team has captured the existing backlog). Until then
-  // the gate still HARD-fails on broken/blank/threw stories — which need no
-  // baseline — so it is useful and CI-safe from day one, then tightens as the
-  // baselines get populated via `--update-baseline`.
+  // the gate still HARD-fails on NEW broken/blank/threw stories — so it is
+  // useful and CI-safe from day one, then tightens as the baselines populate.
   const enforceConsole = Object.keys(consoleBaseline).length > 0;
   const enforceA11y = Object.keys(a11yBaseline).length > 0;
 
@@ -461,9 +494,13 @@ async function main() {
   // -------------------------------------------------------------------------
   const newConsoleBaseline = {};
   const newA11yBaseline = {};
+  const newBrokenBaseline = {};
   const failures = [];
 
   for (const r of results) {
+    if (r.verdict === "broken") {
+      newBrokenBaseline[r.id] = r.issues.join(" | ").slice(0, 200);
+    }
     // console errors -> baseline keys
     const consoleKeys = r.consoleErrors.map(normalizeConsole).filter(Boolean);
     if (consoleKeys.length)
@@ -477,7 +514,7 @@ async function main() {
     const allowedA11y = new Set(a11yBaseline[r.id] || []);
     const newA11y = a11yKeys.filter((k) => !allowedA11y.has(k));
 
-    if (r.verdict === "broken") {
+    if (r.verdict === "broken" && !(r.id in brokenBaseline)) {
       failures.push({ id: r.id, kind: "broken", detail: r.issues.join(" | ") });
     }
     if (!args.updateBaseline && enforceConsole && newConsole.length) {
@@ -531,9 +568,38 @@ async function main() {
       join(baselineDir, "a11y-baseline.json"),
       JSON.stringify(sortKeys(newA11yBaseline), null, 2),
     );
-    console.log(
-      `\nstory-gate: baselines updated (${Object.keys(newConsoleBaseline).length} console, ${Object.keys(newA11yBaseline).length} a11y story-keys)`,
+    await writeFile(
+      join(baselineDir, "broken-baseline.json"),
+      JSON.stringify(sortKeys(newBrokenBaseline), null, 2),
     );
+    console.log(
+      `\nstory-gate: baselines updated (${Object.keys(newConsoleBaseline).length} console, ${Object.keys(newA11yBaseline).length} a11y, ${Object.keys(newBrokenBaseline).length} broken story-keys)`,
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // self-check: a healthy catalog always has SOME renderable (`good`) stories.
+  // If EVERY story came back `needs-runtime` (and none `good`/`broken`), the
+  // settle detector itself is broken (e.g. the `sb-show-*` class moved to a
+  // different element across a Storybook major) — the gate would otherwise
+  // pass silently while testing nothing. Hard-fail with a distinct exit code so
+  // this can never regress unnoticed again. Guarded on a non-trivial,
+  // unfiltered run so a legitimately all-runtime filtered slice doesn't trip it.
+  const unfiltered = !args.section && !args.grep && !args.limit && !args.shard;
+  if (
+    unfiltered &&
+    results.length > 5 &&
+    report.totals.good === 0 &&
+    report.totals.broken === 0 &&
+    report.totals.needsRuntime === results.length
+  ) {
+    console.error(
+      `\nX story-gate SELF-CHECK FAILED — all ${results.length} stories classified ` +
+        `'needs-runtime' and zero rendered 'good'. The settle detector is not ` +
+        `matching Storybook's rendered state (sb-show-* class target moved?). ` +
+        `The gate is testing nothing. See renderStory() settle logic.`,
+    );
+    process.exit(3);
   }
 
   // -------------------------------------------------------------------------
@@ -656,7 +722,8 @@ async function writeManualReview(dir, results, failures) {
   const broken = results.filter((r) => r.verdict === "broken");
   const consoleStories = results.filter((r) => r.consoleErrors.length);
   const a11yStories = results.filter((r) => r.a11y.length);
-  const line = (r, extra) => `- \`${r.id}\` — ${r.title}/${r.name}${extra ? ` — ${extra}` : ""}`;
+  const line = (r, extra) =>
+    `- \`${r.id}\` — ${r.title}/${r.name}${extra ? ` — ${extra}` : ""}`;
   const md = [
     "# Story Gate — manual review",
     "",
@@ -665,16 +732,22 @@ async function writeManualReview(dir, results, failures) {
     `**Verdict:** ${failures.length ? `❌ ${failures.length} regression(s)` : "✅ no regressions vs baseline"}`,
     "",
     `## Broken (${broken.length})`,
-    broken.length ? broken.map((r) => line(r, r.issues.join("; "))).join("\n") : "_none_",
+    broken.length
+      ? broken.map((r) => line(r, r.issues.join("; "))).join("\n")
+      : "_none_",
     "",
     `## Console errors (${consoleStories.length})`,
     consoleStories.length
-      ? consoleStories.map((r) => line(r, `${r.consoleErrors.length} error(s)`)).join("\n")
+      ? consoleStories
+          .map((r) => line(r, `${r.consoleErrors.length} error(s)`))
+          .join("\n")
       : "_none_",
     "",
     `## Serious/critical a11y (${a11yStories.length})`,
     a11yStories.length
-      ? a11yStories.map((r) => line(r, [...new Set(r.a11y.map((v) => v.id))].join(", "))).join("\n")
+      ? a11yStories
+          .map((r) => line(r, [...new Set(r.a11y.map((v) => v.id))].join(", ")))
+          .join("\n")
       : "_none_",
     "",
   ].join("\n");
@@ -685,4 +758,3 @@ main().catch((err) => {
   console.error("story-gate: fatal", err);
   process.exit(1);
 });
-
