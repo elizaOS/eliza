@@ -95,7 +95,7 @@ export function MessagesSpatialView({
     snapshot.composeBody.trim().length > 0;
 
   return (
-    <Card title="Messages" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text style="caption" tone={roleTone(snapshot)} grow={1}>
           {roleLabel(snapshot)}

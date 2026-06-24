@@ -61,7 +61,7 @@ export function FocusSpatialView({
 }: FocusSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   return (
-    <Card title="Focus" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <FocusBody snapshot={snapshot} dispatch={dispatch} />
     </Card>
   );

@@ -133,7 +133,7 @@ export function SmartglassesSpatialView({
     .reverse();
 
   return (
-    <Card title="Smartglasses" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"

@@ -81,7 +81,7 @@ export function VectorBrowserSpatialView({
   } = snapshot;
 
   return (
-    <Card title="Vector Browser" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text style="caption" tone="success" grow={1}>
           {loading ? "loading" : `${vectorCount} vectors`}

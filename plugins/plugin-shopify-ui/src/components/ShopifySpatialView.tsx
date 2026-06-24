@@ -271,8 +271,8 @@ function ProductsSection({
         {snapshot.productSearch
           ? `search "${snapshot.productSearch}"`
           : "all products"}{" "}
-        | page {snapshot.productsPage} of {totalPages} | {snapshot.productsTotal}{" "}
-        total
+        | page {snapshot.productsPage} of {totalPages} |{" "}
+        {snapshot.productsTotal} total
       </Text>
       {snapshot.products.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
@@ -351,8 +351,12 @@ function OrdersSection({
         {ORDER_FILTERS.map((filter) => (
           <Button
             key={filter.id}
-            variant={snapshot.orderStatusFilter === filter.id ? "solid" : "outline"}
-            tone={snapshot.orderStatusFilter === filter.id ? "primary" : "default"}
+            variant={
+              snapshot.orderStatusFilter === filter.id ? "solid" : "outline"
+            }
+            tone={
+              snapshot.orderStatusFilter === filter.id ? "primary" : "default"
+            }
             agent={`orders-filter-${filter.id}`}
             onPress={() => onAction?.(`orders:filter:${filter.id}`)}
           >
@@ -532,7 +536,7 @@ export function ShopifySpatialView({
   const shop = snapshot.status?.shop ?? null;
 
   return (
-    <Card title="Shopify" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center" width="100%">
         <Text
           style="caption"

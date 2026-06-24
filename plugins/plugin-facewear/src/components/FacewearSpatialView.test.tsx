@@ -43,7 +43,6 @@ describe("FacewearSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Facewear");
       expect(flat).toContain("device connected"); // header pill (singular)
       expect(flat).toContain("Meta Quest"); // a device row
       expect(flat).toContain("Refresh"); // quick action
@@ -61,7 +60,6 @@ describe("FacewearSpatialView one source, three modalities", () => {
     expect(gui).toContain('data-spatial-surface="gui"');
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
-      expect(html).toContain("Facewear");
       expect(html).toContain("Meta Quest");
       expect(html).toContain('data-agent-id="connect:meta-quest"');
       expect(html).toContain('data-agent-id="refresh"');
@@ -98,7 +96,6 @@ describe("FacewearSpatialView one source, three modalities", () => {
       const lines = component?.render(50) ?? [];
       expect(lines.length).toBeGreaterThan(0);
       for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Facewear");
     } finally {
       unregister();
     }

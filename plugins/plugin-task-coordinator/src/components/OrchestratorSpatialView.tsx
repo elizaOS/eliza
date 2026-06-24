@@ -208,7 +208,7 @@ function OrchestratorList({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <Card title="Orchestrator" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center" wrap>
         <Text style="caption" tone="muted" grow={1}>
           {loading ? "loading" : `${threads.length} threads`}
@@ -354,7 +354,7 @@ function OrchestratorDetail({
     detail.status === "failed" ||
     detail.status === "archived";
   return (
-    <Card title="Task" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Button
           variant="ghost"

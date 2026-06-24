@@ -79,13 +79,15 @@ export function ImageGenSpatialView({
   const balance = formatUsd(result?.charge?.balance);
 
   return (
-    <Card title="Image Generation" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text style="caption" tone="success" grow={1}>
           credits-settled
         </Text>
         <Text style="caption" tone="muted">
-          {snapshot.markupPct == null ? "markup n/a" : `markup +${snapshot.markupPct}%`}
+          {snapshot.markupPct == null
+            ? "markup n/a"
+            : `markup +${snapshot.markupPct}%`}
         </Text>
       </HStack>
 

@@ -349,7 +349,7 @@ export function StewardSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
   const title = snapshot.tab === "approvals" ? "Approvals" : "History";
   return (
-    <Card title="Steward" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center" width="100%">
         <Text
           style="caption"

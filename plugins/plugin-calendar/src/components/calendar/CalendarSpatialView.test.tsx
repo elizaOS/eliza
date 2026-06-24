@@ -44,7 +44,6 @@ describe("CalendarSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Calendar");
       expect(flat).toContain("Design sync");
       expect(flat).toContain("Lunch with Grace");
       expect(flat).toContain("Today");

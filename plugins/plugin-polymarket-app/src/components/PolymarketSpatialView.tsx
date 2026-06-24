@@ -353,7 +353,7 @@ export function PolymarketSpatialView({
   const accountReady = status?.account?.ready ?? false;
   const selectedId = selectedMarket?.id ?? null;
   return (
-    <Card title="Polymarket" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center" wrap>
         <ReadinessRow status={status} />
         <Text style="caption" tone="muted" grow={1}>

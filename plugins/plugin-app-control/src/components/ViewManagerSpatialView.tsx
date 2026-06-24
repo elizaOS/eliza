@@ -50,7 +50,7 @@ export function ViewManagerSpatialView({
 }: ViewManagerSpatialViewProps) {
 	const available = snapshot.views.filter((view) => view.available).length;
 	return (
-		<Card title="Views" gap={1} padding={1}>
+		<Card gap={1} padding={1}>
 			<HStack gap={1} align="center">
 				<Text style="caption" tone="success" grow={1}>
 					{snapshot.loading

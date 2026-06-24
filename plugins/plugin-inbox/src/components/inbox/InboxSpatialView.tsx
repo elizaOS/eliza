@@ -124,7 +124,7 @@ export function InboxSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card title="Inbox" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <InboxChannelFilters filters={snapshot.filters} dispatch={dispatch} />
       <InboxBody snapshot={snapshot} dispatch={dispatch} />
     </Card>

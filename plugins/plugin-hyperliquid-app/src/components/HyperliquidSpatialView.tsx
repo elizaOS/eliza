@@ -110,7 +110,7 @@ export function HyperliquidSpatialView({
 
   if (snapshot.unavailable) {
     return (
-      <Card title="Hyperliquid" gap={1} padding={1}>
+      <Card gap={1} padding={1}>
         <Text tone="muted" align="center">
           Unavailable on this device
         </Text>
@@ -136,7 +136,7 @@ export function HyperliquidSpatialView({
   }
 
   return (
-    <Card title="Hyperliquid" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"

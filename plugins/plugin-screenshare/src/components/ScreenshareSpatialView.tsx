@@ -106,7 +106,7 @@ export function ScreenshareSpatialView({
   );
 
   return (
-    <Card title="Screen Share" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"

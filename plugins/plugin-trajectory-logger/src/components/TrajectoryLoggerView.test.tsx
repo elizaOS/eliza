@@ -197,11 +197,11 @@ afterEach(() => {
 });
 
 describe("TrajectoryLoggerView — unified GUI/XR wrapper", () => {
-  it("renders the SpatialSurface-wrapped spatial view with the brand title", async () => {
+  it("renders the SpatialSurface-wrapped spatial view", async () => {
     installFetch();
     render(React.createElement(TrajectoryLoggerView));
-    expect(screen.getByText("Trajectories")).toBeTruthy();
     expect(document.querySelector("[data-spatial-surface]")).toBeTruthy();
+    expect(screen.getByText("Back")).toBeTruthy();
   });
 
   it("polls real-shape data into the snapshot (recording state + populated phase)", async () => {

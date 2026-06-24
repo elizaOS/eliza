@@ -187,7 +187,7 @@ function TaskList({
   const activeCount = threads.filter((t) => t.status === "active").length;
   const doneCount = threads.filter((t) => t.status === "done").length;
   return (
-    <Card title="Coding Tasks" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center" wrap>
         <Text style="caption" tone="muted" grow={1}>
           {loading ? "loading" : `${threads.length} total`}
@@ -310,7 +310,7 @@ function TaskDetail({
   onAction?: (action: string) => void;
 }) {
   return (
-    <Card title="Task" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Button
           variant="ghost"

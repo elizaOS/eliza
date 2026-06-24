@@ -87,7 +87,7 @@ export function FineTuningSpatialView({
     (job) => job.status === "running" || job.status === "queued",
   );
   return (
-    <Card title="Training" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"

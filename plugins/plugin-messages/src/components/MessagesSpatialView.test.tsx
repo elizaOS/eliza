@@ -89,7 +89,6 @@ describe("MessagesSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Messages");
       expect(flat).toContain("sms-default");
       expect(flat).toContain("+15550100");
       expect(flat).toContain("see you at noon");

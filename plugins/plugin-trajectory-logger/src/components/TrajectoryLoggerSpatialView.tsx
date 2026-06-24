@@ -128,7 +128,7 @@ export function TrajectoryLoggerSpatialView({
 }: TrajectoryLoggerSpatialViewProps) {
   const selected = resolveSelected(snapshot);
   return (
-    <Card title="Trajectories" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Button
           variant="ghost"

@@ -107,7 +107,6 @@ describe("PolymarketSpatialView one source, three modalities", () => {
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
       // Survives even the narrow 32-cell layout.
-      expect(flat).toContain("Polymarket");
       expect(flat).toContain("reads ready");
       expect(flat).toContain("trading off");
     }

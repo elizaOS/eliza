@@ -90,7 +90,7 @@ export function VincentSpatialView({
   } = snapshot;
 
   return (
-    <Card title="Vincent" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"

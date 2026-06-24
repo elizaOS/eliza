@@ -102,15 +102,9 @@ export function ContactsSpatialView({
     snapshot.selectedId != null
       ? (snapshot.contacts.find((c) => c.id === snapshot.selectedId) ?? null)
       : null;
-  const title =
-    mode === "detail" && selected
-      ? selected.displayName || "Unnamed"
-      : mode === "new"
-        ? "New contact"
-        : "Contacts";
 
   return (
-    <Card title={title} gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text style="caption" tone="muted" grow={1}>
           {snapshot.loading

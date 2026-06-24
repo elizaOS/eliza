@@ -94,7 +94,6 @@ describe("ModelTesterSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Model Tester");
       expect(flat).toContain("ready");
       expect(flat).toContain("Text");
       expect(flat).toContain("Run all");
@@ -112,7 +111,6 @@ describe("ModelTesterSpatialView one source, three modalities", () => {
     expect(gui).toContain('data-spatial-surface="gui"');
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
-      expect(html).toContain("Model Tester");
       expect(html).toContain("Text");
       expect(html).toContain('data-agent-id="run-all"');
       expect(html).toContain('data-agent-id="refresh-status"');
@@ -130,7 +128,6 @@ describe("ModelTesterSpatialView one source, three modalities", () => {
       const lines = component?.render(50) ?? [];
       expect(lines.length).toBeGreaterThan(0);
       for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Model Tester");
     } finally {
       unregister();
     }

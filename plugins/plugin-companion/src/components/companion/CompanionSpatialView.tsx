@@ -123,7 +123,7 @@ export function CompanionSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
   const categories = Object.entries(snapshot.emotesByCategory).slice(0, 6);
   return (
-    <Card title="Companion" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"

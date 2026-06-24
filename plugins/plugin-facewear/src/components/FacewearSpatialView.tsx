@@ -88,7 +88,7 @@ export function FacewearSpatialView({
   );
 
   return (
-    <Card title="Facewear" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"
