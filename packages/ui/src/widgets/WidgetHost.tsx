@@ -3,7 +3,7 @@
  *
  * Drop this into any page view:
  *   <WidgetHost slot="chat-sidebar" />
- *   <WidgetHost slot="wallet" />
+ *   <WidgetHost slot="home" layout="grid" />
  *
  * Queries the widget registry for matching declarations, wraps each in an
  * error boundary, and renders either the bundled React component or falls back

@@ -1605,6 +1605,35 @@ describe("capability router", () => {
 		});
 	});
 
+	for (const slot of [
+		"chat-inline",
+		"wallet",
+		"browser",
+		"heartbeats",
+		"settings",
+		"automations",
+	]) {
+		it(`rejects removed remote widget slot '${slot}'`, async () => {
+			const router = new RuntimeBrokerCapabilityRouter({
+				invokeRuntime: async () => ({
+					modules: [
+						{
+							id: "remote-weather",
+							name: "@remote/weather",
+							widgets: [{ id: "weather.widget", slot, label: "Weather" }],
+						},
+					],
+				}),
+			});
+
+			await expect(router.plugin.listModules()).rejects.toMatchObject({
+				code: "CAPABILITY_DECODE_FAILED",
+				method: "plugin.modules.list.modules.widgets",
+				message: "slot must be a valid plugin widget slot.",
+			});
+		});
+	}
+
 	it("rejects remote plugin manifests with invalid background policies", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => ({
