@@ -255,7 +255,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           label={t("cloud.apps.overview.stat.totalUsers", {
             defaultValue: "Total Users",
           })}
-          value={app.total_users?.toLocaleString() || "0"}
+          value={app.total_users?.toLocaleString("en-US") || "0"}
           icon={<Shield className="h-5 w-5" />}
           accent="violet"
         />
@@ -263,7 +263,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           label={t("cloud.apps.overview.stat.totalRequests", {
             defaultValue: "Total Requests",
           })}
-          value={app.total_requests?.toLocaleString() || "0"}
+          value={app.total_requests?.toLocaleString("en-US") || "0"}
           icon={<TrendingUp className="h-5 w-5" />}
           accent="orange"
         />

@@ -952,7 +952,7 @@ function DnsConfigPanel({
           {lastChecked && (
             <span className="text-xs text-neutral-500 hidden sm:block">
               {t("cloud.appDomains.lastChecked", {
-                time: lastChecked.toLocaleTimeString(),
+                time: lastChecked.toLocaleTimeString("en-US"),
                 defaultValue: "Last checked: {{time}}",
               })}
             </span>
