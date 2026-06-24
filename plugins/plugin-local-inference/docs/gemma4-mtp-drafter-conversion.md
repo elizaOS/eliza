@@ -92,3 +92,51 @@ Steps to produce `mtp/drafter-2b.gguf`:
   *mechanism* (draft model + `-md` + verification) is proven for gemma4; the
   only missing pieces are the `mtp-draft` GGUF and the fused `--spec-type
   draft-mtp` activation that feeds the base activation into this 78M cell.
+
+## Fused engine (`libelizainference`) — built + validated on Metal (2026-06-23)
+
+The canonical fused FFI engine now builds and runs the Gemma-4 text path on a
+real Apple M4 Max (records:
+`native/verify/evidence/platform/darwin-arm64-metal-fused-llm.log`):
+
+- **Build:** `cmake -DGGML_METAL=ON -DLLAMA_BUILD_OMNIVOICE=ON
+  -DOMNIVOICE_SHARED=ON --target elizainference` →
+  `libelizainference.dylib` (ABI v12). `build-llama-cpp-mtp.mjs` only has iOS
+  targets today; this was a direct host cmake build. **Build blocker fixed:** the
+  ABI guard `static_assert(sizeof(eliza_llm_stream_config_t) == 80)` in
+  `tools/omnivoice/src/eliza-inference-ffi.cpp` was stale — ABI v9 appended
+  `context_size` (int32 at offset 80) so the real size is **88**, and the TS
+  marshaller (`ffi-bindings.ts`) was already at 88; only the C assert had not
+  been bumped. One-line fix (`== 80` → `== 88`) — belongs upstream in
+  `elizaOS/llama.cpp` (the fork submodule).
+- **Capability probes:** `eliza_inference_abi_version` = `12`,
+  `_llm_mtp_supported()` = **1**, `_llm_kv_quant_supported()` = **1** — this
+  build wires MTP speculative decoding and KV-cache quant.
+- **Text generation:** `eliza_inference_create(<2b candidate bundle>)` →
+  `_llm_stream_open` → `_tokenize`/`_prefill` → `_llm_stream_next` produced
+  **"The capital of France is Paris."** on the real `google/gemma-4-E2B`
+  (loader: `gemma4` arch, 35 blocks, 128k ctx, PLE), **15 tokens in 180 ms ≈
+  83 tok/s**, on M4 Max Metal. (MTP drafted/accepted = 0 — no drafter attached,
+  see below.)
+
+So the **whole on-Metal text + MTP-capable runtime is proven**; the single
+remaining gap is the trained drafter artifact.
+
+## The drafter is training-gated (definitive)
+
+`packages/training/reports/dflash-drafter-produce-2026-05-14.md` is explicit: the
+DFlash drafter is a **distilled student** (`distill_dflash_drafter.py`), and
+distillation is *"fail-closed on a missing `--target-checkpoint`"* — there is no
+SFT'd target text checkpoint in the repo, and production runs on an **H200**.
+The milady `dflash-draft` GGUF arch (`src/models/dflash-draft.cpp`,
+`xxxm1r0xxx/gemma-4-dflash-draft` is its config stub with no weights) computes
+K/V from the token stream and cross-attends to the target hidden via
+`dflash_fc`/`wk`/`wv` — a **different architecture** from the Google LiteRT
+extraction (`SeatownSin/...`, which has only `q_proj`/`o_proj` per block and
+fuses token+activation in one `pre_proj`), so the extraction's weights cannot be
+loaded into the milady arch. Producing a loadable drafter therefore requires
+either (a) running `distill_dflash_drafter.py` against an SFT'd Gemma-4 target on
+an H200, or (b) the emerging **EAGLE3 head** path (`LLM_ARCH_EAGLE3` in the fork;
+develop's manifest schema already accepts an `eagle3` block referencing
+`RedHatAI/gemma-4-E2B-EAGLE3-head`). Both are training/publish tasks, not blocked
+by the runtime — which is fully built and Metal-validated above.
