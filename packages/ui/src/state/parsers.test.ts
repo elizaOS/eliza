@@ -12,6 +12,9 @@ import {
   isRecord,
   normalizeCustomActionName,
   normalizeStreamComparisonText,
+  parseAgentStartupDiagnostics,
+  parseAgentStatusEvent,
+  parseAgentStatusFromMainMenuResetPayload,
   parseConversationMessageEvent,
   parseCustomActionParams,
   parseProactiveMessageEvent,
@@ -320,5 +323,96 @@ describe("parseProactiveMessageEvent", () => {
     expect(
       parseProactiveMessageEvent({ conversationId: "c1", message: { bad: 1 } }),
     ).toBeNull();
+  });
+});
+
+describe("parseAgentStatusEvent", () => {
+  it("accepts a known state + agentName and rejects unknown/malformed", () => {
+    const status = parseAgentStatusEvent({ state: "running", agentName: "A" });
+    expect(status?.state).toBe("running");
+    expect(status?.agentName).toBe("A");
+    expect(
+      parseAgentStatusEvent({ state: "bogus", agentName: "A" }),
+    ).toBeNull();
+    expect(
+      parseAgentStatusEvent({ state: "running", agentName: 5 }),
+    ).toBeNull();
+  });
+
+  it("carries canRespond only when boolean (server readiness signal)", () => {
+    expect(
+      parseAgentStatusEvent({
+        state: "running",
+        agentName: "A",
+        canRespond: true,
+      })?.canRespond,
+    ).toBe(true);
+    // Non-boolean canRespond is dropped, not coerced.
+    expect(
+      "canRespond" in
+        (parseAgentStatusEvent({
+          state: "running",
+          agentName: "A",
+          canRespond: "yes",
+        }) ?? {}),
+    ).toBe(false);
+  });
+
+  it("nests startup diagnostics when present", () => {
+    expect(
+      parseAgentStatusEvent({
+        state: "starting",
+        agentName: "A",
+        startup: { phase: "boot", attempt: 2 },
+      })?.startup,
+    ).toEqual({ phase: "boot", attempt: 2 });
+  });
+});
+
+describe("parseAgentStatusFromMainMenuResetPayload", () => {
+  it("extracts a nested agentStatus or returns null", () => {
+    expect(
+      parseAgentStatusFromMainMenuResetPayload({
+        agentStatus: { state: "running", agentName: "A" },
+      })?.state,
+    ).toBe("running");
+    expect(parseAgentStatusFromMainMenuResetPayload({})).toBeNull();
+    expect(
+      parseAgentStatusFromMainMenuResetPayload({ agentStatus: null }),
+    ).toBeNull();
+    expect(parseAgentStatusFromMainMenuResetPayload(["x"])).toBeNull();
+  });
+});
+
+describe("parseAgentStartupDiagnostics", () => {
+  it("requires phase + attempt and is undefined otherwise", () => {
+    expect(parseAgentStartupDiagnostics({ phase: "boot", attempt: 1 })).toEqual(
+      {
+        phase: "boot",
+        attempt: 1,
+      },
+    );
+    expect(parseAgentStartupDiagnostics({ phase: "boot" })).toBeUndefined();
+    expect(parseAgentStartupDiagnostics(null)).toBeUndefined();
+  });
+
+  it("gates embeddingPhase to the known enum and clamps progress to 0..100", () => {
+    const ok = parseAgentStartupDiagnostics({
+      phase: "embedding",
+      attempt: 1,
+      embeddingPhase: "downloading",
+      embeddingProgressPct: 150,
+    });
+    expect(ok?.embeddingPhase).toBe("downloading");
+    expect(ok?.embeddingProgressPct).toBe(100);
+
+    const gated = parseAgentStartupDiagnostics({
+      phase: "embedding",
+      attempt: 1,
+      embeddingPhase: "bogus",
+      embeddingProgressPct: -20,
+    });
+    expect(gated?.embeddingPhase).toBeUndefined();
+    expect(gated?.embeddingProgressPct).toBe(0);
   });
 });
