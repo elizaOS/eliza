@@ -239,6 +239,34 @@ export class ContainersRepository {
   }
 
   /**
+   * Finds every not-yet-torn-down container for an org's project key.
+   *
+   * Returns containers in any state EXCEPT the terminal `deleting`/`deleted`
+   * (rows already on their way out). Used by app-delete teardown to find the
+   * live container(s) for an app (the deploy orchestrator sets
+   * `project_name = appId`) so they can be stopped/removed and stop being
+   * metered. `stopped`/`failed` rows are intentionally included: a `stopped`
+   * row can still hold a node slot the daemon delete must release, and a
+   * re-deploy may have left more than one row per project key.
+   */
+  async findUndeletedByProjectName(
+    organizationId: string,
+    projectName: string,
+  ): Promise<Container[]> {
+    return await dbRead
+      .select()
+      .from(containers)
+      .where(
+        and(
+          eq(containers.organization_id, organizationId),
+          eq(containers.project_name, projectName),
+          notInArray(containers.status, ["deleting", "deleted"]),
+        ),
+      )
+      .orderBy(desc(containers.created_at));
+  }
+
+  /**
    * Finds the most recent container for a character.
    */
   async findByCharacterId(characterId: string): Promise<Container | null> {
@@ -392,6 +420,29 @@ export class ContainersRepository {
       .returning();
 
     return results.length > 0;
+  }
+
+  /**
+   * Stops billing on a container at delete time, org-scoped.
+   *
+   * Mirrors `ContainerBillingRepository.suspendContainer` (status `stopped`,
+   * billing_status `suspended`) so the daily container-billing cron — which
+   * only meters `status='running'` rows in an active billing state — stops
+   * charging the org IMMEDIATELY, closing the cost-leak window between the app
+   * delete and the daemon actually removing the live container. Org-scoped to
+   * the deleting app's organization; idempotent (a re-run is a harmless no-op
+   * write). The live container teardown + node-slot release is the daemon's
+   * job via the enqueued CONTAINER_DELETE.
+   */
+  async markStoppedForBilling(id: string, organizationId: string): Promise<void> {
+    await dbWrite
+      .update(containers)
+      .set({
+        status: "stopped",
+        billing_status: "suspended",
+        updated_at: new Date(),
+      })
+      .where(and(eq(containers.id, id), eq(containers.organization_id, organizationId)));
   }
 
   /**

@@ -93,6 +93,47 @@ describe("executeContainerProvision", () => {
     ]);
   });
 
+  test("flips the linked app to deployed on success (#5: deploy reaches READY)", async () => {
+    const { store } = fakeStore();
+    const { provider } = fakeProvider();
+    const deployed: Array<{ appId: string; url: string | null }> = [];
+    await executeContainerProvision(
+      job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+      {
+        provider,
+        store,
+        markAppDeployed: async (appId, url) => {
+          deployed.push({ appId, url });
+        },
+      },
+    );
+    expect(deployed).toHaveLength(1);
+    expect(deployed[0]?.appId).toBe(ROW.appId);
+  });
+
+  test("does NOT mark the app deployed when provisioning fails", async () => {
+    const { store } = fakeStore();
+    const { provider } = fakeProvider({
+      async provision() {
+        throw new Error("docker create failed");
+      },
+    } as never);
+    const deployedOnFail: string[] = [];
+    await expect(
+      executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        {
+          provider,
+          store,
+          markAppDeployed: async (appId) => {
+            deployedOnFail.push(appId);
+          },
+        },
+      ),
+    ).rejects.toThrow("docker create failed");
+    expect(deployedOnFail).toEqual([]);
+  });
+
   test("marks error and rethrows when provisioning fails", async () => {
     const { events, store } = fakeStore();
     const { provider } = fakeProvider({

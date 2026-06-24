@@ -10,11 +10,15 @@ afterEach(() => {
 });
 
 // #9143 — the frontpage Notifications widget renders from the shared store.
+// #9226 — with no notifications it renders nothing (no empty placeholder card)
+// so the Springboard home isn't cluttered with dead slots.
 describe("NotificationsWidget (#9143)", () => {
-  it("renders its empty state when there are no notifications", () => {
+  it("renders nothing when there are no notifications (#9226)", () => {
     __resetNotificationStoreForTests();
-    render(<NotificationsWidget pluginId="notifications" />);
-    expect(screen.getByTestId("widget-notifications")).toBeTruthy();
-    expect(screen.getByText("No notifications yet")).toBeTruthy();
+    const { container } = render(
+      <NotificationsWidget pluginId="notifications" />,
+    );
+    expect(screen.queryByTestId("widget-notifications")).toBeNull();
+    expect(container.firstChild).toBeNull();
   });
 });

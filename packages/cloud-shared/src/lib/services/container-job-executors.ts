@@ -72,6 +72,15 @@ export interface ContainerExecutorDeps {
    * means the app keeps only its `<shortid>.<base>` host — never fails a deploy.
    */
   listVerifiedAppHostnames?: (appId: string) => Promise<string[]>;
+  /**
+   * Flip the linked app to `deployed` (status + production_url + last_deployed_at)
+   * once its container is running AND its ingress route is live. Without this the
+   * deploy-status route echoes `building` forever — a successful deploy never
+   * reaches READY (a stranded-looking app). No-op for non-app containers (the
+   * impl resolves by app id). Optional/injected; best-effort is NOT acceptable
+   * here — a failure must surface so the deploy is retried, not silently stuck.
+   */
+  markAppDeployed?: (appId: string, productionUrl: string | null) => Promise<void>;
 }
 
 async function requireRow(store: AppContainerStore, containerId: string): Promise<AppContainerRow> {
@@ -122,6 +131,11 @@ export async function executeContainerProvision(
         nodeHost: result.nodeHost,
         hostPort: result.hostPort,
       });
+    }
+    // Container is running and routable — flip the app to `deployed` so the
+    // deploy-status route reports READY (instead of `building` forever).
+    if (deps.markAppDeployed) {
+      await deps.markAppDeployed(row.appId, endpoint?.url ?? null);
     }
   } catch (error) {
     await deps.store.markError(containerId, error instanceof Error ? error.message : String(error));
