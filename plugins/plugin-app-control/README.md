@@ -1,6 +1,6 @@
 # @elizaos/plugin-app-control
 
-An elizaOS plugin that lets an Eliza agent launch, close, list, scaffold, and verify Eliza apps; manage UI views contributed by plugins; and customize the live homescreen canvas.
+An elizaOS plugin that lets an Eliza agent launch, close, list, scaffold, and verify Eliza apps; manage UI views contributed by plugins; and change the unified app background.
 
 ## What it does
 
@@ -15,7 +15,7 @@ Loading this plugin gives an Eliza agent three new actions:
 
 **VIEWS** — Full view management. The agent can navigate to any UI view contributed by any loaded plugin; report the currently-open view; search views by name; open the view manager; broadcast events to mounted views; interact with a view (click, get state, focus, etc.); pin a view as a desktop tab; open a view in a separate window; and create, edit, or delete view plugins through a coding-agent backed flow.
 
-**HOMESCREEN** — Live homescreen customization. The agent reads the current scene document, asks the model to rewrite it based on the user's description, and pushes the updated document to the client. Also supports history operations: undo, redo, reset, duplicate, delete, save.
+**BACKGROUND** — Unified background control. The agent can set a named color or hex color, use an uploaded image, generate a background image from a prompt, undo the previous background, or reset to default. It broadcasts a `background:apply` view event that the always-mounted app background applies to the shared `BackgroundConfig` store.
 
 ## Capabilities added to the agent
 
@@ -24,7 +24,7 @@ Loading this plugin gives an Eliza agent three new actions:
 | `APP` | `automation`, `settings`, `code` | Owner |
 | `VIEWS` (read modes) | `general`, `automation`, `settings`, `code` | User |
 | `VIEWS` (create/edit/delete) | `general`, `automation`, `settings`, `code` | Owner |
-| `HOMESCREEN` | `general`, `settings` | User |
+| `BACKGROUND` | `general`, `settings` | User |
 
 The `available_apps` provider injects installed + running app data into the agent's planning context when operating in the `settings` or `automation` context, so the agent can pick a target without an extra round-trip.
 
