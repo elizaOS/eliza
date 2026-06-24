@@ -206,6 +206,35 @@ if ((await page2.count()) > 0) {
   assert(false, "page navigation: expected a Page 2 dot (multi-page layout)");
 }
 
+// 5. Real swipe-drag paging — the iOS-style gesture (not the dot), driving the
+//    Framer drag="x" rail past SWIPE_THRESHOLD so onDragEnd commits a page flip.
+//    Assert via the deterministic `page-swipe` telemetry the component emits on
+//    a committed flick (the user reported left/right swipe felt broken). We're
+//    on page 2 from the dot-nav above; swipe RIGHT → page 1, then LEFT → page 2.
+async function swipeDrag(p, dx) {
+  const box = await p.getByTestId("springboard").boundingBox();
+  const y = box.y + box.height / 2;
+  // Start off-centre so the drag has room to travel within the surface.
+  const startX = box.x + box.width / 2 - Math.sign(dx) * box.width * 0.2;
+  await p.mouse.move(startX, y);
+  await p.mouse.down();
+  await p.mouse.move(startX + dx, y, { steps: 12 });
+  await p.mouse.up();
+  await p.waitForTimeout(350);
+}
+const swipeCountBefore = (await readTelemetry(page)).filter(
+  (e) => e.action === "page-swipe",
+).length;
+await swipeDrag(page, 220); // drag right → previous page
+await swipeDrag(page, -220); // drag left → next page
+const swipeCountAfter = (await readTelemetry(page)).filter(
+  (e) => e.action === "page-swipe",
+).length;
+assert(
+  swipeCountAfter > swipeCountBefore,
+  `swipe-drag gesture commits a page flip (page-swipe telemetry ${swipeCountBefore}→${swipeCountAfter})`,
+);
+
 // ── Telemetry assertion — the real interaction stream fired ────────────────
 const telemetry = await readTelemetry(page);
 const actions = new Set(telemetry.map((e) => e.action));
