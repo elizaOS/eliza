@@ -22480,7 +22480,7 @@
   var ReorderItem = /* @__PURE__ */ (0, import_react26.forwardRef)(ReorderItemComponent);
 
   // packages/ui/src/components/pages/Springboard.tsx
-  var import_react28 = __toESM(require_react(), 1);
+  var import_react29 = __toESM(require_react(), 1);
 
   // node_modules/.bun/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
   function r(e) {
@@ -25566,7 +25566,7 @@
   }
   function reconcileLayout(layout2, availableIds, pageSize = SPRINGBOARD_PAGE_SIZE) {
     const available = new Set(availableIds);
-    const favorites = layout2.favorites.filter((id3) => available.has(id3)).slice(0, SPRINGBOARD_DOCK_LIMIT);
+    const favorites = [...new Set(layout2.favorites)].filter((id3) => available.has(id3)).slice(0, SPRINGBOARD_DOCK_LIMIT);
     const favoriteSet = new Set(favorites);
     const seen = new Set(favorites);
     const ordered = [];
@@ -25605,6 +25605,39 @@
     const flat = pages.flat();
     return { favorites, pages: chunk(flat, pageSize), manual: true };
   }
+
+  // packages/ui/src/view-telemetry.ts
+  var VIEW_INTERACTION_TELEMETRY_EVENT = "eliza:view-interaction-telemetry";
+  var VIEW_INTERACTION_RING_MAX = 200;
+  var viewInteractionSequence = 0;
+  function currentRoute() {
+    if (typeof window === "undefined") return void 0;
+    return window.location.pathname;
+  }
+  function emitViewInteraction(event) {
+    const detail = {
+      ...event,
+      at: Date.now(),
+      route: currentRoute()
+    };
+    const g = globalThis;
+    viewInteractionSequence += 1;
+    g.__ELIZA_VIEW_INTERACTION_TELEMETRY_SEQUENCE__ = viewInteractionSequence;
+    const ring = g.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? [];
+    ring.push(detail);
+    if (ring.length > VIEW_INTERACTION_RING_MAX) {
+      ring.splice(0, ring.length - VIEW_INTERACTION_RING_MAX);
+    }
+    g.__ELIZA_VIEW_INTERACTION_TELEMETRY__ = ring;
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(VIEW_INTERACTION_TELEMETRY_EVENT, { detail })
+      );
+    }
+  }
+
+  // packages/ui/src/components/views/ViewTileImage.tsx
+  var import_react27 = __toESM(require_react(), 1);
 
   // packages/ui/src/components/views/ViewIcon.tsx
   var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
@@ -25703,6 +25736,7 @@
           alt: "",
           className,
           loading: "lazy",
+          decoding: "async",
           "aria-hidden": "true"
         }
       );
@@ -25711,11 +25745,55 @@
     return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Icon2, { className, "aria-hidden": "true" });
   }
 
-  // packages/ui/src/components/pages/Springboard.tsx
+  // packages/ui/src/components/views/ViewTileImage.tsx
   var import_jsx_runtime7 = __toESM(require_jsx_runtime(), 1);
+  function ViewTileImage({
+    entry,
+    source,
+    containerClassName,
+    glyphClassName = "h-6 w-6",
+    imageTestId
+  }) {
+    const [failed, setFailed] = (0, import_react27.useState)(false);
+    const url = failed ? void 0 : entry.imageUrl;
+    if (url) {
+      return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: containerClassName, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        "img",
+        {
+          src: url,
+          alt: "",
+          draggable: false,
+          loading: "lazy",
+          decoding: "async",
+          onError: () => {
+            emitViewInteraction({
+              source,
+              action: "hero-image-error",
+              viewId: entry.id
+            });
+            setFailed(true);
+          },
+          className: "h-full w-full object-cover",
+          "data-testid": imageTestId
+        }
+      ) });
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: containerClassName, "data-view-visual": entry.id, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+      ViewIcon,
+      {
+        icon: entry.icon,
+        label: entry.label,
+        id: entry.id,
+        className: glyphClassName
+      }
+    ) });
+  }
+
+  // packages/ui/src/components/pages/Springboard.tsx
+  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
   var LONG_PRESS_MS = 450;
   var SWIPE_THRESHOLD = 60;
-  var IconTile = (0, import_react28.memo)(function IconTile2({
+  var IconTile = (0, import_react29.memo)(function IconTile2({
     entry,
     editing,
     favorited,
@@ -25726,23 +25804,21 @@
     onDelete,
     onLongPress
   }) {
-    const timer = (0, import_react28.useRef)(null);
-    const [imgFailed, setImgFailed] = (0, import_react28.useState)(false);
-    const tileImage = imgFailed ? void 0 : entry.imageUrl;
+    const timer = (0, import_react29.useRef)(null);
     const clear = () => {
       if (timer.current) {
         clearTimeout(timer.current);
         timer.current = null;
       }
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
       "div",
       {
         className: "flex flex-col items-center gap-1.5 select-none",
         "data-testid": `springboard-tile-${entry.id}`,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "relative", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
               "button",
               {
                 type: "button",
@@ -25756,34 +25832,27 @@
                 },
                 onPointerUp: clear,
                 onPointerLeave: clear,
+                onPointerCancel: clear,
                 className: cn(
-                  "h-16 w-16 overflow-hidden rounded-2xl transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
-                  tileImage ? "bg-bg-accent/40" : "grid place-items-center bg-bg-accent/60 text-foreground backdrop-blur-xl hover:bg-bg-accent",
+                  // ViewTileImage handles image-vs-glyph internally, so the button is
+                  // one constant surface. Translucent filter effects (#9281) and
+                  // focus rings (#9292) were deliberately removed on develop.
+                  "h-16 w-16 overflow-hidden rounded-2xl bg-bg-accent/60 text-foreground transition-colors hover:bg-bg-accent",
                   editing && "animate-pulse"
                 ),
-                children: tileImage ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                  "img",
+                children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                  ViewTileImage,
                   {
-                    src: tileImage,
-                    alt: "",
-                    draggable: false,
-                    onError: () => setImgFailed(true),
-                    className: "h-full w-full object-cover",
-                    "data-testid": `springboard-image-${entry.id}`
-                  }
-                ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                  ViewIcon,
-                  {
-                    icon: entry.icon,
-                    label: entry.label,
-                    id: entry.id,
-                    className: "h-7 w-7"
+                    entry,
+                    source: "springboard",
+                    containerClassName: "grid h-full w-full place-items-center",
+                    glyphClassName: "h-7 w-7",
+                    imageTestId: `springboard-image-${entry.id}`
                   }
                 )
               }
             ),
-            editing ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            editing ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
               "button",
               {
                 type: "button",
@@ -25800,8 +25869,8 @@
                 children: favorited ? "\u2605" : "+"
               }
             ) : null,
-            editing && manageable ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "absolute -left-1.5 -top-1.5 flex gap-1", children: [
-              onEdit ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            editing && manageable ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "absolute -left-1.5 -top-1.5 flex gap-1", children: [
+              onEdit ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                 "button",
                 {
                   type: "button",
@@ -25812,10 +25881,10 @@
                     onEdit(entry.id);
                   },
                   className: "grid h-5 w-5 place-items-center rounded-full bg-bg-accent text-foreground",
-                  children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Pencil, { className: "h-3 w-3", "aria-hidden": "true" })
+                  children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Pencil, { className: "h-3 w-3", "aria-hidden": "true" })
                 }
               ) : null,
-              onDelete ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+              onDelete ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                 "button",
                 {
                   type: "button",
@@ -25826,12 +25895,12 @@
                     onDelete(entry.id);
                   },
                   className: "grid h-5 w-5 place-items-center rounded-full bg-destructive/80 text-destructive-foreground",
-                  children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(Trash2, { className: "h-3 w-3", "aria-hidden": "true" })
+                  children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(Trash2, { className: "h-3 w-3", "aria-hidden": "true" })
                 }
               ) : null
             ] }) : null
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "max-w-[4.5rem] truncate text-center text-[11px] leading-tight text-muted", children: entry.label })
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "max-w-[4.5rem] truncate text-center text-[11px] leading-tight text-muted", children: entry.label })
         ]
       }
     );
@@ -25848,24 +25917,23 @@
     onDeleteView,
     className
   }) {
-    const availableIds = (0, import_react28.useMemo)(() => entries.map((e) => e.id), [entries]);
-    const byId = (0, import_react28.useMemo)(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+    const availableIds = (0, import_react29.useMemo)(() => entries.map((e) => e.id), [entries]);
+    const byId = (0, import_react29.useMemo)(() => new Map(entries.map((e) => [e.id, e])), [entries]);
     const controlled = onToggleFavorite != null;
-    const favorites = (0, import_react28.useMemo)(
+    const favorites = (0, import_react29.useMemo)(
       () => controlled ? favoriteIds ?? [] : null,
       [controlled, favoriteIds]
     );
-    const [layout2, setLayout] = (0, import_react28.useState)(() => {
+    const [layout2, setLayout] = (0, import_react29.useState)(() => {
       const stored = readSpringboardLayout();
       return reconcileLayout(
         { favorites: favorites ?? stored.favorites, pages: stored.pages },
         entries.map((e) => e.id)
       );
     });
-    const [page, setPage] = (0, import_react28.useState)(0);
-    const [editing, setEditing] = (0, import_react28.useState)(false);
-    const startEditing = (0, import_react28.useCallback)(() => setEditing(true), []);
-    (0, import_react28.useEffect)(() => {
+    const [page, setPage] = (0, import_react29.useState)(0);
+    const [editing, setEditing] = (0, import_react29.useState)(false);
+    (0, import_react29.useEffect)(() => {
       setLayout(
         (prev) => reconcileLayout(
           { favorites: favorites ?? prev.favorites, pages: prev.pages },
@@ -25873,80 +25941,119 @@
         )
       );
     }, [availableIds, favorites]);
-    const commit = (0, import_react28.useCallback)((next) => {
+    (0, import_react29.useEffect)(() => {
+      const pageCount = layout2.pages.length > 0 ? layout2.pages.length : 1;
+      setPage((p) => p > pageCount - 1 ? pageCount - 1 : p);
+    }, [layout2.pages.length]);
+    const commit = (0, import_react29.useCallback)((next) => {
       setLayout(next);
       writeSpringboardLayout(next);
     }, []);
-    const toggleFav = (0, import_react28.useCallback)(
+    const toggleFav = (0, import_react29.useCallback)(
       (id3) => {
+        const wasFavorited = (favorites ?? layout2.favorites).includes(id3);
+        emitViewInteraction({
+          source: "springboard",
+          action: wasFavorited ? "unfavorite" : "favorite",
+          viewId: id3
+        });
         if (controlled) {
           onToggleFavorite?.(id3);
           return;
         }
         commit(reconcileLayout(toggleFavorite(layout2, id3), availableIds));
       },
-      [controlled, onToggleFavorite, commit, layout2, availableIds]
+      [controlled, onToggleFavorite, commit, layout2, availableIds, favorites]
     );
-    const pages = (0, import_react28.useMemo)(
+    const handleLaunch = (0, import_react29.useCallback)(
+      (entry) => {
+        emitViewInteraction({
+          source: "springboard",
+          action: "launch",
+          viewId: entry.id
+        });
+        onLaunch(entry);
+      },
+      [onLaunch]
+    );
+    const enterEditMode = (0, import_react29.useCallback)(() => {
+      if (!editing) {
+        emitViewInteraction({ source: "springboard", action: "edit-mode-enter" });
+      }
+      setEditing(true);
+    }, [editing]);
+    const toggleEditMode = (0, import_react29.useCallback)(() => {
+      emitViewInteraction({
+        source: "springboard",
+        action: editing ? "edit-mode-exit" : "edit-mode-enter"
+      });
+      setEditing((e) => !e);
+    }, [editing]);
+    const pages = (0, import_react29.useMemo)(
       () => layout2.pages.length > 0 ? layout2.pages : [[]],
       [layout2.pages]
     );
     const clampedPage = Math.min(page, pages.length - 1);
-    const favoriteIdList = favorites ?? layout2.favorites;
-    const favoriteIdSet = (0, import_react28.useMemo)(
-      () => new Set(favoriteIdList),
-      [favoriteIdList]
+    const favoriteIdList = (0, import_react29.useMemo)(
+      () => (favorites ?? layout2.favorites).slice(0, SPRINGBOARD_DOCK_LIMIT),
+      [favorites, layout2.favorites]
     );
-    const favoriteEntries = (0, import_react28.useMemo)(
+    const favoriteEntries = (0, import_react29.useMemo)(
       () => favoriteIdList.map((id3) => byId.get(id3)).filter((e) => e != null),
       [byId, favoriteIdList]
     );
-    const handleReorder = (0, import_react28.useCallback)(
+    const favoriteSet = (0, import_react29.useMemo)(() => new Set(favoriteIdList), [favoriteIdList]);
+    const handleReorder = (0, import_react29.useCallback)(
       (pageIndex, nextIds) => {
         let next = layout2;
         nextIds.forEach((id3, index) => {
           next = moveIcon(next, id3, pageIndex, index);
         });
+        emitViewInteraction({
+          source: "springboard",
+          action: "reorder",
+          count: pageIndex
+        });
         commit(next);
       },
       [layout2, commit]
     );
-    const renderTile = (0, import_react28.useCallback)(
-      (entry, favorited) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    const renderTile = (0, import_react29.useCallback)(
+      (entry, favorited) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
         IconTile,
         {
           entry,
           editing,
           favorited,
           manageable: canManageView?.(entry.id) ?? false,
-          onLaunch,
+          onLaunch: handleLaunch,
           onToggleFavorite: toggleFav,
           onEdit: onEditView,
           onDelete: onDeleteView,
-          onLongPress: startEditing
+          onLongPress: enterEditMode
         }
       ),
       [
-        canManageView,
         editing,
-        onDeleteView,
+        canManageView,
+        handleLaunch,
+        toggleFav,
         onEditView,
-        onLaunch,
-        startEditing,
-        toggleFav
+        onDeleteView,
+        enterEditMode
       ]
     );
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
       "div",
       {
         className: cn("flex min-h-0 flex-1 flex-col", className),
         "data-testid": "springboard",
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex items-center justify-end px-4 pt-2", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex items-center justify-end px-4 pt-2", children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
             "button",
             {
               type: "button",
-              onClick: () => setEditing((e) => !e),
+              onClick: toggleEditMode,
               className: cn(
                 "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 editing ? "bg-accent text-accent-foreground" : "bg-bg-accent/60 text-muted hover:bg-bg-accent"
@@ -25954,8 +26061,8 @@
               children: editing ? "Done" : "Edit"
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
               motion.div,
               {
                 drag: editing ? false : "x",
@@ -25966,24 +26073,34 @@
                   if (editing) return;
                   if (info.offset.x < -SWIPE_THRESHOLD && clampedPage < pages.length - 1) {
                     setPage(clampedPage + 1);
+                    emitViewInteraction({
+                      source: "springboard",
+                      action: "page-swipe",
+                      count: clampedPage + 1
+                    });
                   } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
                     setPage(clampedPage - 1);
+                    emitViewInteraction({
+                      source: "springboard",
+                      action: "page-swipe",
+                      count: clampedPage - 1
+                    });
                   } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage === 0) {
                     onEdgeSwipeRight?.();
                   }
                 },
                 className: "flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 py-6",
-                children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id3) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id3) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
                   "div",
                   {
                     className: "flex flex-col items-center gap-1.5 opacity-60",
                     children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "h-16 w-16 rounded-2xl bg-bg-accent/50" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "h-2.5 w-12 rounded-full bg-bg-accent/50" })
+                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "h-16 w-16 rounded-2xl bg-bg-accent/50" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "h-2.5 w-12 rounded-full bg-bg-accent/50" })
                     ]
                   },
                   id3
-                )) }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                )) }) : /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                   namespace_exports.Group,
                   {
                     axis: "y",
@@ -25993,14 +26110,14 @@
                     children: (pages[clampedPage] ?? []).map((id3) => {
                       const entry = byId.get(id3);
                       if (!entry) return null;
-                      return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                         namespace_exports.Item,
                         {
                           value: id3,
                           drag: editing,
                           dragListener: editing,
                           className: "flex justify-center",
-                          children: renderTile(entry, favoriteIdSet.has(id3))
+                          children: renderTile(entry, favoriteSet.has(id3))
                         },
                         id3
                       );
@@ -26010,7 +26127,7 @@
               },
               clampedPage
             ),
-            pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
               "button",
               {
                 type: "button",
@@ -26025,12 +26142,12 @@
               `dot-${index}-${pageIds[0] ?? "empty"}`
             )) }) : null
           ] }),
-          favoriteEntries.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          favoriteEntries.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
             "div",
             {
               "data-testid": "springboard-dock",
-              className: "mx-4 mb-4 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/60 px-6 py-3 backdrop-blur-2xl",
-              children: favoriteEntries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { children: renderTile(entry, true) }, `dock-${entry.id}`))
+              className: "mx-4 mb-4 flex items-center justify-center gap-4 rounded-3xl bg-bg-accent/90 px-6 py-3",
+              children: favoriteEntries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { children: renderTile(entry, true) }, `dock-${entry.id}`))
             }
           ) : null
         ]
@@ -26039,7 +26156,7 @@
   }
 
   // packages/ui/src/components/pages/SpringboardSurface.tsx
-  var import_jsx_runtime8 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
   var HIDDEN_SPRINGBOARD_VIEW_IDS = /* @__PURE__ */ new Set([
     "chat",
     "views",
@@ -26146,7 +26263,7 @@
       },
       [getCatalogEntry]
     );
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "absolute inset-0 flex min-h-0 flex-col px-0 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]", children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "absolute inset-0 flex min-h-0 flex-col px-0 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       Springboard,
       {
         entries,
@@ -26164,7 +26281,7 @@
   var HOME_SPRINGBOARD_NAV_EVENT = "eliza:home-springboard:navigate";
 
   // packages/ui/src/components/shell/HomeSpringboardSurface.tsx
-  var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
   var HOME_TO_SPRINGBOARD_THRESHOLD = 72;
   var HOME_TO_SPRINGBOARD_ANGLE_RATIO = 1.25;
   function HomeSpringboardSurface({
@@ -26251,24 +26368,24 @@
       }),
       [page]
     );
-    return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
       "section",
       {
         "data-testid": "home-springboard-surface",
         "data-page": page,
         className: cn("absolute inset-0 z-[1] overflow-hidden", className),
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
             "div",
             {
               "data-testid": "home-springboard-rail",
               className: cn(
-                "absolute inset-0 flex w-[200%] will-change-transform",
+                "absolute inset-0 flex w-[200%]",
                 "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
               ),
               style: railStyle,
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
                   "div",
                   {
                     "data-testid": "home-springboard-home-page",
@@ -26282,7 +26399,7 @@
                     children: home
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
                   "div",
                   {
                     "data-testid": "home-springboard-springboard-page",
@@ -26296,13 +26413,13 @@
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
             "div",
             {
               "aria-hidden": "true",
               className: "pointer-events-none absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+5.9rem)] z-[2] flex justify-center gap-1.5",
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
                   "span",
                   {
                     className: cn(
@@ -26311,7 +26428,7 @@
                     )
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
                   "span",
                   {
                     className: cn(
@@ -26362,7 +26479,7 @@
   }
 
   // packages/ui/src/components/shell/HomeScreen.tsx
-  var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime11 = __toESM(require_jsx_runtime(), 1);
   var HOME_ENTER_CSS = `
 @keyframes home-enter {
   from { opacity: 0; transform: translateY(10px); }
@@ -26442,19 +26559,18 @@
     children,
     testId
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(
       "section",
       {
         "data-testid": testId,
         className: cn(
-          // Liquid glass — same language as the chat panel + tiles.
-          "relative rounded-3xl border border-white/[0.14] bg-black/30 p-4 backdrop-blur-2xl backdrop-saturate-150",
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_50px_-26px_rgba(0,0,0,0.7)]"
+          // Dark card — same language as the chat panel + tiles.
+          "relative rounded-3xl border border-white/[0.14] bg-black/70 p-4"
         ),
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("header", { className: "mb-2.5 flex items-center gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Icon2, { className: "h-4 w-4 text-white/70", "aria-hidden": true }),
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("h2", { className: "text-[13px] font-semibold text-white/70", children: title })
+          /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("header", { className: "mb-2.5 flex items-center gap-2", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(Icon2, { className: "h-4 w-4 text-white/70", "aria-hidden": true }),
+            /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("h2", { className: "text-[13px] font-semibold text-white/70", children: title })
           ] }),
           children
         ]
@@ -26464,12 +26580,12 @@
   function ActivityRows({
     events
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("ul", { "data-testid": "home-activity", className: "flex flex-col gap-2.5", children: events.map((ev) => {
+    return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("ul", { "data-testid": "home-activity", className: "flex flex-col gap-2.5", children: events.map((ev) => {
       const { icon: Icon2, tone } = activityIcon(ev.eventType);
-      return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("li", { className: "flex items-start gap-2.5", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Icon2, { className: cn("mt-0.5 h-4 w-4 shrink-0", tone), "aria-hidden": true }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "min-w-0 flex-1 truncate text-[13px] leading-snug text-white/85", children: ev.summary }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "shrink-0 text-[11px] tabular-nums text-white/45", children: relativeTime(ev.timestamp) })
+      return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("li", { className: "flex items-start gap-2.5", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(Icon2, { className: cn("mt-0.5 h-4 w-4 shrink-0", tone), "aria-hidden": true }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "min-w-0 flex-1 truncate text-[13px] leading-snug text-white/85", children: ev.summary }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "shrink-0 text-[11px] tabular-nums text-white/45", children: relativeTime(ev.timestamp) })
       ] }, ev.id);
     }) });
   }
@@ -26488,20 +26604,20 @@
   function MessagesRows({
     chats
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { "data-testid": "home-messages", children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("ul", { className: "flex flex-col gap-2.5", children: chats.map((c) => /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("li", { className: "flex items-center gap-2.5", children: [
-      c.avatarUrl ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { "data-testid": "home-messages", children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("ul", { className: "flex flex-col gap-2.5", children: chats.map((c) => /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("li", { className: "flex items-center gap-2.5", children: [
+      c.avatarUrl ? /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
         "img",
         {
           src: c.avatarUrl,
           alt: "",
           className: "h-7 w-7 shrink-0 rounded-full object-cover"
         }
-      ) : /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/15 text-[11px] font-semibold text-white/80", children: c.title.slice(0, 1).toUpperCase() }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "min-w-0 flex-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "block truncate text-[13px] font-medium text-white/90", children: c.title }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "block truncate text-[12px] text-white/55", children: c.lastMessageText })
+      ) : /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/15 text-[11px] font-semibold text-white/80", children: c.title.slice(0, 1).toUpperCase() }),
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("span", { className: "min-w-0 flex-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "block truncate text-[13px] font-medium text-white/90", children: c.title }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "block truncate text-[12px] text-white/55", children: c.lastMessageText })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "shrink-0 text-[11px] tabular-nums text-white/45", children: relativeTime(c.lastMessageAt) })
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "shrink-0 text-[11px] tabular-nums text-white/45", children: relativeTime(c.lastMessageAt) })
     ] }, c.id)) }) });
   }
   function HomeScreen({
@@ -26513,7 +26629,7 @@
     const { events } = useActivityEvents();
     const recentActivity = events.slice(0, 5);
     const recentChats = useRecentChats();
-    return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(
       "div",
       {
         "data-testid": "home-screen",
@@ -26525,61 +26641,59 @@
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]"
         ),
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("style", { children: HOME_ENTER_CSS }),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
-            clockAccessory ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "home-enter flex justify-end", children: clockAccessory }) : null,
-            recentActivity.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "home-enter", style: { animationDelay: "70ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("style", { children: HOME_ENTER_CSS }),
+          /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
+            clockAccessory ? /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "home-enter flex justify-end", children: clockAccessory }) : null,
+            recentActivity.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "home-enter", style: { animationDelay: "70ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
               HomeCard,
               {
                 title: "Recent activity",
                 icon: Activity,
                 testId: "home-widget-activity",
-                children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(ActivityRows, { events: recentActivity })
+                children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(ActivityRows, { events: recentActivity })
               }
             ) }) : null,
-            recentChats.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "home-enter", style: { animationDelay: "110ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+            recentChats.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "home-enter", style: { animationDelay: "110ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
               HomeCard,
               {
                 title: "Recent messages",
                 icon: MessageSquare,
                 testId: "home-widget-messages",
-                children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(MessagesRows, { chats: recentChats })
+                children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(MessagesRows, { chats: recentChats })
               }
             ) }) : null,
-            tiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+            tiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
               "nav",
               {
                 "aria-label": "Apps",
                 "data-testid": "home-tiles",
                 className: "home-enter mt-2",
                 style: { animationDelay: "150ms" },
-                children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
+                children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
                   const Icon2 = tile.icon;
-                  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+                  return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(
                     "button",
                     {
                       type: "button",
                       "data-testid": `home-tile-${tile.id}`,
                       onClick: () => onOpenTile(tile.target),
                       className: cn(
-                        // Liquid glass, matching the chat panel: translucent dark
-                        // pane, strong blur + saturation, a bright top specular edge.
-                        "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/25 px-1 py-3.5 backdrop-blur-2xl backdrop-saturate-150",
-                        "shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]",
+                        // Dark tile, matching the chat panel: a solid dark pane.
+                        "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/70 px-1 py-3.5",
                         // Tactile press: a quick scale-down on tap (stilled for
                         // reduce-motion users), plus the glass brightening on hover.
                         "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                        "hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                        "hover:bg-white/[0.14]   "
                       ),
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+                        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
                           Icon2,
                           {
                             className: "h-[22px] w-[22px] text-white/90",
                             "aria-hidden": true
                           }
                         ),
-                        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
+                        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
                       ]
                     },
                     tile.id
@@ -26594,28 +26708,28 @@
   }
 
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.tsx
-  var import_jsx_runtime11 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime12 = __toESM(require_jsx_runtime(), 1);
   var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
   var showNativeOsTiles = params.has("native");
   function Harness() {
-    return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(
       "div",
       {
         "data-testid": "home-fixture-root",
         style: { position: "fixed", inset: 0, overflow: "hidden" },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(ShaderBackground, {}),
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(ShaderBackground, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
             HomeSpringboardSurface,
             {
-              home: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+              home: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
                 HomeScreen,
                 {
                   onOpenTile: (t) => console.log(`[fixture] open ${JSON.stringify(t)}`),
                   showNativeOsTiles
                 }
               ),
-              springboard: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(SpringboardSurface, {})
+              springboard: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(SpringboardSurface, {})
             }
           )
         ]
@@ -26623,7 +26737,7 @@
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime11.jsx)(Harness, {}));
+  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime12.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 

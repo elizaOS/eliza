@@ -61,9 +61,12 @@ describe("App standalone chat-overlay wiring", () => {
     // (the always-present chat overlay). The Header component has been removed
     // from the library entirely (pill-only nav), so nothing can mount it.
     expect(APP_TSX).toContain("function ChatRouteShellContent");
-    // The unified app background is mounted once at the shell root (not per
-    // route), so it persists seamlessly across the home and every view.
-    expect(APP_TSX).toContain("<AppBackground />");
+    // The unified app background channel is mounted once at the shell root
+    // (not per route); only routes that opt into the Home/Springboard
+    // background render the visual wallpaper layer.
+    expect(APP_TSX).toContain(
+      "<AppBackground visible={renderSharedAppBackground} />",
+    );
     expect(APP_TSX).not.toContain("<Header");
     expect(APP_TSX).not.toContain('from "./components/shell/Header"');
     expect(APP_TSX).not.toContain("function FullChatWorkspaceShellContent");

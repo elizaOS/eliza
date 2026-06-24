@@ -166,7 +166,8 @@ export function WidgetHost({
   // widget unchanged.
   const displayed = useMemo(() => {
     if (slot !== "home") return resolved;
-    const declarations = resolved.map((entry) => entry.declaration);
+    const renderable = resolved.filter((entry) => !entry.defaultWidgetSink);
+    const declarations = renderable.map((entry) => entry.declaration);
     const signals: HomeWidgetSignal[] = [
       ...homeSignalsFromEvents(events ?? [], declarations),
       ...homeSignalsFromNotifications(
@@ -180,7 +181,7 @@ export function WidgetHost({
       ...selfAttention.map((entry) => ({ ...entry, timestamp: now })),
     ];
     const byKey = new Map(
-      resolved.map((entry) => [homeWidgetKey(entry.declaration), entry]),
+      renderable.map((entry) => [homeWidgetKey(entry.declaration), entry]),
     );
     return rankHomeWidgets(declarations, signals, {
       now,

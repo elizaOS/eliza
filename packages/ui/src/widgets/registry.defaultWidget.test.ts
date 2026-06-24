@@ -38,6 +38,7 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
       // Borrows the shared sink component but keeps its own pluginId/id.
       expect(entry?.Component).toBeTruthy();
       expect(entry?.declaration.pluginId).toBe("sink-test");
+      expect(entry?.defaultWidgetSink).toBe("notifications");
     });
   });
 
@@ -55,6 +56,7 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
       ]);
       const entry = resolved.find((r) => r.declaration.id === "sink-test.msgs");
       expect(entry?.Component).toBeTruthy();
+      expect(entry?.defaultWidgetSink).toBe("messages");
     });
   });
 
@@ -72,6 +74,7 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
       ]);
       const entry = resolved.find((r) => r.declaration.id === "sink-test.act");
       expect(entry?.Component).toBeTruthy();
+      expect(entry?.defaultWidgetSink).toBe("activity");
     });
   });
 
@@ -113,6 +116,7 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
       );
       // Still resolves to the orchestrator's OWN component, not the notifications sink.
       expect(entry?.Component).toBeTruthy();
+      expect(entry?.defaultWidgetSink).toBeUndefined();
     });
   });
 });

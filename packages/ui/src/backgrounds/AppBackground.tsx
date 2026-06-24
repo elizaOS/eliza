@@ -5,6 +5,11 @@ import { ImageBackground } from "./ImageBackground";
 import { ShaderBackground } from "./ShaderBackground";
 import { useBackgroundApplyChannel } from "./useBackgroundApplyChannel";
 
+export interface AppBackgroundProps {
+  /** Render the visual wallpaper layer. The background event channel stays mounted. */
+  visible?: boolean;
+}
+
 /**
  * The single, always-mounted app background. It lives at the shell root — above
  * the per-view switch — and is driven purely by the persisted background config,
@@ -14,9 +19,12 @@ import { useBackgroundApplyChannel } from "./useBackgroundApplyChannel";
  * Mounting here also installs the one `background:apply` listener (the agent's
  * chat → background bridge), so it is active for the whole session.
  */
-export function AppBackground(): React.JSX.Element {
+export function AppBackground({
+  visible = true,
+}: AppBackgroundProps = {}): React.JSX.Element | null {
   const { backgroundConfig } = useBackgroundConfig();
   useBackgroundApplyChannel();
+  if (!visible) return null;
   // Defensive: the app store can return a non-object slice before the provider
   // seeds it (e.g. the test fallback proxy). Fall back to the default shader.
   const config =

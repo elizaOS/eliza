@@ -613,6 +613,7 @@ describe("capability router", () => {
 											id: "weather.tab",
 											label: "Weather",
 											path: "/weather",
+											backgroundPolicy: "shared",
 										},
 									],
 								},
@@ -630,6 +631,7 @@ describe("capability router", () => {
 									{
 										id: "weather-panel",
 										label: "Weather",
+										backgroundPolicy: "opaque",
 										bundlePath: "/assets/weather.js",
 									},
 								],
@@ -748,6 +750,7 @@ describe("capability router", () => {
 								id: "weather.tab",
 								label: "Weather",
 								path: "/weather",
+								backgroundPolicy: "shared",
 							},
 						],
 					},
@@ -759,6 +762,7 @@ describe("capability router", () => {
 						{
 							id: "weather-panel",
 							label: "Weather",
+							backgroundPolicy: "opaque",
 							bundlePath: "/assets/weather.js",
 						},
 					],
@@ -1598,6 +1602,32 @@ describe("capability router", () => {
 			code: "CAPABILITY_DECODE_FAILED",
 			method: "plugin.modules.list.modules.widgets",
 			message: "slot must be a valid plugin widget slot.",
+		});
+	});
+
+	it("rejects remote plugin manifests with invalid background policies", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						views: [
+							{
+								id: "weather-panel",
+								label: "Weather",
+								backgroundPolicy: "transparent",
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.views",
+			message: 'backgroundPolicy must be "opaque" or "shared".',
 		});
 	});
 

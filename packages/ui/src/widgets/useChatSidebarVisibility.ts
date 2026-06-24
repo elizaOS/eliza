@@ -1,5 +1,5 @@
 /**
- * React hook over the chat-sidebar widget visibility overrides.
+ * React hook over per-slot widget visibility overrides.
  *
  * - Reads the persisted state from localStorage on mount.
  * - Subscribes to cross-window `storage` events so two tabs stay in sync.
@@ -7,38 +7,44 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import type { WidgetSlot } from "./types";
 import {
-  CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY,
   isWidgetVisible,
-  loadChatSidebarVisibility,
-  saveChatSidebarVisibility,
+  loadWidgetVisibility,
+  saveWidgetVisibility,
   type VisibilityCandidate,
   type WidgetVisibilityState,
   widgetVisibilityKey,
+  widgetVisibilityStorageKey,
 } from "./visibility";
 
-export interface ChatSidebarVisibilityHook {
+export interface WidgetVisibilityHook {
   overrides: Record<string, boolean>;
   isVisible(candidate: VisibilityCandidate): boolean;
   setVisible(candidate: VisibilityCandidate, next: boolean): void;
   reset(): void;
 }
 
-export function useChatSidebarVisibility(): ChatSidebarVisibilityHook {
+export type ChatSidebarVisibilityHook = WidgetVisibilityHook;
+
+export function useWidgetVisibility(
+  slot: WidgetSlot = "chat-sidebar",
+): WidgetVisibilityHook {
   const [state, setState] = useState<WidgetVisibilityState>(() =>
-    loadChatSidebarVisibility(),
+    loadWidgetVisibility(slot),
   );
 
   // Cross-tab sync: another window writing to the same key updates this one.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const storageKey = widgetVisibilityStorageKey(slot);
     function onStorage(event: StorageEvent): void {
-      if (event.key !== CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY) return;
-      setState(loadChatSidebarVisibility());
+      if (event.key !== storageKey) return;
+      setState(loadWidgetVisibility(slot));
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [slot]);
 
   const setVisible = useCallback(
     (candidate: VisibilityCandidate, next: boolean) => {
@@ -55,18 +61,18 @@ export function useChatSidebarVisibility(): ChatSidebarVisibilityHook {
           nextOverrides[key] = next;
         }
         const nextState: WidgetVisibilityState = { overrides: nextOverrides };
-        saveChatSidebarVisibility(nextState);
+        saveWidgetVisibility(nextState, slot);
         return nextState;
       });
     },
-    [],
+    [slot],
   );
 
   const reset = useCallback(() => {
     const nextState: WidgetVisibilityState = { overrides: {} };
-    saveChatSidebarVisibility(nextState);
+    saveWidgetVisibility(nextState, slot);
     setState(nextState);
-  }, []);
+  }, [slot]);
 
   const isVisible = useCallback(
     (candidate: VisibilityCandidate) =>
@@ -80,4 +86,8 @@ export function useChatSidebarVisibility(): ChatSidebarVisibilityHook {
     setVisible,
     reset,
   };
+}
+
+export function useChatSidebarVisibility(): ChatSidebarVisibilityHook {
+  return useWidgetVisibility("chat-sidebar");
 }

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
-import type { ChatSidebarVisibilityHook } from "../../widgets/useChatSidebarVisibility";
+import type { WidgetVisibilityHook } from "../../widgets/useChatSidebarVisibility";
 import type { VisibilityCandidate } from "../../widgets/visibility";
 import {
   type WidgetVisibilityCandidate,
@@ -82,7 +82,7 @@ const sampleCandidates: WidgetVisibilityCandidate[] = [
 
 function useMockVisibility(
   initial: Record<string, boolean> = {},
-): ChatSidebarVisibilityHook {
+): WidgetVisibilityHook {
   const [overrides, setOverrides] = useState(initial);
   return {
     overrides,

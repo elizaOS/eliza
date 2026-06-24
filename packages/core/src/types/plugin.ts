@@ -359,6 +359,17 @@ export interface PluginAppBridge {
 }
 
 /**
+ * How the app shell treats the screen background while a view is active.
+ *
+ * - `opaque` (default): the host paints a full-window theme background behind
+ *   the view, covering status/home-indicator safe areas so the shared wallpaper
+ *   cannot leak through.
+ * - `shared`: the view intentionally sits on the same unified background used
+ *   by Home/Springboard.
+ */
+export type AppShellBackgroundPolicy = "opaque" | "shared";
+
+/**
  * A nav-tab declaration so an app/plugin can register its own page in the
  * shell's main navigation without app-core hard-coding it. Resolved by the
  * shell at startup from the loaded plugin's `app.navTabs` field.
@@ -390,6 +401,8 @@ export interface PluginAppNavTab {
 	 * grouped tab strips, e.g. workbench/dev/wallet groupings).
 	 */
 	group?: string;
+	/** Screen background policy for this tab. Defaults to `"opaque"`. */
+	backgroundPolicy?: AppShellBackgroundPolicy;
 	/**
 	 * Optional package export specifier the shell will dynamically import
 	 * when the tab is activated, e.g. "@elizaos/plugin-wallet-ui#InventoryView".
@@ -657,6 +670,8 @@ export interface ViewDeclaration {
 	tags?: string[];
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
+	/** Screen background policy for this view. Defaults to `"opaque"`. */
+	backgroundPolicy?: AppShellBackgroundPolicy;
 	/**
 	 * Platforms this view supports. Omit to support all platforms.
 	 * Dynamic plugin install is disabled on restricted store builds (ios, android).

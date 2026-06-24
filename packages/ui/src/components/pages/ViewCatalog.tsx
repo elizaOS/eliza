@@ -13,9 +13,10 @@ import {
   Clock3,
   type LucideIcon,
   Plus,
+  SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import {
@@ -36,13 +37,24 @@ import {
   getActiveViewModality,
   type ViewModality,
 } from "../../platform/platform-guards";
+import { useAppSelector } from "../../state";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { readRecentViewIds, recordRecentViewId } from "../../view-recents";
 import { emitViewInteraction } from "../../view-telemetry";
+import { resolveWidgetsForSlot } from "../../widgets/registry";
+import { useWidgetVisibility } from "../../widgets/useChatSidebarVisibility";
+import {
+  isWidgetVisible,
+  type VisibilityCandidate,
+} from "../../widgets/visibility";
 import { WidgetHost } from "../../widgets/WidgetHost";
+import {
+  type WidgetVisibilityCandidate,
+  WidgetVisibilityEditor,
+} from "../chat/WidgetVisibilityPanel";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { ViewTileImage } from "../views/ViewTileImage";
@@ -319,6 +331,7 @@ export function ViewCatalog() {
   } = useDesktopTabs();
   const isDeveloperMode = useIsDeveloperMode();
   const enabledKinds = useEnabledViewKinds();
+  const plugins = useAppSelector((s) => s.plugins);
   const isDesktop = isElectrobunRuntime();
   const canManageDynamicViews = isDeveloperMode && isDesktop;
   // Views are scoped to the surface modality: a GUI surface lists only GUI
@@ -331,7 +344,9 @@ export function ViewCatalog() {
   // widget shows live agent activity while the home is open.
   const { events: homeWidgetEvents, clearEvents: clearHomeWidgetEvents } =
     useActivityEvents();
+  const homeWidgetVisibility = useWidgetVisibility("home");
   const [query, setQuery] = useState("");
+  const [homeWidgetsEditOpen, setHomeWidgetsEditOpen] = useState(false);
   const [formViewId, setFormViewId] = useState("agent.quick-view");
   const [formTitle, setFormTitle] = useState("Quick View");
   const [formEntrypoint, setFormEntrypoint] = useState(
@@ -363,6 +378,25 @@ export function ViewCatalog() {
     [searchPlaceholder],
   );
   useRegisterViewChatBinding(chatSearchBinding);
+
+  const homeWidgetCandidates = useMemo<readonly WidgetVisibilityCandidate[]>(
+    () =>
+      resolveWidgetsForSlot("home", plugins ?? [])
+        .filter((entry) => !entry.defaultWidgetSink)
+        .map(({ declaration }) => ({
+          pluginId: declaration.pluginId,
+          id: declaration.id,
+          defaultEnabled: declaration.defaultEnabled,
+          label: declaration.label,
+        })),
+    [plugins],
+  );
+
+  const homeWidgetFilter = useCallback(
+    (declaration: VisibilityCandidate) =>
+      isWidgetVisible(declaration, homeWidgetVisibility.overrides),
+    [homeWidgetVisibility.overrides],
+  );
 
   const formIdInput = useAgentElement<HTMLInputElement>({
     id: "views-form-id",
@@ -806,13 +840,46 @@ export function ViewCatalog() {
             // home (#9143).
             <>
               {!hasQuery ? (
-                <WidgetHost
-                  slot="home"
-                  layout="grid"
-                  events={homeWidgetEvents}
-                  clearEvents={clearHomeWidgetEvents}
-                  className="px-1 pb-3"
-                />
+                <div className="pb-3" data-testid="home-widgets-surface">
+                  <div className="mb-2 flex justify-end px-1">
+                    <button
+                      type="button"
+                      data-testid="home-widgets-edit"
+                      aria-label={t("viewmanager.homeWidgets.edit", {
+                        defaultValue: "Edit home widgets",
+                      })}
+                      title={t("viewmanager.homeWidgets.edit", {
+                        defaultValue: "Edit home widgets",
+                      })}
+                      onClick={() => setHomeWidgetsEditOpen((open) => !open)}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-bg-accent hover:text-txt ${
+                        homeWidgetsEditOpen
+                          ? "bg-accent-subtle text-accent"
+                          : "text-muted"
+                      }`}
+                      aria-pressed={homeWidgetsEditOpen}
+                    >
+                      <SlidersHorizontal className="h-4 w-4" aria-hidden />
+                    </button>
+                  </div>
+                  {homeWidgetsEditOpen ? (
+                    <div className="mb-3 max-w-md overflow-hidden rounded-sm border border-border/40 bg-bg">
+                      <WidgetVisibilityEditor
+                        candidates={homeWidgetCandidates}
+                        visibility={homeWidgetVisibility}
+                        onClose={() => setHomeWidgetsEditOpen(false)}
+                      />
+                    </div>
+                  ) : null}
+                  <WidgetHost
+                    slot="home"
+                    layout="grid"
+                    events={homeWidgetEvents}
+                    clearEvents={clearHomeWidgetEvents}
+                    className="px-1"
+                    filter={homeWidgetFilter}
+                  />
+                </div>
               ) : null}
               <Springboard
                 entries={springboardEntries}
