@@ -5,6 +5,7 @@ import { ModelType } from "../../../types/model.ts";
 import type { JsonValue, UUID } from "../../../types/primitives.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import { Service, type ServiceTypeName } from "../../../types/service.ts";
+import { embedRecallQuery } from "../../documents/recall-embed.ts";
 import {
 	type Experience,
 	type ExperienceAnalysis,
@@ -888,25 +889,23 @@ export class ExperienceService extends Service {
 			return [];
 		}
 
-		const runModel = this.runtime.useModel.bind(this.runtime);
-		let queryEmbedding: number[];
-		try {
-			queryEmbedding = await runModel(ModelType.TEXT_EMBEDDING, {
-				text,
-			});
-			if (
-				!Array.isArray(queryEmbedding) ||
-				queryEmbedding.length === 0 ||
-				queryEmbedding.every((v: number) => v === 0)
-			) {
-				logger.warn(
-					"[ExperienceService] Query embedding is empty/zero, falling back to recency sort",
-				);
-				return this.fallbackSort(limit);
-			}
-		} catch {
+		// Share the one per-turn recall-query embed across all recall providers
+		// (documents, relevant-conversations) so the same query text hits the
+		// embed endpoint once per turn. `null` means timed out/failed — fail open
+		// to the recency sort, exactly as the empty/zero-embedding case does.
+		const queryEmbedding = await embedRecallQuery(this.runtime, text);
+		if (queryEmbedding === null) {
 			logger.warn(
-				"[ExperienceService] Query embedding failed, falling back to recency sort",
+				"[ExperienceService] Query embedding unavailable, falling back to recency sort",
+			);
+			return this.fallbackSort(limit);
+		}
+		if (
+			queryEmbedding.length === 0 ||
+			queryEmbedding.every((v: number) => v === 0)
+		) {
+			logger.warn(
+				"[ExperienceService] Query embedding is empty/zero, falling back to recency sort",
 			);
 			return this.fallbackSort(limit);
 		}

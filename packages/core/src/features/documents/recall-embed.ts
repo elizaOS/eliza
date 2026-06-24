@@ -3,29 +3,37 @@ import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
 
 /**
- * Recall-query embedding on the reply hot path.
+ * THE shared recall-query embedder on the reply hot path.
+ *
+ * Every recall provider that embeds the current user message to vector-search
+ * memory routes through here: document/knowledge recall
+ * (`DocumentService._vectorSearch`/`_hybridSearch`), experience recall
+ * (`ExperienceService.findSimilarExperiences`), and the relevant-conversations
+ * provider. Because they all call this one function with the same runtime +
+ * `runId` + (normalized) query text, the per-turn dedupe below collapses what
+ * used to be 3 independent embed round-trips per turn into a single one.
  *
  * **Design principle (issue #47):** a slow embed must cost recall RICHNESS,
- * never reply LATENCY. The per-turn document/knowledge recall embeds the query
- * text with a blocking `useModel(TEXT_EMBEDDING)` round-trip BEFORE the vector
- * `searchMemories`. On managed cloud agents that round-trip is 3-6.6s and runs
- * during `composeState`, entirely before the first reply token — so it
- * dominated TTFT (~23-30s/turn).
+ * never reply LATENCY. The recall embeds the query text with a blocking
+ * `useModel(TEXT_EMBEDDING)` round-trip BEFORE the vector `searchMemories`. On
+ * managed cloud agents that round-trip is 3-6.6s and runs during `composeState`,
+ * entirely before the first reply token — so it dominated TTFT (~23-30s/turn).
  *
  * Two bounded mitigations live here, both fail-open:
  *
  * 1. **Timeout + fail-open.** The recall embed is raced against a short timeout
  *    ({@link RECALL_EMBED_TIMEOUT_MS}). On timeout OR error this returns `null`;
- *    the caller then falls back to pure keyword/BM25 recall and proceeds with
- *    reply generation. The embed therefore adds AT MOST the timeout to TTFT,
- *    never the full serial cost, and recall is never silently dropped.
+ *    the caller then falls back to pure keyword/BM25 recall (or, for callers
+ *    with no keyword path, no recall context) and proceeds with reply
+ *    generation. The embed therefore adds AT MOST the timeout to TTFT, never the
+ *    full serial cost, and recall is never silently dropped.
  *
  * 2. **Per-turn cache + in-flight dedupe.** The same query text is embedded more
- *    than once per turn (vector + hybrid document search, facts, knowledge).
- *    Identical normalized query text within one turn (keyed by `runId`) resolves
- *    to a single embed call; concurrent identical embeds share one in-flight
- *    promise. The cache is scoped to the turn and evicted when a new turn's
- *    `runId` is observed, so it never grows unbounded.
+ *    than once per turn (vector + hybrid document search, experience recall,
+ *    relevant-conversations). Identical normalized query text within one turn
+ *    (keyed by `runId`) resolves to a single embed call; concurrent identical
+ *    embeds share one in-flight promise. The cache is scoped to the turn and
+ *    evicted when a new turn's `runId` is observed, so it never grows unbounded.
  */
 
 /**
@@ -73,11 +81,12 @@ function getTurnCache(runtime: IAgentRuntime, runId: string): TurnEmbedCache {
 
 /**
  * Embed the recall query, bounded by {@link RECALL_EMBED_TIMEOUT_MS} and cached
- * + deduped for the current turn.
+ * + deduped for the current turn ACROSS all recall providers (documents,
+ * experience, relevant-conversations) sharing the same runtime + `runId`.
  *
  * @returns the embedding vector, or `null` when the embed timed out or failed —
- *   in which case the caller MUST fall open to keyword/BM25 recall (never drop
- *   recall silently).
+ *   in which case the caller MUST fail open to keyword/BM25 recall (or, where no
+ *   keyword path exists, to empty recall context); never drop recall silently.
  */
 export async function embedRecallQuery(
 	runtime: IAgentRuntime,

@@ -108,6 +108,42 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 		expect(calls.count).toBe(1);
 	});
 
+	test("two DIFFERENT recall providers sharing one runtime + runId + text issue ONE underlying embed (cross-provider dedupe)", async () => {
+		let resolveEmbed: ((v: number[]) => void) | undefined;
+		const { runtime, calls } = makeRuntime({
+			embed: () =>
+				new Promise<number[]>((resolve) => {
+					resolveEmbed = resolve;
+				}),
+		});
+
+		// Simulate three providers (document recall, experience recall,
+		// relevant-conversations) all embedding the same query in the same turn.
+		// The first two race concurrently (in-flight dedupe); the third arrives
+		// after the shared embed resolves (result-cache dedupe). Whitespace/casing
+		// differences must still collapse to one normalized key.
+		const documentRecall = embedRecallQuery(runtime, "What is the SLA?");
+		const experienceRecall = embedRecallQuery(runtime, "what is the   sla?");
+		expect(calls.count).toBe(1);
+
+		resolveEmbed?.([0.4, 0.5, 0.6]);
+		const [docVec, expVec] = await Promise.all([
+			documentRecall,
+			experienceRecall,
+		]);
+
+		const relevantConversations = await embedRecallQuery(
+			runtime,
+			"  WHAT IS THE SLA? ",
+		);
+
+		expect(docVec).toEqual([0.4, 0.5, 0.6]);
+		expect(expVec).toEqual([0.4, 0.5, 0.6]);
+		expect(relevantConversations).toEqual([0.4, 0.5, 0.6]);
+		// One round-trip served all three providers for the turn.
+		expect(calls.count).toBe(1);
+	});
+
 	test("a new turn (different runId) does NOT reuse the prior turn's cache", async () => {
 		let runId = RUN_A;
 		const calls = { count: 0 };
