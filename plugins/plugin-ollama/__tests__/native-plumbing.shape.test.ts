@@ -134,13 +134,13 @@ describe("Ollama native text plumbing", () => {
     });
   });
 
-  it("rejects malformed array tool definitions before calling the provider", async () => {
-    const result = await handleTextSmall(createRuntime(), {
-      prompt: "use a broken tool",
-      tools: [{ description: "missing name", parameters: { type: "object" } }],
-    } as never);
-
-    expect(result).toBe("Error generating text. Please try again later.");
+  it("throws on malformed array tool definitions before calling the provider", async () => {
+    await expect(
+      handleTextSmall(createRuntime(), {
+        prompt: "use a broken tool",
+        tools: [{ description: "missing name", parameters: { type: "object" } }],
+      } as never)
+    ).rejects.toThrow();
     expect(generateTextMock).not.toHaveBeenCalled();
     expect(streamTextMock).not.toHaveBeenCalled();
   });

@@ -3282,17 +3282,15 @@ export async function renderMessageHandlerStablePrefix(
 
 function parseToolArguments(value: unknown): Record<string, unknown> | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		if (typeof value !== "string") {
-			return null;
-		}
-		try {
-			const parsed: unknown = JSON.parse(value);
-			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-				? (parsed as Record<string, unknown>)
-				: null;
-		} catch {
-			return null;
-		}
+		// String args are usually one JSON object, but a weak streaming model
+		// (cerebras gpt-oss double-emits the tool call on one delta index) can
+		// produce two concatenated objects (`{…}{…}`) that fail a plain
+		// JSON.parse. parseJsonObject recovers the FIRST balanced object, so the
+		// doubled emit parses on attempt 1 instead of failing as a "malformed
+		// HANDLE_RESPONSE tool call" and forcing the Stage-1 retry+planner path.
+		return typeof value === "string"
+			? parseJsonObject<Record<string, unknown>>(value)
+			: null;
 	}
 	return value as Record<string, unknown>;
 }
@@ -4300,7 +4298,7 @@ function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	return true;
 }
 
-function getStage1RetryReason(
+export function getStage1RetryReason(
 	raw: string | GenerateTextResult,
 ): "empty completion" | "malformed HANDLE_RESPONSE tool call" | null {
 	if (isEmptyStage1Result(raw)) {
@@ -7175,19 +7173,18 @@ function findDirectOwnedActionSuggestion(
 	messageText: string,
 ): ActionOwnershipSuggestion | null {
 	if (looksLikeLocalShellRequest(messageText)) {
-		const shellAction = findRuntimeActionByNames(runtime, [
+		const shellName = findAvailableActionName(runtime.actions ?? [], [
 			"SHELL",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
 			"EXECUTE_COMMAND",
 			"TERMINAL",
-			"SHELL",
 			"RUN_SHELL",
 			"EXEC",
 		]);
-		if (shellAction) {
+		if (shellName) {
 			return {
-				actionName: shellAction.name,
+				actionName: shellName,
 				score: 100,
 				secondBestScore: 0,
 				reasons: ["direct:local-shell-check"],
@@ -7196,19 +7193,10 @@ function findDirectOwnedActionSuggestion(
 	}
 
 	if (looksLikeWebSearchRequest(messageText)) {
-		const searchAction = findRuntimeActionByNames(runtime, [
-			"SEARCH",
-			"WEB_SEARCH",
-			"SEARCH_WEB",
-			"BRAVE_SEARCH",
-			"INTERNET_SEARCH",
-			"SEARCH_INTERNET",
-			"LOOKUP_WEB",
-			"GOOGLE",
-		]);
-		if (searchAction) {
+		const searchName = findWebLookupActionName(runtime.actions ?? []);
+		if (searchName) {
 			return {
-				actionName: searchAction.name,
+				actionName: searchName,
 				score: 100,
 				secondBestScore: 0,
 				reasons: ["direct:web-search"],
@@ -7237,27 +7225,6 @@ function findDirectOwnedActionSuggestion(
 	}
 
 	return null;
-}
-
-function findRuntimeActionByNames(
-	runtime: Pick<IAgentRuntime, "actions">,
-	names: string[],
-): Action | undefined {
-	// Resolve in `names` PRIORITY order, not action-registration order, so the
-	// leading preference wins (mirrors findAvailableActionName in
-	// direct-action-heuristics.ts).
-	const actions = runtime.actions ?? [];
-	for (const want of names) {
-		const wanted = normalizeActionIdentifier(want);
-		const match = actions.find((action) => {
-			const candidates = [action.name, ...(action.similes ?? [])]
-				.filter((value): value is string => typeof value === "string")
-				.map(normalizeActionIdentifier);
-			return candidates.includes(wanted);
-		});
-		if (match) return match;
-	}
-	return undefined;
 }
 
 function looksLikeActionExplanationRequest(text: string): boolean {

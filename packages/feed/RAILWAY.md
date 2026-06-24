@@ -20,6 +20,138 @@ deployed — the game loop and DB schema are provisioned in-process so the servi
    (shared JWT secret)
 ```
 
+## Canonical host: feed.elizacloud.ai
+
+**Decision:** Railway is the canonical host for the Feed app. `https://feed.elizacloud.ai` is the public Feed origin in production; it must serve the Railway `feed-web` service, NOT the `cloud-api` Cloudflare Worker.
+
+### Root cause (why feed.elizacloud.ai currently returns cloud-api)
+
+The `cloud-api` production Worker declares a wildcard route in
+`packages/cloud-api/wrangler.toml` `[env.production].routes`:
+
+```toml
+{ pattern = "*.elizacloud.ai/*", zone_name = "elizacloud.ai" }
+```
+
+This makes the Worker the default origin for **every** proxied `elizacloud.ai`
+subdomain. The Worker entrypoint (`packages/cloud-api/src/index.ts`) has **no**
+feed passthrough: `feed.elizacloud.ai` is not `www.`, not a UUID agent subdomain
+(`proxyGeneratedAgentRequest`), and not a `FRONTEND_ALIAS_TARGETS` host (only
+`staging.elizacloud.ai` is), so the request falls through to the full cloud-api
+Hono app. A request to `feed.elizacloud.ai` therefore returns cloud-api's
+responses (e.g. cloud-api health, shaped `{status, timestamp:<number>, region}`).
+
+A Worker **cannot** opt a host out of its own route from `wrangler.toml` — the
+carve-out must happen at the Cloudflare zone level. The repo already does this
+for `headscale.elizacloud.ai` via a **DNS-only (proxied=false)** record
+(`cloudflare_dns_record.headscale` in
+`packages/cloud-infra/cloud/terraform/hetzner/control-plane/main.tf`): a grey-cloud
+record bypasses Cloudflare's proxy entirely, so the wildcard Worker route never
+runs and the request hits the real origin directly.
+
+### Carve-out — Option A (PREFERRED): DNS-only CNAME to Railway
+
+Mirrors the `headscale` pattern. A DNS-only record makes the Worker route a no-op
+for this host and sends traffic straight to Railway, which terminates TLS for the
+custom domain.
+
+1. **Add the custom domain on Railway.** Railway dashboard → `feed-web` service →
+   Settings → Networking → Custom Domain → add `feed.elizacloud.ai`. Railway prints
+   a CNAME **target** (e.g. `<hash>.up.railway.app`). Record this value — it is the
+   only unknown and must come from Railway, not be guessed.
+2. **Point the `feed` DNS record at that target as DNS-only.** Either:
+   - **IaC (preferred):** add `cloudflare_dns_record.feed` (type=`CNAME`,
+     content=`var.feed_railway_target`, `proxied = false`, `ttl = 300`) in
+     `packages/cloud-infra/cloud/terraform/hetzner/control-plane/main.tf`, plus a
+     one-shot `import` block in `import.tf` to adopt the existing dashboard-created
+     `feed` record (mirroring the headscale adoption). `ttl` must be `> 1` when
+     `proxied=false`.
+   - **Dashboard fallback:** Cloudflare → elizacloud.ai → DNS → edit the `feed`
+     record → CNAME → target = Railway hostname → **toggle proxy OFF (grey cloud)**.
+3. Wait for propagation (TTL 300s) then verify (below).
+
+### Carve-out — Option B (ALTERNATIVE): keep Cloudflare proxy, more-specific route
+
+Use only to keep Cloudflare's proxy/CDN/WAF in front of Feed. Cloudflare matches
+the **most specific** route, so a `feed.elizacloud.ai/*` route bound to **no
+Worker** wins over `*.elizacloud.ai/*` and lets the request fall through to the
+proxied origin. This is a **Cloudflare dashboard / API** action (`wrangler.toml`
+cannot express "route → Worker = None"):
+
+- Dashboard: Workers & Pages → eliza-cloud-api-prod → Triggers → Routes → add
+  `feed.elizacloud.ai/*` with **Worker = None**.
+- API: `POST /zones/<zone_id>/workers/routes` with
+  `{"pattern":"feed.elizacloud.ai/*","script":null}`.
+- Keep the `feed` DNS record **proxied = true**, CNAME → the Railway custom-domain
+  target (Railway must have the custom domain added so its edge accepts the host).
+
+Option A is preferred: fewer moving parts, identical to the proven `headscale`
+carve-out, and it removes Cloudflare from the Feed request path entirely (Railway
+already terminates TLS and serves SSE/cron without a proxy in between).
+
+> **Worker-side alternative (CI-deployable, no DNS change):** add a
+> `feed.elizacloud.ai` entry to `FRONTEND_ALIAS_TARGETS` in
+> `packages/cloud-api/src/index.ts` with `appHost === apiHost ===` the Railway
+> feed host. The Worker already reverse-proxies aliased hosts (it does this for
+> `staging.elizacloud.ai`) and streams the response, so SSE passes through. This
+> ships via the normal `wrangler deploy` CI lane and needs no Cloudflare DNS edit,
+> at the cost of one Worker hop in front of Feed. Prefer Option A for a live game.
+
+### Environment variables on the `feed-web` Railway service
+
+Production-specific values (full list is in step 2 below):
+
+```
+NEXT_PUBLIC_APP_URL=https://feed.elizacloud.ai      # canonical host for metadata/OG/Farcaster frames
+NODE_ENV=production
+STEWARD_API_URL=<existing Eliza Cloud Steward URL>  # same Steward cloud-api uses
+NEXT_PUBLIC_STEWARD_API_URL=<same Steward URL>
+STEWARD_JWT_SECRET=<exact HS256 secret the existing Steward signs with>
+STEWARD_TENANT_ID=feed
+STEWARD_TENANT_API_KEY=stw_...                      # from steward:init (step 4)
+ELIZACLOUD_API_KEY=<Eliza Cloud inference key>
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+DIRECT_DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+CRON_SECRET=<openssl rand -hex 32>                  # fail-closed cron auth
+ENABLE_INTERNAL_CRON_SCHEDULER=true                 # in-process game loop (no external cron)
+GAME_START=pause                                    # bring-up; flip to running AFTER verify
+```
+
+After health + auth + a manual cron tick verify green, **flip `GAME_START=running`**
+and redeploy so the in-process game loop begins firing.
+
+### Verification
+
+Distinguish the Feed origin from cloud-api by the health-response **shape** — the
+`timestamp` type and the third field differ:
+
+- **Feed (correct):** `{ "status": "ok", "timestamp": "<ISO 8601 string>", "env": "production" }`
+- **cloud-api (wrong / not carved out):** `{ "status": "ok", "timestamp": <number>, "region": "<cf-region>" }`
+
+```bash
+# 1. Confirm feed.elizacloud.ai now serves Feed, not cloud-api.
+curl -s https://feed.elizacloud.ai/api/health
+curl -s https://feed.elizacloud.ai/api/health | grep -q '"env"' && echo "FEED (correct)" || echo "CLOUD-API (carve-out NOT applied)"
+
+# 2. Sanity-check api.elizacloud.ai is unchanged (still cloud-api: numeric timestamp + region).
+curl -s https://api.elizacloud.ai/api/health
+
+# 3. Cron — fail-closed on CRON_SECRET. Unauthenticated rejected; authenticated ticks.
+curl -s -o /dev/null -w '%{http_code}\n' https://feed.elizacloud.ai/api/cron/game-tick         # expect 401/403
+curl -s -H "Authorization: Bearer $CRON_SECRET" https://feed.elizacloud.ai/api/cron/game-tick  # expect 200 + tick
+#    With ENABLE_INTERNAL_CRON_SCHEDULER=true and GAME_START=running, ticks also fire automatically;
+#    confirm in `railway logs` that game-tick fires ~every minute.
+
+# 4. SSE — the live stream must stay open and emit events from the Railway origin.
+curl -N -s https://feed.elizacloud.ai/api/sse/events | head -c 400
+#    Expect Content-Type: text/event-stream with `data:` frames, NOT a cloud-api JSON 404.
+```
+
+If step 1 still shows cloud-api after a DNS-only change, confirm the `feed` record
+is grey-cloud (proxied=false) and DNS has propagated (TTL 300s); for Option B,
+confirm the more-specific `feed.elizacloud.ai/*` route exists with Worker = None.
+
 ## Why a custom build path
 
 The Feed web app (`apps/web`) is part of the elizaOS workspace — it consumes
@@ -34,6 +166,19 @@ not just `packages/feed`.
   must be present at runtime; give the build ≥ 8 GB).
 - Start: `bash packages/feed/scripts/railway-start.sh` (ensures the schema, then
   `next start` binding `$PORT`).
+
+## Canonical host: feed.elizacloud.ai
+
+Use `https://feed.elizacloud.ai` as the public Feed origin in production. Set
+`NEXT_PUBLIC_APP_URL=https://feed.elizacloud.ai` on the web service so Next.js
+metadata, Open Graph cards, and Farcaster Mini App frame URLs all point at the
+same canonical host.
+
+The Cloudflare Worker route for `*.elizacloud.ai/*` makes `cloud-api` the
+default origin for every subdomain. Because Feed is served from its own Railway
+origin, the `feed.elizacloud.ai/*` host must be carved out of that wildcard
+route in Cloudflare: either add a more-specific Workers route with Worker =
+None, or make the `feed` DNS record DNS-only.
 
 ## 1. Create the project + services
 

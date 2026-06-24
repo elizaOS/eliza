@@ -1,0 +1,105 @@
+// Renderer-pull routes for the Android screen-capture bridge.
+//
+// The renderer interval-polls the GET route to drain queued capture requests,
+// captures each via the Capacitor ScreenCapture plugin, then POSTs the PNG
+// back to the POST route. Both mount at their exact paths (`rawPath: true`)
+// because the Android JNI loopback forwards by literal `/api/...` path.
+
+import type { Route } from "@elizaos/core";
+import {
+  SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+  type ScreenCaptureBridgeService,
+} from "./screen-capture-bridge";
+
+interface ScreenFrameBody {
+  requestId: string;
+  base64: string;
+  format: string;
+  width: number;
+  height: number;
+}
+
+function isScreenFrameBody(value: unknown): value is ScreenFrameBody {
+  if (typeof value !== "object" || value === null) return false;
+  const body = value as Record<string, unknown>;
+  return (
+    typeof body.requestId === "string" &&
+    typeof body.base64 === "string" &&
+    typeof body.format === "string" &&
+    typeof body.width === "number" &&
+    typeof body.height === "number"
+  );
+}
+
+function jsonResult(
+  status: number,
+  body: unknown,
+): { status: number; headers: Record<string, string>; body: string } {
+  return {
+    status,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
+/** GET — drain the queue of pending capture requests for the renderer poller. */
+export const captureRequestsRoute: Route = {
+  type: "GET",
+  path: "/api/vision/capture-requests",
+  rawPath: true,
+  routeHandler: async (ctx) => {
+    const bridge = ctx.runtime.getService<ScreenCaptureBridgeService>(
+      SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+    );
+    if (!bridge) return jsonResult(200, { requests: [] });
+    return jsonResult(200, { requests: bridge.takeRequests() });
+  },
+};
+
+/** POST — accept a captured frame (or a skip) for a queued request. */
+export const screenFrameRoute: Route = {
+  type: "POST",
+  path: "/api/vision/screen-frame",
+  rawPath: true,
+  routeHandler: async (ctx) => {
+    const bridge = ctx.runtime.getService<ScreenCaptureBridgeService>(
+      SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+    );
+    if (!bridge)
+      return jsonResult(404, { ok: false, error: "bridge_unavailable" });
+
+    const body = ctx.body;
+    // Renderer signalled a capture failure/skip so the pending request settles
+    // immediately rather than waiting out the bridge timeout.
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      typeof (body as Record<string, unknown>).requestId === "string" &&
+      (body as Record<string, unknown>).error !== undefined
+    ) {
+      const requestId = (body as Record<string, unknown>).requestId as string;
+      const reason = String((body as Record<string, unknown>).error);
+      const failed = bridge.failFrame(requestId, reason);
+      return failed
+        ? jsonResult(200, { ok: true })
+        : jsonResult(404, { ok: false, error: "unknown_request" });
+    }
+
+    if (!isScreenFrameBody(body)) {
+      return jsonResult(400, { ok: false, error: "invalid_body" });
+    }
+
+    const ok = bridge.submitFrame(
+      body.requestId,
+      body.base64,
+      body.format,
+      body.width,
+      body.height,
+    );
+    return ok
+      ? jsonResult(200, { ok: true })
+      : jsonResult(404, { ok: false, error: "unknown_request" });
+  },
+};
+
+export const visionRoutes: Route[] = [captureRequestsRoute, screenFrameRoute];

@@ -128,6 +128,9 @@ export interface CorpusTtsSynthesizer {
 	synthesize(args: {
 		text: string;
 		voiceId?: string;
+		speakerLabel: string;
+		turnIndex: number;
+		isAgentEcho: boolean;
 		sampleRate: number;
 	}): Promise<Float32Array>;
 }
@@ -231,6 +234,9 @@ export async function generateVoiceCorpus(
 			speech = await synthesizer.synthesize({
 				text,
 				voiceId: ttsVoiceId,
+				speakerLabel: turn.speaker,
+				turnIndex: i,
+				isAgentEcho: turn.isAgentEcho === true,
 				sampleRate,
 			});
 			speechStartOffset = 0;

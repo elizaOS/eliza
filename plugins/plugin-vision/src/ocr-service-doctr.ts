@@ -17,7 +17,7 @@
 // backend (apple-vision on darwin) or surfaces the error to the caller.
 
 import { logger } from "@elizaos/core";
-import sharp from "sharp";
+import { getSharp } from "./image/sharp-compat";
 import {
   defaultDetWeightsPath,
   defaultRecWeightsPath,
@@ -130,6 +130,7 @@ export class DoctrOCRService {
       throw new Error("[DoctrOCR] native bindings unavailable at extract time");
     }
 
+    const sharp = await getSharp();
     const meta = await sharp(imageBuffer).metadata();
     const origW = meta.width ?? 0;
     const origH = meta.height ?? 0;
@@ -272,6 +273,7 @@ export class DoctrOCRService {
     if (!bindings) return "";
     if (bbox.width < 4 || bbox.height < 4) return "";
     const targetH = 32;
+    const sharp = await getSharp();
     const cropMeta = await sharp(imageBuffer).metadata();
     if (!cropMeta.width || !cropMeta.height) return "";
     const safeW = Math.min(bbox.width, cropMeta.width - bbox.x);

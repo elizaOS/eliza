@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { buildDeviceSupportScenarioEvidence } from "../../test/scenarios/_helpers/device-modality-scenario.ts";
 import {
   contentAwareVerifierModel,
   runGrillingEvidenceBundleCheck,
@@ -72,5 +73,24 @@ describe("orchestrator scenario logic (#8932)", () => {
     expect(
       await runGrillingEvidenceBundleCheck(makeBaseRuntime()),
     ).toBeUndefined();
+  });
+
+  it("device/modality matrix: supported profiles and unsupported stubs are explicit", async () => {
+    const evidence = await buildDeviceSupportScenarioEvidence();
+    const byId = new Map(evidence.matrix.map((row) => [row.id, row]));
+
+    expect(byId.get("desktop")?.supported).toBe(true);
+    expect(byId.get("android-local-yolo")?.supported).toBe(true);
+    expect(byId.get("ios")?.reason).toBe("vanilla_mobile");
+    expect(byId.get("store")?.reason).toBe("store_build");
+
+    expect(evidence.stubs.map((stub) => stub.actualReason)).toEqual(
+      expect.arrayContaining([
+        "MOBILE_TERMINAL_UNSUPPORTED",
+        "STORE_BUILD_BLOCKED",
+        "AOSP_TERMINAL_REQUIRES_LOCAL_YOLO",
+        "AOSP_TERMINAL_MISSING_SHELL",
+      ]),
+    );
   });
 });

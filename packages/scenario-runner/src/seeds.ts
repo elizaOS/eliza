@@ -100,8 +100,10 @@ type TodoSeed = {
 type ContactSeedHandle = {
   platform?: unknown;
   identifier?: unknown;
+  handle?: unknown;
   displayLabel?: unknown;
   isPrimary?: unknown;
+  realPerson?: unknown;
 };
 
 type ContactSeed = {
@@ -147,16 +149,109 @@ type GmailFaultInjectionConfig = {
   remaining?: number;
 };
 
+type ConnectorSeed = {
+  type: "connectorStatus" | "connectorAuthSession" | "transportFault";
+  connector?: unknown;
+  provider?: unknown;
+  state?: unknown;
+  capabilities?: unknown;
+  scopes?: unknown;
+  limit?: unknown;
+};
+
 type MemoryContactSeed = {
   kind?: unknown;
   type?: unknown;
   name?: unknown;
+  displayName?: unknown;
+  id?: unknown;
   notes?: unknown;
+  company?: unknown;
+  handles?: unknown;
+  platform?: unknown;
+  handle?: unknown;
+  oldHandle?: unknown;
+  newHandle?: unknown;
+  platformUserId?: unknown;
+  tags?: unknown;
+  primaryChannel?: unknown;
+  telegramHandle?: unknown;
+  recentNews?: unknown;
+  renameConfirmed?: unknown;
+  mergedAccidentally?: unknown;
   relationshipGoal?: unknown;
   followupThresholdDays?: unknown;
   lastContactedAt?: unknown;
   relationshipStatus?: unknown;
 };
+
+type ConnectorStatusLike = {
+  state: "ok" | "degraded" | "disconnected";
+  message?: string;
+  observedAt: string;
+};
+
+type DispatchResultLike =
+  | { ok: true; messageId?: string }
+  | {
+      ok: false;
+      reason:
+        | "disconnected"
+        | "rate_limited"
+        | "auth_expired"
+        | "unknown_recipient"
+        | "transport_error";
+      retryAfterMinutes?: number;
+      userActionable: boolean;
+      message?: string;
+    };
+
+type ConnectorModeLike = "local" | "cloud";
+
+type ConnectorRegistryFilterLike = {
+  capability?: string;
+  mode?: ConnectorModeLike;
+};
+
+type ConnectorContributionLike = {
+  kind: string;
+  capabilities: string[];
+  modes: ConnectorModeLike[];
+  describe: { label: string };
+  start: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  verify: () => Promise<boolean>;
+  status: () => Promise<ConnectorStatusLike>;
+  send?: (payload: unknown) => Promise<DispatchResultLike>;
+  read?: (query: unknown) => Promise<unknown>;
+  requiresApproval?: boolean;
+  oauth?: unknown;
+  apiBaseUrl?: string;
+};
+
+type ConnectorRegistryLike = {
+  register: (contribution: ConnectorContributionLike) => void;
+  list: (filter?: ConnectorRegistryFilterLike) => ConnectorContributionLike[];
+  get: (kind: string) => ConnectorContributionLike | null;
+  byCapability: (capability: string) => ConnectorContributionLike[];
+};
+
+type ConnectorRegistryModule = {
+  createConnectorRegistry: () => ConnectorRegistryLike;
+  getConnectorRegistry: (runtime: AgentRuntime) => ConnectorRegistryLike | null;
+  registerConnectorRegistry: (
+    runtime: AgentRuntime,
+    registry: ConnectorRegistryLike,
+  ) => void;
+};
+
+async function loadConnectorRegistry(): Promise<ConnectorRegistryModule> {
+  const specifier = new URL(
+    "../../../plugins/plugin-personal-assistant/src/lifeops/connectors/registry.ts",
+    import.meta.url,
+  ).href;
+  return import(specifier) as Promise<ConnectorRegistryModule>;
+}
 
 type RelationshipsServiceLike = {
   getContact: (entityId: UUID) => Promise<unknown>;
@@ -221,6 +316,12 @@ function readOptionalNumber(value: unknown): number | undefined {
 
 function readOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
 }
 
 function readScenarioNow(ctx: ScenarioContext): Date {
@@ -328,7 +429,9 @@ function normalizeContactHandles(value: unknown): Array<{
     if (!entry || typeof entry !== "object") continue;
     const handle = entry as ContactSeedHandle;
     const platform = readNonEmptyString(handle.platform);
-    const identifier = readNonEmptyString(handle.identifier);
+    const identifier =
+      readNonEmptyString(handle.identifier) ??
+      readNonEmptyString(handle.handle);
     if (!platform || !identifier) continue;
     handles.push({
       platform,
@@ -338,6 +441,176 @@ function normalizeContactHandles(value: unknown): Array<{
     });
   }
   return handles;
+}
+
+function dedupeContactHandles(
+  handles: Array<{
+    platform: string;
+    identifier: string;
+    displayLabel?: string;
+    isPrimary?: boolean;
+  }>,
+): Array<{
+  platform: string;
+  identifier: string;
+  displayLabel?: string;
+  isPrimary?: boolean;
+}> {
+  const seen = new Set<string>();
+  const deduped: Array<{
+    platform: string;
+    identifier: string;
+    displayLabel?: string;
+    isPrimary?: boolean;
+  }> = [];
+  for (const handle of handles) {
+    const key = `${handle.platform}:${handle.identifier}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(handle);
+  }
+  return deduped;
+}
+
+function normalizeMergedEntityHandles(
+  seed: MemoryContactSeed,
+): ReturnType<typeof normalizeContactHandles> {
+  const handles = normalizeContactHandles(seed.handles);
+  const platform = readNonEmptyString(seed.platform);
+  const handle = readNonEmptyString(seed.handle);
+  if (platform && handle) {
+    handles.push({ platform, identifier: handle });
+  }
+  return dedupeContactHandles(handles);
+}
+
+function normalizeRolodexHandles(content: MemoryContactSeed): Array<{
+  platform: string;
+  identifier: string;
+  displayLabel?: string;
+  isPrimary?: boolean;
+}> {
+  const handles = normalizeContactHandles(content.handles);
+  const platform = readNonEmptyString(content.platform);
+  const displayName = readNonEmptyString(content.displayName);
+  if (platform) {
+    for (const identifier of [
+      readNonEmptyString(content.handle),
+      readNonEmptyString(content.newHandle),
+      readNonEmptyString(content.oldHandle),
+    ]) {
+      if (identifier) {
+        handles.push({
+          platform,
+          identifier,
+          displayLabel: displayName ?? undefined,
+          isPrimary: identifier === readNonEmptyString(content.handle),
+        });
+      }
+    }
+  }
+  const telegramHandle = readNonEmptyString(content.telegramHandle);
+  if (telegramHandle) {
+    handles.push({
+      platform: readNonEmptyString(content.primaryChannel) ?? "telegram",
+      identifier: telegramHandle,
+      displayLabel:
+        displayName ?? readNonEmptyString(content.name) ?? undefined,
+      isPrimary: true,
+    });
+  }
+  return dedupeContactHandles(handles);
+}
+
+function mergedEntityNotes(seed: MemoryContactSeed): string | undefined {
+  const notes: string[] = [];
+  const authoredNotes = readNonEmptyString(seed.notes);
+  if (authoredNotes) {
+    notes.push(authoredNotes);
+  }
+  const scenarioEntityId = readNonEmptyString(seed.id);
+  if (scenarioEntityId) {
+    notes.push(`Scenario entity id: ${scenarioEntityId}`);
+  }
+  if (readOptionalBoolean(seed.mergedAccidentally) !== undefined) {
+    notes.push(
+      `Merged accidentally: ${readOptionalBoolean(seed.mergedAccidentally)}`,
+    );
+  }
+  if (Array.isArray(seed.handles)) {
+    for (const entry of seed.handles) {
+      if (!entry || typeof entry !== "object") continue;
+      const handle = entry as ContactSeedHandle;
+      const platform = readNonEmptyString(handle.platform);
+      const identifier =
+        readNonEmptyString(handle.identifier) ??
+        readNonEmptyString(handle.handle);
+      const realPerson = readNonEmptyString(handle.realPerson);
+      if (platform && identifier && realPerson) {
+        notes.push(`${platform} ${identifier} real person: ${realPerson}`);
+      }
+    }
+  }
+  return notes.length > 0 ? notes.join("\n") : undefined;
+}
+
+function mergedEntityToContactSeed(seed: MemoryContactSeed): ContactSeed {
+  const handles = normalizeMergedEntityHandles(seed);
+  const tags = readStringArray(seed.tags);
+  return {
+    type: "contact",
+    name:
+      readNonEmptyString(seed.displayName) ??
+      readNonEmptyString(seed.name) ??
+      handles[0]?.identifier ??
+      "Merged entity",
+    notes: mergedEntityNotes(seed),
+    categories: ["merged-entity"],
+    tags: tags.length > 0 ? tags : ["merged-entity"],
+    handles,
+    relationshipGoal: seed.relationshipGoal,
+    followupThresholdDays: seed.followupThresholdDays,
+    lastContactedAt: seed.lastContactedAt,
+    relationshipStatus: seed.relationshipStatus,
+  };
+}
+
+function rolodexNotes(content: MemoryContactSeed): string | undefined {
+  const parts = [
+    readNonEmptyString(content.notes),
+    readNonEmptyString(content.company)
+      ? `Company: ${readNonEmptyString(content.company)}`
+      : null,
+    readNonEmptyString(content.recentNews)
+      ? `Recent news: ${readNonEmptyString(content.recentNews)}`
+      : null,
+    readNonEmptyString(content.platformUserId)
+      ? `Platform user ID: ${readNonEmptyString(content.platformUserId)}`
+      : null,
+    readNonEmptyString(content.id)
+      ? `Scenario rolodex id: ${readNonEmptyString(content.id)}`
+      : null,
+  ].filter((part): part is string => typeof part === "string");
+  return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+function rolodexEntityToContactSeed(content: MemoryContactSeed): ContactSeed {
+  return {
+    type: "contact",
+    name:
+      readNonEmptyString(content.displayName) ??
+      readNonEmptyString(content.name) ??
+      readNonEmptyString(content.handle) ??
+      readNonEmptyString(content.telegramHandle) ??
+      "Rolodex entity",
+    notes: rolodexNotes(content),
+    tags: content.tags,
+    handles: normalizeRolodexHandles(content),
+    relationshipGoal: content.relationshipGoal,
+    followupThresholdDays: content.followupThresholdDays,
+    lastContactedAt: content.lastContactedAt,
+    relationshipStatus: content.relationshipStatus,
+  };
 }
 
 function normalizeRelationshipStatus(
@@ -455,18 +728,24 @@ async function seedMemory(
   }
   const memoryType =
     readNonEmptyString(content.kind) ?? readNonEmptyString(content.type);
-  if (memoryType !== "contact") {
-    return undefined;
+  if (memoryType === "contact") {
+    return seedContact(ctx, {
+      type: "contact",
+      name: content.name,
+      notes: content.notes,
+      relationshipGoal: content.relationshipGoal,
+      followupThresholdDays: content.followupThresholdDays,
+      lastContactedAt: content.lastContactedAt,
+      relationshipStatus: content.relationshipStatus,
+    });
   }
-  return seedContact(ctx, {
-    type: "contact",
-    name: content.name,
-    notes: content.notes,
-    relationshipGoal: content.relationshipGoal,
-    followupThresholdDays: content.followupThresholdDays,
-    lastContactedAt: content.lastContactedAt,
-    relationshipStatus: content.relationshipStatus,
-  });
+  if (memoryType === "rolodex-entity") {
+    return seedContact(ctx, rolodexEntityToContactSeed(content));
+  }
+  if (memoryType === "merged-entity") {
+    return seedContact(ctx, mergedEntityToContactSeed(content));
+  }
+  return undefined;
 }
 
 const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
@@ -636,6 +915,212 @@ async function seedGmailInbox(
   return undefined;
 }
 
+function normalizeConnectorKind(value: unknown): string | null {
+  const raw = readNonEmptyString(value);
+  return raw ? raw.toLowerCase().replace(/[\s_]+/g, "-") : null;
+}
+
+function connectorStateText(seed: ConnectorSeed): string {
+  return readNonEmptyString(seed.state)?.replace(/[-_]+/g, " ") ?? "degraded";
+}
+
+function connectorLabel(seed: ConnectorSeed, connector: string): string {
+  return readNonEmptyString(seed.provider) ?? connector;
+}
+
+function connectorStatusFromSeed(
+  seed: ConnectorSeed,
+  connector: string,
+): ConnectorStatusLike {
+  const state = readNonEmptyString(seed.state);
+  const disconnected =
+    seed.type === "connectorAuthSession" ||
+    state === "auth-expired" ||
+    state === "session-revoked" ||
+    state === "disconnected" ||
+    state === "helper-disconnected";
+  return {
+    state: disconnected ? "disconnected" : "degraded",
+    message: `${connectorLabel(seed, connector)} seeded ${connectorStateText(seed)}`,
+    observedAt: new Date().toISOString(),
+  };
+}
+
+function dispatchFailureFromSeed(seed: ConnectorSeed): DispatchResultLike {
+  const state = readNonEmptyString(seed.state);
+  const message = `${connectorLabel(
+    seed,
+    readNonEmptyString(seed.connector) ?? "connector",
+  )} seeded ${connectorStateText(seed)}`;
+  if (state === "rate-limited") {
+    return {
+      ok: false,
+      reason: "rate_limited",
+      retryAfterMinutes: 5,
+      userActionable: false,
+      message,
+    };
+  }
+  if (
+    seed.type === "connectorAuthSession" ||
+    state === "auth-expired" ||
+    state === "session-revoked" ||
+    state === "missing-scope"
+  ) {
+    return {
+      ok: false,
+      reason: "auth_expired",
+      userActionable: true,
+      message,
+    };
+  }
+  if (
+    state === "disconnected" ||
+    state === "helper-disconnected" ||
+    state === "transport-offline" ||
+    state === "blocked-resume"
+  ) {
+    return {
+      ok: false,
+      reason: "disconnected",
+      userActionable: true,
+      message,
+    };
+  }
+  return {
+    ok: false,
+    reason: "transport_error",
+    userActionable: state === "hold-expired",
+    message,
+  };
+}
+
+function connectorMatchesFilter(
+  contribution: ConnectorContributionLike,
+  filter?: ConnectorRegistryFilterLike,
+): boolean {
+  if (!filter) {
+    return true;
+  }
+  if (
+    filter.capability &&
+    !contribution.capabilities.includes(filter.capability)
+  ) {
+    return false;
+  }
+  if (filter.mode && !contribution.modes.includes(filter.mode)) {
+    return false;
+  }
+  return true;
+}
+
+function seededConnectorContribution(
+  seed: ConnectorSeed,
+  connector: string,
+  base: ConnectorContributionLike | null,
+): ConnectorContributionLike {
+  const capabilities = readStringArray(seed.capabilities);
+  const scopedCapabilities = readStringArray(seed.scopes);
+  const allCapabilities =
+    capabilities.length > 0 || scopedCapabilities.length > 0
+      ? [...capabilities, ...scopedCapabilities]
+      : (base?.capabilities ?? [`${connector}.scenario-seeded`]);
+  const limit = readPositiveInteger(seed.limit);
+  let failuresRemaining =
+    seed.type === "transportFault"
+      ? (limit ?? Number.POSITIVE_INFINITY)
+      : Number.POSITIVE_INFINITY;
+  const failure = () => dispatchFailureFromSeed(seed);
+
+  return {
+    ...(base ?? {}),
+    kind: base?.kind ?? connector,
+    capabilities: allCapabilities,
+    modes: base?.modes ?? ["local"],
+    describe: base?.describe ?? { label: connectorLabel(seed, connector) },
+    start: base?.start ?? (async () => undefined),
+    disconnect: base?.disconnect ?? (async () => undefined),
+    verify: async () => false,
+    status: async () => connectorStatusFromSeed(seed, connector),
+    ...(base?.read ? { read: base.read.bind(base) } : {}),
+    ...(base?.requiresApproval !== undefined
+      ? { requiresApproval: base.requiresApproval }
+      : {}),
+    ...(base?.oauth ? { oauth: base.oauth } : {}),
+    ...(base?.apiBaseUrl ? { apiBaseUrl: base.apiBaseUrl } : {}),
+    send: async (payload: unknown) => {
+      if (failuresRemaining > 0) {
+        failuresRemaining -= 1;
+        return failure();
+      }
+      if (base?.send) {
+        return base.send(payload);
+      }
+      return failure();
+    },
+  };
+}
+
+function createSeededConnectorRegistry(
+  base: ConnectorRegistryLike,
+  seed: ConnectorSeed,
+  connector: string,
+): ConnectorRegistryLike {
+  const getSeeded = (): ConnectorContributionLike =>
+    seededConnectorContribution(seed, connector, base.get(connector));
+
+  return {
+    register(contribution) {
+      base.register(contribution);
+    },
+    get(kind) {
+      return kind === connector ? getSeeded() : base.get(kind);
+    },
+    list(filter) {
+      const listed = base.list(filter).flatMap((contribution) => {
+        if (contribution.kind !== connector) {
+          return [contribution];
+        }
+        const seeded = getSeeded();
+        return connectorMatchesFilter(seeded, filter) ? [seeded] : [];
+      });
+      if (!listed.some((contribution) => contribution.kind === connector)) {
+        const seeded = getSeeded();
+        if (connectorMatchesFilter(seeded, filter)) {
+          listed.push(seeded);
+        }
+      }
+      return listed;
+    },
+    byCapability(capability) {
+      return this.list({ capability });
+    },
+  };
+}
+
+async function seedConnector(
+  ctx: ScenarioContext,
+  seed: ConnectorSeed,
+): Promise<string | undefined> {
+  const connector = normalizeConnectorKind(seed.connector);
+  if (!connector) {
+    return `${seed.type} seed requires a connector`;
+  }
+  const runtime = requireRuntime(ctx);
+  const {
+    createConnectorRegistry,
+    getConnectorRegistry,
+    registerConnectorRegistry,
+  } = await loadConnectorRegistry();
+  const currentRegistry =
+    getConnectorRegistry(runtime) ?? createConnectorRegistry();
+  registerConnectorRegistry(
+    runtime,
+    createSeededConnectorRegistry(currentRegistry, seed, connector),
+  );
+  return undefined;
+}
+
 export async function applyScenarioSeedStep(
   ctx: ScenarioContext,
   seed: ScenarioSeedStep,
@@ -655,6 +1140,13 @@ export async function applyScenarioSeedStep(
   }
   if (seed.type === "gmailInbox") {
     return seedGmailInbox(seed as GmailInboxSeed);
+  }
+  if (
+    seed.type === "connectorStatus" ||
+    seed.type === "connectorAuthSession" ||
+    seed.type === "transportFault"
+  ) {
+    return seedConnector(ctx, seed as ConnectorSeed);
   }
 
   return undefined;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
 import type { GenerateTextResult } from "../types/index";
-import { shouldRetryStage1Generation } from "./message";
+import { getStage1RetryReason, shouldRetryStage1Generation } from "./message";
 
 /**
  * Stage-1 retry policy (latency fix): a "malformed HANDLE_RESPONSE tool call"
@@ -130,5 +131,38 @@ describe("shouldRetryStage1Generation", () => {
 				undefined,
 			),
 		).toBe(false);
+	});
+});
+
+/**
+ * Stage-1 retry CAUSE (the ~20s TTFT bug): cerebras gpt-oss double-emits the
+ * HANDLE_RESPONSE tool call on one streaming delta index, so the accumulated
+ * arguments are two concatenated objects (`{…}{…}`) that a plain JSON.parse
+ * rejects — driving 2 wasted retries + the planner fallback. parseToolArguments
+ * now recovers the FIRST balanced object, so Stage-1 parses on attempt 1.
+ */
+function toolCallResult(args: string): GenerateTextResult {
+	return {
+		toolCalls: [{ name: HANDLE_RESPONSE_TOOL_NAME, arguments: args }],
+	} as unknown as GenerateTextResult;
+}
+
+describe("getStage1RetryReason — doubled tool-call recovery", () => {
+	it("recovers a double-emitted tool call (no retry reason)", () => {
+		expect(
+			getStage1RetryReason(
+				toolCallResult('{"replyText":"hi"}{"replyText":"hi"}'),
+			),
+		).toBeNull();
+	});
+
+	it("still parses a normal single-object tool call", () => {
+		expect(
+			getStage1RetryReason(toolCallResult('{"replyText":"hi"}')),
+		).toBeNull();
+	});
+
+	it("still flags an empty completion (recovery does not mask it)", () => {
+		expect(getStage1RetryReason("")).toBe("empty completion");
 	});
 });

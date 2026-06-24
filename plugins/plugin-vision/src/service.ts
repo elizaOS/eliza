@@ -12,14 +12,14 @@ import {
   type ServiceTypeName,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import sharp from "sharp";
 import { AudioCaptureService, type AudioConfig } from "./audio-capture";
 import {
   StreamingAudioCaptureService,
   type StreamingAudioConfig,
 } from "./audio-capture-stream";
 import { EntityTracker } from "./entity-tracker";
-import { FaceRecognition } from "./face-recognition-ggml";
+import type { FaceRecognition } from "./face-recognition-ggml";
+import { getSharp } from "./image/sharp-compat";
 import {
   assertValidVisionImageBuffer,
   parseVisionDataImageUrl,
@@ -43,7 +43,7 @@ import {
   VisionServiceType,
 } from "./types";
 import { VisionWorkerManager } from "./vision-worker-manager";
-import { YOLODetector } from "./yolo-detector";
+import type { YOLODetector } from "./yolo-detector";
 
 const execAsync = promisify(exec);
 
@@ -131,7 +131,10 @@ export class VisionService extends Service {
   private isProcessingScreen = false;
   private objectDetector: YOLODetector | null = null;
   private hasObjectDetection = false;
-  private faceRecognition: FaceRecognition;
+  // Lazily constructed: the face backend is dynamically imported on first use
+  // so plugin-vision's module graph never pulls native code at module-eval
+  // (required for the Android bun-musl agent).
+  private faceRecognition: FaceRecognition | null = null;
   private entityTracker: EntityTracker;
   private audioCapture: AudioCaptureService | null = null;
   private streamingAudioCapture: StreamingAudioCaptureService | null = null;
@@ -173,8 +176,7 @@ export class VisionService extends Service {
     // Load configuration from runtime settings
     this.visionConfig = this.parseConfig(runtime);
 
-    // Initialize face recognition
-    this.faceRecognition = new FaceRecognition();
+    // Face recognition is constructed lazily (see getFaceRecognition).
 
     // Initialize entity tracker
     const worldIdValue = runtime.getSetting("WORLD_ID");
@@ -308,6 +310,7 @@ export class VisionService extends Service {
       // to the heuristic path (detectPeopleFromMotion).
       if (this.visionConfig.enableObjectDetection) {
         try {
+          const { YOLODetector } = await import("./yolo-detector");
           this.objectDetector = new YOLODetector();
           await this.objectDetector.initialize();
           this.hasObjectDetection = true;
@@ -647,6 +650,7 @@ export class VisionService extends Service {
     await assertValidVisionImageBuffer(data);
 
     // Use sharp to ensure consistent format
+    const sharp = await getSharp();
     const image = sharp(data);
     const metadata = await image.metadata();
 
@@ -717,6 +721,7 @@ export class VisionService extends Service {
       const testImage = getTestImage();
 
       // Convert frame to base64 for VLM
+      const sharp = await getSharp();
       const jpegBuffer = testImage
         ? await sharp(testImage).jpeg().toBuffer()
         : await sharp(frame.data, {
@@ -853,7 +858,8 @@ export class VisionService extends Service {
           }
 
           // Detect faces in the frame
-          const faces = await this.faceRecognition.detectFaces(
+          const faceRecognition = await this.getFaceRecognition();
+          const faces = await faceRecognition.detectFaces(
             frame.data,
             frame.width,
             frame.height,
@@ -875,7 +881,7 @@ export class VisionService extends Service {
               if (overlap > 0.5) {
                 // 50% overlap threshold
                 // Recognize or register the face
-                const match = await this.faceRecognition.recognizeFace(
+                const match = await faceRecognition.recognizeFace(
                   face.descriptor,
                 );
                 let profileId: string;
@@ -888,7 +894,7 @@ export class VisionService extends Service {
                 } else {
                   // Register new face. The native ggml backend produces no
                   // expression / age-gender estimates, so no attributes.
-                  profileId = await this.faceRecognition.addOrUpdateFace(
+                  profileId = await faceRecognition.addOrUpdateFace(
                     face.descriptor,
                   );
                   logger.info(
@@ -1595,7 +1601,11 @@ export class VisionService extends Service {
     return this.entityTracker;
   }
 
-  public getFaceRecognition(): FaceRecognition {
+  public async getFaceRecognition(): Promise<FaceRecognition> {
+    if (!this.faceRecognition) {
+      const { FaceRecognition } = await import("./face-recognition-ggml");
+      this.faceRecognition = new FaceRecognition();
+    }
     return this.faceRecognition;
   }
 

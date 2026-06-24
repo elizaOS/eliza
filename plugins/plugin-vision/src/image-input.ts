@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import { getSharp, type SharpMetadata } from "./image/sharp-compat";
 
 export const MAX_VISION_IMAGE_BYTES = 25 * 1024 * 1024;
 
@@ -68,8 +68,9 @@ export async function assertValidVisionImageBuffer(
     throw new Error(`Image data exceeds ${MAX_VISION_IMAGE_BYTES} byte limit`);
   }
 
-  let metadata: sharp.Metadata;
+  let metadata: SharpMetadata;
   try {
+    const sharp = await getSharp();
     metadata = await sharp(data, { limitInputPixels: 100_000_000 }).metadata();
   } catch (error) {
     throw new Error(
