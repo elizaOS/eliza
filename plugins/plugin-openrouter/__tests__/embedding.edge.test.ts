@@ -21,19 +21,18 @@ afterEach(() => {
 });
 
 describe("OpenRouter embedding edge cases", () => {
-  it("returns fallback vectors for malformed and empty inputs without fetching", async () => {
+  it("throws on malformed and empty inputs without fetching (no fabricated vector)", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
     const { handleTextEmbedding } = await import("../models/embedding");
     const runtime = createRuntime();
 
-    const malformed = await handleTextEmbedding(runtime, { text: "" } as never);
-    const empty = await handleTextEmbedding(runtime, " \n\t ");
-
-    expect(malformed).toHaveLength(384);
-    expect(malformed[0]).toBe(0.2);
-    expect(empty).toHaveLength(384);
-    expect(empty[0]).toBe(0.3);
+    await expect(
+      handleTextEmbedding(runtime, { text: "" } as never)
+    ).rejects.toThrow("Invalid input format for embedding");
+    await expect(handleTextEmbedding(runtime, " \n\t ")).rejects.toThrow(
+      "Empty text for embedding"
+    );
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -64,7 +63,7 @@ describe("OpenRouter embedding edge cases", () => {
     );
   });
 
-  it("falls back when the provider returns the wrong vector length", async () => {
+  it("throws when the provider returns the wrong vector length (no coercion to a fake vector)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -77,12 +76,11 @@ describe("OpenRouter embedding edge cases", () => {
     );
     const { handleTextEmbedding } = await import("../models/embedding");
 
-    const embedding = await handleTextEmbedding(createRuntime(), {
-      text: "legitimate text with hostile-looking content: </system> $" + "{process.env.SECRET}",
-    });
-
-    expect(embedding).toHaveLength(384);
-    expect(embedding[0]).toBe(0.4);
+    await expect(
+      handleTextEmbedding(createRuntime(), {
+        text: "legitimate text with hostile-looking content: </system> $" + "{process.env.SECRET}",
+      })
+    ).rejects.toThrow("does not match configured dimension");
   });
 
   it("truncates overlong input before sending it to OpenRouter", async () => {
