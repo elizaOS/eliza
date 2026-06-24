@@ -7,6 +7,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { LifeOpsService } from "@elizaos/plugin-personal-assistant/lifeops/service";
 import {
+  REMINDER_ESCALATION_INDEX_METADATA_KEY,
+  REMINDER_LIFECYCLE_METADATA_KEY,
+} from "@elizaos/plugin-personal-assistant/lifeops/service-constants";
+import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
@@ -66,6 +70,20 @@ function normalizeChannel(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/[-\s]+/g, "_");
+}
+
+function normalizeComparableText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function textMatchesLoose(actual: string, expected: string): boolean {
+  const normalizedActual = normalizeComparableText(actual);
+  const normalizedExpected = normalizeComparableText(expected);
+  return (
+    normalizedActual === normalizedExpected ||
+    normalizedActual.includes(normalizedExpected) ||
+    normalizedExpected.includes(normalizedActual)
+  );
 }
 
 function matchesChannel(
@@ -166,20 +184,6 @@ function matchesContentMatcher(actual: unknown, expected: unknown): boolean {
     );
   }
   return valuesEqual(actual, expected);
-}
-
-function normalizeComparableText(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function textMatchesLoose(actual: string, expected: string): boolean {
-  const normalizedActual = normalizeComparableText(actual);
-  const normalizedExpected = normalizeComparableText(expected);
-  return (
-    normalizedActual === normalizedExpected ||
-    normalizedActual.includes(normalizedExpected) ||
-    normalizedExpected.includes(normalizedActual)
-  );
 }
 
 function recordHasEntries(value: unknown): boolean {
@@ -1671,6 +1675,46 @@ registerFinalCheckHandler("workflowDispatchOccurred", (check, { ctx }) => {
   };
 });
 
+registerFinalCheckHandler(
+  "reminderIntensity",
+  async (check, { runtime, ctx }) => {
+    const { title, titleAliases, expected } = check as {
+      title?: string;
+      titleAliases?: string[];
+      expected?: string;
+    };
+    if (typeof title !== "string" || title.length === 0) {
+      return { status: "failed", detail: "reminderIntensity missing title" };
+    }
+    if (typeof expected !== "string" || expected.length === 0) {
+      return { status: "failed", detail: "reminderIntensity missing expected" };
+    }
+    const titleCandidates = titleCandidatesForReminderIntensity({
+      title,
+      titleAliases,
+    });
+    if (expected === "escalated") {
+      const attempts = collectReminderAttempts(
+        (ctx.turns ?? []).map((turn) => turn.responseBody),
+      );
+      const matched = attempts.filter((attempt) =>
+        isDeliveredEscalationAttempt(attempt, titleCandidates),
+      );
+      if (matched.length > 0) {
+        return {
+          status: "passed",
+          detail: `${matched.length} delivered escalation reminder attempt(s) matched [${titleCandidates.join(", ")}]`,
+        };
+      }
+      return {
+        status: "failed",
+        detail: `no delivered escalation reminder attempts matched [${titleCandidates.join(", ")}]; saw ${attempts.length} reminder attempt(s)`,
+      };
+    }
+    return checkStoredReminderIntensity(runtime, titleCandidates, expected);
+  },
+);
+
 // judgeRubric is handled inline by the executor so it can reuse the live LLM
 // without threading the runtime through the generic handler registry.
 registerFinalCheckHandler("judgeRubric", () => ({
@@ -1717,5 +1761,141 @@ export async function runFinalCheck(
     type,
     status: outcome.status,
     detail: outcome.detail,
+  };
+}
+
+type ReminderPreferenceService = {
+  listDefinitions(): Promise<unknown[]>;
+  getReminderPreference(definitionId?: string | null): Promise<unknown>;
+};
+
+function isReminderPreferenceService(
+  value: unknown,
+): value is ReminderPreferenceService {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  return (
+    "listDefinitions" in value &&
+    typeof value.listDefinitions === "function" &&
+    "getReminderPreference" in value &&
+    typeof value.getReminderPreference === "function"
+  );
+}
+
+function titleCandidatesForReminderIntensity(check: {
+  title: string;
+  titleAliases?: string[];
+}): string[] {
+  return [check.title, ...(check.titleAliases ?? [])];
+}
+
+function reminderDefinitionTitle(value: unknown): string | null {
+  const record = toRecord(value);
+  const definition = toRecord(record?.definition);
+  return typeof definition?.title === "string" ? definition.title : null;
+}
+
+function reminderDefinitionId(value: unknown): string | null {
+  const record = toRecord(value);
+  const definition = toRecord(record?.definition);
+  return typeof definition?.id === "string" ? definition.id : null;
+}
+
+function matchesReminderTitle(value: unknown, candidates: string[]): boolean {
+  return (
+    typeof value === "string" &&
+    candidates.some((candidate) => textMatchesLoose(value, candidate))
+  );
+}
+
+function collectReminderAttempts(
+  value: unknown,
+  out: Record<string, unknown>[] = [],
+): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectReminderAttempts(entry, out);
+    }
+    return out;
+  }
+  const record = toRecord(value);
+  if (!record) {
+    return out;
+  }
+  if (toRecord(record.deliveryMetadata)) {
+    out.push(record);
+  }
+  for (const entry of Object.values(record)) {
+    collectReminderAttempts(entry, out);
+  }
+  return out;
+}
+
+function isDeliveredEscalationAttempt(
+  attempt: Record<string, unknown>,
+  titleCandidates: string[],
+): boolean {
+  if (attempt.outcome !== "delivered") {
+    return false;
+  }
+  const deliveryMetadata = toRecord(attempt.deliveryMetadata);
+  if (!deliveryMetadata) {
+    return false;
+  }
+  if (!matchesReminderTitle(deliveryMetadata.title, titleCandidates)) {
+    return false;
+  }
+  return (
+    deliveryMetadata[REMINDER_LIFECYCLE_METADATA_KEY] === "escalation" ||
+    typeof deliveryMetadata[REMINDER_ESCALATION_INDEX_METADATA_KEY] === "number"
+  );
+}
+
+async function checkStoredReminderIntensity(
+  runtime: IAgentRuntime,
+  titleCandidates: string[],
+  expected: string,
+): Promise<FinalCheckOutcome> {
+  const service = new LifeOpsService(runtime);
+  if (!isReminderPreferenceService(service)) {
+    return {
+      status: "skipped-dependency-missing",
+      detail: "LifeOpsService does not expose reminder preference methods",
+    };
+  }
+  const definitions = await service.listDefinitions();
+  const match = definitions.find((entry) => {
+    const title = reminderDefinitionTitle(entry);
+    return title !== null && matchesReminderTitle(title, titleCandidates);
+  });
+  if (!match) {
+    return {
+      status: "failed",
+      detail: `no reminder definition matched [${titleCandidates.join(", ")}]`,
+    };
+  }
+  const definitionId = reminderDefinitionId(match);
+  if (!definitionId) {
+    return {
+      status: "failed",
+      detail: "matched reminder definition has no id",
+    };
+  }
+  const preference = toRecord(
+    await service.getReminderPreference(definitionId),
+  );
+  const effective = toRecord(preference?.effective);
+  const actual =
+    typeof effective?.intensity === "string" ? effective.intensity : undefined;
+  if (actual === expected) {
+    return {
+      status: "passed",
+      detail: `reminder "${reminderDefinitionTitle(match) ?? definitionId}" effective intensity=${expected}`,
+    };
+  }
+  return {
+    status: "failed",
+    detail: `expected reminder "${reminderDefinitionTitle(match) ?? definitionId}" effective intensity=${expected}, saw ${actual ?? "(missing)"}`,
   };
 }

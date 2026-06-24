@@ -93,6 +93,7 @@ export const FINAL_CHECK_KEYS = new Map(
       "requireReminderPlan",
       "websiteAccess",
     ],
+    reminderIntensity: ["type", "name", "title", "titleAliases", "expected"],
   }).map(([type, keys]) => [type, new Set(keys)]),
 );
 
