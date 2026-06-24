@@ -127,7 +127,7 @@ describe("HealthSpatialView one source, three modalities", () => {
         <HealthSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No sleep");
+    expect(html).toContain("None");
     expect(html).not.toContain("Nothing was recorded in the last 14 days.");
   });
 

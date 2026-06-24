@@ -101,7 +101,7 @@ export function DocumentsSpatialView({
     <Card gap={1} padding={1}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
-          Loading documents
+          Loading
         </Text>
       ) : snapshot.state === "error" ? (
         <DocumentsErrorBody snapshot={snapshot} onAction={onAction} />
@@ -137,7 +137,7 @@ function DocumentsErrorBody({
 }
 
 function DocumentsEmptyBody() {
-  return <Text bold>No documents</Text>;
+  return <Text bold>None</Text>;
 }
 
 function DocumentsReadyBody({
@@ -170,7 +170,7 @@ function DocumentsReadyBody({
       </Text>
       {snapshot.documents.length === 0 ? (
         <Text tone="muted" style="caption">
-          No documents
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -265,7 +265,7 @@ function DocumentsSearchBody({
       </Text>
       {search.hits.length === 0 ? (
         <Text tone="muted" style="caption" wrap={false}>
-          No matches for {search.query}
+          None
         </Text>
       ) : (
         <List gap={0}>

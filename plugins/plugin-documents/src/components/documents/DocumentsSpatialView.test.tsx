@@ -82,7 +82,7 @@ describe("DocumentsSpatialView one source, three modalities", () => {
       54,
     );
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
-    expect(lines.join("\n")).toContain("Loading documents");
+    expect(lines.join("\n")).toContain("Loading");
   });
 
   it("empty state renders the honest no-documents affordance", () => {
@@ -99,7 +99,7 @@ describe("DocumentsSpatialView one source, three modalities", () => {
         <DocumentsSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No documents");
+    expect(html).toContain("None");
   });
 
   it("error state renders the message and a Retry control", () => {

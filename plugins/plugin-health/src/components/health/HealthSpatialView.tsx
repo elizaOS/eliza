@@ -148,7 +148,7 @@ function HealthErrorBody({
 }
 
 function HealthEmptyBody() {
-  return <Text bold>No sleep</Text>;
+  return <Text bold>None</Text>;
 }
 
 function HealthReadyBody({ snapshot }: { snapshot: HealthSnapshot }) {

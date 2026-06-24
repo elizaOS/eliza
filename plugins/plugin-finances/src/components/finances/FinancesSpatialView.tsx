@@ -110,7 +110,7 @@ export function FinancesSpatialView({
     <Card gap={1} padding={1}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
-          Loading finances
+          Loading
         </Text>
       ) : snapshot.state === "error" ? (
         <FinancesErrorBody snapshot={snapshot} dispatch={dispatch} />
@@ -152,7 +152,7 @@ function FinancesEmptyBody({
 }) {
   return (
     <>
-      <Text bold>No sources</Text>
+      <Text bold>None</Text>
       <HStack gap={1}>
         <Button agent="connect" onPress={dispatch("connect")}>
           Connect
@@ -226,7 +226,7 @@ function TransactionsSection({
       </Text>
       {transactions.length === 0 ? (
         <Text tone="muted" style="caption">
-          No transactions
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -277,7 +277,7 @@ function RecurringSection({
       </Text>
       {recurring.length === 0 ? (
         <Text tone="muted" style="caption">
-          No recurring
+          None
         </Text>
       ) : (
         <List gap={0}>
