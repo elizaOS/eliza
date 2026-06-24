@@ -114,10 +114,7 @@ function pickPrimaryLocalSpeaker(
 	}
 	for (const [localSpeakerId, spans] of bySpeaker.entries()) {
 		const ms = spanDurationMs(spans);
-		durations.set(
-			localSpeakerId,
-			(durations.get(localSpeakerId) ?? 0) + ms,
-		);
+		durations.set(localSpeakerId, (durations.get(localSpeakerId) ?? 0) + ms);
 	}
 	let best: { id: number; ms: number } | null = null;
 	for (const [id, ms] of durations.entries()) {
@@ -169,17 +166,20 @@ export class VoiceAttributionPipeline {
 			}
 		}
 		if (local.length === 0) {
-			local = [
-				{
-					startMs: 0,
-					endMs: Math.round(
-						(req.pcm.length / this.deps.encoder.sampleRate) * 1000,
-					),
-					localSpeakerId: 0,
-					confidence: 0.5,
-					hasOverlap: false,
-				},
-			];
+			local =
+				rawLocal.length > 0
+					? rawLocal
+					: [
+							{
+								startMs: 0,
+								endMs: Math.round(
+									(req.pcm.length / this.deps.encoder.sampleRate) * 1000,
+								),
+								localSpeakerId: 0,
+								confidence: 0.5,
+								hasOverlap: false,
+							},
+						];
 		}
 		let primaryLocal = pickPrimaryLocalSpeaker(local);
 		if (primaryLocal === null) return this.buildEmptyOutput(req);
@@ -199,7 +199,10 @@ export class VoiceAttributionPipeline {
 					? []
 					: rawLocal.filter((seg) => seg.localSpeakerId === fallbackPrimary);
 			const fallbackWindow = this.spliceSpans(req.pcm, fallbackSpans);
-			if (fallbackWindow.length >= WESPEAKER_MIN_SAMPLES) {
+			if (
+				fallbackPrimary !== null &&
+				fallbackWindow.length >= WESPEAKER_MIN_SAMPLES
+			) {
 				local = rawLocal;
 				primaryLocal = fallbackPrimary;
 				primarySpans = fallbackSpans;
@@ -361,9 +364,10 @@ export class VoiceAttributionPipeline {
 		spans: ReadonlyArray<LocalSpeakerSegment>,
 	): Float32Array {
 		const sr = this.deps.encoder.sampleRate;
+		const merged = mergeSpanRanges(spans);
 		// Compute total length first so we can allocate once.
 		let total = 0;
-		for (const span of spans) {
+		for (const span of merged) {
 			const a = Math.max(0, Math.floor((span.startMs / 1000) * sr));
 			const b = Math.min(pcm.length, Math.ceil((span.endMs / 1000) * sr));
 			if (b > a) total += b - a;
@@ -371,7 +375,7 @@ export class VoiceAttributionPipeline {
 		if (total === 0) return new Float32Array(0);
 		const out = new Float32Array(total);
 		let cursor = 0;
-		for (const span of spans) {
+		for (const span of merged) {
 			const a = Math.max(0, Math.floor((span.startMs / 1000) * sr));
 			const b = Math.min(pcm.length, Math.ceil((span.endMs / 1000) * sr));
 			if (b > a) {
