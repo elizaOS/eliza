@@ -64,7 +64,9 @@ export class FrameBudgetMeter {
 
   constructor(opts: { targetFps?: number; windowMs?: number } = {}) {
     this.targetFps =
-      opts.targetFps && opts.targetFps > 0 ? opts.targetFps : DEFAULT_TARGET_FPS;
+      opts.targetFps && opts.targetFps > 0
+        ? opts.targetFps
+        : DEFAULT_TARGET_FPS;
     this.windowMs =
       opts.windowMs && opts.windowMs > 0 ? opts.windowMs : DEFAULT_WINDOW_MS;
     this.budgetMs = 1000 / this.targetFps;
@@ -106,7 +108,8 @@ export class FrameBudgetMeter {
     const longestFrameMs = Math.max(...ds);
     const sorted = [...ds].sort((a, b) => a - b);
     const p95FrameMs =
-      sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0;
+      sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ??
+      0;
     const withinBudget =
       fps >= this.targetFps * BUDGET_FPS_RATIO &&
       longestFrameMs <= this.budgetMs * LONG_FRAME_BUDGETS;
@@ -173,7 +176,8 @@ export function useFrameBudget(
       return;
     }
     const meter = new FrameBudgetMeter({ targetFps, windowMs });
-    const reportMs = reportEveryMs && reportEveryMs > 0 ? reportEveryMs : windowMs;
+    const reportMs =
+      reportEveryMs && reportEveryMs > 0 ? reportEveryMs : windowMs;
     let raf = 0;
     let lastReport = 0;
     let stopped = false;
@@ -197,7 +201,8 @@ export function useFrameBudget(
 
     return () => {
       stopped = true;
-      if (typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(raf);
+      if (typeof cancelAnimationFrame !== "undefined")
+        cancelAnimationFrame(raf);
     };
   }, [active, name, targetFps, windowMs, reportEveryMs]);
 

@@ -3,9 +3,9 @@ import {
   assertHostAllowed,
   assertUrlAllowed,
   classifyIpLiteral,
+  SsrfBlockedError,
   safeFetch,
   setHostResolver,
-  SsrfBlockedError,
 } from "../../src/services/ssrf-guard.js";
 
 /**

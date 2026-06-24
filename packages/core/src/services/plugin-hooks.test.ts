@@ -1,5 +1,5 @@
-import type { Plugin } from "../types/plugin.ts";
 import { afterEach, describe, expect, it } from "vitest";
+import type { Plugin } from "../types/plugin.ts";
 import {
 	applyPluginFilter,
 	clearAllHooks,

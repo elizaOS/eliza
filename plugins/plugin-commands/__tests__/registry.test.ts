@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CommandDefinition } from "../src/types";
 import {
 	findCommandByAlias,
 	findCommandByKey,
@@ -11,6 +10,7 @@ import {
 	startsWithCommand,
 	unregisterCommand,
 } from "../src/registry";
+import type { CommandDefinition } from "../src/types";
 
 /**
  * The per-runtime command store backs slash-command detection. Alias lookup is

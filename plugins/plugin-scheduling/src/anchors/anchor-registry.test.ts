@@ -2,10 +2,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { AnchorContext } from "../scheduled-task/types.js";
 import {
+  __resetAnchorRegistryForTests,
   APP_LIFEOPS_ANCHORS,
   createAnchorRegistry,
   getAnchorRegistry,
-  __resetAnchorRegistryForTests,
   registerAnchorRegistry,
   registerAppLifeOpsAnchors,
 } from "./anchor-registry.js";

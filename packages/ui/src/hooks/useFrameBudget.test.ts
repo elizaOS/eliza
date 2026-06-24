@@ -25,7 +25,10 @@ describe("FrameBudgetMeter", () => {
 
   it("measures a steady 60fps stream as on-budget with no drops", () => {
     const meter = new FrameBudgetMeter({ targetFps: 60, windowMs: 2000 });
-    feed(meter, Array.from({ length: 60 }, () => BUDGET_60));
+    feed(
+      meter,
+      Array.from({ length: 60 }, () => BUDGET_60),
+    );
     const s = meter.stats();
     expect(s.frameCount).toBe(60);
     expect(s.fps).toBeGreaterThan(58);
@@ -37,7 +40,11 @@ describe("FrameBudgetMeter", () => {
   it("flags dropped frames and a budget violation on a long hitch", () => {
     const meter = new FrameBudgetMeter({ targetFps: 60, windowMs: 2000 });
     // 30 good frames, then one 50ms hitch (~3 budgets → 2 dropped), then more.
-    feed(meter, [...Array(30).fill(BUDGET_60), 50, ...Array(10).fill(BUDGET_60)]);
+    feed(meter, [
+      ...Array(30).fill(BUDGET_60),
+      50,
+      ...Array(10).fill(BUDGET_60),
+    ]);
     const s = meter.stats();
     expect(s.droppedFrames).toBeGreaterThanOrEqual(2);
     expect(s.longestFrameMs).toBeGreaterThanOrEqual(50);
@@ -46,7 +53,10 @@ describe("FrameBudgetMeter", () => {
 
   it("measures a sustained 30fps stream as below the 60fps budget", () => {
     const meter = new FrameBudgetMeter({ targetFps: 60, windowMs: 2000 });
-    feed(meter, Array.from({ length: 30 }, () => 1000 / 30)); // 33.3ms frames
+    feed(
+      meter,
+      Array.from({ length: 30 }, () => 1000 / 30),
+    ); // 33.3ms frames
     const s = meter.stats();
     expect(s.fps).toBeGreaterThan(28);
     expect(s.fps).toBeLessThan(32);
@@ -56,7 +66,10 @@ describe("FrameBudgetMeter", () => {
   it("prunes frames older than the rolling window", () => {
     const meter = new FrameBudgetMeter({ targetFps: 60, windowMs: 500 });
     // First a burst at t=0..200, then jump 1s ahead so the old frames age out.
-    feed(meter, Array.from({ length: 12 }, () => BUDGET_60));
+    feed(
+      meter,
+      Array.from({ length: 12 }, () => BUDGET_60),
+    );
     const before = meter.stats().frameCount;
     expect(before).toBeGreaterThan(0);
     meter.sample(2000); // a single fresh sample well past the window
@@ -67,7 +80,10 @@ describe("FrameBudgetMeter", () => {
 
   it("reset clears all accumulated state", () => {
     const meter = new FrameBudgetMeter({ targetFps: 60 });
-    feed(meter, Array.from({ length: 10 }, () => BUDGET_60));
+    feed(
+      meter,
+      Array.from({ length: 10 }, () => BUDGET_60),
+    );
     expect(meter.stats().frameCount).toBeGreaterThan(0);
     meter.reset();
     expect(meter.stats().frameCount).toBe(0);
@@ -76,7 +92,10 @@ describe("FrameBudgetMeter", () => {
   it("honors a custom target fps for the budget", () => {
     const meter = new FrameBudgetMeter({ targetFps: 120, windowMs: 2000 });
     // 60fps frames (16.6ms) are a violation against a 120fps target.
-    feed(meter, Array.from({ length: 60 }, () => BUDGET_60));
+    feed(
+      meter,
+      Array.from({ length: 60 }, () => BUDGET_60),
+    );
     const s = meter.stats();
     expect(s.withinBudget).toBe(false);
     expect(s.droppedFrames).toBeGreaterThan(0);

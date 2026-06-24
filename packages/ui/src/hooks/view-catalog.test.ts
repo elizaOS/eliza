@@ -69,9 +69,7 @@ describe("mergeViewCatalog", () => {
 
   it("dedupes: a catalog app whose plugin is already a loaded view is not shown twice", () => {
     const entries = merge({
-      views: [
-        makeView("arcade", { pluginName: "@elizaos/plugin-arcade" }),
-      ],
+      views: [makeView("arcade", { pluginName: "@elizaos/plugin-arcade" })],
       catalog: [
         makeApp({
           name: "@elizaos/plugin-arcade",

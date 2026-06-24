@@ -978,6 +978,50 @@
       ]
     },
     {
+      "name": "CLIPBOARD",
+      "description": "CLIPBOARD action. Read or write the host system clipboard. actions: read, write. Linux requires wl-clipboard (Wayland) or xclip (X11); macOS uses pbcopy/pbpaste; Windows uses PowerShell Set-Clipboard / Get-Clipboard.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Clipboard operation verb.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["read", "write"]
+          }
+        },
+        {
+          "name": "text",
+          "description": "Payload for write.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "CLIPBOARD action=read|write",
+      "similes": [
+        "USE_CLIPBOARD",
+        "CLIPBOARD_ACTION",
+        "COPY",
+        "PASTE",
+        "READ_CLIPBOARD",
+        "WRITE_CLIPBOARD"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CLIPBOARD with the provided parameters.",
+          "actions": ["CLIPBOARD"],
+          "params": {
+            "CLIPBOARD": {
+              "action": "read",
+              "text": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "COMMANDS_COMMAND",
       "description": "List all commands",
       "parameters": [],
@@ -1000,7 +1044,7 @@
     },
     {
       "name": "COMPUTER_USE",
-      "description": "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
+      "description": "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/middle_click/mouse_down/mouse_up/type/key/key_combo/key_down/key_up/scroll/drag/detect_elements/ocr/open/launch. mouse_down/up + key_down/up are press-and-hold primitives (button held until released); drag accepts a multi-point `path`; open(target) opens a file/URL/folder; launch(app,appArgs) starts an app and returns its pid. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
       "parameters": [
         {
           "name": "action",
@@ -1015,13 +1059,23 @@
               "double_click",
               "right_click",
               "mouse_move",
+              "middle_click",
+              "mouse_down",
+              "mouse_up",
               "type",
               "key",
               "key_combo",
+              "key_down",
+              "key_up",
               "scroll",
               "drag",
+              "get_cursor_position",
               "detect_elements",
               "ocr",
+              "open",
+              "launch",
+              "kill_app",
+              "set_value",
               "resolve_approval"
             ]
           }
@@ -1045,6 +1099,20 @@
             "type": "array",
             "items": {
               "type": "number"
+            }
+          }
+        },
+        {
+          "name": "path",
+          "description": "Multi-point polyline [[x,y],...] (≥2 points) for drag; traces every waypoint with the button held. Supersedes startCoordinate/coordinate when present.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
             }
           }
         },
@@ -1077,7 +1145,7 @@
         },
         {
           "name": "button",
-          "description": "Mouse button for click_with_modifiers.",
+          "description": "Mouse button for click_with_modifiers and mouse_down/mouse_up (default left).",
           "required": false,
           "schema": {
             "type": "string",
@@ -1154,9 +1222,36 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "target",
+          "description": "File path / URL / folder to open with the OS default handler (action=open).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "app",
+          "description": "Application name or executable path to launch (action=launch).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "appArgs",
+          "description": "Arguments for the launched application (action=launch).",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       ],
-      "descriptionCompressed": "Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr|approve",
+      "descriptionCompressed": "Desktop: screenshot|click|double|right|middle|move|down|up|type|key|scroll|drag|detect|ocr|open|launch|approve",
       "similes": [
         "USE_COMPUTER",
         "CONTROL_COMPUTER",
@@ -1187,6 +1282,7 @@
               "action": "screenshot",
               "coordinate": "example",
               "startCoordinate": "example",
+              "path": "example",
               "text": "example",
               "modifiers": "example",
               "key": "example",
@@ -1198,7 +1294,10 @@
               "coordSource": "logical",
               "approvalId": "example",
               "approved": false,
-              "reason": "example"
+              "reason": "example",
+              "target": "example",
+              "app": "example",
+              "appArgs": "example"
             }
           }
         }
@@ -1235,6 +1334,24 @@
             "type": "boolean",
             "default": false
           }
+        },
+        {
+          "name": "maxDurationMs",
+          "description": "Wall-clock budget in ms; the loop aborts before a step that exceeds it.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        {
+          "name": "imageRetentionLast",
+          "description": "Keep only the N most-recent steps' screenshots in the bounded history (token control).",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "minimum": 1
+          }
         }
       ],
       "descriptionCompressed": "Autonomous desktop loop: scene -> Brain -> cascade -> click. Pass {goal, maxSteps?, streamProgress?}.",
@@ -1247,7 +1364,9 @@
             "COMPUTER_USE_AGENT": {
               "goal": "example",
               "maxSteps": 5,
-              "streamProgress": false
+              "streamProgress": false,
+              "maxDurationMs": 1,
+              "imageRetentionLast": 1
             }
           }
         }
@@ -5751,7 +5870,12 @@
               "minimize",
               "maximize",
               "restore",
-              "close"
+              "close",
+              "get_current_window_id",
+              "get_application_windows",
+              "set_bounds",
+              "get_window_size",
+              "get_window_position"
             ]
           }
         },
@@ -5781,7 +5905,7 @@
         },
         {
           "name": "x",
-          "description": "Target X coordinate for window move.",
+          "description": "Target X coordinate for window move / set_bounds.",
           "required": false,
           "schema": {
             "type": "number"
@@ -5789,10 +5913,28 @@
         },
         {
           "name": "y",
-          "description": "Target Y coordinate for window move.",
+          "description": "Target Y coordinate for window move / set_bounds.",
           "required": false,
           "schema": {
             "type": "number"
+          }
+        },
+        {
+          "name": "width",
+          "description": "Window width for set_bounds.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "height",
+          "description": "Window height for set_bounds.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "minimum": 1
           }
         }
       ],
@@ -5809,7 +5951,9 @@
               "windowTitle": "example",
               "arrangement": "example",
               "x": 1,
-              "y": 1
+              "y": 1,
+              "width": 1,
+              "height": 1
             }
           }
         }

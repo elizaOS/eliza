@@ -1,4 +1,3 @@
-import type { Character } from "./types";
 import { describe, expect, it } from "vitest";
 import {
 	addCharacterPlugin,
@@ -9,11 +8,12 @@ import {
 	hasCharacterPlugin,
 	hasCharacterSecret,
 	listCharacterSecretKeys,
+	MODEL_PROVIDER_SECRETS,
 	mergeCharacterSecrets,
 	removeCharacterPlugin,
 	setCharacterSecret,
-	MODEL_PROVIDER_SECRETS,
 } from "./character-utils.ts";
+import type { Character } from "./types";
 
 /**
  * Character secret/plugin helpers are documented as IMMUTABLE — every mutator

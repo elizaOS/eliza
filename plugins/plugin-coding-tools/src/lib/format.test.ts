@@ -17,7 +17,10 @@ import {
 
 describe("ActionResult builders", () => {
   it("failureToActionResult carries prefix, reason, message, and an Error", () => {
-    const failure: ToolFailure = { reason: "bad_input", message: "nope" } as ToolFailure;
+    const failure: ToolFailure = {
+      reason: "bad_input",
+      message: "nope",
+    } as ToolFailure;
     const r = failureToActionResult(failure, { x: 1 });
     expect(r.success).toBe(false);
     expect(r.text).toBe(`${FAILURE_TEXT_PREFIX} bad_input: nope`);
@@ -27,7 +30,10 @@ describe("ActionResult builders", () => {
   });
 
   it("successActionResult is success with optional data", () => {
-    expect(successActionResult("ok")).toMatchObject({ success: true, text: "ok" });
+    expect(successActionResult("ok")).toMatchObject({
+      success: true,
+      text: "ok",
+    });
     expect(successActionResult("ok", { a: 2 }).data).toEqual({ a: 2 });
     expect(successActionResult("ok").data).toBeUndefined();
   });
