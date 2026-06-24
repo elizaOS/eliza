@@ -67,7 +67,9 @@ describe("AppContainerProvider.provision", () => {
     expect(calls.some((c) => c.startsWith("docker ps"))).toBe(true);
     const createCmd = calls.find((c) => c.startsWith("docker create")) ?? "";
     expect(createCmd).toContain("--cap-drop=ALL");
-    expect(createCmd).toContain("-p 49001:3000");
+    // Host port is bound to loopback only (ingress/proxy reaches it via
+    // 127.0.0.1 on the node) — never exposed on the node's public interface.
+    expect(createCmd).toContain("-p 127.0.0.1:49001:3000");
     expect(createCmd).toContain("HTTP_PROXY=http://egress-gw:3128");
     expect(createCmd).not.toContain("NET_ADMIN");
     expect(calls).toContain("docker start 'app-nubilio'");
