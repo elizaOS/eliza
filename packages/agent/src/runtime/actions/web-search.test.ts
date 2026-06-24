@@ -79,25 +79,25 @@ async function runHandler(parameters: ActionParameters): Promise<{
 }
 
 describe("WEB_SEARCH action", () => {
-  const original = process.env.ELIZA_WEB_SEARCH;
+  const original = process.env.ELIZA_INLINE_WEB_SEARCH;
 
   afterEach(() => {
     __setPinnedFetchImplForTests(null);
     __setDnsLookupImplForTests(null);
-    if (original === undefined) delete process.env.ELIZA_WEB_SEARCH;
-    else process.env.ELIZA_WEB_SEARCH = original;
+    if (original === undefined) delete process.env.ELIZA_INLINE_WEB_SEARCH;
+    else process.env.ELIZA_INLINE_WEB_SEARCH = original;
   });
 
   it("is available by default (no key/service required)", async () => {
-    delete process.env.ELIZA_WEB_SEARCH;
+    delete process.env.ELIZA_INLINE_WEB_SEARCH;
     expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(
       true,
     );
   });
 
-  it("is gated off when ELIZA_WEB_SEARCH disables the capability", async () => {
+  it("is gated off when ELIZA_INLINE_WEB_SEARCH disables the capability", async () => {
     for (const value of ["0", "false", "off"]) {
-      process.env.ELIZA_WEB_SEARCH = value;
+      process.env.ELIZA_INLINE_WEB_SEARCH = value;
       expect(await webSearch.validate({} as IAgentRuntime, {} as Memory)).toBe(
         false,
       );

@@ -4537,42 +4537,30 @@ export async function startEliza(
 
   // Keyless inline live-info fetch for every runtime (not just Anthropic).
   // Opt out with ELIZA_WEB_FETCH=0|false|off, mirroring ELIZA_WEB_SEARCH.
-  const registerWebFetchActionIfEnabled = async (): Promise<void> => {
+  // Register an optional keyless inline web action (WEB_FETCH / WEB_SEARCH) when
+  // its env gate allows. One helper for both — they differ only in which module
+  // they load and which opt-out var they name.
+  const registerOptionalWebAction = async (cfg: {
+    load: () => Promise<{
+      action: Parameters<typeof runtime.registerAction>[0];
+      isEnabled: () => boolean;
+    }>;
+    label: string;
+    disabledVar: string;
+  }): Promise<void> => {
     try {
-      const { webFetch, isWebFetchEnabled } = await import(
-        "./actions/web-fetch.ts"
-      );
-      if (!isWebFetchEnabled()) {
+      const { action, isEnabled } = await cfg.load();
+      if (!isEnabled()) {
         logger.info(
-          "[eliza] WEB_FETCH action disabled via ELIZA_WEB_FETCH=0|false|off",
+          `[eliza] ${cfg.label} action disabled via ${cfg.disabledVar}=0|false|off`,
         );
         return;
       }
-      runtime.registerAction(webFetch);
-      logger.info("[eliza] Registered keyless WEB_FETCH action");
+      runtime.registerAction(action);
+      logger.info(`[eliza] Registered keyless ${cfg.label} action`);
     } catch (err) {
       logger.debug(
-        `[eliza] WEB_FETCH action registration skipped: ${formatError(err)}`,
-      );
-    }
-  };
-
-  const registerWebSearchActionIfEnabled = async (): Promise<void> => {
-    try {
-      const { webSearch, isWebSearchEnabled } = await import(
-        "./actions/web-search.ts"
-      );
-      if (!isWebSearchEnabled()) {
-        logger.info(
-          "[eliza] WEB_SEARCH action disabled via ELIZA_WEB_SEARCH=0|false|off",
-        );
-        return;
-      }
-      runtime.registerAction(webSearch);
-      logger.info("[eliza] Registered keyless WEB_SEARCH action");
-    } catch (err) {
-      logger.debug(
-        `[eliza] WEB_SEARCH action registration skipped: ${formatError(err)}`,
+        `[eliza] ${cfg.label} action registration skipped: ${formatError(err)}`,
       );
     }
   };
@@ -4970,8 +4958,22 @@ export async function startEliza(
     await seedBundledDocumentsIfEnabled();
     await runStewardEvmPostBoot();
     await installServerSideWebSearchIfAvailable();
-    await registerWebFetchActionIfEnabled();
-    await registerWebSearchActionIfEnabled();
+    await registerOptionalWebAction({
+      load: async () => {
+        const m = await import("./actions/web-fetch.ts");
+        return { action: m.webFetch, isEnabled: m.isWebFetchEnabled };
+      },
+      label: "WEB_FETCH",
+      disabledVar: "ELIZA_WEB_FETCH",
+    });
+    await registerOptionalWebAction({
+      load: async () => {
+        const m = await import("./actions/web-search.ts");
+        return { action: m.webSearch, isEnabled: m.isWebSearchEnabled };
+      },
+      label: "WEB_SEARCH",
+      disabledVar: "ELIZA_INLINE_WEB_SEARCH",
+    });
     bootTimer.lap("deferred:post-init");
 
     const autonomyLoopEnabled = isAutonomyEnabled();
