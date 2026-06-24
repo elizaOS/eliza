@@ -8,6 +8,7 @@
  * in code that would fail at runtime.
  */
 
+export * from "./access-context";
 export * from "./actions";
 export * from "./activity-plaintext";
 export * from "./capabilities";
