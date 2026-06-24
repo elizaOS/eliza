@@ -30,7 +30,10 @@ describe("createEscalationLadderRegistry", () => {
     );
     // override allowed when asked.
     reg.register(
-      { ladderKey: "a", steps: [{ delayMinutes: 5, channelKey: "push", intensity: "normal" }] },
+      {
+        ladderKey: "a",
+        steps: [{ delayMinutes: 5, channelKey: "push", intensity: "normal" }],
+      },
       { override: true },
     );
     expect(reg.get("a")?.steps).toHaveLength(1);
@@ -81,9 +84,9 @@ describe("resolveEffectiveLadder", () => {
   });
 
   it("falls back to the priority default ladder", () => {
-    expect(resolveEffectiveLadder(task({ priority: "low" }), reg).steps).toEqual(
-      [],
-    );
+    expect(
+      resolveEffectiveLadder(task({ priority: "low" }), reg).steps,
+    ).toEqual([]);
     expect(
       resolveEffectiveLadder(task({ priority: "high" }), reg).steps,
     ).toHaveLength(3);
