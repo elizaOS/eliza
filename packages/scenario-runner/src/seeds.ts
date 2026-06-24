@@ -100,6 +100,7 @@ type TodoSeed = {
 type ContactSeedHandle = {
   platform?: unknown;
   identifier?: unknown;
+  handle?: unknown;
   displayLabel?: unknown;
   isPrimary?: unknown;
 };
@@ -146,6 +147,20 @@ type MemoryContactSeed = {
   type?: unknown;
   name?: unknown;
   notes?: unknown;
+  displayName?: unknown;
+  id?: unknown;
+  company?: unknown;
+  handles?: unknown;
+  platform?: unknown;
+  handle?: unknown;
+  oldHandle?: unknown;
+  newHandle?: unknown;
+  platformUserId?: unknown;
+  tags?: unknown;
+  primaryChannel?: unknown;
+  telegramHandle?: unknown;
+  recentNews?: unknown;
+  renameConfirmed?: unknown;
   relationshipGoal?: unknown;
   followupThresholdDays?: unknown;
   lastContactedAt?: unknown;
@@ -396,7 +411,9 @@ function normalizeContactHandles(value: unknown): Array<{
     if (!entry || typeof entry !== "object") continue;
     const handle = entry as ContactSeedHandle;
     const platform = readNonEmptyString(handle.platform);
-    const identifier = readNonEmptyString(handle.identifier);
+    const identifier =
+      readNonEmptyString(handle.identifier) ??
+      readNonEmptyString(handle.handle);
     if (!platform || !identifier) continue;
     handles.push({
       platform,
@@ -406,6 +423,111 @@ function normalizeContactHandles(value: unknown): Array<{
     });
   }
   return handles;
+}
+
+function dedupeContactHandles(
+  handles: Array<{
+    platform: string;
+    identifier: string;
+    displayLabel?: string;
+    isPrimary?: boolean;
+  }>,
+): Array<{
+  platform: string;
+  identifier: string;
+  displayLabel?: string;
+  isPrimary?: boolean;
+}> {
+  const seen = new Set<string>();
+  const deduped: Array<{
+    platform: string;
+    identifier: string;
+    displayLabel?: string;
+    isPrimary?: boolean;
+  }> = [];
+  for (const handle of handles) {
+    const key = `${handle.platform}:${handle.identifier}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(handle);
+  }
+  return deduped;
+}
+
+function normalizeRolodexHandles(content: MemoryContactSeed): Array<{
+  platform: string;
+  identifier: string;
+  displayLabel?: string;
+  isPrimary?: boolean;
+}> {
+  const handles = normalizeContactHandles(content.handles);
+  const platform = readNonEmptyString(content.platform);
+  const displayName = readNonEmptyString(content.displayName);
+  if (platform) {
+    for (const identifier of [
+      readNonEmptyString(content.handle),
+      readNonEmptyString(content.newHandle),
+      readNonEmptyString(content.oldHandle),
+    ]) {
+      if (identifier) {
+        handles.push({
+          platform,
+          identifier,
+          displayLabel: displayName ?? undefined,
+          isPrimary: identifier === readNonEmptyString(content.handle),
+        });
+      }
+    }
+  }
+  const telegramHandle = readNonEmptyString(content.telegramHandle);
+  if (telegramHandle) {
+    handles.push({
+      platform: readNonEmptyString(content.primaryChannel) ?? "telegram",
+      identifier: telegramHandle,
+      displayLabel:
+        displayName ?? readNonEmptyString(content.name) ?? undefined,
+      isPrimary: true,
+    });
+  }
+  return dedupeContactHandles(handles);
+}
+
+function rolodexNotes(content: MemoryContactSeed): string | undefined {
+  const parts = [
+    readNonEmptyString(content.notes),
+    readNonEmptyString(content.company)
+      ? `Company: ${readNonEmptyString(content.company)}`
+      : null,
+    readNonEmptyString(content.recentNews)
+      ? `Recent news: ${readNonEmptyString(content.recentNews)}`
+      : null,
+    readNonEmptyString(content.platformUserId)
+      ? `Platform user ID: ${readNonEmptyString(content.platformUserId)}`
+      : null,
+    readNonEmptyString(content.id)
+      ? `Scenario rolodex id: ${readNonEmptyString(content.id)}`
+      : null,
+  ].filter((part): part is string => typeof part === "string");
+  return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+function rolodexEntityToContactSeed(content: MemoryContactSeed): ContactSeed {
+  return {
+    type: "contact",
+    name:
+      readNonEmptyString(content.displayName) ??
+      readNonEmptyString(content.name) ??
+      readNonEmptyString(content.handle) ??
+      readNonEmptyString(content.telegramHandle) ??
+      "Rolodex entity",
+    notes: rolodexNotes(content),
+    tags: content.tags,
+    handles: normalizeRolodexHandles(content),
+    relationshipGoal: content.relationshipGoal,
+    followupThresholdDays: content.followupThresholdDays,
+    lastContactedAt: content.lastContactedAt,
+    relationshipStatus: content.relationshipStatus,
+  };
 }
 
 function normalizeRelationshipStatus(
@@ -524,6 +646,9 @@ async function seedMemory(
   const memoryType =
     readNonEmptyString(content.kind) ?? readNonEmptyString(content.type);
   if (memoryType !== "contact") {
+    if (memoryType === "rolodex-entity") {
+      return seedContact(ctx, rolodexEntityToContactSeed(content));
+    }
     return undefined;
   }
   return seedContact(ctx, {
