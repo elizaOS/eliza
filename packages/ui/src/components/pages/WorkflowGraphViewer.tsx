@@ -140,7 +140,6 @@ function workflowToReactFlow(workflow: WorkflowDefinition | null): {
         minHeight: NODE_HEIGHT,
         color: "#e2e8f0",
         fontSize: "12px",
-        boxShadow: `0 0 0 1px ${colors.border}22`,
       },
     };
   });
@@ -439,7 +438,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
       aria-hidden={!isOpen}
       className={[
         "absolute inset-y-0 right-0 z-30 flex w-72 flex-col",
-        "border-l border-border/40 bg-bg backdrop-blur-[2px]",
+        "border-l border-border/40 bg-bg",
         "transition-transform duration-200 ease-out",
         isOpen ? "translate-x-0" : "translate-x-full",
       ].join(" ")}
@@ -744,7 +743,7 @@ export function WorkflowGraphViewer({
         {/* Generating overlay on top of graph */}
         {isGenerating && (
           <div
-            className="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px]"
+            className="absolute inset-0 z-10 flex items-center justify-center"
             style={{ background: chrome.overlayBg }}
           >
             <WorkflowGenerationProgress chrome={chrome} t={t} />

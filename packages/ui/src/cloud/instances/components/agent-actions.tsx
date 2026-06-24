@@ -243,7 +243,7 @@ export function ElizaAgentActions({
   }
 
   return (
-    <BrandCard className="relative shadow-lg shadow-black/50" cornerSize="md">
+    <BrandCard className="relative" cornerSize="md">
       <div className="relative z-10 space-y-4">
         <div className="flex items-center gap-2 pb-4 border-b border-white/10">
           <span className="inline-block w-2 h-2 rounded-full bg-[#FF5800]" />

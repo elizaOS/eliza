@@ -137,11 +137,11 @@ export function ResultsGrid({
   const t = useAppSelector((s) => s.t);
   return (
     <div
-      className="overflow-auto border border-border/40 bg-card/40 backdrop-blur-md rounded-sm "
+      className="overflow-auto border border-border/40 bg-card/95 rounded-sm "
       style={{ maxHeight: "calc(100vh - 340px)" }}
     >
       <table className="w-full border-collapse text-xs font-mono">
-        <thead className="sticky top-0 z-10 backdrop-blur-xl bg-bg/80 border-b border-border/40 ">
+        <thead className="sticky top-0 z-10 bg-bg/95 border-b border-border/40 ">
           <tr>
             {/* Row number column */}
             <th className="w-[50px] min-w-[50px] px-3 py-2.5 text-2xs text-muted font-medium text-right border-r border-border/40">
@@ -260,7 +260,7 @@ export function PaginationBar({
   const hasNext = offset + limit < total;
 
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-card/60 backdrop-blur-md rounded-b-2xl text-xs-tight text-muted">
+    <div className="flex items-center justify-between px-4 py-2.5 bg-card/95 rounded-b-2xl text-xs-tight text-muted">
       <span className="font-medium">
         {t("databaseview.RowCountSummary", {
           count: total.toLocaleString("en-US"),
@@ -283,7 +283,7 @@ export function PaginationBar({
         <Button
           variant="outline"
           size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight backdrop-blur-sm transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
+          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
           disabled={!hasPrev}
           onClick={onPrev}
         >
@@ -292,7 +292,7 @@ export function PaginationBar({
         <Button
           variant="outline"
           size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight backdrop-blur-sm transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
+          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
           disabled={!hasNext}
           onClick={onNext}
         >

@@ -218,7 +218,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-remote-connect"
                     disabled={busy || draft.remoteApiBase.trim().length === 0}
                     onClick={() => void finishAndMaybeClose()}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100"
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100"
                   >
                     {busy ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -284,7 +284,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-inference-cloud"
                     disabled={busy}
                     onClick={chooseCloudInference}
-                    className="group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-[transform,box-shadow,opacity] duration-200 ease-out hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
+                    className="group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left transition-[transform,opacity] duration-200 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10">
                       <Cloud className="h-5 w-5 text-[#FF5800]" />
@@ -311,7 +311,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-inference-local"
                     disabled={busy}
                     onClick={chooseLocalInference}
-                    className="group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100"
+                    className="group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-5 py-4 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100"
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]">
                       <Cpu className="h-5 w-5 text-white/90" />
@@ -357,7 +357,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-option-cloud"
                     disabled={busy}
                     onClick={chooseCloud}
-                    className="group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-[transform,box-shadow,opacity] duration-200 ease-out hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
+                    className="group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left transition-[transform,opacity] duration-200 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10">
                       <Cloud className="h-5 w-5 text-[#FF5800]" />
@@ -380,7 +380,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-option-local"
                     disabled={busy || cloudOnly}
                     onClick={chooseLocal}
-                    className={`group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100 ${cloudOnly ? "hidden" : ""}`}
+                    className={`group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-5 py-4 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100 ${cloudOnly ? "hidden" : ""}`}
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]">
                       <ShieldCheck className="h-5 w-5 text-white/90" />

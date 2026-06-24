@@ -50,7 +50,7 @@ export function CloudHandoffBanner() {
       className={cn(
         "fixed left-1/2 z-[9999] flex max-w-[88%] -translate-x-1/2 items-center gap-2",
         "rounded-2xl border border-white/15 px-4 py-2",
-        "text-sm font-medium leading-snug text-white shadow-lg",
+        "text-sm font-medium leading-snug text-white",
       )}
       style={{
         top: "calc(var(--safe-area-top, 0px) + 10px)",

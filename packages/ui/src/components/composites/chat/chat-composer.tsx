@@ -35,7 +35,7 @@ const inlineTextareaClass =
 const inlineMeasureTextareaClass = `${inlineTextareaClass} pointer-events-none fixed left-0 top-0 z-[-1] opacity-0`;
 
 const inlineComposerSurfaceClass =
-  "border-[color-mix(in_srgb,var(--border)_62%,var(--txt)_38%)] bg-[color-mix(in_srgb,var(--bg)_78%,var(--txt)_16%)] ring-1 ring-inset ring-white/15 backdrop-blur-sm";
+  "border-[color-mix(in_srgb,var(--border)_62%,var(--txt)_38%)] bg-[color-mix(in_srgb,var(--bg)_78%,var(--txt)_16%)] ring-1 ring-inset ring-white/15";
 
 type InlineTextareaMeasurement = {
   scrollHeight: number;

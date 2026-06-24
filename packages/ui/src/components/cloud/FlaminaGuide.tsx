@@ -93,7 +93,7 @@ export function FlaminaGuideCard({
 
   return (
     <section
-      className={`rounded-sm border border-accent/25 bg-card/70 px-4 py-4 text-left backdrop-blur-sm ${className}`.trim()}
+      className={`rounded-sm border border-accent/25 bg-card/95 px-4 py-4 text-left ${className}`.trim()}
     >
       <div className="mb-2 flex items-center gap-2">
         <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-2xs font-semibold uppercase tracking-[0.16em] text-txt">
@@ -178,7 +178,7 @@ export function DeferredSetupChecklist({
 
   return (
     <section
-      className={`rounded-sm border border-border/60 bg-card/70 px-4 py-4 backdrop-blur-sm ${className}`.trim()}
+      className={`rounded-sm border border-border/60 bg-card/95 px-4 py-4 ${className}`.trim()}
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>

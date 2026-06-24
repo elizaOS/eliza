@@ -2520,7 +2520,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     >
       {watchBannerLabel ? (
         <div
-          className="absolute left-3 right-3 top-2 z-20 flex items-center gap-2 rounded-sm border border-border/40 bg-card/80 px-3 py-1.5 text-xs text-muted backdrop-blur-sm"
+          className="absolute left-3 right-3 top-2 z-20 flex items-center gap-2 rounded-sm border border-border/40 bg-card/95 px-3 py-1.5 text-xs text-muted"
           role="status"
           aria-live="polite"
           data-testid="browser-workspace-watch-banner"

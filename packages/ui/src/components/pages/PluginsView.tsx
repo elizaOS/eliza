@@ -364,7 +364,7 @@ function PluginListView({
           className={`h-8 gap-1.5 rounded-full px-3 text-xs-tight font-bold tracking-wide transition-all ${
             isActive
               ? "border-accent bg-accent text-accent-fg hover:bg-accent/90"
-              : "border-border/50 bg-card/50 text-muted backdrop-blur-sm hover:border-accent/40 hover:text-txt"
+              : "border-border/50 bg-card/50 text-muted hover:border-accent/40 hover:text-txt"
           }`}
           onClick={() => setSubgroupFilter(tag.id)}
         >

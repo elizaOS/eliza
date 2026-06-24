@@ -52,7 +52,7 @@ export function SqlEditorPanel({
             }}
             placeholder={t("databaseview.SELECTFROMMemori")}
             rows={6}
-            className="w-full relative bg-bg/80 backdrop-blur-md border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-sm focus-visible:ring-accent focus-visible:border-accent custom-scrollbar "
+            className="w-full relative bg-bg/95 border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-sm focus-visible:ring-accent focus-visible:border-accent custom-scrollbar "
             spellCheck={false}
           />
         </div>
@@ -88,7 +88,7 @@ export function SqlEditorPanel({
 
       {/* Inline query history (standalone layout only) */}
       {showHistory && queryHistory.length > 0 && !queryResult && (
-        <div className="border border-border/40 bg-card/40 backdrop-blur-xl rounded-sm overflow-hidden">
+        <div className="border border-border/40 bg-card/95 rounded-sm overflow-hidden">
           <div className="px-4 py-2.5 text-2xs text-muted uppercase font-bold tracking-widest bg-bg/60 ">
             {t("databaseview.RecentQueries")}
           </div>

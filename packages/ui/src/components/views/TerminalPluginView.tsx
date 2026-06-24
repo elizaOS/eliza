@@ -30,7 +30,6 @@ const panelStyle: CSSProperties = {
   border: "1px solid rgba(148,163,184,0.22)",
   borderRadius: 8,
   background: "#0d1828",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
   overflow: "hidden",
 };
 
