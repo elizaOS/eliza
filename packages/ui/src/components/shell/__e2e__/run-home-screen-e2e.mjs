@@ -8,6 +8,7 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -28,22 +29,15 @@ function assert(cond, msg) {
 const stubResolver = {
   name: "home-stub-resolver",
   setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
-      path: join(here, "home-screen-fixture.core-stub.ts"),
+    // HomeScreen mounts the REAL unified home-slot WidgetHost (#9143). It resolves
+    // its per-plugin widgets from the app-store plugins snapshot and renders them
+    // with injected data (seeded in home-screen-fixture.tsx). The data sources —
+    // the `client` (relationships + base URL) and `window.fetch` (lifeops routes)
+    // — are stubbed below / in the fixture; the WidgetHost + widget components
+    // themselves are NOT stubbed.
+    b.onResolve({ filter: /(\/api|\/api\/client)$/ }, () => ({
+      path: join(here, "home-screen-fixture.api-stub.ts"),
     }));
-    // HomeScreen mounts the unified home-slot WidgetHost (#9143), whose ranking
-    // + registry/app-store wiring pulls in Node-only services (disk-space, the
-    // logger, shared). Stub it to a marker — its internals are covered by the
-    // widgets suites + the home-widget-priority ui-smoke spec; this fixture is
-    // about the Home/Springboard shell + consolidation.
-    b.onResolve({ filter: /widgets\/WidgetHost$/ }, () => ({
-      path: join(here, "home-screen-fixture.widgethost-stub.tsx"),
-    }));
-    b.onResolve({ filter: /\/api$/ }, (a) =>
-      a.importer.includes("HomeScreen")
-        ? { path: join(here, "home-screen-fixture.api-stub.ts") }
-        : undefined,
-    );
     b.onResolve({ filter: /useActivityEvents$/ }, () => ({
       path: join(here, "home-screen-fixture.activity-stub.ts"),
     }));
@@ -62,6 +56,73 @@ const stubResolver = {
     b.onResolve({ filter: /platform-guards$/ }, () => ({
       path: join(here, "home-screen-fixture.platform-stub.ts"),
     }));
+    // The widget components reach the hooks barrel only for
+    // `useIntervalWhenDocumentVisible` (verified: every bare `../../../hooks`
+    // import in the widget files takes only that hook). The barrel itself drags
+    // in the whole app-state surface (@elizaos/shared, AppContext, …) which is
+    // dead weight here, so sever it at the barrel with a no-op interval hook.
+    b.onResolve({ filter: /\/hooks$/ }, () => ({
+      path: join(here, "home-screen-fixture.docvis-stub.ts"),
+    }));
+  },
+};
+
+// @elizaos/core: the WidgetHost + the (dead-in-browser) @elizaos/shared graph
+// import a wide named surface from it. Satisfy ANY named import with a no-op
+// Proxy, but override the handful the render path actually uses with sane
+// values: `isViewVisible` (gate → always visible) and `dedupeModalities`.
+const stubElizaCore = {
+  name: "stub-eliza-core",
+  setup(b) {
+    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
+      path: args.path,
+      namespace: "eliza-core-stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
+      contents: `
+        const noop = new Proxy(() => noop, { get: () => noop });
+        module.exports = new Proxy(
+          {
+            isViewVisible: () => true,
+            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
+          },
+          { get: (t, p) => (p in t ? t[p] : noop) },
+        );
+      `,
+      loader: "js",
+    }));
+  },
+};
+
+// The REAL WidgetHost subtree transitively reaches server-only code (the hooks
+// barrel pulls @elizaos/logger / @elizaos/shared, which import node builtins) —
+// DEAD in the browser (never executed at render; the home widgets fetch through
+// the mocked window.fetch + the stubbed client). Stub every node builtin to a
+// no-op Proxy so the browser bundle builds; if any of it actually ran at module
+// load the page-error guard below would catch it. (Mirrors run-chat-sheet-e2e.)
+const nodeBuiltins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]);
+const stubNodeBuiltins = {
+  name: "stub-node-builtins",
+  setup(b) {
+    b.onResolve({ filter: /.*/ }, (args) => {
+      const bare = args.path.replace(/^node:/, "").split("/")[0];
+      if (
+        args.path.startsWith("node:") ||
+        nodeBuiltins.has(args.path) ||
+        builtinModules.includes(bare)
+      ) {
+        return { path: args.path, namespace: "node-stub" };
+      }
+      return null;
+    });
+    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
+      contents:
+        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+      loader: "js",
+    }));
   },
 };
 
@@ -73,7 +134,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubResolver],
+  plugins: [stubResolver, stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
@@ -81,6 +142,9 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>home scree
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}
 :root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>
+<!-- Shim node-ish globals some of the dead-in-browser graph touches at module
+     init (e.g. \`process.env\`). The real code paths never execute at render. -->
+<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "home-screen.html");
 await writeFile(htmlPath, html);
@@ -132,17 +196,53 @@ try {
     (await mobile.getByTestId("home-clock").count()) === 0,
     "no clock (home kept minimal)",
   );
-  // The home mounts the unified home-slot WidgetHost (#9143) — the prioritized
-  // dynamic-priority home widgets. Its ranking + per-widget rendering is
-  // covered by the widgets suites + the home-widget-priority ui-smoke spec; the
-  // fixture stubs it to a marker (see home-screen-fixture.widgethost-stub.tsx),
-  // so here we just assert the host is mounted for the home slot.
-  const homeWidgetHost = mobile.getByTestId("home-widget-host");
+  // The home mounts the REAL unified home-slot WidgetHost (#9143) — the
+  // prioritized dynamic-priority home widgets — fed by the injected mock data
+  // (seeded in the fixture). Assert the host is mounted AND that each seeded
+  // per-plugin widget card renders its populated content (each self-hides when
+  // empty, so visibility proves the data flowed through real widget components).
+  const homeWidgetHost = mobile.getByTestId("widget-host-home");
+  await mobile.waitForSelector('[data-testid="widget-host-home"]');
   assert((await homeWidgetHost.count()) === 1, "home WidgetHost is present");
   assert(
     (await homeWidgetHost.getAttribute("data-slot")) === "home",
     "home WidgetHost is mounted for the home slot",
   );
+  // Wait for the staggered home-enter fade-up to settle so the cards are fully
+  // opaque (and the data-driven cards have mounted + fetched) before asserting.
+  await mobile.waitForFunction(
+    () => {
+      const home = document.querySelector('[data-testid="home-screen"]');
+      if (!home) return false;
+      return !home
+        .getAnimations({ subtree: true })
+        .some((a) => a.animationName === "home-enter" && a.playState !== "finished");
+    },
+    undefined,
+    { timeout: 5000 },
+  );
+  // Each per-plugin home widget renders only when its injected data is
+  // attention-worthy — visibility is the proof the REAL widget parsed the data.
+  const WIDGET_CARDS = [
+    ["chat-widget-finances-alerts", "Overdrawn"],
+    ["widget-goals-attention", "Ship the release"],
+    ["widget-notifications", "Payment failed"],
+    ["chat-widget-relationships", null],
+    ["chat-widget-calendar-upcoming", "Design review"],
+    ["widget-health-sleep", "Irregular"],
+    ["chat-widget-inbox-unread", "Alex Rivera"],
+  ];
+  for (const [testId, text] of WIDGET_CARDS) {
+    const card = homeWidgetHost.getByTestId(testId);
+    await card.first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+    assert((await card.count()) > 0, `home widget ${testId} renders`);
+    if (text) {
+      assert(
+        (await homeWidgetHost.getByText(text, { exact: false }).count()) > 0,
+        `home widget ${testId} shows "${text}"`,
+      );
+    }
+  }
   // No general quick-access tiles anymore — Springboard is the adjacent
   // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
   // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
