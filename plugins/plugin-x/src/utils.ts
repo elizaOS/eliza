@@ -4,6 +4,7 @@ import type { Media } from "@elizaos/core";
 import {
   type Content,
   createUniqueUuid,
+  fetchWithSsrfGuard,
   logger,
   type Memory,
   truncateToCompleteSentence,
@@ -60,14 +61,22 @@ export async function fetchMediaData(
   return Promise.all(
     attachments.map(async (attachment: Media) => {
       if (/^(http|https):\/\//.test(attachment.url)) {
-        // Handle HTTP URLs
-        const response = await fetch(attachment.url);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch file: ${attachment.url}`);
+        // Handle HTTP URLs — route through the SSRF guard so a crafted
+        // attachment URL can't reach internal/metadata endpoints.
+        const { response, release } = await fetchWithSsrfGuard({
+          url: attachment.url,
+          timeoutMs: 30_000,
+        });
+        try {
+          if (!response.ok) {
+            throw new Error(`Failed to fetch file: ${attachment.url}`);
+          }
+          const mediaBuffer = Buffer.from(await response.arrayBuffer());
+          const mediaType = attachment.contentType || "image/png";
+          return { data: mediaBuffer, mediaType };
+        } finally {
+          await release();
         }
-        const mediaBuffer = Buffer.from(await response.arrayBuffer());
-        const mediaType = attachment.contentType || "image/png";
-        return { data: mediaBuffer, mediaType };
       }
       if (fs.existsSync(attachment.url)) {
         // Handle local file paths

@@ -1,4 +1,5 @@
 import { v4 } from "uuid";
+import { fetchWithSsrfGuard } from "../../../network/index.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
@@ -133,17 +134,24 @@ function stripTags(html: string): string {
 async function fetchLinkPreview(
 	url: string,
 ): Promise<{ title: string; bodyChunk: string } | null> {
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), SUMMARY_FETCH_TIMEOUT_MS);
+	// URLs come straight from inbound message text, so this fetch is attacker-
+	// controlled — route it through the SSRF guard (DNS-pinned, private/internal
+	// targets blocked, redirects validated per hop). Any failure (blocked,
+	// invalid, timeout, network) → no preview, exactly as before.
+	let release: (() => Promise<void>) | undefined;
 	try {
-		const response = await fetch(url, {
-			signal: controller.signal,
-			redirect: "follow",
-			headers: {
-				accept: "text/html,application/xhtml+xml",
-				"user-agent": "Mozilla/5.0 (compatible; ElizaLinkPreview/1.0)",
+		const guarded = await fetchWithSsrfGuard({
+			url,
+			timeoutMs: SUMMARY_FETCH_TIMEOUT_MS,
+			init: {
+				headers: {
+					accept: "text/html,application/xhtml+xml",
+					"user-agent": "Mozilla/5.0 (compatible; ElizaLinkPreview/1.0)",
+				},
 			},
 		});
+		release = guarded.release;
+		const { response } = guarded;
 		if (!response.ok) {
 			return null;
 		}
@@ -158,7 +166,7 @@ async function fetchLinkPreview(
 	} catch {
 		return null;
 	} finally {
-		clearTimeout(timer);
+		await release?.();
 	}
 }
 

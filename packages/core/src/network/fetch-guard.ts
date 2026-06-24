@@ -6,9 +6,12 @@
  */
 
 import {
+	isBlockedHostname,
+	isPrivateIpAddress,
 	type LookupFn,
 	resolvePinnedHostname,
 	resolvePinnedHostnameWithPolicy,
+	SsrfBlockedError,
 	type SsrfPolicy,
 } from "./ssrf.js";
 
@@ -87,8 +90,11 @@ function buildAbortSignal(params: {
  * Fetch with SSRF protection.
  *
  * - Validates URL protocol (http/https only)
- * - Resolves and pins DNS to prevent rebinding attacks
- * - Follows redirects manually with validation
+ * - With a `lookupFn`: resolves and pins DNS to also defend against rebinding
+ * - Without a `lookupFn`: synchronous literal-host checks (blocks private/
+ *   loopback/link-local IPs and internal hostnames) — usable from
+ *   environment-agnostic core, but no rebinding protection
+ * - Follows redirects manually, re-validating every hop
  * - Supports timeout and abort signals
  */
 export async function fetchWithSsrfGuard(
@@ -137,16 +143,50 @@ export async function fetchWithSsrfGuard(
 		}
 
 		try {
-			const usePolicy = Boolean(
-				params.policy?.allowPrivateNetwork ||
-					params.policy?.allowedHostnames?.length,
-			);
-			const _pinned = usePolicy
-				? await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+			if (params.lookupFn) {
+				// A DNS lookup is available → pin the resolved address(es). This is
+				// the strongest mode: it also defends against DNS rebinding.
+				const usePolicy = Boolean(
+					params.policy?.allowPrivateNetwork ||
+						params.policy?.allowedHostnames?.length,
+				);
+				if (usePolicy) {
+					await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
 						lookupFn: params.lookupFn,
 						policy: params.policy,
-					})
-				: await resolvePinnedHostname(parsedUrl.hostname, params.lookupFn);
+					});
+				} else {
+					await resolvePinnedHostname(parsedUrl.hostname, params.lookupFn);
+				}
+			} else {
+				// No lookupFn (e.g. environment-agnostic core, which has no node:dns
+				// to pin with): fall back to synchronous literal-host checks — block
+				// literal private/loopback/link-local IPs (including the
+				// octal/hex/decimal forms the OS resolver honors) and blocked
+				// internal hostnames. The redirect loop below re-runs this check for
+				// every hop, so redirect-to-internal is caught too. This does NOT
+				// defend against DNS rebinding (a public name that resolves to a
+				// private address) — pass a lookupFn where that matters.
+				const allowPrivate = Boolean(params.policy?.allowPrivateNetwork);
+				const host = parsedUrl.hostname.trim().toLowerCase().replace(/\.$/, "");
+				const allowed = new Set(
+					(params.policy?.allowedHostnames ?? []).map((value) =>
+						value.trim().toLowerCase().replace(/\.$/, ""),
+					),
+				);
+				if (!allowPrivate && !allowed.has(host)) {
+					if (isBlockedHostname(parsedUrl.hostname)) {
+						await release();
+						throw new SsrfBlockedError(
+							`Blocked hostname: ${parsedUrl.hostname}`,
+						);
+					}
+					if (isPrivateIpAddress(parsedUrl.hostname)) {
+						await release();
+						throw new SsrfBlockedError("Blocked: private/internal IP address");
+					}
+				}
+			}
 
 			// Note: In browser environments, we can't pin DNS, so we rely on policy validation only
 			const init: RequestInit = {
