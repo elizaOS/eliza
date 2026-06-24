@@ -1,91 +1,86 @@
 /**
- * Tests for the orphan APP-container reconciler's pure diff logic and its
- * SSH-orchestration loop, mirroring `docker-node-workloads.test.ts` for the
- * apps (`containers` table) variant.
- *
- * The diff (`computeOrphanAppContainersToReap`) is the load-bearing safety
- * property: an `app-<slug>` container is reaped ONLY when its NAME has no live
- * `containers` row (or a terminal one), and NEVER when the name does not match
- * the managed `app-` pattern. The orchestration test pins the "never reap on an
- * unreachable node" invariant (SSH listing returned null → skip, not reap) and
- * the reap-by-id invariant (the rm targets the immutable container id, not the
- * name).
+ * Tests for the APP orphan-container reconciler. The diff and orchestration
+ * loop now live in the shared `orphan-container-reconciler.ts`; this suite pins
+ * the APP-specific wiring: the `appContainerKeyOf` keyOf (the diff key IS the
+ * container name), the app terminal-status vocab, and the fail-safe
+ * group-by-key diff (#9307) that protects a live app sharing an `app-<slug>`
+ * name with stale stopped/failed rows. The orchestration tests pin the "never
+ * reap on an unreachable node" and "reap by immutable id, not name" invariants.
  */
 
 import { describe, expect, mock, test } from "bun:test";
+import { appContainerKeyOf } from "./app-container-orphan-reconciler";
 import {
-  type AppOrphanReconcilerNode,
-  computeOrphanAppContainersToReap,
-  isAppContainerName,
-  type LiveAppContainerRef,
-  type NodeAppContainerRef,
-  reconcileOrphanAppContainers,
-} from "./app-container-orphan-reconciler";
+  computeOrphanContainersToReap,
+  type LiveContainerRef,
+  type NodeContainerRef,
+  type OrphanReconcilerConfig,
+  type OrphanReconcilerNode,
+  reconcileOrphanContainers,
+} from "./orphan-container-reconciler";
 
-describe("isAppContainerName", () => {
-  test("accepts an app-<slug> name", () => {
-    expect(isAppContainerName("app-abc123def456")).toBe(true);
+/** The app reconciler's pure-diff deltas (matches the production config). */
+const APP_DIFF: Pick<OrphanReconcilerConfig, "keyOf" | "terminalStatuses"> = {
+  keyOf: appContainerKeyOf,
+  terminalStatuses: new Set(["stopped", "failed", "deleted"]),
+};
+
+describe("appContainerKeyOf", () => {
+  test("accepts an app-<slug> name and returns the name as the key", () => {
+    expect(appContainerKeyOf("app-abc123def456")).toBe("app-abc123def456");
   });
 
   test("rejects names without the app- prefix", () => {
-    expect(isAppContainerName("postgres")).toBe(false);
-    expect(isAppContainerName("agent-abc")).toBe(false);
+    expect(appContainerKeyOf("postgres")).toBeNull();
+    expect(appContainerKeyOf("agent-abc")).toBeNull();
     // substring match elsewhere in the name must NOT count
-    expect(isAppContainerName("my-app-x")).toBe(false);
+    expect(appContainerKeyOf("my-app-x")).toBeNull();
   });
 
   test("rejects a bare prefix with no slug", () => {
-    expect(isAppContainerName("app-")).toBe(false);
+    expect(appContainerKeyOf("app-")).toBeNull();
   });
 });
 
-describe("computeOrphanAppContainersToReap", () => {
-  const live = (name: string, status: string): LiveAppContainerRef => ({ name, status });
-  const container = (name: string, id: string): NodeAppContainerRef => ({ name, id });
+describe("computeOrphanContainersToReap (app diff)", () => {
+  const live = (key: string, status: string): LiveContainerRef => ({ key, status });
+  const container = (name: string, id: string): NodeContainerRef => ({ name, id });
+  const compute = (containers: readonly NodeContainerRef[], rows: readonly LiveContainerRef[]) =>
+    computeOrphanContainersToReap(containers, rows, APP_DIFF);
 
   test("reaps a container whose name has NO db row", () => {
-    const orphans = computeOrphanAppContainersToReap([container("app-gone", "c1")], []);
-    expect(orphans).toEqual([{ name: "app-gone", id: "c1", reason: "no_db_row" }]);
+    const orphans = compute([container("app-gone", "c1")], []);
+    expect(orphans).toEqual([{ name: "app-gone", id: "c1", key: "app-gone", reason: "no_db_row" }]);
   });
 
   test("reaps a container whose db row is in a terminal state (stopped/failed/deleted)", () => {
     for (const status of ["stopped", "failed", "deleted"]) {
-      const orphans = computeOrphanAppContainersToReap(
-        [container("app-dead", "c2")],
-        [live("app-dead", status)],
-      );
-      expect(orphans).toEqual([{ name: "app-dead", id: "c2", reason: "terminal_db_row" }]);
+      const orphans = compute([container("app-dead", "c2")], [live("app-dead", status)]);
+      expect(orphans).toEqual([
+        { name: "app-dead", id: "c2", key: "app-dead", reason: "terminal_db_row" },
+      ]);
     }
   });
 
   test("does NOT reap a container with a live (running) db row", () => {
-    const orphans = computeOrphanAppContainersToReap(
-      [container("app-live", "c3")],
-      [live("app-live", "running")],
-    );
+    const orphans = compute([container("app-live", "c3")], [live("app-live", "running")]);
     expect(orphans).toEqual([]);
   });
 
   test("does NOT reap deploying / building / pending rows", () => {
     for (const status of ["deploying", "building", "pending"]) {
-      const orphans = computeOrphanAppContainersToReap(
-        [container("app-x", "cx")],
-        [live("app-x", status)],
-      );
+      const orphans = compute([container("app-x", "cx")], [live("app-x", status)]);
       expect(orphans).toEqual([]);
     }
   });
 
   test("does NOT reap a row in 'deleting' (delete job owns teardown)", () => {
-    const orphans = computeOrphanAppContainersToReap(
-      [container("app-deleting", "c4")],
-      [live("app-deleting", "deleting")],
-    );
+    const orphans = compute([container("app-deleting", "c4")], [live("app-deleting", "deleting")]);
     expect(orphans).toEqual([]);
   });
 
   test("ignores containers that do not match the app- pattern", () => {
-    const orphans = computeOrphanAppContainersToReap(
+    const orphans = compute(
       [container("postgres", "p1"), container("agent-abc", "a1"), container("redis", "r1")],
       [],
     );
@@ -93,7 +88,7 @@ describe("computeOrphanAppContainersToReap", () => {
   });
 
   test("mixed fleet: reaps only the orphans, leaves live + non-app alone", () => {
-    const orphans = computeOrphanAppContainersToReap(
+    const orphans = compute(
       [
         container("app-running", "c-run"),
         container("app-orphan", "c-orph"),
@@ -106,7 +101,7 @@ describe("computeOrphanAppContainersToReap", () => {
     expect(orphans.map((o) => o.id).sort()).toEqual(["c-orph", "c-stop"]);
   });
 
-  // REGRESSION (#9234): `containers.name` has NO unique constraint, so one
+  // REGRESSION (#9307): `containers.name` has NO unique constraint, so one
   // `app-<slug>` name maps to MANY rows (one per deploy) — routinely a mix like
   // `[running, stopped]`. Collapsing to a single status per name (last-write-wins
   // over an unordered `WHERE name IN (...)`) could pick the terminal row and
@@ -114,7 +109,7 @@ describe("computeOrphanAppContainersToReap", () => {
   // for a name is non-terminal, the live container is NEVER reaped — and the
   // outcome must not depend on row order (no ORDER BY in the query).
   test("does NOT reap a name with a running AND a stopped row — running order", () => {
-    const orphans = computeOrphanAppContainersToReap(
+    const orphans = compute(
       [container("app-dup", "c-live")],
       [live("app-dup", "running"), live("app-dup", "stopped")],
     );
@@ -124,7 +119,7 @@ describe("computeOrphanAppContainersToReap", () => {
   test("does NOT reap a name with a stopped AND a running row — reversed order", () => {
     // Same rows, opposite iteration order: a last-write-wins map would collapse
     // to 'running' here and to 'stopped' above, making reaping order-dependent.
-    const orphans = computeOrphanAppContainersToReap(
+    const orphans = compute(
       [container("app-dup", "c-live")],
       [live("app-dup", "stopped"), live("app-dup", "running")],
     );
@@ -132,7 +127,7 @@ describe("computeOrphanAppContainersToReap", () => {
   });
 
   test("does NOT reap when ANY of several rows is non-terminal (running last)", () => {
-    const orphans = computeOrphanAppContainersToReap(
+    const orphans = compute(
       [container("app-dup", "c-live")],
       [
         live("app-dup", "failed"),
@@ -145,26 +140,42 @@ describe("computeOrphanAppContainersToReap", () => {
   });
 
   test("reaps a name when EVERY row is terminal (multiple terminal rows)", () => {
-    const orphans = computeOrphanAppContainersToReap(
+    const orphans = compute(
       [container("app-dead", "c-dead")],
       [live("app-dead", "stopped"), live("app-dead", "failed"), live("app-dead", "deleted")],
     );
-    expect(orphans).toEqual([{ name: "app-dead", id: "c-dead", reason: "terminal_db_row" }]);
+    expect(orphans).toEqual([
+      { name: "app-dead", id: "c-dead", key: "app-dead", reason: "terminal_db_row" },
+    ]);
   });
 
   test("reaps a name with NO rows as no_db_row", () => {
-    const orphans = computeOrphanAppContainersToReap([container("app-gone", "c-gone")], []);
-    expect(orphans).toEqual([{ name: "app-gone", id: "c-gone", reason: "no_db_row" }]);
+    const orphans = compute([container("app-gone", "c-gone")], []);
+    expect(orphans).toEqual([
+      { name: "app-gone", id: "c-gone", key: "app-gone", reason: "no_db_row" },
+    ]);
   });
 });
 
-describe("reconcileOrphanAppContainers (orchestration)", () => {
-  function makeNode(overrides: Partial<AppOrphanReconcilerNode> = {}): AppOrphanReconcilerNode {
+describe("reconcileOrphanContainers (app orchestration)", () => {
+  function makeConfig(
+    loadStatuses: OrphanReconcilerConfig["loadStatuses"],
+  ): OrphanReconcilerConfig {
+    return {
+      prefix: "app-",
+      keyOf: APP_DIFF.keyOf,
+      terminalStatuses: APP_DIFF.terminalStatuses,
+      loadStatuses,
+      logScope: "app-orphan-reconciler",
+    };
+  }
+
+  function makeNode(overrides: Partial<OrphanReconcilerNode> = {}): OrphanReconcilerNode {
     return {
       node_id: "node-1",
       hostname: "host-1",
       status: "healthy",
-      listAppContainers: mock(async () => [] as NodeAppContainerRef[]),
+      listContainers: mock(async () => [] as NodeContainerRef[]),
       removeContainer: mock(async () => {}),
       ...overrides,
     };
@@ -173,59 +184,52 @@ describe("reconcileOrphanAppContainers (orchestration)", () => {
   test("force-removes every orphan on a healthy node — BY ID, not name", async () => {
     const removeContainer = mock(async () => {});
     const node = makeNode({
-      listAppContainers: mock(async () => [
+      listContainers: mock(async () => [
         { name: "app-orphan", id: "c-orph" },
         { name: "app-live", id: "c-live" },
       ]),
       removeContainer,
     });
-    const loadLive = mock(async () => [{ name: "app-live", status: "running" }]);
+    const loadLive = mock(async () => [{ key: "app-live", status: "running" }]);
 
-    const result = await reconcileOrphanAppContainers([node], loadLive);
+    const result = await reconcileOrphanContainers([node], makeConfig(loadLive));
 
     expect(removeContainer).toHaveBeenCalledTimes(1);
     // reap-by-id invariant: the rm target is the immutable container id, NOT the name.
     expect(removeContainer).toHaveBeenCalledWith("c-orph");
-    expect(result).toEqual({
-      nodesScanned: 1,
-      nodesSkipped: 0,
-      reaped: 1,
-      reapFailed: 0,
-    });
+    expect(result).toEqual({ nodesScanned: 1, nodesSkipped: 0, reaped: 1, reapFailed: 0 });
   });
 
   test("SKIPS a node whose container listing failed — never reaps on a blind node", async () => {
     const removeContainer = mock(async () => {});
-    const node = makeNode({
-      listAppContainers: mock(async () => null),
-      removeContainer,
-    });
+    const node = makeNode({ listContainers: mock(async () => null), removeContainer });
 
-    const result = await reconcileOrphanAppContainers([node], async () => []);
+    const result = await reconcileOrphanContainers(
+      [node],
+      makeConfig(async () => []),
+    );
 
     expect(removeContainer).not.toHaveBeenCalled();
-    expect(result).toEqual({
-      nodesScanned: 0,
-      nodesSkipped: 1,
-      reaped: 0,
-      reapFailed: 0,
-    });
+    expect(result).toEqual({ nodesScanned: 0, nodesSkipped: 1, reaped: 0, reapFailed: 0 });
   });
 
   test("SKIPS a non-healthy node (defensive: caller should pre-filter)", async () => {
-    const listAppContainers = mock(async () => [] as NodeAppContainerRef[]);
-    const node = makeNode({ status: "offline", listAppContainers });
+    const listContainers = mock(async () => [] as NodeContainerRef[]);
+    const node = makeNode({ status: "offline", listContainers });
 
-    const result = await reconcileOrphanAppContainers([node], async () => []);
+    const result = await reconcileOrphanContainers(
+      [node],
+      makeConfig(async () => []),
+    );
 
-    expect(listAppContainers).not.toHaveBeenCalled();
+    expect(listContainers).not.toHaveBeenCalled();
     expect(result.nodesSkipped).toBe(1);
     expect(result.nodesScanned).toBe(0);
   });
 
   test("counts a failed removal as reapFailed without aborting the rest", async () => {
     const node = makeNode({
-      listAppContainers: mock(async () => [
+      listContainers: mock(async () => [
         { name: "app-a", id: "ca" },
         { name: "app-b", id: "cb" },
       ]),
@@ -234,23 +238,19 @@ describe("reconcileOrphanAppContainers (orchestration)", () => {
       }),
     });
 
-    const result = await reconcileOrphanAppContainers([node], async () => []);
+    const result = await reconcileOrphanContainers(
+      [node],
+      makeConfig(async () => []),
+    );
 
-    expect(result).toEqual({
-      nodesScanned: 1,
-      nodesSkipped: 0,
-      reaped: 1,
-      reapFailed: 1,
-    });
+    expect(result).toEqual({ nodesScanned: 1, nodesSkipped: 0, reaped: 1, reapFailed: 1 });
   });
 
   test("does not query the DB when a node has no app- containers", async () => {
-    const loadLive = mock(async () => [] as LiveAppContainerRef[]);
-    const node = makeNode({
-      listAppContainers: mock(async () => [{ name: "agent-foo", id: "a" }]),
-    });
+    const loadLive = mock(async () => [] as LiveContainerRef[]);
+    const node = makeNode({ listContainers: mock(async () => [{ name: "agent-foo", id: "a" }]) });
 
-    await reconcileOrphanAppContainers([node], loadLive);
+    await reconcileOrphanContainers([node], makeConfig(loadLive));
 
     expect(loadLive).not.toHaveBeenCalled();
   });
