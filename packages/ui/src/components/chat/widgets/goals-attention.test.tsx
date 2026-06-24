@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { getBaseUrlMock, publishHomeAttentionSpy } = vi.hoisted(() => ({
@@ -15,6 +21,13 @@ vi.mock("../../../widgets/home-attention-store", () => ({
   usePublishHomeAttention: publishHomeAttentionSpy,
 }));
 
+// useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
+// stub it so the click test isolates the navigation rail (the CustomEvent).
+vi.mock("../../../chat/useSlashCommandController", () => ({
+  reportUserViewSwitch: vi.fn(),
+}));
+
+import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import { GoalsAttentionWidget } from "./goals-attention";
 
 // Build a `/api/lifeops/goals` wire record matching GoalsView's GoalRecordWire
@@ -63,7 +76,7 @@ beforeEach(() => {
 });
 
 describe("GoalsAttentionWidget (#9143)", () => {
-  it("renders attention-first goal rows from the fetched data", async () => {
+  it("shows ONE high-priority datum — the most-urgent goal title — minimal, icon-first", async () => {
     mockGoalsResponse([
       record({ id: "g1", title: "Ship the redesign", reviewState: "on_track" }),
       record({
@@ -71,17 +84,61 @@ describe("GoalsAttentionWidget (#9143)", () => {
         title: "Recover churned users",
         reviewState: "at_risk",
       }),
+      record({
+        id: "g3",
+        title: "Reconnect with the team",
+        reviewState: "needs_attention",
+      }),
     ]);
 
-    render(<GoalsAttentionWidget pluginId="goals" />);
+    render(<GoalsAttentionWidget slot="home" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("widget-goals-attention")).toBeTruthy();
     });
-    // Both live goals render, and the at_risk one carries its badge.
-    expect(screen.getByText("Recover churned users")).toBeTruthy();
-    expect(screen.getByText("Ship the redesign")).toBeTruthy();
-    expect(screen.getByText("At risk")).toBeTruthy();
+
+    const widget = screen.getByTestId("widget-goals-attention");
+    // The card is a button (whole-card clickable) and minimal: the at_risk goal
+    // wins, and the other goals are NOT shown (only the single datum).
+    expect(widget.tagName).toBe("BUTTON");
+    expect(widget.textContent).toContain("Recover churned users");
+    expect(widget.textContent).not.toContain("Ship the redesign");
+    expect(widget.textContent).not.toContain("Reconnect with the team");
+    // The badge carries the attention count (2 needing attention).
+    expect(widget.textContent).toContain("2");
+    // The full meaning lives in the aria-label since visible text is minimal.
+    expect(widget.getAttribute("aria-label")).toMatch(/at risk/i);
+
+    // A goal needs attention -> escalation weight published.
+    expect(publishHomeAttentionSpy).toHaveBeenLastCalledWith(
+      "goals/goals.attention",
+      HOME_SIGNAL_WEIGHTS.escalation,
+    );
+  });
+
+  it("navigates to the Goals view when the card is clicked", async () => {
+    mockGoalsResponse([
+      record({
+        id: "g1",
+        title: "Recover churned users",
+        reviewState: "at_risk",
+      }),
+    ]);
+    const navEvents: string[] = [];
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent<{ viewPath?: string }>).detail;
+      if (detail?.viewPath) navEvents.push(detail.viewPath);
+    };
+    window.addEventListener("eliza:navigate:view", onNav);
+
+    render(<GoalsAttentionWidget slot="home" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("widget-goals-attention")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("widget-goals-attention"));
+    window.removeEventListener("eliza:navigate:view", onNav);
+
+    expect(navEvents).toContain("/goals");
   });
 
   it("renders nothing when there are no live goals", async () => {
@@ -90,13 +147,34 @@ describe("GoalsAttentionWidget (#9143)", () => {
       record({ id: "g2", title: "Old goal", status: "archived" }),
     ]);
 
-    const { container } = render(<GoalsAttentionWidget pluginId="goals" />);
+    const { container } = render(<GoalsAttentionWidget slot="home" />);
 
     await waitFor(() => {
       expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
     });
     expect(screen.queryByTestId("widget-goals-attention")).toBeNull();
     expect(container.firstChild).toBeNull();
+  });
+
+  it("renders nothing (and clears its signal) when no goal needs attention", async () => {
+    mockGoalsResponse([
+      record({ id: "g1", title: "Steady goal", reviewState: "on_track" }),
+    ]);
+
+    const { container } = render(<GoalsAttentionWidget slot="home" />);
+
+    await waitFor(() => {
+      expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    });
+    await Promise.resolve();
+
+    expect(screen.queryByTestId("widget-goals-attention")).toBeNull();
+    expect(container.firstChild).toBeNull();
+    // No urgent state -> clears its attention (weight null).
+    expect(publishHomeAttentionSpy).toHaveBeenLastCalledWith(
+      "goals/goals.attention",
+      null,
+    );
   });
 
   it("publishes a positive escalation weight when a goal needs attention", async () => {
@@ -108,7 +186,7 @@ describe("GoalsAttentionWidget (#9143)", () => {
       }),
     ]);
 
-    render(<GoalsAttentionWidget pluginId="goals" />);
+    render(<GoalsAttentionWidget slot="home" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("widget-goals-attention")).toBeTruthy();
@@ -116,23 +194,7 @@ describe("GoalsAttentionWidget (#9143)", () => {
     // HOME_SIGNAL_WEIGHTS.escalation === 10 (packages/ui/src/widgets/home-priority.ts).
     expect(publishHomeAttentionSpy).toHaveBeenCalledWith(
       "goals/goals.attention",
-      10,
-    );
-  });
-
-  it("publishes null (no boost) when no goal needs attention", async () => {
-    mockGoalsResponse([
-      record({ id: "g1", title: "Steady goal", reviewState: "on_track" }),
-    ]);
-
-    render(<GoalsAttentionWidget pluginId="goals" />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("widget-goals-attention")).toBeTruthy();
-    });
-    expect(publishHomeAttentionSpy).toHaveBeenLastCalledWith(
-      "goals/goals.attention",
-      null,
+      HOME_SIGNAL_WEIGHTS.escalation,
     );
   });
 });

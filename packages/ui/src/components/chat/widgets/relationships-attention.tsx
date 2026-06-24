@@ -1,5 +1,5 @@
 import { Users } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 // Real wire types for the relationships routes (READ, not guessed):
 // packages/ui/src/api/client-types-relationships.ts
@@ -13,7 +13,7 @@ import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
-import { WidgetSection } from "./shared";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const RELATIONSHIPS_WIDGET_KEY = "relationships/relationships.attention";
 
@@ -21,7 +21,6 @@ const RELATIONSHIPS_WIDGET_KEY = "relationships/relationships.attention";
 // recency); the full-page view loads on demand without polling, so a calm
 // 30s refresh is plenty for the glanceable home card.
 const RELATIONSHIPS_REFRESH_INTERVAL_MS = 30_000;
-const MAX_STALE_CONTACTS = 3;
 
 interface RelationshipsAttentionData {
   pendingCandidates: RelationshipsMergeCandidate[];
@@ -85,34 +84,44 @@ function staleContactsFrom(
       (left, right) =>
         toTimestamp(left.lastInteractionAt) -
         toTimestamp(right.lastInteractionAt),
-    )
-    .slice(0, MAX_STALE_CONTACTS);
+    );
 }
 
-function CandidateRow() {
-  return (
-    <div className="flex items-center gap-2 rounded-sm border border-border/50 bg-bg/70 px-3 py-1.5">
-      <span className="mt-px inline-block h-2 w-2 shrink-0 rounded-full bg-accent" />
-      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
-        Confirm merge?
-      </span>
-    </div>
+/** Shallow content equality so an unchanged 30s poll doesn't re-render. */
+function relationshipsEqual(
+  a: RelationshipsAttentionData,
+  b: RelationshipsAttentionData,
+): boolean {
+  if (
+    a.pendingCandidates.length !== b.pendingCandidates.length ||
+    a.staleContacts.length !== b.staleContacts.length
+  ) {
+    return false;
+  }
+  const sameCandidates = a.pendingCandidates.every(
+    (candidate, i) => candidate.id === b.pendingCandidates[i].id,
   );
+  if (!sameCandidates) return false;
+  return a.staleContacts.every((person, i) => {
+    const other = b.staleContacts[i];
+    return (
+      person.groupId === other.groupId &&
+      person.lastInteractionAt === other.lastInteractionAt
+    );
+  });
 }
 
-function StaleContactRow({ person }: { person: RelationshipsPersonSummary }) {
-  return (
-    <div className="flex items-center gap-2 px-1 py-1">
-      <span className="mt-px inline-block h-2 w-2 shrink-0 rounded-full bg-muted" />
-      <span className="min-w-0 flex-1 truncate text-xs-tight text-muted">
-        Haven't talked to {person.displayName}
-      </span>
-    </div>
-  );
-}
-
+/**
+ * RELATIONSHIPS "People" home widget (#9143). Glanceable, icon-first summary of
+ * the single highest-priority relationship signal: a pending merge that needs
+ * the user to confirm (approval), otherwise the stalest contact to reach out
+ * to. Reads the same relationships routes the full view uses
+ * (client.getRelationshipsPeople / getRelationshipsCandidates), polling quietly
+ * while the document is visible. Tapping the card opens the Relationships view.
+ */
 export function RelationshipsAttentionWidget({ slot }: Partial<WidgetProps>) {
   const [data, setData] = useState<RelationshipsAttentionData>(EMPTY_DATA);
+  const nav = useWidgetNavigation();
 
   const load = useCallback(async () => {
     try {
@@ -120,10 +129,12 @@ export function RelationshipsAttentionWidget({ slot }: Partial<WidgetProps>) {
         client.getRelationshipsPeople(),
         client.getRelationshipsCandidates(),
       ]);
-      setData({
+      const next: RelationshipsAttentionData = {
         pendingCandidates: pendingCandidatesFrom(candidates),
         staleContacts: staleContactsFrom(peopleResult.people),
-      });
+      };
+      // Skip the state update (and the re-render) when the poll is unchanged.
+      setData((prev) => (relationshipsEqual(prev, next) ? prev : next));
     } catch {
       // Network/agent failure — keep the last good data (or empty); never
       // surface a broken card. Matches todo.tsx's silent-fallback catch.
@@ -139,8 +150,10 @@ export function RelationshipsAttentionWidget({ slot }: Partial<WidgetProps>) {
     RELATIONSHIPS_REFRESH_INTERVAL_MS,
   );
 
-  const hasPendingMerge = data.pendingCandidates.length > 0;
-  const hasContacts = data.staleContacts.length > 0;
+  const pendingCount = data.pendingCandidates.length;
+  const hasPendingMerge = pendingCount > 0;
+  const stalest = useMemo(() => data.staleContacts[0] ?? null, [data]);
+  const hasContacts = stalest != null;
   const onHome = slot === "home";
 
   // A pending merge needs the user to confirm/reject — approval-level attention.
@@ -156,31 +169,32 @@ export function RelationshipsAttentionWidget({ slot }: Partial<WidgetProps>) {
   // placeholders (#9143).
   if (!hasPendingMerge && !hasContacts) return null;
 
+  // One high-priority datum, icon-first: a pending merge (approval) wins;
+  // otherwise the stalest contact to reach out to. Tapping opens Relationships.
+  if (hasPendingMerge) {
+    return (
+      <HomeWidgetCard
+        icon={<Users />}
+        label="People"
+        value="Confirm merge?"
+        badge={pendingCount}
+        tone="warn"
+        testId="chat-widget-relationships"
+        ariaLabel={`People: ${pendingCount} merge ${pendingCount === 1 ? "candidate" : "candidates"} to confirm. Open Relationships.`}
+        onActivate={() => nav.openView("/relationships", "relationships")}
+      />
+    );
+  }
   return (
-    <WidgetSection
-      title="Relationships"
-      icon={<Users className="h-4 w-4" />}
+    <HomeWidgetCard
+      icon={<Users />}
+      label="Reach out"
+      value={stalest.displayName}
+      tone="default"
       testId="chat-widget-relationships"
-    >
-      <div className="flex flex-col gap-2">
-        {hasPendingMerge ? (
-          <div className="flex flex-col gap-1">
-            {data.pendingCandidates
-              .slice(0, MAX_STALE_CONTACTS)
-              .map((candidate) => (
-                <CandidateRow key={candidate.id} />
-              ))}
-          </div>
-        ) : null}
-        {hasContacts ? (
-          <div className="flex flex-col">
-            {data.staleContacts.map((person) => (
-              <StaleContactRow key={person.groupId} person={person} />
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </WidgetSection>
+      ariaLabel={`Reach out: you haven't talked to ${stalest.displayName} in a while. Open Relationships.`}
+      onActivate={() => nav.openView("/relationships", "relationships")}
+    />
   );
 }
 

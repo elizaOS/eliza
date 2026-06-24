@@ -6,8 +6,7 @@ import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
-import { Badge } from "../../ui/badge";
-import { WidgetSection } from "./shared";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const HEALTH_SLEEP_WIDGET_KEY = "health/health.sleep";
 // HealthView polls the same `/api/lifeops/sleep/*` endpoints every 20s
@@ -58,8 +57,6 @@ interface SleepWidgetData {
   classification: SleepRegularityClass | null;
 }
 
-const EMPTY_DATA: SleepWidgetData = { latest: null, classification: null };
-
 const REGULARITY_CLASSES: ReadonlySet<string> = new Set<SleepRegularityClass>([
   "very_regular",
   "regular",
@@ -68,17 +65,16 @@ const REGULARITY_CLASSES: ReadonlySet<string> = new Set<SleepRegularityClass>([
   "insufficient_data",
 ]);
 
-const REGULARITY_LABELS: Record<SleepRegularityClass, string> = {
-  very_regular: "Very regular",
-  regular: "Regular",
+const OFF_RHYTHM_LABELS: Record<"irregular" | "very_irregular", string> = {
   irregular: "Irregular",
   very_irregular: "Very irregular",
-  insufficient_data: "Insufficient data",
 };
 
 // HealthView's `sleepProactiveLine` only speaks up for these two classes — the
 // same "needs attention" threshold drives this widget's home-attention signal.
-function isOffRhythm(classification: SleepRegularityClass | null): boolean {
+function isOffRhythm(
+  classification: SleepRegularityClass | null,
+): classification is "irregular" | "very_irregular" {
   return classification === "irregular" || classification === "very_irregular";
 }
 
@@ -146,7 +142,7 @@ async function fetchSleep(): Promise<SleepWidgetData> {
 }
 
 // Display-only formatting (client displays, never computes) — mirrors
-// HealthView's formatDuration / formatDateTime helpers.
+// HealthView's formatDuration helper.
 function formatDuration(minutes: number | null): string {
   if (minutes === null) return "—";
   const hours = Math.floor(minutes / 60);
@@ -154,29 +150,39 @@ function formatDuration(minutes: number | null): string {
   return hours === 0 ? `${mins}m` : `${hours}h ${mins}m`;
 }
 
-function formatWhen(value: string | null): string {
-  if (!value) return "in progress";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+/** Shallow content equality so an unchanged 20s poll doesn't re-render. */
+function sleepEqual(a: SleepWidgetData | null, b: SleepWidgetData): boolean {
+  if (!a) return false;
+  if (a.classification !== b.classification) return false;
+  if (a.latest === b.latest) return true;
+  if (a.latest === null || b.latest === null) return false;
+  return (
+    a.latest.startedAt === b.latest.startedAt &&
+    a.latest.endedAt === b.latest.endedAt &&
+    a.latest.durationMin === b.latest.durationMin
+  );
 }
 
 /**
- * Frontpage Sleep widget (#9143). Glanceable, home-only: the latest sleep
- * episode (duration + when) plus the regularity classification, one card.
- * Fetches the same `/api/lifeops/sleep/*` endpoints HealthView reads and floats
- * itself up via the home-attention store when sleep reads as off-rhythm.
+ * Frontpage Sleep widget (#9143). Glanceable, home-only, icon-first: a single
+ * high-priority datum — the latest sleep duration — on one whole-card-clickable
+ * tile that opens the Health view. When sleep reads off-rhythm it carries an
+ * "Irregular"/"Very irregular" badge (warn tone) and floats itself up via the
+ * home-attention store. Fetches the same `/api/lifeops/sleep/*` endpoints
+ * HealthView reads, polling quietly while the document is visible.
  */
 export function HealthSleepWidget(_props: Partial<WidgetProps>) {
-  const [data, setData] = useState<SleepWidgetData>(EMPTY_DATA);
-  // Distinguish "first load still pending" from "loaded, no episodes" so the
-  // home surface renders nothing (not a card) until we actually know there's
-  // data — and a transient fetch error never clobbers a populated card.
-  const [loaded, setLoaded] = useState(false);
+  // `null` = first load still pending; a value (with `latest: null`) = loaded
+  // but no episode. This keeps the home surface blank until we actually know
+  // there's data, and a transient fetch error never clobbers a populated card.
+  const [data, setData] = useState<SleepWidgetData | null>(null);
+  const nav = useWidgetNavigation();
 
   const load = useCallback(async () => {
     try {
-      setData(await fetchSleep());
-      setLoaded(true);
+      const next = await fetchSleep();
+      // Skip the state update (and the re-render) when the poll is unchanged.
+      setData((prev) => (sleepEqual(prev, next) ? prev : next));
     } catch {
       // Silent fallback to the last good render (matches todo.tsx); never log.
     }
@@ -188,48 +194,41 @@ export function HealthSleepWidget(_props: Partial<WidgetProps>) {
   // Poll only while the document is visible, at HealthView's 20s cadence.
   useIntervalWhenDocumentVisible(() => void load(), SLEEP_REFRESH_INTERVAL_MS);
 
-  const urgent = isOffRhythm(data.classification);
+  const offRhythm = isOffRhythm(data?.classification ?? null);
   // Float the home card up while sleep regularity reads as off-rhythm; clear it
   // otherwise (sustained-state self-signal — see home-attention-store.ts).
   usePublishHomeAttention(
     HEALTH_SLEEP_WIDGET_KEY,
-    urgent ? HOME_SIGNAL_WEIGHTS["check-in"] : null,
+    offRhythm ? HOME_SIGNAL_WEIGHTS["check-in"] : null,
   );
 
   // Render nothing until the first load resolves, and nothing once loaded if
   // there is no sleep episode in the window — the home surface must not show
   // empty placeholders (#9143).
-  if (!loaded || !data.latest) return null;
+  if (data == null || !data.latest) return null;
 
-  const classificationLabel = data.classification
-    ? REGULARITY_LABELS[data.classification]
-    : null;
+  // One high-priority datum, icon-first: the latest sleep duration. The
+  // off-rhythm regularity becomes a warn badge; tapping opens the Health view.
+  const duration = formatDuration(data.latest.durationMin);
+  const badge =
+    data.classification && isOffRhythm(data.classification)
+      ? OFF_RHYTHM_LABELS[data.classification]
+      : undefined;
+  const ariaLabel = badge
+    ? `Sleep: last ${duration}, regularity ${badge.toLowerCase()}. Open Health.`
+    : `Sleep: last ${duration}. Open Health.`;
 
   return (
-    <WidgetSection
-      title="Sleep"
-      icon={<Moon className="h-4 w-4" />}
+    <HomeWidgetCard
+      icon={<Moon />}
+      label="Sleep"
+      value={duration}
+      badge={badge}
+      tone={badge ? "warn" : "default"}
       testId="widget-health-sleep"
-    >
-      <div className="rounded-sm border border-border/50 bg-bg/70 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-xs font-semibold text-txt">
-            {formatDuration(data.latest.durationMin)}
-          </span>
-          {classificationLabel ? (
-            <Badge
-              variant="secondary"
-              className={`shrink-0 text-3xs ${urgent ? "text-danger" : ""}`}
-            >
-              {classificationLabel}
-            </Badge>
-          ) : null}
-        </div>
-        <p className="mt-1 truncate text-xs-tight leading-5 text-muted">
-          {formatWhen(data.latest.startedAt)}
-        </p>
-      </div>
-    </WidgetSection>
+      ariaLabel={ariaLabel}
+      onActivate={() => nav.openView("/health", "health")}
+    />
   );
 }
 

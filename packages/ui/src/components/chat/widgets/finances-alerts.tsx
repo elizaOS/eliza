@@ -1,11 +1,11 @@
 import { Wallet } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
-import { WidgetSection } from "./shared";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const FINANCES_WIDGET_KEY = "finances/finances.alerts";
 
@@ -13,7 +13,6 @@ const FINANCES_WIDGET_KEY = "finances/finances.alerts";
 // finances/FinancesView.tsx — POLL_INTERVAL_MS).
 const FINANCES_REFRESH_INTERVAL_MS = 30_000;
 
-const MAX_VISIBLE_BILLS = 3;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const USD = "USD";
 
@@ -168,8 +167,32 @@ function billsDueWithin7Days(
  * FinancesView reads (dashboard + recurring + sources; transactions skipped),
  * polling quietly while the document is visible.
  */
+/** Shallow content equality so an unchanged 30s poll doesn't re-render. */
+function financesEqual(
+  a: FinancesWidgetData | null,
+  b: FinancesWidgetData,
+): boolean {
+  if (!a) return false;
+  if (
+    a.hasSource !== b.hasSource ||
+    a.netBalanceMinor !== b.netBalanceMinor ||
+    a.bills.length !== b.bills.length
+  ) {
+    return false;
+  }
+  return a.bills.every((bill, i) => {
+    const other = b.bills[i];
+    return (
+      bill.id === other.id &&
+      bill.amountMinor === other.amountMinor &&
+      bill.nextChargeAt === other.nextChargeAt
+    );
+  });
+}
+
 function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
   const [data, setData] = useState<FinancesWidgetData | null>(null);
+  const nav = useWidgetNavigation();
 
   const load = useCallback(async () => {
     try {
@@ -178,12 +201,14 @@ function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
         getJson("/api/lifeops/money/recurring"),
         getJson("/api/lifeops/money/sources"),
       ]);
-      setData({
+      const next: FinancesWidgetData = {
         hasSource: parseHasSource(sources),
         netBalanceMinor: parseNetBalanceMinor(dashboard),
         currency: USD,
         bills: parseBills(recurring),
-      });
+      };
+      // Skip the state update (and the re-render) when the poll is unchanged.
+      setData((prev) => (financesEqual(prev, next) ? prev : next));
     } catch {
       // Transient/poll failure: keep the last good snapshot (todo.tsx pattern).
     }
@@ -197,9 +222,11 @@ function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
     FINANCES_REFRESH_INTERVAL_MS,
   );
 
-  const now = Date.now();
   const overdrawn = data != null && data.netBalanceMinor < 0;
-  const dueSoon = data ? billsDueWithin7Days(data.bills, now) : [];
+  const dueSoon = useMemo(
+    () => (data ? billsDueWithin7Days(data.bills, Date.now()) : []),
+    [data],
+  );
   const hasBillsDue = dueSoon.length > 0;
 
   // Self-signal (#9143): overdrawn floats up at escalation strength, otherwise
@@ -218,48 +245,36 @@ function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
   if (!data.hasSource) return null;
   if (!overdrawn && !hasBillsDue) return null;
 
-  const visibleBills = dueSoon.slice(0, MAX_VISIBLE_BILLS);
-  const remainingCount = dueSoon.length - visibleBills.length;
-
+  // One high-priority datum, icon-first: overdrawn balance (escalation) wins;
+  // otherwise the soonest bill due this week. Tapping opens the Finances view.
+  if (overdrawn) {
+    const amount = formatMinor(data.netBalanceMinor, data.currency);
+    return (
+      <HomeWidgetCard
+        icon={<Wallet />}
+        label="Bills"
+        value={amount}
+        badge="Overdrawn"
+        tone="danger"
+        testId="chat-widget-finances-alerts"
+        ariaLabel={`Bills: account overdrawn ${amount}. Open Finances.`}
+        onActivate={() => nav.openView("/finances", "finances")}
+      />
+    );
+  }
+  const soonest = dueSoon[0];
   return (
-    <WidgetSection
-      title="Bills & Balance"
-      icon={<Wallet className="h-4 w-4" />}
+    <HomeWidgetCard
+      icon={<Wallet />}
+      label="Bills"
+      value={soonest.label}
+      meta={dueInLabel(soonest.nextChargeAt as string, Date.now())}
+      badge={dueSoon.length > 1 ? `${dueSoon.length} due` : undefined}
+      tone="warn"
       testId="chat-widget-finances-alerts"
-    >
-      <div className="flex flex-col gap-1">
-        {overdrawn ? (
-          <div className="flex items-center justify-between gap-2 px-1 py-1">
-            <span className="truncate text-xs font-semibold text-danger">
-              Overdrawn
-            </span>
-            <span className="shrink-0 text-xs font-semibold text-danger">
-              {formatMinor(data.netBalanceMinor, data.currency)}
-            </span>
-          </div>
-        ) : null}
-        {visibleBills.map((bill) => (
-          <div
-            key={bill.id}
-            className="flex items-center justify-between gap-2 px-1 py-1"
-          >
-            <span className="min-w-0 truncate text-xs font-medium text-txt">
-              {bill.label}
-            </span>
-            <span className="shrink-0 text-2xs text-muted">
-              {formatMinor(bill.amountMinor, bill.currency)} •{" "}
-              {dueInLabel(bill.nextChargeAt as string, now)}
-            </span>
-          </div>
-        ))}
-        {remainingCount > 0 ? (
-          <p className="px-1 text-3xs text-muted">
-            +{remainingCount} more bill{remainingCount === 1 ? "" : "s"} due
-            soon
-          </p>
-        ) : null}
-      </div>
-    </WidgetSection>
+      ariaLabel={`Bills: ${dueSoon.length} due this week, next ${soonest.label} ${dueInLabel(soonest.nextChargeAt as string, Date.now())}. Open Finances.`}
+      onActivate={() => nav.openView("/finances", "finances")}
+    />
   );
 }
 

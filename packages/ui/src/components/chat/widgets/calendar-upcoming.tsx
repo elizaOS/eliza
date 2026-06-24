@@ -1,11 +1,11 @@
 import { CalendarClock } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
-import { WidgetSection } from "./shared";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const CALENDAR_WIDGET_KEY = "calendar/calendar.upcoming";
 
@@ -13,7 +13,6 @@ const CALENDAR_WIDGET_KEY = "calendar/calendar.upcoming";
 // polling; the home glanceable widget refreshes on a calm 60s cadence — the
 // feed is far less volatile than the todo list (15s).
 const CALENDAR_REFRESH_INTERVAL_MS = 60_000;
-const MAX_VISIBLE_EVENTS = 4;
 // "Urgent" self-signal threshold: an event starting within the next 2 hours.
 const URGENT_WINDOW_MS = 2 * 60 * 60_000;
 // How far ahead the home widget looks for upcoming events.
@@ -56,7 +55,7 @@ function parseCalendarFeed(value: unknown): CalendarFeedEventWire[] {
   return events.filter(isCalendarFeedEvent);
 }
 
-/** Upcoming events (start >= now), soonest first, capped to the visible count. */
+/** Upcoming events (start >= now), soonest first. */
 function upcomingEvents(
   events: CalendarFeedEventWire[],
   now: number,
@@ -66,11 +65,10 @@ function upcomingEvents(
       const startMs = Date.parse(event.startAt);
       return Number.isFinite(startMs) && startMs >= now;
     })
-    .sort((a, b) => a.startAt.localeCompare(b.startAt))
-    .slice(0, MAX_VISIBLE_EVENTS);
+    .sort((a, b) => a.startAt.localeCompare(b.startAt));
 }
 
-/** Compact relative time, e.g. "now", "in 25m", "in 3h", "in 2d". */
+/** Compact relative time, e.g. "now", "in 25m", "in 3h", "tomorrow", "in 2d". */
 function relativeTime(startAt: string, now: number): string {
   const deltaMs = Date.parse(startAt) - now;
   if (!Number.isFinite(deltaMs)) return "";
@@ -80,26 +78,38 @@ function relativeTime(startAt: string, now: number): string {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `in ${hours}h`;
   const days = Math.round(hours / 24);
+  if (days === 1) return "tomorrow";
   return `in ${days}d`;
 }
 
-function CalendarEventRow({ event }: { event: CalendarFeedEventWire }) {
-  return (
-    <div className="flex items-center gap-2 py-0.5">
-      <CalendarClock className="h-3 w-3 shrink-0 text-muted" />
-      <span className="min-w-0 flex-1 truncate text-xs font-medium text-txt">
-        {event.title.trim().length > 0 ? event.title : "(untitled)"}
-      </span>
-      <span className="shrink-0 text-3xs tabular-nums text-muted">
-        {event.isAllDay ? "all day" : relativeTime(event.startAt, Date.now())}
-      </span>
-    </div>
-  );
+/** Shallow content equality so an unchanged 60s poll doesn't re-render. */
+function eventsEqual(
+  a: CalendarFeedEventWire[],
+  b: CalendarFeedEventWire[],
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((event, i) => {
+    const other = b[i];
+    return (
+      event.id === other.id &&
+      event.title === other.title &&
+      event.startAt === other.startAt &&
+      event.isAllDay === other.isAllDay
+    );
+  });
 }
 
+/**
+ * CALENDAR "Next" home widget (#9143). Glanceable, icon-first: the SINGLE next
+ * upcoming event — its title (value), a compact relative time (meta), and a
+ * count of further upcoming events (badge). Fetches the same
+ * `/api/lifeops/calendar/feed` route CalendarView reads, polling quietly while
+ * the document is visible. Tapping the card opens the Calendar view.
+ */
 export function CalendarUpcomingWidget({ slot }: Partial<WidgetProps>) {
   const [events, setEvents] = useState<CalendarFeedEventWire[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const nav = useWidgetNavigation();
 
   const loadEvents = useCallback(async () => {
     const now = new Date();
@@ -118,7 +128,9 @@ export function CalendarUpcomingWidget({ slot }: Partial<WidgetProps>) {
       );
       if (!res.ok) return;
       const json: unknown = await res.json();
-      setEvents(parseCalendarFeed(json));
+      const next = parseCalendarFeed(json);
+      // Skip the state update (and the re-render) when the poll is unchanged.
+      setEvents((prev) => (eventsEqual(prev, next) ? prev : next));
     } catch {
       // Fall back silently to the last-known events (like todo.tsx); a transient
       // network failure must not blank an already-populated home card.
@@ -136,18 +148,16 @@ export function CalendarUpcomingWidget({ slot }: Partial<WidgetProps>) {
   );
 
   const now = Date.now();
-  const visible = upcomingEvents(events, now);
+  const visible = useMemo(() => upcomingEvents(events, now), [events, now]);
   const onHome = slot === "home";
-  // Urgent when a timed event starts within the next 2 hours.
-  const urgent = visible.some((event) => {
-    if (event.isAllDay) return false;
-    const startMs = Date.parse(event.startAt);
-    return (
-      Number.isFinite(startMs) &&
-      startMs - now >= 0 &&
-      startMs - now <= URGENT_WINDOW_MS
-    );
-  });
+  const next = visible[0];
+  // Urgent when the next timed event starts within the next 2 hours.
+  const urgent =
+    next != null &&
+    !next.isAllDay &&
+    Number.isFinite(Date.parse(next.startAt)) &&
+    Date.parse(next.startAt) - now >= 0 &&
+    Date.parse(next.startAt) - now <= URGENT_WINDOW_MS;
   // Float the home card up while an event is imminent; clear otherwise.
   usePublishHomeAttention(
     CALENDAR_WIDGET_KEY,
@@ -158,20 +168,24 @@ export function CalendarUpcomingWidget({ slot }: Partial<WidgetProps>) {
   // nothing when there are no upcoming events — the home surface must not show
   // empty placeholders (#9143).
   if (!loaded && events.length === 0) return null;
-  if (visible.length === 0) return null;
+  if (next == null) return null;
+
+  const title = next.title.trim().length > 0 ? next.title : "(untitled)";
+  const when = next.isAllDay ? "all day" : relativeTime(next.startAt, now);
+  const more = visible.length - 1;
 
   return (
-    <WidgetSection
-      title="Upcoming"
-      icon={<CalendarClock className="h-4 w-4" />}
+    <HomeWidgetCard
+      icon={<CalendarClock />}
+      label="Next"
+      value={title}
+      meta={when}
+      badge={more > 0 ? `+${more}` : undefined}
+      tone={urgent ? "warn" : "default"}
       testId="chat-widget-calendar-upcoming"
-    >
-      <div className="flex flex-col">
-        {visible.map((event) => (
-          <CalendarEventRow key={event.id} event={event} />
-        ))}
-      </div>
-    </WidgetSection>
+      ariaLabel={`Next event: ${title} ${when}${more > 0 ? ` (+${more} more upcoming)` : ""}. Open Calendar.`}
+      onActivate={() => nav.openView("/calendar", "calendar")}
+    />
   );
 }
 
