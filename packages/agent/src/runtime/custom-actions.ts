@@ -623,74 +623,28 @@ const GUARDED_GET_DEFAULT_USER_AGENT =
     "Chrome/124.0.0.0 Safari/537.36",
   ].join(" ");
 
-export async function performGuardedHttpGet(
-  url: string,
-  opts: GuardedHttpGetOptions = {},
-): Promise<GuardedHttpGetResult> {
-  const timeoutMs = opts.timeoutMs ?? CUSTOM_ACTION_FETCH_TIMEOUT_MS;
-  const maxChars = opts.maxChars ?? GUARDED_GET_MAX_BYTES;
-
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return { ok: false, status: 0, text: "", blocked: true };
-  }
-  if (parsed.protocol !== "https:") {
-    return { ok: false, status: 0, text: "", blocked: true };
-  }
-
-  const safety = await resolveUrlSafety(url);
-  if (safety.blocked) {
-    return { ok: false, status: 0, text: "", blocked: true };
-  }
-
-  // Build headers via the Headers API so a caller-supplied User-Agent (in any
-  // casing) cleanly overrides the default rather than being comma-joined onto it.
-  const headers = new Headers({ "User-Agent": GUARDED_GET_DEFAULT_USER_AGENT });
-  if (opts.headers) {
-    for (const [key, value] of Object.entries(opts.headers)) {
-      headers.set(key, value);
-    }
-  }
-
-  const fetchOpts: RequestInit = {
-    method: "GET",
-    headers,
-    redirect: "manual",
-  };
-
-  const response = safety.target
-    ? await fetchWithPinnedTarget(safety.target, fetchOpts, timeoutMs)
-    : await fetch(url, fetchOpts);
-
-  if (response.status >= 300 && response.status < 400) {
-    return { ok: false, status: response.status, text: "", blocked: true };
-  }
-
-  const text = await readBodyTextCapped(response, maxChars);
-  return {
-    ok: response.ok,
-    status: response.status,
-    text,
-    blocked: false,
-  };
-}
-
 export interface GuardedHttpPostOptions extends GuardedHttpGetOptions {
   /** Request body. Sent as `application/json` unless `Content-Type` is set. */
   body: string;
 }
 
+interface GuardedHttpRequestOptions extends GuardedHttpGetOptions {
+  method: "GET" | "POST";
+  /** Optional body (POST). Defaults Content-Type to `application/json`. */
+  body?: string;
+}
+
 /**
- * SSRF-guarded HTTPS POST. Identical safety model to {@link performGuardedHttpGet}
- * (https-only, internal/private targets blocked, DNS pinned, body capped) but
- * sends a body — used by inline actions that call a public JSON/MCP endpoint
- * (e.g. the keyless web-search MCP) rather than fetching a plain URL.
+ * Single SSRF-guarded, https-only HTTP request used by both the GET and POST
+ * wrappers below — keeping the guard (DNS-pinned private/link-local blocking via
+ * {@link resolveUrlSafety} + {@link fetchWithPinnedTarget}, https-only scheme,
+ * redirect rejection, timeout + body cap) in ONE place so a future safety fix
+ * never has to be made twice. Public callers use {@link performGuardedHttpGet} /
+ * {@link performGuardedHttpPost}.
  */
-export async function performGuardedHttpPost(
+async function performGuardedHttpRequest(
   url: string,
-  opts: GuardedHttpPostOptions,
+  opts: GuardedHttpRequestOptions,
 ): Promise<GuardedHttpGetResult> {
   const timeoutMs = opts.timeoutMs ?? CUSTOM_ACTION_FETCH_TIMEOUT_MS;
   const maxChars = opts.maxChars ?? GUARDED_GET_MAX_BYTES;
@@ -710,10 +664,10 @@ export async function performGuardedHttpPost(
     return { ok: false, status: 0, text: "", blocked: true };
   }
 
-  const headers = new Headers({
-    "User-Agent": GUARDED_GET_DEFAULT_USER_AGENT,
-    "Content-Type": "application/json",
-  });
+  // Build headers via the Headers API so a caller-supplied header (in any
+  // casing) cleanly overrides the default rather than being comma-joined onto it.
+  const headers = new Headers({ "User-Agent": GUARDED_GET_DEFAULT_USER_AGENT });
+  if (opts.body !== undefined) headers.set("Content-Type", "application/json");
   if (opts.headers) {
     for (const [key, value] of Object.entries(opts.headers)) {
       headers.set(key, value);
@@ -721,10 +675,10 @@ export async function performGuardedHttpPost(
   }
 
   const fetchOpts: RequestInit = {
-    method: "POST",
+    method: opts.method,
     headers,
-    body: opts.body,
     redirect: "manual",
+    ...(opts.body !== undefined ? { body: opts.body } : {}),
   };
 
   const response = safety.target
@@ -736,12 +690,30 @@ export async function performGuardedHttpPost(
   }
 
   const text = await readBodyTextCapped(response, maxChars);
-  return {
-    ok: response.ok,
-    status: response.status,
-    text,
-    blocked: false,
-  };
+  return { ok: response.ok, status: response.status, text, blocked: false };
+}
+
+/**
+ * SSRF-guarded, https-only, GET-only HTTP fetch shared by custom actions and the
+ * built-in WEB_FETCH action.
+ */
+export async function performGuardedHttpGet(
+  url: string,
+  opts: GuardedHttpGetOptions = {},
+): Promise<GuardedHttpGetResult> {
+  return performGuardedHttpRequest(url, { ...opts, method: "GET" });
+}
+
+/**
+ * SSRF-guarded HTTPS POST with a body (default `application/json`) — used by
+ * inline actions that call a public JSON/MCP endpoint (e.g. the keyless
+ * web-search MCP). Same guard as {@link performGuardedHttpGet}.
+ */
+export async function performGuardedHttpPost(
+  url: string,
+  opts: GuardedHttpPostOptions,
+): Promise<GuardedHttpGetResult> {
+  return performGuardedHttpRequest(url, { ...opts, method: "POST" });
 }
 
 function buildHandler(
