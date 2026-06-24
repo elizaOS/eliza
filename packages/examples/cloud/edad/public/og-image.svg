@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="ogTitle ogDesc">
+  <title id="ogTitle">eDad social card</title>
+  <desc id="ogDesc">A dark premium social card for eDad with a gold wordmark, cream italic tagline, and illustrated eDad portrait.</desc>
+  <defs>
+    <radialGradient id="ogBg" cx="76%" cy="28%" r="72%">
+      <stop offset="0" stop-color="#262630"/>
+      <stop offset="0.45" stop-color="#1c1c22"/>
+      <stop offset="1" stop-color="#0b0b0d"/>
+    </radialGradient>
+    <radialGradient id="ogGlow" cx="67%" cy="17%" r="54%">
+      <stop offset="0" stop-color="#c79a3f" stop-opacity="0.38"/>
+      <stop offset="0.44" stop-color="#8a6a24" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#0b0b0d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ogFace" x1="817" y1="135" x2="1000" y2="444" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ebe6d9"/>
+      <stop offset="0.64" stop-color="#ebe6d9" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#8a8579" stop-opacity="0.48"/>
+    </linearGradient>
+    <filter id="ogShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#0b0b0d" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0b0b0d"/>
+  <rect width="1200" height="630" fill="url(#ogBg)"/>
+  <rect width="1200" height="630" fill="url(#ogGlow)"/>
+  <path d="M75 498c187 35 358 31 512-14 143-42 280-49 410-22 58 12 100 31 128 56v112H75z" fill="#0b0b0d" opacity="0.26"/>
+
+  <g transform="translate(88 105)">
+    <text x="0" y="110" fill="#c79a3f" font-family="Georgia, 'Times New Roman', serif" font-size="132" font-weight="700" letter-spacing="-2">eDad</text>
+    <text x="6" y="178" fill="#ebe6d9" font-family="Georgia, 'Times New Roman', serif" font-size="44" font-style="italic">the dad you never had</text>
+    <path d="M8 223h294" stroke="#8a6a24" stroke-width="4" stroke-linecap="round" opacity="0.62"/>
+    <text x="4" y="435" fill="#8a8579" font-family="Inter, Avenir, Helvetica, Arial, sans-serif" font-size="26" font-weight="600" letter-spacing="2">POWERED BY ELIZA CLOUD</text>
+  </g>
+
+  <g filter="url(#ogShadow)">
+    <ellipse cx="938" cy="316" rx="242" ry="260" fill="#1c1c22" opacity="0.62"/>
+    <ellipse cx="858" cy="142" rx="160" ry="138" fill="#c79a3f" opacity="0.13"/>
+
+    <path d="M744 630c8-78 42-131 103-158 38-17 79-25 122-19 87 12 141 73 154 177z" fill="#1c1c22"/>
+    <path d="M764 630c12-55 41-94 86-117 33-17 69-22 108-15 59 11 96 56 108 132z" fill="#262630" opacity="0.74"/>
+    <path d="M858 491l75 115 76-115c-49 19-100 19-151 0z" fill="#ebe6d9" opacity="0.88"/>
+    <path d="M878 517l54 65 55-66c-36 10-73 10-109 1z" fill="#1c1c22" opacity="0.58"/>
+    <path d="M892 408h79l5 79c-29 27-67 27-91 0z" fill="#ebe6d9" opacity="0.86"/>
+    <path d="M883 446c29 19 65 20 93 1l-3 33c-26 19-60 20-86 0z" fill="#8a8579" opacity="0.2"/>
+
+    <path d="M822 262c-18-4-33 11-30 36 4 29 21 45 43 41z" fill="#ebe6d9" opacity="0.82"/>
+    <path d="M1023 262c18-4 33 11 30 36-4 29-21 45-43 41z" fill="#ebe6d9" opacity="0.75"/>
+    <path d="M798 279c13 1 22 11 23 28" fill="none" stroke="#8a8579" stroke-width="5" stroke-linecap="round" opacity="0.38"/>
+    <path d="M1047 279c-13 1-22 11-23 28" fill="none" stroke="#8a8579" stroke-width="5" stroke-linecap="round" opacity="0.32"/>
+
+    <path d="M923 121c68 0 111 49 113 133 2 80-36 142-93 154-68 14-125-37-132-126-7-91 37-161 112-161z" fill="url(#ogFace)"/>
+    <path d="M833 285c7 60 39 101 91 103 54 2 89-34 99-94 1 69-34 122-89 131-62 10-110-48-101-140z" fill="#8a8579" opacity="0.18"/>
+
+    <path d="M813 248c-2-62 27-106 77-128 31-14 77-11 108 10 32 22 46 56 45 102-15-48-45-73-93-75-49-2-86 18-113 60-8 12-16 23-24 31z" fill="#262630"/>
+    <path d="M830 209c32-50 76-74 131-68 27 3 51 15 67 37-25-11-51-15-78-12-48 6-85 30-111 70z" fill="#8a8579" opacity="0.92"/>
+    <path d="M843 165c22-29 53-47 93-52 22-3 44 2 66 15-30-4-58 0-84 12-33 15-58 36-75 63z" fill="#ebe6d9" opacity="0.38"/>
+    <path d="M818 248c24-30 38-61 43-92 10 30 34 46 70 49 40 3 74 16 101 39-9-77-49-122-111-122-66 0-109 49-103 126z" fill="#262630" opacity="0.72"/>
+    <path d="M829 209c31-48 72-71 123-68" fill="none" stroke="#c79a3f" stroke-width="5" stroke-linecap="round" opacity="0.42"/>
+    <path d="M816 248c-2-67 31-111 88-129" fill="none" stroke="#c79a3f" stroke-width="8" stroke-linecap="round" opacity="0.34"/>
+
+    <path d="M851 254c17-11 37-11 55 0" fill="none" stroke="#262630" stroke-width="7" stroke-linecap="round" opacity="0.66"/>
+    <path d="M928 254c17-11 37-11 55 0" fill="none" stroke="#262630" stroke-width="7" stroke-linecap="round" opacity="0.66"/>
+    <path d="M854 279c15 9 33 8 48-2" fill="none" stroke="#0b0b0d" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+    <path d="M932 277c15 10 33 11 49 2" fill="none" stroke="#0b0b0d" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+    <path d="M846 279c17-19 44-20 64-3 18-17 46-17 65 0" fill="none" stroke="#8a6a24" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+    <path d="M906 277h20" fill="none" stroke="#8a6a24" stroke-width="5" stroke-linecap="round"/>
+    <path d="M919 293c-3 19-10 38-22 56 13 11 30 11 45 0" fill="none" stroke="#8a8579" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+    <path d="M874 369c27 17 59 18 91 1-11 25-31 39-56 38-23-1-36-15-35-39z" fill="#8a8579" opacity="0.25"/>
+    <path d="M887 369c26 14 52 13 77-2" fill="none" stroke="#0b0b0d" stroke-width="5.5" stroke-linecap="round" opacity="0.82"/>
+    <path d="M901 381c14 8 29 8 44 0" fill="none" stroke="#ebe6d9" stroke-width="3.5" stroke-linecap="round" opacity="0.46"/>
+    <path d="M842 322c10 32 27 55 52 67" fill="none" stroke="#8a8579" stroke-width="7" stroke-linecap="round" opacity="0.22"/>
+    <path d="M996 323c-10 31-27 52-50 65" fill="none" stroke="#8a8579" stroke-width="7" stroke-linecap="round" opacity="0.18"/>
+  </g>
+</svg>

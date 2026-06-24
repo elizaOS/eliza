@@ -30,16 +30,23 @@
 
 import {
   actorState,
+  adminAuditLogs,
+  and,
   balanceTransactions,
   db,
   eq,
   inArray,
   markets,
+  notInArray,
+  notifications,
   pointsTransactions,
   positions,
+  predictionPriceHistories,
   questions,
   sql,
   tradingFees,
+  userAchievements,
+  userChallengeProgress,
   users,
 } from "@feed/db";
 import { expect, test } from "@playwright/test";
@@ -65,6 +72,8 @@ let e2eSnowflakeSequence = 0n;
 let serverAvailable = false;
 let authSession: BrowserDevAuthSession | null = null;
 let authHeaders: Record<string, string> = {};
+let buyPlaced = false;
+let marketResolved = false;
 
 /** Snowflake ids of rows this spec created, deleted in reverse order in afterAll. */
 const seeded = {
@@ -77,14 +86,29 @@ const seeded = {
 type UserWalletSnapshot = {
   virtualBalance: string;
   totalDeposited: string;
+  totalWithdrawn: string;
   lifetimePnL: string;
+  invitePoints: number;
   earnedPoints: number;
-  reputationPoints: number;
   bonusPoints: number;
+  reputationPoints: number;
+  referralCode: string | null;
+  referralCount: number;
+  referredBy: string | null;
+  totalFeesEarned: string;
   totalFeesPaid: string;
 };
 
 let originalUserWallet: UserWalletSnapshot | null = null;
+
+type UserSideEffectSnapshot = {
+  notificationIds: string[];
+  pointsTransactionIds: string[];
+  userAchievementIds: string[];
+  userChallengeProgressIds: string[];
+};
+
+let originalUserSideEffects: UserSideEffectSnapshot | null = null;
 
 async function generateE2eSnowflakeId(): Promise<string> {
   e2eSnowflakeSequence = (e2eSnowflakeSequence + 1n) & 4095n;

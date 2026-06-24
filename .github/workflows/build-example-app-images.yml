@@ -1,8 +1,7 @@
 name: Build Example App Images
 
 # Builds + pushes the example-app showcase images consumed by the Apps/Product 2
-# showcase e2e loop. Right now that's just EDAD; future example apps (e.g. the
-# clone-ur-crush app) get their own job here once they have a standalone build.
+# showcase e2e loop. Each example app gets its own job and image tag.
 #
 # The showcase spec (packages/test/cloud-e2e/tests/example-apps-showcase.spec.ts)
 # deploys `ghcr.io/elizaos/example-edad:showcase` via the prebuilt-image path
@@ -24,6 +23,7 @@ on:
     branches: [develop]
     paths:
       - "packages/examples/cloud/edad/**"
+      - "packages/examples/cloud/clone-ur-crush/**"
       - "packages/cloud-sdk/**"
       - ".github/workflows/build-example-app-images.yml"
   workflow_dispatch:
@@ -109,6 +109,35 @@ jobs:
             exit 1
           fi
 
+      - name: Smoke-test the image (gate the GHCR push on a working container)
+        # Build + run the exact bundle image and assert it actually serves before
+        # we publish it — so the showcase deploy never pulls a broken :showcase
+        # tag. Mirrors the local verification in DEPLOY_AND_VALIDATE.md.
+        run: |
+          set -euo pipefail
+          docker build --load -t edad-smoke:ci \
+            -f packages/examples/cloud/edad/Dockerfile.bundle \
+            packages/examples/cloud/edad/dist
+          docker rm -f edad-smoke >/dev/null 2>&1 || true
+          docker run -d --name edad-smoke -p 3000:3000 edad-smoke:ci
+          ok=""
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1; then ok=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::EDAD image never became healthy" >&2
+            docker logs edad-smoke || true
+            exit 1
+          fi
+          test "$(curl -fsS http://127.0.0.1:3000/health)" = "ok"
+          curl -fsS http://127.0.0.1:3000/ | grep -q "eDad" \
+            || { echo "::error::EDAD did not serve its UI" >&2; exit 1; }
+          curl -fsS http://127.0.0.1:3000/api/config | grep -q "cloud_url" \
+            || { echo "::error::EDAD /api/config is broken" >&2; exit 1; }
+          docker rm -f edad-smoke >/dev/null 2>&1 || true
+          echo "EDAD image smoke test passed: healthy + serves UI + /api/config."
+
       - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
         with:
           registry: ${{ env.REGISTRY }}
@@ -149,4 +178,93 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/orgs/elizaOS/packages/container/example-edad/visibility \
-            -d '{"visibility":"public"}'
+            -d '{"visibility":"public"}' || \
+          echo "::warning::Could not set package visibility to public — set it once manually in the GHCR package settings"
+
+  build-clone-ur-crush:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Cache Bun install
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-canary-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-canary-
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: bun install --no-frozen-lockfile
+
+      - name: Build clone-ur-crush (Next.js standalone bundle)
+        # next.config sets output:"standalone"; with outputFileTracingRoot at the
+        # monorepo root the server lands at the repo-relative path inside the
+        # bundle. Next does NOT copy .next/static or public into standalone, so
+        # place them next to server.js where the standalone runtime serves them.
+        env:
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
+        run: |
+          set -euo pipefail
+          cd packages/examples/cloud/clone-ur-crush
+          rm -rf .next
+          bun run build
+          app=.next/standalone/packages/examples/cloud/clone-ur-crush
+          test -f "$app/server.js"
+          mkdir -p "$app/.next"
+          cp -r .next/static "$app/.next/static"
+          cp -r public "$app/public"
+
+      - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5
+
+      - id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9
+        with:
+          images: ${{ env.REGISTRY }}/elizaos/example-clone-ur-crush
+          tags: |
+            type=raw,value=showcase
+            type=sha,prefix=sha-,format=short
+
+      - id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          context: packages/examples/cloud/clone-ur-crush/.next/standalone
+          file: packages/examples/cloud/clone-ur-crush/Dockerfile.bundle
+          push: true
+          provenance: false
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Make image public
+        run: |
+          curl --fail-with-body --show-error --silent \
+            -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/orgs/elizaOS/packages/container/example-clone-ur-crush/visibility \
+            -d '{"visibility":"public"}' || \
+          echo "::warning::Could not set package visibility to public — set it once manually in the GHCR package settings"

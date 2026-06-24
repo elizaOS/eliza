@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="faviconTitle faviconDesc">
+  <title id="faviconTitle">eDad favicon</title>
+  <desc id="faviconDesc">A dark rounded-square tile with a crisp gold eD serif monogram.</desc>
+  <rect x="3" y="3" width="58" height="58" rx="13" fill="#0b0b0d"/>
+  <rect x="4.5" y="4.5" width="55" height="55" rx="11.5" fill="none" stroke="#262630" stroke-width="3"/>
+  <circle cx="19" cy="15" r="18" fill="#c79a3f" opacity="0.13"/>
+  <text x="32" y="43" fill="#c79a3f" font-family="Georgia, 'Times New Roman', serif" font-size="31" font-weight="700" text-anchor="middle" letter-spacing="-1">eD</text>
+</svg>
