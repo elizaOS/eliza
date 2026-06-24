@@ -95,6 +95,294 @@
 			},
 			"default": "./dist/node/app-route-plugin-registry.js"
 		},
+		"./api/http-helpers": {
+			"types": "./dist/api/http-helpers.d.ts",
+			"eliza-source": {
+				"types": "./src/api/http-helpers.ts",
+				"import": "./src/api/http-helpers.ts",
+				"default": "./src/api/http-helpers.ts"
+			},
+			"browser": {
+				"types": "./dist/api/http-helpers.d.ts",
+				"import": "./dist/browser/api/http-helpers.js",
+				"default": "./dist/browser/api/http-helpers.js"
+			},
+			"node": {
+				"types": "./dist/api/http-helpers.d.ts",
+				"import": "./dist/node/api/http-helpers.js",
+				"default": "./dist/node/api/http-helpers.js"
+			},
+			"bun": {
+				"types": "./dist/api/http-helpers.d.ts",
+				"import": "./dist/node/api/http-helpers.js",
+				"default": "./dist/node/api/http-helpers.js"
+			},
+			"default": "./dist/node/api/http-helpers.js"
+		},
+		"./actions/json-model-output": {
+			"types": "./dist/actions/json-model-output.d.ts",
+			"eliza-source": {
+				"types": "./src/actions/json-model-output.ts",
+				"import": "./src/actions/json-model-output.ts",
+				"default": "./src/actions/json-model-output.ts"
+			},
+			"browser": {
+				"types": "./dist/actions/json-model-output.d.ts",
+				"import": "./dist/browser/actions/json-model-output.js",
+				"default": "./dist/browser/actions/json-model-output.js"
+			},
+			"node": {
+				"types": "./dist/actions/json-model-output.d.ts",
+				"import": "./dist/node/actions/json-model-output.js",
+				"default": "./dist/node/actions/json-model-output.js"
+			},
+			"bun": {
+				"types": "./dist/actions/json-model-output.d.ts",
+				"import": "./dist/node/actions/json-model-output.js",
+				"default": "./dist/node/actions/json-model-output.js"
+			},
+			"default": "./dist/node/actions/json-model-output.js"
+		},
+		"./connectors/connector-config": {
+			"types": "./dist/connectors/connector-config.d.ts",
+			"eliza-source": {
+				"types": "./src/connectors/connector-config.ts",
+				"import": "./src/connectors/connector-config.ts",
+				"default": "./src/connectors/connector-config.ts"
+			},
+			"browser": {
+				"types": "./dist/connectors/connector-config.d.ts",
+				"import": "./dist/browser/connectors/connector-config.js",
+				"default": "./dist/browser/connectors/connector-config.js"
+			},
+			"node": {
+				"types": "./dist/connectors/connector-config.d.ts",
+				"import": "./dist/node/connectors/connector-config.js",
+				"default": "./dist/node/connectors/connector-config.js"
+			},
+			"bun": {
+				"types": "./dist/connectors/connector-config.d.ts",
+				"import": "./dist/node/connectors/connector-config.js",
+				"default": "./dist/node/connectors/connector-config.js"
+			},
+			"default": "./dist/node/connectors/connector-config.js"
+		},
+		"./env-utils": {
+			"types": "./dist/env-utils.d.ts",
+			"eliza-source": {
+				"types": "./src/env-utils.ts",
+				"import": "./src/env-utils.ts",
+				"default": "./src/env-utils.ts"
+			},
+			"browser": {
+				"types": "./dist/env-utils.d.ts",
+				"import": "./dist/browser/env-utils.js",
+				"default": "./dist/browser/env-utils.js"
+			},
+			"node": {
+				"types": "./dist/env-utils.d.ts",
+				"import": "./dist/node/env-utils.js",
+				"default": "./dist/node/env-utils.js"
+			},
+			"bun": {
+				"types": "./dist/env-utils.d.ts",
+				"import": "./dist/node/env-utils.js",
+				"default": "./dist/node/env-utils.js"
+			},
+			"default": "./dist/node/env-utils.js"
+		},
+		"./logger": {
+			"types": "./dist/logger.d.ts",
+			"eliza-source": {
+				"types": "./src/logger.ts",
+				"import": "./src/logger.ts",
+				"default": "./src/logger.ts"
+			},
+			"browser": {
+				"types": "./dist/logger.d.ts",
+				"import": "./dist/browser/logger.js",
+				"default": "./dist/browser/logger.js"
+			},
+			"node": {
+				"types": "./dist/logger.d.ts",
+				"import": "./dist/node/logger.js",
+				"default": "./dist/node/logger.js"
+			},
+			"bun": {
+				"types": "./dist/logger.d.ts",
+				"import": "./dist/node/logger.js",
+				"default": "./dist/node/logger.js"
+			},
+			"default": "./dist/node/logger.js"
+		},
+		"./sandbox-policy": {
+			"types": "./dist/sandbox-policy.d.ts",
+			"eliza-source": {
+				"types": "./src/sandbox-policy.ts",
+				"import": "./src/sandbox-policy.ts",
+				"default": "./src/sandbox-policy.ts"
+			},
+			"browser": {
+				"types": "./dist/sandbox-policy.d.ts",
+				"import": "./dist/browser/sandbox-policy.js",
+				"default": "./dist/browser/sandbox-policy.js"
+			},
+			"node": {
+				"types": "./dist/sandbox-policy.d.ts",
+				"import": "./dist/node/sandbox-policy.js",
+				"default": "./dist/node/sandbox-policy.js"
+			},
+			"bun": {
+				"types": "./dist/sandbox-policy.d.ts",
+				"import": "./dist/node/sandbox-policy.js",
+				"default": "./dist/node/sandbox-policy.js"
+			},
+			"default": "./dist/node/sandbox-policy.js"
+		},
+		"./settings-debug": {
+			"types": "./dist/settings-debug.d.ts",
+			"eliza-source": {
+				"types": "./src/settings-debug.ts",
+				"import": "./src/settings-debug.ts",
+				"default": "./src/settings-debug.ts"
+			},
+			"browser": {
+				"types": "./dist/settings-debug.d.ts",
+				"import": "./dist/browser/settings-debug.js",
+				"default": "./dist/browser/settings-debug.js"
+			},
+			"node": {
+				"types": "./dist/settings-debug.d.ts",
+				"import": "./dist/node/settings-debug.js",
+				"default": "./dist/node/settings-debug.js"
+			},
+			"bun": {
+				"types": "./dist/settings-debug.d.ts",
+				"import": "./dist/node/settings-debug.js",
+				"default": "./dist/node/settings-debug.js"
+			},
+			"default": "./dist/node/settings-debug.js"
+		},
+		"./trajectory-context": {
+			"types": "./dist/trajectory-context.d.ts",
+			"eliza-source": {
+				"types": "./src/trajectory-context.ts",
+				"import": "./src/trajectory-context.ts",
+				"default": "./src/trajectory-context.ts"
+			},
+			"browser": {
+				"types": "./dist/trajectory-context.d.ts",
+				"import": "./dist/browser/trajectory-context.js",
+				"default": "./dist/browser/trajectory-context.js"
+			},
+			"node": {
+				"types": "./dist/trajectory-context.d.ts",
+				"import": "./dist/node/trajectory-context.js",
+				"default": "./dist/node/trajectory-context.js"
+			},
+			"bun": {
+				"types": "./dist/trajectory-context.d.ts",
+				"import": "./dist/node/trajectory-context.js",
+				"default": "./dist/node/trajectory-context.js"
+			},
+			"default": "./dist/node/trajectory-context.js"
+		},
+		"./types/model": {
+			"types": "./dist/types/model.d.ts",
+			"eliza-source": {
+				"types": "./src/types/model.ts",
+				"import": "./src/types/model.ts",
+				"default": "./src/types/model.ts"
+			},
+			"browser": {
+				"types": "./dist/types/model.d.ts",
+				"import": "./dist/browser/types/model.js",
+				"default": "./dist/browser/types/model.js"
+			},
+			"node": {
+				"types": "./dist/types/model.d.ts",
+				"import": "./dist/node/types/model.js",
+				"default": "./dist/node/types/model.js"
+			},
+			"bun": {
+				"types": "./dist/types/model.d.ts",
+				"import": "./dist/node/types/model.js",
+				"default": "./dist/node/types/model.js"
+			},
+			"default": "./dist/node/types/model.js"
+		},
+		"./utils/format-error": {
+			"types": "./dist/utils/format-error.d.ts",
+			"eliza-source": {
+				"types": "./src/utils/format-error.ts",
+				"import": "./src/utils/format-error.ts",
+				"default": "./src/utils/format-error.ts"
+			},
+			"browser": {
+				"types": "./dist/utils/format-error.d.ts",
+				"import": "./dist/browser/utils/format-error.js",
+				"default": "./dist/browser/utils/format-error.js"
+			},
+			"node": {
+				"types": "./dist/utils/format-error.d.ts",
+				"import": "./dist/node/utils/format-error.js",
+				"default": "./dist/node/utils/format-error.js"
+			},
+			"bun": {
+				"types": "./dist/utils/format-error.d.ts",
+				"import": "./dist/node/utils/format-error.js",
+				"default": "./dist/node/utils/format-error.js"
+			},
+			"default": "./dist/node/utils/format-error.js"
+		},
+		"./utils/state-dir": {
+			"types": "./dist/utils/state-dir.d.ts",
+			"eliza-source": {
+				"types": "./src/utils/state-dir.ts",
+				"import": "./src/utils/state-dir.ts",
+				"default": "./src/utils/state-dir.ts"
+			},
+			"browser": {
+				"types": "./dist/utils/state-dir.d.ts",
+				"import": "./dist/browser/utils/state-dir.js",
+				"default": "./dist/browser/utils/state-dir.js"
+			},
+			"node": {
+				"types": "./dist/utils/state-dir.d.ts",
+				"import": "./dist/node/utils/state-dir.js",
+				"default": "./dist/node/utils/state-dir.js"
+			},
+			"bun": {
+				"types": "./dist/utils/state-dir.d.ts",
+				"import": "./dist/node/utils/state-dir.js",
+				"default": "./dist/node/utils/state-dir.js"
+			},
+			"default": "./dist/node/utils/state-dir.js"
+		},
+		"./uuid-utils": {
+			"types": "./dist/uuid-utils.d.ts",
+			"eliza-source": {
+				"types": "./src/uuid-utils.ts",
+				"import": "./src/uuid-utils.ts",
+				"default": "./src/uuid-utils.ts"
+			},
+			"browser": {
+				"types": "./dist/uuid-utils.d.ts",
+				"import": "./dist/browser/uuid-utils.js",
+				"default": "./dist/browser/uuid-utils.js"
+			},
+			"node": {
+				"types": "./dist/uuid-utils.d.ts",
+				"import": "./dist/node/uuid-utils.js",
+				"default": "./dist/node/uuid-utils.js"
+			},
+			"bun": {
+				"types": "./dist/uuid-utils.d.ts",
+				"import": "./dist/node/uuid-utils.js",
+				"default": "./dist/node/uuid-utils.js"
+			},
+			"default": "./dist/node/uuid-utils.js"
+		},
 		"./view-kind": {
 			"types": "./dist/view-kind.d.ts",
 			"eliza-source": {

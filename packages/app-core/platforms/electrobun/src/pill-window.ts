@@ -1,5 +1,5 @@
 /**
- * Pill overlay window for Electrobun.
+ * Optional chat-overlay window for Electrobun.
  *
  * Spawns a single borderless, transparent, always-on-top BrowserWindow
  * docked to the bottom-center of the user's primary display. The window
@@ -13,10 +13,9 @@
  *    `exitOnLastWindowClosed` behavior firing when both windows are gone,
  *    or by the application's quit menu).
  *
- * This is the persistent chat-overlay pill — created at app boot when
- * shouldCreateDesktopPill() returns true (shellMode=chat-overlay). It is the
- * live production voice/chat surface the user sees every day, rendering the
- * ContinuousChatOverlay (NOT the old standalone VoicePill, which was removed).
+ * This is an opt-in chat-overlay surface created at app boot only when
+ * shouldCreateDesktopPill() returns true. The removed standalone `?shell=pill`
+ * route must not be revived here.
  */
 
 import { type BrowserWindow, Screen } from "electrobun/bun";
@@ -66,7 +65,7 @@ export function createPillWindow(args: {
   const url = buildPillRendererUrl(args.rendererUrl);
 
   const win = createElectrobunBrowserWindow({
-    title: "Eliza Pill",
+    title: "Eliza Chat Overlay",
     url,
     preload: args.preload,
     frame,
@@ -89,7 +88,7 @@ export function createPillWindow(args: {
 
   pillWindow = win;
   logger.info(
-    `[pill-window] Spawned pill overlay at (${frame.x},${frame.y}) ${frame.width}x${frame.height}`,
+    `[pill-window] Spawned chat overlay at (${frame.x},${frame.y}) ${frame.width}x${frame.height}`,
   );
   return win;
 }

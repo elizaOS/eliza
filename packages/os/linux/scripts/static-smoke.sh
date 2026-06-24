@@ -874,7 +874,7 @@ grep -q 'systemctl --user start --no-block elizaos-renderer.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-keeper
 if grep -q 'systemctl --user start --no-block elizaos-pill.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-keeper; then
-    echo "Voice pill must stay installed but opt-in until the pill renderer is production-ready." >&2
+        echo "Chat overlay service must stay installed but opt-in until the overlay renderer is production-ready." >&2
     exit 1
 fi
 grep -q 'ELIZA_API_PORT.*:-31337' \
@@ -939,10 +939,15 @@ grep -q 'ELIZAOS_PILL_MONITOR' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'Gdk.Device.get_position\|device.get_position' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
-grep -q 'ELIZAOS_SHELL_MODE=pill' \
+grep -q 'ELIZAOS_SHELL_MODE=chat-overlay' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
-grep -q 'shell=pill' \
+grep -q 'shellMode=chat-overlay' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+if grep -q 'shell=pill' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user; then
+    echo "Removed ?shell=pill route must not be used by the overlay launcher." >&2
+    exit 1
+fi
 grep -q 'elizaos-webkit-shell' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
 grep -q 'ELIZAOS_RENDERER_PORT.*:-5174' \
@@ -1001,7 +1006,7 @@ if [ "${SOURCE_ONLY}" != "1" ]; then
 fi
 if grep -q 'systemctl --global enable elizaos-pill.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units; then
-    echo "Voice pill must stay installed but opt-in until the pill renderer is production-ready." >&2
+        echo "Chat overlay service must stay installed but opt-in until the overlay renderer is production-ready." >&2
     exit 1
 fi
 grep -q 'set_network_proxy_settings(WebKit2.NetworkProxyMode.NO_PROXY' \

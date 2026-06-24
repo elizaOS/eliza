@@ -14,7 +14,7 @@
  */
 
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import { resolveStateDir } from "@elizaos/core/utils/state-dir";
 
 export function localInferenceRoot(): string {
   return path.join(resolveStateDir(), "local-inference");

@@ -56,8 +56,8 @@ Built-squashfs checks also confirmed:
 - packaged renderer CSS has no old orange palette tokens
 - `color-scheme='prefer-light'` and Poppins defaults are inside the image
 - the white/blue GNOME window-list stylesheet is inside the image
-- `elizaos-pill.service` remains installed but is not auto-enabled until the
-  pill renderer is production-ready
+- `elizaos-pill.service` remains installed but is not auto-enabled; when started
+  manually it opens the supported chat-overlay shell, not the removed pill route
 - the packaged Electrobun runtime contains the close-minimizes behavior
 - the packaged app runtime reaches API readiness in the local runtime smoke
   check

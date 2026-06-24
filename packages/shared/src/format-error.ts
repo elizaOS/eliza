@@ -11,7 +11,7 @@
  * logs, plugin crash diagnostics).
  */
 
-export { formatError } from "@elizaos/core";
+export { formatError } from "@elizaos/core/utils/format-error";
 
 export function formatErrorWithStack(err: unknown): string {
   return err instanceof Error ? (err.stack ?? err.message) : String(err);

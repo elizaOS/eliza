@@ -877,9 +877,10 @@ async function launch() {
     ...apiEmbeddingWarmupPolicy.env,
   };
   const apiWatchEnabled = envFlagEnabled("ELIZA_DESKTOP_API_WATCH");
+  const apiSourceConditionArgs = ["--conditions=eliza-source"];
   const apiArgs = apiWatchEnabled
-    ? ["--watch", devServerEntry]
-    : [devServerEntry];
+    ? [...apiSourceConditionArgs, "--watch", devServerEntry]
+    : [...apiSourceConditionArgs, devServerEntry];
   if (!apiWatchEnabled) {
     console.log(
       "[eliza] API file watcher disabled (set ELIZA_DESKTOP_API_WATCH=1 to enable).",

@@ -18,30 +18,26 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("calendar decomposed view: day/week/month view-mode control switches", async ({
+test("calendar decomposed view: day/week/month controls switch", async ({
   page,
 }) => {
-  // /calendar now mounts the rich CalendarSection (nav + SegmentedControl
-  // view-mode control + grid), not the old day/week/month placeholder switcher.
+  // /calendar mounts the spatial calendar surface with nav controls and
+  // day/week/month mode buttons, not the old placeholder switcher.
   await openAppPath(page, "/calendar");
   await expect(
-    page.getByTestId("lifeops-calendar-section").first(),
+    page.getByRole("button", { name: "Today" }).first(),
   ).toBeVisible({ timeout: 60_000 });
 
-  // The view-mode control is a SegmentedControl whose buttons expose accessible
-  // names ("Day" / "Week" / "Month") with aria-pressed — drive it by role+name
-  // (Playwright-preferred) rather than a testId. Week is the default selection.
+  // The spatial mode buttons expose accessible names ("Day" / "Week" /
+  // "Month"). The selected mode is reflected in the "View" select value.
   // exact:true so "Day" does not substring-match the "Today" nav button.
+  const viewMode = page.getByRole("combobox").first();
   const week = page.getByRole("button", { name: "Week", exact: true }).first();
   const day = page.getByRole("button", { name: "Day", exact: true }).first();
   await expect(week).toBeVisible({ timeout: 15_000 });
-  await expect(week).toHaveAttribute("aria-pressed", "true", {
-    timeout: 10_000,
-  });
+  await expect(viewMode).toHaveValue("week", { timeout: 10_000 });
   await day.click();
-  await expect(day).toHaveAttribute("aria-pressed", "true", {
-    timeout: 10_000,
-  });
+  await expect(viewMode).toHaveValue("day", { timeout: 10_000 });
 
   // The feed mock seeds events inside the window, so the grid renders populated.
   await expect(page.getByText("Design sync").first()).toBeVisible({

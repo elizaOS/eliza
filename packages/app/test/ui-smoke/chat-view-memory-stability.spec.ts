@@ -161,9 +161,9 @@ test("chat and routed views keep heap, DOM, and listeners bounded", async ({
   );
 
   const composer = page.getByTestId("chat-composer-textarea");
-  const calendar = page.getByTestId("calendar-view").first();
+  const calendar = page.getByRole("button", { name: "Today" }).first();
   const documents = page.getByTestId("documents-view").first();
-  const taskCoordinator = page.getByTestId("task-coordinator-panel").first();
+  const taskCoordinator = page.getByRole("textbox", { name: "Search tasks" });
 
   await openAppPath(page, "/chat");
   await expect(composer).toBeVisible({ timeout: 20_000 });

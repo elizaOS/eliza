@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { shouldCreateDesktopPill } from "./desktop-pill-config";
 
 describe("desktop pill config", () => {
-  it("creates a pill window by default (voice surface)", () => {
-    expect(shouldCreateDesktopPill({})).toBe(true);
+  it("does not create a separate overlay window by default", () => {
+    expect(shouldCreateDesktopPill({})).toBe(false);
   });
 
-  it("supports an explicit enable flag", () => {
+  it("supports an explicit developer enable flag", () => {
     expect(shouldCreateDesktopPill({ ELIZA_DESKTOP_PILL: "1" })).toBe(true);
     expect(shouldCreateDesktopPill({ ELIZA_DESKTOP_PILL: "true" })).toBe(true);
     expect(shouldCreateDesktopPill({ ELIZA_DESKTOP_PILL: "yes" })).toBe(true);

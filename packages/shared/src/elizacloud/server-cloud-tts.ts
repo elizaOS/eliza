@@ -17,7 +17,7 @@ import {
   getElizaNamespace,
   resolveStateDir,
   resolveUserPath,
-} from "@elizaos/core";
+} from "@elizaos/core/utils/state-dir";
 import { isElizaCloudServiceSelectedInConfig } from "../contracts/cloud-topology.js";
 import { getCloudSecret } from "./cloud-secrets.js";
 

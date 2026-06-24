@@ -65,6 +65,8 @@ describe("TodosSpatialView one source, three modalities", () => {
     expect(gui).toContain('data-spatial-surface="gui"');
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
+      expect(html).toContain("<h2");
+      expect(html).toContain(">Todos</h2>");
       expect(html).toContain("Overdue task");
       expect(html).toContain("Plan trip");
       expect(html).toContain('data-agent-id="todo-t1"');

@@ -436,17 +436,19 @@ export const Stack = brand<StackProps>("box", function Stack(props) {
   return (
     <div data-spatial-kind="box" style={style} {...agentDataProps(spec.agent)}>
       {spec.title ? (
-        <div
+        <h2
           data-spatial-kind="title"
           style={{
             fontSize: `${TEXT_REM.label * cell * 4}rem`,
             fontWeight: 600,
+            lineHeight: 1.2,
+            margin: 0,
             opacity: 0.8,
             color: toneColor(spec.tone),
           }}
         >
           {spec.title}
-        </div>
+        </h2>
       ) : null}
       {props.children}
     </div>
@@ -559,7 +561,7 @@ export const Field = brand<FieldProps>("field", function Field(props) {
         <textarea
           style={inputCss}
           placeholder={spec.placeholder}
-          defaultValue={spec.value}
+          value={spec.value}
           disabled={spec.disabled}
           onChange={(e) => props.onChange?.(e.target.value)}
           {...agentDataProps(spec.agent)}
@@ -567,7 +569,7 @@ export const Field = brand<FieldProps>("field", function Field(props) {
       ) : spec.kind === "select" ? (
         <select
           style={inputCss}
-          defaultValue={spec.value}
+          value={spec.value}
           disabled={spec.disabled}
           onChange={(e) => props.onChange?.(e.target.value)}
           {...agentDataProps(spec.agent)}
@@ -589,7 +591,7 @@ export const Field = brand<FieldProps>("field", function Field(props) {
           }
           style={inputCss}
           placeholder={spec.placeholder}
-          defaultValue={spec.value}
+          value={spec.value}
           disabled={spec.disabled}
           onChange={(e) => props.onChange?.(e.target.value)}
           {...agentDataProps(spec.agent)}

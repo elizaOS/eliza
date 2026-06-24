@@ -1,7 +1,7 @@
 import type {
   BrowserBridgePermissionState,
   BrowserBridgeSettings,
-} from "@elizaos/plugin-browser";
+} from "@elizaos/plugin-browser/contracts";
 
 export const DEFAULT_BROWSER_PERMISSION_STATE: BrowserBridgePermissionState = {
   tabs: false,

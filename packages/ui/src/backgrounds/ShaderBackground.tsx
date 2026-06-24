@@ -27,11 +27,33 @@ const EDGE_CSS = `
 }
 .app-bg-shader-0 { box-shadow: inset 0 0 170px 10px rgba(255, 250, 244, 0.42); animation-name: app-bg-shader-0; }
 .app-bg-shader-1 { animation-name: app-bg-shader-1; }
+.app-bg-shader-static .app-bg-shader-layer { animation: none; opacity: 0; }
+.app-bg-shader-static .app-bg-shader-1 { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .app-bg-shader-layer { animation: none; opacity: 0; }
   .app-bg-shader-1 { opacity: 1; }
 }
 `;
+
+type ShaderRuntimeWindow = Window & {
+  __ELIZA_ELECTROBUN_RPC__?: unknown;
+  __electrobunWindowId?: number;
+  __electrobunWebviewId?: number;
+};
+
+function isElectrobunRenderer(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const runtimeWindow = window as ShaderRuntimeWindow;
+  return (
+    typeof runtimeWindow.__electrobunWindowId === "number" ||
+    typeof runtimeWindow.__electrobunWebviewId === "number" ||
+    (runtimeWindow.__ELIZA_ELECTROBUN_RPC__ != null &&
+      typeof runtimeWindow.__ELIZA_ELECTROBUN_RPC__ === "object")
+  );
+}
 
 /**
  * The animated shader field for the unified app background. Flat base color
@@ -44,12 +66,16 @@ export function ShaderBackground({
   // Rim glow = the chosen color at ~0.30 alpha (8-digit hex). `color` is a
   // validated 6-digit hex, so the suffix always yields a valid CSS color.
   const rim = `${color}4d`;
+  const animated = !isElectrobunRenderer();
   return (
     <div
       aria-hidden="true"
       data-testid="app-background-shader"
       data-eliza-bg="shader"
-      className="pointer-events-none fixed inset-0 overflow-hidden"
+      data-eliza-bg-motion={animated ? "animated" : "static"}
+      className={`pointer-events-none fixed inset-0 overflow-hidden${
+        animated ? "" : " app-bg-shader-static"
+      }`}
       style={{ zIndex: 0, backgroundColor: color }}
     >
       <style>{EDGE_CSS}</style>

@@ -76,6 +76,9 @@ describe("startup integration script drift", () => {
     expect(devPlatform).toContain(
       'const apiWatchEnabled = envFlagEnabled("ELIZA_DESKTOP_API_WATCH");',
     );
+    expect(devPlatform).toContain(
+      'const apiSourceConditionArgs = ["--conditions=eliza-source"];',
+    );
     expect(devPlatform).toContain("set ELIZA_DESKTOP_API_WATCH=1 to enable");
     expect(devPlatform).not.toContain(
       'const apiWatchEnabled = !envFlagDisabled("ELIZA_DESKTOP_API_WATCH");',

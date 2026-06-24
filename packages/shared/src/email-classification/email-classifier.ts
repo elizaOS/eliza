@@ -13,12 +13,10 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  logger,
-  ModelType,
-  parseJsonModelRecord,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { parseJsonModelRecord } from "@elizaos/core/actions/json-model-output";
+import { logger } from "@elizaos/core/logger";
+import { runWithTrajectoryContext } from "@elizaos/core/trajectory-context";
+import { ModelType } from "@elizaos/core/types/model";
 import { wrapUntrustedEmailContent } from "./wrap-untrusted-email-content.js";
 
 export type EmailCategory =

@@ -10,7 +10,8 @@
  * re-export shim at `lifeops/service-normalize.ts` for historical import paths.
  */
 
-import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core/uuid-utils";
 import type {
   LifeOpsContextPolicy,
   LifeOpsDomain,

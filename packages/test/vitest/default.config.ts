@@ -36,6 +36,7 @@ import {
   getAppCoreModuleFallbackPath,
   getAppCorePluginFallbackPath,
   getAppCoreSourceAliases,
+  getCoreSourceAliases,
   getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
@@ -385,10 +386,7 @@ const vitestResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...(elizaCoreEntry
     ? [
-        {
-          find: "@elizaos/core",
-          replacement: elizaCoreEntry,
-        },
+        ...getCoreSourceAliases(elizaCoreEntry),
         ...elizaPluginAliases,
         ...unresolvedPluginStubs,
       ]

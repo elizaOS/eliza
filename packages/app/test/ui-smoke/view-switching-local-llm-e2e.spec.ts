@@ -43,7 +43,7 @@ const VIEW_REGISTRY: Record<string, ViewDef> = {
   calendar: {
     path: "/calendar",
     label: "Calendar",
-    onView: (p) => p.getByTestId("calendar-view").first(),
+    onView: (p) => p.getByRole("button", { name: "Today" }).first(),
   },
   inbox: {
     path: "/inbox",

@@ -2,16 +2,19 @@ import { describe, expect, it, vi } from "vitest";
 
 // Force the registration branch to run: by default `isLocalCodeExecutionAllowed`
 // is false in CI, so `registerCodingAgentRoutePluginLoader` early-returns and the
-// `registerAppRoutePluginLoader` call is never exercised. Mock @elizaos/core so
-// the real route-registration path is covered.
+// `registerAppRoutePluginLoader` call is never exercised. Mock the leaf modules
+// that register-routes imports so the real route-registration path is covered.
 const { registerAppRoutePluginLoader } = vi.hoisted(() => ({
   registerAppRoutePluginLoader:
     vi.fn<(name: string, loader: () => unknown) => void>(),
 }));
 
-vi.mock("@elizaos/core", () => ({
-  isLocalCodeExecutionAllowed: () => true,
+vi.mock("@elizaos/core/app-route-plugin-registry", () => ({
   registerAppRoutePluginLoader,
+}));
+
+vi.mock("@elizaos/core/sandbox-policy", () => ({
+  isLocalCodeExecutionAllowed: () => true,
 }));
 
 import { codingAgentRouteRegistration } from "../../src/register-routes.ts";

@@ -89,6 +89,11 @@ function resolveExportTarget(exportTarget: unknown): string | undefined {
   }
 
   const record = exportTarget as Record<string, unknown>;
+  const sourceTarget = resolveExportTarget(record["eliza-source"]);
+  if (sourceTarget) {
+    return sourceTarget;
+  }
+
   for (const key of ["bun", "import", "default", "types"]) {
     const candidate = record[key];
     if (typeof candidate === "string") {
@@ -97,6 +102,22 @@ function resolveExportTarget(exportTarget: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+export function getCoreSourceAliases(entry: string | undefined): ModuleAlias[] {
+  if (!entry) {
+    return [];
+  }
+
+  const sourceRoot = path.dirname(entry);
+  const packageRoot = path.dirname(sourceRoot);
+
+  return [
+    ...getWorkspacePackageExportAliases("core", packageRoot),
+    ...getPackageSourceAliases("core", sourceRoot, {
+      rootReplacement: entry,
+    }),
+  ];
 }
 
 function getWorkspacePackageExportAliases(

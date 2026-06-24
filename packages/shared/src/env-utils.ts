@@ -7,4 +7,4 @@
  * exported from both the node and browser barrels, so this re-export resolves
  * in browser bundles too.
  */
-export { isTruthyEnvValue } from "@elizaos/core";
+export { isTruthyEnvValue } from "@elizaos/core/env-utils";

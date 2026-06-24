@@ -16,6 +16,11 @@
     },
     "./plugin": {
       "types": "./dist/plugin.d.ts",
+      "eliza-source": {
+        "types": "./src/plugin.ts",
+        "import": "./src/plugin.ts",
+        "default": "./src/plugin.ts"
+      },
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },

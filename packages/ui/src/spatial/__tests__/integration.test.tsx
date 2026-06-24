@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
+import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   Card,
   evaluateToSpatialTree,
+  Field,
   HStack,
   SpatialSurface,
   Text,
@@ -21,6 +23,7 @@ declare global {
 }
 
 afterEach(() => {
+  cleanup();
   window.__elizaXRContext = undefined;
 });
 
@@ -40,6 +43,37 @@ describe("SpatialSurface auto-detects the headset modality", () => {
       </SpatialSurface>,
     );
     expect(xr).toContain('data-spatial-surface="xr"');
+  });
+});
+
+describe("Spatial Field controls", () => {
+  it("updates select DOM value when the controlled value prop changes", () => {
+    const { rerender } = render(
+      <SpatialSurface modality="gui">
+        <Field
+          kind="select"
+          label="View"
+          value="week"
+          options={["day", "week", "month"]}
+        />
+      </SpatialSurface>,
+    );
+
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select.value).toBe("week");
+
+    rerender(
+      <SpatialSurface modality="gui">
+        <Field
+          kind="select"
+          label="View"
+          value="day"
+          options={["day", "week", "month"]}
+        />
+      </SpatialSurface>,
+    );
+
+    expect(select.value).toBe("day");
   });
 });
 

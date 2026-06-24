@@ -28,7 +28,7 @@ vi.mock("./logger", () => ({
   },
 }));
 
-describe("pill window", () => {
+describe("optional chat overlay window", () => {
   beforeEach(() => {
     vi.resetModules();
     mocks.createWindow.mockReset();
@@ -37,7 +37,7 @@ describe("pill window", () => {
     mocks.warn.mockReset();
   });
 
-  it("loads the OS pill into the live chat overlay shell route", async () => {
+  it("loads the optional window into the live chat overlay shell route", async () => {
     const { buildPillRendererUrl } = await import("./pill-window");
 
     expect(buildPillRendererUrl("http://127.0.0.1:5174/home?old=1#hash")).toBe(
@@ -68,7 +68,7 @@ describe("pill window", () => {
     expect(win).toBe(windowMock);
     expect(mocks.createWindow).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "Eliza Pill",
+        title: "Eliza Chat Overlay",
         url: "http://127.0.0.1:5174/?shellMode=chat-overlay",
         preload: "preload.js",
         titleBarStyle: "hidden",

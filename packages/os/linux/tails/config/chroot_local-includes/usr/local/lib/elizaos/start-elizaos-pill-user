@@ -3,12 +3,12 @@
 set -eu
 
 if [ "$(id -u)" -eq 0 ]; then
-    echo "elizaOS voice pill must run as the live user, not as root." >&2
+    echo "elizaOS chat overlay must run as the live user, not as root." >&2
     exit 1
 fi
 
 if [ "$(id -un)" != "amnesia" ]; then
-    echo "elizaOS voice pill must run as the Tails live user 'amnesia'." >&2
+    echo "elizaOS chat overlay must run as the Tails live user 'amnesia'." >&2
     exit 1
 fi
 
@@ -21,11 +21,11 @@ export ELIZA_STATE_DIR="${ELIZA_STATE_DIR:-/home/amnesia/.eliza}"
 export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 
-# Pill-mode geometry hints consumed by elizaos-webkit-shell. The shell reads
-# these and configures the GTK window as a frameless, keep-above overlay
-# pinned to the bottom-center of the primary screen. No new code path —
-# every option is gated on ELIZAOS_SHELL_MODE inside the shell.
-export ELIZAOS_SHELL_MODE=pill
+# Overlay geometry hints consumed by elizaos-webkit-shell. The shell reads these
+# and configures the GTK window as a frameless, keep-above overlay pinned to the
+# bottom-center of the primary screen. The renderer uses the supported
+# chat-overlay shell; the removed standalone ?shell=pill route must not be used.
+export ELIZAOS_SHELL_MODE=chat-overlay
 export ELIZAOS_PILL_WIDTH="${ELIZAOS_PILL_WIDTH:-560}"
 export ELIZAOS_PILL_HEIGHT="${ELIZAOS_PILL_HEIGHT:-140}"
 export ELIZAOS_PILL_BOTTOM_MARGIN="${ELIZAOS_PILL_BOTTOM_MARGIN:-24}"
@@ -35,7 +35,7 @@ if [ -x /usr/local/lib/elizaos/persistence-maintenance ]; then
 fi
 
 user_env_file="${XDG_RUNTIME_DIR}/user-env"
-url="http://127.0.0.1:${ELIZAOS_RENDERER_PORT}/?shell=pill&apiBase=http%3A%2F%2F127.0.0.1%3A${ELIZA_API_PORT}"
+url="http://127.0.0.1:${ELIZAOS_RENDERER_PORT}/?shellMode=chat-overlay&apiBase=http%3A%2F%2F127.0.0.1%3A${ELIZA_API_PORT}"
 export ELIZAOS_SHELL_URL="${url}"
 
 has_display_env() {
@@ -70,7 +70,7 @@ wait_for_renderer() {
         sleep 1
     done
 
-    echo "elizaOS renderer did not become ready; starting voice pill anyway." >&2
+    echo "elizaOS renderer did not become ready; starting chat overlay anyway." >&2
     return 0
 }
 

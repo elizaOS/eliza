@@ -5,7 +5,7 @@
  * implemented in cloud-routes.ts and cloud-connection.ts.
  */
 
-import { formatError } from "@elizaos/core";
+import { formatError } from "@elizaos/core/utils/format-error";
 
 /** Classify an error as a fetch/AbortSignal timeout. */
 export function isTimeoutError(error: unknown): boolean {

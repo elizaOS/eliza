@@ -352,18 +352,18 @@ def main() -> int:
     )
 
     shell_mode = os.environ.get("ELIZAOS_SHELL_MODE", "main")
-    is_pill = shell_mode == "pill"
+    is_pill = shell_mode in ("pill", "chat-overlay")
 
     # ELIZAOS_SHELL_TITLE lets a caller override the window title without
     # changing the wm_class (which stays "elizaOS" so GNOME keeps the
     # window grouped under the same .desktop icon). Defaults preserve the
-    # historical behavior — "elizaOS Voice" for the pill, "elizaOS" for
-    # the main shell. Callers that spawn additional shells against
+    # historical behavior — "elizaOS Chat Overlay" for the floating overlay,
+    # "elizaOS" for the main shell. Callers that spawn additional shells against
     # different URLs (e.g. tails-documentation opening the offline doc
     # in a second window) set this so users can tell the windows apart in
     # the taskbar / Alt-Tab. WebKit may later replace the title via the
     # HTML <title> element — that is the expected GTK browser behavior.
-    default_title = "elizaOS Voice" if is_pill else "elizaOS"
+    default_title = "elizaOS Chat Overlay" if is_pill else "elizaOS"
     title = os.environ.get("ELIZAOS_SHELL_TITLE", default_title)
     window = Gtk.Window(title=title)
     if is_pill:
@@ -386,8 +386,8 @@ def main() -> int:
         GLib.timeout_add_seconds(3, lambda: (_view.load_uri(url), False)[1])
         return False
 
-    # The pill overlay closes on user request (e.g. the close gesture on the
-    # pill itself). The main shell minimizes instead so the home surface
+    # The chat overlay closes on user request. The main shell minimizes instead
+    # so the home surface
     # stays one keystroke away.
     if not is_pill:
         window.connect("delete-event", minimize_to_background)
@@ -411,9 +411,10 @@ def main() -> int:
         )
 
     if is_pill:
-        # The pill renderer paints its own background; the GTK window must be
-        # transparent so the pill floats over whatever is behind it. Override
-        # the screen-wide rule with a higher-priority per-window provider.
+        # The chat-overlay renderer paints its own background; the GTK window
+        # must be transparent so the overlay floats over whatever is behind it.
+        # Override the screen-wide rule with a higher-priority per-window
+        # provider.
         pill_provider = Gtk.CssProvider()
         pill_provider.load_from_data(b"window, webview { background: transparent; }")
         window.get_style_context().add_provider(

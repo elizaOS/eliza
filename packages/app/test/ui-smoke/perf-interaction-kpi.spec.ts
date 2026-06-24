@@ -29,8 +29,8 @@ import {
 } from "./lib/frame-kpi";
 
 // A long thread so scroll hits the transcript windowing (MAX_RENDERED_SHELL_MESSAGES
-// = 80). The wildcard messages route returns this for whatever conversation the
-// shell makes active, so the transcript is always populated.
+// = 80). The test seeds this conversation as active so the transcript is always
+// populated before the interaction KPI starts.
 const LONG_THREAD = Array.from({ length: 120 }, (_, i) => {
   const role = i % 2 === 0 ? "user" : "assistant";
   return {
@@ -49,6 +49,7 @@ const PERF_CONVO = {
   title: "Perf probe thread",
   roomId: "room-perf",
 };
+const EXPECTED_RENDERED_THREAD_LINES = 80;
 
 // A frame KPI is "ok" when it captured frames and p95 stayed under a coarse jank
 // ceiling (3 × the 60fps budget ≈ 50ms). Tolerant of headless/CI noise while
@@ -76,7 +77,12 @@ function assertFrameKpi(
 
 test.describe("dashboard shell interaction framerate", () => {
   test.beforeEach(async ({ page }) => {
-    await seedAppStorage(page);
+    await seedAppStorage(page, {
+      "eliza:chat:activeConversationId": PERF_CONVO.id,
+    });
+    await installDefaultAppRoutes(page);
+    const messages = [...LONG_THREAD];
+    let streamSequence = 0;
     await page.route("**/api/conversations", async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
@@ -91,18 +97,76 @@ test.describe("dashboard shell interaction framerate", () => {
         }),
       });
     });
-    await page.route("**/api/conversations/*/messages", async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.fallback();
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ messages: LONG_THREAD }),
-      });
-    });
-    await installDefaultAppRoutes(page);
+    await page.route(
+      `**/api/conversations/${PERF_CONVO.id}/messages`,
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ messages }),
+        });
+      },
+    );
+    await page.route(
+      `**/api/conversations/${PERF_CONVO.id}/messages/stream`,
+      async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.fallback();
+          return;
+        }
+        const body = JSON.parse(route.request().postData() ?? "{}") as {
+          text?: string;
+        };
+        const userText = (body.text ?? "").trim() || "perf probe";
+        streamSequence += 1;
+        const assistantText = "Perf probe acknowledged.";
+        messages.push({
+          id: `perf-user-${streamSequence}`,
+          role: "user",
+          text: userText,
+          timestamp: Date.now(),
+        });
+        messages.push({
+          id: `perf-assistant-${streamSequence}`,
+          role: "assistant",
+          text: assistantText,
+          timestamp: Date.now(),
+        });
+        await route.fulfill({
+          status: 200,
+          contentType: "text/event-stream",
+          body:
+            `data: ${JSON.stringify({
+              type: "token",
+              text: assistantText,
+              fullText: assistantText,
+            })}\n\n` +
+            `data: ${JSON.stringify({
+              type: "done",
+              fullText: assistantText,
+              agentName: "Eliza",
+            })}\n\n`,
+        });
+      },
+    );
+    await page.route(
+      new RegExp(`/api/conversations/${PERF_CONVO.id}/greeting(?:\\?|$)`),
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ text: "", localInference: null }),
+        });
+      },
+    );
     // Must be installed before navigation so the rAF sampler survives bootstrap.
     await installFrameSampler(page);
   });
@@ -124,11 +188,35 @@ test.describe("dashboard shell interaction framerate", () => {
 
     const thread = page.getByTestId("chat-thread");
     await expect(thread).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(async () => page.getByTestId("thread-line").count(), {
+        message: "long transcript should populate before measuring scroll",
+        timeout: 15_000,
+      })
+      .toBeGreaterThanOrEqual(EXPECTED_RENDERED_THREAD_LINES);
     const renderedLines = await page.getByTestId("thread-line").count();
     testInfo.annotations.push({
       type: "frame-kpi",
-      description: `transcript rendered ${renderedLines} thread-line nodes (cap 80)`,
+      description: `transcript rendered ${renderedLines} thread-line nodes (cap ${EXPECTED_RENDERED_THREAD_LINES})`,
     });
+    await expect
+      .poll(
+        async () =>
+          page
+            .getByTestId("thread-line")
+            .last()
+            .evaluate((el) => {
+              const style = window.getComputedStyle(el);
+              return `${Number(style.opacity).toFixed(3)}|${style.transform}`;
+            })
+            .catch(() => ""),
+        {
+          message:
+            "latest message entrance animation should settle before scroll KPI",
+          timeout: 3_000,
+        },
+      )
+      .toBe("1.000|none");
 
     // --- Scenario A: long-thread scroll ---------------------------------------
     const box = await thread.boundingBox();
@@ -198,7 +286,7 @@ test.describe("dashboard shell interaction framerate", () => {
 
     // --- Evidence: the dev PerfOverlay HUD renders live numbers ---------------
     await page.evaluate(() => {
-      (window as unknown as Record<string, unknown>).__ELIZA_PERF__ = true;
+      (window as unknown as Record<string, unknown>).__ELIZA_PERF_HUD__ = true;
       window.dispatchEvent(new Event("eliza:perf-toggle"));
     });
     const hud = page.getByTestId("perf-overlay");

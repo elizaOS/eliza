@@ -32,6 +32,25 @@
       "require": "./dist/cjs/index.node.cjs",
       "default": "./dist/node/index.node.js"
     },
+    "./setup-routes": {
+      "types": "./dist/setup-routes.d.ts",
+      "eliza-source": {
+        "types": "./src/setup-routes.ts",
+        "import": "./src/setup-routes.ts",
+        "default": "./src/setup-routes.ts"
+      },
+      "node": {
+        "types": "./dist/setup-routes.d.ts",
+        "import": "./dist/node/setup-routes.js",
+        "default": "./dist/node/setup-routes.js"
+      },
+      "bun": {
+        "types": "./dist/setup-routes.d.ts",
+        "default": "./dist/node/setup-routes.js"
+      },
+      "require": "./dist/cjs/setup-routes.cjs",
+      "default": "./dist/node/setup-routes.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",

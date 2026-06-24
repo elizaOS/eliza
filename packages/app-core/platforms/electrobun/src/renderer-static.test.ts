@@ -34,6 +34,26 @@ describe("renderer static assets", () => {
     });
   });
 
+  it("serves nested-route Vite asset requests from the root assets directory", () => {
+    const rendererDir = path.join(path.sep, "app", "dist");
+    const indexPath = path.join(rendererDir, "index.html");
+    const jsPath = path.join(rendererDir, "assets", "app.js");
+    const files = new Set([indexPath, jsPath]);
+
+    const resolved = resolveRendererAsset({
+      rendererDir,
+      urlPath: "/apps/local-notes/assets/app.js",
+      existsSync: (filePath) => files.has(filePath),
+      statSync: () => ({ isDirectory: () => false }),
+    });
+
+    expect(resolved).toEqual({
+      filePath: jsPath,
+      isGzipped: false,
+      mimeExt: ".js",
+    });
+  });
+
   it("resolves browser media byte ranges", () => {
     expect(resolveRendererAssetByteRange("bytes=0-1", 10)).toEqual({
       start: 0,

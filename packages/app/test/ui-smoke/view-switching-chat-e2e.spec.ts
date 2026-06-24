@@ -119,6 +119,9 @@ type ApiViewsResponse = {
   views?: ApiViewSummary[];
 };
 
+const calendarOnView = (page: Page): Locator =>
+  page.getByRole("button", { name: "Today" }).first();
+
 type ApiConversationResponse = {
   conversation?: {
     id?: string;
@@ -164,10 +167,9 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "what's on my calendar this week",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    // The registered calendar view (CalendarView.tsx) marks its container with
-    // data-testid="calendar-view" (it renders the month label + segmented
-    // control, not a literal "Calendar" heading).
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    // The registered calendar view renders the spatial calendar controls.
+    // "Today" is the stable, user-facing marker across route and split surfaces.
+    onView: calendarOnView,
   },
   {
     name: 'PASSIVE: "check my messages" opens the inbox',
@@ -215,10 +217,9 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "muéstrame mi calendario",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    // The registered calendar view (CalendarView.tsx) marks its container with
-    // data-testid="calendar-view" (it renders the month label + segmented
-    // control, not a literal "Calendar" heading).
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    // The registered calendar view renders the spatial calendar controls.
+    // "Today" is the stable, user-facing marker across route and split surfaces.
+    onView: calendarOnView,
   },
   {
     name: 'ACTIVE (fr): "montre-moi mon portefeuille" opens the wallet view',
@@ -270,7 +271,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "abra meu calendário",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarOnView,
   },
   {
     name: 'ACTIVE (de): "öffne meinen kalender" opens the calendar view',
@@ -278,7 +279,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "öffne meinen kalender",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarOnView,
   },
   {
     name: 'ACTIVE (ja): "カレンダーを開いて" opens the calendar view',
@@ -286,7 +287,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "カレンダーを開いて",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarOnView,
   },
   {
     name: 'ACTIVE (ko): "캘린더 열어" opens the calendar view',
@@ -294,7 +295,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "캘린더 열어",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarOnView,
   },
   {
     name: 'ACTIVE (vi): "mở lịch" opens the calendar view',
@@ -302,7 +303,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "mở lịch",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarOnView,
   },
   {
     name: 'ACTIVE (tl): "buksan ang calendar" opens the calendar view',
@@ -310,7 +311,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "buksan ang calendar",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarOnView,
   },
   {
     name: 'ACTIVE (pt): "abra minha carteira" opens the wallet view',
@@ -691,7 +692,9 @@ test("agent split-view navigate renders notes and calendar layout", async ({
   await expect(documentsPane.getByTestId("documents-view")).toBeVisible({
     timeout: 30_000,
   });
-  await expect(calendarPane.getByTestId("calendar-view")).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(calendarPane.getByRole("button", { name: "Today" })).toBeVisible(
+    {
+      timeout: 30_000,
+    },
+  );
 });

@@ -107,6 +107,7 @@
         "./plugins/plugin-background-runner/src/index.ts"
       ],
       "@elizaos/plugin-browser": ["./plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-browser/*": ["./plugins/plugin-browser/src/*"],
       "@elizaos/plugin-capacitor-bridge": [
         "./plugins/plugin-capacitor-bridge/src/index.ts"
       ],

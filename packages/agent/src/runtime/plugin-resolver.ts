@@ -136,7 +136,12 @@ type DeclaredPluginDependency = {
   optional: boolean;
 };
 
-const SOURCE_STAGED_WORKSPACE_DEPENDENCIES = new Set(["@elizaos/agent"]);
+const SOURCE_STAGED_WORKSPACE_DEPENDENCIES = new Set([
+  "@elizaos/agent",
+  "@elizaos/shared",
+  "@elizaos/skills",
+  "@elizaos/vault",
+]);
 
 const SOURCE_STAGED_ROOT_ENTRYPOINTS: Record<
   string,

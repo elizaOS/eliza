@@ -10,4 +10,4 @@ export {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/core";
+} from "@elizaos/core/settings-debug";

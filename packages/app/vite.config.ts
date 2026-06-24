@@ -1269,7 +1269,7 @@ function appDevWsBasePlugin(): Plugin {
 // blanking the whole React tree on every route. `scripts/verify-chunk-
 // safety.mjs` gates the deploy against any regression of this pin.
 const VENDOR_CRYPTO_TEST =
-  /\/node_modules\/(bn\.js|elliptic|secp256k1|@noble\/[^/]+|hash-base|create-hash|create-hmac|create-ecdh|browserify-sign|browserify-aes|browserify-cipher|browserify-rsa|diffie-hellman|asn1\.js|des\.js|ripemd160|sha\.js|md5\.js|hash\.js|cipher-base|evp_bytestokey|pbkdf2|public-encrypt|randombytes|randomfill|miller-rabin|brorand|hmac-drbg|minimalistic-crypto-utils|minimalistic-assert|safe-buffer|buffer)(\/|$)/;
+  /(?:^|\/)node_modules\/(bn\.js|elliptic|secp256k1|@noble\/[^/]+|hash-base|create-hash|create-hmac|create-ecdh|browserify-sign|browserify-aes|browserify-cipher|browserify-rsa|diffie-hellman|asn1\.js|des\.js|ripemd160|sha\.js|md5\.js|hash\.js|cipher-base|evp_bytestokey|pbkdf2|public-encrypt|randombytes|randomfill|miller-rabin|brorand|hmac-drbg|minimalistic-crypto-utils|minimalistic-assert|safe-buffer|buffer)(\/|$)/;
 
 // EVM wallet stack (wagmi/viem/RainbowKit/WalletConnect/Reown/Coinbase). Folded
 // into `vendor-crypto` alongside the crypto core (see resolveManualChunk): the
@@ -1277,11 +1277,12 @@ const VENDOR_CRYPTO_TEST =
 // import the crypto chunk and form an init-order cycle (the wagmi 3.x `connect`
 // / `ConnectorUnavailableReconnectingError` TDZ crash).
 const VENDOR_WALLET_TEST =
-  /\/node_modules\/(wagmi|@wagmi\/|viem\/|@rainbow-me\/|@walletconnect\/|@reown\/|@coinbase\/wallet|mipd|eventemitter3)(\/|$)/;
+  /(?:^|\/)node_modules\/(wagmi|@wagmi\/|viem\/|@rainbow-me\/|@walletconnect\/|@reown\/|@coinbase\/wallet|mipd|eventemitter3)(\/|$)/;
 
 // Solana wallet/web3 stack — also folded into `vendor-crypto` (it imports the
 // same bn.js/buffer core).
-const VENDOR_SOLANA_TEST = /\/node_modules\/@solana\//;
+const VENDOR_SOLANA_TEST = /(?:^|\/)node_modules\/@solana\//;
+const NODE_MODULES_TEST = /(?:^|\/)node_modules\//;
 
 // React runtime + scheduler + react-spring.
 const VENDOR_REACT_TEST =
@@ -1309,7 +1310,11 @@ const VENDOR_DRACO_TEST = /\/node_modules\/draco3d(gltf)?\//;
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
 
-  if (normalizedId.includes("/node_modules/")) {
+  if (normalizedId.includes("vite/preload-helper")) {
+    return "vite-preload-helper";
+  }
+
+  if (NODE_MODULES_TEST.test(normalizedId)) {
     // Crypto + EVM-wallet + Solana collapse into ONE lazy `vendor-crypto`
     // chunk. They are the same logical wallet/crypto graph (the wallet and
     // solana stacks both import the bn.js/buffer core), so splitting them into
@@ -2769,6 +2774,87 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.resolve(
               elizaRoot,
               "packages/core/src/shortcuts.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/api\/http-helpers$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/api/http-helpers.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/actions\/json-model-output$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/actions/json-model-output.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/connectors\/connector-config$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/connectors/connector-config.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/env-utils$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/env-utils.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/logger$/,
+            replacement: path.resolve(elizaRoot, "packages/core/src/logger.ts"),
+          },
+          {
+            find: /^@elizaos\/core\/sandbox-policy$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/sandbox-policy.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/settings-debug$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/settings-debug.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/trajectory-context$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/trajectory-context.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/types\/model$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/types/model.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/utils\/format-error$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/utils/format-error.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/utils\/state-dir$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/utils/state-dir.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/uuid-utils$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/uuid-utils.ts",
             ),
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins

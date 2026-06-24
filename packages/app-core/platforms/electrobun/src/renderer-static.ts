@@ -117,6 +117,28 @@ function resolveMimeExtension(filePath: string): string {
   );
 }
 
+function isInsideRendererDir(rendererDir: string, filePath: string): boolean {
+  return filePath.startsWith(rendererDir + path.sep) || filePath === rendererDir;
+}
+
+function nestedViteAssetRelativePath(relativePath: string): string | null {
+  const parts = relativePath.split(/[\\/]+/).filter(Boolean);
+  const assetsIndex = parts.indexOf("assets");
+  if (assetsIndex <= 0) return null;
+  return parts.slice(assetsIndex).join(path.sep);
+}
+
+function assetExists(
+  filePath: string,
+  existsSync: ExistsSyncLike,
+): boolean {
+  if (existsSync(filePath)) return true;
+  if (filePath.toLowerCase().endsWith(".gz")) {
+    return existsSync(filePath.slice(0, -3));
+  }
+  return existsSync(`${filePath}.gz`);
+}
+
 export function resolveRendererAsset({
   rendererDir,
   urlPath,
@@ -127,14 +149,24 @@ export function resolveRendererAsset({
   let filePath = path.join(rendererDir, relativePath);
   const bundledIndexPath = path.join(rendererDir, "index.html");
 
-  if (
-    !filePath.startsWith(rendererDir + path.sep) &&
-    filePath !== rendererDir
-  ) {
+  if (!isInsideRendererDir(rendererDir, filePath)) {
     filePath = bundledIndexPath;
   }
 
   let isGzipped = false;
+
+  if (!existsSync(filePath)) {
+    const assetRelativePath = nestedViteAssetRelativePath(relativePath);
+    if (assetRelativePath) {
+      const assetPath = path.join(rendererDir, assetRelativePath);
+      if (
+        isInsideRendererDir(rendererDir, assetPath) &&
+        assetExists(assetPath, existsSync)
+      ) {
+        filePath = assetPath;
+      }
+    }
+  }
 
   if (!existsSync(filePath) && filePath.toLowerCase().endsWith(".gz")) {
     const plainPath = filePath.slice(0, -3);

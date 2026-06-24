@@ -675,10 +675,22 @@ export function createBuildRunner(options: BuildRunnerOptions) {
 // Source directory for TypeScript
 const TS_SRC = "src";
 const PUBLIC_CORE_SUBPATH_ENTRYPOINTS = [
+	`${TS_SRC}/actions/json-model-output.ts`,
 	`${TS_SRC}/app-route-plugin-registry.ts`,
+	`${TS_SRC}/api/http-helpers.ts`,
+	`${TS_SRC}/connectors/connector-config.ts`,
+	`${TS_SRC}/env-utils.ts`,
+	`${TS_SRC}/logger.ts`,
+	`${TS_SRC}/sandbox-policy.ts`,
+	`${TS_SRC}/settings-debug.ts`,
+	`${TS_SRC}/trajectory-context.ts`,
+	`${TS_SRC}/types/model.ts`,
+	`${TS_SRC}/uuid-utils.ts`,
 	`${TS_SRC}/view-kind.ts`,
 	`${TS_SRC}/view-modality.ts`,
 	`${TS_SRC}/shortcuts.ts`,
+	`${TS_SRC}/utils/format-error.ts`,
+	`${TS_SRC}/utils/state-dir.ts`,
 ];
 
 // Ensure dist directories exist
@@ -1039,6 +1051,7 @@ async function fixDtsExtensions(rootDir: string): Promise<void> {
  */
 async function generateTypeScriptDeclarations() {
 	const fs = await import("node:fs/promises");
+	const path = await import("node:path");
 	const { $ } = await import("bun");
 
 	console.log("📝 Generating TypeScript declarations...");
@@ -1098,15 +1111,61 @@ async function generateTypeScriptDeclarations() {
 		"dist/roles.js",
 		`// Roles subpath entry point (explicit)\nexport * from './node/roles.js';\n`,
 	);
+
+	const writeConditionalSubpathShim = async (
+		target: "node" | "browser",
+		subpath: string,
+	): Promise<void> => {
+		const shimPath = path.join("dist", target, `${subpath}.js`);
+		const bundledPath = path.join("dist", target, "src", `${subpath}.js`);
+		const bundledExists = await fs
+			.stat(bundledPath)
+			.then((s) => s.isFile())
+			.catch(() => false);
+		if (!bundledExists) return;
+
+		await fs.mkdir(path.dirname(shimPath), { recursive: true });
+		const relativeTarget = path
+			.relative(path.dirname(shimPath), bundledPath)
+			.replaceAll(path.sep, "/");
+		const normalizedTarget = relativeTarget.startsWith(".")
+			? relativeTarget
+			: `./${relativeTarget}`;
+		await fs.writeFile(
+			shimPath,
+			`// ${subpath} ${target} subpath entry point (explicit)\nexport * from '${normalizedTarget}';\n`,
+		);
+	};
+
 	for (const subpath of [
+		"actions/json-model-output",
 		"app-route-plugin-registry",
+		"api/http-helpers",
+		"connectors/connector-config",
+		"env-utils",
+		"logger",
+		"sandbox-policy",
+		"settings-debug",
+		"trajectory-context",
+		"types/model",
+		"uuid-utils",
 		"view-kind",
 		"view-modality",
 		"shortcuts",
+		"utils/format-error",
+		"utils/state-dir",
 	]) {
+		await writeConditionalSubpathShim("node", subpath);
+		await writeConditionalSubpathShim("browser", subpath);
+		await fs.mkdir(`dist/${subpath.split("/").slice(0, -1).join("/")}`, {
+			recursive: true,
+		});
+		const parentDepth = subpath.split("/").length - 1;
+		const nodeEntryPrefix =
+			parentDepth === 0 ? "." : Array(parentDepth).fill("..").join("/");
 		await fs.writeFile(
 			`dist/${subpath}.js`,
-			`// ${subpath} subpath entry point (explicit)\nexport * from './node/${subpath}.js';\n`,
+			`// ${subpath} subpath entry point (explicit)\nexport * from '${nodeEntryPrefix}/node/${subpath}.js';\n`,
 		);
 	}
 

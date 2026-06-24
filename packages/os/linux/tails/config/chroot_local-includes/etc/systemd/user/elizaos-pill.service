@@ -1,5 +1,5 @@
 [Unit]
-Description=elizaOS voice pill overlay
+Description=elizaOS chat overlay
 ConditionUser=1000
 ConditionPathExists=!/run/elizaos/persistence-maintenance
 After=elizaos-renderer.service graphical-session.target tails-dump-user-env.service
@@ -9,11 +9,11 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-Environment=ELIZAOS_SHELL_MODE=pill
+Environment=ELIZAOS_SHELL_MODE=chat-overlay
 ExecStart=/usr/local/lib/elizaos/start-elizaos-pill-user
 Restart=always
 RestartSec=2
-SyslogIdentifier=elizaos-pill
+SyslogIdentifier=elizaos-chat-overlay
 NoNewPrivileges=yes
 
 [Install]

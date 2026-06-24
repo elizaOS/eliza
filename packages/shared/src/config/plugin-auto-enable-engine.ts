@@ -14,7 +14,7 @@ export {
   isConnectorConfigured,
   isStreamingDestinationConfigured,
   isWechatConfigured,
-} from "@elizaos/core";
+} from "@elizaos/core/connectors/connector-config";
 
 export const CONNECTOR_PLUGINS: Record<string, string> = {
   bluebubbles: "@elizaos/plugin-bluebubbles",

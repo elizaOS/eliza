@@ -448,6 +448,8 @@ export const __loadAppRoutePluginFromSpecifierForTest =
 
 const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
 const WALLET_ROUTE_PLUGIN_ID = "@elizaos/plugin-wallet:routes";
+const AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID =
+  "@elizaos/plugin-agent-orchestrator-routes";
 
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
@@ -558,6 +560,21 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
         loadAppRoutePluginFromSpecifier(
           "@elizaos/plugin-wallet/routes/plugin",
           "walletRoutePlugin",
+        ),
+    });
+  }
+  // plugin-agent-orchestrator also registers its rawPath route plugin
+  // (`/api/coding-agents/*`, `/api/orchestrator/*`, `/api/workspace/*`) from
+  // a side-effect module. The desktop UI polls those routes during startup,
+  // so make the loader explicit and independent of plugin module evaluation
+  // order.
+  if (!byId.has(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID)) {
+    byId.set(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID, {
+      id: AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID,
+      load: () =>
+        loadAppRoutePluginFromSpecifier(
+          "@elizaos/plugin-agent-orchestrator/setup-routes",
+          "codingAgentRoutePlugin",
         ),
     });
   }
