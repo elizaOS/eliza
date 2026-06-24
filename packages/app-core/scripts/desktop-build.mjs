@@ -13,6 +13,7 @@ import {
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
+import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
 
 const ROOT = process.cwd();
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -1040,6 +1041,51 @@ function fusedLibAlreadyStaged() {
   );
 }
 
+// Provenance for the staged fused lib so the reuse gate never silently reuses a
+// lib built for a DIFFERENT variant/platform than this build targets (#9309).
+const FUSED_LIB_SIDECAR = path.join(FUSED_LIB_OUT_DIR, "staged-fused-lib.json");
+
+function readFusedLibSidecar() {
+  try {
+    return JSON.parse(fs.readFileSync(FUSED_LIB_SIDECAR, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeFusedLibSidecar() {
+  fs.mkdirSync(FUSED_LIB_OUT_DIR, { recursive: true });
+  fs.writeFileSync(
+    FUSED_LIB_SIDECAR,
+    `${JSON.stringify(
+      {
+        variant: FUSED_LIB_VARIANT,
+        platform: process.platform,
+        builtAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+/**
+ * True only when a staged lib exists AND its provenance sidecar confirms it was
+ * built for the variant + platform this build targets. A staged lib with no
+ * sidecar (pre-provenance) or a mismatched one is NOT reusable — we cannot
+ * confirm it is the right backend, so we must rebuild rather than risk shipping
+ * a wrong-variant native lib that crashes on the device.
+ */
+function fusedLibStagedForCurrentVariant() {
+  if (!fusedLibAlreadyStaged()) return false;
+  const sidecar = readFusedLibSidecar();
+  if (!sidecar) return false;
+  return (
+    sidecar.variant === FUSED_LIB_VARIANT &&
+    sidecar.platform === process.platform
+  );
+}
+
 const FUSED_LIB_FORK_DIR = path.join(
   PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
   "native",
@@ -1103,16 +1149,44 @@ function stageDesktopFusedLib() {
     process.env.ELIZA_DESKTOP_FUSED_LIB_OPTIONAL !== "1";
 
   if (
-    fusedLibAlreadyStaged() &&
+    fusedLibStagedForCurrentVariant() &&
     process.env.ELIZA_DESKTOP_REBUILD_FUSED_LIB !== "1"
   ) {
     console.log(
-      `[desktop-build] Reusing already-staged fused lib in ${FUSED_LIB_OUT_DIR}`,
+      `[desktop-build] Reusing already-staged fused lib in ${FUSED_LIB_OUT_DIR} ` +
+        `(variant=${FUSED_LIB_VARIANT}, ${process.platform})`,
     );
     return;
   }
 
+  // A staged lib whose provenance does not match this build (different variant
+  // or platform, or no sidecar) must never be silently reused.
+  const mismatchedStaged = fusedLibAlreadyStaged();
+  if (mismatchedStaged) {
+    const sidecar = readFusedLibSidecar();
+    console.warn(
+      `[desktop-build] Staged fused lib does not match this build ` +
+        `(want variant=${FUSED_LIB_VARIANT}/${process.platform}, found ` +
+        `${sidecar ? `${sidecar.variant}/${sidecar.platform}` : "no provenance sidecar"}). ` +
+        `It will be rebuilt to avoid shipping a wrong-variant native lib.`,
+    );
+  }
+
   if (!shouldBuild) {
+    if (mismatchedStaged) {
+      // Can't rebuild here (no toolchain requested) and the staged lib is the
+      // wrong variant — drop it so the app cleanly falls back to cloud inference
+      // instead of dlopen()-ing a mismatched backend on the device.
+      for (const name of fusedLibFilenames()) {
+        fs.rmSync(path.join(FUSED_LIB_OUT_DIR, name), { force: true });
+      }
+      fs.rmSync(FUSED_LIB_SIDECAR, { force: true });
+      console.warn(
+        "[desktop-build] Removed the mismatched fused lib; this build ships without " +
+          "local inference. Rebuild with --build-fused-lib to stage the right variant.",
+      );
+      return;
+    }
     console.log(
       "[desktop-build] Skipping fused libelizainference build (local-inference will be " +
         "unavailable in this build). Enable with --build-fused-lib or " +
@@ -1167,7 +1241,11 @@ function stageDesktopFusedLib() {
 
   if (!fusedLibAlreadyStaged()) {
     giveUp("the build produced no lib in the output dir");
+    return;
   }
+  // Record provenance so a later build with a different variant/platform won't
+  // silently reuse this lib.
+  writeFusedLibSidecar();
 }
 
 function stageDesktopBuild() {
@@ -1210,10 +1288,20 @@ function stageDesktopBuild() {
 
   ensureUiGeneratedAssets();
 
+  // Capture the moment the renderer build starts so we can prove afterward that
+  // a FRESH bundle was produced — not a stale dist silently reused (issue #9309).
+  const rendererBuildStartedAt = Date.now() - 1000;
   runBunPackageBinary("vite", ["build"], {
     cwd: APP_DIR,
     env: desktopRendererBuildEnv(),
     label: `Building renderer bundle (VITE_APP_VARIANT=${variant}, ELIZA_BUILD_VARIANT=${buildVariant})`,
+  });
+  // Fail loudly if the renderer manifest is missing or predates this build (a
+  // cached/stale dist was reused) or was built for a different variant.
+  assertRendererRebuiltSince(path.join(APP_DIR, "dist"), {
+    notBefore: rendererBuildStartedAt,
+    expectVariant: buildVariant,
+    label: "desktop",
   });
 
   runDesktopPreflight();

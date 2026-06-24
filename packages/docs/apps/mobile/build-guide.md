@@ -336,6 +336,48 @@ xattr -cr packages/app-core/platforms/ios/
 
 Then re-open the workspace in Xcode.
 
+## Deterministic, always-latest on-device builds
+
+Every on-device build packs the **latest** renderer at build time and fails
+loudly if a stale artifact would otherwise ship. The recurring failure mode this
+prevents is a device booting an old UI because Capacitor sync (or a skipped
+sync) left a stale `public/` behind.
+
+**How it works**
+
+- Every `vite build` emits a content-derived build stamp,
+  `dist/eliza-renderer-build.json` (the `renderer-build-manifest` vite plugin).
+  Its `buildId` is a sha256 over `index.html` + the emitted asset set, so two
+  different source states produce two different ids.
+- The stamp ships on-device alongside the bundle (cap sync copies the whole
+  webDir; the desktop Electrobun copy carries `dist/`), so the running app can be
+  asserted to be the latest by reading `eliza-renderer-build.json` at the web
+  root.
+- After staging, the orchestrators run `assertStagedRendererMatchesBuild()`:
+  - **iOS** overlays the freshly built `dist` onto `ios/App/App/public`
+    (clearing the hashed `assets/`, preserving the on-device `public/agent`
+    payload) and asserts the staged renderer matches the build.
+  - **Android** does the same overlay into the gradle assets tree.
+  - **Desktop** asserts the renderer manifest was regenerated during this build
+    invocation and built for the requested variant (no stale `dist` reuse).
+- The on-device agent bundle and (desktop) fused `libelizainference` are
+  re-staged every build; the fused lib records a provenance sidecar so a build
+  with a different variant/platform never silently reuses the wrong lib.
+
+**Reusing an existing web build**
+
+`ELIZA_MOBILE_SKIP_WEB_BUILD=1` reuses the existing `dist`, but the build still
+**fails** if that `dist` is older than its sources or was built for a different
+variant/target. Set `ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1` to ship it
+anyway (not recommended).
+
+**Verifying the running build is latest**
+
+An on-device/simulator smoke can fetch `/eliza-renderer-build.json` from the
+running app and assert its `buildId` equals the freshly built
+`packages/app/dist/eliza-renderer-build.json`. The same assertion runs at build
+time, so a stale UI fails the build before it ever reaches a device.
+
 ## Related
 
 - [Mobile App](/apps/mobile) — full platform configuration, plugin overview, and troubleshooting
