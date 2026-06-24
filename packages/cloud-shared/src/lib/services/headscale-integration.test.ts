@@ -42,6 +42,39 @@ describe("Headscale identity inference", () => {
       }),
     ).toBe("my-agent-11111111-111");
   });
+
+  test("hostname stays within the 63-char DNS label limit", () => {
+    // A node name that exceeds 63 chars is rejected by DNS / Tailscale; the
+    // slice(0, 63) must keep us under the limit even with long inputs.
+    // base(60) + "-" + suffix(12) = 73 chars pre-slice, so this genuinely
+    // exercises the slice(0, 63) cap (not just a 63-char boundary).
+    const hostname = inferTailscaleHostname({
+      agentName: "a".repeat(60),
+      agentId: "b".repeat(50),
+    });
+    expect(hostname.length).toBeLessThanOrEqual(63);
+  });
+
+  test("hostname never ends with a hyphen even when the 63-char slice cuts one", () => {
+    // base(62) + "-" + suffix puts the slice boundary on the hyphen; the
+    // trailing-hyphen strip must run AFTER the slice.
+    const hostname = inferTailscaleHostname({ agentName: "a".repeat(62), agentId: "x" });
+    expect(hostname).not.toMatch(/-$/);
+    expect(hostname).toBe("a".repeat(62));
+  });
+
+  test("hostname normalizes special chars to a valid DNS label and never empties", () => {
+    expect(
+      inferTailscaleHostname({ agentName: "Test@Agent!", agentId: "UUID-1234-5678" }),
+    ).toBe("test-agent-uuid-1234-56");
+    expect(inferTailscaleHostname({ agentName: "", agentId: "" })).toBe("agent-agent");
+  });
+
+  test("inferHeadscaleUser reads HEADSCALE_USER for the all-empty fallback", () => {
+    // Proves the env fallback is actually consulted (not hardcoded to "agent").
+    process.env.HEADSCALE_USER = "custom-fallback";
+    expect(inferHeadscaleUser({})).toBe("custom-fallback");
+  });
 });
 
 describe("Headscale node lookup is keyed on the node name (not the agentId)", () => {
