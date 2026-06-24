@@ -747,6 +747,7 @@ export const AGENT_EVENT_ALLOWED_STREAMS = new Set([
   "assistant",
   "thought",
   "action",
+  "notification",
   "viewer_stats",
 ]);
 
