@@ -33,7 +33,7 @@ import {
 } from "@/lib/services/ai-billing";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 interface EmbeddingsRequest {
   input: string | string[];
@@ -41,20 +41,6 @@ interface EmbeddingsRequest {
   encoding_format?: "float" | "base64";
   dimensions?: number;
   user?: string;
-}
-
-async function getRequestApiKeyId(
-  c: AppContext,
-): Promise<{ id: string } | null> {
-  const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
-  const auth = c.req.header("authorization");
-  const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-  const elizaBearer = bearer?.startsWith("eliza_") ? bearer : null;
-  const apiKey = apiKeyHeader || elizaBearer;
-  if (!apiKey) return null;
-  const { apiKeysService } = await import("@/lib/services/api-keys");
-  const validated = await apiKeysService.validateApiKey(apiKey);
-  return validated ? { id: validated.id } : null;
 }
 
 const app = new Hono<AppEnv>();
@@ -66,7 +52,10 @@ app.use("*", rateLimit(RateLimitPresets.RELAXED));
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const apiKey = await getRequestApiKeyId(c);
+    // `requireUserOrApiKeyWithOrg` already validated the API key (when present)
+    // and exposed its id on the request context — reuse it instead of doing a
+    // second DB lookup per request.
+    const apiKeyId = c.get("apiKeyId") ?? null;
 
     if (user.organization_id) {
       const orgRateLimited = await enforceOrgRateLimit(
@@ -200,33 +189,42 @@ app.post("/", async (c) => {
       actualTokens = result.usage?.tokens || estimatedInputTokens;
     }
 
-    const billing = await billUsage(
-      {
-        organizationId: user.organization_id,
-        userId: user.id,
-        apiKeyId: apiKey?.id,
+    // Defer billing off the response path: reconciliation + usage recording add
+    // serial DB round-trips that need not block the vector return. We still RUN
+    // billUsage (it reconciles the reservation), just after the response is sent
+    // via waitUntil. The terminal insufficient-credits guard already fired above
+    // (reserveCredits), so a caller with no balance was rejected before embedding;
+    // the only residual risk is an under-bill if the Worker dies before the
+    // deferred task completes — an accepted trade-off (never a double- or
+    // dropped-bill, since billUsage runs exactly once).
+    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
+    const settleBilling = async () => {
+      const billing = await billUsage(
+        {
+          organizationId: user.organization_id,
+          userId: user.id,
+          apiKeyId,
+          model,
+          provider,
+          billingSource,
+          // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,
+          // activate the existing billUsage affiliate branch (same as /v1/messages).
+          affiliateCode,
+        },
+        { inputTokens: actualTokens, outputTokens: 0 },
+        reservation,
+      );
+
+      logger.info("[Embeddings] Complete", {
         model,
-        provider,
-        billingSource,
-        // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,
-        // activate the existing billUsage affiliate branch (same as /v1/messages).
-        affiliateCode: c.req.header("X-Affiliate-Code") ?? null,
-      },
-      { inputTokens: actualTokens, outputTokens: 0 },
-      reservation,
-    );
+        actualTokens,
+        totalCost: billing.totalCost,
+      });
 
-    logger.info("[Embeddings] Complete", {
-      model,
-      actualTokens,
-      totalCost: billing.totalCost,
-    });
-
-    void usageService
-      .create({
+      await usageService.create({
         organization_id: user.organization_id,
         user_id: user.id,
-        api_key_id: apiKey?.id || null,
+        api_key_id: apiKeyId,
         type: "embeddings",
         model: normalizedModel,
         provider,
@@ -235,12 +233,18 @@ app.post("/", async (c) => {
         input_cost: String(billing.inputCost),
         output_cost: String(0),
         is_successful: true,
-      })
-      .catch((err) => {
-        logger.error("[Embeddings] Failed to record usage", {
-          error: err instanceof Error ? err.message : String(err),
-        });
       });
+    };
+
+    const billed = settleBilling().catch((err) => {
+      logger.error("[Embeddings] Failed to settle billing", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
+    if (typeof c.executionCtx?.waitUntil === "function") {
+      c.executionCtx.waitUntil(billed);
+    }
 
     return c.json({
       object: "list",
