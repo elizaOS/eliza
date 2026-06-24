@@ -96,6 +96,12 @@ ChatView today (see divergence D1).
 | `character` | yes, CharacterHubView | yes, 1 | active |
 | `nav-page` | no WidgetHost mount | no component widgets | active app-navigation contract |
 
+
+Retired slots pruned in #9448: `chat-inline`, `wallet`, `browser`,
+`heartbeats`, `settings`, `automations`. Browser and wallet status now render
+through active `chat-sidebar` / `home` declarations instead of their own dead
+slots.
+
 ---
 
 ## Interaction handler contract (single source of truth)

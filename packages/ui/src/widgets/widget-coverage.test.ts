@@ -7,7 +7,7 @@ import {
   resolveWidgetsForSlot,
   type WidgetPluginState,
 } from "./registry";
-import type { PluginWidgetDeclaration } from "./types";
+import { type PluginWidgetDeclaration, WIDGET_SLOTS } from "./types";
 
 // #9143 — per-plugin home-widget coverage gate.
 //
@@ -187,5 +187,26 @@ describe("chat-sidebar slot coverage gate (#9304)", () => {
       (id) => !rendered.has(id),
     );
     expect(missing).toEqual([]);
+  });
+});
+
+// #9448 — dead slot cleanup gate.
+describe("widget slot contract (#9448)", () => {
+  it("keeps the active widget slot list limited to supported surfaces", () => {
+    expect(WIDGET_SLOTS).toEqual([
+      "chat-sidebar",
+      "character",
+      "nav-page",
+      "home",
+    ]);
+  });
+
+  it("keeps bundled widget declarations off retired slots", () => {
+    const active = new Set<string>(WIDGET_SLOTS);
+    const retired = BUILTIN_WIDGET_DECLARATIONS.filter(
+      (decl) => !active.has(decl.slot),
+    ).map((decl) => `${decl.pluginId}/${decl.id}:${decl.slot}`);
+
+    expect(retired).toEqual([]);
   });
 });
