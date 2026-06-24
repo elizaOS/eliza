@@ -44,7 +44,8 @@
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "lifeops:gepa-seed": "bun run scripts/lifeops-gepa-seed.ts"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
