@@ -123,6 +123,22 @@ Result:
     failed at the stale `plugins/plugin-local-inference/native/build-whisper.mjs`
     command; the workflow now uses the current fused-ASR smoke/roundtrip scripts
     instead.
+- Workflow-dispatch audit after probe hardening:
+  - `Voice Live E2E` run `28093202597` on branch `fix/finish-9147` executed the
+    fixed workflow at commit `ef05bb12a8e6037c8e9801c7d89f1bc8e8f6d281`.
+  - `Real fused ASR + optional mixed round-trip (self-hosted)` passed on runner
+    `odi-100-25-4`. The probe reported no preprovisioned fused ASR bundle at
+    `/home/runner/.eliza/local-inference/models/eliza-1-2b.bundle` and no fused
+    library, set `ELIZA_ROUNDTRIP_REAL_READY=0`, and skipped the optional
+    `test:asr:real` / `roundtrip:real` steps without calling the removed
+    `native/build-whisper.mjs` path.
+  - `Real acoustic VAD + diarization + self-voice matrix (self-hosted)` started
+    on runner `odi-100-25-3` and failed hard in `Probe provisioned voice runner`
+    before executing the acoustic matrix. The uploaded artifact
+    `voice-real-acoustic-matrix` (artifact ID `7847377997`, SHA256
+    `50c4240dee150225030df4d4dd7c958d217f2aad4601ae75095b6afa31b8131b`)
+    contains `probe.log` showing `nvcc`, `nvidia-smi`, and `ffmpeg` are not on
+    `PATH`, and `ELEVENLABS_API_KEY` is empty on that runner.
 
 N/A:
 - No screenshot/video was captured because this change adds machine-readable
