@@ -11,6 +11,12 @@ Two specs cover the loop:
   full loop this issue adds, with an explicit, observable state-transition
   assertion at every step (deploy node, charge, autoscale, payout-readiness).
 
+> **See also (#9300):** [`tests/example-apps-showcase.spec.ts`](../tests/example-apps-showcase.spec.ts)
+> drives the same loop specifically for the two flagship example apps (EDAD,
+> Clone Ur Crush) - including **app-subdomain** wiring (the ingress on-demand-TLS
+> gate) - from a dedicated **infinite-credit showcase account**. Full runbook:
+> [`docs/showcase-apps-coverage.md`](./showcase-apps-coverage.md).
+
 The mock-stack loop runs per-PR via
 [`.github/workflows/cloud-e2e.yml`](../../../../.github/workflows/cloud-e2e.yml)
 (which globs every `packages/test/cloud-e2e/tests/*.spec.ts` and path-filters on

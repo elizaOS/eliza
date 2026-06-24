@@ -30,6 +30,12 @@ bun --conditions=eliza-source test \
 Result: passed, 39 tests, 104 expects.
 
 ```bash
+bun run --cwd packages/cloud-shared test jobs.test.ts
+```
+
+Result: passed, 1 test, 5 expects.
+
+```bash
 bun run --cwd packages/test/cloud-e2e test tests/remote-app-deploy.spec.ts
 ```
 
@@ -51,6 +57,13 @@ Result: passed, 1 Playwright test.
 ```
 
 Result: passed after formatting two files.
+
+```bash
+bun run cloud:e2e -- remote-app-deploy.spec.ts example-apps-showcase.spec.ts
+```
+
+Result: passed, 2 Playwright tests. The mock Redis cache DEL warning appeared
+again during teardown; it did not fail the run.
 
 ## Full verify
 
