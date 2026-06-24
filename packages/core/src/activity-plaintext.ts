@@ -105,6 +105,30 @@ function nestedRecord(
 	return isRecord(value) ? value : undefined;
 }
 
+function summarizeToolRunning(
+	data: Record<string, unknown> | undefined,
+): string {
+	const direct = firstString(data, ["description", "toolName", "name"]);
+	if (direct) return direct;
+
+	const toolCall = data ? nestedRecord(data, "toolCall") : undefined;
+	const rawInput = toolCall ? nestedRecord(toolCall, "rawInput") : undefined;
+	const title = firstString(toolCall, ["title", "kind", "name"]);
+	const richInput = firstString(rawInput, [
+		"command",
+		"cmd",
+		"file_path",
+		"path",
+		"pattern",
+		"query",
+	]);
+
+	if (title && richInput) {
+		return `${title}: ${richInput}`;
+	}
+	return title ?? richInput ?? "tool";
+}
+
 function activityResult(params: {
 	eventType: string;
 	plaintext: string;
@@ -218,9 +242,7 @@ function summarizePtyEvent(
 			plaintext = "Task stopped";
 			break;
 		case "tool_running":
-			plaintext = `Running ${
-				firstString(data, ["description", "toolName", "name"]) ?? "tool"
-			}`;
+			plaintext = `Running ${summarizeToolRunning(data)}`;
 			break;
 		case "blocked":
 			plaintext = "Waiting for input";

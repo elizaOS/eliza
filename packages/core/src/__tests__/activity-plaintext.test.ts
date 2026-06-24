@@ -28,6 +28,22 @@ describe("activityEventToPlaintext", () => {
 			eventType: "tool_running",
 			plaintext: "Running bun test packages/core",
 		});
+
+		expect(
+			activityEventToPlaintext({
+				eventType: "tool_running",
+				data: {
+					toolCall: {
+						title: "Terminal",
+						kind: "shell",
+						rawInput: { command: "bun run typecheck" },
+					},
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "tool_running",
+			plaintext: "Running Terminal: bun run typecheck",
+		});
 	});
 
 	it("keeps the assistant activity stream mapped to canonical event types", () => {
