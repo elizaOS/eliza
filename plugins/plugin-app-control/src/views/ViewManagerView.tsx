@@ -40,16 +40,12 @@ function viewModalities(view: ViewEntry): string[] {
 // dark cyan palette. Fallbacks avoid the forbidden literal colors.
 const viewManagerTheme = {
 	background: "var(--background)",
-	surface: "var(--card)",
 	surfaceMuted: "var(--muted)",
-	border: "var(--border)",
-	borderAccent: "var(--accent)",
 	foreground: "var(--foreground)",
 	muted: "var(--muted-foreground)",
 	accent: "var(--accent)",
 	success: "var(--success, #34d399)",
 	danger: "var(--destructive)",
-	shadowInset: "var(--ring, #1e293b)",
 };
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -68,11 +64,8 @@ function ModalityChips({ view }: { view: ViewEntry }) {
 					style={{
 						fontSize: 10,
 						lineHeight: 1.4,
-						padding: "0 5px",
-						borderRadius: 4,
+						padding: "0 3px",
 						color: viewManagerTheme.muted,
-						background: viewManagerTheme.surfaceMuted,
-						border: `1px solid ${viewManagerTheme.border}`,
 					}}
 				>
 					{modality}
@@ -113,16 +106,12 @@ function ViewCard({
 			style={{
 				textAlign: "left",
 				font: "inherit",
-				border: `1px solid ${viewManagerTheme.border}`,
-				borderRadius: 8,
 				overflow: "hidden",
-				background: viewManagerTheme.surface,
 				display: "flex",
 				alignItems: "center",
 				gap: 12,
 				cursor: "pointer",
-				padding: 12,
-				transition: "border-color 0.15s",
+				padding: "10px 2px",
 			}}
 		>
 			<img
@@ -133,9 +122,7 @@ function ViewCard({
 					height: 56,
 					objectFit: "cover",
 					display: "block",
-					borderRadius: 8,
 					flexShrink: 0,
-					background: viewManagerTheme.surfaceMuted,
 				}}
 				onError={(e) => {
 					// Hide broken image; the fallback SVG served by the agent
@@ -231,15 +218,13 @@ function RefreshButton({
 			{...agentProps}
 			style={{
 				background: "transparent",
-				border: `1px solid ${viewManagerTheme.border}`,
-				borderRadius: 8,
 				color: viewManagerTheme.muted,
 				cursor: loading ? "not-allowed" : "pointer",
 				display: "flex",
 				alignItems: "center",
 				gap: 6,
 				fontSize: 13,
-				padding: "6px 12px",
+				padding: "6px 8px",
 			}}
 		>
 			<RefreshCw
@@ -295,8 +280,7 @@ export function ViewManagerView() {
 			{/* Header */}
 			<div
 				style={{
-					borderBottom: `1px solid ${viewManagerTheme.border}`,
-					padding: "20px 24px",
+					padding: "12px 16px",
 					display: "flex",
 					alignItems: "center",
 					justifyContent: "space-between",
@@ -320,7 +304,7 @@ export function ViewManagerView() {
 			</div>
 
 			{/* Body */}
-			<div style={{ padding: "24px" }}>
+			<div style={{ padding: "16px" }}>
 				{loading && (
 					<div
 						style={{

@@ -40,7 +40,7 @@ const CompanionOverlay = memo(function CompanionOverlay({
       <button
         type="button"
         aria-label="Close companion"
-        className="pointer-events-auto absolute right-4 top-4 z-20 grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-black/55 text-sm font-semibold text-white shadow-lg backdrop-blur-md transition hover:bg-black/75"
+        className="pointer-events-auto absolute right-4 top-4 z-20 grid h-10 w-10 place-items-center text-sm font-semibold text-white transition hover:bg-black/35"
         onClick={exitToApps}
         data-no-camera-drag="true"
       >
@@ -48,7 +48,7 @@ const CompanionOverlay = memo(function CompanionOverlay({
       </button>
 
       <div
-        className="absolute bottom-4 left-4 z-20 flex items-center gap-2 rounded-full border border-white/15 bg-black/50 px-3 py-2 backdrop-blur-md"
+        className="absolute bottom-4 left-4 z-20 flex items-center gap-2 px-1 py-1"
         title={avatarReady ? "Avatar ready" : "Avatar loading"}
       >
         <span
@@ -56,7 +56,7 @@ const CompanionOverlay = memo(function CompanionOverlay({
             avatarReady ? "bg-emerald-400" : "bg-amber-400"
           }`}
         />
-        <span className="text-2xs font-semibold uppercase tracking-normal text-white/80">
+        <span className="sr-only text-2xs font-semibold uppercase tracking-normal text-white/80">
           {avatarReady ? "Companion avatar ready" : "Companion avatar loading"}
         </span>
       </div>

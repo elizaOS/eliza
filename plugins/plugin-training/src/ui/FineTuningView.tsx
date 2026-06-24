@@ -702,7 +702,7 @@ function ReadinessCheckRow({
     },
   });
   return (
-    <div className="grid gap-2 border-t border-border/40 pt-2">
+    <div className="grid gap-2 pt-2">
       <div>
         <div className="font-mono text-xs text-txt">
           {check.label} · {check.status}
@@ -2251,7 +2251,7 @@ export function FineTuningView({
   return (
     <ContentLayout contentHeader={contentHeader}>
       <div data-testid="fine-tuning-view" className="space-y-4 pb-32">
-        <section className="rounded-xl border border-border/50 bg-card/65 px-4 py-3 shadow-sm ring-1 ring-border/10">
+        <section className="px-2 py-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-txt">
@@ -2271,7 +2271,7 @@ export function FineTuningView({
             </TrainingActionButton>
           </div>
           {errorMessage && (
-            <div className="mt-3 rounded-xl border border-danger/35 bg-danger/10 px-3 py-2 text-sm text-danger">
+            <div className="mt-3 px-1 py-2 text-sm text-danger">
               {errorMessage}
             </div>
           )}
@@ -2438,8 +2438,8 @@ export function FineTuningView({
             </div>
           </div>
           <div className={`${FINE_TUNING_PANEL_CLASS} p-3 text-sm`}>
-            <div className="mb-3 border-b border-border/50 pb-3">
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+            <div className="mb-3 pb-2">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="analysis-probe-endpoints"
                   label="Probe live endpoints"
@@ -2451,7 +2451,7 @@ export function FineTuningView({
                 Probe live endpoints
               </div>
             </div>
-            <div className="mb-3 border-b border-border/50 pb-3">
+            <div className="mb-3 pb-2">
               <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                 Natural trajectory import
               </div>
@@ -2516,7 +2516,7 @@ export function FineTuningView({
                     placeholder="response,action_planner"
                   />
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="natural-include-raw"
                     label="Include raw trajectories"
@@ -2530,7 +2530,7 @@ export function FineTuningView({
               </div>
             </div>
             {readinessReport ? (
-              <div className="mb-3 border-b border-border/50 pb-3">
+              <div className="mb-3 pb-2">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
@@ -2635,7 +2635,7 @@ export function FineTuningView({
               </div>
             ) : null}
             {collectionPreflightResult ? (
-              <div className="mb-3 border-b border-border/50 pb-3">
+              <div className="mb-3 pb-2">
                 <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                   Collection preflight
                 </div>
@@ -2653,7 +2653,7 @@ export function FineTuningView({
               </div>
             ) : null}
             {collectionResult ? (
-              <div className="mb-3 grid gap-3 border-b border-border/50 pb-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mb-3 grid gap-3 pb-2 md:grid-cols-2 xl:grid-cols-4">
                 <div>
                   <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                     {t("finetuningview.Collection")}
@@ -3154,7 +3154,7 @@ export function FineTuningView({
               </div>
             ) : null}
             {collectionHistory ? (
-              <div className="mb-3 border-b border-border/50 pb-3">
+              <div className="mb-3 pb-2">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
@@ -3200,10 +3200,7 @@ export function FineTuningView({
                 {collectionHistory.collections.length > 0 ? (
                   <div className="grid gap-2">
                     {collectionHistory.collections.slice(0, 5).map((run) => (
-                      <div
-                        key={run.manifestPath}
-                        className="rounded border border-border/50 p-2"
-                      >
+                      <div key={run.manifestPath} className="p-2">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="break-all font-mono text-xs text-txt">
@@ -3731,14 +3728,14 @@ export function FineTuningView({
                     label="HuggingFace files"
                     group="hf-ingest"
                     description="Newline-separated dataset files to ingest"
-                    className="min-h-24 w-full rounded-xl border border-border/60 bg-bg/50 px-3 py-2 font-mono text-xs text-txt outline-none focus:border-accent"
+                    className="min-h-24 w-full border-border/60 bg-transparent px-3 py-2 font-mono text-xs text-txt outline-none focus:border-accent"
                     value={hfFiles}
                     onChange={setHfFiles}
                   />
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="hf-dry-run"
                     label="HuggingFace ingest dry run"
@@ -3915,7 +3912,7 @@ export function FineTuningView({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="feed-cleanup"
                     label="Feed cleanup"
@@ -3926,7 +3923,7 @@ export function FineTuningView({
                   />
                   {t("finetuningview.Cleanup")}
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="feed-dry-run"
                     label="Feed generation dry run"
@@ -4099,7 +4096,7 @@ export function FineTuningView({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-export-native"
                     label="Export native trajectories"
@@ -4110,7 +4107,7 @@ export function FineTuningView({
                   />
                   {t("finetuningview.ExportNative")}
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-deterministic-proxy"
                     label="Deterministic proxy"
@@ -4121,7 +4118,7 @@ export function FineTuningView({
                   />
                   {t("finetuningview.Proxy")}
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-dry-run"
                     label="Scenario dry run"
@@ -4343,7 +4340,7 @@ export function FineTuningView({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="eval-include-in-collection"
                     label="Include eval in collection"
@@ -4354,7 +4351,7 @@ export function FineTuningView({
                   />
                   {t("finetuningview.IncludeInCollection")}
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="eval-dry-run"
                     label="Eval comparison dry run"
@@ -4610,7 +4607,7 @@ export function FineTuningView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="benchmark-dry-run"
                   label="Benchmark dry run"
@@ -4814,7 +4811,7 @@ export function FineTuningView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="bundle-apply"
                   label="Apply bundle"
@@ -5166,7 +5163,7 @@ export function FineTuningView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-pair-enabled"
                   label="Pair base and trained"
@@ -5177,7 +5174,7 @@ export function FineTuningView({
                 />
                 {t("finetuningview.PairBaseTrained")}
               </div>
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-use-mocks"
                   label="Use mocks"
@@ -5188,7 +5185,7 @@ export function FineTuningView({
                 />
                 {t("finetuningview.UseMocks")}
               </div>
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-capture"
                   label="Capture trajectories"
@@ -5199,7 +5196,7 @@ export function FineTuningView({
                 />
                 {t("finetuningview.CaptureTrajectories")}
               </div>
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-dry-run"
                   label="Action benchmark dry run"

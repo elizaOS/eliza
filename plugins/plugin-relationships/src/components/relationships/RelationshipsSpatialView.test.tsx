@@ -70,7 +70,7 @@ describe("RelationshipsSpatialView one source, three modalities", () => {
     for (const width of [54, 32]) {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
-      expect(lines.join("\n")).toContain("Relationships");
+      expect(lines.join("\n")).not.toContain("Relationships");
     }
     const flat = renderViewToLines(view, 54).join("\n");
     expect(flat).toContain("Owner");

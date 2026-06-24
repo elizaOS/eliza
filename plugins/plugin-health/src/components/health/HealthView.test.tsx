@@ -163,12 +163,7 @@ describe("HealthView (fetch-driven)", () => {
     render(<HealthView fetchers={makeFetchers(emptyHistory())} />);
 
     await screen.findByText(/No sleep data yet/i);
-    expect(
-      screen.getByText(/Connect a health source \(Apple Health/i),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/connect a health source to get started/i),
-    ).toBeTruthy();
+    expect(screen.getByText("14d empty")).toBeTruthy();
   });
 
   it("renders the populated state with last sleep, regularity, baseline, and window summary", async () => {

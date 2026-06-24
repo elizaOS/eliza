@@ -50,7 +50,6 @@ describe("ViewManagerSpatialView one source, three modalities", () => {
 			const lines = renderViewToLines(view, width);
 			for (const line of lines) expect(visibleWidth(line)).toBe(width);
 			const flat = lines.join("\n");
-			expect(flat).toContain("Views");
 			expect(flat).toContain("ready");
 			expect(flat).toContain("Wallet");
 			expect(flat).toContain("Messages");

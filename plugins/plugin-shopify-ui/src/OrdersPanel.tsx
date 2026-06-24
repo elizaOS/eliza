@@ -79,13 +79,13 @@ function OrderRow({ order }: { order: ShopifyOrder }) {
   });
 
   return (
-    <div className="rounded-xl">
+    <div>
       <button
         ref={toggle.ref}
         type="button"
         onClick={() => setExpanded((prev) => !prev)}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-card/40 rounded-xl"
+        className="flex w-full items-center gap-3 px-2 py-2 text-left transition-colors hover:bg-bg-muted/20"
         {...toggle.agentProps}
       >
         <div className="min-w-[4rem] shrink-0">
@@ -208,19 +208,17 @@ export function OrdersPanel({
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {error}
-        </div>
+        <div className="px-1 py-2 text-sm text-danger">{error}</div>
       ) : null}
 
       {loading && orders.length === 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }, (_, i) => i).map((i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-xl" />
+            <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
       ) : orders.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-border/20 bg-card/20 py-12 text-center">
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
           <ShoppingCart className="h-8 w-8 text-muted/40" />
           <div className="text-sm text-muted">
             {activeTab === "unfulfilled"

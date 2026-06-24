@@ -31,27 +31,16 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
     >
       <EmotePicker />
 
-      {/* Compact aesthetic status chip cluster — theme-token driven, not a
-          devtools panel. Lives top-left, translucent + blurred over the stage.
-          Layout is inline-styled: the companion view bundle ships no compiled
-          Tailwind, so arbitrary/utility classes would have no effect here. */}
+      {/* Status metadata remains in the DOM for agent/a11y inspection without
+          adding visible chrome over the avatar stage. */}
       <div
         style={{
           position: "absolute",
-          left: 16,
-          top: 16,
-          zIndex: 20,
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          clipPath: "inset(50%)",
           display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: 6,
-          maxWidth: "calc(100vw - 32px)",
-          padding: 6,
-          borderRadius: 9999,
-          border: "1px solid var(--border)",
-          background: "var(--bg-elevated)",
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
         }}
         title="Companion avatar surface"
       >
@@ -77,8 +66,7 @@ const CHIP_BASE: CSSProperties = {
   alignItems: "center",
   gap: 6,
   minHeight: 28,
-  padding: "4px 10px",
-  borderRadius: 9999,
+  padding: "0 1px",
   fontSize: 11,
   fontWeight: 600,
   lineHeight: 1,
