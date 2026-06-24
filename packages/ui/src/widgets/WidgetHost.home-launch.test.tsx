@@ -24,8 +24,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mockState = {
   plugins: [] as Array<{ id: string; enabled: boolean; isActive: boolean }>,
   conversations: [
-    { id: "c1", title: "Trip planning", roomId: "r1", createdAt: "x", updatedAt: "2026-06-24T08:00:00.000Z" },
-    { id: "c2", title: "Budget review", roomId: "r2", createdAt: "x", updatedAt: "2026-06-24T07:00:00.000Z" },
+    {
+      id: "c1",
+      title: "Trip planning",
+      roomId: "r1",
+      createdAt: "x",
+      updatedAt: "2026-06-24T08:00:00.000Z",
+    },
+    {
+      id: "c2",
+      title: "Budget review",
+      roomId: "r2",
+      createdAt: "x",
+      updatedAt: "2026-06-24T07:00:00.000Z",
+    },
   ],
   t: (k: string) => k,
 };
@@ -71,7 +83,12 @@ afterEach(() => {
 describe("home WidgetHost on launch (#9304 / #9143)", () => {
   it("mounts the host for the home slot", () => {
     render(
-      <WidgetHost slot="home" layout="grid" events={[]} clearEvents={() => {}} />,
+      <WidgetHost
+        slot="home"
+        layout="grid"
+        events={[]}
+        clearEvents={() => {}}
+      />,
     );
     const host = screen.getByTestId("widget-host-home");
     expect(host.getAttribute("data-slot")).toBe("home");
@@ -83,7 +100,12 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
     __ingestNotificationForTests(notification("n2", "PR review requested"), 2);
 
     render(
-      <WidgetHost slot="home" layout="grid" events={[]} clearEvents={() => {}} />,
+      <WidgetHost
+        slot="home"
+        layout="grid"
+        events={[]}
+        clearEvents={() => {}}
+      />,
     );
 
     // Real widgets, resolved by the real registry, rendered into the home host.
@@ -96,13 +118,24 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
   it("self-hides every card when there is no data (the #9143 clean home)", () => {
     mockState.conversations = [];
     render(
-      <WidgetHost slot="home" layout="grid" events={[]} clearEvents={() => {}} />,
+      <WidgetHost
+        slot="home"
+        layout="grid"
+        events={[]}
+        clearEvents={() => {}}
+      />,
     );
     expect(screen.queryByTestId("widget-notifications")).toBeNull();
     expect(screen.queryByTestId("widget-messages")).toBeNull();
     // Restore for any later test in the file.
     mockState.conversations = [
-      { id: "c1", title: "Trip planning", roomId: "r1", createdAt: "x", updatedAt: "2026-06-24T08:00:00.000Z" },
+      {
+        id: "c1",
+        title: "Trip planning",
+        roomId: "r1",
+        createdAt: "x",
+        updatedAt: "2026-06-24T08:00:00.000Z",
+      },
     ];
   });
 });
