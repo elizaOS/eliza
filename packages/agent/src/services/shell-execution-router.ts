@@ -20,6 +20,7 @@ import type { Dirent } from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { sanitizeSpawnEnv } from "@elizaos/core";
 import {
   type RuntimeExecutionMode,
   resolveRuntimeExecutionMode,
@@ -132,6 +133,20 @@ export function __resetShellRouterBrokerForTests(): void {
   routerModeHolder.current = "local-yolo";
 }
 
+/**
+ * Strip dangerous keys (LD_PRELOAD, NODE_OPTIONS, DYLD_*, proxy + package-manager
+ * config prefixes, ...) from a caller-supplied child environment before it
+ * reaches a spawned process. Delegates to the core spawn-env policy and narrows
+ * the result back to a string map (the policy only removes keys, never values).
+ */
+function sanitizeChildEnv(env: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(sanitizeSpawnEnv(env))) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
 async function runOnHost(req: ShellRequest): Promise<ShellResult> {
   const start = Date.now();
   return await new Promise<ShellResult>((resolve) => {
@@ -139,7 +154,9 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     const useDetachedProcessGroup = process.platform !== "win32";
     const child = spawn(req.command, req.args.slice(), {
       cwd: req.cwd,
-      env: req.env ? { ...process.env, ...req.env } : process.env,
+      env: req.env
+        ? { ...process.env, ...sanitizeChildEnv(req.env) }
+        : process.env,
       detached: useDetachedProcessGroup,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -213,7 +230,7 @@ async function runInSandbox(
     cmd: req.command,
     args: req.args,
     workdir: req.cwd,
-    env: req.env,
+    env: req.env ? sanitizeChildEnv(req.env) : undefined,
     timeoutMs: req.timeoutMs,
   });
   if (result.stdout) req.onStdout?.(result.stdout);
