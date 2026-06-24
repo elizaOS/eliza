@@ -30,13 +30,16 @@
 
 import {
   actorState,
+  balanceTransactions,
   db,
   eq,
   inArray,
   markets,
+  pointsTransactions,
   positions,
   questions,
   sql,
+  tradingFees,
   users,
 } from "@feed/db";
 import { generateSnowflakeId } from "@feed/shared";
@@ -68,6 +71,17 @@ const seeded = {
   loserUserId: "",
   loserPositionId: "",
 };
+
+type UserWalletSnapshot = {
+  virtualBalance: string;
+  totalDeposited: string;
+  lifetimePnL: string;
+  earnedPoints: number;
+  reputationPoints: number;
+  totalFeesPaid: string;
+};
+
+let originalUserWallet: UserWalletSnapshot | null = null;
 
 async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -206,6 +220,30 @@ async function seedFixtures(userId: string): Promise<void> {
   seeded.loserUserId = await generateSnowflakeId();
   seeded.loserPositionId = await generateSnowflakeId();
 
+  const [userBeforeTest] = await db
+    .select({
+      virtualBalance: users.virtualBalance,
+      totalDeposited: users.totalDeposited,
+      lifetimePnL: users.lifetimePnL,
+      earnedPoints: users.earnedPoints,
+      reputationPoints: users.reputationPoints,
+      totalFeesPaid: users.totalFeesPaid,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!userBeforeTest) {
+    throw new Error(`Dev auth user not found before seeding: ${userId}`);
+  }
+  originalUserWallet = {
+    virtualBalance: String(userBeforeTest.virtualBalance),
+    totalDeposited: String(userBeforeTest.totalDeposited),
+    lifetimePnL: String(userBeforeTest.lifetimePnL),
+    earnedPoints: userBeforeTest.earnedPoints,
+    reputationPoints: userBeforeTest.reputationPoints,
+    totalFeesPaid: String(userBeforeTest.totalFeesPaid),
+  };
+
   // Fund the trading user. WalletService reads users.virtualBalance.
   await db
     .update(users)
@@ -292,6 +330,18 @@ async function seedFixtures(userId: string): Promise<void> {
 }
 
 async function teardownFixtures(userId: string): Promise<void> {
+  if (seeded.marketId) {
+    await db
+      .delete(balanceTransactions)
+      .where(eq(balanceTransactions.relatedId, seeded.marketId));
+    await db
+      .delete(tradingFees)
+      .where(eq(tradingFees.marketId, seeded.marketId));
+    await db.delete(pointsTransactions).where(
+      sql`${pointsTransactions.metadata} LIKE ${`%"relatedId":"${seeded.marketId}"%`}`,
+    );
+  }
+
   // Positions first (FK-free but logically owned by market + users).
   if (seeded.marketId) {
     await db.delete(positions).where(eq(positions.marketId, seeded.marketId));
@@ -305,13 +355,19 @@ async function teardownFixtures(userId: string): Promise<void> {
     await db.delete(actorState).where(eq(actorState.id, seeded.loserUserId));
     await db.delete(users).where(inArray(users.id, [seeded.loserUserId]));
   }
-  // Drop the trading user's positions in this seeded market (already covered by
-  // the marketId delete above, kept explicit for clarity).
-  if (seeded.marketId) {
+  if (originalUserWallet) {
     await db
-      .delete(positions)
-      .where(eq(positions.userId, userId))
-      .catch(() => undefined);
+      .update(users)
+      .set({
+        virtualBalance: originalUserWallet.virtualBalance,
+        totalDeposited: originalUserWallet.totalDeposited,
+        lifetimePnL: originalUserWallet.lifetimePnL,
+        earnedPoints: originalUserWallet.earnedPoints,
+        reputationPoints: originalUserWallet.reputationPoints,
+        totalFeesPaid: originalUserWallet.totalFeesPaid,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
   }
 }
 
