@@ -57,20 +57,6 @@ export interface ExecutorOptions {
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
 
-function responsePatternMatches(
-  pattern: unknown,
-  responseText: string,
-): boolean {
-  if (typeof pattern === "string") {
-    return responseText.toLowerCase().includes(pattern.toLowerCase());
-  }
-  if (pattern instanceof RegExp) {
-    pattern.lastIndex = 0;
-    return pattern.test(responseText);
-  }
-  return false;
-}
-
 function stringList(value: unknown): string[] {
   if (typeof value === "string" && value.length > 0) {
     return [value];
@@ -137,6 +123,8 @@ type SeedRunResult = {
   error?: string;
 };
 
+type TurnMatcher = string | RegExp;
+
 function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   try {
     const serialized = JSON.stringify(value);
@@ -147,6 +135,86 @@ function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   } catch {
     return String(value);
   }
+}
+
+function stringifyForAssertion(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isTurnMatcher(value: unknown): value is TurnMatcher {
+  return typeof value === "string" || value instanceof RegExp;
+}
+
+function toTurnMatcherArray(value: unknown): TurnMatcher[] {
+  if (isTurnMatcher(value)) {
+    return [value];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isTurnMatcher);
+}
+
+function formatTurnMatcher(pattern: TurnMatcher): string {
+  return pattern instanceof RegExp ? pattern.toString() : pattern;
+}
+
+function formatTurnMatchers(patterns: readonly TurnMatcher[]): string {
+  return patterns.map(formatTurnMatcher).join(",");
+}
+
+function matchesTurnMatcher(value: string, pattern: TurnMatcher): boolean {
+  if (typeof pattern === "string") {
+    return value.toLowerCase().includes(pattern.toLowerCase());
+  }
+  pattern.lastIndex = 0;
+  return pattern.test(value);
+}
+
+function isSynthesizedReply(action: CapturedAction): boolean {
+  return toRecord(action.result?.data)?.source === "synthesized-reply";
+}
+
+function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
+  const parts: string[] = [];
+  if (
+    typeof execution.plannerText === "string" &&
+    execution.plannerText.trim().length > 0
+  ) {
+    parts.push(execution.plannerText);
+  }
+  for (const action of execution.actionsCalled) {
+    if (isSynthesizedReply(action)) {
+      continue;
+    }
+    parts.push(action.actionName);
+    if (action.parameters !== undefined) {
+      parts.push(stringifyForAssertion(action.parameters));
+    }
+    if (action.result?.data !== undefined) {
+      parts.push(stringifyForAssertion(action.result.data));
+    }
+    if (action.result?.values !== undefined) {
+      parts.push(stringifyForAssertion(action.result.values));
+    }
+    if (action.result?.text) {
+      parts.push(action.result.text);
+    }
+    if (action.result?.message) {
+      parts.push(action.result.message);
+    }
+    if (action.error?.message) {
+      parts.push(action.error.message);
+    }
+  }
+  return parts.join(" ");
 }
 
 function resetScenarioLlmFixtures(runtime: AgentRuntime): void {
@@ -1523,50 +1591,48 @@ async function runTurnAssertions(
     }
   }
 
-  // responseIncludesAny / responseIncludesAll / responseExcludes / forbiddenActions (inline)
-  const includesAny = (turn as { responseIncludesAny?: unknown })
-    .responseIncludesAny;
-  if (Array.isArray(includesAny) && includesAny.length > 0) {
+  // Inline turn assertions.
+  const includesAny = toTurnMatcherArray(
+    (turn as { responseIncludesAny?: unknown }).responseIncludesAny,
+  );
+  if (includesAny.length > 0) {
     const text = execution.responseText ?? "";
-    const ok = includesAny.some((pattern) =>
-      responsePatternMatches(pattern, text),
-    );
+    const ok = includesAny.some((p) => matchesTurnMatcher(text, p));
     if (!ok) {
       failures.push(
-        `responseIncludesAny: expected response to include any of [${includesAny.join(
-          ",",
-        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
+        `responseIncludesAny: expected response to include any of [${formatTurnMatchers(
+          includesAny,
+        )}], saw ${JSON.stringify(text)}`,
       );
     }
   }
-  const includesAll = (turn as { responseIncludesAll?: unknown })
-    .responseIncludesAll;
-  if (Array.isArray(includesAll) && includesAll.length > 0) {
+  const includesAll = toTurnMatcherArray(
+    (turn as { responseIncludesAll?: unknown }).responseIncludesAll,
+  );
+  if (includesAll.length > 0) {
     const text = execution.responseText ?? "";
-    const missing = includesAll.filter(
-      (pattern) => !responsePatternMatches(pattern, text),
-    );
+    const missing = includesAll.filter((p) => !matchesTurnMatcher(text, p));
     if (missing.length > 0) {
       failures.push(
-        `responseIncludesAll: expected response to include all of [${includesAll.join(
-          ",",
-        )}], missing [${missing.join(",")}], saw ${JSON.stringify(
-          execution.responseText ?? "",
-        )}`,
+        `responseIncludesAll: expected response to include ${formatTurnMatcher(
+          missing[0] as TurnMatcher,
+        )}, saw ${JSON.stringify(text)}`,
       );
     }
   }
-  const excludes = (turn as { responseExcludes?: unknown }).responseExcludes;
-  if (Array.isArray(excludes) && excludes.length > 0) {
+  const excludes = toTurnMatcherArray(
+    (turn as { responseExcludes?: unknown }).responseExcludes,
+  );
+  if (excludes.length > 0) {
     const text = execution.responseText ?? "";
     const hits = excludes.filter((pattern) =>
-      responsePatternMatches(pattern, text),
+      matchesTurnMatcher(text, pattern),
     );
     if (hits.length > 0) {
       failures.push(
-        `responseExcludes: response included forbidden pattern(s) [${hits.join(
-          ",",
-        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
+        `responseExcludes: response included forbidden pattern(s) [${formatTurnMatchers(
+          hits,
+        )}], saw ${JSON.stringify(text)}`,
       );
     }
   }
@@ -1579,6 +1645,59 @@ async function runTurnAssertions(
       failures.push(
         `forbiddenActions triggered: ${hits.map((h) => h.actionName).join(",")}`,
       );
+    }
+  }
+  const plannerIncludesAll = toTurnMatcherArray(
+    (turn as { plannerIncludesAll?: unknown }).plannerIncludesAll,
+  );
+  const plannerIncludesAny = toTurnMatcherArray(
+    (turn as { plannerIncludesAny?: unknown }).plannerIncludesAny,
+  );
+  const plannerExcludes = toTurnMatcherArray(
+    (turn as { plannerExcludes?: unknown }).plannerExcludes,
+  );
+  if (
+    plannerIncludesAll.length > 0 ||
+    plannerIncludesAny.length > 0 ||
+    plannerExcludes.length > 0
+  ) {
+    const plannerBlob = buildPlannerAssertionBlob(execution);
+    const plannerPreview = JSON.stringify(plannerBlob.slice(0, 500));
+    if (plannerIncludesAll.length > 0) {
+      const missing = plannerIncludesAll.filter(
+        (p) => !matchesTurnMatcher(plannerBlob, p),
+      );
+      if (missing.length > 0) {
+        failures.push(
+          `plannerIncludesAll: expected planner trace to include ${formatTurnMatcher(
+            missing[0] as TurnMatcher,
+          )}, saw ${plannerPreview}`,
+        );
+      }
+    }
+    if (plannerIncludesAny.length > 0) {
+      const ok = plannerIncludesAny.some((p) =>
+        matchesTurnMatcher(plannerBlob, p),
+      );
+      if (!ok) {
+        failures.push(
+          `plannerIncludesAny: expected planner trace to include any of [${formatTurnMatchers(
+            plannerIncludesAny,
+          )}], saw ${plannerPreview}`,
+        );
+      }
+    }
+    if (plannerExcludes.length > 0) {
+      const hits = plannerExcludes.filter((p) =>
+        matchesTurnMatcher(plannerBlob, p),
+      );
+      if (hits.length > 0) {
+        failures.push(
+          `plannerExcludes: expected planner trace to exclude [${formatTurnMatchers(
+            hits,
+          )}], saw ${plannerPreview}`,
+        );
+      }
     }
   }
 
