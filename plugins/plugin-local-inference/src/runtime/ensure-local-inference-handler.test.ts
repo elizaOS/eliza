@@ -318,6 +318,54 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("uses a fine-grained maxTokensPerStep for user-visible streaming, coarse for internal calls", async () => {
+		const prior = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
+		delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
+		try {
+			const { registrations, runtime } = makeRuntime();
+			engineState.hasLoadedModel.mockReturnValue(true);
+
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(
+				registrations,
+				ModelType.TEXT_LARGE,
+			);
+
+			// Streaming reply (onStreamChunk wired) → tuned fine-grained step (8).
+			await handler(runtime, {
+				prompt: "hi",
+				stream: true,
+				onStreamChunk: () => {},
+			});
+			expect(engineState.generate).toHaveBeenLastCalledWith(
+				expect.objectContaining({ maxTokensPerStep: 8 }),
+			);
+
+			// Internal / non-streamed call → no override (runner keeps coarse 32).
+			await handler(runtime, { prompt: "hi" });
+			expect(engineState.generate).toHaveBeenLastCalledWith(
+				expect.objectContaining({ maxTokensPerStep: undefined }),
+			);
+
+			// The shared env knob overrides the tuned streaming default.
+			process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = "4";
+			await handler(runtime, {
+				prompt: "hi",
+				stream: true,
+				onStreamChunk: () => {},
+			});
+			expect(engineState.generate).toHaveBeenLastCalledWith(
+				expect.objectContaining({ maxTokensPerStep: 4 }),
+			);
+		} finally {
+			if (prior === undefined) {
+				delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
+			} else {
+				process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = prior;
+			}
+		}
+	});
+
 	it("passes hardware-aware load args through desktop lazy assignment loads", async () => {
 		const installed = {
 			id: "eliza-1-2b",
@@ -557,6 +605,54 @@ describe("ensureLocalInferenceHandler", () => {
 
 		expect(received).toEqual(tokens);
 		expect(received.length).toBeGreaterThan(1);
+	});
+
+	it("wires onTextChunk for a plain (non-structured) stream request", async () => {
+		// The chat path can ask for token streaming via `stream: true` without a
+		// response skeleton. The handler must still bridge onStreamChunk →
+		// onTextChunk so cloud-parity token streaming works for the local model.
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
+		);
+
+		await handler(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+			stream: true,
+			onStreamChunk: vi.fn(),
+		});
+
+		expect(engineState.generate).toHaveBeenCalledWith(
+			expect.objectContaining({ onTextChunk: expect.any(Function) }),
+		);
+	});
+
+	it("does not wire onTextChunk for a non-streaming request", async () => {
+		// Non-streaming callers must not pay the per-chunk callback overhead:
+		// engineGenerateArgsFromParams only bridges the callback when the caller
+		// asked for streaming (`stream` or `streamStructured`).
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
+		);
+
+		await handler(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+			onStreamChunk: vi.fn(),
+		});
+
+		const args = engineState.generate.mock.calls.at(-1)?.[0] as {
+			onTextChunk?: unknown;
+		};
+		expect(args.onTextChunk).toBeUndefined();
 	});
 
 	it("threads eliza thinking provider options into local engine args", async () => {

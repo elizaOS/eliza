@@ -313,6 +313,7 @@
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/plugin-x402": "workspace:*",
+    "@elizaos/registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
     "@elizaos/tui": "workspace:*",

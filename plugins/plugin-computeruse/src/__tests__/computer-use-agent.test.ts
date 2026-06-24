@@ -110,6 +110,51 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     expect(report.steps[0]?.actionKind).toBe("finish");
   });
 
+  it("records a trajectory on the report via the default middleware (#9170 M11)", async () => {
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "done",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: { kind: "finish", rationale: "all set" },
+        }),
+    });
+    const report = await runComputerUseAgentLoop(
+      null,
+      { goal: "g" },
+      fakeService(),
+      { brain, captureAll },
+    );
+    expect(report.trajectory).toHaveLength(1);
+    expect(report.trajectory?.[0]).toMatchObject({
+      step: 1,
+      actionKind: "finish",
+      success: true,
+    });
+  });
+
+  it("aborts on the wall-clock budget before any step (#9170 M11)", async () => {
+    const brain = new Brain(null, {
+      invokeModel: async () => {
+        throw new Error("brain should not be called once budget is blown");
+      },
+    });
+    // now(): first call = run start (0), second = beforeStep elapsed (5000ms).
+    let t = 0;
+    const ticks = [0, 5000];
+    const now = () => ticks[Math.min(t++, ticks.length - 1)] ?? 5000;
+    const report = await runComputerUseAgentLoop(
+      null,
+      { goal: "g", maxDurationMs: 100 },
+      fakeService(),
+      { brain, captureAll, now },
+    );
+    expect(report.reason).toBe("budget");
+    expect(report.steps.length).toBe(0);
+    expect(report.error).toContain("time budget");
+  });
+
   it("emits per-step callback content when streamProgress is true", async () => {
     const progress: Content[] = [];
     const brain = new Brain(null, {
@@ -296,7 +341,9 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
       { brain, captureAll },
     );
     expect(report.reason).toBe("error");
-    expect(report.error).toContain("cascade failed");
+    // The loop wraps Brain→Cascade as the default "local-grounder" loop
+    // (#9170 M10); planning/grounding failures surface under that loop name.
+    expect(report.error).toContain('agent loop "local-grounder" failed');
   });
 
   it("aborts on dispatch error (out-of-bounds)", async () => {

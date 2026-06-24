@@ -28,6 +28,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "auto-enable.ts"
   ],

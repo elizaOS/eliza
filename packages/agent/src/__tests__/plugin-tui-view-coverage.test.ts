@@ -43,7 +43,6 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
-  "plugins/plugin-clawville/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
@@ -140,10 +139,6 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
   "plugins/plugin-app-control/src/index.ts": [
     "terminal-list-views",
     "terminal-open-view",
-  ],
-  "plugins/plugin-clawville/src/ui/clawville-view-bundle.ts": [
-    "terminal-clawville-state",
-    "terminal-clawville-command",
   ],
   "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx": [
     "terminal-screenshare-state",
@@ -344,8 +339,8 @@ function capabilitiesForDeclaration(
 }
 
 function viewDeclarations(manifestPath: string): CoveredView[] {
-  return viewObjects(readManifest(manifestPath))
-    .flatMap((object): CoveredView[] => {
+  return viewObjects(readManifest(manifestPath)).flatMap(
+    (object): CoveredView[] => {
       const id = stringField(object, "id");
       const label = stringField(object, "label");
       const path = stringField(object, "path");
@@ -363,7 +358,8 @@ function viewDeclarations(manifestPath: string): CoveredView[] {
         componentExport,
         visibleInManager: true,
       }));
-    });
+    },
+  );
 }
 
 function makeCtx(

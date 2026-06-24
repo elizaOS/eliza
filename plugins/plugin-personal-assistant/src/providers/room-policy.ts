@@ -21,8 +21,8 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
-  createHandoffStore,
   describeResumeCondition,
+  resolveHandoffStore,
 } from "../lifeops/handoff/store.js";
 
 const QUIET_RESULT: ProviderResult = {
@@ -56,9 +56,9 @@ export const roomPolicyProvider: Provider = {
       return QUIET_RESULT;
     }
 
-    let store: ReturnType<typeof createHandoffStore>;
+    let store: ReturnType<typeof resolveHandoffStore>;
     try {
-      store = createHandoffStore(runtime);
+      store = resolveHandoffStore(runtime);
     } catch (error) {
       logger.debug(
         "[room-policy-provider] handoff store unavailable:",

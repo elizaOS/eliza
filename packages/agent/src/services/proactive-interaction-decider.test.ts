@@ -239,6 +239,24 @@ describe("interactionSurface — per-event policy (#8792)", () => {
     };
     expect(interactionSurface(slash)).toBeNull();
   });
+  it("denies control/dismiss/help shortcuts before the judge (no surface)", () => {
+    for (const id of [
+      "close-modal",
+      "send-message",
+      "focus-composer",
+      "pause-resume-agent",
+      "restart-agent",
+      "toggle-terminal",
+      "show-keyboard-shortcuts",
+    ]) {
+      const shortcut: ShortcutFiredPayload = {
+        runtime: {} as IAgentRuntime,
+        shortcutId: id,
+        initiatedBy: "user",
+      };
+      expect(interactionSurface(shortcut)).toBeNull();
+    }
+  });
 });
 
 describe("decideProactiveComment — new interaction types", () => {

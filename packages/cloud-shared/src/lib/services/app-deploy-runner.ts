@@ -41,6 +41,7 @@
  * per-tenant DSN, never the shared agent URL — is asserted directly.
  */
 
+import { appDatabasesRepository } from "../../db/repositories/app-databases";
 import { containersRepository } from "../../db/repositories/containers";
 import type { NewContainer } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
@@ -155,7 +156,12 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
     const createContainerRow =
       this.deps.createContainerRow ??
       (async (row: NewAppContainerRow) => {
-        const created = await containersRepository.create(toNewContainer(row));
+        // Enforce the per-org container quota atomically — the same cap
+        // (credit-balance-derived) the normal /v1/containers API uses. Without
+        // this, the apps deploy path bypassed quota entirely and one org could
+        // spin up unbounded 24/7 containers (DoS / unbounded cost). Throws
+        // QuotaExceededError when over cap; the deploy route surfaces it.
+        const created = await containersRepository.createWithQuotaCheck(toNewContainer(row));
         return { containerId: created.id };
       });
 
@@ -234,12 +240,22 @@ export function makeNodeAppDeployRunner(args: {
 /**
  * NODE factory (ENCRYPTION-FREE) — `ensureTenantDb` provisions the isolated
  * tenant DB DIRECTLY via the injected {@link TenantDbProvisioning}, returning the
- * DSN without routing through `userDatabaseService`. So it never writes the
- * field-encrypted `app_databases.user_database_uri` and needs no
+ * DSN without routing through `userDatabaseService`. It needs no
  * `SECRETS_MASTER_KEY` — the per-tenant DSN still rides into the container's
  * `environment_vars`. Use when the daemon has no field-encryption key (the
  * cluster admin DSN is env-sourced via a passthrough decrypt). Isolation is
  * unchanged: REVOKE-CONNECT per tenant still applies.
+ *
+ * It DOES persist the canonical `app_databases` row at provision time (#8342):
+ * without it, app delete (`UserDatabaseService.cleanupDatabase` →
+ * `findStateByAppIdForWrite`) finds no row and returns early, so the per-tenant
+ * DB + ROLE are never DROPped and the cluster slot is never released — the DB
+ * leaks (we keep paying) and the cluster's finite slots drift up until they
+ * exhaust. The row carries the per-tenant DSN as PLAINTEXT (this mode has no
+ * master key to encrypt with); that is safe because the teardown path decrypts
+ * with `fieldEncryption.decryptIfNeeded`, which passes plaintext through — the
+ * exact env-DSN case `dispatchAppDbDeprovisionJob` already documents. So the
+ * standard delete → APP_DB_DEPROVISION → DROP + releaseSlot path fires unchanged.
  */
 export function makeDirectAppDeployRunner(args: {
   tenantDbProvisioning: TenantDbProvisioning;
@@ -250,6 +266,15 @@ export function makeDirectAppDeployRunner(args: {
   return new DefaultAppDeployRunner({
     ensureTenantDb: async (appId) => {
       const { dsn } = await args.tenantDbProvisioning.provisionForApp(appId);
+      // Persist the teardown-readable canonical record keyed by appId so app
+      // delete can resolve the per-tenant DSN and run the DROP + slot release.
+      // Stored as plaintext — see the factory header; decryptIfNeeded passes
+      // plaintext through on the daemon side.
+      await appDatabasesRepository.updateState(appId, {
+        user_database_uri: dsn,
+        user_database_status: "ready",
+        user_database_error: null,
+      });
       return dsn;
     },
     jobsWriter: args.jobsWriter,

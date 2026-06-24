@@ -111,6 +111,21 @@ function stringField(source: string, field: string): string | null {
   return source.match(new RegExp(`${field}:\\s*"([^"]+)"`))?.[1] ?? null;
 }
 
+// Source-level mirror of core's `getViewModalities`: a view renders on the
+// explicit `modalities: [...]` list when present, otherwise the single
+// `viewType` (default "gui"). Returns the lowercased modality set for one
+// view-object source slice.
+function viewModalities(objectSource: string): Set<string> {
+  const modalitiesMatch = objectSource.match(/modalities:\s*\[([^\]]*)\]/);
+  if (modalitiesMatch) {
+    const mods = [...modalitiesMatch[1].matchAll(/"([^"]+)"/g)].map(
+      (m) => m[1],
+    );
+    if (mods.length > 0) return new Set(mods);
+  }
+  return new Set([stringField(objectSource, "viewType") ?? "gui"]);
+}
+
 const VIEW_HOST_SMOKE_IDS = [
   "xr-route-smoke",
   "hyphenated-view",
@@ -138,7 +153,6 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
-  "plugins/plugin-clawville/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
@@ -164,10 +178,10 @@ describe("XR feature parity audit", () => {
       const xrIds = new Set<string>();
       for (const obj of objects) {
         const id = stringField(obj, "id");
-        const viewType = stringField(obj, "viewType") ?? "gui";
         if (!id) continue;
-        if (viewType === "xr") xrIds.add(id);
-        else if (viewType !== "tui") guiIds.add(id);
+        const modalities = viewModalities(obj);
+        if (modalities.has("xr")) xrIds.add(id);
+        if (modalities.has("gui")) guiIds.add(id);
       }
       for (const id of guiIds) {
         if (!xrIds.has(id))

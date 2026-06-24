@@ -9,6 +9,18 @@
  */
 
 export {
+	applyCapabilityManifest,
+	assertHostAllowed,
+	assertPathAllowed,
+	CapabilityDeadlineError,
+	type CapabilityManifest,
+	CapabilityViolationError,
+	frozenEnv,
+	isHostAllowed,
+	isPathAllowed,
+	withCapabilityGovernance,
+} from "./capability-manifest.js";
+export {
 	buildSafeExternalPrompt,
 	detectSuspiciousPatterns,
 	type ExternalContentSource,

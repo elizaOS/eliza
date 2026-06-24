@@ -1,4 +1,5 @@
 export { BugReportProvider } from "./BugReportProvider";
+export * from "./frame-budget";
 export * from "./useActivityEvents";
 export * from "./useAutomationDeepLink";
 export * from "./useBugReport.hooks";
@@ -11,6 +12,7 @@ export * from "./useContextMenu";
 export * from "./useDesktopBridgeEvent";
 export * from "./useDocumentVisibility";
 export * from "./useFetchData";
+export * from "./useFrameBudgetMonitor";
 export { COMMON_SHORTCUTS } from "./useKeyboardShortcuts";
 export * from "./useLinkedSidebarSelection";
 export * from "./useMediaQuery";

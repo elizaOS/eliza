@@ -3,6 +3,8 @@
  * and the typed command registry.
  */
 
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
+import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import type {
   DesktopClickAuditItem,
@@ -122,20 +124,68 @@ export interface CommandItem extends CommandDef {
   action: () => void;
 }
 
-// Static navigation commands — always present; palette builder binds setTab.
+// Static navigation commands for the built-in top-level tabs — always present.
+// Plugin-provided views are added dynamically by the palette from the live view
+// registry (see `views`/`navigateView` below), so this list only covers the
+// fixed shell surfaces. All palette navigation reports VIEW_SWITCHED (#8792).
 export const NAV_COMMANDS: readonly { id: string; label: string; tab: Tab }[] =
   [
     { id: "nav-chat", label: "Open Chat", tab: "chat" },
     { id: "nav-apps", label: "Open Apps", tab: "apps" },
+    { id: "nav-views", label: "Open Views", tab: "views" },
     { id: "nav-character", label: "Open Character", tab: "character" },
     { id: "nav-triggers", label: "Open Heartbeats", tab: "triggers" },
     { id: "nav-inventory", label: "Open Wallet", tab: "inventory" },
     { id: "nav-documents", label: "Open Knowledge", tab: "documents" },
+    { id: "nav-tasks", label: "Open Tasks", tab: "tasks" },
+    { id: "nav-automations", label: "Open Automations", tab: "automations" },
+    { id: "nav-messages", label: "Open Messages", tab: "messages" },
+    { id: "nav-contacts", label: "Open Contacts", tab: "contacts" },
+    { id: "nav-phone", label: "Open Phone", tab: "phone" },
+    {
+      id: "nav-relationships",
+      label: "Open Relationships",
+      tab: "relationships",
+    },
+    { id: "nav-browser", label: "Open Browser", tab: "browser" },
+    { id: "nav-companion", label: "Open Companion", tab: "companion" },
+    { id: "nav-skills", label: "Open Skills", tab: "skills" },
+    { id: "nav-transcripts", label: "Open Transcripts", tab: "transcripts" },
+    { id: "nav-memories", label: "Open Memories", tab: "memories" },
+    { id: "nav-files", label: "Open Files", tab: "files" },
     { id: "nav-plugins", label: "Open Plugins", tab: "plugins" },
     { id: "nav-settings", label: "Open Settings", tab: "settings" },
     { id: "nav-database", label: "Open Database", tab: "database" },
     { id: "nav-logs", label: "Open Logs", tab: "logs" },
   ] as const;
+
+/** A registered plugin/shell view the palette can navigate to (from /api/views). */
+export interface ViewNavEntry {
+  id: string;
+  label: string;
+  path?: string;
+}
+
+/**
+ * Filter the live view registry to the user-visible GUI views the command
+ * palette should offer (#8792). Mirrors the view catalog's visibility gate
+ * (`isVisibleCatalogView`) so the palette never surfaces developer/preview or
+ * internal (`visibleInManager: false`) views the rest of the shell hides.
+ */
+export function paletteViewEntries(
+  views: readonly ViewRegistryEntry[],
+  enabledKinds: EnabledViewKinds,
+): ViewNavEntry[] {
+  return views
+    .filter(
+      (v) =>
+        v.available !== false &&
+        (v.viewType ?? "gui") === "gui" &&
+        v.visibleInManager !== false &&
+        isViewVisible(v, enabledKinds),
+    )
+    .map((v) => ({ id: v.id, label: v.label, path: v.path }));
+}
 
 export interface BuildCommandsArgs {
   agentState: string;
@@ -143,7 +193,12 @@ export interface BuildCommandsArgs {
   handleStart: () => void;
   handleStop: () => void;
   handleRestart: () => void;
-  setTab: (tab: Tab) => void;
+  /** Navigate to a built-in tab AND report it to the agent (VIEW_SWITCHED). */
+  navigateTab: (tab: Tab) => void;
+  /** Navigate to a registered plugin/shell view AND report it (VIEW_SWITCHED). */
+  navigateView: (viewId: string, path?: string) => void;
+  /** Live registered views (user-facing) to expose as palette nav entries. */
+  views: readonly ViewNavEntry[];
   setAppsSubTab: () => void;
   loadPlugins: () => void;
   loadSkills: () => void;
@@ -206,7 +261,9 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
     handleStart,
     handleStop,
     handleRestart,
-    setTab,
+    navigateTab,
+    navigateView,
+    views,
     setAppsSubTab,
     loadPlugins,
     loadSkills,
@@ -245,13 +302,31 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
     action: handleRestart,
   });
 
-  // Navigation
+  // Navigation — built-in tabs.
+  const navLabels = new Set<string>();
   for (const nav of NAV_COMMANDS) {
+    navLabels.add(nav.label.toLowerCase());
     commands.push({
       id: nav.id,
       label: nav.label,
       category: "navigation",
-      action: () => setTab(nav.tab),
+      action: () => navigateTab(nav.tab),
+    });
+  }
+
+  // Navigation — every registered plugin/shell view, so the palette is a
+  // complete launcher (#8792). Deduped by label against the built-in tabs above
+  // (e.g. don't list "Open Wallet" twice when a wallet view is also registered).
+  for (const view of views) {
+    const label = `Open ${view.label}`;
+    const key = label.toLowerCase();
+    if (navLabels.has(key)) continue;
+    navLabels.add(key);
+    commands.push({
+      id: `view-${view.id}`,
+      label,
+      category: "navigation",
+      action: () => navigateView(view.id, view.path),
     });
   }
 
@@ -261,7 +336,7 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
       label: "Open Current Game",
       category: "navigation",
       action: () => {
-        setTab("apps");
+        navigateTab("apps");
         setAppsSubTab();
       },
     });

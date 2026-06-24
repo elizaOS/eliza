@@ -33,6 +33,7 @@
   },
   "sideEffects": false,
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "scripts": {

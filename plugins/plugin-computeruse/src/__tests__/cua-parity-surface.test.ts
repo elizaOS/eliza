@@ -26,6 +26,18 @@ describe("cua parity surface", () => {
   it("exposes a get_cursor_position computer-use verb", () => {
     expect(actionNames).toContain("COMPUTER_USE_GET_CURSOR_POSITION");
   });
+
+  it("promotes the M8 verb-parity pack (middle_click, mouse/key down-up)", () => {
+    for (const verb of [
+      "COMPUTER_USE_MIDDLE_CLICK",
+      "COMPUTER_USE_MOUSE_DOWN",
+      "COMPUTER_USE_MOUSE_UP",
+      "COMPUTER_USE_KEY_DOWN",
+      "COMPUTER_USE_KEY_UP",
+    ]) {
+      expect(actionNames, `actions: ${actionNames.join(", ")}`).toContain(verb);
+    }
+  });
 });
 
 describe("clipboard write command (Windows regression)", () => {

@@ -19,7 +19,6 @@ import {
 import { useAgentElement } from "../../agent-surface";
 import type { DocumentScope } from "../../api/client-types-chat";
 import { useAppSelector } from "../../state";
-import { useApp } from "../../state/useApp";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -86,7 +85,9 @@ function ScopeButton({
   uploading: boolean;
   onSelect: (value: DocumentScope) => void;
 }) {
-  const { t } = useApp();
+  // Granular selector instead of useApp() so this only re-renders on locale
+  // change, not on every app-store field (#9141 gap 2).
+  const t = useAppSelector((s) => s.t);
   const { value, labelKey, defaultLabel, titleKey, defaultTitle, Icon } =
     option;
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({

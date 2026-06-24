@@ -43,6 +43,13 @@ interface BionicGenerateResponse {
 	tokS?: number;
 }
 
+/** {ok, text} response for the asr / image ops (transcript / description). */
+interface BionicTextResponse {
+	ok: boolean;
+	text?: string;
+	error?: string;
+}
+
 /**
  * Derive the fused-bundle root from a model GGUF path. The host's
  * `eliza_inference_create(bundleDir)` expects the directory that contains
@@ -101,6 +108,56 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		if (typeof res.tokS === "number") {
 			logger.debug(
 				`[BionicHostLoader] generated ${res.tokens ?? "?"} tok @ ${res.tokS.toFixed(1)} tok/s on the bionic GPU host`,
+			);
+		}
+		return res.text ?? "";
+	}
+
+	/**
+	 * On-device STT: transcribe mono fp32 PCM via the bionic host's fused
+	 * Qwen3-ASR (op="asr"). The musl agent can't load the fused lib, so the
+	 * TRANSCRIPTION delegate routes the audio here over the UDS and gets the
+	 * transcript back. `pcm` is little-endian fp32 already base64-encoded.
+	 */
+	async transcribe(args: {
+		pcmBase64: string;
+		sampleRate: number;
+	}): Promise<string> {
+		const res = await this.roundTrip<BionicTextResponse>({
+			op: "asr",
+			bundleDir: this.bundleDir,
+			pcmBase64: args.pcmBase64,
+			sampleRate: args.sampleRate,
+		});
+		if (!res.ok) {
+			throw new Error(
+				`[BionicHostLoader] host asr failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		return res.text ?? "";
+	}
+
+	/**
+	 * On-device vision / screen-recognition: describe a raw image (PNG/JPEG/WebP
+	 * bytes, base64) via the bionic host's mmproj describe-image (op="image").
+	 * `mmprojPath` may be empty — the host resolves the projector from the
+	 * bundle's `vision/` dir.
+	 */
+	async describeImage(args: {
+		imageBase64: string;
+		mmprojPath?: string;
+		prompt?: string;
+	}): Promise<string> {
+		const res = await this.roundTrip<BionicTextResponse>({
+			op: "image",
+			bundleDir: this.bundleDir,
+			imageBase64: args.imageBase64,
+			mmprojPath: args.mmprojPath ?? "",
+			prompt: args.prompt ?? "",
+		});
+		if (!res.ok) {
+			throw new Error(
+				`[BionicHostLoader] host image describe failed: ${res.error ?? "unknown error"}`,
 			);
 		}
 		return res.text ?? "";

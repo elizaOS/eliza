@@ -279,6 +279,53 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@wasmagent/eliza-rollout-plugin": {
+      "git": {
+        "repo": "WasmAgent/wasmagent-js",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@wasmagent/eliza-rollout-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.3"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Captures elizaOS action runs as rollout-wire/v1 training records (DPO/PPO JSONL) for fine-tuning via evomerge. No sandbox layer — elizaOS Bun Worker isolation already covers that.",
+      "homepage": "https://github.com/WasmAgent/wasmagent-js/tree/main/packages/eliza-rollout-plugin",
+      "topics": [
+        "training-data",
+        "rlaif",
+        "dpo",
+        "ppo",
+        "rollout",
+        "fine-tuning",
+        "wasmagent"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "packages/eliza-rollout-plugin"
+    },
     "blackwall-eliza-guardrail": {
       "git": {
         "repo": "bluetieroperations-create/blackwall-eliza-guardrail",
@@ -492,6 +539,56 @@
         "reddit",
         "social",
         "discovery"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-x402-alpha-data": {
+      "git": {
+        "repo": "sna4an/plugin-x402-alpha-data",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-x402-alpha-data",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Paid alpha data endpoints via x402 protocol — token safety, whale tracking, yield strategies, governance, sentiment.",
+      "homepage": "https://github.com/sna4an/plugin-x402-alpha-data",
+      "topics": [
+        "x402",
+        "defi",
+        "alpha",
+        "whale-tracking",
+        "token-safety",
+        "yield",
+        "solana",
+        "base",
+        "web3",
+        "paid-api"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

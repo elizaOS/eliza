@@ -1,5 +1,5 @@
 /**
- * Build the env block passed to cloud-api / cloud-frontend subprocesses.
+ * Build the env block passed to cloud-api / packages/app (apex) subprocesses.
  *
  * Centralizes test flags (PLAYWRIGHT_TEST_AUTH, MOCK_REDIS, mock URLs, etc.)
  * so the rest of the fixture code stays focused on lifecycle.

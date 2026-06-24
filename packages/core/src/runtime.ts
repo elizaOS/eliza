@@ -398,7 +398,15 @@ const DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS = new Set([
 	"messageToUser",
 ]);
 
-function resolveDynamicPromptStreamFields(
+/**
+ * Resolve which structured fields stream to the consumer for the line-oriented
+ * `dynamicPromptExecFromState` path. A field streams when it opts in with
+ * `streamField: true`, or — when it expresses no preference — when its name is
+ * in {@link DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS} (the clean reply `text`).
+ * `streamField: false` always opts out. Exported for regression coverage of
+ * the default token-stream contract (#9174).
+ */
+export function resolveDynamicPromptStreamFields(
 	schema: readonly SchemaRow[],
 ): string[] {
 	return schema

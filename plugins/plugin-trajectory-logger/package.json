@@ -58,13 +58,15 @@
       "displayName": "Trajectory Logger",
       "category": "developer",
       "heroImage": "assets/hero.png"
-    }
+    },
+    "appRegister": "register"
   },
   "publishConfig": {
     "access": "public"
   },
   "types": "./dist/index.d.ts",
   "files": [
+    "registry-entry.json",
     "dist",
     "assets"
   ],

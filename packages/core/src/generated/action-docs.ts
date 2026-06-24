@@ -4046,6 +4046,53 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "CLIPBOARD",
+			description:
+				"CLIPBOARD action. Read or write the host system clipboard. actions: read, write. Linux requires wl-clipboard (Wayland) or xclip (X11); macOS uses pbcopy/pbpaste; Windows uses PowerShell Set-Clipboard / Get-Clipboard.",
+			parameters: [
+				{
+					name: "action",
+					description: "Clipboard operation verb.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["read", "write"],
+					},
+					descriptionCompressed: "Clipboard operation verb.",
+				},
+				{
+					name: "text",
+					description: "Payload for write.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Payload for write.",
+				},
+			],
+			descriptionCompressed: "CLIPBOARD action=read|write",
+			similes: [
+				"USE_CLIPBOARD",
+				"CLIPBOARD_ACTION",
+				"COPY",
+				"PASTE",
+				"READ_CLIPBOARD",
+				"WRITE_CLIPBOARD",
+			],
+			exampleCalls: [
+				{
+					user: "Use CLIPBOARD with the provided parameters.",
+					actions: ["CLIPBOARD"],
+					params: {
+						CLIPBOARD: {
+							action: "read",
+							text: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "COMMANDS_COMMAND",
 			description: "List all commands",
 			parameters: [],
@@ -4072,7 +4119,7 @@ export const allActionsSpec = {
 		{
 			name: "COMPUTER_USE",
 			description:
-				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
+				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/middle_click/mouse_down/mouse_up/type/key/key_combo/key_down/key_up/scroll/drag/detect_elements/ocr/open/launch. mouse_down/up + key_down/up are press-and-hold primitives (button held until released); drag accepts a multi-point `path`; open(target) opens a file/URL/folder; launch(app,appArgs) starts an app and returns its pid. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
 			parameters: [
 				{
 					name: "action",
@@ -4087,13 +4134,23 @@ export const allActionsSpec = {
 							"double_click",
 							"right_click",
 							"mouse_move",
+							"middle_click",
+							"mouse_down",
+							"mouse_up",
 							"type",
 							"key",
 							"key_combo",
+							"key_down",
+							"key_up",
 							"scroll",
 							"drag",
+							"get_cursor_position",
 							"detect_elements",
 							"ocr",
+							"open",
+							"launch",
+							"kill_app",
+							"set_value",
 							"resolve_approval",
 						],
 					},
@@ -4122,6 +4179,23 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed: "Start [x, y] pixel coordinate for drag.",
+				},
+				{
+					name: "path",
+					description:
+						"Multi-point polyline [[x,y],...] (≥2 points) for drag; traces every waypoint with the button held. Supersedes startCoordinate/coordinate when present.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "array",
+							items: {
+								type: "number",
+							},
+						},
+					},
+					descriptionCompressed:
+						"Multi-point polyline [[x, y],. ] (≥2 points) for drag. traces every waypoint with the button held. Supersedes startCoordinate/coordinate when present.",
 				},
 				{
 					name: "text",
@@ -4158,13 +4232,15 @@ export const allActionsSpec = {
 				},
 				{
 					name: "button",
-					description: "Mouse button for click_with_modifiers.",
+					description:
+						"Mouse button for click_with_modifiers and mouse_down/mouse_up (default left).",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["left", "middle", "right"],
 					},
-					descriptionCompressed: "Mouse button for click_with_modifiers.",
+					descriptionCompressed:
+						"Mouse button for click_with_modifiers and mouse_down/mouse_up (default left).",
 				},
 				{
 					name: "clicks",
@@ -4252,9 +4328,45 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Optional reason for an approval decision.",
 				},
+				{
+					name: "target",
+					description:
+						"File path / URL / folder to open with the OS default handler (action=open).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"File path/URL/folder to open with the OS default handler (action=open).",
+				},
+				{
+					name: "app",
+					description:
+						"Application name or executable path to launch (action=launch).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"app name or executable path to launch (action=launch).",
+				},
+				{
+					name: "appArgs",
+					description:
+						"Arguments for the launched application (action=launch).",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"Arguments for the launched app (action=launch).",
+				},
 			],
 			descriptionCompressed:
-				"Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr|approve",
+				"Desktop: screenshot|click|double|right|middle|move|down|up|type|key|scroll|drag|detect|ocr|open|launch|approve",
 			similes: [
 				"USE_COMPUTER",
 				"CONTROL_COMPUTER",
@@ -4285,6 +4397,7 @@ export const allActionsSpec = {
 							action: "screenshot",
 							coordinate: "example",
 							startCoordinate: "example",
+							path: "example",
 							text: "example",
 							modifiers: "example",
 							key: "example",
@@ -4297,6 +4410,9 @@ export const allActionsSpec = {
 							approvalId: "example",
 							approved: false,
 							reason: "example",
+							target: "example",
+							app: "example",
+							appArgs: "example",
 						},
 					},
 				},
@@ -4344,6 +4460,30 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"When true, emit a chat callback after each dispatched step with compact progress and the step kind/rationale.",
 				},
+				{
+					name: "maxDurationMs",
+					description:
+						"Wall-clock budget in ms; the loop aborts before a step that exceeds it.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 0,
+					},
+					descriptionCompressed:
+						"Wall-clock budget in ms. the loop aborts before a step that exceeds it.",
+				},
+				{
+					name: "imageRetentionLast",
+					description:
+						"Keep only the N most-recent steps' screenshots in the bounded history (token control).",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+					},
+					descriptionCompressed:
+						"Keep only the N most-recent steps' screenshots in the bounded history (token control).",
+				},
 			],
 			descriptionCompressed:
 				"Autonomous desktop loop: scene -> Brain -> cascade -> click. Pass {goal, maxSteps?, streamProgress?}.",
@@ -4357,6 +4497,8 @@ export const allActionsSpec = {
 							goal: "example",
 							maxSteps: 5,
 							streamProgress: false,
+							maxDurationMs: 1,
+							imageRetentionLast: 1,
 						},
 					},
 				},
@@ -9624,6 +9766,11 @@ export const allActionsSpec = {
 							"maximize",
 							"restore",
 							"close",
+							"get_current_window_id",
+							"get_application_windows",
+							"set_bounds",
+							"get_window_size",
+							"get_window_position",
 						],
 					},
 					descriptionCompressed: "Window operation verb.",
@@ -9658,21 +9805,43 @@ export const allActionsSpec = {
 				},
 				{
 					name: "x",
-					description: "Target X coordinate for window move.",
+					description: "Target X coordinate for window move / set_bounds.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "Target X coordinate for window move.",
+					descriptionCompressed:
+						"Target X coordinate for window move/set_bounds.",
 				},
 				{
 					name: "y",
-					description: "Target Y coordinate for window move.",
+					description: "Target Y coordinate for window move / set_bounds.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "Target Y coordinate for window move.",
+					descriptionCompressed:
+						"Target Y coordinate for window move/set_bounds.",
+				},
+				{
+					name: "width",
+					description: "Window width for set_bounds.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+					},
+					descriptionCompressed: "Window width for set_bounds.",
+				},
+				{
+					name: "height",
+					description: "Window height for set_bounds.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+					},
+					descriptionCompressed: "Window height for set_bounds.",
 				},
 			],
 			descriptionCompressed:
@@ -9690,6 +9859,8 @@ export const allActionsSpec = {
 							arrangement: "example",
 							x: 1,
 							y: 1,
+							width: 1,
+							height: 1,
 						},
 					},
 				},

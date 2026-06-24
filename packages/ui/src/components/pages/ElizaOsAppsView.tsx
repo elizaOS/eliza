@@ -1747,7 +1747,7 @@ export function MessagesPageView() {
                     </span>
                     <span>
                       {messageTypeLabel(message.type)} ·{" "}
-                      {new Date(message.date).toLocaleString()}
+                      {new Date(message.date).toLocaleString("en-US")}
                     </span>
                   </div>
                   <p className="mt-2 whitespace-pre-wrap text-txt">

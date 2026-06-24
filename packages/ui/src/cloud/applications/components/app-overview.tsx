@@ -5,6 +5,7 @@
  * helpers so the Steward Bearer token is attached on every target.
  */
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   Check,
@@ -43,7 +44,7 @@ import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
-import { regenerateAppApiKey } from "../lib/apps";
+import { deployApp, regenerateAppApiKey } from "../lib/apps";
 
 interface AppOverviewProps {
   app: App;
@@ -53,10 +54,12 @@ interface AppOverviewProps {
 export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const t = useCloudT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [displayApiKey, setDisplayApiKey] = useState(showApiKey || "");
   const [showKey, setShowKey] = useState(!!showApiKey);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
   const [monetizationEnabled, setMonetizationEnabled] = useState<
     boolean | null
   >(null);
@@ -145,6 +148,33 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     }
   }
 
+  async function handleDeploy(): Promise<void> {
+    setIsDeploying(true);
+    try {
+      await deployApp(app.id);
+      // Refresh the app record so the Deployment status flips to "building"
+      // without a manual reload (the key is a prefix of the auth-scoped key).
+      await queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+      toast.success(
+        t("cloud.apps.overview.deployStarted", {
+          defaultValue: "Deployment started",
+        }),
+      );
+    } catch (error) {
+      // Includes the gated `apps_deploy_disabled` case (deploy flag off) — show
+      // the server's reason rather than pretending it worked.
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("cloud.apps.overview.deployFailed", {
+              defaultValue: "Failed to start deployment",
+            }),
+      );
+    } finally {
+      setIsDeploying(false);
+    }
+  }
+
   const allowedOrigins: string[] = Array.isArray(app.allowed_origins)
     ? app.allowed_origins.filter(
         (origin): origin is string => typeof origin === "string",
@@ -225,7 +255,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           label={t("cloud.apps.overview.stat.totalUsers", {
             defaultValue: "Total Users",
           })}
-          value={app.total_users?.toLocaleString() || "0"}
+          value={app.total_users?.toLocaleString("en-US") || "0"}
           icon={<Shield className="h-5 w-5" />}
           accent="violet"
         />
@@ -233,10 +263,51 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           label={t("cloud.apps.overview.stat.totalRequests", {
             defaultValue: "Total Requests",
           })}
-          value={app.total_requests?.toLocaleString() || "0"}
+          value={app.total_requests?.toLocaleString("en-US") || "0"}
           icon={<TrendingUp className="h-5 w-5" />}
           accent="orange"
         />
+      </div>
+
+      {/* Deployment (#9145) — the client trigger for POST /apps/:id/deploy. */}
+      <div className="bg-neutral-900 rounded-sm p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <Rocket className="h-4 w-4 text-[#FF5800]" />
+            {t("cloud.apps.overview.deployment", {
+              defaultValue: "Deployment",
+            })}
+          </h3>
+          <button
+            type="button"
+            disabled={isDeploying || app.deployment_status === "building"}
+            onClick={handleDeploy}
+            className="text-xs text-neutral-400 hover:text-white flex items-center gap-1 transition-colors disabled:opacity-50"
+          >
+            {isDeploying ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Rocket className="h-3 w-3" />
+            )}
+            {app.deployment_status === "deployed"
+              ? t("cloud.apps.overview.redeploy", { defaultValue: "Redeploy" })
+              : t("cloud.apps.overview.deploy", { defaultValue: "Deploy" })}
+          </button>
+        </div>
+        <p className="text-xs text-neutral-500">
+          {app.deployment_status === "building"
+            ? t("cloud.apps.overview.deployBuilding", {
+                defaultValue: "A deployment is in progress…",
+              })
+            : app.deployment_status === "deployed"
+              ? t("cloud.apps.overview.deployLive", {
+                  defaultValue:
+                    "Your app is live. Redeploy to push the latest build.",
+                })
+              : t("cloud.apps.overview.deployDraft", {
+                  defaultValue: "Deploy this app to a managed container.",
+                })}
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

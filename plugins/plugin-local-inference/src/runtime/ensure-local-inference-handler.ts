@@ -346,6 +346,26 @@ function extractThinkingControl(
  * honours them (the forced-span / prefill / grammar / prefill-plan path is
  * local-model-only).
  */
+/**
+ * Per-step token cap for USER-VISIBLE local streaming (chat replies).
+ *
+ * Benchmarked on the fused eliza-1 model (#9174): the per-`llmStreamNext` step
+ * carries a large fixed FFI overhead, so the throughput↔smoothness curve has a
+ * knee around 8 — `8` yields ~10 UI updates per 80 tokens (clearly streaming)
+ * at a modest decode-throughput cost, whereas 1–4 fall off a throughput cliff
+ * and 16–32 look jumpy. Internal / planner / voice calls do NOT set this and
+ * keep the coarse, throughput-tuned runner default (32). Overridable via the
+ * shared `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP` env knob; the runner clamps it.
+ */
+const DEFAULT_CHAT_STREAM_TOKENS_PER_STEP = 8;
+function resolveChatStreamTokensPerStep(): number {
+	const raw = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP?.trim();
+	const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+	return Number.isFinite(parsed) && parsed > 0
+		? parsed
+		: DEFAULT_CHAT_STREAM_TOKENS_PER_STEP;
+}
+
 function engineGenerateArgsFromParams(
 	params: GenerateTextParams,
 	cacheKey: string | undefined,
@@ -365,6 +385,7 @@ function engineGenerateArgsFromParams(
 	spanSamplerPlan?: GenerateTextParams["spanSamplerPlan"];
 	thinking?: "auto" | "on" | "off";
 	onTextChunk?: (chunk: string) => void | Promise<void>;
+	maxTokensPerStep?: number;
 	voiceOutput?: "user-visible" | "internal";
 } {
 	const renderContent = (content: unknown): string => {
@@ -428,6 +449,13 @@ function engineGenerateArgsFromParams(
 		spanSamplerPlan: params.spanSamplerPlan,
 		thinking: extractThinkingControl(params.providerOptions),
 		onTextChunk,
+		// Stream user-visible replies in fine-grained steps so the dashboard
+		// renders token-by-token instead of in ~32-token jumps. Only when
+		// streaming (onTextChunk set) — internal/planner calls keep the coarse,
+		// throughput-tuned default. See resolveChatStreamTokensPerStep (#9174).
+		maxTokensPerStep: onTextChunk
+			? resolveChatStreamTokensPerStep()
+			: undefined,
 		voiceOutput:
 			params.voiceOutput ??
 			(typeof params.onStreamChunk === "function" ? "user-visible" : undefined),
@@ -967,6 +995,101 @@ function makeImageDescriptionHandler(): ImageDescriptionHandler {
 	};
 }
 
+// ── Bionic-host TRANSCRIPTION / IMAGE_DESCRIPTION (Android GPU delegation) ──
+//
+// On the bionic-delegated path the musl agent can't load the fused
+// libelizainference, so the engine-driven transcriber / memory-arbiter vision
+// paths above can't run here. Instead the audio / image bytes are forwarded to
+// the in-process bionic host over the UDS (op="asr" / op="image"), which runs
+// the fused Qwen3-ASR + mmproj vision on the Mali GPU and returns text. This is
+// the same delegation `BionicHostLoader` already does for text generation.
+
+/** The bionic-host loader when registered (exposes transcribe + describeImage). */
+function getBionicHostLoader(runtime: IAgentRuntime): BionicHostLoader | null {
+	const svc = (
+		runtime as { getService?: (name: string) => unknown }
+	).getService?.("localInferenceLoader");
+	if (
+		svc &&
+		typeof (svc as BionicHostLoader).transcribe === "function" &&
+		typeof (svc as BionicHostLoader).describeImage === "function"
+	) {
+		return svc as BionicHostLoader;
+	}
+	return null;
+}
+
+/** Pack a mono fp32 PCM buffer little-endian and base64-encode it for the UDS frame. */
+function float32ToBase64LE(pcm: Float32Array): string {
+	const buf = Buffer.allocUnsafe(pcm.length * 4);
+	for (let i = 0; i < pcm.length; i++) {
+		buf.writeFloatLE(pcm[i] ?? 0, i * 4);
+	}
+	return buf.toString("base64");
+}
+
+/** Resolve a vision request to base64 image bytes for the bionic host. */
+async function imageRequestToBase64(image: {
+	kind: "dataUrl" | "url";
+	dataUrl?: string;
+	url?: string;
+}): Promise<string> {
+	if (image.kind === "dataUrl" && image.dataUrl) {
+		const comma = image.dataUrl.indexOf(",");
+		return comma >= 0 ? image.dataUrl.slice(comma + 1) : image.dataUrl;
+	}
+	if (image.kind === "url" && image.url) {
+		const resp = await fetch(image.url);
+		if (!resp.ok) {
+			throw new Error(
+				`[local-inference] IMAGE_DESCRIPTION failed to fetch ${image.url}: ${resp.status}`,
+			);
+		}
+		return Buffer.from(await resp.arrayBuffer()).toString("base64");
+	}
+	throw new Error(
+		"[local-inference] IMAGE_DESCRIPTION could not resolve image bytes",
+	);
+}
+
+function makeBionicTranscriptionHandler(): TranscriptionHandler {
+	return async (runtime, params) => {
+		const signal = extractTranscriptionSignal(params);
+		throwIfAborted(signal);
+		const loader = getBionicHostLoader(runtime);
+		if (!loader) {
+			throw new Error(
+				"[local-inference] bionic-host TRANSCRIPTION requires the bionic-host loader (localInferenceLoader service)",
+			);
+		}
+		const audio = extractTranscriptionAudio(params);
+		throwIfAborted(signal);
+		const transcript = await loader.transcribe({
+			pcmBase64: float32ToBase64LE(audio.pcm),
+			sampleRate: audio.sampleRate,
+		});
+		throwIfAborted(signal);
+		return transcript;
+	};
+}
+
+function makeBionicImageDescriptionHandler(): ImageDescriptionHandler {
+	return async (runtime, params) => {
+		const loader = getBionicHostLoader(runtime);
+		if (!loader) {
+			throw new Error(
+				"[local-inference] bionic-host IMAGE_DESCRIPTION requires the bionic-host loader (localInferenceLoader service)",
+			);
+		}
+		const request = paramsToVisionRequest(params);
+		const description = await loader.describeImage({
+			imageBase64: await imageRequestToBase64(request.image),
+			prompt: request.prompt,
+		});
+		return normalizeImageDescription(description);
+	};
+}
+
 /**
  * Register the device-bridge loader on the runtime. Accepts load/generate
  * calls whether or not a mobile device is currently connected — parked
@@ -1409,20 +1532,28 @@ export async function ensureLocalInferenceHandler(
 		// makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
 		// (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a
 		// first-class Eliza-1 surface, not opt-in.)
+		// On the bionic-delegated path the fused lib lives in the app process, not
+		// this musl agent — so transcription + vision must forward audio/image
+		// bytes to the bionic host (op="asr" / op="image") rather than the
+		// in-process engine / memory-arbiter, which can't load the lib here.
 		runtimeWithRegistration.registerModel(
 			ModelType.TRANSCRIPTION,
-			makeTranscriptionHandler(),
+			bionicHostRegistered
+				? makeBionicTranscriptionHandler()
+				: makeTranscriptionHandler(),
 			provider,
 			LOCAL_INFERENCE_PRIORITY,
 		);
 		runtimeWithRegistration.registerModel(
 			ModelType.IMAGE_DESCRIPTION,
-			makeImageDescriptionHandler(),
+			bionicHostRegistered
+				? makeBionicImageDescriptionHandler()
+				: makeImageDescriptionHandler(),
 			provider,
 			LOCAL_INFERENCE_PRIORITY,
 		);
 		logger.info(
-			`[local-inference] Registered ${provider} voice and vision handlers for TEXT_TO_SPEECH / TRANSCRIPTION / IMAGE_DESCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
+			`[local-inference] Registered ${provider} voice and vision handlers for TEXT_TO_SPEECH / TRANSCRIPTION / IMAGE_DESCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}${bionicHostRegistered ? " (bionic-host delegated)" : ""}`,
 		);
 	} catch (err) {
 		logger.warn(

@@ -33,6 +33,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "dependencies": {

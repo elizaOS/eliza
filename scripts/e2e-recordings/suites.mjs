@@ -14,14 +14,6 @@ export const UI_E2E_SUITES = [
     recordEnv: { ELIZA_UI_SMOKE_FORCE_STUB: "1" },
   },
   {
-    name: "cloud-frontend",
-    displayName: "Cloud frontend",
-    configDir: "packages/cloud-frontend",
-    script: "test:e2e",
-    coverage:
-      "Runs cloud login/session, dashboard routes, settings, API key, billing, route coverage, visual pages, screenshots, traces, and videos.",
-  },
-  {
     name: "cloud-e2e",
     displayName: "Cloud full-stack mock e2e",
     configDir: "packages/test/cloud-e2e",

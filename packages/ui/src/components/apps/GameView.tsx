@@ -27,7 +27,7 @@ import {
 } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTimeout } from "../../hooks/useTimeout";
-import { useApp } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state";
 import {
   navigatePreOpenedWindow,
   openExternalUrl,
@@ -188,7 +188,7 @@ export function DesktopGameWindowControls({
 }: {
   gameWindowId: string | null;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -623,7 +623,24 @@ export function GameView() {
     setState,
     setActionNotice,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    activeGameRunId: s.activeGameRunId,
+    activeGameApp: s.activeGameApp,
+    activeGameDisplayName: s.activeGameDisplayName,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    activeGameSandbox: s.activeGameSandbox,
+    activeGamePostMessageAuth: s.activeGamePostMessageAuth,
+    activeGamePostMessagePayload: s.activeGamePostMessagePayload,
+    activeGameSession: s.activeGameSession,
+    gameOverlayEnabled: s.gameOverlayEnabled,
+    logs: s.logs,
+    logLoadError: s.logLoadError,
+    loadLogs: s.loadLogs,
+    setState: s.setState,
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
   const isElectrobun = isElectrobunRuntime();
   const isCompactLayout = useMediaQuery("(max-width: 1023px)");
   const [stopping, setStopping] = useState(false);

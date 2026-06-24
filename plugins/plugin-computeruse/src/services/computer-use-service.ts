@@ -6,6 +6,10 @@ import {
   isApprovalMode,
 } from "../approval-manager.js";
 import {
+  getCoordOcrProvider,
+  getSetOfMarksProvider,
+} from "../mobile/ocr-provider.js";
+import {
   clickBrowser,
   closeBrowser,
   closeBrowserTab,
@@ -37,25 +41,38 @@ import {
   driverClickWithModifiers,
   driverDoubleClick,
   driverDrag,
+  driverDragPath,
   driverGetCursorPosition,
   driverKeyCombo,
+  driverKeyDown,
   driverKeyPress,
+  driverKeyUp,
+  driverMiddleClick,
+  driverMouseDown,
   driverMouseMove,
+  driverMouseUp,
   driverRightClick,
   driverScroll,
+  driverSetValue,
   driverType,
 } from "../platform/driver.js";
 import {
   appendFile,
+  createDirectory,
   deleteDirectory,
   deleteFile,
+  directoryExists,
   editFile,
   fileExists,
+  getFileSize,
   listDirectory,
+  readBytes,
   readFile,
+  writeBytes,
   writeFile,
 } from "../platform/file-ops.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
+import { killApp, launchApp, openTarget } from "../platform/launch.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
 import {
   clearTerminal,
@@ -70,11 +87,15 @@ import {
   arrangeWindows,
   closeWindow,
   focusWindow,
+  getActiveWindow,
+  getApplicationWindows,
   getScreenSize,
+  getWindowBounds,
   listWindows,
   maximizeWindow,
   minimizeWindow,
   moveWindow,
+  resizeWindow,
   restoreWindow,
   switchWindow,
 } from "../platform/windows-list.js";
@@ -120,8 +141,12 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "double_click",
   "right_click",
   "mouse_move",
+  "middle_click",
+  "mouse_down",
+  "mouse_up",
   "scroll",
   "drag",
+  "set_value",
 ]);
 
 function errorMessage(error: unknown): string {
@@ -251,14 +276,23 @@ export class ComputerUseService extends Service {
       case "double_click":
       case "right_click":
       case "mouse_move":
+      case "middle_click":
+      case "mouse_down":
+      case "mouse_up":
       case "type":
       case "key_press":
       case "key_combo":
+      case "key_down":
+      case "key_up":
       case "scroll":
       case "drag":
       case "get_cursor_position":
       case "detect_elements":
       case "ocr":
+      case "open":
+      case "launch":
+      case "kill_app":
+      case "set_value":
         return this.executeDesktopAction({
           ...commandParameters<DesktopActionParams>(parameters),
           action: this.mapDesktopCommandToAction(command),
@@ -311,6 +345,11 @@ export class ComputerUseService extends Service {
       case "file_upload":
       case "file_download":
       case "file_list_downloads":
+      case "file_read_bytes":
+      case "file_write_bytes":
+      case "file_create_dir":
+      case "file_directory_exists":
+      case "file_get_file_size":
         return this.executeFileAction({
           ...commandParameters<FileActionParams>(parameters),
           action: this.mapFileCommandToAction(command),
@@ -349,20 +388,8 @@ export class ComputerUseService extends Service {
         return this.failEntry(entry, { success: false, error: approvalError });
       }
 
-      if (params.action === "detect_elements") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "Element detection is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
-      }
-
-      if (params.action === "ocr") {
-        return this.failEntry(entry, {
-          success: false,
-          error:
-            "OCR is not available on local machines. Use a screenshot plus model reasoning instead.",
-        });
+      if (params.action === "ocr" || params.action === "detect_elements") {
+        return this.runOcrOrDetect(entry, params);
       }
 
       const targetDisplayId = this.resolveDisplayIdForAction(params);
@@ -407,6 +434,24 @@ export class ComputerUseService extends Service {
           await driverMouseMove(g.x, g.y);
           break;
         }
+        case "middle_click": {
+          this.requireCoordinate(params.coordinate, "middle_click");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMiddleClick(g.x, g.y);
+          break;
+        }
+        case "mouse_down": {
+          this.requireCoordinate(params.coordinate, "mouse_down");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseDown(g.x, g.y, params.button ?? "left");
+          break;
+        }
+        case "mouse_up": {
+          this.requireCoordinate(params.coordinate, "mouse_up");
+          const g = this.toGlobal(params, params.coordinate);
+          await driverMouseUp(g.x, g.y, params.button ?? "left");
+          break;
+        }
         case "type":
           if (!params.text) throw new Error("text is required for type action");
           await driverType(params.text);
@@ -420,6 +465,18 @@ export class ComputerUseService extends Service {
             throw new Error("key is required for key_combo action");
           }
           await driverKeyCombo(params.key);
+          break;
+        case "key_down":
+          if (!params.key) {
+            throw new Error("key is required for key_down action");
+          }
+          await driverKeyDown(params.key);
+          break;
+        case "key_up":
+          if (!params.key) {
+            throw new Error("key is required for key_up action");
+          }
+          await driverKeyUp(params.key);
           break;
         case "scroll": {
           this.requireCoordinate(params.coordinate, "scroll");
@@ -442,6 +499,14 @@ export class ComputerUseService extends Service {
           });
         }
         case "drag": {
+          // A `path` of ≥2 points traces a real polyline (curves, corners,
+          // marquee, swipe paths); otherwise fall back to a straight
+          // startCoordinate→coordinate drag.
+          if (params.path && params.path.length >= 2) {
+            const global = params.path.map((p) => this.toGlobal(params, p));
+            await driverDragPath(global);
+            break;
+          }
           this.requireCoordinate(
             params.startCoordinate,
             "drag",
@@ -451,6 +516,51 @@ export class ComputerUseService extends Service {
           const start = this.toGlobal(params, params.startCoordinate);
           const end = this.toGlobal(params, params.coordinate);
           await driverDrag(start.x, start.y, end.x, end.y);
+          break;
+        }
+        case "open": {
+          if (!params.target) {
+            throw new Error("target is required for open action");
+          }
+          await openTarget(params.target);
+          return this.succeedEntry(entry, {
+            success: true,
+            message: `Opened ${params.target}.`,
+          });
+        }
+        case "launch": {
+          if (!params.app) {
+            throw new Error("app is required for launch action");
+          }
+          const launched = await launchApp(params.app, params.appArgs ?? []);
+          return this.succeedEntry(entry, {
+            success: true,
+            data: { pid: launched.pid, command: launched.command },
+            message: `Launched ${params.app} (pid ${launched.pid}).`,
+          });
+        }
+        case "kill_app": {
+          // Accepts a pid or an app/process name via `target` (pairs with launch).
+          const target = params.target ?? params.app;
+          if (!target) {
+            throw new Error(
+              "target (pid or app name) is required for kill_app action",
+            );
+          }
+          const killed = await killApp(String(target));
+          return this.succeedEntry(entry, {
+            success: true,
+            data: killed,
+            message: `Terminated ${killed.target}.`,
+          });
+        }
+        case "set_value": {
+          this.requireCoordinate(params.coordinate, "set_value");
+          if (typeof params.text !== "string") {
+            throw new Error("text (the value) is required for set_value action");
+          }
+          const g = this.toGlobal(params, params.coordinate);
+          await driverSetValue(g.x, g.y, params.text);
           break;
         }
         default:
@@ -492,6 +602,140 @@ export class ComputerUseService extends Service {
       return this.failEntry(entry, {
         success: false,
         error: errorMessage(error),
+      });
+    }
+  }
+
+  /**
+   * `ocr` / `detect_elements` — real on-device OCR via the registered
+   * CoordOcrProvider (plugin-vision contributes native Windows.Media.Ocr / Apple
+   * Vision / docTR through `registerCoordOcrProvider`). Replaces the former
+   * "not available on local machines" stub. Read-only; coordinates are
+   * display-local so the agent can click them directly.
+   */
+  private async runOcrOrDetect(
+    entry: ActionHistoryEntry,
+    params: DesktopActionParams,
+  ): Promise<ComputerActionResult> {
+    const displayId =
+      params.displayId ?? this.resolveDisplayIdForAction(params);
+
+    // detect_elements prefers Set-of-Marks grounding when a provider is
+    // registered (GGUF YOLO icons + OCR text fused into 1-indexed numbered
+    // marks + overlay, #9170 M9). Falls back to OCR-only text elements.
+    if (params.action === "detect_elements") {
+      const somResult = await this.runSetOfMarksDetect(entry, displayId);
+      if (somResult) return somResult;
+    }
+
+    const provider = getCoordOcrProvider();
+    if (!provider) {
+      return this.failEntry(entry, {
+        success: false,
+        error:
+          "No OCR provider is registered. Enable @elizaos/plugin-vision for on-device OCR (Windows.Media.Ocr / Apple Vision / docTR).",
+      });
+    }
+    try {
+      const cap = await captureDisplay(displayId);
+      const { blocks } = await provider.describe({
+        displayId: String(cap.display.id),
+        sourceX: 0,
+        sourceY: 0,
+        pngBytes: new Uint8Array(cap.frame),
+      });
+      if (params.action === "detect_elements") {
+        const elements = blocks.map((b, i) => ({
+          id: `e${i + 1}`,
+          kind: "text" as const,
+          text: b.text,
+          bbox: [b.bbox.x, b.bbox.y, b.bbox.width, b.bbox.height] as [
+            number,
+            number,
+            number,
+            number,
+          ],
+          semantic_position: b.semantic_position,
+          displayId: cap.display.id,
+        }));
+        return this.succeedEntry(entry, {
+          success: true,
+          displayId: cap.display.id,
+          data: { elements, count: elements.length },
+          message: `Detected ${elements.length} text element(s) on display ${cap.display.id}.`,
+        });
+      }
+      const text = blocks.map((b) => b.text).join("\n");
+      return this.succeedEntry(entry, {
+        success: true,
+        displayId: cap.display.id,
+        data: { text, blocks },
+        message: `OCR found ${blocks.length} text block(s) on display ${cap.display.id}.`,
+      });
+    } catch (error) {
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  /**
+   * Set-of-Marks `detect_elements` path (#9170 M9). Returns `null` when no SoM
+   * provider is registered so the caller falls back to OCR-only detection.
+   * Each numbered mark becomes an element whose `center` is the click target
+   * the VLM's chosen number resolves to; the numbered-overlay PNG is returned
+   * for the prompt under `data.setOfMarks.overlay`.
+   */
+  private async runSetOfMarksDetect(
+    entry: ActionHistoryEntry,
+    displayId: number,
+  ): Promise<ComputerActionResult | null> {
+    const som = getSetOfMarksProvider();
+    if (!som) return null;
+    try {
+      const cap = await captureDisplay(displayId);
+      const { marks, overlayPngBase64 } = await som.describe({
+        displayId: String(cap.display.id),
+        sourceX: 0,
+        sourceY: 0,
+        pngBytes: new Uint8Array(cap.frame),
+        renderOverlay: true,
+      });
+      const elements = marks.map((m) => ({
+        id: `m${m.index}`,
+        mark: m.index,
+        kind: m.source,
+        text: m.label ?? "",
+        bbox: [m.bbox[0], m.bbox[1], m.bbox[2], m.bbox[3]] as [
+          number,
+          number,
+          number,
+          number,
+        ],
+        center: [m.center[0], m.center[1]] as [number, number],
+        score: m.score,
+        displayId: cap.display.id,
+      }));
+      return this.succeedEntry(entry, {
+        success: true,
+        displayId: cap.display.id,
+        data: {
+          elements,
+          count: elements.length,
+          setOfMarks: {
+            marks,
+            ...(overlayPngBase64 ? { overlay: overlayPngBase64 } : {}),
+          },
+        },
+        message: `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}.`,
+      });
+    } catch (error) {
+      // SoM is best-effort; surface a clear failure rather than silently
+      // dropping to OCR (the caller already chose SoM by registering it).
+      return this.failEntry(entry, {
+        success: false,
+        error: `Set-of-Marks detection failed: ${errorMessage(error)}`,
       });
     }
   }
@@ -848,6 +1092,52 @@ export class ComputerUseService extends Service {
             success: true,
             message: "Window closed.",
           });
+        case "get_current_window_id": {
+          const active = getActiveWindow();
+          return this.succeedEntry(entry, {
+            success: true,
+            windowId: active?.id ?? null,
+            window: active,
+            message: active
+              ? `Focused window: [${active.id}] ${active.app} - ${active.title}`
+              : "No focused window.",
+          });
+        }
+        case "get_application_windows": {
+          const appName = params.appName ?? params.title ?? params.window;
+          if (!appName) {
+            throw new Error("appName is required for get_application_windows");
+          }
+          const windows = getApplicationWindows(appName);
+          return this.succeedEntry(entry, {
+            success: true,
+            windows,
+            count: windows.length,
+          });
+        }
+        case "set_bounds": {
+          const result = resizeWindow(
+            this.requireWindowTarget(params),
+            this.requireNumber(params.x, "x is required for set_bounds"),
+            this.requireNumber(params.y, "y is required for set_bounds"),
+            params.width,
+            params.height,
+          );
+          return this.succeedEntry(entry, result);
+        }
+        case "get_window_size":
+        case "get_window_position": {
+          // windowId is optional — defaults to the focused/foreground window.
+          const bounds = getWindowBounds(params.windowId);
+          return this.succeedEntry(entry, {
+            success: true,
+            bounds,
+            message:
+              params.action === "get_window_size"
+                ? `Window size: ${bounds.width}x${bounds.height}.`
+                : `Window position: (${bounds.x}, ${bounds.y}).`,
+          });
+        }
         default:
           return this.failEntry(entry, {
             success: false,
@@ -944,6 +1234,31 @@ export class ComputerUseService extends Service {
           return this.finishFileEntry(entry, await listDirectory(targetPath));
         case "delete_directory":
           return this.finishFileEntry(entry, await deleteDirectory(targetPath));
+        case "read_bytes":
+          return this.finishFileEntry(
+            entry,
+            await readBytes(targetPath, params.offset, params.length),
+          );
+        case "write_bytes":
+          if (typeof params.base64 !== "string") {
+            throw new Error("base64 is required for file write_bytes");
+          }
+          return this.finishFileEntry(
+            entry,
+            await writeBytes(targetPath, params.base64),
+          );
+        case "create_dir":
+          return this.finishFileEntry(
+            entry,
+            await createDirectory(targetPath),
+          );
+        case "directory_exists":
+          return this.finishFileEntry(
+            entry,
+            await directoryExists(targetPath),
+          );
+        case "get_file_size":
+          return this.finishFileEntry(entry, await getFileSize(targetPath));
         default:
           return this.failEntry(entry, {
             success: false,
@@ -1273,6 +1588,14 @@ export class ComputerUseService extends Service {
         return "restore_window";
       case "close":
         return "close_window";
+      case "get_current_window_id":
+      case "get_application_windows":
+      case "get_window_size":
+      case "get_window_position":
+        // Read-only getters — auto-approve (mapped to the SAFE list_windows).
+        return "list_windows";
+      case "set_bounds":
+        return "move_window";
     }
   }
 
@@ -1404,6 +1727,16 @@ export class ComputerUseService extends Service {
         return "download";
       case "file_list_downloads":
         return "list_downloads";
+      case "file_read_bytes":
+        return "read_bytes";
+      case "file_write_bytes":
+        return "write_bytes";
+      case "file_create_dir":
+        return "create_dir";
+      case "file_directory_exists":
+        return "directory_exists";
+      case "file_get_file_size":
+        return "get_file_size";
       default:
         return "read";
     }
@@ -1804,10 +2137,44 @@ export class ComputerUseService extends Service {
       const image =
         getSetting("COMPUTERUSE_SANDBOX_IMAGE") ??
         getSetting("COMPUTER_USE_SANDBOX_IMAGE");
-      if (backend === "docker" && image && image.trim().length > 0) {
+      const trimmedImage = image?.trim();
+      // Remote-guest RPC options for the VM providers (#9170 M13).
+      const rpcUrl = (
+        getSetting("COMPUTERUSE_SANDBOX_RPC_URL") ??
+        getSetting("COMPUTER_USE_SANDBOX_RPC_URL")
+      )?.trim();
+      const rpcPortRaw =
+        getSetting("COMPUTERUSE_SANDBOX_RPC_PORT") ??
+        getSetting("COMPUTER_USE_SANDBOX_RPC_PORT");
+      const rpcPort = rpcPortRaw ? Number(rpcPortRaw) : undefined;
+      const options =
+        rpcUrl || (rpcPort !== undefined && Number.isFinite(rpcPort))
+          ? {
+              ...(rpcUrl ? { rpcUrl } : {}),
+              ...(rpcPort !== undefined && Number.isFinite(rpcPort)
+                ? { rpcPort }
+                : {}),
+            }
+          : undefined;
+      // docker + qemu require an image; wsb (Windows Sandbox) is imageless.
+      if (
+        (backend === "docker" || backend === "qemu") &&
+        trimmedImage &&
+        trimmedImage.length > 0
+      ) {
         this.cuConfig.sandbox = {
           backend,
-          image: image.trim(),
+          image: trimmedImage,
+          ...(options ? { options } : {}),
+        };
+      } else if (backend === "wsb") {
+        this.cuConfig.sandbox = {
+          backend,
+          image:
+            trimmedImage && trimmedImage.length > 0
+              ? trimmedImage
+              : "windows-sandbox",
+          ...(options ? { options } : {}),
         };
       } else {
         this.cuConfig.sandbox = undefined;

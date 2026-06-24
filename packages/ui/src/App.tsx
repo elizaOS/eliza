@@ -884,8 +884,8 @@ function ViewLayoutSurface({
 /**
  * Fallback shown when a view/tab is unavailable. Chat is the always-present
  * ContinuousChatOverlay that floats over every view — views never embed an
- * inline ChatView — so an unavailable view falls back to the app/view
- * launcher, not a chat surface.
+ * inline ChatView — so an unavailable view falls back to the Springboard page
+ * of the retained Home/Springboard surface, not a chat surface.
  */
 function ViewUnavailableFallback(): ReactNode {
   return <HomeScreenMount initialPage="springboard" />;
@@ -1399,9 +1399,9 @@ function ContinuousChatOverlayMount(): ReactNode {
 }
 
 /**
- * The iOS-style home dashboard for the /chat route — clock, recent activity,
- * recent messages, a customizable widget area, and pinned view tiles. Sits
- * behind the always-present chat overlay. Wires tile taps to the real nav:
+ * The iOS-style home dashboard for the /chat route — recent activity, recent
+ * messages, and a customizable widget area. Sits beside the retained
+ * Springboard page behind the always-present chat overlay. Wires tile taps to the real nav:
  * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
  */
 function HomeScreenMount({

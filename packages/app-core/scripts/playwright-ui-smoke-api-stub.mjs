@@ -205,14 +205,6 @@ const smokeViewDeclarations = [
     ["gui", "tui"],
   ],
   [
-    "clawville",
-    "Clawville",
-    "plugin-clawville",
-    "/clawville",
-    "ClawvilleView",
-    ["gui", "tui"],
-  ],
-  [
     "screenshare",
     "Screenshare",
     "plugin-screenshare",

@@ -401,6 +401,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/platform/ios-runtime": () =>
     import("../../platform/ios-runtime.ts"),
   "@elizaos/ui/spatial": () => import("../../spatial/index.ts"),
+  "@elizaos/ui/spatial/tui": () => import("../../spatial/tui/index.ts"),
   "@elizaos/ui/state": () => import("../../state/index.ts"),
   "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
   "@elizaos/ui/utils": () => import("../../utils/index.ts"),

@@ -756,12 +756,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       const previousConversationId = activeConversationIdRef.current;
       const previousMessages = conversationMessagesRef.current;
       const previousCutoffTs = companionMessageCutoffTs;
-      // Snapshot the navigation epoch: if the user switches conversations while
-      // this one is still being created (e.g. taps the soft-undo toast in the
-      // gap between reset and the create resolving, #8929), we must NOT switch
-      // to the fresh conversation and clobber their choice. handleSelectConversation
-      // bumps this epoch, so a change means "navigated away during creation".
-      const creationEpoch = conversationHydrationEpochRef.current;
       const hasUserMessage = previousMessages.some(
         (message) => message.role === "user",
       );
@@ -773,6 +767,13 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
 
       send.interruptActiveChatPipeline();
       resetConversationDraftState();
+      // Snapshot the navigation epoch AFTER the draft reset — `resetConversationDraftState`
+      // itself bumps this epoch, so capturing it before (the old order) made the
+      // navigated-away guard below fire on EVERY call, silently abandoning the
+      // freshly-created conversation instead of activating it (clear showed no new
+      // chat and orphan drafts piled up). Now only a genuine handleSelectConversation
+      // during the create await — a real navigation away — changes it.
+      const creationEpoch = conversationHydrationEpochRef.current;
 
       try {
         const { conversation: rawConversation, greeting: inlineGreeting } =

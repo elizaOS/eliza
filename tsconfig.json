@@ -110,7 +110,6 @@
       "@elizaos/plugin-capacitor-bridge": [
         "./plugins/plugin-capacitor-bridge/src/index.ts"
       ],
-      "@elizaos/plugin-clawville": ["./plugins/plugin-clawville/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "./plugins/plugin-coding-tools/src/index.ts"
       ],

@@ -4,6 +4,11 @@
 
 import crypto from "crypto";
 import { type App, type AppUser, appsRepository, type NewApp } from "../../db/repositories/apps";
+
+// Re-export the app row types so consumers (and tests) can import them from the
+// service module rather than reaching into the repository directly.
+export type { App, AppUser, NewApp } from "../../db/repositories/apps";
+
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";

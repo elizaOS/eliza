@@ -1,5 +1,7 @@
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
+  Check,
+  Copy,
   FileText,
   Film,
   LayoutGrid,
@@ -49,19 +51,19 @@ import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
+  classifyComposerPaste,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
-  pastedTextToAttachment,
-  shouldConvertPasteToAttachment,
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { SensitiveRequestBlock } from "../chat/MessageContent";
+import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
-import type { ShellMessage } from "./shell-state";
+import { type ShellMessage, selectVisibleShellMessages } from "./shell-state";
 import { TopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
 import { deriveChannelTopics, groupMessagesByTopic } from "./topic-grouping";
@@ -169,10 +171,6 @@ const SHEET_TOP_MARGIN = 72;
 // of resting free — so near-detent releases are deterministic + clean, and only
 // the clear gaps between detents keep the free-drag rest height.
 const SHEET_DETENT_MAGNET = 64;
-// Cap how many turns are actually rendered. Older messages stay in state (the
-// agent's context is untouched) — this only bounds DOM nodes so a long thread
-// can't jank scrolling on a phone, without pulling in a virtualizer.
-const MAX_RENDERED_MESSAGES = 80;
 
 // Feature flag: the resting one-tap prompt-suggestion strip. Off for now so the
 // composer can be tested without it; flip to true to bring the strip back.
@@ -480,13 +478,12 @@ function SheetGrabber({
       <span
         aria-hidden="true"
         className={cn(
-          // 30% wider bar (w-11 → w-14), a touch taller, brighter.
-          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
-          // keyboard handlers live on the button wrapper, so the affordance still
-          // works — we just don't draw a faux grabber line; the iOS native home
-          // indicator is the only bottom bar. Kept in layout so the hit zone is
-          // unchanged.
-          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
+          // The visible grabber line. Its show/hide is driven by the WRAPPER's
+          // `grabberOpacity` crossfade (fades in over [0.55, 0.95] of the open),
+          // strictly anti-phase with the pill bar so the two are never on screen
+          // together. The bar paints at full opacity — a prior regression pinned
+          // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
+          "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -550,14 +547,12 @@ function PillHandle({
       <span
         aria-hidden="true"
         className={cn(
-          // Identical to the SheetGrabber bar — the handle keeps the same white
-          // shape + color whether the chat is open or fully collapsed to the pill.
-          // Visually hidden bar (opacity-0): the drag/tap-to-open gesture and the
-          // keyboard handlers live on the button wrapper, so the affordance still
-          // works — we just don't draw a faux grabber line; the iOS native home
-          // indicator is the only bottom bar. Kept in layout so the hit zone is
-          // unchanged.
-          "h-2.5 w-16 rounded-full opacity-0 transition-colors duration-300",
+          // Identical to the SheetGrabber bar — same white shape + color whether
+          // the chat is open or collapsed to the pill. Its show/hide is driven by
+          // the WRAPPER's `pillOpacity` crossfade (anti-phase with the grabber).
+          // The bar paints at full opacity — a prior regression pinned it to
+          // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
+          "h-2.5 w-16 rounded-full opacity-100 transition-colors duration-300",
           glow ? "bg-[rgba(255,180,120,0.8)]" : "bg-white/45",
         )}
       />
@@ -981,10 +976,10 @@ const ThreadLine = React.memo(function ThreadLine({
             <motion.span
               key="copied"
               data-testid="thread-line-copied"
-              initial={{ opacity: 0, y: 4 }}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
+              transition={{ duration: reduce ? 0 : 0.18 }}
               className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black shadow"
             >
               Copied
@@ -1224,25 +1219,47 @@ export function ContinuousChatOverlay({
   // fling a history thread open to half instead of resting on the input bar).
   const suppressExpandOnFocusRef = React.useRef(false);
   const focusThreadRef = React.useRef(false);
-  // Recomputed only when the thread changes — NOT on every drag/draft re-render.
-  // Filter empty turns, then keep only the most recent window (cap DOM nodes).
+  // Recomputed only when the thread or phase changes — NOT on every drag/draft
+  // re-render. Pure windowing (empty-turn filter + most-recent cap, with the
+  // streaming-assistant exception) lives in shell-state so it's unit-tested.
   const visibleMessages = React.useMemo(
-    () =>
-      messages
-        // Drop empty turns — EXCEPT the in-flight assistant turn while a reply is
-        // streaming, so its bubble can show the breathing dots anchored where the
-        // text fills in (then the text replaces them). It's dropped again the
-        // moment we leave `responding`, so a failed/empty turn never lingers.
-        .filter(
-          (m) =>
-            m.content.trim() ||
-            (m.role === "assistant" && phase === "responding"),
-        )
-        .slice(-MAX_RENDERED_MESSAGES),
+    () => selectVisibleShellMessages(messages, phase),
     [messages, phase],
   );
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
+
+  // Copy the whole thread as a plain-text transcript from the full-state header
+  // — parity with the desktop ChatView header. Flashes a check on success.
+  const [conversationCopied, setConversationCopied] = React.useState(false);
+  const conversationCopiedTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  React.useEffect(
+    () => () => {
+      if (conversationCopiedTimerRef.current) {
+        clearTimeout(conversationCopiedTimerRef.current);
+      }
+    },
+    [],
+  );
+  const handleCopyConversation = React.useCallback(() => {
+    const transcript = conversationTranscriptText(
+      visibleMessages.map((m) => ({ role: m.role, text: m.content })),
+      { agentName },
+    );
+    if (!transcript) return;
+    void copyTextToClipboard(transcript);
+    setConversationCopied(true);
+    if (conversationCopiedTimerRef.current) {
+      clearTimeout(conversationCopiedTimerRef.current);
+    }
+    conversationCopiedTimerRef.current = setTimeout(
+      () => setConversationCopied(false),
+      2000,
+    );
+  }, [agentName, visibleMessages]);
+
   // The last line id the scroll effect pinned to — lets it tell a NEW line
   // (always pin to bottom) from streaming growth of the current line (follow
   // only when the reader is already at the bottom).
@@ -1406,11 +1423,17 @@ export function ContinuousChatOverlay({
     // flashes at the top. Infrequent — once per turn, not per token.
     if (isNewLine || justOpened) {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      if (isNewLine && !justOpened && !reduce && atBottom) {
-        endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-      } else {
-        // justOpened OR isNewLine (always re-pin) OR atBottom — all true here.
-        el.scrollTop = el.scrollHeight;
+      // Pin to the latest line ONLY on first open, or when the reader is already
+      // resting at the bottom. If they have scrolled UP to read history, a new
+      // line must NOT yank them down — the previous code force-pinned on every
+      // new line (the `else` ran whenever !atBottom), which is exactly the
+      // "scroll up to the first message and get snapped back to the bottom" bug.
+      if (justOpened || atBottom) {
+        if (isNewLine && !justOpened && !reduce) {
+          endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        } else {
+          el.scrollTop = el.scrollHeight;
+        }
       }
       if (justOpened && focusThreadRef.current) {
         el.focus();
@@ -1660,14 +1683,33 @@ export function ContinuousChatOverlay({
   const [bottomPad, setBottomPad] = React.useState(0);
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const sync = () => {
-      setViewport(readViewport());
+    const commit = () => {
+      // Bail out of the re-render when the viewport values are unchanged — vv
+      // `scroll` fires constantly while the keyboard animates but the height/
+      // inset frequently don't actually move between events.
+      setViewport((prev) => {
+        const next = readViewport();
+        return prev.height === next.height &&
+          prev.keyboardInset === next.keyboardInset &&
+          prev.innerHeight === next.innerHeight
+          ? prev
+          : next;
+      });
       const el = overlayRef.current;
       if (el) {
-        setBottomPad(
-          Number.parseFloat(getComputedStyle(el).paddingBottom) || 0,
-        );
+        const pad = Number.parseFloat(getComputedStyle(el).paddingBottom) || 0;
+        setBottomPad((prev) => (prev === pad ? prev : pad));
       }
+    };
+    // Coalesce the high-rate vv `scroll` to at most one commit per frame so the
+    // keyboard-animation storm can't drive >60 forced style reads + setStates/s.
+    let rafId = 0;
+    const sync = () => {
+      if (rafId !== 0) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        commit();
+      });
     };
     // A viewport SIZE change (rotation) must never strand the pill↔input morph
     // mid-crossfade — rotation often cancels the in-flight pointer with no
@@ -1685,8 +1727,9 @@ export function ContinuousChatOverlay({
     const vv = window.visualViewport;
     window.addEventListener("resize", syncAndSettle);
     vv?.addEventListener("resize", syncAndSettle);
-    vv?.addEventListener("scroll", sync);
+    vv?.addEventListener("scroll", sync, { passive: true });
     return () => {
+      if (rafId !== 0) cancelAnimationFrame(rafId);
       window.removeEventListener("resize", syncAndSettle);
       vv?.removeEventListener("resize", syncAndSettle);
       vv?.removeEventListener("scroll", sync);
@@ -3090,6 +3133,18 @@ export function ContinuousChatOverlay({
                     onClick={toggleMaximize}
                     testId="chat-full-maximize"
                   />
+                  {hasThread ? (
+                    <HeaderButton
+                      icon={conversationCopied ? Check : Copy}
+                      label={
+                        conversationCopied
+                          ? "conversation copied"
+                          : "copy conversation"
+                      }
+                      onClick={handleCopyConversation}
+                      testId="chat-full-copy-conversation"
+                    />
+                  ) : null}
                   <HeaderButton
                     icon={RotateCcw}
                     label="clear conversation"
@@ -3386,25 +3441,23 @@ export function ContinuousChatOverlay({
                 }}
                 onBlur={() => setComposerFocused(false)}
                 onPaste={(e) => {
-                  // Paste images/files straight into the composer (cmd/ctrl+V).
-                  const files = Array.from(e.clipboardData?.files ?? []);
-                  if (files.length > 0) {
+                  // Shared with the desktop composer: a pasted image/file
+                  // attaches, a large plain-text paste becomes a collapsed
+                  // text-attachment chip, and small text falls through to the
+                  // textarea as normal.
+                  const intent = classifyComposerPaste({
+                    files: Array.from(e.clipboardData?.files ?? []),
+                    text: e.clipboardData?.getData("text") ?? "",
+                  });
+                  if (intent.kind === "files") {
                     e.preventDefault();
-                    addImageFiles(files);
+                    addImageFiles(intent.files);
                     return;
                   }
-                  // A large plain-text paste becomes a collapsed text
-                  // attachment chip (Claude-Code style) instead of flooding the
-                  // textarea; small pastes fall through to the textarea as
-                  // normal.
-                  const text = e.clipboardData?.getData("text") ?? "";
-                  if (shouldConvertPasteToAttachment(text)) {
+                  if (intent.kind === "text-attachment") {
                     e.preventDefault();
                     setPendingImages((prev) =>
-                      [...prev, pastedTextToAttachment(text)].slice(
-                        0,
-                        MAX_CHAT_IMAGES,
-                      ),
+                      [...prev, intent.attachment].slice(0, MAX_CHAT_IMAGES),
                     );
                   }
                 }}

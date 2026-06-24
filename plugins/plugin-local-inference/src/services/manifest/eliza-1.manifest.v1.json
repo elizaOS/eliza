@@ -588,6 +588,28 @@
 		},
 		"defaultEligible": {
 			"type": "boolean"
+		},
+		"schemaVersion": {
+			"description": "Manifest format version. \"2\" adds the Gemma 4 tokenizer/kv/mtp identity block; absent/\"1\" is the pre-cutover shape.",
+			"oneOf": [{ "type": "string" }, { "type": "integer" }]
+		},
+		"tokenizer": {
+			"description": "Shared Gemma 4 tokenizer identity (schemaVersion 2).",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["family", "vocabSize"],
+			"properties": {
+				"family": { "type": "string" },
+				"vocabSize": { "type": "integer", "minimum": 1 }
+			}
+		},
+		"kv": {
+			"description": "KV-cache mode the bundle ships (e.g. \"stock-q8_0\").",
+			"type": "string"
+		},
+		"mtp": {
+			"description": "Speculative-decode MTP mode. Gemma 4 tiers ship a separate drafter GGUF (mtp/drafter-<tier>.gguf).",
+			"enum": ["separate-drafter", "embedded-draft-head"]
 		}
 	},
 	"allOf": [

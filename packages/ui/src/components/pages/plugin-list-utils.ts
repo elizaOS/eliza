@@ -902,8 +902,12 @@ export function buildPluginListState(options: {
     (plugin) =>
       plugin.category !== "database" &&
       !ALWAYS_ON_PLUGIN_IDS.has(plugin.id) &&
-      (!isConnectorLikeMode ||
-        (plugin.category === "connector" && plugin.visible !== false)) &&
+      // Honor the registry's `render.visible: false` for every kind (not just
+      // connectors). OS-level system entries (contacts/phone/wifi) set
+      // visible:false so they stay out of the app/web Features + Connectors
+      // views and surface only in OS mode (ElizaOsAppsView).
+      plugin.visible !== false &&
+      (!isConnectorLikeMode || plugin.category === "connector") &&
       (mode !== "streaming" || plugin.category === "streaming"),
   );
   const nonDbPlugins = [SHOWCASE_PLUGIN, ...categoryPlugins];

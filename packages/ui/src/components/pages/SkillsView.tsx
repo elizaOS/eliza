@@ -1,5 +1,5 @@
 import { Brain, Store } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -64,7 +64,7 @@ function SkillFilterTab({
   );
 }
 
-function SkillRowButton({
+const SkillRowButton = memo(function SkillRowButton({
   skill,
   active,
   enabled,
@@ -110,7 +110,7 @@ function SkillRowButton({
       />
     </div>
   );
-}
+});
 
 /* ── Main Skills View ───────────────────────────────────────────────── */
 
@@ -258,6 +258,12 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     ? (skills.find((skill) => skill.id === selectedSkillId) ?? null)
     : null;
 
+  const enabledSkillCount = useMemo(
+    () => skills.filter((skill) => skill.enabled).length,
+    [skills],
+  );
+  const disabledSkillCount = skills.length - enabledSkillCount;
+
   const filterTabs: { key: typeof filterTab; label: string }[] = [
     {
       key: "all",
@@ -265,11 +271,11 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     },
     {
       key: "on",
-      label: `${t("common.on")} (${skills.filter((skill) => skill.enabled).length})`,
+      label: `${t("common.on")} (${enabledSkillCount})`,
     },
     {
       key: "off",
-      label: `${t("common.off")} (${skills.filter((skill) => !skill.enabled).length})`,
+      label: `${t("common.off")} (${disabledSkillCount})`,
     },
   ];
 

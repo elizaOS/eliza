@@ -33,17 +33,32 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { Brain } from "../actor/brain.js";
-import { Cascade } from "../actor/cascade.js";
+import {
+  type AgentMiddleware,
+  createBudgetCapMiddleware,
+  createImageRetentionMiddleware,
+  createOperatorNormalizerMiddleware,
+  createTrajectoryMiddleware,
+  runAfterStep,
+  runBeforeStep,
+  runOnCaptures,
+  runOnRunEnd,
+  runOnRunStart,
+  runTransformProposed,
+  type TrajectoryEntry,
+} from "../actor/agent-callbacks.js";
+import {
+  AGENT_LOOP_SETTING,
+  type AgentLoop,
+  createAgentLoop,
+  DEFAULT_AGENT_LOOP_MODEL,
+} from "../actor/agent-loop.js";
+import type { Brain } from "../actor/brain.js";
 import {
   type ComputerInterface,
   makeComputerInterface,
 } from "../actor/computer-interface.js";
 import { dispatch } from "../actor/dispatch.js";
-import {
-  getRegisteredActor,
-  OcrCoordinateGroundingActor,
-} from "../actor/index.js";
 import {
   captureAllDisplays,
   type DisplayCapture,
@@ -69,6 +84,13 @@ export interface ComputerUseAgentParams {
    * per-step progress hooks.
    */
   streamProgress?: boolean;
+  /** Wall-clock budget (ms) — the loop aborts before a step that exceeds it. */
+  maxDurationMs?: number;
+  /**
+   * Image-retention window (#9170 M11): keep only the N most-recent steps'
+   * screenshots in the bounded history. Off (unbounded) when unset.
+   */
+  imageRetentionLast?: number;
 }
 
 /** One per-step progress event, surfaced when `streamProgress` is set. */
@@ -85,6 +107,18 @@ export interface ComputerUseAgentStepProgress {
 
 interface AgentDeps {
   brain?: Brain;
+  /** Pre-built loop override (tests). Supersedes model-string selection. */
+  loop?: AgentLoop;
+  /** Loop model-string override (tests / explicit selection). */
+  loopModel?: string;
+  /**
+   * Callback middleware override (#9170 M11). When set, replaces the default
+   * pipeline (operator-normalizer + trajectory, plus budget/image-retention
+   * when configured via params).
+   */
+  middleware?: AgentMiddleware[];
+  /** Clock override (tests) — defaults to `Date.now`. */
+  now?: () => number;
   computerInterface?: ComputerInterface;
   captureAll?: () => Promise<DisplayCapture[]>;
   /** Called after each dispatched step when `params.streamProgress` is set. */
@@ -106,8 +140,10 @@ export interface ComputerUseAgentReport {
     result: { success: boolean; error?: string };
   }>;
   finished: boolean;
-  reason: "finish" | "max_steps" | "error";
+  reason: "finish" | "max_steps" | "error" | "budget";
   error?: string;
+  /** Per-step transcript recorded by the trajectory middleware (#9170 M11). */
+  trajectory?: TrajectoryEntry[];
 }
 
 export function formatComputerUseAgentProgress(
@@ -122,6 +158,19 @@ export function formatComputerUseAgentProgress(
 
 function getService(runtime: IAgentRuntime): ComputerUseService | null {
   return (runtime.getService("computeruse") as ComputerUseService) ?? null;
+}
+
+/** Read the configured agent-loop model string (setting → env → null). */
+function resolveLoopModel(runtime: IAgentRuntime | null): string | null {
+  const fromSetting = runtime?.getSetting?.(AGENT_LOOP_SETTING);
+  if (typeof fromSetting === "string" && fromSetting.trim().length > 0) {
+    return fromSetting.trim();
+  }
+  const fromEnv = process.env[AGENT_LOOP_SETTING];
+  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
+    return fromEnv.trim();
+  }
+  return null;
 }
 
 /**
@@ -139,15 +188,48 @@ export async function runComputerUseAgentLoop(
     Math.min(params.maxSteps ?? DEFAULT_MAX_STEPS, 20),
   );
   const goal = params.goal;
-  const brain = deps.brain ?? new Brain(runtime);
-  const actor =
-    getRegisteredActor() ??
-    new OcrCoordinateGroundingActor(() => service.getCurrentScene());
+  // Agent-loop registry (#9170 M10): a model string selects the loop. Defaults
+  // to the local OCR/AX grounder (Brain → Cascade); provider plugins can
+  // register Anthropic / OpenAI computer-use loops keyed by model family.
+  const loopModel =
+    deps.loopModel ?? resolveLoopModel(runtime) ?? DEFAULT_AGENT_LOOP_MODEL;
+  const loop =
+    deps.loop ??
+    createAgentLoop(loopModel, {
+      runtime,
+      getScene: () => service.getCurrentScene(),
+      brain: deps.brain,
+    });
   const computer =
     deps.computerInterface ??
     makeComputerInterface({ getScene: () => service.getCurrentScene() });
-  const cascade = new Cascade({ brain, actor });
   const captureAll = deps.captureAll ?? captureAllDisplays;
+  const now = deps.now ?? Date.now;
+  const runStart = now();
+
+  // Callback middleware pipeline (#9170 M11). Default = operator-normalizer
+  // (clean the planned action) + trajectory (in-memory transcript), plus
+  // budget-cap / image-retention when configured via params.
+  const trajectoryMw = createTrajectoryMiddleware();
+  const middlewares: AgentMiddleware[] =
+    deps.middleware ??
+    (() => {
+      const list: AgentMiddleware[] = [createOperatorNormalizerMiddleware()];
+      if (params.maxDurationMs !== undefined) {
+        list.unshift(
+          createBudgetCapMiddleware({ maxDurationMs: params.maxDurationMs }),
+        );
+      }
+      if (params.imageRetentionLast !== undefined) {
+        list.push(
+          createImageRetentionMiddleware({
+            keepLast: params.imageRetentionLast,
+          }),
+        );
+      }
+      list.push(trajectoryMw);
+      return list;
+    })();
 
   const report: ComputerUseAgentReport = {
     goal,
@@ -156,35 +238,66 @@ export async function runComputerUseAgentLoop(
     reason: "max_steps",
   };
 
+  const finalize = async (): Promise<ComputerUseAgentReport> => {
+    if (!deps.middleware) report.trajectory = trajectoryMw.entries();
+    await runOnRunEnd(middlewares, {
+      goal,
+      steps: report.steps.length,
+      finished: report.finished,
+      reason: report.reason,
+    });
+    return report;
+  };
+
+  await runOnRunStart(middlewares, { goal, maxSteps });
+
   for (let step = 1; step <= maxSteps; step += 1) {
+    const stepCtx = { step, maxSteps, goal, elapsedMs: now() - runStart };
+    const decision = await runBeforeStep(middlewares, stepCtx);
+    if (decision.abort) {
+      report.reason = "budget";
+      report.error = decision.reason;
+      return finalize();
+    }
     let scene: Scene;
     try {
       scene = await service.refreshScene("agent-turn");
     } catch (err) {
       report.reason = "error";
       report.error = `scene refresh failed: ${errorMessage(err)}`;
-      return report;
+      return finalize();
     }
     const captures = await safeCapture(captureAll);
     if (captures.size === 0) {
       report.reason = "error";
       report.error = "no displays captured";
-      return report;
+      return finalize();
     }
-    let proposed: Awaited<ReturnType<typeof cascade.run>>;
+    await runOnCaptures(middlewares, captures, stepCtx);
+    let proposed: Awaited<ReturnType<typeof loop.predictStep>>;
     try {
-      proposed = await cascade.run({ scene, goal, captures });
+      proposed = await loop.predictStep({ scene, goal, captures });
     } catch (err) {
       report.reason = "error";
-      report.error = `cascade failed: ${errorMessage(err)}`;
-      return report;
+      report.error = `agent loop "${loop.name}" failed: ${errorMessage(err)}`;
+      return finalize();
     }
+    // Operator-normalizer + any other transform middleware clean the planned
+    // action before it is dispatched.
+    proposed = await runTransformProposed(middlewares, proposed, stepCtx);
     // Persist the Brain's understanding onto the scene (#9105 M3) so the next
     // turn's `scene` provider carries `vlm_scene` instead of re-describing.
     service.setSceneVlmAnnotations(proposed.scene_summary, null);
     const dispatchResult = await dispatch(proposed.proposed, {
       interface: computer,
       listDisplays: () => service.getDisplays(),
+    });
+    await runAfterStep(middlewares, {
+      step,
+      goal,
+      proposed,
+      dispatchSuccess: dispatchResult.success,
+      error: dispatchResult.error?.message,
     });
     logger.info(
       {
@@ -224,17 +337,17 @@ export async function runComputerUseAgentLoop(
     if (!dispatchResult.success) {
       report.reason = "error";
       report.error = dispatchResult.error?.message;
-      return report;
+      return finalize();
     }
     if (proposed.proposed.kind === "finish") {
       report.finished = true;
       report.reason = "finish";
-      return report;
+      return finalize();
     }
     if (proposed.proposed.kind === "wait") {
     }
   }
-  return report;
+  return finalize();
 }
 
 async function emitStepProgress(
@@ -357,6 +470,20 @@ export const computerUseAgentAction: Action = {
       required: false,
       schema: { type: "boolean", default: false },
     },
+    {
+      name: "maxDurationMs",
+      description:
+        "Wall-clock budget in ms; the loop aborts before a step that exceeds it.",
+      required: false,
+      schema: { type: "number", minimum: 0 },
+    },
+    {
+      name: "imageRetentionLast",
+      description:
+        "Keep only the N most-recent steps' screenshots in the bounded history (token control).",
+      required: false,
+      schema: { type: "number", minimum: 1 },
+    },
   ],
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return getService(runtime) !== null;
@@ -397,7 +524,9 @@ export const computerUseAgentAction: Action = {
         ? `Computer-use agent finished after ${report.steps.length} step(s): goal="${report.goal}"`
         : report.reason === "max_steps"
           ? `Computer-use agent hit max steps (${report.steps.length})`
-          : `Computer-use agent failed: ${report.error ?? "unknown"}`;
+          : report.reason === "budget"
+            ? `Computer-use agent stopped on budget after ${report.steps.length} step(s): ${report.error ?? "budget exhausted"}`
+            : `Computer-use agent failed: ${report.error ?? "unknown"}`;
     if (callback) {
       await callback({ text });
     }

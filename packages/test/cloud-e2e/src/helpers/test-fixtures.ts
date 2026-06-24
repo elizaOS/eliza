@@ -57,6 +57,14 @@ export const test = base.extend<CloudTestFixtures, CloudStackFixtures>({
   },
 
   authenticatedPage: async ({ page, seededUser, stack }, use) => {
+    // The stack was started with `frontend: false` (no apex web dev booted), so
+    // there is no page to authenticate against. Skip explicitly instead of
+    // crashing on `new URL("")` — a reader sees a clear skip, not an opaque
+    // TypeError.
+    test.skip(
+      !stack.urls.frontend,
+      "frontend not booted (stack started with frontend: false)",
+    );
     const token = buildPlaywrightSessionToken(
       seededUser.userId,
       seededUser.organizationId,

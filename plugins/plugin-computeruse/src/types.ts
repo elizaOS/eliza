@@ -21,19 +21,34 @@ export type DesktopActionType =
   | "double_click"
   | "right_click"
   | "mouse_move"
+  | "middle_click"
+  | "mouse_down"
+  | "mouse_up"
   | "type"
   | "key"
   | "key_combo"
+  | "key_down"
+  | "key_up"
   | "scroll"
   | "drag"
   | "get_cursor_position"
   | "detect_elements"
-  | "ocr";
+  | "ocr"
+  | "open"
+  | "launch"
+  | "kill_app"
+  | "set_value";
 
 export interface DesktopActionParams {
   action: DesktopActionType;
   coordinate?: [number, number];
   startCoordinate?: [number, number];
+  /**
+   * Multi-point polyline for `drag` (≥2 points, local to `displayId`). When
+   * present it supersedes `startCoordinate`/`coordinate` and traces every
+   * waypoint with the button held (curves, corners, marquee, swipe paths).
+   */
+  path?: Array<[number, number]>;
   /**
    * Display the coordinate is local to. Required for any coordinate-bearing
    * action (click, mouse_move, drag, scroll, key_combo, click_with_modifiers).
@@ -60,6 +75,12 @@ export interface DesktopActionParams {
   y1?: number;
   x2?: number;
   y2?: number;
+  /** Target file / URL / folder for the `open` action. */
+  target?: string;
+  /** Application name or executable path for the `launch` action. */
+  app?: string;
+  /** Arguments passed to the launched application (`launch`). */
+  appArgs?: string[];
 }
 
 // ── Browser Actions ───────────────────────────────────────────────────────
@@ -122,7 +143,12 @@ export type WindowActionType =
   | "minimize"
   | "maximize"
   | "restore"
-  | "close";
+  | "close"
+  | "get_current_window_id"
+  | "get_application_windows"
+  | "set_bounds"
+  | "get_window_size"
+  | "get_window_position";
 
 export interface WindowActionParams {
   action: WindowActionType;
@@ -137,9 +163,12 @@ export interface WindowActionParams {
   window?: string;
   /** Layout hint for arrange action */
   arrangement?: string;
-  /** Coordinates for move action */
+  /** Coordinates for move / set_bounds action */
   x?: number;
   y?: number;
+  /** Window size for set_bounds action */
+  width?: number;
+  height?: number;
 }
 
 // ── File Actions ──────────────────────────────────────────────────────────
@@ -184,9 +213,15 @@ export interface BrowserActionResult extends ComputerUseResult {
 }
 
 export interface WindowActionResult extends ComputerUseResult {
-  /** Window list for "list" action */
+  /** Window list for "list" / "get_application_windows" actions */
   windows?: WindowInfo[];
   count?: number;
+  /** Focused window id for "get_current_window_id" (null when none focused). */
+  windowId?: string | null;
+  /** Focused window descriptor for "get_current_window_id". */
+  window?: WindowInfo | null;
+  /** Window bounds for "get_window_size" / "get_window_position". */
+  bounds?: ScreenRegion;
 }
 
 export type FileActionType =
@@ -201,7 +236,12 @@ export type FileActionType =
   | "delete_directory"
   | "upload"
   | "download"
-  | "list_downloads";
+  | "list_downloads"
+  | "read_bytes"
+  | "write_bytes"
+  | "create_dir"
+  | "directory_exists"
+  | "get_file_size";
 
 export interface FileActionParams {
   action: FileActionType;
@@ -216,6 +256,11 @@ export interface FileActionParams {
   find?: string;
   replace?: string;
   encoding?: BufferEncoding;
+  /** Base64 payload for write_bytes. */
+  base64?: string;
+  /** Byte window for read_bytes (chunked binary transfer). */
+  offset?: number;
+  length?: number;
 }
 
 export interface FileEntry {
@@ -227,6 +272,8 @@ export interface FileEntry {
 export interface FileActionResult extends ComputerUseResult {
   path?: string;
   content?: string;
+  /** Base64-encoded bytes for read_bytes. */
+  bytes?: string;
   exists?: boolean;
   isFile?: boolean;
   isDirectory?: boolean;
@@ -382,7 +429,7 @@ export interface ComputerUseConfig {
 export type ComputerUseMode = "yolo" | "sandbox";
 
 /** Implemented sandbox backend identifier. */
-export type SandboxBackendName = "docker";
+export type SandboxBackendName = "docker" | "wsb" | "qemu";
 
 export interface SandboxConfig {
   backend: SandboxBackendName;
@@ -402,6 +449,15 @@ export interface SandboxBackendOptions {
   mounts?: Array<{ host: string; container: string; readOnly?: boolean }>;
   /** Resource limits passed through to the backend. */
   resources?: { cpus?: number; memoryMb?: number };
+  /**
+   * Remote-guest RPC endpoint for the VM backends (WSB / QEMU, #9170 M13). The
+   * in-guest computer-server listens here; the host POSTs
+   * `{command, params}` → `{success, result}`. Defaults to
+   * `http://127.0.0.1:<rpcPort>/cua`.
+   */
+  rpcUrl?: string;
+  /** Host-forwarded guest RPC port (WSB / QEMU). Default 8000. */
+  rpcPort?: number;
 }
 
 // ── Browser Models ────────────────────────────────────────────────────────

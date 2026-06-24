@@ -10,6 +10,7 @@ import {
 } from "./ocr-with-coords";
 import { visionProvider } from "./provider";
 import { VisionService } from "./service";
+import { wireComputerUseSetOfMarksBridge } from "./set-of-marks-provider";
 
 export const visionPlugin: Plugin = {
   name: "vision",
@@ -62,13 +63,26 @@ export const visionPlugin: Plugin = {
     try {
       const mod = (await import(
         "@elizaos/plugin-computeruse/mobile/ocr-provider"
-      )) as { registerCoordOcrProvider?: (provider: unknown) => void };
+      )) as {
+        registerCoordOcrProvider?: (provider: unknown) => void;
+        registerSetOfMarksProvider?: (provider: unknown) => void;
+      };
       if (typeof mod.registerCoordOcrProvider === "function") {
         wireComputerUseOcrBridge(
           mod.registerCoordOcrProvider as (provider: unknown) => void,
         );
         logger.info(
           "[vision] registered coord-OCR bridge into plugin-computeruse scene seam",
+        );
+      }
+      // Set-of-Marks grounding (#9170 M9): fuse GGUF YOLO icons + OCR text into
+      // numbered marks + overlay for computeruse's detect_elements.
+      if (typeof mod.registerSetOfMarksProvider === "function") {
+        wireComputerUseSetOfMarksBridge(
+          mod.registerSetOfMarksProvider as (provider: unknown) => void,
+        );
+        logger.info(
+          "[vision] registered Set-of-Marks bridge into plugin-computeruse detect_elements seam",
         );
       }
     } catch (err) {

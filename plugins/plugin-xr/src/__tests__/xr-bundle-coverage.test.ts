@@ -8,7 +8,7 @@
  * that loads inside the XR shell) is built, present, and structurally sound.
  *
  * What is tested:
- *   - bundle.js exists for all 20 source-buildable plugins
+ *   - bundle.js exists for all 18 source-buildable plugins
  *   - bundle.js is non-empty and contains built view content
  *   - bundle.js contains the componentExport name from the manifest
  *   - bundle.js is valid JavaScript (no JSON or HTML accidentally written there)
@@ -92,8 +92,14 @@ function extractXrViews(
     }
   }
   for (const obj of objects) {
-    const viewType = obj.match(/viewType:\s*"([^"]+)"/)?.[1];
-    if (viewType !== "xr") continue;
+    // Source-level mirror of core's `getViewModalities`: a view renders on the
+    // explicit `modalities: [...]` list when present, otherwise the single
+    // `viewType` (default "gui"). The view is an XR view when "xr" is among them.
+    const modalitiesMatch = obj.match(/modalities:\s*\[([^\]]*)\]/);
+    const modalities = modalitiesMatch
+      ? [...modalitiesMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])
+      : [obj.match(/viewType:\s*"([^"]+)"/)?.[1] ?? "gui"];
+    if (!modalities.includes("xr")) continue;
     const id = obj.match(/\bid:\s*"([^"]+)"/)?.[1];
     const componentExport = obj.match(/componentExport:\s*"([^"]+)"/)?.[1];
     const bundlePath = obj.match(/bundlePath:\s*"([^"]+)"/)?.[1];
@@ -104,7 +110,7 @@ function extractXrViews(
   return results;
 }
 
-// The 21 plugin manifests → (plugin directory, manifest path)
+// The 18 plugin manifests → (plugin directory, manifest path)
 const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   {
     pluginDir: "plugins/plugin-companion",
@@ -159,10 +165,6 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-app-control/src/index.ts",
   },
   {
-    pluginDir: "plugins/plugin-clawville",
-    manifestPath: "plugins/plugin-clawville/src/index.ts",
-  },
-  {
     pluginDir: "plugins/plugin-screenshare",
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
   },
@@ -184,7 +186,7 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   },
 ];
 
-describe("XR view bundle coverage — all 21 plugin bundles built and valid", () => {
+describe("XR view bundle coverage — all 18 plugin bundles built and valid", () => {
   it("declares dist/views/bundle.js for every plugin with an XR view", () => {
     const missingDeclarations: string[] = [];
     for (const { pluginDir, manifestPath } of PLUGIN_BUNDLES) {

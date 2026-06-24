@@ -396,44 +396,71 @@ export function TrajectoryDetailView({
   const llmCalls = detail?.llmCalls ?? [];
   const providerAccesses = detail?.providerAccesses ?? [];
   const trajectory = detail?.trajectory;
-  const explicitEvents = detail?.events ?? [];
-  const toolEvents = dedupeEvents([
-    ...(detail?.toolEvents ?? []),
-    ...explicitEvents.filter(isNativeToolCallEvent),
-  ]);
-  const evaluationEvents = dedupeEvents([
-    ...(detail?.evaluationEvents ?? []),
-    ...explicitEvents.filter(isEvaluationEvent),
-  ]);
-  const cacheObservations = dedupeEvents([
-    ...(detail?.cacheObservations ?? []),
-    ...explicitEvents.filter(isCacheObservation),
-  ]);
-  const contextDiffs = dedupeEvents([
-    ...(detail?.contextDiffs ?? []),
-    ...explicitEvents.filter(isContextDiff),
-  ]);
-  const timelineEvents = buildTimelineEvents({
-    events: dedupeEvents([
-      ...explicitEvents,
-      ...toolEvents,
-      ...evaluationEvents,
-      ...cacheObservations,
-      ...contextDiffs,
-    ]),
-    llmCalls,
-    providerAccesses,
-  });
-  const cacheMetrics = buildCacheMetrics(cacheObservations, detail?.cacheStats);
-  const contextDiffSummaries = buildContextDiffSummaries(contextDiffs);
-  const shouldShowNativeEventPanels =
-    explicitEvents.length > 0 ||
-    toolEvents.length > 0 ||
-    evaluationEvents.length > 0 ||
-    cacheObservations.length > 0 ||
-    Boolean(detail?.cacheStats) ||
-    contextDiffs.length > 0 ||
-    (detail?.contextEvents?.length ?? 0) > 0;
+  // The whole event pipeline (several O(n) dedupeEvents + the O(n log n)
+  // buildTimelineEvents + cache/context derivations) was rebuilt in the render
+  // body on EVERY render — filter clicks, hover, any state change — over a
+  // trajectory that can carry hundreds of events. Memoize it on the fetched
+  // detail so it only recomputes when the data actually changes.
+  const {
+    toolEvents,
+    timelineEvents,
+    cacheMetrics,
+    contextDiffSummaries,
+    shouldShowNativeEventPanels,
+  } = useMemo(() => {
+    const explicitEvents = detail?.events ?? [];
+    const toolEvents = dedupeEvents([
+      ...(detail?.toolEvents ?? []),
+      ...explicitEvents.filter(isNativeToolCallEvent),
+    ]);
+    const evaluationEvents = dedupeEvents([
+      ...(detail?.evaluationEvents ?? []),
+      ...explicitEvents.filter(isEvaluationEvent),
+    ]);
+    const cacheObservations = dedupeEvents([
+      ...(detail?.cacheObservations ?? []),
+      ...explicitEvents.filter(isCacheObservation),
+    ]);
+    const contextDiffs = dedupeEvents([
+      ...(detail?.contextDiffs ?? []),
+      ...explicitEvents.filter(isContextDiff),
+    ]);
+    const timelineEvents = buildTimelineEvents({
+      events: dedupeEvents([
+        ...explicitEvents,
+        ...toolEvents,
+        ...evaluationEvents,
+        ...cacheObservations,
+        ...contextDiffs,
+      ]),
+      llmCalls,
+      providerAccesses,
+    });
+    const cacheMetrics = buildCacheMetrics(
+      cacheObservations,
+      detail?.cacheStats,
+    );
+    const contextDiffSummaries = buildContextDiffSummaries(contextDiffs);
+    const shouldShowNativeEventPanels =
+      explicitEvents.length > 0 ||
+      toolEvents.length > 0 ||
+      evaluationEvents.length > 0 ||
+      cacheObservations.length > 0 ||
+      Boolean(detail?.cacheStats) ||
+      contextDiffs.length > 0 ||
+      (detail?.contextEvents?.length ?? 0) > 0;
+    return {
+      explicitEvents,
+      toolEvents,
+      evaluationEvents,
+      cacheObservations,
+      contextDiffs,
+      timelineEvents,
+      cacheMetrics,
+      contextDiffSummaries,
+      shouldShowNativeEventPanels,
+    };
+  }, [detail, llmCalls, providerAccesses]);
 
   const pipelineNodes = useMemo(
     () => buildPipelineNodes(llmCalls, trajectory?.status ?? "active"),

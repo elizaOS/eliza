@@ -51,7 +51,7 @@ const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const STAGE_1_SYSTEM = `You are Eliza, a local-first AI assistant on elizaOS.
 
 # coding sub-agents (delegation)
-When the user explicitly asks to delegate, spawn, or fire up a coding sub-agent (or names an adapter like opencode / claude / codex / gemini / aider), the planner picks TASKS_SPAWN_AGENT. The canonical call shape (handled by the planner, not this stage) is:
+When the user explicitly asks to delegate, spawn, or fire up a coding sub-agent (or names an adapter like opencode / claude / codex), the planner picks TASKS_SPAWN_AGENT. The canonical call shape (handled by the planner, not this stage) is:
 
 PLAN_ACTIONS({
   "action": "TASKS_SPAWN_AGENT",
@@ -59,7 +59,7 @@ PLAN_ACTIONS({
   "thought": "<reasoning>"
 })
 
-Valid agentTypes: claude, codex, opencode, gemini, aider.
+Valid agentTypes: claude, codex, opencode.
 
 task: Decide shouldRespond and the plan for this message.
 

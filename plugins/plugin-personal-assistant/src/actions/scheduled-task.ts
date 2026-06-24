@@ -36,7 +36,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { createPendingPromptsStore } from "../lifeops/pending-prompts/store.js";
+import { resolvePendingPromptsStore } from "../lifeops/pending-prompts/store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import type {
   ScheduledTask,
@@ -454,7 +454,7 @@ async function handleSnooze(
     ...(minutes !== undefined ? { minutes } : {}),
     ...(untilIso ? { untilIso } : {}),
   });
-  await createPendingPromptsStore(scope.runtime).forgetTask(taskId);
+  await resolvePendingPromptsStore(scope.runtime).forgetTask(taskId);
   return {
     success: true,
     text: `Snoozed scheduled task ${taskId}.`,
@@ -478,7 +478,7 @@ async function handleAcknowledge(
   const updated = await scope.runner.evaluateCompletion(taskId, {
     acknowledged: true,
   });
-  await createPendingPromptsStore(scope.runtime).forgetTask(taskId);
+  await resolvePendingPromptsStore(scope.runtime).forgetTask(taskId);
   return {
     success: true,
     text: `Acknowledged scheduled task ${taskId}.`,
@@ -506,7 +506,7 @@ async function handleVerbWithReason(
     params.reason ? { reason: params.reason } : undefined,
   );
   if (verb === "skip" || verb === "complete" || verb === "dismiss") {
-    await createPendingPromptsStore(scope.runtime).forgetTask(taskId);
+    await resolvePendingPromptsStore(scope.runtime).forgetTask(taskId);
   }
   return {
     success: true,

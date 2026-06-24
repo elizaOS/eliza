@@ -2,6 +2,7 @@ import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
 import type {
   ChatTurnStatus,
+  Conversation,
   ImageAttachment,
 } from "../../api/client-types-chat";
 import {
@@ -9,11 +10,9 @@ import {
   type VoiceControlEventDetail,
 } from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
-import {
-  useApp,
-  useChatTurnStatus,
-  useConversationMessages,
-} from "../../state";
+import { useChatTurnStatus, useConversationMessages } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
+import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
@@ -170,6 +169,36 @@ export interface ConversationNav {
 }
 
 /**
+ * Pure adjacent-conversation navigation for the overlay's horizontal swipe
+ * (#8929). The list is most-recent-first, so "prev" moves toward the newer
+ * (lower index) conversation and "next" toward the older (higher index) one.
+ * `hasPrev`/`hasNext` drive the swipe edge hints; `goPrev`/`goNext` select the
+ * adjacent conversation by id. When the active conversation isn't in the list
+ * (not-found), neither direction is navigable. Extracted as a pure function so
+ * the index-walk is unit-testable without rendering the AppContext-bound hook.
+ */
+export function buildConversationNav(
+  conversations: readonly Pick<Conversation, "id">[] | null | undefined,
+  activeConversationId: string | null | undefined,
+  onSelect: (id: string) => void,
+): ConversationNav {
+  const list = Array.isArray(conversations) ? conversations : [];
+  const index = list.findIndex((c) => c.id === activeConversationId);
+  const hasPrev = index > 0;
+  const hasNext = index >= 0 && index < list.length - 1;
+  return {
+    hasPrev,
+    hasNext,
+    goPrev: () => {
+      if (hasPrev) onSelect(list[index - 1].id);
+    },
+    goNext: () => {
+      if (hasNext) onSelect(list[index + 1].id);
+    },
+  };
+}
+
+/**
  * Bridges the shell foundation (HomePill + AssistantOverlay + ChatSurface) to
  * the real agent message flow exposed by {@link useApp}. Replaces the v1
  * mocked echo: text submitted here goes through `sendChatText`, the same path
@@ -190,9 +219,30 @@ function sameStringList(a?: string[], b?: string[]): boolean {
   return true;
 }
 
+// Granular shallow selection instead of useApp() so the shell controller only
+// re-renders when one of the exact fields it reads changes — not on every one of
+// the ~300 AppContext fields. typecheck enforces completeness: any `s.x` used
+// below but not selected here is a compile error, so this stays value-equivalent.
+const selectShellController = (s: AppContextValue) => ({
+  tab: s.tab,
+  chatSending: s.chatSending,
+  chatFirstTokenReceived: s.chatFirstTokenReceived,
+  sendChatText: s.sendChatText,
+  agentStatus: s.agentStatus,
+  uiLanguage: s.uiLanguage,
+  elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+  handleNewConversation: s.handleNewConversation,
+  handleSelectConversation: s.handleSelectConversation,
+  activeConversationId: s.activeConversationId,
+  conversations: s.conversations,
+  setTab: s.setTab,
+  handleChatStop: s.handleChatStop,
+  t: s.t,
+});
+
 export function useShellController(): ShellController {
-  const app = useApp();
   const {
+    tab,
     chatSending,
     chatFirstTokenReceived,
     sendChatText,
@@ -206,7 +256,7 @@ export function useShellController(): ShellController {
     setTab,
     handleChatStop,
     t,
-  } = app;
+  } = useAppSelectorShallow(selectShellController);
   // Read per-token streaming messages from the isolated context so token updates
   // don't depend on the giant AppContext value identity.
   const { conversationMessages } = useConversationMessages();
@@ -253,25 +303,16 @@ export function useShellController(): ShellController {
     t,
   ]);
 
-  // Horizontal-swipe navigation between conversations (#8929). `conversations`
-  // is most-recent-first, so "prev" moves toward newer (lower index) and "next"
-  // toward older (higher index). hasPrev/hasNext drive the swipe edge hints.
-  const conversationNav = React.useMemo<ConversationNav>(() => {
-    const list = Array.isArray(conversations) ? conversations : [];
-    const index = list.findIndex((c) => c.id === activeConversationId);
-    const hasPrev = index > 0;
-    const hasNext = index >= 0 && index < list.length - 1;
-    return {
-      hasPrev,
-      hasNext,
-      goPrev: () => {
-        if (hasPrev) void handleSelectConversation(list[index - 1].id);
-      },
-      goNext: () => {
-        if (hasNext) void handleSelectConversation(list[index + 1].id);
-      },
-    };
-  }, [conversations, activeConversationId, handleSelectConversation]);
+  // Horizontal-swipe navigation between conversations (#8929). Computed by the
+  // pure `buildConversationNav` helper (unit-tested) so the index-walk and
+  // boundary logic stay verifiable independent of this AppContext-bound hook.
+  const conversationNav = React.useMemo<ConversationNav>(
+    () =>
+      buildConversationNav(conversations, activeConversationId, (id) => {
+        void handleSelectConversation(id);
+      }),
+    [conversations, activeConversationId, handleSelectConversation],
+  );
 
   // "Ready" here means the agent's FIRST-TURN CAPABILITY is online (it can
   // answer) — NOT that the startup coordinator finished hydrating. The shell now
@@ -1049,7 +1090,7 @@ export function useShellController(): ShellController {
     openSettings,
     navigateHome,
     navigateToViews,
-    currentTab: app.tab,
+    currentTab: tab,
     stop: stopTurn,
     conversationNav,
   };

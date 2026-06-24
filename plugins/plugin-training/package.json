@@ -91,6 +91,7 @@
   },
   "types": "./dist/index.d.ts",
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "devDependencies": {

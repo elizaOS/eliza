@@ -263,3 +263,88 @@ describe("managed Eliza environment", () => {
     expect(result.environmentVars.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("768");
   });
 });
+
+describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
+  beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.ELIZA_CLOUD_URL;
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
+    delete process.env.ELIZA_CLOUD_API_BASE_URL;
+    delete process.env.NEXT_PUBLIC_API_URL;
+  });
+
+  test("returns all 5 inference keys with 1536-d embedding defaults on an empty env", async () => {
+    const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
+
+    const result = applyManagedAgentInferenceEnvDefaults({});
+
+    expect(Object.keys(result).sort()).toEqual([
+      "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
+      "ELIZAOS_CLOUD_EMBEDDING_URL",
+      "ELIZAOS_CLOUD_LARGE_MODEL",
+      "ELIZAOS_CLOUD_SMALL_MODEL",
+      "EMBEDDING_DIMENSION",
+    ]);
+    expect(result.EMBEDDING_DIMENSION).toBe("1536");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
+    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBeTruthy();
+    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBeTruthy();
+  });
+
+  test("preserves explicit per-agent overrides", async () => {
+    const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
+
+    const result = applyManagedAgentInferenceEnvDefaults({
+      EMBEDDING_DIMENSION: "768",
+      ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: "768",
+      ELIZAOS_CLOUD_EMBEDDING_URL: "https://custom.example.com/api/v1",
+      ELIZAOS_CLOUD_SMALL_MODEL: "custom-small",
+      ELIZAOS_CLOUD_LARGE_MODEL: "custom-large",
+    });
+
+    expect(result.EMBEDDING_DIMENSION).toBe("768");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("768");
+    expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBe("https://custom.example.com/api/v1");
+    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBe("custom-small");
+    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBe("custom-large");
+  });
+
+  test("spreading the helper heals a stale upgrade env that lacks EMBEDDING_DIMENSION", async () => {
+    // Mirrors the blue/green fleet-upgrade path (eliza-sandbox.ts): an agent
+    // provisioned BEFORE the dimension pin landed carries a stale env with no
+    // EMBEDDING_DIMENSION. Spreading the helper on top backfills "1536" (so the
+    // 1536-d cloud vectors stop landing in a dim_384 column) while preserving the
+    // agent's other env verbatim.
+    const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
+
+    const staleUpgradeEnv: Record<string, string> = {
+      DATABASE_URL: "postgres://agent/own-db",
+      ELIZA_API_TOKEN: "agent_existingtoken",
+      ELIZAOS_CLOUD_API_KEY: "sk-existing",
+      ELIZA_AGENT_LOCAL_STATE: "1",
+      PGLITE_DATA_DIR: "/root/.eliza/.pgdata",
+      ELIZA_PLUGIN_SET: "lean-chat",
+    };
+
+    const healed = {
+      ...staleUpgradeEnv,
+      ...applyManagedAgentInferenceEnvDefaults(staleUpgradeEnv),
+    };
+
+    // The inference defaults are backfilled...
+    expect(healed.EMBEDDING_DIMENSION).toBe("1536");
+    expect(healed.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
+    expect(healed.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
+    expect(healed.ELIZAOS_CLOUD_SMALL_MODEL).toBeTruthy();
+    expect(healed.ELIZAOS_CLOUD_LARGE_MODEL).toBeTruthy();
+    // ...and the stored env is preserved verbatim (no key rotation, no DB strip,
+    // no state flip — the whole point of the narrow helper).
+    expect(healed.DATABASE_URL).toBe("postgres://agent/own-db");
+    expect(healed.ELIZA_API_TOKEN).toBe("agent_existingtoken");
+    expect(healed.ELIZAOS_CLOUD_API_KEY).toBe("sk-existing");
+    expect(healed.ELIZA_AGENT_LOCAL_STATE).toBe("1");
+    expect(healed.PGLITE_DATA_DIR).toBe("/root/.eliza/.pgdata");
+    expect(healed.ELIZA_PLUGIN_SET).toBe("lean-chat");
+  });
+});

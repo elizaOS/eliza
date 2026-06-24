@@ -27,7 +27,6 @@ export const COMMON_SHORTCUTS: ShortcutDescriptor[] = [
   {
     id: "send-message",
     key: "Enter",
-    ctrl: true,
     description: "Send message",
     scope: "chat",
   },
@@ -48,27 +47,6 @@ export const COMMON_SHORTCUTS: ShortcutDescriptor[] = [
     id: "focus-composer",
     key: "/",
     description: "Focus chat composer",
-    scope: "global",
-  },
-  {
-    id: "restart-agent",
-    key: "r",
-    ctrl: true,
-    description: "Restart agent",
-    scope: "global",
-  },
-  {
-    id: "pause-resume-agent",
-    key: " ",
-    description: "Pause/Resume agent",
-    scope: "global",
-  },
-  {
-    id: "toggle-terminal",
-    key: "t",
-    ctrl: true,
-    shift: true,
-    description: "Toggle terminal",
     scope: "global",
   },
 ];

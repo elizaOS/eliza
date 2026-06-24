@@ -1,6 +1,7 @@
-import { RotateCcw } from "lucide-react";
+import { Check, Copy, RotateCcw } from "lucide-react";
 import {
   type ChangeEvent,
+  type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
   useCallback,
@@ -22,6 +23,7 @@ import {
   CodingAgentControlChip,
   PtyConsoleBase,
 } from "../../slots/task-coordinator-slots.js";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
@@ -30,13 +32,13 @@ import {
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { deriveAgentReady } from "../../state/types";
-import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
 import {
   buildDroppedAttachmentNotice,
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
+  classifyComposerPaste,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
@@ -51,6 +53,7 @@ import {
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
+import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
@@ -143,7 +146,36 @@ export function ChatView({
   onPtySessionClick,
   hideComposer = false,
 }: ChatViewProps) {
-  const app = useApp();
+  // Granular shallow selection instead of useApp() so the main chat view only
+  // re-renders when one of the fields it actually reads changes — not on every
+  // one of the ~300 app-store fields (#9141 gap 2). typecheck enforces that this
+  // list stays complete (any `app.x` not selected here is a type error).
+  const app = useAppSelectorShallow((s) => ({
+    agentStatus: s.agentStatus,
+    activeConversationId: s.activeConversationId,
+    activeInboxChat: s.activeInboxChat,
+    activeTerminalSessionId: s.activeTerminalSessionId,
+    characterData: s.characterData,
+    chatFirstTokenReceived: s.chatFirstTokenReceived,
+    companionMessageCutoffTs: s.companionMessageCutoffTs,
+    handleChatSend: s.handleChatSend,
+    handleChatStop: s.handleChatStop,
+    handleChatEdit: s.handleChatEdit,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+    elizaCloudHasPersistedKey: s.elizaCloudHasPersistedKey,
+    setState: s.setState,
+    copyToClipboard: s.copyToClipboard,
+    droppedFiles: s.droppedFiles,
+    analysisMode: s.analysisMode,
+    shareIngestNotice: s.shareIngestNotice,
+    chatAgentVoiceMuted: s.chatAgentVoiceMuted,
+    selectedVrmIndex: s.selectedVrmIndex,
+    uiLanguage: s.uiLanguage,
+    sendChatText: s.sendChatText,
+    t: s.t,
+    setActionNotice: s.setActionNotice,
+  }));
   const isGameModal = variant === "game-modal";
   const showComposerVoiceToggle = false;
   const {
@@ -365,7 +397,7 @@ export function ChatView({
         // with connector messages. Live-streamed turns flow through
         // the SSE path and don't carry the server-side default from
         // conversation-routes.ts, so we catch them here too.
-        .map((msg) => (msg.source ? msg : { ...msg, source: "eliza" })),
+        .map(withDefaultSource),
     [chatFirstTokenReceived, chatSending, msgs],
   );
   const {
@@ -527,6 +559,31 @@ export function ChatView({
     [addImageFiles],
   );
 
+  // Paste-to-attachment, matching the mobile overlay: a pasted image/file
+  // attaches; a large text block becomes a collapsed text-attachment chip;
+  // small text falls through to the textarea. Shared classification lives in
+  // utils/image-attachment.ts so both surfaces behave identically.
+  const handleComposerPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const intent = classifyComposerPaste({
+        files: Array.from(e.clipboardData?.files ?? []),
+        text: e.clipboardData?.getData("text") ?? "",
+      });
+      if (intent.kind === "files") {
+        e.preventDefault();
+        addImageFiles(intent.files);
+        return;
+      }
+      if (intent.kind === "text-attachment") {
+        e.preventDefault();
+        setChatPendingImages((prev) =>
+          [...prev, intent.attachment].slice(0, MAX_CHAT_IMAGES),
+        );
+      }
+    },
+    [addImageFiles, setChatPendingImages],
+  );
+
   const handleFileInputChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       if (e.target.files) {
@@ -593,6 +650,34 @@ export function ChatView({
     },
     [copyToClipboard],
   );
+  // Copy the whole thread as a plain-text transcript (`Speaker: text`, blank
+  // line between turns) via the shared clipboard helper — parity with the
+  // overlay's full-state header. Flashes a check on success.
+  const [conversationCopied, setConversationCopied] = useState(false);
+  const conversationCopiedTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  useEffect(
+    () => () => {
+      if (conversationCopiedTimerRef.current) {
+        clearTimeout(conversationCopiedTimerRef.current);
+      }
+    },
+    [],
+  );
+  const handleCopyConversation = useCallback(() => {
+    const transcript = conversationTranscriptText(visibleMsgs, { agentName });
+    if (!transcript) return;
+    void copyToClipboard(transcript);
+    setConversationCopied(true);
+    if (conversationCopiedTimerRef.current) {
+      clearTimeout(conversationCopiedTimerRef.current);
+    }
+    conversationCopiedTimerRef.current = setTimeout(
+      () => setConversationCopied(false),
+      2000,
+    );
+  }, [agentName, copyToClipboard, visibleMsgs]);
   const renderChatMessageContent = useCallback(
     (message: ChatMessageData) => (
       <MessageContent
@@ -754,6 +839,29 @@ export function ChatView({
       </button>
     ) : null;
 
+  // Copy-the-whole-thread control, shown alongside Reset when there are
+  // messages. Same neutral resting → neutral-hover language as Reset (no orange,
+  // no blue), flashing a check on copy.
+  const copyConversationButton =
+    visibleMsgs.length > 0 ? (
+      <button
+        type="button"
+        data-testid="chat-view-copy-conversation-button"
+        aria-label={
+          conversationCopied ? "Conversation copied" : "Copy conversation"
+        }
+        title={conversationCopied ? "Conversation copied" : "Copy conversation"}
+        onClick={handleCopyConversation}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-txt/30"
+      >
+        {conversationCopied ? (
+          <Check className="h-[18px] w-[18px] text-ok" aria-hidden />
+        ) : (
+          <Copy className="h-[18px] w-[18px]" aria-hidden />
+        )}
+      </button>
+    ) : null;
+
   const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -763,6 +871,7 @@ export function ChatView({
           <CodingAgentControlChip />
           {continuousChatToggleVisible || resetConversationButton ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+              {copyConversationButton}
               {resetConversationButton}
               {continuousChatToggleVisible ? (
                 <ContinuousChatToggle
@@ -808,6 +917,7 @@ export function ChatView({
         onAttachImage={() => fileInputRef.current?.click()}
         onChatInputChange={(value) => setState("chatInput", value)}
         onKeyDown={handleKeyDown}
+        onPaste={handleComposerPaste}
         onSend={() => void handleChatSend()}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}
@@ -826,6 +936,7 @@ export function ChatView({
           <CodingAgentControlChip />
           {continuousChatToggleVisible || resetConversationButton ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+              {copyConversationButton}
               {resetConversationButton}
               {continuousChatToggleVisible ? (
                 <ContinuousChatToggle
@@ -868,6 +979,7 @@ export function ChatView({
         onAttachImage={() => fileInputRef.current?.click()}
         onChatInputChange={(value) => setState("chatInput", value)}
         onKeyDown={handleKeyDown}
+        onPaste={handleComposerPaste}
         onSend={() => void handleChatSend()}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}
@@ -982,6 +1094,28 @@ export function TerminalChannelPanel({
  * uses, and routes outbound replies back through the runtime's
  * source-specific send handlers.
  */
+// Default-tag a message's source to "eliza", memoized per message identity so an
+// un-sourced message isn't re-cloned every token frame (the input array identity
+// changes per token; the individual prior messages don't). A real new message
+// misses and is tagged once; a WeakMap lets dropped messages GC.
+const defaultSourceCache = new WeakMap<object, unknown>();
+function withDefaultSource<T extends { source?: string }>(msg: T): T {
+  if (msg.source) return msg;
+  const cached = defaultSourceCache.get(msg);
+  if (cached) return cached as T;
+  const tagged = { ...msg, source: "eliza" } as T;
+  defaultSourceCache.set(msg, tagged);
+  return tagged;
+}
+
+// Module-level stable identity: an inline arrow here would change every render
+// and break ChatMessage's arePropsEqual (renderContent compare), re-parsing
+// markdown for every inbox message on any panel re-render. (Inbox doesn't use
+// analysisMode, so unlike the main path this needs no closure.)
+function renderInboxMessageContent(message: ChatMessageData) {
+  return <MessageContent message={message as ConversationMessage} />;
+}
+
 function InboxChatPanel({
   activeInboxChat,
   variant,
@@ -998,8 +1132,15 @@ function InboxChatPanel({
   };
   variant: ChatViewVariant;
 }) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  // Granular shallow selection instead of useApp() so this inbox panel only
+  // re-renders on changes to the two fields it reads (#9141 gap 2). InboxChatPanel
+  // is only ever rendered inside ChatView (always within AppProvider), so the
+  // previous defensive `| undefined` was vestigial.
+  const app = useAppSelectorShallow((s) => ({
+    t: s.t,
+    setActionNotice: s.setActionNotice,
+  }));
+  const t = app.t ?? fallbackTranslate;
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1103,7 +1244,7 @@ function InboxChatPanel({
     ],
   );
   const connectorSendAs = useConnectorSendAsAccount(sendAsContext, {
-    setActionNotice: app?.setActionNotice,
+    setActionNotice: app.setActionNotice,
   });
   const {
     accountRequired,
@@ -1329,9 +1470,7 @@ function InboxChatPanel({
             variant={variant}
             messages={messages}
             userMessagesOnRight={false}
-            renderMessageContent={(message) => (
-              <MessageContent message={message as ConversationMessage} />
-            )}
+            renderMessageContent={renderInboxMessageContent}
           />
         )}
       </div>

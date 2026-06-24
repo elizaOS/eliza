@@ -29,6 +29,7 @@ import { syncElizaEnvAliases } from "../shared/src/utils/env.ts";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
+import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
@@ -188,6 +189,28 @@ const capacitorCoreEntry = path.join(
   "dist/index.js",
 );
 const patheEntry = _require.resolve("pathe");
+// The REAL feross `buffer` (a callable Buffer function), aliased below so the
+// crypto/wallet graph gets a working Buffer instead of the native-module-stub
+// plugin's empty `class Buffer {}` (which crashed vendor-crypto at module-init —
+// "Class constructor … cannot be invoked without 'new'" → blank app). `buffer`
+// is not a direct dep of packages/app (plain resolution finds only the Node
+// builtin), so we locate the highest version in the bun store directly.
+const bufferEntry: string | undefined = (() => {
+  try {
+    const bunDir = path.join(elizaRoot, "node_modules/.bun");
+    const versions = fs
+      .readdirSync(bunDir)
+      .filter((d) => /^buffer@\d/.test(d))
+      .sort();
+    for (const dir of versions.reverse()) {
+      const entry = path.join(bunDir, dir, "node_modules/buffer/index.js");
+      if (fs.existsSync(entry)) return entry;
+    }
+  } catch {
+    // fall through — alias simply not added; build behaves as before
+  }
+  return undefined;
+})();
 // Other Capacitor packages imported by eliza/packages/app-core sources.
 // Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
@@ -1231,37 +1254,99 @@ function appDevWsBasePlugin(): Plugin {
   };
 }
 
-function pathIncludesAny(id: string, markers: string[]): boolean {
-  return markers.some((marker) => id.includes(marker));
-}
+// Crypto / big-number graph (bn.js, elliptic, secp256k1, the hash + cipher
+// libs, and the `buffer` polyfill they call into). Matched FIRST so it wins
+// over the generic vendor groups below. This graph MUST stay in its own
+// lazily-loaded chunk: Rollup's recursive dep-inclusion otherwise
+// non-deterministically folds it into an eagerly-initialized app chunk (e.g.
+// the date-fns `en_US` i18n locale chunk, or the entry), where bn.js runs
+// `Buffer.allocUnsafe` at module-init before the chunk's CJS Buffer wrapper is
+// hoisted — throwing "Class constructor cannot be invoked without 'new'" and
+// blanking the whole React tree on every route. `scripts/verify-chunk-
+// safety.mjs` gates the deploy against any regression of this pin.
+const VENDOR_CRYPTO_TEST =
+  /\/node_modules\/(bn\.js|elliptic|secp256k1|@noble\/[^/]+|hash-base|create-hash|create-hmac|create-ecdh|browserify-sign|browserify-aes|browserify-cipher|browserify-rsa|diffie-hellman|asn1\.js|des\.js|ripemd160|sha\.js|md5\.js|hash\.js|cipher-base|evp_bytestokey|pbkdf2|public-encrypt|randombytes|randomfill|miller-rabin|brorand|hmac-drbg|minimalistic-crypto-utils|minimalistic-assert|safe-buffer|buffer)(\/|$)/;
 
+// EVM wallet stack (wagmi/viem/RainbowKit/WalletConnect/Reown/Coinbase). Folded
+// into `vendor-crypto` alongside the crypto core (see resolveManualChunk): the
+// wallet stack imports the bn.js/buffer graph, so a separate chunk would cross-
+// import the crypto chunk and form an init-order cycle (the wagmi 3.x `connect`
+// / `ConnectorUnavailableReconnectingError` TDZ crash).
+const VENDOR_WALLET_TEST =
+  /\/node_modules\/(wagmi|@wagmi\/|viem\/|@rainbow-me\/|@walletconnect\/|@reown\/|@coinbase\/wallet|mipd|eventemitter3)(\/|$)/;
+
+// Solana wallet/web3 stack — also folded into `vendor-crypto` (it imports the
+// same bn.js/buffer core).
+const VENDOR_SOLANA_TEST = /\/node_modules\/@solana\//;
+
+// React runtime + scheduler + react-spring.
+const VENDOR_REACT_TEST =
+  /\/node_modules\/(react|react-dom|react-is|scheduler|@react-spring)(\/|$)/;
+
+// three.js (three.module, three.webgpu, three.tsl, three.core, three/examples,
+// three/addons) + @pixiv/three-vrm collapsed into one shared async chunk to
+// avoid cross-chunk TDZ init ordering bugs with WebGPU/TSL enums (see
+// fix/three-chunk-tdz) and to keep three out of the eager entry chunk.
+const VENDOR_VRM_TEST = /\/node_modules\/@pixiv\/three-vrm\//;
+const VENDOR_THREE_TEST = /\/node_modules\/three\//;
+const VENDOR_DRACO_TEST = /\/node_modules\/draco3d(gltf)?\//;
+
+/**
+ * Rollup `output.manualChunks`. `@elizaos/vitest-vite` builds with classic
+ * Rollup (`rollup@^4`), whose only manual-chunking API is this function form —
+ * NOT rolldown's `advancedChunks` / `codeSplitting` (Rollup ignores those keys).
+ * Crucially, this must live under `build.rollupOptions.output` — the only
+ * bundle-options key Vite reads; the prior `build.rolldownOptions.output`
+ * placement was silently ignored by Vite, so NO `vendor-*` chunks emitted and
+ * the bn.js graph folded into the eager `en_US` locale chunk (#9150). The
+ * crypto/wallet/solana graph is matched first and collapsed into one lazy
+ * `vendor-crypto` chunk so it can never co-bundle with an eager chunk.
+ */
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
+
+  if (normalizedId.includes("/node_modules/")) {
+    // Crypto + EVM-wallet + Solana collapse into ONE lazy `vendor-crypto`
+    // chunk. They are the same logical wallet/crypto graph (the wallet and
+    // solana stacks both import the bn.js/buffer core), so splitting them into
+    // sibling chunks makes Rollup emit cross-chunk import cycles
+    // (vendor-crypto -> vendor-solana -> vendor-crypto), and a cross-chunk
+    // cycle is exactly the TDZ / module-init-order hazard this pin exists to
+    // prevent. Co-bundling keeps the whole graph (and its Buffer polyfill) in a
+    // single chunk that initializes atomically, lazily, off the eager entry.
+    if (
+      VENDOR_CRYPTO_TEST.test(normalizedId) ||
+      VENDOR_WALLET_TEST.test(normalizedId) ||
+      VENDOR_SOLANA_TEST.test(normalizedId)
+    ) {
+      return "vendor-crypto";
+    }
+  }
 
   // The lucide-per-icon-imports plugin rewrites every `import { X } from
   // "lucide-react"` to a deep `lucide-react/dist/esm/icons/<file>.mjs` import,
   // and redirects the runtime registry's dynamic `import("lucide-react")` to a
   // virtual barrel that re-exports only the used icons. Each icon module is its
-  // own ES module, so without a grouping rule Rolldown emits one tiny chunk per
+  // own ES module, so without a grouping rule Rollup emits one tiny chunk per
   // icon. Collapse the used icons + their shared `createLucideIcon` helper + the
   // virtual barrel's re-export entry into a single chunk; the full barrel is
   // never imported, so the unused icons never enter the graph.
   if (
     normalizedId.includes("/lucide-react/dist/esm/icons/") ||
     normalizedId.includes("/lucide-react/dist/esm/createLucideIcon.mjs") ||
-    normalizedId.includes(LUCIDE_USED_BARREL_ID)
+    normalizedId.includes(LUCIDE_USED_BARREL_ID) ||
+    normalizedId.includes("/lucide-react/")
   ) {
     return "vendor-lucide";
   }
 
   // Phonemizer (eSpeak NG WASM, ~1.3MB) is dynamically imported through the
   // kokoro `phonemizer.ts` adapter (packages/shared/.../kokoro/phonemizer.ts).
-  // Because that adapter is the dynamic-import boundary, Rolldown otherwise emits
+  // Because that adapter is the dynamic-import boundary, Rollup otherwise emits
   // a second async chunk auto-named "phonemizer" and inlines its own copy of the
   // npm package — shipping eSpeak NG twice (a "phonemizer" chunk *and* a
   // "vendor-phonemizer" chunk). Routing BOTH the npm package and the adapter
   // source to one chunk collapses them into a single ~650KB (brotli) chunk.
-  // Kept outside the /node_modules/ gate below so the adapter source matches too.
   if (
     normalizedId.includes("/phonemizer/") ||
     normalizedId.includes("/kokoro/phonemizer")
@@ -1270,36 +1355,10 @@ function resolveManualChunk(id: string): string | undefined {
   }
 
   if (normalizedId.includes("/node_modules/")) {
-    if (
-      pathIncludesAny(normalizedId, [
-        "/@react-spring/",
-        "/react-dom/",
-        "/react-is/",
-        "/scheduler/",
-        "/react/",
-      ])
-    ) {
-      return "vendor-react";
-    }
-
-    if (normalizedId.includes("/@pixiv/three-vrm/")) {
-      return "vendor-vrm";
-    }
-
-    // Collapse all three.js code (three.module, three.webgpu, three.tsl,
-    // three.core, three/examples, three/addons) into one shared async chunk to
-    // avoid cross-chunk TDZ init ordering bugs with WebGPU/TSL enums (see
-    // fix/three-chunk-tdz) and to keep three out of the eager entry chunk.
-    if (normalizedId.includes("/three/")) {
-      return "vendor-three";
-    }
-
-    if (pathIncludesAny(normalizedId, ["/draco3d/", "/draco3dgltf/"])) {
-      return "vendor-draco";
-    }
-    if (normalizedId.includes("/lucide-react/")) {
-      return "vendor-lucide";
-    }
+    if (VENDOR_REACT_TEST.test(normalizedId)) return "vendor-react";
+    if (VENDOR_VRM_TEST.test(normalizedId)) return "vendor-vrm";
+    if (VENDOR_THREE_TEST.test(normalizedId)) return "vendor-three";
+    if (VENDOR_DRACO_TEST.test(normalizedId)) return "vendor-draco";
   }
 
   return undefined;
@@ -1839,6 +1898,12 @@ export default defineConfig({
     ),
   },
   plugins: [
+    // Manifest-driven renderer side-effect plugin registration (#9178): resolves
+    // the `virtual:eliza-side-effect-app-modules` import in plugin-registrations.ts
+    // by scanning plugins/ for elizaos.appRegister markers. Without this the
+    // production web/mobile build fails to resolve the virtual module (the
+    // refactor added the import but never wired the providing plugin).
+    appSideEffectModulesPlugin([nativePluginsRoot]),
     // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), replace the
     // whole `@elizaos/ui/src/cloud` subtree with empty modules. The two lazy
     // cloud entry points are already aliased to passthrough stubs, but the main
@@ -2057,6 +2122,12 @@ export const INVALID_TRACER_PROVIDER = {};
       "@elizaos/app-core",
       "zod",
       "@opentelemetry/api",
+      // One physical Buffer identity across bn.js / elliptic / asn1.js /
+      // @solana so the crypto graph never mixes versions. (safe-buffer is NOT
+      // deduped: it isn't directly installed at the app root, so forcing
+      // single-copy resolution there externalizes it to a bare specifier the
+      // browser can't load — it resolves + bundles fine on its own.)
+      "buffer",
     ],
     alias: [
       { find: /^react$/, replacement: reactEntry },
@@ -2081,6 +2152,14 @@ export const INVALID_TRACER_PROVIDER = {};
       // Bare Node built-in polyfills for browser — pathe provides ESM path,
       // events is pre-bundled via optimizeDeps.
       { find: /^path$/, replacement: patheEntry },
+      // Map `buffer`/`node:buffer` to the real feross buffer (the stub plugin
+      // now bypasses them) so the crypto graph gets a callable Buffer.
+      ...(bufferEntry
+        ? [
+            { find: /^buffer$/, replacement: bufferEntry },
+            { find: /^node:buffer$/, replacement: bufferEntry },
+          ]
+        : []),
       {
         find: /^fast-redact$/,
         replacement: path.resolve(here, "src/shims/fast-redact.ts"),
@@ -2285,10 +2364,6 @@ export const INVALID_TRACER_PROVIDER = {};
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[
         ["@elizaos/plugin-feed", "plugins/plugin-feed/src/ui/index.ts"],
-        [
-          "@elizaos/plugin-clawville",
-          "plugins/plugin-clawville/src/ui/index.ts",
-        ],
         [
           "@elizaos/plugin-trajectory-logger",
           "plugins/plugin-trajectory-logger/src/register.ts",
@@ -2956,17 +3031,24 @@ export const INVALID_TRACER_PROVIDER = {};
       input: {
         main: path.resolve(here, "index.html"),
       },
+    },
+    // rollupOptions is the ONLY bundle-options key Vite reads. The sibling
+    // `rolldownOptions` block above is NOT a Vite option — Vite ignores it
+    // entirely (`@elizaos/vitest-vite` builds with classic Rollup, which has no
+    // `rolldownOptions`) — so the chunk-splitting + otel fallback that must
+    // reach the bundler both live here, under rollupOptions.output /
+    // rollupOptions.plugins.
+    rollupOptions: {
       output: {
+        // Manual chunk-splitting. `@elizaos/vitest-vite` builds with classic
+        // Rollup, whose only chunking API is `output.manualChunks`. This lives
+        // under `rollupOptions.output` — the only bundle-options key Vite reads;
+        // the previous `rolldownOptions.output.manualChunks` placement was
+        // silently ignored, so the bn.js/crypto graph folded into the eager
+        // date-fns `en_US` locale chunk (the #9150 Buffer.allocUnsafe module-
+        // init crash). `scripts/verify-chunk-safety.mjs` gates the regression.
         manualChunks: resolveManualChunk,
       },
-    },
-    // rollupOptions mirrors the otel fallback from rolldownOptions above.
-    // Vite reads rolldownOptions only when using experimental Rolldown; when
-    // running with the classic Rollup bundler (@rollup/wasm-node, as in CI),
-    // rolldownOptions is silently ignored and the otel-api-build-* plugin
-    // never runs. The rollupOptions block below is the standard path and is
-    // always applied by Vite + Rollup.
-    rollupOptions: {
       plugins: [
         ...(otelApiEntry
           ? [

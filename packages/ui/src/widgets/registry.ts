@@ -155,6 +155,57 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: 80,
     defaultEnabled: true,
   },
+  // -- Per-plugin opt-in sinks (#9143) ---------------------------------------
+  // Manifest plugins that have live state but ship no bundled home component
+  // opt into a shared default widget via `defaultWidget`. The runtime plugin ID
+  // is the package name with the `@elizaos/plugin-` prefix stripped (see
+  // plugin-discovery-helpers.ts `workspacePluginIdFromPackageName`), so e.g.
+  // `@elizaos/plugin-todos` -> `todos`. These resolve to the shared sink
+  // component (no own component) and only render when the plugin is enabled.
+  // todos -> activity feed.
+  {
+    id: "todos.activity",
+    pluginId: "todos",
+    slot: "home",
+    label: "Todos",
+    icon: "ListTodo",
+    order: 110,
+    defaultEnabled: true,
+    defaultWidget: "activity",
+  },
+  // goals -> activity feed.
+  {
+    id: "goals.activity",
+    pluginId: "goals",
+    slot: "home",
+    label: "Goals",
+    icon: "Target",
+    order: 120,
+    defaultEnabled: true,
+    defaultWidget: "activity",
+  },
+  // inbox -> messages sink (cross-channel triage surfaces as recent items).
+  {
+    id: "inbox.messages",
+    pluginId: "inbox",
+    slot: "home",
+    label: "Inbox",
+    icon: "Inbox",
+    order: 130,
+    defaultEnabled: true,
+    defaultWidget: "messages",
+  },
+  // calendar -> notifications sink (reminders are notification-like).
+  {
+    id: "calendar.notifications",
+    pluginId: "calendar",
+    slot: "home",
+    label: "Calendar",
+    icon: "Calendar",
+    order: 140,
+    defaultEnabled: true,
+    defaultWidget: "notifications",
+  },
   // Browser workspace status — surfaces /browser state in the right rail.
   {
     id: BROWSER_STATUS_WIDGET.id,

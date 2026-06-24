@@ -2012,24 +2012,20 @@ function formatWeeklyGoalReview(args: {
 
 // ── Main action ───────────────────────────────────────
 
-// Owner-operation actions belong to the LifeOps surface (home chat /
-// page-lifeops / app-lifeops direct rooms). On foreign page-* scopes the action set is
-// scoped to that surface (page-automations → WORKFLOW,
-// page-browser → browser actions, etc.). When owner-operation actions stay
-// eligible on those scopes, their long descriptions contaminate the
-// ACTION_PLANNER candidate list, driving the LLM to mimic the
-// life-param-extractor structured schema and producing envelopes the planner
-// cannot read.
+// Owner-operation actions belong to the home chat (the non-page-scoped
+// assistant surface). On any page-* scope the action set is scoped to that
+// surface (page-automations → WORKFLOW, page-browser → browser actions, etc.).
+// When owner-operation actions stay eligible on those scopes, their long
+// descriptions contaminate the ACTION_PLANNER candidate list, driving the LLM
+// to mimic the life-param-extractor structured schema and producing envelopes
+// the planner cannot read.
 async function isForeignPageScope(
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<boolean> {
   const room = await runtime.getRoom(message.roomId);
   const metadata = extractConversationMetadataFromRoom(room);
-  if (!isPageScopedConversationMetadata(metadata)) {
-    return false;
-  }
-  return metadata?.scope !== "page-lifeops";
+  return isPageScopedConversationMetadata(metadata);
 }
 
 // Metadata reused by the owner-* umbrella actions in owner-surfaces.ts.

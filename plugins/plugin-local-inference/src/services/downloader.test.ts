@@ -66,6 +66,11 @@ function eliza1Manifest(overrides: {
 			vision: { base: "eliza-1-vision", license: "test" },
 		},
 		defaultEligible: true,
+		// Downloader-mechanics fixture: MTP mode is incidental here, so this
+		// bundle is the legacy embedded-draft-head shape (no separate drafter
+		// GGUF to serve). The Gemma-4 separate-drafter contract is exercised in
+		// manifest.test.ts.
+		mtp: "embedded-draft-head",
 		files: {
 			text: [
 				{
@@ -299,6 +304,7 @@ describe("local inference downloader status", () => {
 				vision: { base: "eliza-1-vision", license: "test" },
 			},
 			defaultEligible: true,
+			mtp: "embedded-draft-head",
 			files: {
 				text: [
 					{

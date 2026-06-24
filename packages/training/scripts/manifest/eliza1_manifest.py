@@ -40,7 +40,7 @@ ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
 # Tokenizer identity for the Gemma 4 Eliza-1 line. Mirrors schema.ts
 # (ELIZA_1_TOKENIZER_FAMILY / ELIZA_1_TOKENIZER_VOCAB_SIZE). Stamped into the
 # emitted manifest by build_manifest() so the bundle records its tokenizer.
-ELIZA_1_TOKENIZER_FAMILY: Final[str] = "gemma"
+ELIZA_1_TOKENIZER_FAMILY: Final[str] = "gemma4"
 ELIZA_1_TOKENIZER_VOCAB_SIZE: Final[int] = 262_144
 
 # Gemma 4 KV-cache policy (MQA + windowed-SWA + shared-KV → stock q8_0; no

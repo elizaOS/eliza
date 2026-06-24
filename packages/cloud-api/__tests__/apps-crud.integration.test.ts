@@ -243,6 +243,8 @@ const updateMonetizationSettings = mock(
         monetization_enabled: settings.monetizationEnabled,
       }),
       ...(settings.inferenceMarkupPercentage !== undefined && {
+        // `inference_markup_percentage` is a real() (number) column, not a
+        // decimal string — store the number so the mock matches the schema.
         inference_markup_percentage: settings.inferenceMarkupPercentage,
       }),
     } as App);

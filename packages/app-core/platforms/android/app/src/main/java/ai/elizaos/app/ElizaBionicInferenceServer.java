@@ -241,6 +241,14 @@ final class ElizaBionicInferenceServer {
                 return tts(bundleDir, req.optString("text", ""),
                     (float) req.optDouble("speed", 1.0));
             }
+            if ("asr".equals(op)) {
+                return asr(bundleDir, req.optString("pcmBase64", ""),
+                    req.optInt("sampleRate", 16000));
+            }
+            if ("image".equals(op)) {
+                return describeImage(bundleDir, req.optString("imageBase64", ""),
+                    req.optString("mmprojPath", ""), req.optString("prompt", ""));
+            }
             if (!"generate".equals(op)) {
                 return errorJson("unsupported op: " + op);
             }
@@ -579,6 +587,91 @@ final class ElizaBionicInferenceServer {
             } catch (Throwable t) {
                 // A failed synth may leave the shared ctx in an unknown state;
                 // drop it so the next generate/embed/tts rebuilds cleanly.
+                resetResident();
+                throw t;
+            }
+        }
+    }
+
+    /**
+     * On-device STT: decode the base64 little-endian fp32 PCM, run the fused
+     * Qwen3-ASR batch transcribe on the resident context (it mmap-acquires the
+     * {@code asr/} weights on first use), and return {ok, text}. The agent's
+     * TRANSCRIPTION delegate routes here over UDS (op="asr"); the musl agent
+     * can't reach the fused lib itself. Reuses the ONE resident context like
+     * embed/tts so the model is not reloaded per call.
+     */
+    private String asr(String bundleDir, String pcmBase64, int sampleRate)
+            throws org.json.JSONException {
+        if (pcmBase64.isEmpty()) {
+            return errorJson("asr: empty pcmBase64");
+        }
+        byte[] raw = Base64.decode(pcmBase64, Base64.DEFAULT);
+        final int n = raw.length / 4;
+        if (n <= 0) {
+            return errorJson("asr: pcmBase64 decoded to " + raw.length + " bytes (need fp32 PCM)");
+        }
+        float[] pcm = new float[n];
+        ByteBuffer bb = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN);
+        for (int i = 0; i < n; i++) {
+            pcm[i] = bb.getFloat();
+        }
+        final int sr = sampleRate > 0 ? sampleRate : 16000;
+        synchronized (residentLock) {
+            final long ctx = ensureResidentCtx(bundleDir);
+            try {
+                String text = ElizaVoiceNative.nativeAsrTranscribe(ctx, pcm, sr);
+                Log.i(TAG, "ASR from agent: " + n + " samples @ " + sr + " Hz -> \""
+                    + (text.length() > 200 ? text.substring(0, 200) + "…" : text) + "\"");
+                return new JSONObject()
+                    .put("ok", true)
+                    .put("text", text)
+                    .toString();
+            } catch (Throwable t) {
+                // A failed transcribe may leave the shared ctx in an unknown state;
+                // drop it so the next generate/embed/tts/asr rebuilds cleanly.
+                resetResident();
+                throw t;
+            }
+        }
+    }
+
+    /**
+     * On-device vision / screen-recognition: decode the base64 image bytes and
+     * run the fused mmproj describe-image on the resident TEXT model. When the
+     * caller doesn't pass an explicit {@code mmprojPath}, resolve the projector
+     * GGUF from the bundle's {@code vision/} dir. Returns {ok, text}. The agent's
+     * IMAGE_DESCRIPTION delegate routes here over UDS (op="image").
+     */
+    private String describeImage(String bundleDir, String imageBase64,
+            String mmprojPath, String prompt) throws org.json.JSONException {
+        if (imageBase64.isEmpty()) {
+            return errorJson("image: empty imageBase64");
+        }
+        byte[] img = Base64.decode(imageBase64, Base64.DEFAULT);
+        if (img.length == 0) {
+            return errorJson("image: imageBase64 decoded to 0 bytes");
+        }
+        String mmproj = mmprojPath;
+        if (mmproj == null || mmproj.isEmpty()) {
+            File visionDir = new File(bundleDir, "vision");
+            mmproj = firstMatch(visionDir, ".gguf");
+            if (mmproj == null) {
+                return errorJson("image: mmproj GGUF not found under " + visionDir
+                    + " (stage a vision projector or pass mmprojPath)");
+            }
+        }
+        synchronized (residentLock) {
+            final long ctx = ensureResidentCtx(bundleDir);
+            try {
+                String desc = ElizaVoiceNative.nativeDescribeImage(ctx, img, mmproj, prompt);
+                Log.i(TAG, "IMAGE from agent: " + img.length + " bytes (mmproj " + mmproj + ") -> \""
+                    + (desc.length() > 200 ? desc.substring(0, 200) + "…" : desc) + "\"");
+                return new JSONObject()
+                    .put("ok", true)
+                    .put("text", desc)
+                    .toString();
+            } catch (Throwable t) {
                 resetResident();
                 throw t;
             }

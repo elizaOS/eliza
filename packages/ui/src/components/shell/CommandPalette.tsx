@@ -9,12 +9,20 @@ import { isElectrobunRuntime } from "../../bridge";
 import {
   buildCommands as buildCommandPaletteCommands,
   type CommandItem,
+  paletteViewEntries,
+  type ViewNavEntry,
 } from "../../chat";
-import { reportShortcutFired } from "../../chat/useSlashCommandController";
+import {
+  reportShortcutFired,
+  reportUserViewSwitch,
+} from "../../chat/useSlashCommandController";
 import { COMMAND_PALETTE_EVENT } from "../../events";
 import { useBugReport } from "../../hooks";
+import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { SHORTCUT_OPEN_COMMAND_PALETTE } from "../../hooks/useKeyboardShortcuts";
+import type { Tab } from "../../navigation";
 import { useAppSelectorShallow } from "../../state";
+import { useEnabledViewKinds } from "../../state/useViewKinds";
 import {
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
@@ -80,6 +88,40 @@ export function CommandPalette() {
     typeof activeGameViewerUrl === "string" ? activeGameViewerUrl : "";
   const desktopRuntime = isElectrobunRuntime();
 
+  // Every registered, loadable, user-visible GUI view becomes a palette nav
+  // entry so the palette is a complete launcher across all plugins (#8792). The
+  // visibility gate mirrors the view catalog (`isVisibleCatalogView`) so the
+  // palette never leaks developer/preview/internal views the rest of the shell
+  // hides (e.g. with Developer Mode off).
+  const { views: registeredViews } = useAvailableViews();
+  const enabledKinds = useEnabledViewKinds();
+  const viewNavEntries = useMemo<ViewNavEntry[]>(
+    () => paletteViewEntries(registeredViews, enabledKinds),
+    [registeredViews, enabledKinds],
+  );
+  // Navigation + agent reporting in one place: switching surfaces from the
+  // palette must reach the proactive decider as VIEW_SWITCHED (#8792).
+  const navigateTab = useCallback(
+    (tab: Tab) => {
+      setTab(tab);
+      reportUserViewSwitch(String(tab));
+    },
+    [setTab],
+  );
+  // Mirror the established `eliza:navigate:view` detail shape used by every
+  // other dispatcher (slash controller, view catalog, notifications): always
+  // include `viewId` so the handler records recents + opens/activates the
+  // desktop tab, and always dispatch so path-less views still route via the
+  // consumer's `/apps/<viewId>` fallback.
+  const navigateView = useCallback((viewId: string, path?: string) => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: { viewId, viewPath: path },
+      }),
+    );
+    reportUserViewSwitch(viewId, path);
+  }, []);
+
   const allCommands = useMemo<CommandItem[]>(() => {
     return buildCommandPaletteCommands({
       agentState,
@@ -87,7 +129,9 @@ export function CommandPalette() {
       handleStart,
       handleStop,
       handleRestart,
-      setTab,
+      navigateTab,
+      navigateView,
+      views: viewNavEntries,
       setAppsSubTab: () => setState("appsSubTab", "games"),
       loadPlugins,
       loadSkills,
@@ -115,7 +159,9 @@ export function CommandPalette() {
     handleStart,
     handleStop,
     handleRestart,
-    setTab,
+    navigateTab,
+    navigateView,
+    viewNavEntries,
     setState,
     loadPlugins,
     loadSkills,

@@ -14,6 +14,7 @@
 
 import { Hono } from "hono";
 import { appsDeployOrganizationDecision } from "@/api-app/lib/apps-deploy-gate";
+import { containersRepository } from "@/db/repositories/containers";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDeploymentsService } from "@/lib/services/app-deployments";
@@ -85,6 +86,22 @@ app.post("/", async (c) => {
           error: parsed.error.issues[0]?.message ?? "Invalid request body",
         },
         400,
+      );
+    }
+
+    // Per-org container quota precheck — give the user an immediate, clean 409
+    // instead of queueing a deploy that fails ~30s later (the runner also
+    // enforces this atomically via createWithQuotaCheck; this is the UX layer).
+    const quota = await containersRepository.checkQuota(user.organization_id);
+    if (!quota.allowed) {
+      return c.json(
+        {
+          success: false,
+          error:
+            quota.error ??
+            `Container quota exceeded (${quota.current}/${quota.max})`,
+        },
+        409,
       );
     }
 

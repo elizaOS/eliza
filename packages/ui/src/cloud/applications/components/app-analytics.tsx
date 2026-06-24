@@ -49,6 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 
@@ -259,33 +260,33 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
     fetchAnalytics();
   }, [fetchAnalytics]);
 
-  useEffect(() => {
-    if (activeTab === "overview") {
-      const interval = setInterval(() => {
-        fetchAnalytics(false);
-      }, AUTO_REFRESH_INTERVAL);
-      return () => clearInterval(interval);
-    }
-  }, [activeTab, fetchAnalytics]);
+  useIntervalWhenDocumentVisible(
+    () => fetchAnalytics(false),
+    AUTO_REFRESH_INTERVAL,
+    activeTab === "overview",
+  );
 
   useEffect(() => {
     if (activeTab === "requests" || activeTab === "visitors") {
       fetchRequestStats();
-      const interval = setInterval(fetchRequestStats, AUTO_REFRESH_INTERVAL);
-      return () => clearInterval(interval);
     }
   }, [activeTab, fetchRequestStats]);
+  useIntervalWhenDocumentVisible(
+    fetchRequestStats,
+    AUTO_REFRESH_INTERVAL,
+    activeTab === "requests" || activeTab === "visitors",
+  );
 
   useEffect(() => {
     if (activeTab === "logs") {
       fetchRequestLogs(logsPage);
-      const interval = setInterval(
-        () => fetchRequestLogs(logsPage),
-        AUTO_REFRESH_INTERVAL,
-      );
-      return () => clearInterval(interval);
     }
   }, [activeTab, logsPage, fetchRequestLogs]);
+  useIntervalWhenDocumentVisible(
+    () => fetchRequestLogs(logsPage),
+    AUTO_REFRESH_INTERVAL,
+    activeTab === "logs",
+  );
 
   if (isLoading) {
     return (
@@ -296,7 +297,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
   }
 
   const chartData = analytics.map((item) => ({
-    date: new Date(item.period_start).toLocaleDateString(),
+    date: new Date(item.period_start).toLocaleDateString("en-US"),
     requests: item.total_requests,
     users: item.unique_users,
     newUsers: item.new_users,
@@ -383,12 +384,12 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
               <DashboardStatCard
                 label="Total Requests"
-                value={totalStats.totalRequests?.toLocaleString() || "0"}
+                value={totalStats.totalRequests?.toLocaleString("en-US") || "0"}
                 icon={<Activity className="h-5 w-5 text-purple-400" />}
               />
               <DashboardStatCard
                 label="Total Users"
-                value={totalStats.totalUsers?.toLocaleString() || "0"}
+                value={totalStats.totalUsers?.toLocaleString("en-US") || "0"}
                 icon={<Users className="h-5 w-5 text-white/70" />}
               />
               <DashboardStatCard
@@ -497,7 +498,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <div className="grid gap-3 grid-cols-2 sm:grid-cols-5">
                 <MiniStatCard
                   label="Page Views"
-                  value={(requestStats.byType?.pageview || 0).toLocaleString()}
+                  value={(requestStats.byType?.pageview || 0).toLocaleString(
+                    "en-US",
+                  )}
                   color="text-green-400"
                 />
                 <MiniStatCard
@@ -505,12 +508,12 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   value={(
                     requestStats.totalRequests -
                     (requestStats.byType?.pageview || 0)
-                  ).toLocaleString()}
+                  ).toLocaleString("en-US")}
                   color="text-[var(--brand-orange)]"
                 />
                 <MiniStatCard
                   label="Unique Visitors"
-                  value={requestStats.uniqueIps.toLocaleString()}
+                  value={requestStats.uniqueIps.toLocaleString("en-US")}
                   color="text-white"
                 />
                 <MiniStatCard
@@ -564,7 +567,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                               style={{ backgroundColor: item.color }}
                             />
                             <span className="text-xs text-neutral-300">
-                              {item.name}: {item.value.toLocaleString()}
+                              {item.name}: {item.value.toLocaleString("en-US")}
                             </span>
                           </div>
                         ))}
@@ -610,7 +613,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                                 />
                               </div>
                               <span className="text-xs text-neutral-500 w-12 text-right">
-                                {count.toLocaleString()}
+                                {count.toLocaleString("en-US")}
                               </span>
                             </div>
                           </div>
@@ -646,14 +649,14 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
                   <DashboardStatCard
                     label="Unique IPs"
-                    value={requestStats.uniqueIps.toLocaleString()}
+                    value={requestStats.uniqueIps.toLocaleString("en-US")}
                     icon={
                       <Globe className="h-5 w-5 text-[var(--brand-orange)]" />
                     }
                   />
                   <DashboardStatCard
                     label="Unique Users"
-                    value={requestStats.uniqueUsers.toLocaleString()}
+                    value={requestStats.uniqueUsers.toLocaleString("en-US")}
                     icon={<Users className="h-5 w-5 text-white/70" />}
                   />
                   <DashboardStatCard
@@ -720,7 +723,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                               </div>
                             </td>
                             <td className="py-2 px-3 text-right text-white text-xs">
-                              {visitor.requestCount.toLocaleString()}
+                              {visitor.requestCount.toLocaleString("en-US")}
                             </td>
                             <td className="py-2 px-3 text-right text-neutral-500 text-xs">
                               {formatDistanceToNow(new Date(visitor.lastSeen), {
@@ -750,7 +753,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             <h3 className="text-sm font-medium text-white">Request Logs</h3>
             <div className="flex items-center gap-2">
               <span className="text-xs text-neutral-500">
-                {logsTotal.toLocaleString()} total
+                {logsTotal.toLocaleString("en-US")} total
               </span>
               <Button
                 variant="ghost"

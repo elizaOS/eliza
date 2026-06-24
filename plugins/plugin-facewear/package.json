@@ -43,7 +43,7 @@
     "emulator:build": "cd emulator && bun install --force && bun run build",
     "emulator:watch": "cd emulator && bun run build:watch",
     "emulator:cli": "bun run --cwd emulator src/cli.ts",
-    "verify:app": "bunx vitest --root ../.. run packages/app-core/src/registry/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
+    "verify:app": "bunx vitest --root ../.. run packages/registry/src/first-party/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
@@ -78,7 +78,8 @@
     "plugin": {
       "displayName": "Facewear",
       "category": "hardware"
-    }
+    },
+    "appRegister": "register"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
@@ -131,6 +132,7 @@
   },
   "types": "./dist/index.d.ts",
   "files": [
+    "registry-entry.json",
     "assets",
     "dist",
     "docs"

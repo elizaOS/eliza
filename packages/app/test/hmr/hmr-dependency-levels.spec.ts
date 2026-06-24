@@ -126,16 +126,12 @@ const LEVELS = [
     file: "plugins/plugin-app-control/src/views/ViewManagerView.tsx",
   },
   {
-    name: "plugin view clawville",
-    file: "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
-  },
-  {
     name: "plugin view screenshare",
     file: "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
   },
   {
     name: "plugin view social alpha",
-    file: "plugins/plugin-social-alpha/src/frontend/LeaderboardView.tsx",
+    file: "plugins/plugin-social-alpha/src/frontend/SocialAlphaView.tsx",
   },
   {
     name: "plugin view task coordinator",

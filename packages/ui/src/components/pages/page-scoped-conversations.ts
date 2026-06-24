@@ -12,7 +12,6 @@ export type PageScope =
   | "page-connectors"
   | "page-phone"
   | "page-plugins"
-  | "page-lifeops"
   | "page-settings"
   | "page-wallet";
 
@@ -24,7 +23,6 @@ export const PAGE_SCOPES: readonly PageScope[] = [
   "page-connectors",
   "page-phone",
   "page-plugins",
-  "page-lifeops",
   "page-settings",
   "page-wallet",
 ] as const;
@@ -72,10 +70,6 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
     primaryContext: "plugins",
     secondaryContexts: ["page", "page-plugins", "plugins", "admin"],
   },
-  "page-lifeops": {
-    primaryContext: "automation",
-    secondaryContexts: ["page", "page-lifeops", "automation", "social_posting"],
-  },
   "page-settings": {
     primaryContext: "settings",
     secondaryContexts: ["page", "page-settings", "settings", "admin"],
@@ -92,7 +86,7 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 14;
+export const PAGE_SCOPE_VERSION = 15;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -150,12 +144,6 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
     systemAddendum:
       "You are answering inside the Plugins view. The user can inspect installed plugins, registry plugins, configuration readiness, plugin health, and runtime capability gaps. Recommend the smallest plugin setup or troubleshooting action that fits the user's goal, reference visible plugin state when present, and never invent installed plugins, credentials, or enabled capabilities.",
   },
-  "page-lifeops": {
-    title: "LifeOps chat",
-    body: "Ask me about the visible LifeOps item or the next action you want handled.",
-    systemAddendum:
-      "You are answering inside the LifeOps view. The user can inspect the current overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. Recommend capability readiness and overview review before creating or changing durable personal workflows. When the user asks for concrete LifeOps work, route through the LifeOps app actions/providers already available in the runtime instead of generic advice. Reference live LifeOps state when present, and never invent reminders, goals, messages, calendar events, or connector state.",
-  },
   "page-settings": {
     title: "Settings chat",
     body: "Use me to tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. Recommended: describe the capability you want to enable or troubleshoot, and I'll point to the right section or explain the tradeoffs.",
@@ -178,7 +166,6 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-connectors": "Connectors",
   "page-phone": "Phone",
   "page-plugins": "Plugins",
-  "page-lifeops": "LifeOps",
   "page-settings": "Settings",
   "page-wallet": "Wallet",
 };

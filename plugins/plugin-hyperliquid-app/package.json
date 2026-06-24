@@ -42,7 +42,8 @@
   "elizaos": {
     "app": {
       "heroImage": "assets/hero.png"
-    }
+    },
+    "appRegister": "register"
   },
   "publishConfig": {
     "access": "public"
@@ -57,6 +58,7 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
+    "registry-entry.json",
     "assets",
     "dist"
   ],

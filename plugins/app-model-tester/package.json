@@ -34,7 +34,8 @@
     "app": {
       "displayName": "Model Tester",
       "category": "system"
-    }
+    },
+    "appRegister": "ui"
   },
   "publishConfig": {
     "access": "public"
@@ -52,6 +53,7 @@
     "test:e2e": "node scripts/model-tester-e2e.mjs"
   },
   "files": [
+    "registry-entry.json",
     "assets",
     "dist"
   ],

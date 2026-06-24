@@ -87,6 +87,20 @@ export async function createApp(input: {
   });
 }
 
+/**
+ * POST /api/v1/apps/:id/deploy — start a managed container deployment (#9145).
+ * Gated server-side by APPS_DEPLOY_ENABLED: when off, the route rejects with
+ * `apps_deploy_disabled`, which surfaces to the caller as a thrown error.
+ */
+export async function deployApp(
+  id: string,
+): Promise<{ deploymentId?: string; status?: string }> {
+  return api<{ deploymentId?: string; status?: string }>(
+    `/api/v1/apps/${id}/deploy`,
+    { method: "POST" },
+  );
+}
+
 /** PUT /api/v1/apps/:id — update editable app fields. */
 export async function updateApp(
   id: string,

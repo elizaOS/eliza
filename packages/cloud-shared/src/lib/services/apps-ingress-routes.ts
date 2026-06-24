@@ -5,7 +5,11 @@
  *
  * The front door: stock Caddy on the app node terminates TLS (on-demand, gated
  * by an `ask` endpoint) and routes each per-app hostname to that container's
- * published host port. Routes are managed LIVE via Caddy's admin API — the
+ * published host port. Caddy is CO-LOCATED on the same app node, and the
+ * container publishes only to `127.0.0.1:hostPort` (never `0.0.0.0`), so the
+ * upstream dial is the node loopback — the port is unreachable across the
+ * shared private network, which closes a cross-tenant ingress bypass. Routes
+ * are managed LIVE via Caddy's admin API — the
  * daemon POSTs a route right after the container is marked running and DELETEs it
  * (by `@id`) on teardown — so adding/removing one app never reloads the others.
  *
@@ -23,11 +27,17 @@ export interface AppRouteInput {
    * keeps the route a plain single-host wildcard route.
    */
   extraHostnames?: string[];
-  /** The app node the container runs on (private IP or hostname reachable by Caddy). */
-  nodeHost: string;
-  /** The published host port of the container on that node. */
+  /**
+   * The loopback-published host port of the container on the node. Caddy runs on
+   * the SAME node, so the upstream is always `127.0.0.1:hostPort`; the node host
+   * is deliberately NOT part of the dial (the port binds 127.0.0.1, not the
+   * private-network IP).
+   */
   hostPort: number;
 }
+
+/** Caddy and the app container share the node, so the upstream is always loopback. */
+const LOOPBACK_DIAL_HOST = "127.0.0.1";
 
 /** Lower-case, trim, drop empties, and de-dupe a host list (order-preserving). */
 function normalizeHosts(hosts: string[]): string[] {
@@ -60,7 +70,7 @@ export function buildCaddyRouteId(hostname: string): string {
   return `app-${safe}`;
 }
 
-/** The Caddy admin-API route: host-match -> reverse_proxy to `nodeHost:hostPort`. */
+/** The Caddy admin-API route: host-match -> reverse_proxy to `127.0.0.1:hostPort`. */
 export function buildCaddyRoute(input: AppRouteInput): CaddyRoute {
   return {
     "@id": buildCaddyRouteId(input.hostname),
@@ -68,7 +78,7 @@ export function buildCaddyRoute(input: AppRouteInput): CaddyRoute {
     handle: [
       {
         handler: "reverse_proxy",
-        upstreams: [{ dial: `${input.nodeHost}:${input.hostPort}` }],
+        upstreams: [{ dial: `${LOOPBACK_DIAL_HOST}:${input.hostPort}` }],
       },
     ],
   };
