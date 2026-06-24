@@ -599,7 +599,10 @@ export class ContainersRepository {
         created_at: createdAt,
       });
 
-      // 5. Create the container (unique constraint will prevent duplicate names)
+      // 5. Create the container. NOTE: there is NO unique constraint on
+      //    `containers.name` — each deploy inserts a fresh row and the
+      //    deterministic `app-<id>` name is reused across rows. Consumers that
+      //    key on name (e.g. the orphan reconciler) must handle >1 row per name.
       const values: NewContainer = {
         ...insertData,
         status: "pending",

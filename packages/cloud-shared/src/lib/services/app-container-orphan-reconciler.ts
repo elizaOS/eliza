@@ -121,8 +121,19 @@ export function isAppContainerName(name: string): boolean {
  *
  * A container is an orphan when EITHER:
  *   - no `containers` row exists for its name (`no_db_row`), OR
- *   - the row exists but its status is terminal (`terminal_db_row`) — the deploy
- *     lifecycle has decided this app has no live container.
+ *   - rows exist but EVERY one of them is terminal (`terminal_db_row`) — the
+ *     deploy lifecycle has decided this app has no live container.
+ *
+ * CRITICAL: a single `app-<slug>` name can map to MULTIPLE `containers` rows.
+ * `containers.name` is the deterministic `app-<first 12 of app id>` and has NO
+ * unique constraint; every deploy inserts a fresh row via `createWithQuotaCheck`
+ * and leaves prior rows behind in running/stopped/failed. So the row set for one
+ * name is routinely a mix like `[running, stopped]`. We must be FAIL-SAFE: a
+ * name is LIVE (never reaped) if ANY of its rows is non-terminal, and is reaped
+ * ONLY when EVERY row is terminal. Collapsing to a single status per name (e.g.
+ * last-write-wins over an unordered `WHERE name IN (...)`) could pick a terminal
+ * row while a live row exists and `docker rm -f` a running customer app. Group
+ * here so the decision is fail-safe and order-independent.
  *
  * Containers whose name does not match the `app-<slug>` pattern are ignored
  * entirely — they belong to something else on the node.
@@ -133,19 +144,24 @@ export function computeOrphanAppContainersToReap(
   containersOnNode: readonly NodeAppContainerRef[],
   liveContainers: readonly LiveAppContainerRef[],
 ): OrphanAppContainer[] {
-  const statusByName = new Map<string, string>();
+  // Group all statuses per name (a name can have >1 containers row — there is no
+  // unique constraint on containers.name).
+  const statusesByName = new Map<string, string[]>();
   for (const row of liveContainers) {
-    statusByName.set(row.name, row.status);
+    const list = statusesByName.get(row.name) ?? [];
+    list.push(row.status);
+    statusesByName.set(row.name, list);
   }
 
   const orphans: OrphanAppContainer[] = [];
   for (const container of containersOnNode) {
     if (!isAppContainerName(container.name)) continue;
 
-    const status = statusByName.get(container.name);
-    if (status === undefined) {
+    const statuses = statusesByName.get(container.name);
+    if (statuses === undefined || statuses.length === 0) {
       orphans.push({ name: container.name, id: container.id, reason: "no_db_row" });
-    } else if (TERMINAL_CONTAINER_STATUSES.has(status)) {
+    } else if (statuses.every((s) => TERMINAL_CONTAINER_STATUSES.has(s))) {
+      // Reap ONLY when EVERY row is terminal — any live row protects the name.
       orphans.push({ name: container.name, id: container.id, reason: "terminal_db_row" });
     }
   }
@@ -275,6 +291,12 @@ const ORPHAN_RM_TIMEOUT_MS = 30_000;
  * Load (name, status) for the `containers` rows matching the given container
  * names, including terminal-state rows. The reconciler needs the status to tell
  * a missing row (`no_db_row`) apart from a terminal one (`terminal_db_row`).
+ *
+ * This can return MULTIPLE rows for the same name: `containers.name` is the
+ * deterministic `app-<first 12 of app id>` with no unique constraint, so an app
+ * accumulates one row per deploy. `computeOrphanAppContainersToReap` groups
+ * these per name and only reaps when every row is terminal, so returning the
+ * full (unordered) set here is correct and fail-safe.
  */
 async function loadContainerStatusesByNames(
   names: readonly string[],
