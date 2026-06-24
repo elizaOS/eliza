@@ -604,51 +604,22 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
   if (spec.orientation === "vertical") {
     return (
       <div
+        aria-hidden="true"
         data-spatial-kind="divider"
         style={{
-          width: 1,
+          width: "0.25rem",
           alignSelf: "stretch",
-          background: "var(--border, rgba(128,128,128,0.35))",
         }}
       />
     );
   }
-  if (spec.label) {
-    return (
-      <div
-        data-spatial-kind="divider"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          opacity: 0.7,
-        }}
-      >
-        <div
-          style={{
-            flex: 1,
-            height: 1,
-            background: "var(--border, rgba(128,128,128,0.35))",
-          }}
-        />
-        <span style={{ fontSize: "0.75rem" }}>{spec.label}</span>
-        <div
-          style={{
-            flex: 1,
-            height: 1,
-            background: "var(--border, rgba(128,128,128,0.35))",
-          }}
-        />
-      </div>
-    );
-  }
   return (
     <div
+      aria-hidden="true"
       data-spatial-kind="divider"
       style={{
-        height: 1,
+        height: spec.label ? "0.25rem" : "0.125rem",
         alignSelf: "stretch",
-        background: "var(--border, rgba(128,128,128,0.35))",
       }}
     />
   );
@@ -694,14 +665,20 @@ export function HStack(props: Omit<StackProps, "direction">) {
 export function VStack(props: Omit<StackProps, "direction">) {
   return <Stack {...props} direction="column" />;
 }
-/** A bordered, padded surface. */
-export function Card(props: StackProps) {
+/** A compact grouped surface without a visible frame by default. */
+export function Card({
+  border,
+  gap,
+  padding,
+  title: _title,
+  ...props
+}: StackProps) {
   return (
     <Stack
       {...props}
-      border={props.border ?? "round"}
-      padding={props.padding ?? 2}
-      gap={props.gap ?? 1}
+      border={border ?? "none"}
+      padding={padding ?? 1}
+      gap={gap ?? 1}
     />
   );
 }

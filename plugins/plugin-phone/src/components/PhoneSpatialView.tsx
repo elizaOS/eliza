@@ -125,7 +125,7 @@ export function PhoneSpatialView({
 }: PhoneSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   return (
-    <Card title="Phone" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"
@@ -208,7 +208,7 @@ export function PhoneSpatialView({
       <Divider label="recent" />
       {snapshot.calls.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No recent calls
+          None
         </Text>
       ) : (
         <List gap={0}>

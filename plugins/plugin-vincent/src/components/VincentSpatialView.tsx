@@ -90,7 +90,7 @@ export function VincentSpatialView({
   } = snapshot;
 
   return (
-    <Card title="Vincent" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"
@@ -258,7 +258,7 @@ export function VincentSpatialView({
             </List>
           ) : (
             <Text tone="muted" style="caption">
-              No P&amp;L data yet.
+              No P&amp;L
             </Text>
           )}
           <HStack gap={1} wrap>
@@ -274,7 +274,7 @@ export function VincentSpatialView({
         </VStack>
       ) : (
         <Text tone="muted" align="center" style="caption">
-          No strategy configured
+          None
         </Text>
       )}
     </Card>

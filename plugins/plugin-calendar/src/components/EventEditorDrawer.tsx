@@ -690,10 +690,10 @@ export function EventEditorDrawer({
     <>
       <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
         <DialogContent
-          className="fixed bottom-0 right-0 top-0 !left-auto !right-0 !top-0 m-0 h-full w-[min(28rem,100vw)] max-w-[100vw] !translate-x-0 !translate-y-0 overflow-y-auto rounded-l-2xl rounded-r-none border-l border-t-0 border-border/16 bg-bg p-0 shadow-xl duration-200 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-right-full"
+          className="fixed bottom-0 right-0 top-0 !left-auto !right-0 !top-0 m-0 h-full w-[min(28rem,100vw)] max-w-[100vw] !translate-x-0 !translate-y-0 overflow-y-auto bg-bg p-0 duration-200 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-right-full"
           data-testid="event-editor-drawer"
         >
-          <div className="flex items-center justify-between gap-3 border-b border-border/12 px-5 py-4">
+          <div className="flex items-center justify-between gap-3 px-5 py-4">
             <div>
               <div className="text-sm font-semibold text-txt">{titleLabel}</div>
             </div>
@@ -701,7 +701,7 @@ export function EventEditorDrawer({
               type="button"
               onClick={onClose}
               aria-label={t("common.close", { defaultValue: "Close" })}
-              className="rounded-full p-1.5 text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt"
+              className="p-1.5 text-muted transition-colors hover:text-txt"
             >
               <X className="h-4 w-4" />
             </button>
@@ -709,9 +709,7 @@ export function EventEditorDrawer({
 
           <div className="space-y-4 px-5 py-5">
             {error ? (
-              <div className="rounded-2xl bg-danger/10 px-3 py-2 text-xs text-danger">
-                {error}
-              </div>
+              <div className="px-1 py-1 text-xs text-danger">{error}</div>
             ) : null}
 
             <div className="space-y-1.5">
@@ -886,7 +884,7 @@ export function EventEditorDrawer({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/12 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <div className="flex flex-wrap items-center gap-2">
               {!isCreate && onChat && event ? (
                 <EventEditorActionButton
@@ -895,7 +893,7 @@ export function EventEditorDrawer({
                   description="Open chat about this event"
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 rounded-xl p-0 text-muted"
+                  className="h-8 w-8 p-0 text-muted"
                   onClick={() => onChat(event)}
                 >
                   <MessageSquare className="h-3.5 w-3.5" aria-hidden />
@@ -911,7 +909,7 @@ export function EventEditorDrawer({
                   description="Delete this calendar event"
                   variant="surfaceDestructive"
                   size="sm"
-                  className="h-8 w-8 rounded-xl p-0"
+                  className="h-8 w-8 p-0"
                   disabled={deleting || saving}
                   onClick={() => setConfirmDeleteOpen(true)}
                 >
@@ -933,7 +931,7 @@ export function EventEditorDrawer({
                 description="Close the event editor without saving"
                 variant="outline"
                 size="sm"
-                className="h-8 w-8 rounded-xl p-0"
+                className="h-8 w-8 p-0"
                 onClick={onClose}
                 disabled={saving}
               >
@@ -948,7 +946,7 @@ export function EventEditorDrawer({
                 description="Save the event and keep the editor open"
                 variant="outline"
                 size="sm"
-                className="h-8 w-8 rounded-xl p-0"
+                className="h-8 w-8 p-0"
                 disabled={saving || !form.title.trim()}
                 onClick={() => void handleSave({ keepOpen: true })}
               >
@@ -970,7 +968,7 @@ export function EventEditorDrawer({
                 label={isCreate ? "Create event" : "Save event"}
                 description="Save the calendar event and close the editor"
                 size="sm"
-                className="h-8 w-8 rounded-xl p-0"
+                className="h-8 w-8 p-0"
                 disabled={saving || !form.title.trim()}
                 onClick={() => void handleSave()}
               >

@@ -102,15 +102,9 @@ export function ContactsSpatialView({
     snapshot.selectedId != null
       ? (snapshot.contacts.find((c) => c.id === snapshot.selectedId) ?? null)
       : null;
-  const title =
-    mode === "detail" && selected
-      ? selected.displayName || "Unnamed"
-      : mode === "new"
-        ? "New contact"
-        : "Contacts";
 
   return (
-    <Card title={title} gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text style="caption" tone="muted" grow={1}>
           {snapshot.loading
@@ -190,7 +184,7 @@ function ContactsListBody({
       <Divider label="address book" />
       {snapshot.contacts.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          {snapshot.loading ? "Loading contacts" : "No contacts"}
+          {snapshot.loading ? "Loading" : "None"}
         </Text>
       ) : (
         <List gap={0}>
@@ -258,7 +252,7 @@ function ContactsDetailBody({
       <Divider label="phone" />
       {phones.length === 0 ? (
         <Text tone="muted" style="caption">
-          No phone numbers
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -289,7 +283,7 @@ function ContactsDetailBody({
       <Divider label="email" />
       {emails.length === 0 ? (
         <Text tone="muted" style="caption">
-          No email addresses
+          None
         </Text>
       ) : (
         <List gap={0}>

@@ -61,7 +61,7 @@ export function FocusSpatialView({
 }: FocusSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   return (
-    <Card title="Focus" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <FocusBody snapshot={snapshot} dispatch={dispatch} />
     </Card>
   );
@@ -78,7 +78,7 @@ function FocusBody({
     case "loading":
       return (
         <Text tone="muted" style="caption">
-          Loading focus status...
+          Loading
         </Text>
       );
     case "error":
@@ -97,10 +97,9 @@ function FocusBody({
     case "unavailable":
       return (
         <>
-          <Text bold>Focus blocking is unavailable</Text>
+          <Text bold>Focus unavailable</Text>
           <Text tone="muted" style="caption">
-            The website-blocking engine is not available on this device
-            (platform: {snapshot.platform ?? "unknown"}).
+            {snapshot.platform ?? "unknown"}
           </Text>
           {snapshot.reason ? (
             <Text tone="muted" style="caption">
@@ -113,40 +112,27 @@ function FocusBody({
       return (
         <>
           <Text bold tone="warning">
-            Permission needed
-          </Text>
-          <Text tone="muted" style="caption">
-            Eliza needs administrator/root approval to edit the system hosts
-            file before it can block websites.
+            Permission
           </Text>
           <Text tone="muted" style="caption">
             {snapshot.elevationPromptMethod
-              ? `Approval method: ${snapshot.elevationPromptMethod}`
-              : "This device can't raise an approval prompt automatically."}
+              ? snapshot.elevationPromptMethod
+              : "Manual approval required"}
           </Text>
           {snapshot.reason ? (
             <Text tone="muted" style="caption">
               {snapshot.reason}
             </Text>
           ) : null}
-          <Text tone="muted" style="caption">
-            Ask the assistant to "enable website blocking" and approve the
-            system prompt when it appears.
-          </Text>
         </>
       );
     case "active":
       return <FocusActiveBody snapshot={snapshot} dispatch={dispatch} />;
     default:
       return (
-        <>
-          <Text tone="muted" style="caption">
-            No active focus session.
-          </Text>
-          <Text tone="muted" style="caption">
-            Say "block distractions for 1 hour" to start one.
-          </Text>
-        </>
+        <Text tone="muted" style="caption">
+          Idle
+        </Text>
       );
   }
 }
@@ -162,7 +148,7 @@ function FocusActiveBody({
   const canRelease = snapshot.canUnblockEarly === true;
   return (
     <>
-      <Text bold>Focus session active</Text>
+      <Text bold>Focus active</Text>
       {canRelease ? (
         <HStack gap={1}>
           <Button
@@ -172,7 +158,7 @@ function FocusActiveBody({
             agent="release"
             onPress={dispatch("release")}
           >
-            {snapshot.releasing ? "Releasing" : "Release block"}
+            {snapshot.releasing ? "Releasing" : "Release"}
           </Button>
         </HStack>
       ) : null}
@@ -182,13 +168,13 @@ function FocusActiveBody({
         {snapshot.endsAt ? ` - ends ${snapshot.endsAt}` : " - no end time"}
       </Text>
       <Text tone="muted" style="caption">
-        Match mode: {snapshot.matchMode ?? "exact"}
+        Mode: {snapshot.matchMode ?? "exact"}
       </Text>
 
       <Divider label={`${sites.length} blocked`} />
       {sites.length === 0 ? (
         <Text tone="muted" style="caption">
-          No websites blocked
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -207,8 +193,7 @@ function FocusActiveBody({
 
       {!canRelease && snapshot.requiresElevation ? (
         <Text tone="muted" style="caption">
-          Releasing this block needs administrator/root approval. Ask the
-          assistant to release it.
+          Admin approval required to release.
         </Text>
       ) : null}
     </>

@@ -16,7 +16,14 @@
  * rather than fabricating a money path.
  */
 
-import { Button, Card, Divider, Field, HStack, Text } from "@elizaos/ui/spatial";
+import {
+  Button,
+  Card,
+  Divider,
+  Field,
+  HStack,
+  Text,
+} from "@elizaos/ui/spatial";
 
 /** Projected, display-only quote numbers. */
 export interface SwapSnapshotQuote {
@@ -69,7 +76,7 @@ export function SwapSpatialView({ snapshot, onAction }: SwapSpatialViewProps) {
   const impactDanger = (quote?.priceImpactPct ?? 0) < -1;
 
   return (
-    <Card title="Swap" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text style="caption" tone="muted" grow={1}>
           PancakeSwap v3

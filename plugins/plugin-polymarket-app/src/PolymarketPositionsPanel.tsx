@@ -378,7 +378,7 @@ export function PolymarketPositionsPanel({
               color: MUTED,
             }}
           >
-            No open positions
+            None
           </div>
         ) : (
           <>

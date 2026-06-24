@@ -84,7 +84,7 @@ export function GlobalPrefsSection({
             </SelectItem>
           </SelectContent>
         </Select>
-        <SettingsControls.FieldDescription className="mt-1.5">
+        <SettingsControls.FieldDescription className="sr-only">
           {selectionStrategy === "fixed"
             ? t("codingagentsettingssection.AgentUsedWhenNoEStrategyFixed")
             : t("codingagentsettingssection.AgentUsedWhenNoEStrategyRanked")}
@@ -118,7 +118,7 @@ export function GlobalPrefsSection({
             ))}
           </SelectContent>
         </Select>
-        <SettingsControls.FieldDescription className="mt-1.5">
+        <SettingsControls.FieldDescription className="sr-only">
           {t("codingagentsettingssection.AccountPoolStrategyDesc", {
             defaultValue:
               "How to select between multiple accounts for the same coding agent. This sets ELIZA_CODING_ACCOUNT_STRATEGY for spawned agents.",
@@ -147,7 +147,7 @@ export function GlobalPrefsSection({
             ))}
           </SelectContent>
         </Select>
-        <SettingsControls.FieldDescription className="mt-1.5">
+        <SettingsControls.FieldDescription className="sr-only">
           {APPROVAL_PRESETS.find((preset) => preset.value === approvalPreset)
             ?.descKey
             ? t(
@@ -195,7 +195,7 @@ export function GlobalPrefsSection({
             </SelectItem>
           </SelectContent>
         </Select>
-        <SettingsControls.FieldDescription>
+        <SettingsControls.FieldDescription className="sr-only">
           {t("codingagentsettingssection.ScratchRetentionDesc", {
             defaultValue:
               "What happens to scratch workspace code when a task finishes.",
@@ -213,7 +213,7 @@ export function GlobalPrefsSection({
           initial={prefs.ELIZA_CODING_DIRECTORY || ""}
           onCommit={(val) => setPref("ELIZA_CODING_DIRECTORY", val)}
         />
-        <SettingsControls.FieldDescription>
+        <SettingsControls.FieldDescription className="sr-only">
           {t("codingagentsettingssection.CodingDirectoryDesc", {
             defaultValue:
               "Where scratch task code is saved. Leave empty for default (~/.eliza/workspaces/).",

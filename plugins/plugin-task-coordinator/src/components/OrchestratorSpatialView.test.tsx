@@ -260,7 +260,6 @@ describe("OrchestratorSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(listView, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Orchestrator");
       expect(flat).toContain("Refactor auth pipeline");
       expect(flat).toContain("Fix flaky test suite");
       // Tasks are created conversationally in chat — the workbench is a
@@ -293,7 +292,6 @@ describe("OrchestratorSpatialView one source, three modalities", () => {
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
       expect(html).toContain("Refactor auth pipeline");
-      expect(html).toContain("Orchestrator");
       expect(html).toContain('data-agent-id="open-t1"');
     }
   });

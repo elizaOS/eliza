@@ -70,7 +70,6 @@ describe("FinancesSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Finances");
       expect(flat).toContain("Balance");
       expect(flat).toContain("Transactions");
       expect(flat).toContain("Recurring");
@@ -105,7 +104,7 @@ describe("FinancesSpatialView one source, three modalities", () => {
       54,
     );
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
-    expect(lines.join("\n")).toContain("Loading finances");
+    expect(lines.join("\n")).toContain("Loading");
   });
 
   it("empty state renders the connect-a-source affordance", () => {
@@ -118,7 +117,7 @@ describe("FinancesSpatialView one source, three modalities", () => {
         <FinancesSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No money sources connected");
+    expect(html).toContain("None");
     expect(html).toContain('data-agent-id="connect"');
   });
 

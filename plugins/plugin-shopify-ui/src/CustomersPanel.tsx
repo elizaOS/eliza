@@ -12,8 +12,8 @@ function CustomerRow({ customer }: { customer: ShopifyCustomer }) {
     [customer.firstName, customer.lastName].filter(Boolean).join(" ") || "—";
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/20 bg-card/30 px-3 py-3 transition-colors hover:bg-card/50">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/30 bg-bg-accent text-xs-tight font-semibold uppercase text-muted-strong">
+    <div className="flex flex-wrap items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center text-xs-tight font-semibold uppercase text-muted-strong">
         {(customer.firstName?.[0] ?? customer.email[0] ?? "?").toUpperCase()}
       </div>
 
@@ -66,14 +66,13 @@ export function CustomersPanel({
   total,
   loading,
   error,
-  search,
 }: CustomersPanelProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p
           data-testid="chat-search-hint"
-          className="text-[13px] leading-relaxed text-txt/60"
+          className="sr-only text-[13px] leading-relaxed text-txt/60"
         >
           Search customers by typing in the chat.
         </p>
@@ -85,23 +84,19 @@ export function CustomersPanel({
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {error}
-        </div>
+        <div className="px-1 py-2 text-sm text-danger">{error}</div>
       ) : null}
 
       {loading && customers.length === 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 8 }, (_, i) => i).map((i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-xl" />
+            <Skeleton key={i} className="h-14 w-full" />
           ))}
         </div>
       ) : customers.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-border/20 bg-card/20 py-12 text-center">
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
           <Users className="h-8 w-8 text-muted/40" />
-          <div className="text-sm text-muted">
-            {search ? "No customers match your search." : "No customers found."}
-          </div>
+          <div className="text-sm text-muted">None</div>
         </div>
       ) : (
         <div className="space-y-1.5">

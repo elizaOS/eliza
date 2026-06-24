@@ -46,9 +46,9 @@ describe("TradingProfileCard — null profile", () => {
   it("renders the minimal placeholder with no stat tiles", () => {
     render(<TradingProfileCard tradingProfile={null} />);
 
-    // The placeholder shows a "No analytics" dot but none of the populated
+    // The placeholder shows a compact empty dot but none of the populated
     // tile values / labels.
-    expect(screen.getByTitle("No analytics")).toBeTruthy();
+    expect(screen.getByTitle("None")).toBeTruthy();
     expect(screen.queryByText("Swaps")).toBeNull();
     expect(screen.queryByText("Win")).toBeNull();
     expect(screen.queryByText(/%$/)).toBeNull();

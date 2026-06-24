@@ -65,7 +65,6 @@ describe("CompanionSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Companion");
       expect(flat).toContain("avatar-ready");
       expect(flat).toContain("VRM #3");
       expect(flat).toContain("gpt-test"); // last model
@@ -104,7 +103,7 @@ describe("CompanionSpatialView one source, three modalities", () => {
       const lines = component?.render(50) ?? [];
       expect(lines.length).toBeGreaterThan(0);
       for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Companion");
+      expect(lines.join("\n")).toContain("avatar-ready");
     } finally {
       unregister();
     }

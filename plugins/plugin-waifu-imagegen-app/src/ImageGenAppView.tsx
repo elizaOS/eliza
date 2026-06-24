@@ -15,7 +15,7 @@ import { useImageGenState } from "./useImageGenState";
 function SettlementPill() {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-ok/35 bg-ok/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ok"
+      className="inline-flex items-center gap-1.5 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ok"
       role="status"
       aria-label="Settled in credits"
     >
@@ -120,7 +120,7 @@ export function ImageGenAppView({
       data-testid="imagegen-shell"
       className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg supports-[height:100dvh]:h-[100dvh]"
     >
-      <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center gap-3 px-3 py-2">
         <Button
           ref={backButton.ref}
           {...backButton.agentProps}
@@ -138,17 +138,15 @@ export function ImageGenAppView({
         </div>
       </div>
 
-      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mx-auto max-w-3xl space-y-4">
+      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-3 py-2 sm:px-5">
+        <div className="mx-auto max-w-3xl space-y-3">
           {!config.agentTokenAddress && (
-            <PagePanel.Notice tone="warning">
-              No agent is configured for image generation.
-            </PagePanel.Notice>
+            <PagePanel.Notice tone="warning">Unavailable</PagePanel.Notice>
           )}
 
           <PriceStrip metadata={config.metadata} />
 
-          <section className="rounded-lg border border-border/24 bg-card/50 p-4">
+          <section className="py-2">
             <label
               htmlFor={promptId}
               className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted"
@@ -165,7 +163,7 @@ export function ImageGenAppView({
               rows={3}
               placeholder="describe the image you want"
               disabled={busy}
-              className="w-full resize-none rounded-md border border-border bg-bg-accent px-3 py-2 text-sm text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50 disabled:opacity-60"
+              className="w-full resize-none border border-border/40 bg-bg/60 px-3 py-2 text-sm text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50 disabled:opacity-60"
             />
             <div className="mt-1 flex items-center justify-between text-[11px] uppercase tracking-[0.12em] text-muted">
               <span>aspect</span>
@@ -256,11 +254,11 @@ export function ImageGenAppView({
           )}
 
           {result?.imageUrl && (
-            <figure className="rounded-lg border border-border/24 bg-card/50 p-3">
+            <figure className="p-1">
               <img
                 src={result.imageUrl}
                 alt={result.prompt}
-                className="w-full rounded-md border border-border object-contain"
+                className="w-full object-contain"
               />
               <figcaption className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs uppercase tracking-[0.12em] text-muted">
                 <span className="inline-flex items-center gap-1.5">

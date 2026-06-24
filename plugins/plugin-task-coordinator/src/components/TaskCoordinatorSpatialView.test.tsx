@@ -180,7 +180,6 @@ describe("TaskCoordinatorSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(listView, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Coding Tasks");
       // Long titles truncate to fit the width contract; match a stable prefix.
       expect(flat).toContain("Refactor auth");
       expect(flat).toContain("Fix flaky test");
@@ -212,7 +211,6 @@ describe("TaskCoordinatorSpatialView one source, three modalities", () => {
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
       expect(html).toContain("Refactor auth pipeline");
-      expect(html).toContain("Coding Tasks");
       expect(html).toContain('data-agent-id="open-t1"');
       expect(html).toContain('data-agent-id="search"');
       expect(html).toContain('data-agent-id="toggle-archived"');

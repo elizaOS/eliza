@@ -456,7 +456,6 @@ describe("ShopifyAppView (gui + xr)", () => {
     // env hints for the two required vars.
     expect(screen.getByText("SHOPIFY_STORE_DOMAIN")).toBeTruthy();
     expect(screen.getByText("SHOPIFY_ACCESS_TOKEN")).toBeTruthy();
-    // Configure-in-Settings link.
-    expect(screen.getByText("Configure in Settings")).toBeTruthy();
+    expect(screen.getByText("Settings")).toBeTruthy();
   });
 });

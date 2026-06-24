@@ -250,7 +250,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
     expect(screen.getByText("Local key")).toBeTruthy();
   });
 
-  it("maps missing account -> 'No account' tile", async () => {
+  it("maps missing account -> compact account tile", async () => {
     mockReads(
       makeStatus({
         accountAddress: null,
@@ -259,7 +259,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
     );
     render(React.createElement(HyperliquidAppView, ctx()));
     await screen.findByText("ETH");
-    expect(screen.getByText("No account")).toBeTruthy();
+    expect(screen.getByText("Account")).toBeTruthy();
   });
 
   it("renders the executionBlockedReason banner", async () => {
@@ -381,7 +381,7 @@ describe("HyperliquidAppView (standard/XR)", () => {
     // While loading-with-no-data the whole surface is the spinner (the manual
     // refresh control is only rendered alongside loaded data — law-8 de-slop).
     expect(await screen.findByTestId("spinner")).toBeTruthy();
-    expect(screen.getByText("Loading Hyperliquid state")).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
   });
 

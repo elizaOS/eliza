@@ -149,14 +149,16 @@ describe("PhaseDrilldown ACTION body", () => {
     expect(screen.getByText(/"text": "hello world"/)).toBeTruthy();
     expect(screen.getByText(/"sent": true/)).toBeTruthy();
 
-    // STATUS_BORDER tone: ok event = green border, error event = red border.
-    const okCard = screen.getByText("REPLY").closest("div.rounded");
-    expect(okCard?.className).toContain("border-green-500/40");
-    const errCard = screen.getByText("POSTGRES_QUERY").closest("div.rounded");
-    expect(errCard?.className).toContain("border-red-500/40");
+    // STATUS tone: ok event = green, error event = red.
+    const okCard = screen.getByText("REPLY").closest("[data-phase-status]");
+    expect(okCard?.className).toContain("text-green-500");
+    const errCard = screen
+      .getByText("POSTGRES_QUERY")
+      .closest("[data-phase-status]");
+    expect(errCard?.className).toContain("text-red-500");
   });
 
-  it("maps a skipped tool status to the yellow border and a running one to blue", () => {
+  it("maps a skipped tool status to yellow and a running one to blue", () => {
     const events: UIToolEvent[] = [
       { id: "sk", type: "tool_call", actionName: "MUTE", status: "skipped" },
       { id: "rn", type: "tool_call", actionName: "SEARCH", status: "running" },
@@ -166,10 +168,10 @@ describe("PhaseDrilldown ACTION body", () => {
         phase={summary("ACTION", "active", { toolEvents: events })}
       />,
     );
-    const skipped = screen.getByText("MUTE").closest("div.rounded");
-    expect(skipped?.className).toContain("border-yellow-500/40");
-    const running = screen.getByText("SEARCH").closest("div.rounded");
-    expect(running?.className).toContain("border-blue-500/40");
+    const skipped = screen.getByText("MUTE").closest("[data-phase-status]");
+    expect(skipped?.className).toContain("text-yellow-500");
+    const running = screen.getByText("SEARCH").closest("[data-phase-status]");
+    expect(running?.className).toContain("text-blue-500");
   });
 
   it("returns null when there are no tool events", () => {
@@ -210,11 +212,15 @@ describe("PhaseDrilldown EVALUATE body", () => {
     expect(screen.getByText("FACT_CHECK")).toBeTruthy();
     expect(screen.getByText("evaluator timed out")).toBeTruthy();
 
-    // status border: ok = green, error = red.
-    const okCard = screen.getByText("REFLECTION").closest("div.rounded");
-    expect(okCard?.className).toContain("border-green-500/40");
-    const errCard = screen.getByText("FACT_CHECK").closest("div.rounded");
-    expect(errCard?.className).toContain("border-red-500/40");
+    // status tone: ok = green, error = red.
+    const okCard = screen
+      .getByText("REFLECTION")
+      .closest("[data-phase-status]");
+    expect(okCard?.className).toContain("text-green-500");
+    const errCard = screen
+      .getByText("FACT_CHECK")
+      .closest("[data-phase-status]");
+    expect(errCard?.className).toContain("text-red-500");
   });
 
   it("renders nothing when both evaluation calls and events are empty", () => {

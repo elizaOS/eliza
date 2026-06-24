@@ -383,7 +383,7 @@ describe("CalendarSection", () => {
 
     render(<CalendarSection {...noopProps} />);
 
-    expect(screen.getByRole("status", { name: "Calendar clear" })).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Clear" })).toBeTruthy();
   });
 
   it("renders the error banner when the hook reports an error", () => {

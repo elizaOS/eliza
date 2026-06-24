@@ -199,7 +199,7 @@ describe("ProductsPanel", () => {
         onPageChange: vi.fn(),
       }),
     );
-    expect(screen.getByText("No products match your search.")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
     rerender(
       React.createElement(ProductsPanel, {
         products: [],
@@ -211,7 +211,7 @@ describe("ProductsPanel", () => {
         onPageChange: vi.fn(),
       }),
     );
-    expect(screen.getByText("No products found.")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
   });
 
   it("creates a product: opens dialog, gates submit on title, POSTs body, closes on success", async () => {

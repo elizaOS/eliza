@@ -226,9 +226,7 @@ function CreateProductDialog({ open, onClose }: CreateProductDialogProps) {
           </div>
 
           {submitError ? (
-            <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-              {submitError}
-            </div>
+            <div className="px-1 py-2 text-xs text-danger">{submitError}</div>
           ) : null}
 
           <DialogFooter>
@@ -263,8 +261,8 @@ function ProductRow({ product }: { product: ShopifyProduct }) {
       : `${product.priceRange.min} – ${product.priceRange.max}`;
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border/20 bg-card/30 px-3 py-3 transition-colors hover:bg-card/50">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/20 bg-bg-accent overflow-hidden">
+    <div className="flex items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden">
         {product.imageUrl ? (
           <img
             src={product.imageUrl}
@@ -323,7 +321,6 @@ export function ProductsPanel({
   page,
   loading,
   error,
-  search,
   onPageChange,
 }: ProductsPanelProps) {
   const [createOpen, setCreateOpen] = useState(false);
@@ -358,7 +355,7 @@ export function ProductsPanel({
       <div className="flex items-center justify-between gap-2">
         <p
           data-testid="chat-search-hint"
-          className="text-[13px] leading-relaxed text-txt/60"
+          className="sr-only text-[13px] leading-relaxed text-txt/60"
         >
           Search products by typing in the chat.
         </p>
@@ -376,23 +373,19 @@ export function ProductsPanel({
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {error}
-        </div>
+        <div className="px-1 py-2 text-sm text-danger">{error}</div>
       ) : null}
 
       {loading && products.length === 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }, (_, i) => i).map((i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-xl" />
+            <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
       ) : products.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-border/20 bg-card/20 py-12 text-center">
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
           <Package className="h-8 w-8 text-muted/40" />
-          <div className="text-sm text-muted">
-            {search ? "No products match your search." : "No products found."}
-          </div>
+          <div className="text-sm text-muted">None</div>
         </div>
       ) : (
         <div className="space-y-1.5">

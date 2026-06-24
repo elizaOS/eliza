@@ -110,7 +110,7 @@ export function ModelTesterSpatialView({
 }: ModelTesterSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   return (
-    <Card title="Model Tester" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center" wrap>
         <Text style="caption" tone="success">
           {snapshot.readyCount} ready

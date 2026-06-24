@@ -348,7 +348,7 @@ describe("PolymarketAppView (desktop/xr)", () => {
     expect(exitToApps).toHaveBeenCalledTimes(1);
   });
 
-  it("DisconnectedState: empty markets shows 'No markets loaded' + missing trading vars", async () => {
+  it("DisconnectedState: empty markets shows compact state + missing trading vars", async () => {
     polymarketClient.polymarketStatus.mockResolvedValue(sampleStatus);
     polymarketClient.polymarketMarkets.mockResolvedValue({
       markets: [],
@@ -358,17 +358,17 @@ describe("PolymarketAppView (desktop/xr)", () => {
     const { container } = render(
       React.createElement(PolymarketAppView, overlayContext),
     );
-    await waitForText(container, "No markets loaded");
+    await waitForText(container, "None");
 
     const text = container.textContent ?? "";
-    expect(text).not.toContain("Markets unavailable");
+    expect(text).not.toContain("Unavailable");
     // The missing-trading-vars <code> list joins status.trading.missing.
     expect(text).toContain("POLYMARKET_PRIVATE_KEY, CLOB_API_KEY");
     const code = container.querySelector("code");
     expect(code?.textContent).toBe("POLYMARKET_PRIVATE_KEY, CLOB_API_KEY");
   });
 
-  it("DisconnectedState: fetch rejection shows 'Markets unavailable' error copy", async () => {
+  it("DisconnectedState: fetch rejection shows compact unavailable copy", async () => {
     polymarketClient.polymarketStatus.mockResolvedValue(sampleStatus);
     polymarketClient.polymarketMarkets.mockRejectedValue(
       new Error("network down"),
@@ -377,11 +377,11 @@ describe("PolymarketAppView (desktop/xr)", () => {
     const { container } = render(
       React.createElement(PolymarketAppView, overlayContext),
     );
-    await waitForText(container, "Markets unavailable");
+    await waitForText(container, "Unavailable");
 
     expect(container.textContent).toContain(
       "Couldn't reach Polymarket right now.",
     );
-    expect(container.textContent).not.toContain("No markets loaded");
+    expect(container.textContent).not.toContain("None");
   });
 });

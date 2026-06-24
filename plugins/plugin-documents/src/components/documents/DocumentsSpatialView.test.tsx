@@ -9,9 +9,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   type DocumentCard,
-  EMPTY_DOCUMENTS_SNAPSHOT,
   type DocumentsSnapshot,
   DocumentsSpatialView,
+  EMPTY_DOCUMENTS_SNAPSHOT,
 } from "./DocumentsSpatialView.tsx";
 
 function card(overrides: Partial<DocumentCard> & { id: string }): DocumentCard {
@@ -27,8 +27,16 @@ const snapshot: DocumentsSnapshot = {
   documentCount: 2,
   fragmentCount: 9,
   documents: [
-    card({ id: "d1", title: "Quarterly Plan", meta: "markdown · 4 KB · Jun 16" }),
-    card({ id: "d2", title: "Onboarding Notes", meta: "plain · 1 KB · Jun 18" }),
+    card({
+      id: "d1",
+      title: "Quarterly Plan",
+      meta: "markdown · 4 KB · Jun 16",
+    }),
+    card({
+      id: "d2",
+      title: "Onboarding Notes",
+      meta: "plain · 1 KB · Jun 18",
+    }),
   ],
   query: "",
   search: { kind: "idle" },
@@ -42,7 +50,6 @@ describe("DocumentsSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Documents");
       expect(flat).toContain("Quarterly Plan");
       expect(flat).toContain("Onboarding Notes");
       expect(flat).toContain("document");
@@ -75,7 +82,7 @@ describe("DocumentsSpatialView one source, three modalities", () => {
       54,
     );
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
-    expect(lines.join("\n")).toContain("Loading documents");
+    expect(lines.join("\n")).toContain("Loading");
   });
 
   it("empty state renders the honest no-documents affordance", () => {
@@ -92,7 +99,7 @@ describe("DocumentsSpatialView one source, three modalities", () => {
         <DocumentsSpatialView snapshot={empty} />
       </SpatialSurface>,
     );
-    expect(html).toContain("No documents yet");
+    expect(html).toContain("None");
   });
 
   it("error state renders the message and a Retry control", () => {
@@ -149,7 +156,10 @@ describe("DocumentsSpatialView one source, three modalities", () => {
   });
 
   it("registers as a terminal view the agent terminal can mount and render", () => {
-    const unregister = registerSpatialTerminalView("documents-test", () => view);
+    const unregister = registerSpatialTerminalView(
+      "documents-test",
+      () => view,
+    );
     try {
       const component = getTerminalView("documents-test");
       expect(component).toBeTruthy();

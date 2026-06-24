@@ -93,7 +93,6 @@ describe("ShopifySpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Shopify");
       expect(flat).toContain("connected");
       expect(flat).toContain("eliza.myshopify.com");
       expect(flat).toContain("#1001"); // recent order

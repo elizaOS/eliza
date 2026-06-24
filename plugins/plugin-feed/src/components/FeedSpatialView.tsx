@@ -23,7 +23,6 @@ import type {
 import {
   Button,
   Card,
-  Divider,
   HStack,
   List,
   type SpatialTone,
@@ -146,13 +145,9 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
 
   if (!hasSession) {
     return (
-      <Card title="Feed" gap={1} padding={1}>
+      <Card gap={1} padding={1}>
         <Text style="caption" tone="warning">
-          No session yet
-        </Text>
-        <Text tone="muted" style="caption">
-          Waiting for a Feed session. Spawn the trading agent to stream live
-          markets, portfolio PnL, and team coordination here.
+          None
         </Text>
         <Button
           grow={1}
@@ -177,7 +172,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
   const recentChat = chatMessages.slice(-2);
 
   return (
-    <Card title="Feed Operator" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"
@@ -214,7 +209,6 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </Text>
       ) : null}
 
-      <Divider label="portfolio" />
       {portfolio ? (
         <VStack gap={0}>
           <HStack gap={1} align="center">
@@ -229,7 +223,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </VStack>
       ) : (
         <Text tone="muted" style="caption">
-          Portfolio is not available yet.
+          None
         </Text>
       )}
 
@@ -246,10 +240,9 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </VStack>
       ) : null}
 
-      <Divider label="markets" />
       {predictionMarkets.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          Market data is not available yet.
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -269,10 +262,9 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </List>
       )}
 
-      <Divider label="recent trades" />
       {recentTrades.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No recent trades
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -296,7 +288,6 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </List>
       )}
 
-      <Divider label="team" />
       <HStack gap={1} align="center">
         <Text grow={1} wrap={false}>
           {team.ownerName ?? `${team.agentCount} agents`}
@@ -336,17 +327,13 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </List>
       ) : null}
 
-      <Divider label="wallet" />
       <HStack gap={1} align="center">
-        <Text grow={1}>
-          {wallet ? formatCurrency(wallet.balance) : "Waiting for wallet"}
-        </Text>
+        <Text grow={1}>{wallet ? formatCurrency(wallet.balance) : "None"}</Text>
         <Text style="caption" tone="muted">
           {`trading ${formatCurrency(tradingBalance)}`}
         </Text>
       </HStack>
 
-      <Divider label="steering" />
       {suggestedPrompts.length > 0 ? (
         <HStack gap={1} wrap>
           {suggestedPrompts.slice(0, 2).map((prompt, index) => (

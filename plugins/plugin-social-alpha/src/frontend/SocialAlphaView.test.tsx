@@ -143,7 +143,7 @@ describe("SocialAlphaView — states", () => {
 				fetchers: makeFetchers({ fetchLeaderboard: async () => [] }),
 			}),
 		);
-		await screen.findByText("No callers yet");
+		await screen.findByText("None");
 		expect(screen.queryByText("alice")).toBeNull();
 	});
 

@@ -110,12 +110,9 @@ export function HyperliquidSpatialView({
 
   if (snapshot.unavailable) {
     return (
-      <Card title="Hyperliquid" gap={1} padding={1}>
+      <Card gap={1} padding={1}>
         <Text tone="muted" align="center">
-          Unavailable on this device
-        </Text>
-        <Text style="caption" tone="muted" align="center">
-          Markets and account reads run on a desktop or cloud agent.
+          Unavailable
         </Text>
         <Divider />
         <HStack gap={1} wrap>
@@ -136,7 +133,7 @@ export function HyperliquidSpatialView({
   }
 
   return (
-    <Card title="Hyperliquid" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"
@@ -168,10 +165,7 @@ export function HyperliquidSpatialView({
           label={credentialModeLabel(status.credentialMode)}
           ready={status.signerReady}
         />
-        <StatusTile
-          label={accountReady ? "Account" : "No account"}
-          ready={accountReady}
-        />
+        <StatusTile label="Account" ready={accountReady} />
       </VStack>
 
       {status.executionBlockedReason ? (
@@ -191,7 +185,7 @@ export function HyperliquidSpatialView({
       <Divider label="markets" />
       {snapshot.markets.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No markets
+          None
         </Text>
       ) : (
         <List gap={0}>

@@ -208,7 +208,7 @@ function OrchestratorList({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <Card title="Orchestrator" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center" wrap>
         <Text style="caption" tone="muted" grow={1}>
           {loading ? "loading" : `${threads.length} threads`}
@@ -267,7 +267,7 @@ function OrchestratorList({
       <Divider label="tasks" />
       {threads.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No task threads
+          None
         </Text>
       ) : (
         <List gap={1}>
@@ -354,7 +354,7 @@ function OrchestratorDetail({
     detail.status === "failed" ||
     detail.status === "archived";
   return (
-    <Card title="Task" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Button
           variant="ghost"
@@ -578,7 +578,7 @@ function SessionsSection({
       <Divider label={`sessions (${sessions.length})`} />
       {sessions.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No sessions
+          None
         </Text>
       ) : (
         <List gap={1}>

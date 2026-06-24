@@ -123,7 +123,7 @@ describe("InventoryLevelsPanel", () => {
     );
     const select = screen.getByLabelText("Location") as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "Outlet" } });
-    expect(screen.getByText("No items at Outlet.")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
   });
 
   it("adjusts inventory up: POSTs {delta, locationId} and optimistically increments", async () => {

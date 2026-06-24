@@ -129,7 +129,6 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Trajectories");
       expect(flat).toContain("recording");
       expect(flat).toContain("now");
       expect(flat).toContain("last");
@@ -149,7 +148,6 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
     expect(gui).toContain('data-spatial-surface="gui"');
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
-      expect(html).toContain("Trajectories");
       expect(html).toContain("HANDLE");
       expect(html).toContain("sendMessage");
       expect(html).toContain('data-agent-id="strip-now"');
@@ -168,7 +166,6 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
       const lines = component?.render(50) ?? [];
       expect(lines.length).toBeGreaterThan(0);
       for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Trajectories");
     } finally {
       unregister();
     }

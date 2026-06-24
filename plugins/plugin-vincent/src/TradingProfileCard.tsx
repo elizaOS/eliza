@@ -43,13 +43,10 @@ export const TradingProfileCard = memo(function TradingProfileCard({
 }: TradingProfileCardProps) {
   if (!tradingProfile) {
     return (
-      <div className="rounded-2xl border border-border/18 px-4 py-3">
+      <div className="px-1 py-3">
         <div className="flex items-center justify-between gap-3">
           <TrendingUp className="h-4 w-4 text-muted/50" />
-          <span
-            className="h-2 w-2 rounded-full bg-muted/50"
-            title="No analytics"
-          />
+          <span className="h-2 w-2 rounded-full bg-muted/50" title="None" />
         </div>
       </div>
     );
@@ -59,7 +56,7 @@ export const TradingProfileCard = memo(function TradingProfileCard({
     tradingProfile;
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/18 px-4 py-4">
+    <div className="space-y-3 px-1 py-3">
       {/* Header */}
       <div className="flex items-center gap-2">
         <TrendingUp className="h-4 w-4 text-accent" />
@@ -88,7 +85,7 @@ export const TradingProfileCard = memo(function TradingProfileCard({
           {tokenBreakdown.slice(0, 8).map((tok) => (
             <span
               key={tok.symbol}
-              className="inline-flex items-center gap-2 rounded-full border border-border/25 bg-card/55 px-3 py-1.5 text-xs font-semibold text-muted"
+              className="inline-flex items-center gap-2 px-1 py-1.5 text-xs font-semibold text-muted"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-ok" />
               <span className="text-txt">{tok.symbol}</span>

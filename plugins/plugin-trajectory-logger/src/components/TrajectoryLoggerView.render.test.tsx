@@ -298,12 +298,10 @@ afterEach(() => {
 });
 
 describe("TrajectoryLoggerAppView populated render", () => {
-  it("renders the header brand block, both Now/Last strips, and the recording badge", async () => {
+  it("renders the overlay controls, both Now/Last strips, and the recording badge", async () => {
     installFetch();
     render(<TrajectoryLoggerAppView {...overlayContext()} />);
 
-    // Header brand title.
-    expect(screen.getByText("Trajectories")).toBeTruthy();
     // Back button (Button mock forwards aria-label).
     expect(screen.getByLabelText("Back")).toBeTruthy();
 

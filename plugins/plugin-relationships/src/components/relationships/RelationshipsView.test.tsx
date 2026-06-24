@@ -190,7 +190,7 @@ describe("RelationshipsView — states", () => {
         })}
       />,
     );
-    await screen.findByText("No people yet");
+    await screen.findByText("None");
     expect(screen.queryByText("Pat Doe")).toBeNull();
   });
 
@@ -203,7 +203,7 @@ describe("RelationshipsView — states", () => {
         })}
       />,
     );
-    await screen.findByText("No people yet");
+    await screen.findByText("None");
     fireEvent.click(agent("add"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });

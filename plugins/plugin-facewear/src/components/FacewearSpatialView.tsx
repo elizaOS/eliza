@@ -88,7 +88,7 @@ export function FacewearSpatialView({
   );
 
   return (
-    <Card title="Facewear" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"
@@ -97,7 +97,7 @@ export function FacewearSpatialView({
         >
           {connectedCount > 0
             ? `${connectedCount} device${connectedCount === 1 ? "" : "s"} connected`
-            : "No devices connected"}
+            : "None"}
         </Text>
         <Text style="caption" tone="muted">
           {snapshot.loading ? "loading" : `${snapshot.profiles.length} models`}
@@ -131,7 +131,7 @@ export function FacewearSpatialView({
       <Divider label="devices" />
       {snapshot.profiles.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          {snapshot.loading ? "Loading devices" : "No supported devices"}
+          {snapshot.loading ? "Loading" : "None"}
         </Text>
       ) : (
         <List gap={0}>

@@ -134,7 +134,7 @@ describe("HealthView (fetch-driven)", () => {
       fetchBaseline: () => new Promise(() => {}),
     };
     render(<HealthView fetchers={fetchers} />);
-    expect(screen.getByText(/Loading sleep data/i)).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
   it("renders the error state and refetches when Retry is clicked", async () => {
@@ -155,20 +155,15 @@ describe("HealthView (fetch-driven)", () => {
     await screen.findByText("network down");
     fireEvent.click(agent("retry"));
 
-    await screen.findByText(/No sleep data yet/i);
+    await screen.findByText("None");
     expect(fetchHistory).toHaveBeenCalledTimes(2);
   });
 
   it("renders the empty (connect-a-source) state when no episodes exist", async () => {
     render(<HealthView fetchers={makeFetchers(emptyHistory())} />);
 
-    await screen.findByText(/No sleep data yet/i);
-    expect(
-      screen.getByText(/Connect a health source \(Apple Health/i),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/connect a health source to get started/i),
-    ).toBeTruthy();
+    await screen.findByText("None");
+    expect(screen.queryByText("14d empty")).toBeNull();
   });
 
   it("renders the populated state with last sleep, regularity, baseline, and window summary", async () => {

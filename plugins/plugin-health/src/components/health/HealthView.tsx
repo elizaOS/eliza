@@ -304,7 +304,7 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
         ...EMPTY_HEALTH_SNAPSHOT,
         state: "empty",
         windowDays,
-        emptyDetail: `Nothing was recorded in the last ${history.windowDays} days. Connect a health source (Apple Health, Google Fit, Oura, Fitbit, Withings, or Strava) so Eliza can track your sleep.`,
+        emptyDetail: `${history.windowDays}d empty`,
       };
     }
     return {

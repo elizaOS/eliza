@@ -233,12 +233,12 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       data-testid="device-settings-shell"
       className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/24 bg-bg/90 px-4 py-3 backdrop-blur-sm">
+      <header className="flex shrink-0 items-center justify-between gap-3 px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-lg text-muted hover:text-txt"
+            className="h-9 w-9 shrink-0 text-muted hover:text-txt"
             onClick={exitToApps}
             aria-label={t("nav.back", { defaultValue: "Back" })}
           >
@@ -247,7 +247,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-txt">
               {t("deviceSettings.title", {
-                defaultValue: "Device Settings",
+                defaultValue: "Device",
               })}
             </h1>
           </div>
@@ -255,7 +255,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 rounded-lg text-muted hover:text-txt"
+          className="h-9 w-9 text-muted hover:text-txt"
           onClick={() => void refresh()}
           disabled={loading}
           aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
@@ -266,13 +266,11 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       </header>
 
       {(error || notice) && (
-        <div className="shrink-0 px-4 pt-3">
+        <div className="shrink-0 px-3 pt-2">
           <div
             role={error ? "alert" : "status"}
-            className={`mx-auto max-w-3xl rounded-lg border px-3 py-2 text-sm ${
-              error
-                ? "border-danger/40 bg-danger/10 text-danger"
-                : "border-border/30 bg-bg-accent text-muted"
+            className={`mx-auto max-w-3xl px-1 py-2 text-sm ${
+              error ? "text-danger" : "text-muted"
             }`}
           >
             {error ?? notice}
@@ -280,11 +278,11 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       )}
 
-      <main className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <main className="chat-native-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-2">
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
-          <section className="rounded-lg border border-border/24 bg-card/30 p-4">
+          <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-bg-accent">
+              <span className="flex h-9 w-9 items-center justify-center">
                 <Sun className="h-5 w-5 text-muted" />
               </span>
               <div>
@@ -355,20 +353,20 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
             </div>
           </section>
 
-          <section className="rounded-lg border border-border/24 bg-card/30 p-4">
+          <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-bg-accent">
+              <span className="flex h-9 w-9 items-center justify-center">
                 <Settings className="h-5 w-5 text-muted" />
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">Android</h2>
-                <div className="text-xs text-muted">System panels</div>
+                <div className="sr-only">System panels</div>
               </div>
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <Button
                 variant="outline"
-                className="justify-start rounded-lg"
+                className="justify-start"
                 onClick={() => void openSetting("settings", "System settings")}
                 data-testid="device-settings-open-system"
               >
@@ -377,7 +375,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               </Button>
               <Button
                 variant="outline"
-                className="justify-start rounded-lg"
+                className="justify-start"
                 onClick={() => void openSetting("display", "Display settings")}
                 data-testid="device-settings-open-display"
               >
@@ -386,7 +384,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               </Button>
               <Button
                 variant="outline"
-                className="justify-start rounded-lg"
+                className="justify-start"
                 onClick={() => void openSetting("sound", "Sound settings")}
                 data-testid="device-settings-open-sound"
               >
@@ -395,7 +393,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               </Button>
               <Button
                 variant="outline"
-                className="justify-start rounded-lg"
+                className="justify-start"
                 onClick={() => void openSetting("network", "Network settings")}
                 data-testid="device-settings-open-network"
               >
@@ -405,9 +403,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
             </div>
           </section>
 
-          <section className="rounded-lg border border-border/24 bg-card/30 p-4">
+          <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-bg-accent">
+              <span className="flex h-9 w-9 items-center justify-center">
                 <Volume2 className="h-5 w-5 text-muted" />
               </span>
               <div>
@@ -424,7 +422,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 return (
                   <div
                     key={volume.stream}
-                    className="rounded-lg border border-border/20 bg-bg/50 p-3"
+                    data-testid={`device-settings-volume-card-${volume.stream}`}
+                    className="p-2"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
@@ -463,7 +462,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="rounded-lg"
+                        className=""
                         onClick={() => void applyVolume(volume)}
                         disabled={saving === `volume:${volume.stream}`}
                         data-testid={`device-settings-apply-volume-${volume.stream}`}
@@ -475,16 +474,16 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 );
               })}
               {!loading && orderedVolumes.length === 0 ? (
-                <div className="rounded-lg border border-border/20 bg-bg/50 px-4 py-6 text-center text-sm text-muted md:col-span-2">
-                  Volume streams are not available in this runtime.
+                <div className="px-4 py-6 text-center text-sm text-muted md:col-span-2">
+                  Unavailable
                 </div>
               ) : null}
             </div>
           </section>
 
-          <section className="rounded-lg border border-border/24 bg-card/30 p-4">
+          <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-bg-accent">
+              <span className="flex h-9 w-9 items-center justify-center">
                 <ShieldCheck className="h-5 w-5 text-muted" />
               </span>
               <div>
@@ -498,7 +497,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               {roles.map((role) => (
                 <div
                   key={role.role}
-                  className="rounded-lg border border-border/20 bg-bg/50 p-3"
+                  data-testid={`device-settings-role-card-${role.role}`}
+                  className="p-2"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -518,7 +518,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                   <Button
                     variant={role.held ? "ghost" : "outline"}
                     size="sm"
-                    className="mt-3 w-full rounded-lg"
+                    className="mt-3 w-full"
                     disabled={
                       !role.available ||
                       role.held ||
@@ -532,8 +532,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 </div>
               ))}
               {!loading && roles.length === 0 ? (
-                <div className="rounded-lg border border-border/20 bg-bg/50 px-4 py-6 text-center text-sm text-muted md:col-span-2 xl:col-span-4">
-                  Android role status is not available in this runtime.
+                <div className="px-4 py-6 text-center text-sm text-muted md:col-span-2 xl:col-span-4">
+                  Unavailable
                 </div>
               ) : null}
             </div>

@@ -77,7 +77,6 @@ describe("SmartglassesSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Smartglasses");
       expect(flat).toContain("connected");
       expect(flat).toContain("init"); // a diagnostics test row
       expect(flat).toContain("studio-net"); // wi-fi network
@@ -95,7 +94,6 @@ describe("SmartglassesSpatialView one source, three modalities", () => {
     expect(gui).toContain('data-spatial-surface="gui"');
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
-      expect(html).toContain("Smartglasses");
       expect(html).toContain("studio-net");
       expect(html).toContain('data-agent-id="run-check"');
       expect(html).toContain('data-agent-id="connect"');
@@ -113,7 +111,6 @@ describe("SmartglassesSpatialView one source, three modalities", () => {
       const lines = component?.render(50) ?? [];
       expect(lines.length).toBeGreaterThan(0);
       for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Smartglasses");
     } finally {
       unregister();
     }

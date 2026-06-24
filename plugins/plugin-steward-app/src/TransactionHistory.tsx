@@ -2,7 +2,14 @@
  * Transaction history table — lists all transactions for the agent from Steward vault.
  */
 
-import { Button, PagePanel, Spinner, StatusBadge, statusLabelForState, statusToneForState } from "@elizaos/ui";
+import {
+  Button,
+  PagePanel,
+  Spinner,
+  StatusBadge,
+  statusLabelForState,
+  statusToneForState,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Copy, ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -259,7 +266,7 @@ export function TransactionHistory({
       {!loading && filtered.length === 0 ? (
         <PagePanel.Empty
           variant={embedded ? "workspace" : "panel"}
-          title="No transactions yet"
+          title="None"
         />
       ) : null}
 
@@ -276,7 +283,7 @@ export function TransactionHistory({
                 setPage(0);
               }}
               aria-label="Status filter"
-              className="h-9 rounded-xl border border-border/50 bg-card/80 px-3 text-sm text-txt focus:border-accent/40 focus:outline-none"
+              className="h-9 rounded-md border border-border/50 bg-transparent px-3 text-sm text-txt focus:border-accent/40 focus:outline-none"
             >
               {STATUS_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -296,7 +303,7 @@ export function TransactionHistory({
                 setPage(0);
               }}
               aria-label="Chain filter"
-              className="h-9 rounded-xl border border-border/50 bg-card/80 px-3 text-sm text-txt focus:border-accent/40 focus:outline-none"
+              className="h-9 rounded-md border border-border/50 bg-transparent px-3 text-sm text-txt focus:border-accent/40 focus:outline-none"
             >
               {CHAIN_OPTIONS.map((opt) => (
                 <option key={String(opt.value)} value={opt.value}>
@@ -314,7 +321,7 @@ export function TransactionHistory({
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border/20 text-left text-xs font-semibold uppercase tracking-wider text-muted/70">
+                  <tr className="text-left text-xs font-semibold uppercase tracking-wider text-muted/70">
                     <th className="px-4 py-3">Time</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">To</th>
@@ -323,7 +330,7 @@ export function TransactionHistory({
                     <th className="px-4 py-3">Tx Hash</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/10">
+                <tbody>
                   {paginated.map((tx) => (
                     <tr
                       key={tx.id}
@@ -384,7 +391,7 @@ export function TransactionHistory({
 
             {/* Pagination */}
             {pageCount > 1 && (
-              <div className="flex items-center justify-between border-t border-border/20 px-4 py-3">
+              <div className="flex items-center justify-between px-4 py-3">
                 <Button
                   ref={prevPageElement.ref}
                   {...prevPageElement.agentProps}

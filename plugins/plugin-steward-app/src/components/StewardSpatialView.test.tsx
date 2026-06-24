@@ -65,7 +65,6 @@ describe("StewardSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(approvalsView, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Steward");
       expect(flat).toContain("connected");
       expect(flat).toContain("tx-1");
       expect(flat).toContain("Approve");
@@ -78,7 +77,6 @@ describe("StewardSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(historyView, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Steward");
       expect(flat).toContain("tx-1");
       expect(flat).toContain("confirmed");
       expect(flat).toContain("Prev");

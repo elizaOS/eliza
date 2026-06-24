@@ -17,15 +17,7 @@
  * goal" chat affordance on the empty state.
  */
 
-import {
-  Button,
-  Card,
-  Divider,
-  HStack,
-  List,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+import { Button, Card, HStack, List, Text, VStack } from "@elizaos/ui/spatial";
 import {
   GOAL_STATUSES,
   type GoalItem,
@@ -121,7 +113,7 @@ export function GoalsSpatialView({
   const active = new Set(snapshot.activeStatuses);
 
   return (
-    <Card title="Goals" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       {snapshot.status === "loading" ? (
         <Text tone="muted" style="caption">
           Loading goals
@@ -177,11 +169,7 @@ function GoalsReadyBody({
   if (snapshot.goals.length === 0) {
     return (
       <>
-        <Text bold>No goals yet</Text>
-        <Text tone="muted" style="caption">
-          Ask Eliza to set a goal — tell her what you want to head toward this
-          quarter and she will keep you on it.
-        </Text>
+        <Text bold>None</Text>
         <HStack gap={1}>
           <Button agent="new" onPress={dispatch("new")}>
             Set a goal
@@ -209,7 +197,6 @@ function GoalsReadyBody({
         </Text>
       ) : null}
 
-      <Divider label="filter" />
       <HStack gap={1} wrap>
         {GOAL_STATUSES.map((status) => (
           <Button
@@ -226,7 +213,7 @@ function GoalsReadyBody({
 
       {groups.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No goals match the selected status filters.
+          None
         </Text>
       ) : (
         groups.map((group) => (
@@ -244,9 +231,9 @@ function GoalsStatusGroup({
 }) {
   return (
     <>
-      <Divider
-        label={`${STATUS_LABELS[group.status]} (${group.goals.length})`}
-      />
+      <Text style="caption" tone="muted">
+        {STATUS_LABELS[group.status]} ({group.goals.length})
+      </Text>
       <List gap={0}>
         {group.goals.map((goal) => (
           <GoalRow key={goal.id} goal={goal} />
@@ -271,11 +258,6 @@ function GoalRow({ goal }: { goal: GoalItem }) {
         <Text bold wrap={false}>
           {goal.title}
         </Text>
-        {goal.description ? (
-          <Text style="caption" tone="muted" wrap={false}>
-            {goal.description}
-          </Text>
-        ) : null}
         {meta.length > 0 ? (
           <Text style="caption" tone="muted" wrap={false}>
             {meta.join(" · ")}

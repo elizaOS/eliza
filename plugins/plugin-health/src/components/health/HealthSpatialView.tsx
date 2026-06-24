@@ -16,7 +16,7 @@
  * or computes — it displays label/value rows and dispatches actions.
  */
 
-import { Button, Card, Divider, HStack, List, Text } from "@elizaos/ui/spatial";
+import { Button, Card, HStack, List, Text } from "@elizaos/ui/spatial";
 
 /** A single label/value summary row, already projected to display strings. */
 export interface StatRow {
@@ -80,21 +80,17 @@ export function HealthSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card title="Health" gap={1} padding={1}>
-      <Text style="caption" tone="muted">
-        Sleep, circadian rhythm, and the rolling baseline.
-      </Text>
-
+    <Card gap={1} padding={1}>
       <WindowRange windowDays={snapshot.windowDays} dispatch={dispatch} />
 
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
-          Loading sleep data
+          Loading
         </Text>
       ) : snapshot.state === "error" ? (
         <HealthErrorBody snapshot={snapshot} dispatch={dispatch} />
       ) : snapshot.state === "empty" ? (
-        <HealthEmptyBody snapshot={snapshot} />
+        <HealthEmptyBody />
       ) : (
         <HealthReadyBody snapshot={snapshot} />
       )}
@@ -138,7 +134,6 @@ function HealthErrorBody({
 }) {
   return (
     <>
-      <Divider label="error" />
       <Text bold>Could not load sleep data</Text>
       <Text tone="danger" style="caption">
         {snapshot.error ?? "Could not load sleep data."}
@@ -152,19 +147,8 @@ function HealthErrorBody({
   );
 }
 
-function HealthEmptyBody({ snapshot }: { snapshot: HealthSnapshot }) {
-  return (
-    <>
-      <Divider label="empty" />
-      <Text bold>No sleep data yet</Text>
-      <Text tone="muted" style="caption">
-        {snapshot.emptyDetail}
-      </Text>
-      <Text tone="muted" style="caption">
-        Ask Eliza to connect a health source to get started.
-      </Text>
-    </>
-  );
+function HealthEmptyBody() {
+  return <Text bold>None</Text>;
 }
 
 function HealthReadyBody({ snapshot }: { snapshot: HealthSnapshot }) {
@@ -184,32 +168,30 @@ function HealthReadyBody({ snapshot }: { snapshot: HealthSnapshot }) {
 }
 
 function Section({ label, rows }: { label: string; rows: StatRow[] }) {
+  if (rows.length === 0) return null;
+
   return (
     <>
-      <Divider label={label} />
-      {rows.length === 0 ? (
-        <Text tone="muted" style="caption">
-          Nothing here.
-        </Text>
-      ) : (
-        <List gap={0}>
-          {rows.map((row) => (
-            <HStack
-              key={row.label}
-              gap={1}
-              align="center"
-              agent={`row-${row.label}`}
-            >
-              <Text tone="muted" grow={1}>
-                {row.label}
-              </Text>
-              <Text bold wrap={false}>
-                {row.value}
-              </Text>
-            </HStack>
-          ))}
-        </List>
-      )}
+      <Text style="caption" tone="muted">
+        {label}
+      </Text>
+      <List gap={0}>
+        {rows.map((row) => (
+          <HStack
+            key={row.label}
+            gap={1}
+            align="center"
+            agent={`row-${row.label}`}
+          >
+            <Text tone="muted" grow={1}>
+              {row.label}
+            </Text>
+            <Text bold wrap={false}>
+              {row.value}
+            </Text>
+          </HStack>
+        ))}
+      </List>
     </>
   );
 }

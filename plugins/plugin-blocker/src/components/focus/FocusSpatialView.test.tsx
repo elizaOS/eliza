@@ -27,11 +27,10 @@ describe("FocusSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Focus");
-      expect(flat).toContain("Focus session active");
+      expect(flat).toContain("Focus active");
       expect(flat).toContain("x.com");
-      expect(flat).toContain("Match mode: subdomain");
-      expect(flat).toContain("Release block");
+      expect(flat).toContain("Mode: subdomain");
+      expect(flat).toContain("Release");
     }
   });
 
@@ -45,7 +44,7 @@ describe("FocusSpatialView one source, three modalities", () => {
     expect(gui).toContain('data-spatial-surface="gui"');
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
-      expect(html).toContain("Focus session active");
+      expect(html).toContain("Focus active");
       expect(html).toContain("x.com");
       expect(html).toContain('data-agent-id="release"');
     }
@@ -79,7 +78,7 @@ describe("FocusSpatialView one source, three modalities", () => {
     );
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
     const flat = lines.join("\n");
-    expect(flat).toContain("Focus blocking is unavailable");
+    expect(flat).toContain("Focus unavailable");
     expect(flat).toContain("linux");
     expect(flat).toContain("Could not find the system hosts file");
   });
@@ -96,9 +95,8 @@ describe("FocusSpatialView one source, three modalities", () => {
     );
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
     const flat = lines.join("\n");
-    expect(flat).toContain("Permission needed");
+    expect(flat).toContain("Permission");
     expect(flat).toContain("pkexec");
-    expect(flat).toContain("enable website blocking");
   });
 
   it("empty phase renders the no-session prompt", () => {
@@ -106,8 +104,7 @@ describe("FocusSpatialView one source, three modalities", () => {
     const lines = renderViewToLines(<FocusSpatialView snapshot={empty} />, 54);
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
     const flat = lines.join("\n");
-    expect(flat).toContain("No active focus session.");
-    expect(flat).toContain("block distractions for 1 hour");
+    expect(flat).toContain("Idle");
   });
 
   it("hides the Release control when the block cannot be released early", () => {
@@ -126,7 +123,7 @@ describe("FocusSpatialView one source, three modalities", () => {
       </SpatialSurface>,
     );
     expect(gui).not.toContain('data-agent-id="release"');
-    expect(gui).toContain("Releasing this block needs administrator");
+    expect(gui).toContain("Admin approval required");
   });
 
   it("registers as a terminal view the agent terminal can mount and render", () => {
@@ -137,7 +134,7 @@ describe("FocusSpatialView one source, three modalities", () => {
       const lines = component?.render(50) ?? [];
       expect(lines.length).toBeGreaterThan(0);
       for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Focus session active");
+      expect(lines.join("\n")).toContain("Focus active");
     } finally {
       unregister();
     }

@@ -106,7 +106,7 @@ export function ScreenshareSpatialView({
   );
 
   return (
-    <Card title="Screen Share" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"
@@ -159,7 +159,7 @@ export function ScreenshareSpatialView({
         </VStack>
       ) : (
         <Text tone="muted" align="center" style="caption">
-          No active session
+          Idle
         </Text>
       )}
 
@@ -208,7 +208,7 @@ export function ScreenshareSpatialView({
       </Text>
       {snapshot.capabilities.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          No capabilities reported
+          None
         </Text>
       ) : (
         <List gap={0}>

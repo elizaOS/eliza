@@ -331,7 +331,7 @@ describe("FeedView — no-session waiting state", () => {
     appState.appRuns = [];
     render(React.createElement(FeedView));
 
-    await screen.findByText("Waiting for a Feed session.", { exact: false });
+    await screen.findByText("None");
     const spawn = button("spawn-agent");
     expect(spawn.disabled).toBe(true);
 

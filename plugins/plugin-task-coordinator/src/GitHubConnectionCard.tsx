@@ -94,7 +94,7 @@ export function GitHubConnectionCard() {
     submitState.kind === "error" ? submitState.message : null;
 
   return (
-    <div className="space-y-3 rounded-lg border border-border/20 bg-card/14 px-3 py-3">
+    <div className="space-y-3 px-1 py-1">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <GitPullRequest className="h-4 w-4 text-muted" aria-hidden />
@@ -138,11 +138,11 @@ export function GitHubConnectionCard() {
             </div>
           ) : (
             <div className="text-muted">
-              Scopes: <span className="text-amber-500">(none reported)</span>
+              Scopes: <span className="text-amber-500">none</span>
             </div>
           )}
           <div className="flex items-center justify-between pt-1">
-            <span className="text-muted">
+            <span className="sr-only">
               Coding sub-agents will use this token for git/gh operations.
             </span>
             <Button
@@ -158,7 +158,7 @@ export function GitHubConnectionCard() {
         </div>
       ) : (
         <div className="flex flex-col gap-2 text-xs">
-          <p className="text-muted">
+          <p className="sr-only">
             Paste a personal access token so coding sub-agents can clone private
             repos, push commits, and open pull requests.
           </p>
