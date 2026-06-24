@@ -80,6 +80,7 @@ type UserWalletSnapshot = {
   lifetimePnL: string;
   earnedPoints: number;
   reputationPoints: number;
+  bonusPoints: number;
   totalFeesPaid: string;
 };
 
@@ -239,6 +240,7 @@ async function seedFixtures(userId: string): Promise<void> {
       lifetimePnL: users.lifetimePnL,
       earnedPoints: users.earnedPoints,
       reputationPoints: users.reputationPoints,
+      bonusPoints: users.bonusPoints,
       totalFeesPaid: users.totalFeesPaid,
     })
     .from(users)
@@ -253,6 +255,7 @@ async function seedFixtures(userId: string): Promise<void> {
     lifetimePnL: String(userBeforeTest.lifetimePnL),
     earnedPoints: userBeforeTest.earnedPoints,
     reputationPoints: userBeforeTest.reputationPoints,
+    bonusPoints: userBeforeTest.bonusPoints,
     totalFeesPaid: String(userBeforeTest.totalFeesPaid),
   };
 
@@ -342,6 +345,26 @@ async function seedFixtures(userId: string): Promise<void> {
 }
 
 async function teardownFixtures(userId: string): Promise<void> {
+  // Restore the SHARED dev-auth user's wallet FIRST. This is the only
+  // cross-run-pollution-critical step, so it must run even if a later
+  // disposable delete throws — leaking a seeded row (unique snowflake marketId,
+  // no collisions) is harmless; leaving the shared user mutated is not.
+  if (originalUserWallet) {
+    await db
+      .update(users)
+      .set({
+        virtualBalance: originalUserWallet.virtualBalance,
+        totalDeposited: originalUserWallet.totalDeposited,
+        lifetimePnL: originalUserWallet.lifetimePnL,
+        earnedPoints: originalUserWallet.earnedPoints,
+        reputationPoints: originalUserWallet.reputationPoints,
+        bonusPoints: originalUserWallet.bonusPoints,
+        totalFeesPaid: originalUserWallet.totalFeesPaid,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+  }
+
   if (seeded.marketId) {
     await db
       .delete(balanceTransactions)
@@ -368,20 +391,6 @@ async function teardownFixtures(userId: string): Promise<void> {
     await db.delete(positions).where(eq(positions.userId, seeded.loserUserId));
     await db.delete(actorState).where(eq(actorState.id, seeded.loserUserId));
     await db.delete(users).where(inArray(users.id, [seeded.loserUserId]));
-  }
-  if (originalUserWallet) {
-    await db
-      .update(users)
-      .set({
-        virtualBalance: originalUserWallet.virtualBalance,
-        totalDeposited: originalUserWallet.totalDeposited,
-        lifetimePnL: originalUserWallet.lifetimePnL,
-        earnedPoints: originalUserWallet.earnedPoints,
-        reputationPoints: originalUserWallet.reputationPoints,
-        totalFeesPaid: originalUserWallet.totalFeesPaid,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, userId));
   }
 }
 

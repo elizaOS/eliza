@@ -26,7 +26,10 @@ import {
   OptimizedPromptService,
   type OptimizedPromptTask,
 } from "@elizaos/core";
-import { getTrainingUseModelAdapter } from "../../plugin-personal-assistant/test/helpers/lifeops-eval-model.ts";
+// Use the in-package training model client. plugin-training ships its own
+// Cerebras/Anthropic adapter precisely so scripts here never import across
+// another package's `test/` boundary (see src/core/cerebras-eval-model.ts).
+import { getTrainingUseModelAdapter } from "../src/core/cerebras-eval-model.ts";
 import {
   createPromptScorer,
   createRuntimeAdapter,
@@ -41,135 +44,102 @@ interface SeedTask {
   dataset: OptimizationExample[];
 }
 
+// The optimized `calendar_extract` prompt AUTO-LOADS into the live calendar
+// planner (plugin-calendar calendar-handler.ts → resolveOptimizedPromptForRuntime
+// (runtime, "calendar_extract", CALENDAR_PLAN_INSTRUCTIONS)), whose output is
+// parsed into a CalendarLlmPlan: { subaction, shouldAct, response, queries,
+// title, tripLocation, timeMin, timeMax, windowLabel }. The seed dataset MUST
+// therefore optimize for that PLAN shape — not a free-form event record — or an
+// --apply'd artifact would emit fields the planner cannot parse and break it.
+//
+// Scoring (scoreStructuredFields) credits the keys present in expectedOutput.
+// We score the deterministic, language-independent ROUTING decision the planner
+// most needs to get right — `subaction` + `shouldAct` — and deliberately omit
+// fields that aren't deterministic from the input alone (timeMin/timeMax need
+// the runtime's date anchors; queries/windowLabel are free-form).
+const CALENDAR_PLAN_FIELDS = [
+  "subaction (one of: feed, next_event, search_events, create_event, update_event, delete_event, trip_window; or null for reply-only)",
+  "shouldAct (boolean; false when the request is too vague to act on)",
+  "response (short natural reply when shouldAct is false, else null)",
+  "queries (array of up to 3 search strings)",
+  "title (optional event title)",
+  "tripLocation (optional place for trip_window)",
+  "timeMin / timeMax (optional ISO 8601 window)",
+  "windowLabel (optional natural-language window label)",
+].join("; ");
+
 const SEED_TASKS: Record<string, SeedTask> = {
-  // calendar_extract — natural-language scheduling request → structured event
-  // JSON. Scored by field agreement (scoreStructuredFields). The baseline is
-  // intentionally terse so GEPA has room to improve recall on date/time/
-  // location/attendees fields across phrasings and languages.
+  // calendar_extract — natural-language request → calendar PLAN (CalendarLlmPlan).
+  // Examples cover the full subaction taxonomy + the shouldAct=false clarify
+  // case, across languages. Scored on subaction + shouldAct.
   calendar_extract: {
     task: "calendar_extract",
-    baseline:
-      "Extract the calendar event from the user message. Output JSON only.",
+    baseline: `Plan the calendar action for the user's request. Return a single JSON object only, with these fields: ${CALENDAR_PLAN_FIELDS}.`,
     dataset: [
       {
-        input: {
-          user: "Set up a dentist appointment on March 3rd at 9am for 30 minutes at Downtown Dental.",
-        },
+        input: { user: "What's on my calendar tomorrow?" },
+        expectedOutput: JSON.stringify({ subaction: "feed", shouldAct: true }),
+      },
+      {
+        input: { user: "What's my next meeting?" },
         expectedOutput: JSON.stringify({
-          title: "Dentist appointment",
-          date: "March 3",
-          startTime: "9:00 AM",
-          endTime: "9:30 AM",
-          location: "Downtown Dental",
+          subaction: "next_event",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: { user: "Find my flight to Denver." },
+        expectedOutput: JSON.stringify({
+          subaction: "search_events",
+          shouldAct: true,
         }),
       },
       {
         input: {
-          user: "Block 2-3pm tomorrow for a 1:1 with Priya in the small conference room.",
+          user: "Set up a dentist appointment on March 3rd at 9am at Downtown Dental.",
         },
         expectedOutput: JSON.stringify({
-          title: "1:1 with Priya",
-          date: "tomorrow",
-          startTime: "2:00 PM",
-          endTime: "3:00 PM",
-          location: "small conference room",
+          subaction: "create_event",
+          shouldAct: true,
         }),
       },
       {
-        input: {
-          user: "Lunch with the Frontier Tower team Friday noon at Tacos El Sol.",
-        },
+        input: { user: "Rename my 2pm standup to sprint sync." },
         expectedOutput: JSON.stringify({
-          title: "Lunch with Frontier Tower team",
-          date: "Friday",
-          startTime: "12:00 PM",
-          endTime: "1:00 PM",
-          location: "Tacos El Sol",
+          subaction: "update_event",
+          shouldAct: true,
         }),
       },
       {
-        input: {
-          user: "Schedule a board prep call next Monday from 4 to 5:30 in the evening, remote.",
-        },
+        input: { user: "Cancel my lunch on Friday." },
         expectedOutput: JSON.stringify({
-          title: "Board prep call",
-          date: "next Monday",
-          startTime: "4:00 PM",
-          endTime: "5:30 PM",
-          location: "remote",
+          subaction: "delete_event",
+          shouldAct: true,
         }),
       },
       {
-        input: {
-          user: "Réserve un rendez-vous chez le médecin mardi à 10h pour une heure à la clinique du centre.",
-        },
+        input: { user: "What's happening while I'm in Tokyo next month?" },
         expectedOutput: JSON.stringify({
-          title: "Rendez-vous médecin",
-          date: "mardi",
-          startTime: "10:00 AM",
-          endTime: "11:00 AM",
-          location: "clinique du centre",
+          subaction: "trip_window",
+          shouldAct: true,
         }),
       },
       {
-        input: {
-          user: "Put a 45-minute gym session on the calendar every day at 7am at the studio.",
-        },
-        expectedOutput: JSON.stringify({
-          title: "Gym session",
-          date: "every day",
-          startTime: "7:00 AM",
-          endTime: "7:45 AM",
-          location: "studio",
-        }),
+        input: { user: "Can you help me with my calendar?" },
+        expectedOutput: JSON.stringify({ subaction: null, shouldAct: false }),
       },
       {
         input: {
-          user: "Coffee with David next Wednesday 8:30am, Blue Bottle on Mission.",
+          user: "Réserve un rendez-vous chez le médecin mardi à 10h à la clinique du centre.",
         },
         expectedOutput: JSON.stringify({
-          title: "Coffee with David",
-          date: "next Wednesday",
-          startTime: "8:30 AM",
-          endTime: "9:00 AM",
-          location: "Blue Bottle on Mission",
+          subaction: "create_event",
+          shouldAct: true,
         }),
       },
       {
-        input: {
-          user: "Investor call Thursday 3pm for an hour, dial-in.",
-        },
-        expectedOutput: JSON.stringify({
-          title: "Investor call",
-          date: "Thursday",
-          startTime: "3:00 PM",
-          endTime: "4:00 PM",
-          location: "dial-in",
-        }),
-      },
-      {
-        input: {
-          user: "Termin beim Friseur am Samstag um 14 Uhr, eine halbe Stunde, im Salon Schmidt.",
-        },
-        expectedOutput: JSON.stringify({
-          title: "Friseurtermin",
-          date: "Samstag",
-          startTime: "2:00 PM",
-          endTime: "2:30 PM",
-          location: "Salon Schmidt",
-        }),
-      },
-      {
-        input: {
-          user: "Family dinner this Sunday 6pm at mom's house.",
-        },
-        expectedOutput: JSON.stringify({
-          title: "Family dinner",
-          date: "this Sunday",
-          startTime: "6:00 PM",
-          endTime: "7:00 PM",
-          location: "mom's house",
-        }),
+        input: { user: "Was steht morgen in meinem Kalender?" },
+        expectedOutput: JSON.stringify({ subaction: "feed", shouldAct: true }),
       },
     ],
   },
@@ -220,6 +190,18 @@ async function main(): Promise<number> {
 
   const generations = Number.parseInt(values.generations ?? "2", 10);
   const population = Number.parseInt(values.population ?? "4", 10);
+  if (!Number.isInteger(generations) || generations < 1) {
+    console.error(
+      `[gepa-seed] --generations must be a positive integer (got "${values.generations}").`,
+    );
+    return 1;
+  }
+  if (!Number.isInteger(population) || population < 1) {
+    console.error(
+      `[gepa-seed] --population must be a positive integer (got "${values.population}").`,
+    );
+    return 1;
+  }
 
   console.log(
     `[gepa-seed] task=${seed.task} dataset=${seed.dataset.length} ` +
@@ -255,6 +237,18 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  // The persisted artifact auto-loads into the live runtime for this task, so
+  // never let --apply DEGRADE the production prompt: refuse to persist unless the
+  // optimized prompt actually beat the baseline on the seed set.
+  if (result.score <= result.baseline) {
+    console.error(
+      `\n[gepa-seed] refusing to persist: optimized score ${result.score.toFixed(3)} ` +
+        `did not beat baseline ${result.baseline.toFixed(3)}. The optimized prompt ` +
+        `auto-loads into the live runtime, so a non-improving artifact is not applied.`,
+    );
+    return 1;
+  }
+
   const artifact: OptimizedPromptArtifact = {
     task: seed.task,
     optimizer: "gepa",
@@ -273,7 +267,9 @@ async function main(): Promise<number> {
     })),
   };
 
-  const service = new OptimizedPromptService({} as never);
+  // Service's runtime arg is optional and setPrompt() only touches the on-disk
+  // store root — no runtime needed (matches scripts/lifeops-gepa-loop.ts).
+  const service = new OptimizedPromptService();
   const path = await service.setPrompt(seed.task, artifact);
   console.log(`\n[gepa-seed] persisted optimized artifact → ${path}`);
   return 0;
