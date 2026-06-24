@@ -1,3 +1,4 @@
+import { formatUsd } from "./format";
 /**
  * ImageGenSpatialView — the image-gen surface authored once with the spatial
  * vocabulary, so it renders correctly wherever it is displayed:
@@ -62,11 +63,6 @@ export interface ImageGenSpatialViewProps {
    * (model select), `aspect:<ratio>` (aspect select), `generate`.
    */
   onAction?: (action: string) => void;
-}
-
-function formatUsd(value: number | undefined): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return `$${value.toFixed(value < 0.01 ? 6 : 4)}`;
 }
 
 export function ImageGenSpatialView({

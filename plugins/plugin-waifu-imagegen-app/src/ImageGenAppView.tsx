@@ -3,6 +3,7 @@ import { Button, PagePanel, Spinner } from "@elizaos/app-core";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ArrowLeft, ImageIcon, Sparkles } from "lucide-react";
 import { useId } from "react";
+import { formatUsd } from "./format";
 import {
   IMAGE_GEN_ASPECTS,
   IMAGE_GEN_MODELS,
@@ -49,11 +50,6 @@ function PriceStrip({ metadata }: { metadata: unknown }) {
       </span>
     </div>
   );
-}
-
-function formatUsd(value: number | undefined): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return `$${value.toFixed(value < 0.01 ? 6 : 4)}`;
 }
 
 export interface ImageGenAppViewProps extends OverlayAppContext {

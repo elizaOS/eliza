@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Trajectory } from "@elizaos/agent";
+import { escapeHtml, escapeScriptJson } from "./html-escape";
 import {
   applyPrivacyFilter,
   type FilterableTrajectory,
@@ -182,18 +183,6 @@ function parseJsonlRows(text: string | null): unknown[] {
     }
   }
   return rows;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function escapeScriptJson(value: unknown): string {
-  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 function buildViewerHtml(input: {
