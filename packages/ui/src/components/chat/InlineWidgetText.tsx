@@ -12,14 +12,10 @@
 import { type ReactNode, useMemo } from "react";
 import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
-import type { FormResultValue } from "./widgets/form-request";
 // Side effect: register the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
-import {
-  getInlineWidget,
-  getInlineWidgets,
-  type InlineWidgetContext,
-} from "./widgets/inline-registry";
+import { getInlineWidget, getInlineWidgets } from "./widgets/inline-registry";
+import { useInlineWidgetContext } from "./widgets/use-inline-widget-context";
 
 interface WidgetRegion {
   start: number;
@@ -62,31 +58,9 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
   // no-ops rather than throwing — safe on every surface.
   const { setChatInput } = useChatComposer();
 
-  const ctx = useMemo<InlineWidgetContext>(
-    () => ({
-      sendAction: (value: string) => {
-        void sendActionMessage(value);
-      },
-      navigate: (payload: string) => {
-        if (typeof window === "undefined") return;
-        const detail = payload.startsWith("/")
-          ? { viewPath: payload }
-          : { viewId: payload };
-        window.dispatchEvent(
-          new CustomEvent("eliza:navigate:view", { detail }),
-        );
-      },
-      prefillComposer: (payload: string) => {
-        setChatInput(payload);
-      },
-      submitForm: (formId: string, values: Record<string, FormResultValue>) => {
-        void sendActionMessage(
-          `[form:submit ${formId}] ${JSON.stringify(values)}`,
-        );
-      },
-    }),
-    [sendActionMessage, setChatInput],
-  );
+  // Same shared contract MessageContent (ChatView) uses, so interactive inline
+  // widgets behave identically on both surfaces.
+  const ctx = useInlineWidgetContext(sendActionMessage, setChatInput);
 
   const regions = useMemo(() => collectWidgetRegions(content), [content]);
 
