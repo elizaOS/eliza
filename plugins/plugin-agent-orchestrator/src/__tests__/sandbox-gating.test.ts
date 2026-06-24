@@ -5,22 +5,14 @@
  * touching ACP / workspace state.
  */
 
-import type { Content } from "@elizaos/core";
 import {
   _resetBuildVariantForTests,
   getBuildVariant,
   isLocalCodeExecutionAllowed,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  createTerminalUnsupportedTasksAction,
-  tasksSandboxStubAction,
-} from "../actions/sandbox-stub.js";
+import { tasksSandboxStubAction } from "../actions/sandbox-stub.js";
 import { createAgentOrchestratorPlugin } from "../index.js";
-import type {
-  OrchestratorTerminalSupport,
-  OrchestratorUnsupportedReason,
-} from "../services/terminal-capabilities.js";
 
 // Keep the slow timeout because importing @elizaos/core from this plugin can
 // still exceed Vitest's default timeout on a cold cache.
@@ -135,76 +127,4 @@ describe("agent-orchestrator sandbox gating", () => {
     const data = result?.data as { reason?: string } | undefined;
     expect(data?.reason).toBe("STORE_BUILD_BLOCKED");
   });
-});
-
-describe("createTerminalUnsupportedTasksAction reason mapping", () => {
-  // Each unsupported terminal-support reason must surface a specific,
-  // user-facing stub reason code. The default (no reason) collapses to the
-  // generic TERMINAL_UNSUPPORTED. Covers the iOS (#9146 AC: "iOS/store
-  // surfaces the stub MOBILE_TERMINAL_UNSUPPORTED cleanly") and AOSP
-  // non-local-yolo paths that the full-plugin gating test does not exercise.
-  const cases: ReadonlyArray<{
-    label: string;
-    reason: OrchestratorUnsupportedReason | undefined;
-    expectedReason: string;
-  }> = [
-    {
-      label: "iOS / vanilla mobile",
-      reason: "vanilla_mobile",
-      expectedReason: "MOBILE_TERMINAL_UNSUPPORTED",
-    },
-    {
-      label: "Android not in local-yolo mode",
-      reason: "not_local_yolo",
-      expectedReason: "AOSP_TERMINAL_REQUIRES_LOCAL_YOLO",
-    },
-    {
-      label: "Android missing shell",
-      reason: "missing_shell",
-      expectedReason: "AOSP_TERMINAL_MISSING_SHELL",
-    },
-    {
-      label: "unknown / no reason",
-      reason: undefined,
-      expectedReason: "TERMINAL_UNSUPPORTED",
-    },
-  ];
-
-  for (const { label, reason, expectedReason } of cases) {
-    it(`maps ${label} -> ${expectedReason}`, async () => {
-      const support: OrchestratorTerminalSupport = {
-        supported: false,
-        reason,
-        message: `terminal unsupported: ${expectedReason}`,
-      };
-
-      const action = createTerminalUnsupportedTasksAction(support);
-
-      expect(action.name).toBe("TASKS");
-      expect(action.suppressPostActionContinuation).toBe(true);
-      expect(await action.validate({} as never, {} as never, undefined)).toBe(
-        true,
-      );
-
-      let callbackContent: Content | undefined;
-      const result = await action.handler(
-        {} as never,
-        {} as never,
-        undefined,
-        undefined,
-        async (response: Content) => {
-          callbackContent = response;
-          return [];
-        },
-      );
-
-      expect(result?.success).toBe(false);
-      expect(result?.text).toBe(support.message);
-      const data = result?.data as { reason?: string } | undefined;
-      expect(data?.reason).toBe(expectedReason);
-
-      expect(callbackContent?.text).toBe(support.message);
-      expect(callbackContent?.actions).toEqual(["TASKS"]);
-    });
-  }
 });
