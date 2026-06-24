@@ -151,6 +151,7 @@ export function ViewIcon({
         alt=""
         className={className}
         loading="lazy"
+        decoding="async"
         aria-hidden="true"
       />
     );

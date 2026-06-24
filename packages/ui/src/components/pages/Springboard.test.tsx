@@ -9,7 +9,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { SPRINGBOARD_STORAGE_KEY } from "../../state/springboard-layout";
+import {
+  SPRINGBOARD_DOCK_LIMIT,
+  SPRINGBOARD_STORAGE_KEY,
+} from "../../state/springboard-layout";
 import { Springboard } from "./Springboard";
 
 function entry(id: string, label: string): ViewEntry {
@@ -194,6 +197,45 @@ describe("Springboard long-press to edit", () => {
     // Still resting: toggle reads "Edit", no pin affordances.
     expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
     expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
+  });
+
+  it("cancels the long-press when the pointer is cancelled (touch scroll)", () => {
+    // On touch, a scroll/system gesture fires pointercancel (not pointerup); the
+    // long-press timer must be cleared so edit mode never ghost-fires.
+    vi.useFakeTimers();
+    render(<Springboard entries={FEW} onLaunch={() => {}} />);
+    const tile = screen.getByRole("button", { name: "Chat" });
+    fireEvent.pointerDown(tile);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    fireEvent.pointerCancel(tile);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
+  });
+});
+
+describe("Springboard controlled favorites (desktop tabs)", () => {
+  it("clamps the dock to SPRINGBOARD_DOCK_LIMIT even when more are supplied", () => {
+    // Controlled mode (onToggleFavorite set) renders the caller's favoriteIds.
+    // A caller that supplies more than the cap must still render at most
+    // SPRINGBOARD_DOCK_LIMIT dock tiles (the iOS-style 4-slot dock).
+    const ids = ["a", "b", "c", "d", "e", "f"];
+    render(
+      <Springboard
+        entries={ids.map((id) => entry(id, id.toUpperCase()))}
+        onLaunch={() => {}}
+        favoriteIds={ids}
+        onToggleFavorite={() => {}}
+      />,
+    );
+    const dockTiles = screen
+      .getByTestId("springboard-dock")
+      .querySelectorAll('[data-testid^="springboard-tile-"]');
+    expect(dockTiles).toHaveLength(SPRINGBOARD_DOCK_LIMIT);
   });
 });
 
