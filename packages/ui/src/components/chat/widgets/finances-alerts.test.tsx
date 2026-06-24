@@ -18,9 +18,16 @@ vi.mock("../../../widgets/home-attention-store", () => ({
     publishHomeAttentionSpy(widgetKey, weight),
 }));
 
+// useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
+// stub it so the click test isolates the navigation rail (the CustomEvent).
+vi.mock("../../../chat/useSlashCommandController", () => ({
+  reportUserViewSwitch: vi.fn(),
+}));
+
+import { fireEvent } from "@testing-library/react";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
+import type { WidgetProps } from "../../../widgets/types";
 import { FinancesAlertsWidget } from "./finances-alerts";
-import type { ChatSidebarWidgetProps } from "./types";
 
 // Wire-shape fixtures mirroring the PA money routes (USD floats).
 function dashboard(netUsd: number) {
@@ -69,10 +76,7 @@ function mockFetch(map: {
   });
 }
 
-const fetchProps: ChatSidebarWidgetProps = {
-  events: [],
-  clearEvents: () => undefined,
-};
+const fetchProps: Partial<WidgetProps> = { slot: "home" };
 
 describe("FinancesAlertsWidget (#9143)", () => {
   beforeEach(() => {
@@ -84,7 +88,7 @@ describe("FinancesAlertsWidget (#9143)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders an overdrawn escalation row and bills due within 7 days", async () => {
+  it("shows ONE high-priority datum — the overdrawn balance — when overdrawn (minimal, icon-first)", async () => {
     vi.stubGlobal(
       "fetch",
       mockFetch({
@@ -92,7 +96,6 @@ describe("FinancesAlertsWidget (#9143)", () => {
         recurring: recurring([
           billDueInDays("Netflix", 15.99, 3),
           billDueInDays("Rent", 1200, 5),
-          billDueInDays("FarAway", 9.99, 30), // outside the 7-day window
         ]),
         sources: sources(true),
       }),
@@ -105,11 +108,14 @@ describe("FinancesAlertsWidget (#9143)", () => {
     });
 
     const widget = screen.getByTestId("chat-widget-finances-alerts");
+    // The card is a button (whole-card clickable) and minimal: overdrawn wins,
+    // the bill list is NOT shown (only the single highest-priority datum).
+    expect(widget.tagName).toBe("BUTTON");
     expect(widget.textContent).toContain("Overdrawn");
-    expect(widget.textContent).toContain("Netflix");
-    expect(widget.textContent).toContain("Rent");
-    // Bill outside the window is hidden.
-    expect(widget.textContent).not.toContain("FarAway");
+    expect(widget.textContent).not.toContain("Netflix");
+    expect(widget.textContent).not.toContain("Rent");
+    // The full meaning lives in the aria-label since visible text is minimal.
+    expect(widget.getAttribute("aria-label")).toMatch(/overdrawn/i);
 
     // Overdrawn dominates -> escalation weight published.
     expect(publishHomeAttentionSpy).toHaveBeenLastCalledWith(
@@ -118,12 +124,15 @@ describe("FinancesAlertsWidget (#9143)", () => {
     );
   });
 
-  it("publishes a reminder weight when bills are due but balance is healthy", async () => {
+  it("shows the soonest bill (minimal) + reminder weight when balance is healthy", async () => {
     vi.stubGlobal(
       "fetch",
       mockFetch({
         dashboard: dashboard(500),
-        recurring: recurring([billDueInDays("Spotify", 9.99, 2)]),
+        recurring: recurring([
+          billDueInDays("Spotify", 9.99, 2),
+          billDueInDays("Gym", 40, 6),
+        ]),
         sources: sources(true),
       }),
     );
@@ -134,13 +143,41 @@ describe("FinancesAlertsWidget (#9143)", () => {
       expect(screen.getByTestId("chat-widget-finances-alerts")).toBeTruthy();
     });
 
-    expect(
-      screen.getByTestId("chat-widget-finances-alerts").textContent,
-    ).not.toContain("Overdrawn");
+    const widget = screen.getByTestId("chat-widget-finances-alerts");
+    expect(widget.textContent).not.toContain("Overdrawn");
+    // The soonest bill is the single datum shown; the count is a badge.
+    expect(widget.textContent).toContain("Spotify");
+    expect(widget.textContent).toContain("2 due");
     expect(publishHomeAttentionSpy).toHaveBeenLastCalledWith(
       "finances/finances.alerts",
       HOME_SIGNAL_WEIGHTS.reminder,
     );
+  });
+
+  it("navigates to the Finances view when the card is clicked", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        dashboard: dashboard(-10),
+        recurring: recurring([]),
+        sources: sources(true),
+      }),
+    );
+    const navEvents: string[] = [];
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent<{ viewPath?: string }>).detail;
+      if (detail?.viewPath) navEvents.push(detail.viewPath);
+    };
+    window.addEventListener("eliza:navigate:view", onNav);
+
+    render(<FinancesAlertsWidget {...fetchProps} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-finances-alerts")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("chat-widget-finances-alerts"));
+    window.removeEventListener("eliza:navigate:view", onNav);
+
+    expect(navEvents).toContain("/finances");
   });
 
   it("renders null when balance is healthy and no bills are due within 7 days", async () => {
