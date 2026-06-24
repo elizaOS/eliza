@@ -73,6 +73,7 @@ import {
 	withProviderStep,
 } from "./trajectory-utils";
 import {
+	type AccessContext,
 	type Action,
 	type ActionMode,
 	type ActionResult,
@@ -7763,6 +7764,7 @@ ${section_end}`;
 		orderBy?: "createdAt";
 		orderDirection?: "asc" | "desc";
 		includeEmbedding?: boolean;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		return this.adapter.getMemories({
 			...params,
@@ -7792,6 +7794,7 @@ ${section_end}`;
 		tableName: string;
 		roomIds: UUID[];
 		limit?: number;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		return this.adapter.getMemoriesByRoomIds(params);
 	}
@@ -7816,6 +7819,7 @@ ${section_end}`;
 		worldId?: UUID;
 		entityId?: UUID;
 		tableName: string;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		const memories = await this.adapter.searchMemories({
 			...params,

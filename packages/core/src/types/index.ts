@@ -7,6 +7,7 @@ export {
 	composePromptFromState,
 	parseKeyValueXml, // audit:allowlist - retained for cloud/ XML evaluators; new prompts must use JSON
 } from "../utils";
+export * from "./access-context";
 export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";
