@@ -112,6 +112,10 @@ Result:
 - `voice:workbench --real` missing-dependency honesty check: pass by expected
   failure (`exit_status=1`, clear `missing ELIZA_ASR_BUNDLE` error).
 - Root `bun run verify`: pass (`509 successful, 509 total`).
+- Current-head rebase verification on `origin/develop`: pass
+  (`bun install --frozen-lockfile`, focused builds/tests, Playwright
+  diarization smoke, `actionlint`, `git diff --check origin/develop...HEAD`,
+  and root `bun run verify` with `509 successful, 509 total`).
 - Workflow-dispatch audit:
   - `Voice Live E2E` run `28092178735` on branch `fix/finish-9147` scheduled on
     the `self-hosted, Linux, X64, eliza` runner pool after the label fix.
@@ -139,6 +143,21 @@ Result:
     `50c4240dee150225030df4d4dd7c958d217f2aad4601ae75095b6afa31b8131b`)
     contains `probe.log` showing `nvcc`, `nvidia-smi`, and `ffmpeg` are not on
     `PATH`, and `ELEVENLABS_API_KEY` is empty on that runner.
+- Workflow-dispatch audit after rebasing on current `origin/develop`:
+  - `Voice Live E2E` run `28093983203` on branch `fix/finish-9147` executed the
+    rebased workflow at commit `8e19477c347971089bfab0ccb3c12f75046c99a3`.
+  - `Real fused ASR + optional mixed round-trip (self-hosted)` passed. The probe
+    again found no preprovisioned ASR bundle, so the guarded `test:asr:real` and
+    `roundtrip:real` steps skipped instead of calling stale scripts.
+  - `Real acoustic VAD + diarization + self-voice matrix (self-hosted)` started
+    on runner `eliza-runners` with workspace
+    `/opt/actions-runner-2/_work/eliza/eliza`, then failed hard in
+    `Probe provisioned voice runner` before executing the acoustic matrix.
+  - The uploaded `voice-real-acoustic-matrix` artifact (artifact ID
+    `7847707091`, SHA256
+    `17c2026e386359cddcbcfa88a0b9cc39a0522a930182632d09821df43b7a3205`)
+    contains `probe.log` showing `nvcc`, `nvidia-smi`, and `ffmpeg` are not on
+    `PATH`, and `ELEVENLABS_API_KEY` is empty on the current runner.
 
 N/A:
 - No screenshot/video was captured because this change adds machine-readable
