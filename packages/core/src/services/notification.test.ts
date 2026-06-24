@@ -163,6 +163,33 @@ describe("NotificationService", () => {
 		expect(restarted.getUnreadCount()).toBe(1);
 	});
 
+	it("excludes a notification whose explicit expiresAt has passed", async () => {
+		await service.notify({ title: "Gone", expiresAt: Date.now() - 1000 });
+		await service.notify({ title: "Stays" });
+		const list = service.list();
+		expect(list).toHaveLength(1);
+		expect(list[0].title).toBe("Stays");
+		expect(service.getUnreadCount()).toBe(1);
+	});
+
+	it("retains a notification with a future expiresAt", async () => {
+		await service.notify({ title: "Later", expiresAt: Date.now() + 60_000 });
+		expect(service.list()).toHaveLength(1);
+		expect(service.getUnreadCount()).toBe(1);
+	});
+
+	it("drops expired notifications on rehydrate", async () => {
+		await service.notify({ title: "Expired", expiresAt: Date.now() - 1000 });
+		await service.notify({ title: "Alive" });
+		const restarted = (await NotificationService.start(
+			ctx.runtime,
+		)) as NotificationService;
+		const list = restarted.list();
+		expect(list).toHaveLength(1);
+		expect(list[0].title).toBe("Alive");
+		expect(restarted.getUnreadCount()).toBe(1);
+	});
+
 	it("hydrates empty when the cache adapter throws", async () => {
 		const throwing = createRuntime();
 		(
