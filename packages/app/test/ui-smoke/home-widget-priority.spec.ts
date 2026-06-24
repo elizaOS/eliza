@@ -666,13 +666,10 @@ test.describe("home widget priority (#9143)", () => {
     await installReadyDesktopStatusBridge(page);
     await installHomeWidgetRoutes(page);
 
-    // The Views springboard is the default catalog face: it mounts
-    // <WidgetHost slot="home"> above the launcher grid when no search query is
-    // active (ViewCatalog.tsx).
-    await openAppPath(page, "/views");
-    await expect(page.getByRole("heading", { name: "Views" })).toBeVisible({
-      timeout: 30_000,
-    });
+    // The /chat home (HomeScreen) mounts the unified <WidgetHost slot="home">
+    // (#9143). Views was consolidated into the Springboard, and the home-widget
+    // surface now lives on the home page behind the floating chat overlay.
+    await openAppPath(page, "/chat");
 
     const host = page.getByTestId("widget-host-home");
     await expect(host).toBeVisible({ timeout: 30_000 });
