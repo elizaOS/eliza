@@ -12,6 +12,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readVoiceE2eTestEnv } from "../../shared/src/test-env-config.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -158,23 +159,28 @@ Options:
 }
 
 function parseArgs(argv: readonly string[]): CliArgs {
+  const voiceEnv = readVoiceE2eTestEnv(process.env, {
+    backend: defaultBackend(),
+    cases: "roundtrip",
+    phrase: DEFAULT_PHRASE,
+    maxWer: 0.15,
+    maxBargeMs: 250,
+    maxFirstAudioMs: 1500,
+  });
   const args: CliArgs = {
-    bundle: process.env.ELIZA_VOICE_E2E_BUNDLE || "",
-    dylib: process.env.ELIZA_VOICE_E2E_DYLIB || "",
-    backend: process.env.ELIZA_VOICE_E2E_BACKEND || defaultBackend(),
-    cases: parseCases(process.env.ELIZA_VOICE_E2E_CASES || "roundtrip"),
-    phrase: process.env.ELIZA_VOICE_E2E_PHRASE || DEFAULT_PHRASE,
-    out: process.env.ELIZA_VOICE_E2E_REPORT || "",
-    audioDir: process.env.ELIZA_VOICE_E2E_AUDIO_DIR || "",
-    maxWer: Number(process.env.ELIZA_VOICE_E2E_MAX_WER || "0.15"),
-    maxBargeMs: Number(process.env.ELIZA_VOICE_E2E_MAX_BARGE_MS || "250"),
-    maxFirstAudioMs: Number(
-      process.env.ELIZA_VOICE_E2E_MAX_FIRST_AUDIO_MS || "1500",
-    ),
-    eventsJson: process.env.ELIZA_VOICE_E2E_EVENTS_JSON || "",
-    latencyBase: process.env.ELIZA_VOICE_E2E_LATENCY_BASE || "",
-    allowTtsOnlyBargeIn:
-      process.env.ELIZA_VOICE_E2E_ALLOW_TTS_ONLY_BARGE_IN === "1",
+    bundle: voiceEnv.bundle,
+    dylib: voiceEnv.dylib,
+    backend: voiceEnv.backend,
+    cases: parseCases(voiceEnv.cases),
+    phrase: voiceEnv.phrase,
+    out: voiceEnv.report,
+    audioDir: voiceEnv.audioDir,
+    maxWer: voiceEnv.maxWer,
+    maxBargeMs: voiceEnv.maxBargeMs,
+    maxFirstAudioMs: voiceEnv.maxFirstAudioMs,
+    eventsJson: voiceEnv.eventsJson,
+    latencyBase: voiceEnv.latencyBase,
+    allowTtsOnlyBargeIn: voiceEnv.allowTtsOnlyBargeIn,
     json: false,
   };
 
