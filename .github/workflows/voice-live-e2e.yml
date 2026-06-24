@@ -12,9 +12,10 @@ name: Voice Live E2E
 #     real signal -> ffmpeg resample -> real whisper STT -> transcript reads back
 #     the spoken words.
 #
-# Both tests self-skip cleanly when their engines/models are absent, so this lane
-# only does real work where the GPU runner + models are present. A failure here is
-# a real signal (the local voice pipeline regressed), never larp.
+# The round-trip job self-skips cleanly when its engines/models are absent.
+# The acoustic attribution matrix is provisioned with pinned GGUFs and a fused
+# libelizainference build, and its smoke script runs with --require-real so a
+# missing model/ABI is a hard failure rather than green skip evidence.
 #
 # Runs nightly (offset from app-live-e2e) + on-demand; never on pull_request.
 
@@ -267,6 +268,7 @@ jobs:
           set -euo pipefail
           bun packages/app-core/scripts/voice-attribution-smoke.ts \
             --models "$ELIZA_VOICE_REAL_MODEL_DIR" \
+            --require-real \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-attribution-smoke.log"
 
       - name: Real plugin voice stack matrix

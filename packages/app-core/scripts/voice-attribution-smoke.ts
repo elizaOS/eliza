@@ -22,8 +22,10 @@
  *     --models /path/to/dir/with/{silero-vad-v5,wespeaker-resnet34-lm,pyannote-segmentation-3.0}.gguf
  *   ELIZA_VOICE_REAL_MODEL_DIR=/path/to/models bun packages/app-core/scripts/voice-attribution-smoke.ts
  *
- * Exit 0 on pass OR when models / the fused lib are absent (skipped); 1 on any
- * assertion fail.
+ * Exit 0 on pass OR when models / the fused lib are absent (skipped). Pass
+ * `--require-real` (or set `ELIZA_VOICE_REAL_REQUIRE=1`) in provisioned CI to
+ * convert any skip into a hard failure; the real matrix must produce evidence,
+ * not a green skip.
  */
 import {
   copyFileSync,
@@ -35,6 +37,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
 import { handleLiveVoiceAttribution } from "../../../plugins/plugin-local-inference/src/runtime/voice-entity-binding.ts";
 import { resolveFusedLibraryPath } from "../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts";
 import {
@@ -50,7 +53,6 @@ import {
   GgmlSileroVad,
   VadDetector,
 } from "../../../plugins/plugin-local-inference/src/services/voice/vad.ts";
-import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const WAV = path.join(
@@ -61,6 +63,16 @@ const WAV = path.join(
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+const REQUIRE_REAL =
+  process.argv.includes("--require-real") ||
+  process.env.ELIZA_VOICE_REAL_REQUIRE?.trim() === "1";
+
+function skip(message: string): never {
+  const prefix = REQUIRE_REAL ? "FAIL" : "SKIP";
+  console.log(`[voice-attribution-smoke] ${prefix} — ${message}`);
+  process.exit(REQUIRE_REAL ? 1 : 0);
 }
 
 const modelsDir =
@@ -98,18 +110,13 @@ const M = {
 };
 
 if (!M.vad || !M.enc || !M.dia) {
-  console.log(
-    `[voice-attribution-smoke] SKIP — GGUF models not found under ${modelsDir}.\n` +
+  skip(
+    `GGUF models not found under ${modelsDir}.\n` +
       "  Expected Silero VAD, WeSpeaker, and pyannote assets; pass --models <dir> or set ELIZA_VOICE_REAL_MODEL_DIR.",
   );
-  process.exit(0);
 }
 
-function stageVoiceBundle(models: {
-  vad: string;
-  enc: string;
-  dia: string;
-}): {
+function stageVoiceBundle(models: { vad: string; enc: string; dia: string }): {
   root: string;
   vad: string;
   enc: string;
@@ -138,25 +145,22 @@ const BUNDLE = stageVoiceBundle(M as { vad: string; enc: string; dia: string });
 // one handle); there is no standalone runtime to fall back to.
 const FUSED_LIB = resolveFusedLibraryPath(modelsDir, process.env);
 if (!FUSED_LIB) {
-  console.log(
-    "[voice-attribution-smoke] SKIP — fused libelizainference not found.\n" +
+  skip(
+    "fused libelizainference not found.\n" +
       "  Set $ELIZA_INFERENCE_LIBRARY (exact) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app-core/scripts/build-llama-cpp-mtp.mjs.",
   );
-  process.exit(0);
 }
 const FFI = loadElizaInferenceFfi(FUSED_LIB);
 const FFI_CTX = FFI.create(BUNDLE.root);
 if (!FusedSpeakerEncoder.isSupported(FFI)) {
-  console.log(
-    `[voice-attribution-smoke] SKIP — the fused lib at ${FUSED_LIB} (ABI v${FFI.libraryAbiVersion}) lacks the speaker ABI (eliza_inference_speaker_supported() == 0). Rebuild with the WeSpeaker forward graph linked in.`,
+  skip(
+    `the fused lib at ${FUSED_LIB} (ABI v${FFI.libraryAbiVersion}) lacks the speaker ABI (eliza_inference_speaker_supported() == 0). Rebuild with the WeSpeaker forward graph linked in.`,
   );
-  process.exit(0);
 }
 if (!FusedDiarizer.isSupported(FFI)) {
-  console.log(
-    `[voice-attribution-smoke] SKIP — the fused lib at ${FUSED_LIB} (ABI v${FFI.libraryAbiVersion}) lacks the diarizer ABI (eliza_inference_diariz_supported() == 0). Rebuild with the pyannote forward graph linked in.`,
+  skip(
+    `the fused lib at ${FUSED_LIB} (ABI v${FFI.libraryAbiVersion}) lacks the diarizer ABI (eliza_inference_diariz_supported() == 0). Rebuild with the pyannote forward graph linked in.`,
   );
-  process.exit(0);
 }
 const FUSED_VAD_AVAILABLE = GgmlSileroVad.isSupported(FFI);
 
@@ -250,9 +254,17 @@ if (FUSED_VAD_AVAILABLE) {
     `speechMax=${speechMax.toFixed(3)} silenceMax=${silenceMax.toFixed(3)}`,
   );
 } else {
-  console.log(
-    "[voice-attribution-smoke] SKIP VAD stage — fused libelizainference does not advertise eliza_inference_vad_* support.",
-  );
+  if (REQUIRE_REAL) {
+    ok(
+      "Silero VAD: fused lib advertises eliza_inference_vad_* support",
+      false,
+      "fused libelizainference does not advertise eliza_inference_vad_* support",
+    );
+  } else {
+    console.log(
+      "[voice-attribution-smoke] SKIP VAD stage — fused libelizainference does not advertise eliza_inference_vad_* support.",
+    );
+  }
 }
 
 // Encoder
