@@ -106,8 +106,8 @@ const IconTile = memo(function IconTile({
           onPointerCancel={clear}
           className={cn(
             // ViewTileImage handles image-vs-glyph internally, so the button is
-            // one constant surface. backdrop-blur (#9281) and focus rings (#9292)
-            // were deliberately removed on develop — do not reintroduce them.
+            // one constant surface. Translucent filter effects (#9281) and
+            // focus rings (#9292) were deliberately removed on develop.
             "h-16 w-16 overflow-hidden rounded-2xl bg-bg-accent/60 text-foreground transition-colors hover:bg-bg-accent",
             editing && "animate-pulse",
           )}
