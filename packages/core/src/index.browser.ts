@@ -130,6 +130,19 @@ export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types (type-only, safe for browser)
 export * from "./types";
+export type {
+	EnabledViewKinds,
+	ViewKind,
+	ViewKindBearer,
+} from "./types/view-kind";
+export {
+	isAlwaysOnViewKind,
+	isViewKindEnabled,
+	isViewVisible,
+	resolveViewKind,
+	VIEW_KIND_META,
+	VIEW_KINDS,
+} from "./types/view-kind";
 export {
 	ConnectorAccountHealth,
 	ConnectorAccountPurpose,

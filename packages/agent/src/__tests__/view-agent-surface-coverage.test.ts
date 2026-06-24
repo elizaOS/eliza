@@ -112,7 +112,6 @@ const CONVERTED_SHELL_PAGES = [
   "pages/HeartbeatsView",
   "pages/DocumentsView",
   "pages/ConfigPageView",
-  "pages/ViewCatalog",
 ] as const;
 
 /**
