@@ -313,8 +313,8 @@ describe("LM Studio text plumbing shape", () => {
       })
     );
 
-    await expect(
-      handleResponseHandler(createRuntime(), { prompt: "p" } as never)
-    ).rejects.toThrow("loaded model is unavailable");
+    await expect(handleResponseHandler(createRuntime(), { prompt: "p" } as never)).rejects.toThrow(
+      "loaded model is unavailable"
+    );
   });
 });
