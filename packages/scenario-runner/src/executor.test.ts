@@ -427,6 +427,147 @@ describe("scenario executor action turns", () => {
     ]);
   });
 
+  it("matches expectedActions against the action selected during the turn", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "CALENDAR_CREATE_EVENT",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(
+            async (_runtime, _message, _state, _options, callback) => {
+              await callback?.({ text: "created calendar event" });
+              return { success: true };
+            },
+          ),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "expected-actions-pass",
+        title: "Expected actions pass",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "create event",
+            actionName: "CALENDAR_CREATE_EVENT",
+            expectedActions: ["CALENDAR_CREATE"],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(report.turns[0]?.failedAssertions).toEqual([]);
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("reports expected and actual action names for expectedActions failures", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "VIEWS",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(
+            async (_runtime, _message, _state, _options, callback) => {
+              await callback?.({ text: "opened local notes" });
+              return { success: true };
+            },
+          ),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "expected-actions-failure",
+        title: "Expected actions failure",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "schedule",
+            actionName: "VIEWS",
+            expectedActions: ["CALENDAR"],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(report.turns[0]?.failedAssertions).toEqual([
+      "expectedActions: expected action in [CALENDAR], saw actions [VIEWS]",
+    ]);
+  });
+
+  it("does not satisfy expectedActions with a synthesized REPLY", async () => {
+    const runtime = {
+      ...createRuntime([]),
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback({
+            text: "I replied in plain text without selecting an action.",
+          });
+          return {};
+        }),
+      },
+    } as unknown as AgentRuntime;
+
+    const report = await runScenario(
+      {
+        id: "expected-actions-synthesized-reply",
+        title: "Expected actions synthesized reply",
+        domain: "executor",
+        turns: [
+          {
+            kind: "message",
+            name: "plain reply",
+            text: "say hello",
+            expectedActions: ["REPLY"],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.turns[0]?.actionsCalled[0]).toMatchObject({
+      actionName: "REPLY",
+      result: { data: { source: "synthesized-reply" } },
+    });
+    expect(report.turns[0]?.failedAssertions).toEqual([
+      "expectedActions: expected action in [REPLY], saw actions [(none)]; captured actions: [REPLY]",
+    ]);
+  });
+
   it("uses action callback output directly before scenario assertions", async () => {
     const runtime = createRuntime(
       [

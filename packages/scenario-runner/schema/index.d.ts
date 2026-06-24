@@ -155,6 +155,7 @@ export type ScenarioTurn = {
   options?: Record<string, unknown>;
   assertResponse?: ScenarioAssertResponse;
   assertTurn?: (turn: ScenarioTurnExecution) => ScenarioCheckResult;
+  expectedActions?: string[];
   responseIncludesAny?: ResponsePattern[];
   responseExcludes?: ResponsePattern[];
   responseJudge?: ScenarioJudgeRubric;

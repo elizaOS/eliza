@@ -35,6 +35,7 @@ import type {
   ScenarioTurn,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
+import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
@@ -67,6 +68,23 @@ function responsePatternMatches(
     return pattern.test(responseText);
   }
   return false;
+}
+
+function stringList(value: unknown): string[] {
+  if (typeof value === "string" && value.length > 0) {
+    return [value];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function isSynthesizedReplyAction(
+  action: ScenarioTurnExecution["actionsCalled"][number],
+): boolean {
+  const data = toRecord(action.result?.data);
+  return action.actionName === "REPLY" && data?.source === "synthesized-reply";
 }
 
 type ScenarioRoomDefinition = {
@@ -1463,6 +1481,34 @@ async function runTurnAssertions(
     const result = await turn.assertTurn(execution);
     if (typeof result === "string" && result.length > 0) {
       failures.push(`assertTurn: ${result}`);
+    }
+  }
+
+  const expectedActions = stringList(
+    (turn as { expectedActions?: unknown }).expectedActions,
+  );
+  if (expectedActions.length > 0) {
+    const realActions = execution.actionsCalled.filter(
+      (action) => !isSynthesizedReplyAction(action),
+    );
+    const ok = realActions.some((action) =>
+      actionMatchesScenarioExpectation(action.actionName, expectedActions),
+    );
+    if (!ok) {
+      const realActionNames =
+        realActions.map((action) => action.actionName).join(",") || "(none)";
+      const capturedActionNames =
+        execution.actionsCalled.map((action) => action.actionName).join(",") ||
+        "(none)";
+      const capturedDetail =
+        capturedActionNames === realActionNames
+          ? ""
+          : `; captured actions: [${capturedActionNames}]`;
+      failures.push(
+        `expectedActions: expected action in [${expectedActions.join(
+          ",",
+        )}], saw actions [${realActionNames}]${capturedDetail}`,
+      );
     }
   }
 
