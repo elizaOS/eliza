@@ -1,5 +1,20 @@
 # Porting `gemma4-assistant` (the Gemma-4 MTP drafter arch) into the elizaOS llama.cpp fork
 
+> **UPDATE 2026-06-23 — DONE (the additive port worked).** The targeted port was
+> completed and validated in the fork, *without* a full rebase. The `mem_other` /
+> `share` / `ctx_other` infra is additive (every existing arch passes null), so the
+> custom KV kernels are untouched. Fork PR **elizaOS/llama.cpp#32** (branch
+> `feat/gemma4-assistant-arch`, 22 files +419/-26), milady gitlink bump **eliza
+> #9268**. Validated on M4 Max Metal: loads `gemma4-assistant` cleanly, correct
+> output, ~41-49% draft acceptance, **~1.1x decode speedup** (evidence:
+> `native/verify/evidence/platform/gemma4-assistant-fork-draft-mtp.log`). Three
+> fork-side MTP correctness bugs were fixed in the process (hidden-state row
+> sizing by n_embd vs n_embd_out; the target gemma4 graph never exposed its
+> post-norm hidden — `res->t_h_pre_norm = cur` took acceptance 8%->41%; the
+> `swa_full` override oversized the shared SWA draft cache). The rest of this doc
+> is the original pre-port plan, kept for reference.
+
+
 **Status (2026-06-23):** the drafter is **validated working on upstream**; the fork
 integration is scoped here. This doc is the AGENTS.md-required "concrete porting
 plan in the repo docs" that must exist before the upstream rebase / targeted port.
