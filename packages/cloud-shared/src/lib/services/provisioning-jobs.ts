@@ -608,28 +608,49 @@ interface LifecycleJobOptions<TData extends object> {
 }
 
 /**
+ * Parse a positive-integer millisecond value from an env var, falling back to
+ * `fallback` when the var is unset, non-numeric, or non-positive.
+ */
+function parsePositiveIntEnv(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
  * Hard ceiling on a single job's execution. A slow agent_delete (SSH +
  * headscale network I/O while holding a DB advisory lock) used to run for
  * minutes and starve the whole cycle. Every leaf is independently bounded, so
  * a job hitting this ceiling means something is genuinely wedged.
  *
- * 180s, not 120s: a freshly-pinned agent image cold-pulls in ~2.5 min on the
- * node (the leaf SSH `docker pull` allows up to `PULL_TIMEOUT_MS` = 300s in
- * docker-sandbox-provider). At the old 120s this wrapper aborted the awaiter
+ * 300s default (env-overridable via `PROVISION_JOB_TIMEOUT_MS`), not 120s: a
+ * freshly-pinned agent image cold-pulls in ~2.5 min on the node, and the leaf
+ * SSH `docker pull` itself allows up to `PULL_TIMEOUT_MS` = 300s in
+ * docker-sandbox-provider. At the old 120s this wrapper aborted the awaiter
  * mid-pull, so the job flipped toward failure even though the pull was still
  * landing the image in the node cache — retry churn + the half-provisioned
- * state behind the tonight outage. 180s clears a cold pull with margin.
+ * state behind the tonight outage. Matching the leaf `PULL_TIMEOUT_MS` (300s)
+ * means the wrapper never cuts a still-progressing cold pull short. This is the
+ * value 0xSolace set on the live box while working the outage; the env override
+ * lets ops retune without a redeploy.
  *
- * This is WATCHDOG-SAFE and stays OFF the heartbeat critical path. The
- * provisioning-worker daemon already frees the *cycle* awaiter at its own
- * `PHASE_TIMEOUT_MS` (60s) and advances `lastCycleCompletedAt` immediately, so
- * the heartbeat keeps flowing regardless of this value — `PER_JOB_TIMEOUT_MS`
- * governs only the detached background job promise, not the watchdog clock.
- * Kept <= the daemon's `WORK_CYCLE_TIMEOUT_MS` (240s) so it never reads as if a
- * single job could outlive the bounded work group. The watchdog window (300s)
- * and the `WORK_CYCLE_TIMEOUT_MS + poll < 300s` invariant are untouched.
+ * This is WATCHDOG-SAFE and stays OFF the heartbeat critical path. On the
+ * watchdog's critical path the per-job awaiter runs INSIDE the daemon's
+ * `runBoundedPhase("cycle")`, itself capped at `PHASE_TIMEOUT_MS` (60s): if a
+ * job runs longer, the phase frees the *cycle* awaiter at 60s, advances
+ * `lastCycleCompletedAt`, and the heartbeat keeps flowing — REGARDLESS of
+ * `PER_JOB_TIMEOUT_MS`. This constant governs only the detached background job
+ * promise (the leaf SSH/HTTP I/O keeps running until it resolves or hits this
+ * ceiling), NOT the watchdog clock. The watchdog invariant
+ * (`WORK_CYCLE_TIMEOUT_MS` 240s + poll 30s < `WATCHDOG_MAX_CYCLE_MS` 300s) does
+ * not reference this value at all, so raising it past `WORK_CYCLE_TIMEOUT_MS`
+ * cannot violate the invariant — the real ceiling that matters is the leaf
+ * `PULL_TIMEOUT_MS` (300s), which this matches.
  */
-export const PER_JOB_TIMEOUT_MS = 180_000;
+export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
+  process.env.PROVISION_JOB_TIMEOUT_MS,
+  300_000,
+);
 
 /**
  * Stale-job recovery thresholds, by job type. `recoverStaleJobs` resets a job

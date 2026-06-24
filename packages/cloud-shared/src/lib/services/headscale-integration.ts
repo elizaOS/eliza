@@ -21,8 +21,24 @@ const POLL_INTERVAL_INITIAL_MS = 1_000;
 /** Maximum polling interval after exponential backoff (ms). */
 const POLL_INTERVAL_MAX_MS = 8_000;
 
-/** Default timeout for VPN registration (ms). */
-const DEFAULT_REGISTRATION_TIMEOUT_MS = 60_000;
+/**
+ * Default timeout for VPN/headscale registration (ms), env-overridable via
+ * `VPN_REGISTRATION_TIMEOUT_MS`.
+ *
+ * 180s, not 60s: a cold container can take well over a minute to boot and run
+ * `tailscale up`, so the old hardcoded 60s expired BEFORE the node finished
+ * registering. The caller then logged "continuing without VPN" and the agent
+ * answered 404 over the router despite the container being up. 180s clears a
+ * cold registration with margin; this is the value 0xSolace set on the live box
+ * while working the outage, and the env override lets ops retune without a
+ * redeploy. Exported so the docker-sandbox provider shares this single source
+ * of truth instead of hardcoding its own timeout at the call site.
+ */
+export const DEFAULT_REGISTRATION_TIMEOUT_MS = (() => {
+  const raw = process.env.VPN_REGISTRATION_TIMEOUT_MS;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 180_000;
+})();
 
 function headscalePublicUrl(): string {
   return (
@@ -99,7 +115,7 @@ export class HeadscaleIntegration {
    *
    * @param nodeName  Headscale node name the container registers under
    *                  (TS_HOSTNAME = inferTailscaleHostname; NOT the bare agentId).
-   * @param timeoutMs Maximum time to wait (default 60 s).
+   * @param timeoutMs Maximum time to wait (default {@link DEFAULT_REGISTRATION_TIMEOUT_MS}, 180 s; env-overridable via `VPN_REGISTRATION_TIMEOUT_MS`).
    * @returns The first VPN IP address, or `null` if the timeout was reached.
    */
   async waitForVPNRegistration(
