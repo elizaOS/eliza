@@ -68,4 +68,38 @@ describe("cloud-api worker entrypoint", () => {
       "https://api-staging.elizacloud.ai/api/health",
     );
   });
+
+  test("feed.elizacloud.ai is inert when FEED_ORIGIN_HOST is unset", () => {
+    // No env / empty host => falls through to the cloud-api app (no regression).
+    expect(
+      getFrontendAliasProxyTarget(new URL("https://feed.elizacloud.ai/feed")),
+    ).toBeNull();
+    expect(
+      getFrontendAliasProxyTarget(new URL("https://feed.elizacloud.ai/feed"), {
+        FEED_ORIGIN_HOST: "",
+      }),
+    ).toBeNull();
+  });
+
+  test("proxies feed.elizacloud.ai pages to the Railway origin when configured", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://feed.elizacloud.ai/markets?marketKind=prediction"),
+      { FEED_ORIGIN_HOST: "feed-web-production.up.railway.app" },
+    );
+
+    expect(target?.toString()).toBe(
+      "https://feed-web-production.up.railway.app/markets?marketKind=prediction",
+    );
+  });
+
+  test("proxies feed /api/* to the SAME Railway origin (single origin, no app/api split)", () => {
+    const target = getFrontendAliasProxyTarget(
+      new URL("https://feed.elizacloud.ai/api/health"),
+      { FEED_ORIGIN_HOST: "feed-web-production.up.railway.app" },
+    );
+
+    expect(target?.toString()).toBe(
+      "https://feed-web-production.up.railway.app/api/health",
+    );
+  });
 });
