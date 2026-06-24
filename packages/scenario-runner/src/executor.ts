@@ -1512,7 +1512,7 @@ async function runTurnAssertions(
     }
   }
 
-  // responseIncludesAny / forbiddenActions / responseIncludesAll (inline)
+  // responseIncludesAny / responseIncludesAll / responseExcludes / forbiddenActions (inline)
   const includesAny = (turn as { responseIncludesAny?: unknown })
     .responseIncludesAny;
   if (Array.isArray(includesAny) && includesAny.length > 0) {
@@ -1525,6 +1525,23 @@ async function runTurnAssertions(
         `responseIncludesAny: expected response to include any of [${includesAny.join(
           ",",
         )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
+      );
+    }
+  }
+  const includesAll = (turn as { responseIncludesAll?: unknown })
+    .responseIncludesAll;
+  if (Array.isArray(includesAll) && includesAll.length > 0) {
+    const text = execution.responseText ?? "";
+    const missing = includesAll.filter(
+      (pattern) => !responsePatternMatches(pattern, text),
+    );
+    if (missing.length > 0) {
+      failures.push(
+        `responseIncludesAll: expected response to include all of [${includesAll.join(
+          ",",
+        )}], missing [${missing.join(",")}], saw ${JSON.stringify(
+          execution.responseText ?? "",
+        )}`,
       );
     }
   }

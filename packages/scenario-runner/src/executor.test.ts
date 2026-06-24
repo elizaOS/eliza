@@ -327,6 +327,102 @@ describe("scenario executor action turns", () => {
     ]);
   });
 
+  it("passes when every responseIncludesAll pattern is present", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "VIEWS",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(
+            async (_runtime, _message, _state, _options, callback) => {
+              await callback?.({ text: "Saved your workout reminder." });
+              return { success: true };
+            },
+          ),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "response-includes-all-pass",
+        title: "Response includes all pass",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "save reminder",
+            actionName: "VIEWS",
+            responseIncludesAll: ["saved", /workout/i],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(report.turns[0]?.failedAssertions).toEqual([]);
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("reports the missing patterns for responseIncludesAll failures", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "VIEWS",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(
+            async (_runtime, _message, _state, _options, callback) => {
+              await callback?.({ text: "opened remote-ledger" });
+              return { success: true };
+            },
+          ),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "response-includes-all-failure",
+        title: "Response includes all failure",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "open and sync",
+            actionName: "VIEWS",
+            responseIncludesAll: ["opened", "synced"],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(report.turns[0]?.failedAssertions).toEqual([
+      'responseIncludesAll: expected response to include all of [opened,synced], missing [synced], saw "opened remote-ledger"',
+    ]);
+  });
+
   it("passes when responseExcludes patterns are absent from the response", async () => {
     const runtime = createRuntime(
       [
