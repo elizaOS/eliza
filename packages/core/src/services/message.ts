@@ -1057,7 +1057,9 @@ function latestMessageHistoryCompactionTelemetry(
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return undefined;
 	}
-	return value as unknown as MessageHistoryCompactionTelemetry;
+	// The guards above narrow `value` to a non-null, non-array object, so a plain
+	// downcast suffices here — no `as unknown` laundering needed.
+	return value as MessageHistoryCompactionTelemetry;
 }
 
 function appendMessageHistoryCompactionTelemetry(
