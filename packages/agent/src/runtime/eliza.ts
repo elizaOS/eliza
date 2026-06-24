@@ -366,6 +366,15 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
         /* @vite-ignore */ "@elizaos/plugin-background-runner"
       );
     }
+    if (packageName === "@elizaos/plugin-vision") {
+      // Literal specifier so Bun.build statically resolves plugin-vision's
+      // module graph (visionPlugin + ScreenCaptureBridgeService + the
+      // /api/vision/* routes + the jimp-backed sharp-compat) into the mobile
+      // bundle. A bare `import(packageName)` with a runtime variable is opaque
+      // to the bundler, so the code would never be inlined and the on-device
+      // resolver would skip the plugin (mobile has no node_modules tree).
+      return await import(/* @vite-ignore */ "@elizaos/plugin-vision");
+    }
     if (packageName === "@elizaos/plugin-anthropic") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-anthropic");
     }
@@ -512,6 +521,24 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       phase: "deferred",
       required: false,
       load: () => getOptionalPlugin("@elizaos/plugin-background-runner"),
+    },
+    {
+      // Screen understanding on mobile (EPIC #9105): registering vision here
+      // gives the loader a literal `import()` to inline so the plugin's full
+      // code (GET_SCREEN op, ScreenCaptureBridgeService, /api/vision/* routes,
+      // jimp-backed sharp fallback) lands in the bundle. The plugin degrades
+      // gracefully on every platform (no capture tool → no processing loop),
+      // so it is safe to register unconditionally in the deferred phase.
+      packageName: "@elizaos/plugin-vision",
+      // Blocking (not deferred) so it loads during boot and its HTTP routes
+      // (/api/vision/capture-requests + /api/vision/screen-frame, the EPIC
+      // #9105 screen-capture bridge) register into runtime.routes BEFORE the
+      // server starts serving — a deferred load registered the plugin too late
+      // for the route table, so the renderer poll 404'd. required:false keeps a
+      // load failure non-fatal (vision degrades, the rest of the agent boots).
+      phase: "blocking",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-vision"),
     },
     {
       packageName: "@elizaos/plugin-elizacloud",

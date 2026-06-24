@@ -17,7 +17,7 @@
  *   `reconstructAbsoluteCoords`). This is what lets the planner click the
  *   thing the model just read.
  */
-import sharp from "sharp";
+import { getSharp } from "./image/sharp-compat";
 
 /**
  * One output tile from `tileScreenshot`.
@@ -131,6 +131,7 @@ export async function tileScreenshot(
   const strideY =
     rows > 1 ? Math.floor((height - tileHeight) / (rows - 1)) : tileHeight;
 
+  const sharp = await getSharp();
   const image = sharp(pngBytes);
   const tiles: ScreenTile[] = [];
   for (let row = 0; row < rows; row += 1) {
