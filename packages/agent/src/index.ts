@@ -228,6 +228,30 @@ export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
 export * from "./runtime/version.ts";
 export * from "./security/index.ts";
+// Runtime owner-approval queue promoted from LifeOps (Slice 4). Named
+// re-export — same rationale as the knowledge graph / pending-prompts below:
+// keep it out of the broad services barrel to avoid TS2308.
+export {
+  APPROVAL_SERVICE,
+  type ApprovalAction,
+  type ApprovalChannel,
+  type ApprovalEnqueueInput,
+  type ApprovalListFilter,
+  ApprovalNotFoundError,
+  type ApprovalPayload,
+  type ApprovalQueue,
+  type ApprovalQueueOptions,
+  type ApprovalRequest,
+  type ApprovalRequestState,
+  type ApprovalResolution,
+  ApprovalService,
+  ApprovalStateTransitionError,
+  type ApprovalTravelCalendarSync,
+  type ApprovalTravelPassenger,
+  createApprovalQueue,
+  PgApprovalQueue,
+  resolveApprovalService,
+} from "./services/approval/index.ts";
 export * from "./services/cove-quote.ts";
 export * from "./services/dstack-tee-provider.ts";
 export {

@@ -92,8 +92,14 @@ function extractXrViews(
     }
   }
   for (const obj of objects) {
-    const viewType = obj.match(/viewType:\s*"([^"]+)"/)?.[1];
-    if (viewType !== "xr") continue;
+    // Source-level mirror of core's `getViewModalities`: a view renders on the
+    // explicit `modalities: [...]` list when present, otherwise the single
+    // `viewType` (default "gui"). The view is an XR view when "xr" is among them.
+    const modalitiesMatch = obj.match(/modalities:\s*\[([^\]]*)\]/);
+    const modalities = modalitiesMatch
+      ? [...modalitiesMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])
+      : [obj.match(/viewType:\s*"([^"]+)"/)?.[1] ?? "gui"];
+    if (!modalities.includes("xr")) continue;
     const id = obj.match(/\bid:\s*"([^"]+)"/)?.[1];
     const componentExport = obj.match(/componentExport:\s*"([^"]+)"/)?.[1];
     const bundlePath = obj.match(/bundlePath:\s*"([^"]+)"/)?.[1];

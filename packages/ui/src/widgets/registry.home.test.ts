@@ -27,4 +27,37 @@ describe("home frontpage widget slot (#9143)", () => {
     )?.declaration;
     expect(decl?.slot).toBe("chat-sidebar");
   });
+
+  it("resolves the Notifications widget on home even with NO plugins (always-visible core feature)", () => {
+    const resolved = resolveWidgetsForSlot("home", []);
+    const notif = resolved.find(
+      (r) => r.declaration.id === "notifications.recent",
+    );
+    expect(notif).toBeTruthy();
+    expect(notif?.declaration.slot).toBe("home");
+    expect(notif?.Component).toBeTruthy();
+  });
+
+  it("resolves the Messages widget on home even with NO plugins (always-visible)", () => {
+    const resolved = resolveWidgetsForSlot("home", []);
+    const msgs = resolved.find((r) => r.declaration.id === "messages.recent");
+    expect(msgs?.declaration.slot).toBe("home");
+    expect(msgs?.Component).toBeTruthy();
+  });
+
+  it("resolves the agent-orchestrator Apps widget on home (reused component)", () => {
+    const resolved = resolveWidgetsForSlot("home", enabledOrchestrator);
+    const apps = resolved.find(
+      (r) => r.declaration.id === "agent-orchestrator.apps",
+    );
+    expect(apps?.declaration.slot).toBe("home");
+    expect(apps?.Component).toBeTruthy();
+  });
+
+  it("resolves the Todos widget on home (per-plugin breadth opt-in)", () => {
+    const resolved = resolveWidgetsForSlot("home", []);
+    const todos = resolved.find((r) => r.declaration.id === "todo.items");
+    expect(todos?.declaration.slot).toBe("home");
+    expect(todos?.Component).toBeTruthy();
+  });
 });

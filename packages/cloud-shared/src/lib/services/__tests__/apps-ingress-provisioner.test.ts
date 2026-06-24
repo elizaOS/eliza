@@ -24,7 +24,6 @@ describe("addAppRoute", () => {
     }));
     await addAppRoute({
       hostname: HOST,
-      nodeHost: "10.30.1.5",
       hostPort: 28123,
       adminBase: ADMIN,
       fetchImpl,
@@ -42,7 +41,8 @@ describe("addAppRoute", () => {
     const posted = JSON.parse(calls[1].body ?? "{}");
     expect(posted["@id"]).toBe("app-abc12345");
     expect(posted.match[0].host).toEqual([HOST]);
-    expect(posted.handle[0].upstreams[0].dial).toBe("10.30.1.5:28123");
+    // dial is node-local loopback (Caddy co-located on the app node)
+    expect(posted.handle[0].upstreams[0].dial).toBe("127.0.0.1:28123");
   });
 
   test("throws when Caddy rejects the POST (so the deploy fails fast, not a silent 502)", async () => {

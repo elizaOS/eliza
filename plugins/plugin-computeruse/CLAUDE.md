@@ -16,8 +16,8 @@ File operations belong to the FILE action; shell/terminal access belongs to the 
 
 | Name | File | What it does |
 |------|------|--------------|
-| `COMPUTER_USE` | `src/actions/use-computer.ts` | Umbrella desktop action: `screenshot`, `click`, `click_with_modifiers`, `double_click`, `right_click`, `mouse_move`, `middle_click`, `mouse_down`, `mouse_up`, `type`, `key`, `key_combo`, `key_down`, `key_up`, `scroll`, `drag` (single segment or multi-point `path`), `get_cursor_position`, `detect_elements`, `ocr`. `mouse_down/up` + `key_down/up` are real press-and-hold primitives (nutjs `pressButton`/`pressKey` without release — back hold-drags, marquee, held modifiers); they require the nutjs driver. Requires `OWNER` role. Subactions are promoted to virtual top-level actions (`COMPUTER_USE_CLICK`, etc.) via `promoteSubactionsToActions`. |
-| `WINDOW` | `src/actions/window.ts` | Window management: `list`, `focus`, `switch`, `arrange`, `move`, `minimize`, `maximize`, `restore`, `close`. Also promoted to `WINDOW_FOCUS`, etc. |
+| `COMPUTER_USE` | `src/actions/use-computer.ts` | Umbrella desktop action: `screenshot`, `click`, `click_with_modifiers`, `double_click`, `right_click`, `mouse_move`, `middle_click`, `mouse_down`, `mouse_up`, `type`, `key`, `key_combo`, `key_down`, `key_up`, `scroll`, `drag` (single segment or multi-point `path`), `get_cursor_position`, `detect_elements`, `ocr`, `open` (file/URL/folder via the OS default handler), `launch` (start an app → returns pid). `mouse_down/up` + `key_down/up` are real press-and-hold primitives (nutjs `pressButton`/`pressKey` without release — back hold-drags, marquee, held modifiers); they require the nutjs driver. Requires `OWNER` role. Subactions are promoted to virtual top-level actions (`COMPUTER_USE_CLICK`, etc.) via `promoteSubactionsToActions`. |
+| `WINDOW` | `src/actions/window.ts` | Window management: `list`, `focus`, `switch`, `arrange`, `move`, `minimize`, `maximize`, `restore`, `close`, `get_current_window_id`, `get_application_windows`, `set_bounds` (position + size). Also promoted to `WINDOW_FOCUS`, etc. |
 | `CLIPBOARD` | `src/actions/clipboard.ts` | Host clipboard read/write (`read`, `write`) — trycua/cua parity. Promoted to `CLIPBOARD_READ` / `CLIPBOARD_WRITE`. macOS pbcopy/pbpaste, Linux wl-clipboard/xclip, Windows PowerShell `Get-Clipboard` / `Set-Clipboard`. |
 | `COMPUTER_USE_AGENT` | `src/actions/use-computer-agent.ts` | High-level "give me a goal, click my way there" loop (WS7). Selects an agent loop by model string (#9170 M10, default `local-grounder` = Brain → Cascade) and runs predictStep → dispatch up to `maxSteps`, through a callback-middleware pipeline (#9170 M11: operator-normalizer + trajectory by default; `maxDurationMs` budget cap + `imageRetentionLast` window opt-in). Emits trajectory events as structured log lines and on `report.trajectory`. |
 
@@ -79,7 +79,8 @@ src/
     displays.ts              listDisplays / getPrimaryDisplay
     driver.ts                driverClick / driverType / … (nutjs or legacy shell)
     nut-driver.ts            @nut-tree-fork/nut-js implementation
-    windows-list.ts          listWindows / focusWindow / arrangeWindows / …
+    windows-list.ts          listWindows / focusWindow / arrangeWindows / getActiveWindow / resizeWindow / …
+    launch.ts                openTarget (open file/URL/folder) / launchApp (spawn app → pid)
     clipboard.ts             OS clipboard read/write
     a11y.ts                  Accessibility tree query
     coords.ts                localToGlobal coordinate translation
@@ -136,9 +137,17 @@ src/
     action-converter.ts      OSWorld action → ComputerInterface translation
     types.ts                 OSWorld-specific type definitions
 
+  parity/                    trycua/cua parity tooling (#9170 M14)
+    parity-matrix.ts         machine-checkable capability matrix + validateParityMatrix (guards drift vs the live action surface)
+    screenspot.ts            ScreenSpot grounding harness (point-in-bbox scorer + score fold)
+    index.ts                 Public re-exports
+
   sandbox/
-    sandbox-driver.ts        Sandbox driver (Docker backend)
+    sandbox-driver.ts        Sandbox driver (backend-agnostic)
     docker-backend.ts        Docker backend
+    remote-guest.ts          Generic {command,params}→{success,result} RPC seam + RemoteGuestBackend base (#9170 M13)
+    wsb-backend.ts           Windows Sandbox provider (RemoteGuestBackend)
+    qemu-backend.ts          QEMU provider (RemoteGuestBackend)
     surface-types.ts         Shared surface type definitions
     types.ts                 Sandbox-specific types
     index.ts                 Public re-exports
@@ -186,7 +195,9 @@ All read via `runtime.getSetting()` / `process.env`. Core vars are declared in `
 | `COMPUTER_USE_BROWSER_HEADLESS` | boolean | `false` | No | Headless browser (useful in CI) |
 | `ELIZA_COMPUTERUSE_DRIVER` | enum | `"nutjs"` | No | Input driver: `nutjs` (@nut-tree-fork/nut-js) or `legacy` (cliclick/xdotool/PowerShell) |
 | `COMPUTER_USE_MODE` | enum | `"yolo"` | No | Runtime mode: `yolo` (direct desktop) or `sandbox` (Docker-isolated). Alias: `COMPUTERUSE_MODE` |
-| `COMPUTER_USE_SANDBOX_BACKEND` | string | — | No | Sandbox backend when `COMPUTER_USE_MODE=sandbox` (currently only `"docker"`). Alias: `COMPUTERUSE_SANDBOX_BACKEND` |
+| `COMPUTER_USE_SANDBOX_BACKEND` | enum | — | No | Sandbox backend when `COMPUTER_USE_MODE=sandbox`: `"docker"`, `"wsb"` (Windows Sandbox), or `"qemu"`. `docker`/`qemu` need `COMPUTER_USE_SANDBOX_IMAGE`; `wsb` is imageless. Alias: `COMPUTERUSE_SANDBOX_BACKEND` |
+| `COMPUTER_USE_SANDBOX_RPC_URL` | string | — | No | VM-provider (wsb/qemu) in-guest computer-server RPC URL (#9170 M13). Default `http://127.0.0.1:<rpcPort>/cua`. Alias: `COMPUTERUSE_SANDBOX_RPC_URL` |
+| `COMPUTER_USE_SANDBOX_RPC_PORT` | number | `8000` | No | Host-forwarded guest RPC port for wsb/qemu. Alias: `COMPUTERUSE_SANDBOX_RPC_PORT` |
 | `COMPUTER_USE_SANDBOX_IMAGE` | string | — | No | Docker image to use for sandbox mode. Alias: `COMPUTERUSE_SANDBOX_IMAGE` |
 
 `BROWSER_EXECUTE_DISABLED` is declared in `package.json#agentConfig.pluginParameters` but is **inert**: `browser_execute` is unconditionally disabled in `src/security/browser-script-policy.ts` (`isBrowserExecuteAllowed()` always returns `false`, GHSA-rcvr-766c-4phv). No setting re-enables it.
@@ -237,4 +248,5 @@ Call `registerSetOfMarksProvider(provider)` (same module, `src/mobile/ocr-provid
 - **Platform evidence**: `docs/ios-device-validation.json`, `docs/android-device-validation.json`, `docs/android-aosp-validation.json`, `docs/macos-desktop-validation.json`, `docs/linux-desktop-validation.json`, and `docs/windows-desktop-validation.json` are the release evidence manifests. Keep incomplete live-device checks in `requires_device_evidence`; use `validate:platform-evidence -- --require-complete` only for release gates that truly have artifacts for every required platform check.
 - **Mobile surface**: `src/mobile/` is real but constrained. Read `docs/IOS_CONSTRAINTS.md` and `docs/ANDROID_CONSTRAINTS.md` before touching mobile code.
 - **OSWorld benchmark**: `src/osworld/` adapts the plugin to the OSWorld desktop benchmark format. Not part of normal agent runtime.
+- **Parity matrix (#9170 M14)**: `src/parity/parity-matrix.ts` is the machine-checkable trycua/cua capability map. `validateParityMatrix(actionNames)` is asserted in the test suite — adding a verb to the matrix without registering it (or renaming a promoted action) fails CI, so the map can't silently drift. `src/parity/screenspot.ts` scores click-grounding (point-in-bbox) for any grounder.
 - **Further reading**: `docs/MULTI_MONITOR.md`, `docs/SCENE_BUILDER.md`, `docs/MOBILE_ASSISTANT_ROUTING.md`, `docs/AOSP_SYSTEM_APP.md`, `docs/TEST_LANES_COMPUTERUSE_VISION.md` (unit vs real-driver lanes, per-OS reqs, and the Windows non-interactive-session input gotcha).

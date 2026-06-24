@@ -953,3 +953,45 @@ function requireXdotool(): void {
     );
   }
 }
+
+// ── Set value (a11y write) ────────────────────────────────────────────────────
+
+/**
+ * Windows fast-path for `set_value` (#9170 — trycua/cua `set_value`): use UI
+ * Automation `ValuePattern.SetValue` on the element under (x,y) to set its value
+ * directly, without synthesizing keystrokes. Returns `true` if the element
+ * exposed ValuePattern and was set; `false` (incl. on any error) so the caller
+ * falls back to the universal focus → select-all → type path.
+ *
+ * Uses `Add-Type -AssemblyName` (signed framework assemblies), not a
+ * runtime-compiled inline class. Real actuation is exercised by the interactive
+ * real-driver lane; this box's session can't host a ValuePattern control to
+ * probe it (see #9170).
+ */
+export function win32TrySetValueByPattern(
+  x: number,
+  y: number,
+  value: string,
+): boolean {
+  if (currentPlatform() !== "win32") return false;
+  const sx = validateInt(x);
+  const sy = validateInt(y);
+  const escaped = validateText(value).replace(/'/g, "''");
+  const ps = [
+    "Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase",
+    `$pt = New-Object System.Windows.Point(${sx}, ${sy})`,
+    "$el = [System.Windows.Automation.AutomationElement]::FromPoint($pt)",
+    "if ($el -eq $null) { 'NO_ELEMENT'; exit 0 }",
+    "$hasVal = $el.GetCurrentPropertyValue([System.Windows.Automation.AutomationElement]::IsValuePatternAvailableProperty)",
+    "if (-not $hasVal) { 'NO_PATTERN'; exit 0 }",
+    "$vp = $el.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)",
+    `$vp.SetValue('${escaped}')`,
+    "'VALUE_SET'",
+  ].join("; ");
+  try {
+    const out = runCommand("powershell", ["-Command", ps], 10000);
+    return out.includes("VALUE_SET");
+  } catch {
+    return false;
+  }
+}

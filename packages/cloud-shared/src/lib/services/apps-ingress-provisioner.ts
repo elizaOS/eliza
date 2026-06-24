@@ -59,8 +59,9 @@ export interface AddRouteOpts extends AppRouteInput {
 
 /**
  * Add (idempotently) a per-app route: `<hostname>` -> reverse_proxy
- * `nodeHost:hostPort`. Deletes any existing route with the same `@id` first so a
- * re-deploy replaces cleanly. Throws on failure (caller should fail the deploy).
+ * `127.0.0.1:hostPort` (Caddy is co-located on the app node). Deletes any
+ * existing route with the same `@id` first so a re-deploy replaces cleanly.
+ * Throws on failure (caller should fail the deploy).
  */
 export async function addAppRoute(opts: AddRouteOpts): Promise<void> {
   const fetchImpl = resolveFetch(opts.fetchImpl);

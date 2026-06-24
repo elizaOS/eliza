@@ -35,11 +35,10 @@ function makeTempElizaBundle(
   const bundleRoot = mkdtempSync(pathJoin(tmpdir(), "eliza-ui-mtp-"));
   mkdirSync(pathJoin(bundleRoot, "text"), { recursive: true });
   const textPath = pathJoin(bundleRoot, "text", `eliza-1-${tier}-32k.gguf`);
-  const drafterPath = pathJoin(
-    bundleRoot,
-    "mtp",
-    `eliza-1-${tier}-drafter.gguf`,
-  );
+  // Separate-drafter MTP (Gemma 4): the catalog declares a standalone
+  // companion at `mtp/drafter-<tier>.gguf`, which `resolveMtpDrafterPath`
+  // resolves relative to the bundle root.
+  const drafterPath = pathJoin(bundleRoot, "mtp", `drafter-${tier}.gguf`);
   writeFileSync(textPath, "fake-text-gguf");
   if (options.hasMtp !== false) {
     mkdirSync(pathJoin(bundleRoot, "mtp"), { recursive: true });
@@ -123,16 +122,16 @@ describe("resolveLocalInferenceLoadArgs", () => {
     expect(args.kvOffload).toEqual({ gpuLayers: 10 });
   });
 
-  it("activates same-file MTP (no separate drafter) for every MTP Eliza-1 tier", async () => {
+  it("resolves the separate-drafter GGUF for every MTP Eliza-1 tier", async () => {
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const tier = id.replace("eliza-1-", "");
-      const bundle = makeTempElizaBundle(tier, { hasMtp: false });
+      const bundle = makeTempElizaBundle(tier);
       const target = makeInstalledModel(id, bundle.textPath, bundle.bundleRoot);
       try {
         const args = await resolveLocalInferenceLoadArgs(target);
-        // Same-file MTP: NextN head embedded in the text GGUF, no separate
-        // draft model resolved.
-        expect(args.draftModelPath).toBeUndefined();
+        // Separate-drafter MTP (Gemma 4): the standalone companion drafter
+        // GGUF is resolved from the bundle and threaded into the load args.
+        expect(args.draftModelPath).toBe(bundle.drafterPath);
         expect(args.draftMin).toBeGreaterThan(0);
         expect(args.draftMax).toBeGreaterThan(0);
         expect(args.mobileSpeculative).toBe(true);
@@ -142,7 +141,7 @@ describe("resolveLocalInferenceLoadArgs", () => {
     }
   });
 
-  it("does not throw when no drafter GGUF is present (same-file MTP needs none)", async () => {
+  it("throws when the declared separate-drafter GGUF is missing from the bundle", async () => {
     const bundle = makeTempElizaBundle("2b", { hasMtp: false });
     try {
       const target = makeInstalledModel(
@@ -150,9 +149,9 @@ describe("resolveLocalInferenceLoadArgs", () => {
         bundle.textPath,
         bundle.bundleRoot,
       );
-      const args = await resolveLocalInferenceLoadArgs(target);
-      expect(args.modelPath).toBe(bundle.textPath);
-      expect(args.draftModelPath).toBeUndefined();
+      await expect(resolveLocalInferenceLoadArgs(target)).rejects.toThrow(
+        /separate-drafter MTP but no bundled drafter GGUF was found/,
+      );
     } finally {
       rmSync(bundle.bundleRoot, { recursive: true, force: true });
     }

@@ -19,9 +19,11 @@
 import { Buffer } from "node:buffer";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
+import { decideBuilderArming, selectBuilderHost } from "./app-builder-host";
 import { AppContainerProvider, type AppContainerSsh } from "./app-container-provider";
 import { appContainerStore } from "./app-container-store";
 import type { BuildExec } from "./app-image-builder";
+import { appsService } from "./apps";
 import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
 import { allocateAppContainerHostPort } from "./docker-port-allocation";
@@ -66,26 +68,67 @@ function selectNodeHost(): string {
 }
 
 /**
- * Expose the app node's SSH connection as a {@link BuildExec} so the deploy
- * backend can build user images FROM THEIR REPO on the node (`docker buildx
- * build --push <git-url>`) and push to the registry — the "Vercel-like" path
- * where the platform does the build, not the user. The node already has Docker
- * + buildx (it runs the containers); `AppContainerSsh.exec(cmd, timeoutMs)` is
- * structurally identical to `BuildExec.exec`. Returns null when the node backend
- * isn't configured, so the deploy backend cleanly falls back to prebuilt images.
+ * Resolve the host that runs UNTRUSTED app builds — a DEDICATED builder host
+ * distinct from any node hosting tenant containers, if one is configured.
+ * Thin binder over the pure {@link selectBuilderHost} (the runtime-node selector
+ * is this module's seed/registered-node pick). See `app-builder-host.ts`.
+ */
+export function selectBuilderHostOrNull(): string | null {
+  return selectBuilderHost(selectNodeHostOrNull);
+}
+
+/**
+ * Expose a builder host's SSH connection as a {@link BuildExec} so the deploy
+ * backend can build user images FROM THEIR REPO (`docker buildx build --push
+ * <git-url>`) and push to the registry — the "Vercel-like" path where the
+ * platform does the build, not the user. `AppContainerSsh.exec(cmd, timeoutMs)`
+ * is structurally identical to `BuildExec.exec`.
  *
- * INFRA NOTE: the node must be `docker login`'d to the registry (push for build,
- * pull for run). That credential is provisioned out-of-band (operator/cloud-init),
- * not here — same as the container SSH key.
+ * SECURITY GATE (see {@link decideBuilderArming}): returns null (→ prebuilt-image
+ * fallback, build-from-repo stays OFF) unless ALL of:
+ *   1. the container backend is configured (`appsContainersEnabled()`),
+ *   2. build-from-repo is explicitly armed (`APPS_BUILD_FROM_REPO_ENABLED=1`),
+ *   3. an isolated builder host resolves (a dedicated `APPS_BUILDS_HOST`, or the
+ *      runtime node only if `APPS_BUILD_ON_RUNTIME_NODE` is opted in).
+ * So an unconfigured/un-armed canary never builds an untrusted Dockerfile, and
+ * it never builds on a tenant-hosting node by accident.
+ *
+ * INFRA NOTE: the builder host must be `docker login`'d to the registry (push
+ * for build) and run a dockerd that supports the `docker-container` buildx
+ * driver. Provisioning a dedicated builder node (no tenant containers) is the
+ * infra complement — see the PR's infra-follow-up.
  */
 export function makeNodeBuilderExec(): BuildExec | null {
-  if (!appsContainersEnabled()) return null;
-  return makeNodeSsh();
+  const decision = decideBuilderArming({
+    backendEnabled: appsContainersEnabled(),
+    selectRuntimeNode: selectNodeHostOrNull,
+  });
+  if (!decision.armed || !decision.host) {
+    if (decision.reason === "no-isolated-host") {
+      logger.warn(
+        "[container-executor-deps] build-from-repo armed but no isolated builder host — set APPS_BUILDS_HOST (dedicated) or APPS_BUILD_ON_RUNTIME_NODE=1 to opt into the runtime node; staying on prebuilt-image path",
+      );
+    } else if (decision.reason === "not-armed") {
+      logger.info(
+        "[container-executor-deps] build-from-repo not armed (APPS_BUILD_FROM_REPO_ENABLED unset) — using prebuilt-image path",
+      );
+    }
+    return null;
+  }
+  logger.info("[container-executor-deps] build-from-repo armed", {
+    builderHost: decision.host,
+    dedicated: decision.dedicated,
+  });
+  return makeBuilderSsh(decision.host);
 }
 
 /** A pooled SSH connection to the chosen node, exposing the `AppContainerSsh` seam. */
 function makeNodeSsh(): AppContainerSsh {
-  const host = selectNodeHost();
+  return makeBuilderSsh(selectNodeHost());
+}
+
+/** A pooled SSH connection to an explicit host, exposing the `AppContainerSsh` seam. */
+function makeBuilderSsh(host: string): AppContainerSsh {
   const keyB64 = containersEnv.sshKey();
   const privateKey = keyB64 ? Buffer.from(keyB64, "base64") : undefined;
   // DockerSSHClient.exec(command, timeoutMs?) IS the AppContainerSsh shape.
@@ -173,6 +216,16 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
       listVerifiedAppOrigins(appId).then((origins) =>
         origins.map((origin) => origin.replace(/^https?:\/\//, "").replace(/\/+$/, "")),
       ),
+    markAppDeployed: async (appId, productionUrl) => {
+      // App ids are UUIDs; a non-UUID project_name (a plain /v1/containers row,
+      // which is not an app) is skipped so this never mis-updates or UUID-casts.
+      if (!/^[0-9a-f-]{36}$/i.test(appId)) return;
+      await appsService.update(appId, {
+        deployment_status: "deployed",
+        production_url: productionUrl,
+        last_deployed_at: new Date(),
+      });
+    },
     ...ingress,
   };
 }

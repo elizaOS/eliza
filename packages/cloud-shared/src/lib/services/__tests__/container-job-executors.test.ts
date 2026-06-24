@@ -93,6 +93,47 @@ describe("executeContainerProvision", () => {
     ]);
   });
 
+  test("flips the linked app to deployed on success (#5: deploy reaches READY)", async () => {
+    const { store } = fakeStore();
+    const { provider } = fakeProvider();
+    const deployed: Array<{ appId: string; url: string | null }> = [];
+    await executeContainerProvision(
+      job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+      {
+        provider,
+        store,
+        markAppDeployed: async (appId, url) => {
+          deployed.push({ appId, url });
+        },
+      },
+    );
+    expect(deployed).toHaveLength(1);
+    expect(deployed[0]?.appId).toBe(ROW.appId);
+  });
+
+  test("does NOT mark the app deployed when provisioning fails", async () => {
+    const { store } = fakeStore();
+    const { provider } = fakeProvider({
+      async provision() {
+        throw new Error("docker create failed");
+      },
+    } as never);
+    const deployedOnFail: string[] = [];
+    await expect(
+      executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        {
+          provider,
+          store,
+          markAppDeployed: async (appId) => {
+            deployedOnFail.push(appId);
+          },
+        },
+      ),
+    ).rejects.toThrow("docker create failed");
+    expect(deployedOnFail).toEqual([]);
+  });
+
   test("marks error and rethrows when provisioning fails", async () => {
     const { events, store } = fakeStore();
     const { provider } = fakeProvider({
@@ -170,7 +211,7 @@ describe("ingress route hooks", () => {
     });
   }
 
-  test("provision adds the route (host + nodeHost + hostPort) + threads nodeHost to markRunning", async () => {
+  test("provision adds the route (host + hostPort, NO nodeHost in the dial) + threads nodeHost to markRunning", async () => {
     await withBase("apps.elizacloud.ai", async () => {
       const { events, store } = fakeStore();
       const { provider } = fakeProvider({
@@ -183,7 +224,7 @@ describe("ingress route hooks", () => {
           };
         },
       } as never);
-      const routes: Array<{ hostname: string; nodeHost: string; hostPort: number }> = [];
+      const routes: Array<{ hostname: string; hostPort: number; nodeHost?: string }> = [];
       await executeContainerProvision(
         job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
         {
@@ -196,8 +237,12 @@ describe("ingress route hooks", () => {
       );
       expect(routes).toHaveLength(1);
       expect(routes[0].hostname).toMatch(/\.apps\.elizacloud\.ai$/);
-      expect(routes[0]).toMatchObject({ nodeHost: "10.30.1.5", hostPort: 49001 });
-      // nodeHost is also persisted (markRunning -> metadata.hostname / ingress-map)
+      expect(routes[0]).toMatchObject({ hostPort: 49001 });
+      // The route no longer carries nodeHost — the dial is node-local loopback,
+      // so the node IP must NOT leak into the ingress hook.
+      expect(routes[0].nodeHost).toBeUndefined();
+      // nodeHost is still persisted to the container record (markRunning), which
+      // is a separate concern from the loopback ingress dial.
       expect(events.find((e) => e.op === "running")?.info).toMatchObject({ nodeHost: "10.30.1.5" });
     });
   });

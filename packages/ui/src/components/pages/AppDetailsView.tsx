@@ -389,7 +389,15 @@ export function AppDetailsView({
     error: catalogError,
     loading: catalogLoading,
   } = useRegistryCatalog();
-  const catalog: RegistryAppInfo[] = registryCatalog ?? [];
+  // Stabilize identity: `registryCatalog ?? []` would mint a fresh array every
+  // render while the registry is still loading (registryCatalog nullish), which
+  // re-recomputes `resolved` and re-fires the launch-history effect every
+  // render — an infinite render loop on first paint. Memoize so it only changes
+  // when the underlying catalog actually changes.
+  const catalog = useMemo<RegistryAppInfo[]>(
+    () => registryCatalog ?? [],
+    [registryCatalog],
+  );
 
   const resolved = useMemo(
     () => resolveAppFromSlug(slug, catalog),

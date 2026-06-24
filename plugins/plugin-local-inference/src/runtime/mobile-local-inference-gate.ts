@@ -31,16 +31,26 @@ export function shouldEnableMobileLocalInference(
 	env: NodeJS.ProcessEnv = process.env,
 	arch: NodeJS.Architecture = process.arch,
 ): boolean {
+	// Bionic-host delegation (Android dynamic-Vulkan): the app shell stages a
+	// dynamic-Vulkan `libelizainference.so` reachable only from the in-process
+	// bionic host and sets `ELIZA_BIONIC_HOST_DELEGATED=1` (suppressing
+	// ELIZA_LOCAL_LLAMA so the musl agent never dlopen's the lib). The agent talks
+	// to that host over the abstract UDS — a process-external backend just like
+	// the device bridge. Without counting it here, ensureLocalInferenceHandler is
+	// skipped on the phone, so `tryRegisterBionicHostLoader` + the
+	// TEXT/embedding (and TTS/TRANSCRIPTION/IMAGE_DESCRIPTION) handlers never
+	// register and only the mobile-local-direct-reply chat path works (#8848).
+	const bionicHost = env.ELIZA_BIONIC_HOST_DELEGATED?.trim() === "1";
 	if (env.ELIZA_DISABLE_FFI_LLAMA?.trim() === "1") {
-		// Operator opted out of the FFI path entirely — the device-bridge
-		// path remains valid because the bridge is process-external and
-		// doesn't depend on `libllama.so` being present in the APK.
-		return env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
+		// Operator opted out of the FFI path entirely — the device-bridge and the
+		// in-process bionic host are both process-external (WS / UDS) and don't
+		// depend on `libllama.so` being dlopen'd in this musl process.
+		return env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1" || bionicHost;
 	}
 	const deviceBridge = env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 	const localLlama = env.ELIZA_LOCAL_LLAMA?.trim() === "1";
 	const riscv64Auto = arch === "riscv64";
-	return deviceBridge || localLlama || riscv64Auto;
+	return deviceBridge || localLlama || riscv64Auto || bionicHost;
 }
 
 /**

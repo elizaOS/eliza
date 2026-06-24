@@ -154,6 +154,28 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		assertions: { minRespondAccuracy: 0.9, maxWer: 0.35, maxDer: 0.3 },
 	},
 	{
+		id: "music-background-commands",
+		description:
+			"The owner gives commands with music playing in the background; the agent answers and the tonal music bed does not false-trigger VAD/respond.",
+		classes: ["robustness", "respond-no-respond"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		// 10 dB SNR music bed across the whole scenario. The `music` noise kind is
+		// tonal/harmonic (unlike white/pink) — this scenario exercises the music
+		// augmentation that landed in corpus-augment.ts (d56efcc80b) but until now
+		// had no scenario driving it (#9147).
+		environment: { noiseSnrDb: 10, noiseKind: "music", reverb: 0.2, seed: 404 },
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{ speaker: "owner", text: "Eliza pause the timer", expectRespond: true },
+			{
+				speaker: "owner",
+				text: "Eliza what is the weather today",
+				expectRespond: true,
+			},
+		],
+		assertions: { minRespondAccuracy: 0.9, maxWer: 0.35, maxDer: 0.3 },
+	},
+	{
 		id: "far-field-reverb",
 		description:
 			"A far, reverberant speaker across the room — quiet and washed out — is still understood.",

@@ -90,18 +90,36 @@ bundle) — the local FFI emission was verified on Windows with the real fused l
 (issue body). The Together AI route above provides the real-LLM cloud trajectory
 in their place.
 
-### Remaining: in-browser pixel capture (video)
+### In-browser video — CAPTURED
 
-The only piece not captured headless is a screen-recording of the rendered DOM.
-Functionally it is covered by link 3 above (the SSE token frames are exactly
-what the dashboard consumes). To record the video on a workstation:
+[`dashboard-streaming.webm`](./dashboard-streaming.webm) is a real Chromium
+screen-recording (Playwright) of token-by-token rendering driven by the running
+agent backend over the real SSE endpoint, with the agent wired to a live cloud
+model (Together AI, OpenAI-compatible). The page applies the **exact production
+`mergeStreamingText` algorithm** (verbatim from
+`packages/shared/src/utils/streaming-text.ts`) per SSE `token` frame — i.e. the
+same incremental render `@elizaos/ui`'s `useStreamingText` performs. Stills:
 
-1. `bun run dev` with the Together AI env above (or any working provider).
-2. Send a message that elicits a multi-sentence reply; observe token-by-token
-   rendering. Optionally `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP=8` for local.
-3. `bun run test:e2e:record`; in devtools → Network confirm
-   `POST /api/conversations/:id/messages/stream` streams `data: {"type":"token"}`
-   frames before the terminal `done` frame (matches `sse-token-timeline.txt`).
+- `dashboard-video-frames/01-waiting-first-token.png` — message sent, agent
+  bubble shows the streaming caret before the first token.
+- `dashboard-video-frames/02-turn1-streamed.png` — reply rendered, footer reads
+  `streamed 10 token frame(s) in 3281ms · live cloud model`.
+- `dashboard-video-frames/03-turn2-streaming.png` / `dashboard-streaming-final.png`
+  — a second turn (`6 token frames in 2391ms`).
+
+Why a focused harness page instead of the full app shell: the app's first-run
+onboarding wizard in this checkout is gated on Eliza Cloud sign-in (redirect
+blocked in headless) or an on-device model (none installed), with no path for "a
+local agent on a custom OpenAI-compatible endpoint." Booting the shell also
+required fixing two pre-existing, streaming-unrelated breakages (an unwired
+`virtual:eliza-side-effect-app-modules` and a stale `@elizaos/core` browser
+dist). The harness therefore exercises the real backend + real SSE + real merge
+algorithm + live model — only the surrounding page chrome differs from the
+production dashboard. The full chain (model → SSE → render) is real.
+
+To reproduce in the full dashboard on a machine with Eliza Cloud creds or a local
+model: `bun run dev`, complete onboarding, send a multi-sentence prompt, and
+`bun run test:e2e:record`.
 
 ## Reproduce the automated evidence
 

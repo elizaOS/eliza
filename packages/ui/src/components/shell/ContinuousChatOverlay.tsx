@@ -1440,11 +1440,17 @@ export function ContinuousChatOverlay({
     // flashes at the top. Infrequent — once per turn, not per token.
     if (isNewLine || justOpened) {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      if (isNewLine && !justOpened && !reduce && atBottom) {
-        endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-      } else {
-        // justOpened OR isNewLine (always re-pin) OR atBottom — all true here.
-        el.scrollTop = el.scrollHeight;
+      // Pin to the latest line ONLY on first open, or when the reader is already
+      // resting at the bottom. If they have scrolled UP to read history, a new
+      // line must NOT yank them down — the previous code force-pinned on every
+      // new line (the `else` ran whenever !atBottom), which is exactly the
+      // "scroll up to the first message and get snapped back to the bottom" bug.
+      if (justOpened || atBottom) {
+        if (isNewLine && !justOpened && !reduce) {
+          endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        } else {
+          el.scrollTop = el.scrollHeight;
+        }
       }
       if (justOpened && focusThreadRef.current) {
         el.focus();

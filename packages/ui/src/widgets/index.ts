@@ -1,3 +1,15 @@
+export {
+  baseHomeScore,
+  HOME_SIGNAL_WEIGHTS,
+  type HomeWidgetSignal,
+  homeSignalWeight,
+  homeWidgetKey,
+  type RankableHomeWidget,
+  type RankedHomeWidget,
+  type RankHomeWidgetsOptions,
+  rankHomeWidgets,
+  scoreHomeWidget,
+} from "./home-priority";
 export type { WidgetPluginState } from "./registry";
 
 export {

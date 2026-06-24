@@ -108,7 +108,7 @@ describe("useDefaultProviderPresets", () => {
     });
     const last = seen[seen.length - 1];
     expect(last?.defaults).toEqual({
-      tts: "elevenlabs",
+      tts: "edge",
       asr: "eliza-cloud",
     });
     expect(last?.runtimeMode).toBe("cloud");
@@ -135,7 +135,7 @@ describe("useDefaultProviderPresets", () => {
     const last = seen[seen.length - 1];
     expect(last?.runtimeMode).toBe("remote");
     expect(last?.defaults).toEqual({
-      tts: "elevenlabs",
+      tts: "edge",
       asr: "eliza-cloud",
     });
   });
@@ -152,9 +152,9 @@ describe("useDefaultProviderPresets", () => {
     );
     const first = seen[0];
     expect(first?.loading).toBe(true);
-    // Loading state still resolves a safe default — Eliza Cloud everything.
+    // Loading state still resolves a safe default — fast Edge TTS + Eliza Cloud ASR.
     expect(first?.defaults).toEqual({
-      tts: "elevenlabs",
+      tts: "edge",
       asr: "eliza-cloud",
     });
   });

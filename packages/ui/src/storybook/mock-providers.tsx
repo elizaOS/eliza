@@ -47,6 +47,11 @@ const baseMockApp: Partial<AppContextValue> = {
       queueMicrotask(fn);
     },
   },
+  // Array-typed slices must default to real arrays, NOT the Proxy's `noop`
+  // fallback (a function) — consumers iterate them (`plugins.find`,
+  // `appRuns.filter`) and a function would throw "x is not a function".
+  appRuns: [],
+  plugins: [],
   pendingRestart: false,
   pendingRestartReasons: [],
   restartBannerDismissed: false,

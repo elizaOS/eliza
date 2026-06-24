@@ -55,6 +55,10 @@ const DESKTOP_ACTIONS = new Set<DesktopActionType>([
   "get_cursor_position",
   "detect_elements",
   "ocr",
+  "open",
+  "launch",
+  "kill_app",
+  "set_value",
 ]);
 
 type ComputerUseActionParams = Omit<DesktopActionParams, "action"> & {
@@ -223,9 +227,9 @@ export const useComputerAction: Action = {
     "DENY_COMPUTER_USE",
   ],
   description:
-    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/middle_click/mouse_down/mouse_up/type/key/key_combo/key_down/key_up/scroll/drag/detect_elements/ocr. mouse_down/up + key_down/up are press-and-hold primitives (button held until released); drag accepts a multi-point `path`. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
+    "computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/middle_click/mouse_down/mouse_up/type/key/key_combo/key_down/key_up/scroll/drag/detect_elements/ocr/open/launch. mouse_down/up + key_down/up are press-and-hold primitives (button held until released); drag accepts a multi-point `path`; open(target) opens a file/URL/folder; launch(app,appArgs) starts an app and returns its pid. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
   descriptionCompressed:
-    "Desktop: screenshot|click|double|right|middle|move|down|up|type|key|scroll|drag|detect|ocr|approve",
+    "Desktop: screenshot|click|double|right|middle|move|down|up|type|key|scroll|drag|detect|ocr|open|launch|approve",
   routingHint:
     "desktop/computer/native-app/Finder/window screenshots or control -> COMPUTER_USE; never invent takeScreenshot",
 
@@ -256,6 +260,10 @@ export const useComputerAction: Action = {
           "get_cursor_position",
           "detect_elements",
           "ocr",
+          "open",
+          "launch",
+          "kill_app",
+          "set_value",
           "resolve_approval",
         ],
       },
@@ -358,6 +366,26 @@ export const useComputerAction: Action = {
       description: "Optional reason for an approval decision.",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "target",
+      description:
+        "File path / URL / folder to open with the OS default handler (action=open).",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "app",
+      description:
+        "Application name or executable path to launch (action=launch).",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "appArgs",
+      description: "Arguments for the launched application (action=launch).",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
     },
   ],
   validate: async (

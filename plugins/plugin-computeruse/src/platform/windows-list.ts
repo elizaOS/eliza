@@ -7,7 +7,7 @@
  */
 
 import { execSync } from "node:child_process";
-import type { ScreenSize, WindowInfo } from "../types.js";
+import type { ScreenRegion, ScreenSize, WindowInfo } from "../types.js";
 import {
   commandExists,
   currentPlatform,
@@ -79,7 +79,7 @@ function appleScriptWindowMatchTerms(target: WindowInfo): string[] {
     .filter((value) => value.length > 0 && value !== "unknown");
 }
 
-function runDarwinWindowScript(target: WindowInfo, body: string): void {
+function runDarwinWindowScript(target: WindowInfo, body: string): string {
   const terms = appleScriptWindowMatchTerms(target);
   const termList =
     terms.length > 0
@@ -117,7 +117,7 @@ function runDarwinWindowScript(target: WindowInfo, body: string): void {
         end repeat
       end tell`;
 
-  runCommand("osascript", ["-e", script], 5000);
+  return runCommand("osascript", ["-e", script], 5000);
 }
 
 // ── List Windows ────────────────────────────────────────────────────────────
@@ -226,6 +226,202 @@ function listWindowsWindows(): WindowInfo[] {
 }
 
 // ── Focus Window ────────────────────────────────────────────────────────────
+
+/**
+ * The currently-focused / frontmost window (#9170 M12 — cua
+ * `get_current_window_id`). Best-effort per-OS query; returns `null` when no
+ * window is focused or the platform query is unavailable.
+ */
+export function getActiveWindow(): WindowInfo | null {
+  const os = currentPlatform();
+  try {
+    if (os === "darwin") {
+      const script = `
+        tell application "System Events"
+          set proc to first process whose frontmost is true
+          set procName to name of proc
+          try
+            set w to window 1 of proc
+            return procName & "|||" & (name of w) & "|||" & (id of w as text)
+          on error
+            return procName & "|||" & "" & "|||" & "0"
+          end try
+        end tell`;
+      const out = execSync(`osascript -e '${script}'`, {
+        encoding: "utf-8",
+        timeout: 8000,
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      const [app, title, id] = out.split("|||");
+      if (!app) return null;
+      return { id: id || "0", title: title ?? "", app };
+    }
+    if (os === "linux") {
+      if (!commandExists("xdotool")) return null;
+      const id = runCommand("xdotool", ["getactivewindow"], 5000).trim();
+      if (!id) return null;
+      const title = runCommand("xdotool", ["getwindowname", id], 5000).trim();
+      return { id, title, app: title };
+    }
+    if (os === "win32") {
+      const ps =
+        "Add-Type 'using System;using System.Runtime.InteropServices;" +
+        'public class W{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();}\';' +
+        "$h=[W]::GetForegroundWindow();" +
+        "$p=Get-Process | Where-Object { $_.MainWindowHandle -eq $h } | Select-Object -First 1;" +
+        'if($p){ "$($p.Id)|||$($p.MainWindowTitle)|||$($p.ProcessName)" }';
+      const out = execSync(
+        `powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`,
+        {
+          encoding: "utf-8",
+          timeout: 8000,
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      ).trim();
+      if (!out) return null;
+      const [id, title, app] = out.split("|||");
+      if (!id) return null;
+      return { id, title: title ?? "", app: app ?? "" };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Windows belonging to a given application name (#9170 M12 — cua
+ * `get_application_windows`). Pure filter over `listWindows()`; case-insensitive
+ * substring match on the window's `app` (with a `title` fallback).
+ */
+export function getApplicationWindows(appName: string): WindowInfo[] {
+  const needle = normalizeWindowQuery(appName);
+  if (!needle) return [];
+  return listWindows().filter(
+    (w) =>
+      normalizeWindowQuery(w.app).includes(needle) ||
+      normalizeWindowQuery(w.title).includes(needle),
+  );
+}
+
+/**
+ * Set a window's position AND size in one call (#9170 M12 — cua set window
+ * size+position). Position is required; width/height optional (position-only
+ * when omitted).
+ */
+export function resizeWindow(
+  windowId: string,
+  x: number,
+  y: number,
+  width?: number,
+  height?: number,
+): { success: true; message: string } {
+  if (typeof x !== "number" || typeof y !== "number") {
+    throw new Error("x and y are required for window set_bounds");
+  }
+  setWindowBounds(windowId, x, y, width, height);
+  const size =
+    width !== undefined && height !== undefined
+      ? ` size (${validateInt(width)}x${validateInt(height)})`
+      : "";
+  return {
+    success: true,
+    message: `Set window to (${validateInt(x)}, ${validateInt(y)})${size}.`,
+  };
+}
+
+/**
+ * Read a window's bounds — position AND size — in OS-global logical pixels
+ * (#9170 M12 — cua `get_window_size` / `get_window_position`). When `windowId`
+ * is omitted, reads the currently-focused/foreground window. Returns
+ * `{ x, y, width, height }`.
+ *
+ * Windows: `GetWindowRect` via the window's `MainWindowHandle`. macOS: AppleScript
+ * `position`/`size` of the matched process window. Linux: `xdotool
+ * getwindowgeometry --shell`.
+ */
+export function getWindowBounds(windowId?: string): ScreenRegion {
+  const os = currentPlatform();
+  const id = windowId ?? getActiveWindow()?.id;
+  if (!id) {
+    throw new Error(
+      "No windowId provided and no active window to read bounds from",
+    );
+  }
+
+  if (os === "darwin") {
+    const target = resolveWindowTargetOrThrow(id);
+    const out = runDarwinWindowScript(
+      target,
+      `set winPos to position of window 1 of proc
+       set winSize to size of window 1 of proc
+       return ((item 1 of winPos) as text) & "," & ((item 2 of winPos) as text) & "," & ((item 1 of winSize) as text) & "," & ((item 2 of winSize) as text)`,
+    ).trim();
+    const [x, y, width, height] = out.split(",").map((v) => Number(v.trim()));
+    if ([x, y, width, height].some((n) => !Number.isFinite(n))) {
+      throw new Error(`Could not read window bounds for: ${id}`);
+    }
+    return { x, y, width, height };
+  }
+
+  if (os === "linux") {
+    if (!commandExists("xdotool")) {
+      throw new Error("getWindowBounds requires xdotool on Linux");
+    }
+    const commandId = resolveWindowCommandId(id);
+    const out = runCommand(
+      "xdotool",
+      ["getwindowgeometry", "--shell", commandId],
+      5000,
+    );
+    const mx = /X=(-?\d+)/.exec(out);
+    const my = /Y=(-?\d+)/.exec(out);
+    const mw = /WIDTH=(\d+)/.exec(out);
+    const mh = /HEIGHT=(\d+)/.exec(out);
+    if (!mx || !my || !mw || !mh) {
+      throw new Error(`Could not parse xdotool geometry for: ${id}`);
+    }
+    return {
+      x: validateInt(Number(mx[1])),
+      y: validateInt(Number(my[1])),
+      width: validateInt(Number(mw[1])),
+      height: validateInt(Number(mh[1])),
+    };
+  }
+
+  if (os === "win32") {
+    const commandId = resolveWindowCommandId(id);
+    // GetWindowRect via the process MainWindowHandle. Uses -MemberDefinition
+    // (signed-assembly P/Invoke, NOT a runtime-compiled inline class) to declare
+    // the RECT struct + the import together; see desktop.ts / setWindowBounds.
+    // NOTE: do NOT pass -UsingNamespace System.Runtime.InteropServices — Add-Type
+    // already imports it for the DllImport attribute, and a duplicate using is a
+    // warning-as-error that silently fails the type and yields a zeroed rect.
+    const ps = `
+      Add-Type -MemberDefinition '[StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);' -Name Win32Rect -Namespace Win32
+      $proc = Get-Process -Id ${commandId} -ErrorAction SilentlyContinue
+      if (-not $proc) { throw "Window not found: ${commandId}" }
+      $r = New-Object "Win32.Win32Rect+RECT"
+      [void][Win32.Win32Rect]::GetWindowRect($proc.MainWindowHandle, [ref]$r)
+      "$($r.Left),$($r.Top),$($r.Right),$($r.Bottom)"
+    `;
+    // 10s: the first Add-Type call JIT-compiles the P/Invoke shim (cold csc),
+    // which can exceed the 5s used elsewhere when the box is under load.
+    const out = runCommand("powershell", ["-Command", ps], 10000).trim();
+    const [left, top, right, bottom] = out.split(",").map((v) => Number(v.trim()));
+    if ([left, top, right, bottom].some((n) => !Number.isFinite(n))) {
+      throw new Error(`Could not read window bounds for: ${id}`);
+    }
+    return {
+      x: left,
+      y: top,
+      width: Math.max(0, right - left),
+      height: Math.max(0, bottom - top),
+    };
+  }
+
+  throw new Error(`getWindowBounds is not supported on ${os}`);
+}
 
 export function focusWindow(windowId: string): void {
   const os = currentPlatform();

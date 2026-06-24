@@ -113,6 +113,14 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	 */
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	/**
+	 * Max tokens the FFI backend decodes per `llmStreamNext` step — i.e. the
+	 * granularity of `onTextChunk` emission. Smaller ⇒ smoother token-by-token
+	 * streaming to the UI at the cost of more FFI round-trips per response.
+	 * Unset ⇒ the backend default (coarse, throughput-tuned). The text/chat
+	 * handler sets a small value for smooth streaming; voice leaves it unset.
+	 */
+	maxTokensPerStep?: number;
+	/**
 	 * Whether this generation is user-visible text and therefore eligible for
 	 * voice-mode TTS. Internal JSON / planner calls must not be spoken.
 	 */

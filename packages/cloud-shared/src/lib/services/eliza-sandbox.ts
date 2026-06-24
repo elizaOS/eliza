@@ -60,6 +60,7 @@ import {
   elizaCodingContainerImageAdvisoryLockSql,
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
+import { applyManagedAgentInferenceEnvDefaults } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
@@ -4072,7 +4073,21 @@ export class ElizaSandboxService {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
-      environmentVars: agent.environment_vars ?? {},
+      // Re-apply the cloud-managed inference defaults on top of the stored env so
+      // an agent provisioned BEFORE the embedding-dimension / model pins landed
+      // heals on upgrade instead of freezing a stale config (e.g. 1536-d cloud
+      // vectors written into a dim_384 column → dropped memory + ~30s/turn). This
+      // backfills ONLY the 5 inference keys if missing and preserves everything
+      // else verbatim (DATABASE_URL, ELIZA_API_TOKEN, ELIZAOS_CLOUD_API_KEY,
+      // ELIZA_AGENT_LOCAL_STATE, PGLITE_DATA_DIR, ELIZA_PLUGIN_SET, ...) — the
+      // narrow helper deliberately avoids the full provision merge, which would
+      // mint a new API key / strip DATABASE_URL / flip local-state on upgrade (#8434).
+      environmentVars: {
+        ...((agent.environment_vars as Record<string, string>) ?? {}),
+        ...applyManagedAgentInferenceEnvDefaults(
+          (agent.environment_vars as Record<string, string>) ?? {},
+        ),
+      },
       dockerImage: digestPinnedImageRef(dockerImage, toDigest),
       excludeNodeId: oldNodeId,
     };

@@ -13,7 +13,7 @@ function input(over: Partial<CreateContainerInput> = {}): CreateContainerInput {
     image: "ghcr.io/nubs/nubilio:latest",
     port: 3000,
     desiredCount: 1,
-    cpu: 1,
+    cpu: 1024,
     memoryMb: 512,
     healthCheckPath: "/health",
     ...over,
@@ -52,9 +52,28 @@ describe("buildAppDockerCreateCmd", () => {
 
   test("maps the host port, sets memory, and runs the requested image", () => {
     const cmd = build();
-    expect(cmd).toContain("-p 49001:3000");
+    expect(cmd).toContain("-p 127.0.0.1:49001:3000");
     expect(cmd).toContain("--memory '512m'");
     expect(cmd).toContain("'ghcr.io/nubs/nubilio:latest'");
+  });
+
+  test("publishes ONLY to loopback so the port is not reachable across the private network", () => {
+    const cmd = build();
+    // The published mapping must be loopback-scoped, never a bare/0.0.0.0 bind
+    // (a bare `-p host:container` binds 0.0.0.0 -> cross-tenant ingress bypass).
+    expect(cmd).toContain("-p 127.0.0.1:49001:3000");
+    expect(cmd).not.toMatch(/-p (?!127\.0\.0\.1:)/);
+    expect(cmd).not.toContain("-p 0.0.0.0:");
+  });
+
+  test("caps CPU and pins swap to the memory limit (untrusted-tenant DoS guards)", () => {
+    // 1024 ECS units = 1 full vCPU.
+    expect(build()).toContain("--cpus 1");
+    // Fractional + multi-vCPU allocations convert cleanly.
+    expect(build({ cpu: 512 })).toContain("--cpus 0.5");
+    expect(build({ cpu: 2048 })).toContain("--cpus 2");
+    // Swap pinned to the memory limit (no swap escape of the --memory ceiling).
+    expect(build()).toContain("--memory-swap '512m'");
   });
 
   test("never auto-injects DATABASE_URL, but forwards a caller-supplied one", () => {
@@ -72,7 +91,7 @@ describe("buildAppDockerCreateCmd", () => {
 
   test("honors a custom container port and health path", () => {
     const cmd = build({ port: 8080, healthCheckPath: "/healthz" });
-    expect(cmd).toContain("-p 49001:8080");
+    expect(cmd).toContain("-p 127.0.0.1:49001:8080");
     expect(cmd).toContain("localhost:8080/healthz");
   });
 });

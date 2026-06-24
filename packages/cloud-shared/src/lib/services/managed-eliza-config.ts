@@ -193,6 +193,30 @@ export function mergeManagedPublicBaseUrl(
   return trimmed;
 }
 
+/**
+ * The cloud-managed inference defaults: the embedding endpoint + dimensions and
+ * the Cerebras-direct small/large model pins. Pure and single-source-of-truth —
+ * both the provision path (via prepareManagedElizaBaseEnvironment) and the
+ * blue/green fleet-upgrade path (eliza-sandbox.ts) backfill these onto an
+ * agent's stored env so an agent provisioned BEFORE these pins landed heals on
+ * upgrade instead of carrying a stale 1536→dim_384 mismatch (#8434). Returns
+ * ONLY these 5 keys; an explicit per-agent value always wins.
+ */
+export function applyManagedAgentInferenceEnvDefaults(
+  existingEnv: Record<string, string>,
+): Record<string, string> {
+  return {
+    ELIZAOS_CLOUD_EMBEDDING_URL:
+      existingEnv.ELIZAOS_CLOUD_EMBEDDING_URL ?? resolveCloudApiBaseUrl(),
+    EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? "1536",
+    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? "1536",
+    ELIZAOS_CLOUD_SMALL_MODEL:
+      existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    ELIZAOS_CLOUD_LARGE_MODEL:
+      existingEnv.ELIZAOS_CLOUD_LARGE_MODEL ?? CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+  };
+}
+
 export async function prepareManagedElizaBaseEnvironment(
   params: PrepareManagedElizaSharedEnvironmentParams,
 ): Promise<ManagedElizaBaseEnvironmentResult> {
@@ -236,34 +260,17 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
-      // Pin embeddings to the elizacloud Worker (api.elizacloud.ai/api/v1), whose
-      // POST /embeddings serves OpenAI text-embedding-3-small (200, 1536-dim).
-      // Without this, the plugin's getEmbeddingBaseURL() falls back to the
-      // general/text base, which resolves to the Cerebras/BitRouter endpoint that
-      // has NO /embeddings route → 404→503 on every RAG/memory turn. No separate
-      // key is needed: getEmbeddingApiKey falls back to ELIZAOS_CLOUD_API_KEY (set
-      // above), which authenticates to the Worker route. The plugin appends
-      // "/embeddings", so this must end at /api/v1 (resolveCloudApiBaseUrl already
-      // normalizes that). An explicit per-agent override still wins.
-      ELIZAOS_CLOUD_EMBEDDING_URL:
-        existingEnv.ELIZAOS_CLOUD_EMBEDDING_URL ?? resolveCloudApiBaseUrl(),
-      // Match the agent's storage vector dimension to the cloud embedding model.
-      // The elizacloud handler returns 1536-dim vectors (text-embedding-3-small,
-      // ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS default 1536), but plugin-sql's storage
-      // defaults to dim_384 unless EMBEDDING_DIMENSION is set (core/provisioning.ts)
-      // → a 1536 vector is written to the dim_384 column → "Failed query: insert
-      // into embeddings" on every memory write. Pin both to 1536 so they agree.
-      EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? "1536",
-      ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? "1536",
-      // Pin the cloud's healthy Cerebras-direct models so the container never
-      // resolves a tier to the `:nitro` default (which has no Cerebras route →
-      // BitRouter→OpenRouter → 503 / wrong model). Mirrors the shared + eliza-app
-      // model config; `ELIZAOS_CLOUD_{SMALL,LARGE}_MODEL` are the highest-priority
-      // settings the plugin reads. An explicit per-agent override still wins.
-      ELIZAOS_CLOUD_SMALL_MODEL:
-        existingEnv.ELIZAOS_CLOUD_SMALL_MODEL ?? CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
-      ELIZAOS_CLOUD_LARGE_MODEL:
-        existingEnv.ELIZAOS_CLOUD_LARGE_MODEL ?? CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+      // Cloud-managed inference defaults: pin embeddings to the elizacloud Worker
+      // base (whose POST /embeddings serves 1536-dim text-embedding-3-small —
+      // without it the plugin falls back to the Cerebras/BitRouter text base with
+      // no /embeddings route → 503), pin BOTH embedding dimensions to 1536 so the
+      // plugin-sql storage column (dim_384 by default) matches the cloud vectors
+      // instead of dropping every memory write, and pin the healthy Cerebras-direct
+      // small/large models so the container never resolves a tier to the `:nitro`
+      // default. Shared single-source helper so the fleet-upgrade path re-applies
+      // the same defaults (#8434). Each value still honors an explicit per-agent
+      // override in existingEnv.
+      ...applyManagedAgentInferenceEnvDefaults(existingEnv),
       // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
       // the persistent /root/.eliza volume) instead of the shared cloud Postgres;
       // auth + discovery still flow through the cloud API (ELIZAOS_CLOUD_* above).

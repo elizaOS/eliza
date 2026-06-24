@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WidgetHost } from "./WidgetHost";
 import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
@@ -64,10 +64,23 @@ vi.mock("./registry", () => ({
 }));
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
 });
 
 describe("WidgetHost", () => {
+  it("defaults to a vertical stack but renders a responsive grid when layout=grid (#9143)", () => {
+    const { rerender } = render(<WidgetHost slot="chat-sidebar" />);
+    const stack = screen.getByTestId("widget-host-chat-sidebar");
+    expect(stack.getAttribute("data-layout")).toBe("stack");
+    expect(stack.className).toContain("flex-col");
+
+    rerender(<WidgetHost slot="chat-sidebar" layout="grid" />);
+    const grid = screen.getByTestId("widget-host-chat-sidebar");
+    expect(grid.getAttribute("data-layout")).toBe("grid");
+    expect(grid.className).toContain("sm:grid-cols-2");
+  });
+
   it("renders uiSpec widgets and dispatches their actions", () => {
     const seen: unknown[] = [];
     window.addEventListener(WIDGET_UI_ACTION_EVENT, (event) => {

@@ -26,6 +26,20 @@ if (typeof globalThis.TransformStream === "undefined") {
   });
 }
 
+// jsdom does not implement Element.prototype.scrollTo / scrollIntoView, so any
+// component that scrolls a ref into view during render (e.g. a chat transcript
+// auto-scrolling to the latest message) throws `el.scrollTo is not a function`
+// under jsdom. Assign no-op shims only when absent — never overwrite a real
+// implementation, and only when `Element` exists (the jsdom-environment tests).
+if (typeof Element !== "undefined") {
+  if (typeof Element.prototype.scrollTo !== "function") {
+    Element.prototype.scrollTo = () => {};
+  }
+  if (typeof Element.prototype.scrollIntoView !== "function") {
+    Element.prototype.scrollIntoView = () => {};
+  }
+}
+
 // @testing-library/react's act() checks this flag to decide whether to use
 // synchronous flushing. It must be set before any test code runs so that
 // React renders triggered inside act() complete synchronously in jsdom.
