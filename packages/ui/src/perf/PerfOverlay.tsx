@@ -4,13 +4,18 @@ import {
   type FrameBudgetSummary,
 } from "../hooks/frame-budget";
 
-const PERF_FLAG = "__ELIZA_PERF_HUD__";
+declare global {
+  interface Window {
+    __ELIZA_PERF_HUD__?: boolean;
+  }
+}
+
 /** Dispatch on `window` after flipping `window.__ELIZA_PERF_HUD__` to toggle live. */
 export const PERF_TOGGLE_EVENT = "eliza:perf-toggle";
 
 function perfEnabled(): boolean {
   if (typeof window === "undefined") return false;
-  return (window as unknown as Record<string, unknown>)[PERF_FLAG] === true;
+  return window.__ELIZA_PERF_HUD__ === true;
 }
 
 /**

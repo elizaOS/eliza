@@ -3,6 +3,12 @@
 // Kept in a plain .ts module (no React) so both component files import the same
 // decode logic instead of duplicating it.
 
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext;
+  }
+}
+
 export interface AudioPayload {
   audioDataUrl: string;
   pcmSamples: number[];
@@ -24,10 +30,7 @@ export async function fileToDataUrl(file: File): Promise<string> {
 export async function audioFileToPayload(file: File): Promise<AudioPayload> {
   const audioDataUrl = await fileToDataUrl(file);
   const buffer = await file.arrayBuffer();
-  const AudioContextCtor =
-    window.AudioContext ??
-    (window as unknown as { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext;
+  const AudioContextCtor = window.AudioContext ?? window.webkitAudioContext;
   if (!AudioContextCtor) {
     throw new Error("This browser cannot decode audio files.");
   }

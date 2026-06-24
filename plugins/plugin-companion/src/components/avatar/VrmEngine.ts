@@ -582,7 +582,7 @@ async function createRenderer(
         canvas,
         alpha: true,
         antialias: true,
-      }) as unknown as RendererLike & { init?: () => Promise<unknown> };
+      }) as RendererLike & { init?: () => Promise<unknown> };
       await renderer.init?.();
       console.info("[VrmEngine] Using WebGPURenderer");
       return { backend: "webgpu", renderer };

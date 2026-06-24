@@ -27,7 +27,7 @@ function getElectrobun(): ElectrobunGlobal | null {
   if (typeof window === "undefined") {
     return null;
   }
-  const candidate = (window as unknown as WindowWithElectrobun).electrobun;
+  const candidate = (window as WindowWithElectrobun).electrobun;
   return candidate ?? null;
 }
 
