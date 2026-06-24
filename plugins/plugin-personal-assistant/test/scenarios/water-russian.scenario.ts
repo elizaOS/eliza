@@ -43,6 +43,7 @@ export default scenario({
     {
       type: "definitionCountDelta",
       title: "Drink water",
+      titleAliases: ["Пить воду", "Пей воду", "Напоминание пить воду"],
       delta: 1,
       cadenceKind: "interval",
       requiredEveryMinutes: 180,

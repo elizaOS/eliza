@@ -43,6 +43,9 @@ export default scenario({
       type: "definitionCountDelta",
       title: "Brush teeth",
       titleAliases: [
+        "تنظيف الأسنان",
+        "تنظيف أسناني",
+        "روتين تنظيف الأسنان",
         "Brush Teeth 8 + 9 Pm",
         "Brush teeth 8 + 9 pm",
         "Brush teeth 8 am & 9 pm",
