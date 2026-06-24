@@ -16,10 +16,12 @@ const config: Config = {
           dark: "#f50057",
           light: "#ff79b0",
         },
+        // Accent is a no-blue purple (was indigo #3f51b5) so the pink→accent
+        // brand gradient carries zero blue, per the #9300 brand-rule review.
         accent: {
-          DEFAULT: "#3f51b5",
-          dark: "#303f9f",
-          light: "#7986cb",
+          DEFAULT: "#9c27b0",
+          dark: "#7b1fa2",
+          light: "#ce93d8",
         },
       },
       animation: {

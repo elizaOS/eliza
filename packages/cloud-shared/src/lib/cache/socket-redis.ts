@@ -32,8 +32,11 @@ async function getConnect(): Promise<ConnectFn> {
   if (cachedConnect) return cachedConnect;
 
   if (typeof globalThis !== "undefined" && "WebSocketPair" in globalThis) {
-    // `cloudflare:sockets` only resolves inside the Workers bundler.
-    const mod = (await import(/* @vite-ignore */ "cloudflare:sockets" as string)) as {
+    // `cloudflare:sockets` only resolves inside the Workers bundler. Keep the
+    // specifier non-static so Bun/Node test discovery uses the fallback branch
+    // instead of trying to resolve a Worker-only module.
+    const workerSocketsSpecifier = "cloudflare:" + "sockets";
+    const mod = (await import(/* @vite-ignore */ workerSocketsSpecifier)) as {
       connect: ConnectFn;
     };
     cachedConnect = mod.connect;
