@@ -24,7 +24,7 @@
  */
 
 import { execFile, execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
@@ -219,16 +219,64 @@ export function mapTesseractTsvToResult(
   return { blocks };
 }
 
-/** Resolve the binary name, allowing an override for non-PATH installs. */
-function tesseractBinary(): string {
-  const override = process.env.ELIZA_TESSERACT_BIN;
-  return override && override.length > 0 ? override : "tesseract";
+/** Resolved tesseract invocation: the binary path + the env it must run under. */
+export interface TesseractResolution {
+  bin: string;
+  /** Extra env merged onto `process.env` for child runs (LD_LIBRARY_PATH,
+   * TESSDATA_PREFIX) — non-empty only when a bundled tesseract is used. */
+  env: Record<string, string>;
+}
+
+/**
+ * Resolve a tesseract to run, so the OCR path "just ships and works" without a
+ * system `apt install tesseract-ocr` (#9105). Order:
+ *
+ *   1. `ELIZA_TESSERACT_BIN` — an explicit binary path (CI / power users).
+ *   2. A vendored bundle the app ships, found at
+ *      `${ELIZA_VISION_VENDOR_DIR}/tesseract/{bin/tesseract, lib/*.so*,
+ *      tessdata/<lang>.traineddata}`. The desktop build stages a portable
+ *      tesseract there (binary + libtesseract/libleptonica + eng.traineddata);
+ *      we then run it with that `lib/` on `LD_LIBRARY_PATH` and that `tessdata/`
+ *      as `TESSDATA_PREFIX`, so no host install is needed.
+ *   3. `tesseract` on `PATH` (a system install, the legacy path).
+ *
+ * Pure-ish + exported for tests (it only reads env + the filesystem); cached for
+ * the process lifetime.
+ */
+export function resolveTesseract(): TesseractResolution {
+  const binOverride = process.env.ELIZA_TESSERACT_BIN;
+  if (binOverride && binOverride.length > 0) {
+    return { bin: binOverride, env: {} };
+  }
+  const vendor = process.env.ELIZA_VISION_VENDOR_DIR;
+  if (vendor && vendor.length > 0) {
+    const root = join(vendor, "tesseract");
+    const cand = join(root, "bin", "tesseract");
+    if (existsSync(cand)) {
+      const lib = join(root, "lib");
+      const prior = process.env.LD_LIBRARY_PATH;
+      return {
+        bin: cand,
+        env: {
+          LD_LIBRARY_PATH: prior ? `${lib}:${prior}` : lib,
+          TESSDATA_PREFIX: join(root, "tessdata"),
+        },
+      };
+    }
+  }
+  return { bin: "tesseract", env: {} };
 }
 
 let availabilityCache: boolean | null = null;
+let resolutionCache: TesseractResolution | null = null;
+
+function resolved(): TesseractResolution {
+  if (!resolutionCache) resolutionCache = resolveTesseract();
+  return resolutionCache;
+}
 
 /**
- * Feature-detect the `tesseract` binary by running `tesseract --version`.
+ * Feature-detect the resolved tesseract by running `--version` under its env.
  * Cached for the process lifetime. Synchronous so it slots into the boot-time
  * availability probe; the probe is cheap (one short-lived child process) and
  * only runs once.
@@ -239,10 +287,12 @@ function detectTesseract(): boolean {
     availabilityCache = false;
     return false;
   }
+  const { bin, env } = resolved();
   try {
-    execFileSync(tesseractBinary(), ["--version"], {
+    execFileSync(bin, ["--version"], {
       timeout: 5000,
       stdio: ["ignore", "ignore", "ignore"],
+      env: { ...process.env, ...env },
     });
     availabilityCache = true;
   } catch {
@@ -251,17 +301,23 @@ function detectTesseract(): boolean {
   return availabilityCache;
 }
 
-/** Test-only: reset the cached availability probe between cases. */
+/** Test-only: reset the cached availability + resolution probes between cases. */
 export function _resetTesseractAvailabilityForTests(): void {
   availabilityCache = null;
+  resolutionCache = null;
 }
 
 function runTesseract(imagePath: string): Promise<string> {
+  const { bin, env } = resolved();
   return new Promise((resolve, reject) => {
     execFile(
-      tesseractBinary(),
+      bin,
       [imagePath, "stdout", "--psm", "11", "tsv"],
-      { timeout: 15000, maxBuffer: 16 * 1024 * 1024 },
+      {
+        timeout: 15000,
+        maxBuffer: 16 * 1024 * 1024,
+        env: { ...process.env, ...env },
+      },
       (err, stdout, stderr) => {
         if (err) {
           reject(new Error(`tesseract failed: ${stderr || err.message}`));
