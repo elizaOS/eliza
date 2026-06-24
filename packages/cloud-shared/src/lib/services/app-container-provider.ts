@@ -148,6 +148,15 @@ export class AppContainerProvider {
       pidsLimit: this.deps.pidsLimit,
     });
 
+    // Best-effort pre-clean: a redeploy reuses the deterministic `app-<slug>`
+    // name, so a still-present container from a prior deploy makes `docker
+    // create --name` fail with 'name already in use'. Remove it first (no-op when
+    // absent). Mirrors `executeContainerUpgrade`/`provider.delete`; self-heals
+    // regardless of which deploy route enqueued this provision.
+    await this.deps.ssh
+      .exec(`docker rm -f ${shellQuote(params.containerName)}`)
+      .catch(() => undefined);
+
     const stdout = await this.deps.ssh.exec(createCmd);
     const containerId = (this.deps.extractContainerId ?? defaultExtractContainerId)(stdout);
     await this.deps.ssh.exec(`docker start ${shellQuote(params.containerName)}`);
