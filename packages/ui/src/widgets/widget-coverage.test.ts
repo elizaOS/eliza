@@ -12,10 +12,11 @@ import { resolveWidgetsForSlot, type WidgetPluginState } from "./registry";
 // IDs are the runtime plugin IDs (package name with `@elizaos/plugin-`
 // stripped — see plugin-discovery-helpers `workspacePluginIdFromPackageName`),
 // which is exactly what `PluginInfo.id` carries in the live plugin snapshot.
-// `todos` + `inbox` opt into shared `defaultWidget` sinks; `calendar`, `goals`,
-// `finances`, `health`, `relationships` ship their own bundled home cards.
+// Every per-plugin home card ships its own bundled component (the generic
+// default-widget sinks were replaced). `todos` surfaces via the workbench
+// `todo.items` widget (pluginId "todo", the fallback set) rather than a
+// "todos"-keyed declaration, so it isn't enumerated here.
 const HOME_WIDGET_PLUGIN_IDS = [
-  "todos",
   "inbox",
   "calendar",
   "goals",

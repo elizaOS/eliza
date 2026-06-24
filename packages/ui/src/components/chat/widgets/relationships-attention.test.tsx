@@ -126,6 +126,35 @@ describe("RelationshipsAttentionWidget (#9143)", () => {
     expect(screen.getByText("Haven't talked to Old Friend")).toBeTruthy();
   });
 
+  it("surfaces a never-interacted contact (lastInteractionAt undefined), not dropping it", async () => {
+    // The backend omits lastInteractionAt for contacts with no recorded
+    // interaction — these are the *stalest* and must still surface, else the
+    // card silently empties whenever no one has an interaction timestamp.
+    getRelationshipsPeopleMock.mockResolvedValue({
+      people: [
+        person({
+          groupId: "g-never",
+          displayName: "Never Met",
+          lastInteractionAt: undefined,
+        }),
+      ],
+      stats: { totalPeople: 1, totalRelationships: 0, totalIdentities: 0 },
+    });
+    getRelationshipsCandidatesMock.mockResolvedValue([]);
+
+    render(
+      <RelationshipsAttentionWidget
+        slot="home"
+        events={[]}
+        clearEvents={() => undefined}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Haven't talked to Never Met")).toBeTruthy();
+    });
+  });
+
   it("renders null when there are no people and no pending candidates (#9143)", async () => {
     getRelationshipsPeopleMock.mockResolvedValue({
       people: [],

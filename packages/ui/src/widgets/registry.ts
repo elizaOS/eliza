@@ -32,6 +32,7 @@ import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcomi
 import { FINANCES_HOME_WIDGET } from "../components/chat/widgets/finances-alerts";
 import { GOALS_HOME_WIDGET } from "../components/chat/widgets/goals-attention";
 import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
+import { INBOX_HOME_WIDGET } from "../components/chat/widgets/inbox-unread";
 import { MessagesWidget } from "../components/chat/widgets/messages";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NotificationsWidget } from "../components/chat/widgets/notifications";
@@ -72,6 +73,7 @@ for (const w of [
   FINANCES_HOME_WIDGET,
   HEALTH_HOME_WIDGET,
   RELATIONSHIPS_HOME_WIDGET,
+  INBOX_HOME_WIDGET,
 ]) {
   registerWidgetComponent(w.pluginId, w.id, w.Component);
 }
@@ -183,40 +185,21 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     defaultEnabled: true,
     signalKinds: ["reminder", "check-in", "nudge"],
   },
-  // -- Per-plugin opt-in sinks (#9143) ---------------------------------------
-  // Manifest plugins that have live state but ship no bundled home component
-  // opt into a shared default widget via `defaultWidget`. The runtime plugin ID
-  // is the package name with the `@elizaos/plugin-` prefix stripped (see
-  // plugin-discovery-helpers.ts `workspacePluginIdFromPackageName`), so e.g.
-  // `@elizaos/plugin-todos` -> `todos`. These resolve to the shared sink
-  // component (no own component) and only render when the plugin is enabled.
-  // todos -> activity feed.
-  {
-    id: "todos.activity",
-    pluginId: "todos",
-    slot: "home",
-    label: "Todos",
-    icon: "ListTodo",
-    order: 110,
-    defaultEnabled: true,
-    defaultWidget: "activity",
-  },
-  // inbox -> messages sink (cross-channel triage surfaces as recent items).
-  {
-    id: "inbox.messages",
-    pluginId: "inbox",
-    slot: "home",
-    label: "Inbox",
-    icon: "Inbox",
-    order: 130,
-    defaultEnabled: true,
-    defaultWidget: "messages",
-  },
   // -- Per-plugin real-data frontpage widgets (#9143) ------------------------
   // These carry their own bundled component (registered above) showing a
   // compact, attention-ranked slice of the plugin's state, replacing the
   // generic default-widget sinks for plugins that warrant a richer card. Each
   // self-hides when empty and self-publishes a home-attention signal.
+  {
+    id: INBOX_HOME_WIDGET.id,
+    pluginId: INBOX_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Inbox",
+    icon: "Inbox",
+    order: INBOX_HOME_WIDGET.order,
+    defaultEnabled: true,
+    signalKinds: INBOX_HOME_WIDGET.signalKinds,
+  },
   {
     id: RELATIONSHIPS_HOME_WIDGET.id,
     pluginId: RELATIONSHIPS_HOME_WIDGET.pluginId,
