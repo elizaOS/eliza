@@ -25,6 +25,7 @@ import {
   logger,
   stringToUuid,
 } from "@elizaos/core";
+import { stopSelfControlBlock } from "@elizaos/plugin-blocker/services/website-blocker/index";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   CapturedAction,
@@ -1070,6 +1071,14 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
   return undefined;
 }
 
+async function clearSelfControlBlocks(): Promise<string | undefined> {
+  const result = await stopSelfControlBlock();
+  if (result.success) {
+    return undefined;
+  }
+  return `selfControlClearBlocks failed: ${result.error}`;
+}
+
 async function runScenarioCleanups(
   scenario: ScenarioDefinition,
 ): Promise<string[]> {
@@ -1083,19 +1092,21 @@ async function runScenarioCleanups(
       continue;
     }
     const step = cleanup as { type?: unknown; name?: unknown };
-    if (step.type !== "gmailDeleteDrafts") {
-      continue;
-    }
+    let result: string | undefined;
     try {
-      const result = await deleteMockGmailDrafts();
+      if (step.type === "gmailDeleteDrafts") {
+        result = await deleteMockGmailDrafts();
+      } else if (step.type === "selfControlClearBlocks") {
+        result = await clearSelfControlBlocks();
+      } else {
+        continue;
+      }
       if (result) {
-        failures.push(
-          `cleanup ${String(step.name ?? "gmailDeleteDrafts")}: ${result}`,
-        );
+        failures.push(`cleanup ${String(step.name ?? step.type)}: ${result}`);
       }
     } catch (err) {
       failures.push(
-        `cleanup ${String(step.name ?? "gmailDeleteDrafts")} threw: ${err instanceof Error ? err.message : String(err)}`,
+        `cleanup ${String(step.name ?? step.type)} threw: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

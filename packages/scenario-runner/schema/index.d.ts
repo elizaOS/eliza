@@ -128,6 +128,19 @@ export type ScenarioSeedStep =
       [key: string]: unknown;
     };
 
+export type ScenarioCleanupStep =
+  | {
+      type: "gmailDeleteDrafts";
+      name?: string;
+      [key: string]: unknown;
+    }
+  | {
+      type: "selfControlClearBlocks";
+      name?: string;
+      profile?: string;
+      [key: string]: unknown;
+    };
+
 export type ScenarioJudgeRubric = {
   rubric: string;
   minimumScore?: number;
@@ -325,6 +338,7 @@ export type ScenarioDefinition = {
   lane?: ScenarioLane;
   turns: ScenarioTurn[];
   seed?: ScenarioSeedStep[];
+  cleanup?: ScenarioCleanupStep[];
   finalChecks?: ScenarioFinalCheck[];
   [key: string]: unknown;
 };
