@@ -52,6 +52,8 @@ const baseMockApp: Partial<AppContextValue> = {
   // `appRuns.filter`) and a function would throw "x is not a function".
   appRuns: [],
   plugins: [],
+  favoriteApps: [],
+  recentApps: [],
   pendingRestart: false,
   pendingRestartReasons: [],
   restartBannerDismissed: false,

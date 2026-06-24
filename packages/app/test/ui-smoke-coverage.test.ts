@@ -136,17 +136,18 @@ const KEYLESS_DEBT: Readonly<Record<string, string>> = {
   "sensitive-request-in-chat.spec.ts":
     "Fixture-driven sensitive-request chat smoke; needs keyless wiring after " +
     "the lifeops decomposition refactor settles the new view-bearing plugins.",
-  "task-widget-in-chat.spec.ts":
-    "Fixture-driven task-widget chat smoke; needs keyless wiring after " +
-    "the lifeops decomposition refactor settles the new view-bearing plugins.",
 };
 
 /**
  * Hard ceiling on the keyless-debt bucket. Decrement every time a spec is wired
  * into keyless CI. This is the ratchet that prevents new dark specs from being
  * parked in debt indefinitely.
+ *
+ * 3 → 2 (#9304): task-widget-in-chat.spec.ts wired into scenario-pr.yml (the
+ * canonical chat → marker → render → click → navigate → workbench e2e now gates
+ * every PR keyless).
  */
-const MAX_KEYLESS_DEBT = 3;
+const MAX_KEYLESS_DEBT = 2;
 
 function specFileNames(): string[] {
   return readdirSync(UI_SMOKE_DIR)
