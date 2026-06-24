@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { androidUsesAppDirFor } from "./run-mobile-build.mjs";
+import { androidUsesAppDirFor } from "./lib/mobile-build-decisions.mjs";
 
 // Issue #9309 §5: verify brand/whitelabel separation holds — an eliza-root build
 // targets the shared canonical elizaOS Android tree, while a whitelabel build

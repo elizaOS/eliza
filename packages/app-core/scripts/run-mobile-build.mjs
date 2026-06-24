@@ -72,6 +72,12 @@ import {
 } from "./lib/capacitor-platform-templates.mjs";
 import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
 import {
+  androidUsesAppDirFor,
+  MTP_FORK_SRC_CANDIDATES,
+  mtpForceRebuildRequested,
+  mtpSliceReuse,
+} from "./lib/mobile-build-decisions.mjs";
+import {
   assertStagedRendererMatchesBuild,
   overlayFreshRendererIntoPublic,
   readRendererBuildManifest,
@@ -82,6 +88,14 @@ import {
   stageAndroidAgentRuntime,
 } from "./lib/stage-android-agent.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
+
+export {
+  androidUsesAppDirFor,
+  MTP_FORK_SRC_CANDIDATES,
+  mtpBuilderRepoRoot,
+  mtpForceRebuildRequested,
+  mtpSliceReuse,
+} from "./lib/mobile-build-decisions.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -112,15 +126,6 @@ const iosDir = path.join(appDir, "ios", "App");
 // overlayAndroid/patchAndroidGradle/syncAndroidAppActionsResources. That keeps
 // the two brands' Android builds fully separate.
 const androidBuildAppId = readAppIdentity().appId;
-// Brand-separation invariant (issue #9309 §5): the shared canonical Android tree
-// (app-core/platforms/android) is used ONLY for the elizaOS app itself. A
-// whitelabel (appId != ai.elizaos.app) or an explicit ELIZA_ANDROID_USE_APP_DIR
-// builds in its own appDir/android so the two brands never corrupt each other's
-// tree. iOS/desktop have no shared tree — each app owns appDir/ios and appDir —
-// so separation holds for them by construction.
-export function androidUsesAppDirFor(appId, env = process.env) {
-  return env.ELIZA_ANDROID_USE_APP_DIR === "1" || appId !== "ai.elizaos.app";
-}
 const androidUsesAppDir = androidUsesAppDirFor(androidBuildAppId, process.env);
 const androidDir = androidUsesAppDir
   ? path.join(appDir, "android")
@@ -4956,38 +4961,6 @@ function mtpTargetOutDir(target) {
   );
 }
 
-// The llama.cpp fork the MTP slice is compiled from. Mirrors
-// build-llama-cpp-mtp.mjs' FORK_SRC_CANDIDATES (same order, env override first)
-// so the staleness gate keys off the SAME source tree the builder compiles —
-// otherwise an ELIZA_MTP_LLAMA_CPP_SRC override would make the gate check a
-// different fork than the one being built.
-//
-// MUST mirror build-llama-cpp-mtp.mjs FORK_SRC_CANDIDATES EXACTLY (same order,
-// same paths) so the gate keys off the SAME tree the builder compiles. The
-// builder derives its repo root from its own file location
-// (packages/app-core/scripts → repo root), NOT from run-mobile-build's
-// configurable repoRoot, so we derive the identical base here — otherwise a
-// nested-monorepo layout would make the two lists diverge.
-export const mtpBuilderRepoRoot = path.resolve(__dirname, "..", "..", "..");
-export const MTP_FORK_SRC_CANDIDATES = [
-  process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),
-  path.join(
-    mtpBuilderRepoRoot,
-    "plugins",
-    "plugin-local-inference",
-    "native",
-    "llama.cpp",
-  ),
-  path.join(
-    mtpBuilderRepoRoot,
-    "packages",
-    "native",
-    "ios-deps",
-    "llama.cpp",
-    "src",
-  ),
-].filter(Boolean);
-
 function resolveMtpForkSrc() {
   for (const candidate of MTP_FORK_SRC_CANDIDATES) {
     if (fs.existsSync(path.join(candidate, "CMakeLists.txt"))) return candidate;
@@ -5005,66 +4978,6 @@ function currentMtpForkRevision(forkSrc) {
   );
   if (result.status !== 0) return null;
   return result.stdout?.trim() || null;
-}
-
-/**
- * Decide whether a staged MTP slice (CAPABILITIES.json) can be reused or is
- * STALE relative to the fork it was built from. Reuse only when the recorded
- * fork revision still matches AND no fork source file is newer than the
- * artifact — otherwise a kernel/source change since the last build would ship
- * a stale on-device inference slice (issue #9309).
- */
-export function mtpSliceReuse(capabilitiesPath, forkSrc, currentRevision) {
-  if (!fs.existsSync(capabilitiesPath)) {
-    return { reusable: false, reason: "no CAPABILITIES.json" };
-  }
-  let recordedRevision = null;
-  try {
-    recordedRevision = JSON.parse(fs.readFileSync(capabilitiesPath, "utf8"))
-      ?.fork?.revision;
-  } catch {
-    return { reusable: false, reason: "unreadable CAPABILITIES.json" };
-  }
-  // The builder records the literal "unknown" when git is unavailable at build
-  // time; the gate returns null in the same case. Normalize both to "revision
-  // unknown" so a later build with working git doesn't spuriously rebuild on an
-  // "unknown" vs real-SHA mismatch — fall through to the mtime check instead.
-  if (recordedRevision === "unknown") recordedRevision = null;
-  // Only treat a revision change as decisive when BOTH are known (CI without
-  // git still falls back to the mtime check below rather than rebuilding blindly).
-  if (
-    recordedRevision &&
-    currentRevision &&
-    recordedRevision !== currentRevision
-  ) {
-    return {
-      reusable: false,
-      reason: `fork revision changed (${recordedRevision} → ${currentRevision})`,
-    };
-  }
-  if (forkSrc) {
-    const staleness = artifactStaleness(capabilitiesPath, {
-      sourceDirs: [
-        path.join(forkSrc, "ggml"),
-        path.join(forkSrc, "src"),
-        path.join(forkSrc, "common"),
-      ],
-      sourceFiles: [path.join(forkSrc, "CMakeLists.txt"), MTP_BUILD_SCRIPT],
-    });
-    if (staleness.stale) {
-      return { reusable: false, reason: staleness.reason };
-    }
-  }
-  return { reusable: true, reason: "fresh" };
-}
-
-/**
- * Whether ensureMtpIosTarget must FORCE the child builder to rebuild: when the
- * slice is stale, or when the operator override is set. Pure + exported so the
- * decision is unit-testable.
- */
-export function mtpForceRebuildRequested(reuse, env = process.env) {
-  return env.ELIZA_IOS_REBUILD_MTP === "1" || !reuse.reusable;
 }
 
 async function ensureMtpIosTarget(target) {

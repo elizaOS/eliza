@@ -9,7 +9,7 @@ import {
   mtpBuilderRepoRoot,
   mtpForceRebuildRequested,
   mtpSliceReuse,
-} from "./run-mobile-build.mjs";
+} from "./lib/mobile-build-decisions.mjs";
 
 // Far-future mtimes keep these tests independent of the checkout's own file
 // timestamps (the worktree stamps every file at checkout time, including the
