@@ -170,6 +170,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, voice: kokoroVoice, speed: 1 }),
+          signal: AbortSignal.timeout(30_000),
         },
       );
       if (!kokoroResponse.ok || !kokoroResponse.body) {

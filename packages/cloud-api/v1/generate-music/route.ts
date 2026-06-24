@@ -275,6 +275,7 @@ async function runElevenLabsMusic(
       ...(request.seed !== undefined ? { seed: request.seed } : {}),
       ...(request.extraInput ?? {}),
     }),
+    signal: AbortSignal.timeout(120_000),
   });
 
   if (!response.ok) {
@@ -338,6 +339,7 @@ async function runSunoMusic(
         : {}),
       ...(request.extraInput ?? {}),
     }),
+    signal: AbortSignal.timeout(120_000),
   });
 
   const data = await response.json().catch(() => ({}));

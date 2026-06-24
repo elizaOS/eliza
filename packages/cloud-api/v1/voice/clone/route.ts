@@ -608,6 +608,7 @@ async function createElevenLabsVoice(params: {
       method: "POST",
       headers: { "xi-api-key": apiKey },
       body: fd,
+      signal: AbortSignal.timeout(30_000),
     });
     return parseElevenLabsResponse(res, "instant");
   }
@@ -620,6 +621,7 @@ async function createElevenLabsVoice(params: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ name, description, language }),
+    signal: AbortSignal.timeout(30_000),
   });
   const voiceId = await parseElevenLabsResponse(createRes, "professional");
 
@@ -633,6 +635,7 @@ async function createElevenLabsVoice(params: {
       method: "POST",
       headers: { "xi-api-key": apiKey },
       body: uploadFd,
+      signal: AbortSignal.timeout(30_000),
     },
   );
   if (!uploadRes.ok) {
@@ -649,6 +652,7 @@ async function createElevenLabsVoice(params: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ language }),
+      signal: AbortSignal.timeout(30_000),
     },
   );
   if (!trainRes.ok) {

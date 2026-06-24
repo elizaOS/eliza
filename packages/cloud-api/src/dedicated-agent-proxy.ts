@@ -85,6 +85,7 @@ function proxyToOrigin(
     method: request.method,
     headers,
     redirect: "manual",
+    signal: AbortSignal.timeout(30_000),
   };
   if (request.method !== "GET" && request.method !== "HEAD") {
     init.body = request.body;
