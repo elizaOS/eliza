@@ -25,6 +25,7 @@ import {
   logger,
   stringToUuid,
 } from "@elizaos/core";
+import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -38,14 +39,13 @@ import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
-import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
-import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   FinalCheckReport,
   RunnerContext,
   ScenarioReport,
 } from "./types.ts";
 import { isLoopbackUrl, toRecord } from "./utils.js";
+import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
 
 export interface ExecutorOptions {
   providerName: string;
@@ -54,6 +54,20 @@ export interface ExecutorOptions {
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
+
+function responseExclusionMatches(
+  pattern: unknown,
+  responseText: string,
+): boolean {
+  if (typeof pattern === "string") {
+    return responseText.toLowerCase().includes(pattern.toLowerCase());
+  }
+  if (pattern instanceof RegExp) {
+    pattern.lastIndex = 0;
+    return pattern.test(responseText);
+  }
+  return false;
+}
 
 type ScenarioRoomDefinition = {
   id: string;
@@ -1463,6 +1477,20 @@ async function runTurnAssertions(
     if (!ok) {
       failures.push(
         `responseIncludesAny: expected response to include any of [${includesAny.join(
+          ",",
+        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
+      );
+    }
+  }
+  const excludes = (turn as { responseExcludes?: unknown }).responseExcludes;
+  if (Array.isArray(excludes) && excludes.length > 0) {
+    const text = execution.responseText ?? "";
+    const hits = excludes.filter((pattern) =>
+      responseExclusionMatches(pattern, text),
+    );
+    if (hits.length > 0) {
+      failures.push(
+        `responseExcludes: response included forbidden pattern(s) [${hits.join(
           ",",
         )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
       );

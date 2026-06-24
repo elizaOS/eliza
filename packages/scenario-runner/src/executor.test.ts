@@ -229,6 +229,106 @@ describe("scenario executor action turns", () => {
     ]);
   });
 
+  it("passes when responseExcludes patterns are absent from the response", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "REMINDERS",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(
+            async (_runtime, _message, _state, _options, callback) => {
+              await callback?.({
+                text: "I kept the reminder active and adjusted the cadence.",
+              });
+              return { success: true };
+            },
+          ),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "response-excludes-pass",
+        title: "Response excludes pass",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "adjust reminder",
+            actionName: "REMINDERS",
+            responseExcludes: ["disabled", /delet(ed|e)/i],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(report.turns[0]?.failedAssertions).toEqual([]);
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("reports forbidden string and RegExp hits for responseExcludes failures", async () => {
+    const runtime = createRuntime(
+      [
+        {
+          name: "REMINDERS",
+          description: "test action",
+          validate: vi.fn(async () => true),
+          handler: vi.fn(
+            async (_runtime, _message, _state, _options, callback) => {
+              await callback?.({
+                text: "I disabled the reminder and deleted the follow-up.",
+              });
+              return { success: true };
+            },
+          ),
+        } as Action,
+      ],
+      {
+        useModel: vi.fn() as AgentRuntime["useModel"],
+      },
+    );
+
+    const report = await runScenario(
+      {
+        id: "response-excludes-failure",
+        title: "Response excludes failure",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "adjust reminder",
+            actionName: "REMINDERS",
+            responseExcludes: ["disabled", /delet(ed|e)/i],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(report.turns[0]?.failedAssertions).toEqual([
+      'responseExcludes: response included forbidden pattern(s) [disabled,/delet(ed|e)/i], saw "I disabled the reminder and deleted the follow-up."',
+    ]);
+  });
+
   it("uses action callback output directly before scenario assertions", async () => {
     const runtime = createRuntime(
       [
