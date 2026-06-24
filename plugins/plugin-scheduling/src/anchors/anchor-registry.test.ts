@@ -17,7 +17,9 @@ import {
  * null on missing/invalid windows.
  */
 
-const ctx = (overrides: Partial<AnchorContext["ownerFacts"]> & { nowIso?: string }): AnchorContext => {
+const ctx = (
+  overrides: Partial<AnchorContext["ownerFacts"]> & { nowIso?: string },
+): AnchorContext => {
   const { nowIso, ...ownerFacts } = overrides;
   return {
     nowIso: nowIso ?? "2026-06-23T18:00:00.000Z",
@@ -52,7 +54,10 @@ describe("built-in anchors", () => {
   it("applies the owner timezone offset (America/New_York, EDT = UTC-4)", () => {
     expect(
       anchor("morning.start").resolve(
-        ctx({ timezone: "America/New_York", morningWindow: { start: "07:00" } }),
+        ctx({
+          timezone: "America/New_York",
+          morningWindow: { start: "07:00" },
+        }),
       ),
     ).toEqual({ atIso: "2026-06-23T11:00:00.000Z" });
   });
