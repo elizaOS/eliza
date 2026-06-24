@@ -382,3 +382,96 @@ export function parityMatrixSummary(): {
   }
   return { have, partial, na, total: PARITY_MATRIX.length };
 }
+
+/** Per-OS coverage rollup for the parity matrix. */
+export interface ParityCoverageByOs {
+  os: OsName;
+  covered: number;
+  planned: number;
+  na: number;
+}
+
+/**
+ * Roll up per-OS coverage across every `have`/`partial` capability. `na`
+ * capabilities are excluded (they are not part of any OS's parity surface).
+ * Pure — derives only from PARITY_MATRIX. Useful for a "what still needs a
+ * macOS/Linux real-lane case" dashboard and the M14 coverage report.
+ */
+export function parityCoverageByOs(): ParityCoverageByOs[] {
+  const oses: OsName[] = ["windows", "linux", "macos", "aosp"];
+  return oses.map((os) => {
+    let covered = 0;
+    let planned = 0;
+    let na = 0;
+    for (const cap of PARITY_MATRIX) {
+      if (cap.status === "na") continue;
+      switch (cap.os[os]) {
+        case "covered":
+          covered += 1;
+          break;
+        case "planned":
+          planned += 1;
+          break;
+        case "na":
+          na += 1;
+          break;
+      }
+    }
+    return { os, covered, planned, na };
+  });
+}
+
+/**
+ * Structural invariants on the per-OS coverage records — the `os` field was
+ * free-form data with no guard, so a typo or a capability that claims
+ * `covered` on a platform it can't run on could drift in silently. Pure; the
+ * test suite asserts `ok`. Invariants:
+ *  1. every `have`/`partial` capability declares all four OS keys with a valid
+ *     OsCoverage value;
+ *  2. an `na` capability is `os: na` on every axis (it is out of scope, not
+ *     "covered/planned" anywhere);
+ *  3. a non-`na` capability must have at least one OS that is `covered` or
+ *     `planned` (a verb that is `na` on every OS should be status `na`).
+ */
+export function validateParityCoverage(): ParityValidationResult {
+  const valid: OsCoverage[] = ["covered", "planned", "na"];
+  const oses: OsName[] = ["windows", "linux", "macos", "aosp"];
+  const problems: ParityValidationProblem[] = [];
+  let confirmed = 0;
+
+  for (const cap of PARITY_MATRIX) {
+    if (cap.status === "na") {
+      for (const os of oses) {
+        if (cap.os[os] !== "na") {
+          problems.push({
+            capability: cap.id,
+            problem: `status "na" must be os "na" on ${os} (is "${cap.os[os]}")`,
+          });
+        }
+      }
+      continue;
+    }
+    let anyActive = false;
+    for (const os of oses) {
+      const cov = cap.os[os];
+      if (!valid.includes(cov)) {
+        problems.push({
+          capability: cap.id,
+          problem: `${os} coverage "${String(cov)}" is not a valid OsCoverage`,
+        });
+        continue;
+      }
+      if (cov === "covered" || cov === "planned") anyActive = true;
+    }
+    if (!anyActive) {
+      problems.push({
+        capability: cap.id,
+        problem: `status "${cap.status}" but every OS is "na" — should be status "na"`,
+      });
+    } else {
+      confirmed += 1;
+    }
+  }
+
+  return { ok: problems.length === 0, problems, confirmed };
+}
