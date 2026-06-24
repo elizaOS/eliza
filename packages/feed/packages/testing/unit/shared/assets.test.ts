@@ -103,20 +103,36 @@ describe("Asset URL Utilities", () => {
   });
 
   describe("getFallbackProfileImageUrl", () => {
-    it("should generate deterministic fallback URL based on ID", () => {
-      const url1 = getFallbackProfileImageUrl("user123");
-      const url2 = getFallbackProfileImageUrl("user123");
-      expect(url1).toBe(url2);
+    it("should use the bundled fallback when no static assets CDN is configured", () => {
+      expect(getFallbackProfileImageUrl("user123")).toBe("/blankmonkey.png");
     });
 
-    it("should generate different URLs for different IDs", () => {
-      const url1 = getFallbackProfileImageUrl("user123");
-      const url2 = getFallbackProfileImageUrl("user456");
+    it("should generate deterministic CDN fallback URL based on ID", () => {
+      const cdn = "https://cdn.example.com";
+      const url1 = getFallbackProfileImageUrl("user123", cdn);
+      const url2 = getFallbackProfileImageUrl("user123", cdn);
+      const url3 = getFallbackProfileImageUrl("user123", cdn);
+      expect(url1).toBe(url2);
+      expect(url2).toBe(url3);
+    });
+
+    it("should generate different CDN URLs for different IDs", () => {
+      const url1 = getFallbackProfileImageUrl(
+        "user123",
+        "https://cdn.example.com",
+      );
+      const url2 = getFallbackProfileImageUrl(
+        "user456",
+        "https://cdn.example.com",
+      );
       expect(url1).not.toBe(url2);
     });
 
-    it("should generate profile number between 1 and TOTAL_AGENT_DEFAULT_PROFILE_PICTURES", () => {
-      const url = getFallbackProfileImageUrl("test-id");
+    it("should generate CDN profile number between 1 and TOTAL_AGENT_DEFAULT_PROFILE_PICTURES", () => {
+      const url = getFallbackProfileImageUrl(
+        "test-id",
+        "https://cdn.example.com",
+      );
       const match = url.match(/pfp-(\d+)\.png$/);
       expect(match).toBeTruthy();
       const captured = match?.[1];
@@ -138,22 +154,21 @@ describe("Asset URL Utilities", () => {
   });
 
   describe("getAgentDefaultProfileImageUrl", () => {
-    it("should return user-pfps path for valid index (zero-padded)", () => {
-      expect(getAgentDefaultProfileImageUrl(7)).toBe(
-        "/assets/user-pfps/pfp-007.png",
-      );
+    it("should use the bundled fallback without a static assets CDN", () => {
+      expect(getAgentDefaultProfileImageUrl(7)).toBe("/blankmonkey.png");
     });
 
-    it("should clamp index to 1..TOTAL_AGENT_DEFAULT_PROFILE_PICTURES", () => {
-      expect(getAgentDefaultProfileImageUrl(0)).toBe(
-        "/assets/user-pfps/pfp-001.png",
+    it("should clamp CDN preset index to 1..TOTAL_AGENT_DEFAULT_PROFILE_PICTURES", () => {
+      expect(getAgentDefaultProfileImageUrl(0, "https://cdn.example.com")).toBe(
+        "https://cdn.example.com/assets/user-pfps/pfp-001.png",
       );
       expect(
         getAgentDefaultProfileImageUrl(
           TOTAL_AGENT_DEFAULT_PROFILE_PICTURES + 50,
+          "https://cdn.example.com",
         ),
       ).toBe(
-        `/assets/user-pfps/pfp-${String(TOTAL_AGENT_DEFAULT_PROFILE_PICTURES).padStart(3, "0")}.png`,
+        `https://cdn.example.com/assets/user-pfps/pfp-${String(TOTAL_AGENT_DEFAULT_PROFILE_PICTURES).padStart(3, "0")}.png`,
       );
     });
 
