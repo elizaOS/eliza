@@ -52,7 +52,11 @@ async function loadSqlPlugin(): Promise<Plugin> {
     return module.default as Plugin;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("plugin-sql/src/dist/index.d.ts")) {
+    // The package import can resolve to plugin-sql's type-only d.ts
+    // (index.d.ts OR index.node.d.ts), which is not runtime-loadable — its
+    // re-exports point at per-module .js that the bundled runtime never emits.
+    // Match every index*.d.ts variant before falling back to the node bundle.
+    if (!message.includes("plugin-sql/src/dist/index")) {
       throw error;
     }
 
