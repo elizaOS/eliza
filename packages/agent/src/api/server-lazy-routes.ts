@@ -461,15 +461,6 @@ export async function handleModelsRoutes(
   return (await import("./models-routes.ts")).handleModelsRoutes(...args);
 }
 
-type NfaRoutesModule = typeof import("./nfa-routes.ts");
-export async function handleNfaRoutes(
-  ...args: Parameters<NfaRoutesModule["handleNfaRoutes"]>
-): ReturnType<NfaRoutesModule["handleNfaRoutes"]> {
-  const ctx = routeContext(args);
-  if (!ctx?.pathname.startsWith("/api/nfa/")) return false;
-  return (await import("./nfa-routes.ts")).handleNfaRoutes(...args);
-}
-
 type MusicPlayerFallbackModule =
   typeof import("./music-player-route-fallback.ts");
 export async function tryHandleMusicPlayerStatusFallbackLazy(
