@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runDeploy } from "./deploy";
+import {
+  DEPLOY_COMMAND_DESCRIPTION,
+  DEPLOY_DRY_RUN_DESCRIPTION,
+  runDeploy,
+} from "./deploy";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -19,6 +23,14 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("runDeploy", () => {
+  it("describes deploy as a real queue-and-poll command", () => {
+    expect(DEPLOY_COMMAND_DESCRIPTION).toContain("Deploy");
+    expect(DEPLOY_COMMAND_DESCRIPTION).toContain("poll until READY");
+    expect(DEPLOY_COMMAND_DESCRIPTION).not.toContain("plan");
+    expect(DEPLOY_DRY_RUN_DESCRIPTION).toContain("without network calls");
+    expect(DEPLOY_DRY_RUN_DESCRIPTION).not.toContain("always a preview");
+  });
+
   it("keeps dry-run mode network-free", async () => {
     const fetchMock = vi.fn();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
