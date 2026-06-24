@@ -103,12 +103,22 @@ export async function ensureElizaAppProvisioning(params: {
   // The org-scoped guard reused an in-flight sandbox; its provision job is
   // already queued, so don't enqueue a second one.
   if (!idempotent) {
-    await provisioningJobService.enqueueAgentProvision({
-      agentId: sandbox.id,
-      organizationId: params.organizationId,
-      userId: params.userId,
-      agentName: DEFAULT_AGENT_NAME,
-    });
+    // createAgent committed a `pending` row, but the daemon only claims rows
+    // that already have an `agent_provision` job. A throw here would strand the
+    // row, and the reuse guard would then hand that job-less row back on every
+    // later call (idempotent:true → skip enqueue), making it permanent. Delete
+    // the just-created row on failure so a retry mints a fresh agent + job.
+    try {
+      await provisioningJobService.enqueueAgentProvision({
+        agentId: sandbox.id,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        agentName: DEFAULT_AGENT_NAME,
+      });
+    } catch (err) {
+      await agentSandboxesRepository.delete(sandbox.id, params.organizationId);
+      throw err;
+    }
   }
 
   logger.info(

@@ -3,7 +3,7 @@
  *
  * When elizaSandboxService.createAgent reports `idempotent: true` (the org
  * already had a non-terminal agent), the route must:
- *   - return 200 with the existing agent (created:false), NOT 201,
+ *   - return 200 with the existing agent (created:false), NOT a fresh-create code,
  *   - NOT enqueue a second provisioning job,
  *   - NOT run the managed-env / orphan-cleanup create path.
  * The happy create path (idempotent:false) still enqueues and returns 202.
@@ -91,7 +91,7 @@ mock.module("@/lib/utils/logger", () => ({
   logger: { info: loggerInfo, warn: loggerWarn, error: loggerError },
 }));
 
-const { default: agentsRoute } = await import("./route");
+const { default: agentsRoute } = await import("../v1/eliza/agents/route");
 
 const app = new Hono();
 app.route("/api/v1/eliza/agents", agentsRoute);

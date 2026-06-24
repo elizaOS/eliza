@@ -371,7 +371,7 @@ app.post("/", async (c) => {
   // returned it instead of minting a duplicate. It is already provisioned (or
   // its provision job is in flight) — do NOT enqueue a second job, do NOT run
   // the orphan-cleanup wrapper (that would tear down a live agent), and return
-  // 200 (reuse) rather than 201 (create).
+  // 200 (reuse) rather than the fresh-create 201/202.
   if (idempotent) {
     logger.info("[agent-api] Reusing existing non-terminal agent", {
       agentId: agent.id,
