@@ -51,16 +51,20 @@ async function* walk(dir) {
     const entryPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       yield* walk(entryPath);
-    } else if (entry.isFile() && entry.name.endsWith(".js")) {
+    } else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".js") || entry.name.endsWith(".d.ts"))
+    ) {
       yield entryPath;
     }
   }
 }
 
-// dist only ever contains emitted .js runtime files, so a TypeScript-source
-// extension (.ts/.tsx/.mts/.cts) in a specifier is always broken at runtime
-// and must be rewritten to its .js equivalent. tsc's
-// rewriteRelativeImportExtensions normally handles this, but this step is the
+// dist only ever contains emitted .js runtime files plus .d.ts declarations,
+// so a TypeScript-source extension (.ts/.tsx/.mts/.cts) in a specifier is
+// always broken for NodeNext consumers and must be rewritten to its .js
+// equivalent. tsc's rewriteRelativeImportExtensions normally handles runtime
+// JS, but it does not currently rewrite declaration emit, so this step is the
 // node-ESM safety net and must not treat .ts as already-resolved.
 const TS_SOURCE_EXTENSION = /\.([cm]?)tsx?$/;
 

@@ -38,7 +38,7 @@
     "test": "bun run build:views && bun run emulator:build && NODE_OPTIONS='--experimental-sqlite' vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "bunx tsc --noCheck -p tsconfig.build.json",
+    "build:types": "bunx tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "emulator:build": "cd emulator && bun install --force && bun run build",
     "emulator:watch": "cd emulator && bun run build:watch",
