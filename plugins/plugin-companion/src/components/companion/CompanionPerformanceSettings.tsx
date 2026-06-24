@@ -37,7 +37,7 @@ export function CompanionPerformanceSettings() {
         })}
       </h3>
       <div
-        className="flex flex-col gap-3 rounded-xl border border-border bg-card/60 px-3 py-3"
+        className="flex flex-col gap-3"
         data-testid="settings-companion-vrm-power"
       >
         <div className="min-w-0">
@@ -46,7 +46,7 @@ export function CompanionPerformanceSettings() {
               defaultValue: "Companion rendering",
             })}
           </div>
-          <div className="mt-1 text-2xs leading-snug text-muted">
+          <div className="sr-only mt-1 text-2xs leading-snug text-muted">
             {t("settings.companionVrmPower.desc", {
               defaultValue:
                 "Control how much GPU the 3D companion uses while rendering.",
@@ -67,7 +67,7 @@ export function CompanionPerformanceSettings() {
           ))}
         </SegmentedSetting>
         <div
-          className="flex flex-col gap-2 border-t border-border pt-3"
+          className="flex flex-col gap-2 pt-2"
           data-testid="settings-companion-half-framerate"
         >
           <div className="min-w-0">
@@ -76,7 +76,7 @@ export function CompanionPerformanceSettings() {
                 defaultValue: "Companion frame rate",
               })}
             </div>
-            <div className="mt-1 text-2xs leading-snug text-muted">
+            <div className="sr-only mt-1 text-2xs leading-snug text-muted">
               {t("settings.companionHalfFramerate.desc", {
                 defaultValue:
                   "Optionally cap the 3D companion at about half display refresh rate.",
@@ -100,7 +100,7 @@ export function CompanionPerformanceSettings() {
           </SegmentedSetting>
         </div>
         <div
-          className="flex flex-col gap-2 border-t border-border pt-3"
+          className="flex flex-col gap-2 pt-2"
           data-testid="settings-companion-animate-when-hidden"
         >
           <div className="text-xs font-semibold text-txt">
@@ -109,7 +109,7 @@ export function CompanionPerformanceSettings() {
             })}
           </div>
           <div className="flex items-end justify-between gap-3">
-            <div className="min-w-0 flex-1 pr-2 text-2xs leading-snug text-muted">
+            <div className="sr-only min-w-0 flex-1 pr-2 text-2xs leading-snug text-muted">
               {t("settings.companionAnimateWhenHidden.desc", {
                 defaultValue:
                   "Keep the avatar idling while the window or tab is hidden.",
