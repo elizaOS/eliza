@@ -219,9 +219,25 @@ describe("Home ↔ Springboard composed surface", () => {
     expect(surface.getAttribute("data-page")).toBe("home");
   });
 
-  it("dock tiles render DISTINCT per-view glyphs, not one placeholder (#5)", () => {
+  it("dock tiles render DISTINCT per-view visuals, with distinct glyph fallback (#5)", () => {
     renderComposed();
     openSpringboard();
+
+    const settingsImage = screen.getByTestId(
+      "springboard-image-settings",
+    ) as HTMLImageElement;
+    const filesImage = screen.getByTestId(
+      "springboard-image-files",
+    ) as HTMLImageElement;
+    expect(settingsImage.getAttribute("src")).toBe("/api/views/settings/hero");
+    expect(filesImage.getAttribute("src")).toBe("/api/views/files/hero");
+    expect(settingsImage.getAttribute("src")).not.toBe(
+      filesImage.getAttribute("src"),
+    );
+
+    fireEvent.error(settingsImage);
+    fireEvent.error(filesImage);
+
     const settingsGlyph = document
       .querySelector('[data-view-visual="settings"] svg')
       ?.getAttribute("class");
