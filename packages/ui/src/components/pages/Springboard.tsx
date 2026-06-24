@@ -22,6 +22,7 @@ import {
   moveIcon,
   readSpringboardLayout,
   reconcileLayout,
+  SPRINGBOARD_DOCK_LIMIT,
   type SpringboardLayout,
   toggleFavorite,
   writeSpringboardLayout,
@@ -100,6 +101,10 @@ function IconTile({
           }}
           onPointerUp={clear}
           onPointerLeave={clear}
+          // pointercancel (not pointerup) fires when a touch scroll or system
+          // gesture interrupts the press — clear the timer so a long-press never
+          // ghost-fires edit mode after the user finishes scrolling.
+          onPointerCancel={clear}
           className={cn(
             "h-16 w-16 overflow-hidden rounded-2xl transition-colors",
             "  ",
@@ -227,6 +232,14 @@ export function Springboard({
     );
   }, [availableIds, favorites]);
 
+  // Keep the active page index in range when pages shrink (views removed), so
+  // stale page state can't leak into later logic. clampedPage masks it for
+  // render, but the underlying `page` is reset here.
+  useEffect(() => {
+    const pageCount = layout.pages.length > 0 ? layout.pages.length : 1;
+    setPage((p) => (p > pageCount - 1 ? pageCount - 1 : p));
+  }, [layout.pages.length]);
+
   const commit = useCallback((next: SpringboardLayout) => {
     setLayout(next);
     writeSpringboardLayout(next);
@@ -245,7 +258,14 @@ export function Springboard({
 
   const pages = layout.pages.length > 0 ? layout.pages : [[]];
   const clampedPage = Math.min(page, pages.length - 1);
-  const favoriteIdList = favorites ?? layout.favorites;
+  // Cap the rendered dock at SPRINGBOARD_DOCK_LIMIT in BOTH modes. The
+  // uncontrolled path already enforces it via toggleFavorite; controlled
+  // (desktop-tab) favorites are capped at the pinning source too, but clamp
+  // here as defense so the dock can never overflow regardless of caller.
+  const favoriteIdList = (favorites ?? layout.favorites).slice(
+    0,
+    SPRINGBOARD_DOCK_LIMIT,
+  );
   const favoriteEntries = favoriteIdList
     .map((id) => byId.get(id))
     .filter((e): e is ViewEntry => e != null);
