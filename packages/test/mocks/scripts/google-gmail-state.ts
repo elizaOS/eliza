@@ -447,8 +447,21 @@ export interface GoogleMockState {
   gmailDrafts: Map<string, GmailMockDraft>;
   gmailHistoryId: number;
   gmailHistory: GmailHistoryRecord[];
+  gmailFaultInjection: GoogleGmailFaultInjection | null;
   googleTokens: Map<string, GoogleMockToken>;
   calendar: GoogleCalendarMockState;
+}
+
+export type GoogleGmailFaultMode =
+  | "auth_expired"
+  | "rate_limit"
+  | "server_error";
+
+export interface GoogleGmailFaultInjection {
+  mode: GoogleGmailFaultMode;
+  method?: string;
+  path?: string;
+  remaining?: number;
 }
 
 interface GoogleMockToken {
@@ -584,9 +597,26 @@ export function createGoogleMockState(opts?: {
         ],
       },
     ],
+    gmailFaultInjection: null,
     googleTokens: new Map(),
     calendar: createGoogleCalendarMockState(opts),
   };
+}
+
+export function setGoogleGmailFaultInjection(
+  state: GoogleMockState,
+  fault: GoogleGmailFaultInjection | null,
+): void {
+  state.gmailFaultInjection = fault
+    ? {
+        mode: fault.mode,
+        ...(fault.method ? { method: fault.method.toUpperCase() } : {}),
+        ...(fault.path ? { path: fault.path } : {}),
+        ...(typeof fault.remaining === "number"
+          ? { remaining: Math.max(0, Math.floor(fault.remaining)) }
+          : {}),
+      }
+    : null;
 }
 
 function gmailFixtureInternalDate(
@@ -1005,7 +1035,11 @@ function jsonError(
         ? "PERMISSION_DENIED"
         : statusCode === 404
           ? "NOT_FOUND"
-          : "INVALID_ARGUMENT";
+          : statusCode === 429
+            ? "RESOURCE_EXHAUSTED"
+            : statusCode >= 500
+              ? "INTERNAL"
+              : "INVALID_ARGUMENT";
   return jsonFixture(
     {
       error: {
@@ -1016,6 +1050,76 @@ function jsonError(
     },
     statusCode,
   );
+}
+
+function gmailFaultError(mode: GoogleGmailFaultMode): DynamicFixtureResponse {
+  if (mode === "auth_expired") {
+    return jsonError(
+      401,
+      "Request had invalid authentication credentials. Expected OAuth 2 access token.",
+    );
+  }
+  if (mode === "rate_limit") {
+    return {
+      ...jsonError(429, "Quota exceeded for Gmail mock requests"),
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "1",
+      },
+    };
+  }
+  return jsonError(500, "Backend Error");
+}
+
+function readGmailFaultMode(value: string | null): GoogleGmailFaultMode | null {
+  if (
+    value === "auth_expired" ||
+    value === "rate_limit" ||
+    value === "server_error"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function headerOrQueryGmailFault(
+  headers: http.IncomingHttpHeaders,
+  searchParams: URLSearchParams,
+): GoogleGmailFaultMode | null {
+  return (
+    readGmailFaultMode(headerValue(headers, "x-mockoon-fault")) ??
+    readGmailFaultMode(searchParams.get("_fault"))
+  );
+}
+
+function configuredGmailFault(
+  state: GoogleMockState,
+  method: string,
+  pathname: string,
+): GoogleGmailFaultMode | null {
+  const fault = state.gmailFaultInjection;
+  if (!fault) return null;
+  if (fault.method && fault.method !== method.toUpperCase()) return null;
+  if (fault.path && fault.path !== pathname) return null;
+  if (typeof fault.remaining === "number") {
+    if (fault.remaining <= 0) return null;
+    fault.remaining -= 1;
+  }
+  return fault.mode;
+}
+
+function gmailFaultForRequest(
+  state: GoogleMockState,
+  method: string,
+  pathname: string,
+  searchParams: URLSearchParams,
+  headers: http.IncomingHttpHeaders,
+): DynamicFixtureResponse | null {
+  if (!pathname.startsWith("/gmail/v1/users/me/")) return null;
+  const mode =
+    headerOrQueryGmailFault(headers, searchParams) ??
+    configuredGmailFault(state, method, pathname);
+  return mode ? gmailFaultError(mode) : null;
 }
 
 function addHistoryRecord(
@@ -1556,6 +1660,15 @@ export function googleDynamicFixture(
       scope: scopes.join(" "),
     });
   }
+
+  const gmailFault = gmailFaultForRequest(
+    state,
+    method,
+    pathname,
+    searchParams,
+    headers,
+  );
+  if (gmailFault) return gmailFault;
 
   const authFailure = enforceGoogleAuthIfPresent(
     state,
