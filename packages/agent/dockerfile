@@ -1,34 +1,25 @@
 FROM node:23.3.0-slim AS builder
 
-# Install system dependencies needed for building native modules
 RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+    python3 make g++ git && rm -rf /var/lib/apt/lists/*
 
-# Install pnpm globally
 RUN npm install -g pnpm@9.15.1
 
 WORKDIR /app
 
-# Copy repository configurations first
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* turbo.json* ./
+# Point to the root directory for workspace files
+COPY ../../package.json ../../pnpm-workspace.yaml ../../pnpm-lock.yaml* ../../turbo.json* ./
 
-# Copy package configurations to handle workspace topology
-COPY packages/agent/package.json ./packages/agent/
+# Copy the agent package itself
+COPY package.json ./packages/agent/
 
-# Install all workspace dependencies
 RUN pnpm install --no-frozen-lockfile
 
-# Copy the rest of the source code
-COPY . .
+# Copy the rest of the project
+COPY ../../ .
 
-# Build the project
 RUN pnpm build
 
-# Final runtime environment
 FROM node:23.3.0-slim AS runner
 
 RUN npm install -g pnpm@9.15.1
