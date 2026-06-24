@@ -141,6 +141,18 @@ type CheckBase<Type extends string> = {
 
 type StringMatcher = string | string[];
 type ResponsePattern = string | RegExp;
+type DefinitionCountRequiredSlot = {
+  label?: string;
+  minuteOfDay?: number;
+};
+type DefinitionCountWebsiteAccess = {
+  groupKey?: string;
+  websites?: string[];
+  unlockMode?: string;
+  unlockDurationMinutes?: number;
+  callbackKey?: string | null;
+  reason?: string;
+};
 
 export type ScenarioTurn = {
   kind?: string;
@@ -287,6 +299,20 @@ export type ScenarioFinalCheck =
       workflowId?: string;
       expected?: boolean;
       minCount?: number;
+    })
+  | (CheckBase<"definitionCountDelta"> & {
+      title: string;
+      titleAliases?: string[];
+      delta?: number;
+      cadenceKind?: "once" | "daily" | "weekly" | "times_per_day" | "interval";
+      requiredSlots?: DefinitionCountRequiredSlot[];
+      requiredWeekdays?: number[];
+      requiredWindows?: string[];
+      requiredEveryMinutes?: number;
+      requiredMaxOccurrencesPerDay?: number;
+      expectedTimeZone?: string;
+      requireReminderPlan?: boolean;
+      websiteAccess?: DefinitionCountWebsiteAccess;
     })
   | (CheckBase<"judgeRubric"> & {
       name: string;
