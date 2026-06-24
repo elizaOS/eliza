@@ -13,37 +13,89 @@
  *   turnTimeoutMs:    120_000
  *
  * The current `@elizaos/scenario-runner` contract is scripted, so this file is
- * the compatibility port: a single scripted turn asserts a non-empty response
- * while the `GREET_USER` plugin fixture is still registered via a `custom`
- * seed step.
+ * the compatibility port: a single scripted turn with deterministic routing
+ * fixtures proves the `GREET_USER` action is selected and succeeds.
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { greetTestPlugin } from "./_fixtures/greet-test-plugin.ts";
 
-function asRuntime(value: unknown): AgentRuntime {
+const GREETING_INPUT = "Hello!";
+
+type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
+  scenarioLlmFixtures?: {
+    register: (...fixtures: Array<Record<string, unknown>>) => void;
+  };
+};
+
+function asRuntime(value: unknown): RuntimeWithScenarioLlmFixtures {
   if (!value || typeof value !== "object" || !("registerPlugin" in value)) {
     throw new Error(
       "greeting-dynamic seed: runtime did not expose registerPlugin",
     );
   }
-  return value as AgentRuntime;
+  return value as RuntimeWithScenarioLlmFixtures;
+}
+
+function greetingRouteFixtures(): Array<Record<string, unknown>> {
+  const inputMatches = (value: string) => value.includes(GREETING_INPUT);
+  return [
+    {
+      name: "route-greeting-stage1",
+      match: {
+        modelType: ModelType.RESPONSE_HANDLER,
+        input: inputMatches,
+        toolName: "HANDLE_RESPONSE",
+      },
+      response: {
+        contexts: ["general"],
+        intents: ["greeting"],
+        replyText: "Hello there.",
+        threadOps: [],
+        candidateActionNames: ["GREET_USER"],
+      },
+      times: 1,
+    },
+    {
+      name: "route-greeting-planner",
+      match: {
+        modelType: ModelType.ACTION_PLANNER,
+        input: inputMatches,
+        toolName: "GREET_USER",
+      },
+      response: {
+        text: "",
+        thought: "Call GREET_USER to welcome the user.",
+        messageToUser: "Hello there.",
+        completed: true,
+        finishReason: "tool-calls",
+        toolCalls: [
+          {
+            id: "call-greet-user",
+            name: "GREET_USER",
+            type: "function",
+            arguments: {},
+          },
+        ],
+      },
+      times: 1,
+    },
+  ];
 }
 
 export default scenario({
-  lane: "live-only",
-  id: "convo.greeting-dynamic",
-  title:
-    "Convo framework: greeting triggers non-empty response (scripted port)",
-  domain: "convo",
-  // Keyless-deterministic: the only assertion is a non-empty reply, which the
-  // deterministic LLM proxy's default reply satisfies. No external service, no
-  // secret. Verified passing under SCENARIO_USE_LLM_PROXY=1.
   lane: "pr-deterministic",
+  id: "convo.greeting-dynamic",
+  title: "Convo framework: greeting routes to GREET_USER",
+  domain: "convo",
+  // Keyless-deterministic: the trivial GREET_USER plugin runs in-memory and the
+  // routing fixtures registered below force action selection under the
+  // deterministic LLM proxy. No external service or secret required.
   tags: ["smoke", "convo", "greeting"],
   description:
-    "Scripted port of the dynamic greeting scenario: sends a single greeting and asserts a non-empty response with the greet-test plugin registered.",
+    "Scripted port of the dynamic greeting scenario: sends a single greeting and verifies the GREET_USER action is captured with success=true.",
 
   requires: {
     plugins: ["greet-test"],
@@ -57,6 +109,7 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(greetTestPlugin satisfies Plugin);
+        runtime.scenarioLlmFixtures?.register(...greetingRouteFixtures());
       },
     },
   ],
@@ -65,13 +118,32 @@ export default scenario({
     {
       kind: "message",
       name: "greet-hello",
-      text: "Hello!",
+      text: GREETING_INPUT,
       timeoutMs: 120_000,
-      assertResponse: (text: string) => {
-        if (!text || text.trim().length === 0) {
-          return "Expected a non-empty response to the greeting";
+      assertTurn: (turn) => {
+        const greet = turn.actionsCalled.find(
+          (action) => action.actionName === "GREET_USER",
+        );
+        if (!greet) {
+          return `Expected GREET_USER action but got: ${turn.actionsCalled
+            .map((action) => action.actionName)
+            .join(", ")}`;
+        }
+        if (!greet.result?.success) {
+          return `GREET_USER action did not succeed: ${
+            greet.error?.message ?? "unknown error"
+          }`;
         }
       },
+    },
+  ],
+
+  finalChecks: [
+    {
+      type: "actionCalled",
+      actionName: "GREET_USER",
+      status: "success",
+      minCount: 1,
     },
   ],
 });

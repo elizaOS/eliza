@@ -31,6 +31,14 @@ const stubResolver = {
     b.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
       path: join(here, "home-screen-fixture.core-stub.ts"),
     }));
+    // HomeScreen mounts the unified home-slot WidgetHost (#9143), whose ranking
+    // + registry/app-store wiring pulls in Node-only services (disk-space, the
+    // logger, shared). Stub it to a marker — its internals are covered by the
+    // widgets suites + the home-widget-priority ui-smoke spec; this fixture is
+    // about the Home/Springboard shell + consolidation.
+    b.onResolve({ filter: /widgets\/WidgetHost$/ }, () => ({
+      path: join(here, "home-screen-fixture.widgethost-stub.tsx"),
+    }));
     b.onResolve({ filter: /\/api$/ }, (a) =>
       a.importer.includes("HomeScreen")
         ? { path: join(here, "home-screen-fixture.api-stub.ts") }
@@ -124,21 +132,16 @@ try {
     (await mobile.getByTestId("home-clock").count()) === 0,
     "no clock (home kept minimal)",
   );
+  // The home mounts the unified home-slot WidgetHost (#9143) — the prioritized
+  // dynamic-priority home widgets. Its ranking + per-widget rendering is
+  // covered by the widgets suites + the home-widget-priority ui-smoke spec; the
+  // fixture stubs it to a marker (see home-screen-fixture.widgethost-stub.tsx),
+  // so here we just assert the host is mounted for the home slot.
+  const homeWidgetHost = mobile.getByTestId("home-widget-host");
+  assert((await homeWidgetHost.count()) === 1, "home WidgetHost is present");
   assert(
-    await mobile.getByTestId("home-widget-activity").isVisible(),
-    "activity widget renders",
-  );
-  assert(
-    await mobile.getByTestId("home-widget-messages").isVisible(),
-    "messages widget renders",
-  );
-  assert(
-    (await mobile.getByText("Shipped the chat-sheet redesign").count()) > 0,
-    "activity items render",
-  );
-  assert(
-    (await mobile.getByText("Alex Rivera").count()) > 0,
-    "message threads render",
+    (await homeWidgetHost.getAttribute("data-slot")) === "home",
+    "home WidgetHost is mounted for the home slot",
   );
   // No general quick-access tiles anymore — Springboard is the adjacent
   // launcher. The only tiles left are the AOSP native-OS surfaces, shown here

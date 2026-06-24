@@ -29,14 +29,16 @@ const noopCtx: InlineWidgetContext = {
 };
 
 describe("inline-widget registry", () => {
-  it("ships the built-in widgets after side-effect import", () => {
-    const kinds = getInlineWidgets().map((w) => w.kind);
-    expect(kinds).toEqual(
-      expect.arrayContaining(["choice", "followups", "form"]),
-    );
-    // `task` is owned by the orchestrator plugin (registerTaskWidget), not a
-    // ui built-in — it is absent until that plugin loads.
-    expect(kinds).not.toContain("task");
+  it("ships EXACTLY the built-in widgets after side-effect import", () => {
+    // Exact-set, not arrayContaining: a new built-in registered without a
+    // matrix entry (or a built-in dropped) must fail here. See the dedicated
+    // WIDGET_MATRIX gate in inline-registry.matrix.test.tsx. `task` is owned by
+    // the orchestrator plugin (registerTaskWidget), not a UI built-in.
+    expect(
+      getInlineWidgets()
+        .map((w) => w.kind)
+        .sort(),
+    ).toEqual(["choice", "followups", "form"]);
   });
 
   it("lets a plugin register a new marker and render it end to end", () => {

@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
-import sharp from "sharp";
+import { getSharp } from "./image/sharp-compat";
 import {
   DEFAULT_MAX_EDGE,
   DEFAULT_OVERLAP_FRACTION,
@@ -155,6 +155,7 @@ export class ScreenCaptureService {
       // Load and decode the image. The tiler does its own crop/extract so we
       // only need the metadata + raw bytes here.
       const imageBuffer = await fs.readFile(tempFile);
+      const sharp = await getSharp();
       const metadata = await sharp(imageBuffer).metadata();
 
       const width = metadata.width || 1920;

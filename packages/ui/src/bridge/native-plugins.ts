@@ -560,9 +560,22 @@ export interface ScreenCapturePermissionStatus {
   microphone: "granted" | "denied" | "prompt";
 }
 
+export interface ScreenCaptureScreenshotResult {
+  base64: string;
+  format: string;
+  width: number;
+  height: number;
+  timestamp: number;
+}
+
 export interface ScreenCapturePluginLike extends NativePlugin {
   checkPermissions?: () => Promise<ScreenCapturePermissionStatus>;
   requestPermissions?: () => Promise<ScreenCapturePermissionStatus>;
+  captureScreenshot(options?: {
+    format?: string;
+    quality?: number;
+    scale?: number;
+  }): Promise<ScreenCaptureScreenshotResult>;
 }
 
 export interface WebsiteBlockerPermissionResult {

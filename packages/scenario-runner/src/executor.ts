@@ -25,6 +25,8 @@ import {
   logger,
   stringToUuid,
 } from "@elizaos/core";
+import { stopSelfControlBlock } from "@elizaos/plugin-blocker/services/website-blocker/index";
+import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -34,18 +36,18 @@ import type {
   ScenarioTurn,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
+import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
-import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
-import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   FinalCheckReport,
   RunnerContext,
   ScenarioReport,
 } from "./types.ts";
 import { isLoopbackUrl, toRecord } from "./utils.js";
+import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
 
 export interface ExecutorOptions {
   providerName: string;
@@ -54,6 +56,23 @@ export interface ExecutorOptions {
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
+
+function stringList(value: unknown): string[] {
+  if (typeof value === "string" && value.length > 0) {
+    return [value];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function isSynthesizedReplyAction(
+  action: ScenarioTurnExecution["actionsCalled"][number],
+): boolean {
+  const data = toRecord(action.result?.data);
+  return action.actionName === "REPLY" && data?.source === "synthesized-reply";
+}
 
 type ScenarioRoomDefinition = {
   id: string;
@@ -104,6 +123,8 @@ type SeedRunResult = {
   error?: string;
 };
 
+type TurnMatcher = string | RegExp;
+
 function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   try {
     const serialized = JSON.stringify(value);
@@ -114,6 +135,86 @@ function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   } catch {
     return String(value);
   }
+}
+
+function stringifyForAssertion(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isTurnMatcher(value: unknown): value is TurnMatcher {
+  return typeof value === "string" || value instanceof RegExp;
+}
+
+function toTurnMatcherArray(value: unknown): TurnMatcher[] {
+  if (isTurnMatcher(value)) {
+    return [value];
+  }
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isTurnMatcher);
+}
+
+function formatTurnMatcher(pattern: TurnMatcher): string {
+  return pattern instanceof RegExp ? pattern.toString() : pattern;
+}
+
+function formatTurnMatchers(patterns: readonly TurnMatcher[]): string {
+  return patterns.map(formatTurnMatcher).join(",");
+}
+
+function matchesTurnMatcher(value: string, pattern: TurnMatcher): boolean {
+  if (typeof pattern === "string") {
+    return value.toLowerCase().includes(pattern.toLowerCase());
+  }
+  pattern.lastIndex = 0;
+  return pattern.test(value);
+}
+
+function isSynthesizedReply(action: CapturedAction): boolean {
+  return toRecord(action.result?.data)?.source === "synthesized-reply";
+}
+
+function buildPlannerAssertionBlob(execution: ScenarioTurnExecution): string {
+  const parts: string[] = [];
+  if (
+    typeof execution.plannerText === "string" &&
+    execution.plannerText.trim().length > 0
+  ) {
+    parts.push(execution.plannerText);
+  }
+  for (const action of execution.actionsCalled) {
+    if (isSynthesizedReply(action)) {
+      continue;
+    }
+    parts.push(action.actionName);
+    if (action.parameters !== undefined) {
+      parts.push(stringifyForAssertion(action.parameters));
+    }
+    if (action.result?.data !== undefined) {
+      parts.push(stringifyForAssertion(action.result.data));
+    }
+    if (action.result?.values !== undefined) {
+      parts.push(stringifyForAssertion(action.result.values));
+    }
+    if (action.result?.text) {
+      parts.push(action.result.text);
+    }
+    if (action.result?.message) {
+      parts.push(action.result.message);
+    }
+    if (action.error?.message) {
+      parts.push(action.error.message);
+    }
+  }
+  return parts.join(" ");
 }
 
 function resetScenarioLlmFixtures(runtime: AgentRuntime): void {
@@ -1038,6 +1139,14 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
   return undefined;
 }
 
+async function clearSelfControlBlocks(): Promise<string | undefined> {
+  const result = await stopSelfControlBlock();
+  if (result.success) {
+    return undefined;
+  }
+  return `selfControlClearBlocks failed: ${result.error}`;
+}
+
 async function runScenarioCleanups(
   scenario: ScenarioDefinition,
 ): Promise<string[]> {
@@ -1051,19 +1160,21 @@ async function runScenarioCleanups(
       continue;
     }
     const step = cleanup as { type?: unknown; name?: unknown };
-    if (step.type !== "gmailDeleteDrafts") {
-      continue;
-    }
+    let result: string | undefined;
     try {
-      const result = await deleteMockGmailDrafts();
+      if (step.type === "gmailDeleteDrafts") {
+        result = await deleteMockGmailDrafts();
+      } else if (step.type === "selfControlClearBlocks") {
+        result = await clearSelfControlBlocks();
+      } else {
+        continue;
+      }
       if (result) {
-        failures.push(
-          `cleanup ${String(step.name ?? "gmailDeleteDrafts")}: ${result}`,
-        );
+        failures.push(`cleanup ${String(step.name ?? step.type)}: ${result}`);
       }
     } catch (err) {
       failures.push(
-        `cleanup ${String(step.name ?? "gmailDeleteDrafts")} threw: ${err instanceof Error ? err.message : String(err)}`,
+        `cleanup ${String(step.name ?? step.type)} threw: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -1399,6 +1510,46 @@ async function executeTickTurn(args: {
   };
 }
 
+async function executeWaitTurn(
+  turn: ScenarioTurn,
+  turnTimeoutMs: number,
+): Promise<{
+  statusCode: number;
+  responseBody: unknown;
+  responseText: string;
+  durationMs: number;
+}> {
+  const durationMs = (turn as { durationMs?: unknown }).durationMs;
+  if (
+    typeof durationMs !== "number" ||
+    !Number.isFinite(durationMs) ||
+    durationMs < 0
+  ) {
+    throw new Error(
+      `[executor] wait turn '${turn.name}' requires non-negative durationMs`,
+    );
+  }
+  const timeoutMs =
+    typeof turn.timeoutMs === "number" ? turn.timeoutMs : turnTimeoutMs;
+  const startedAt = Date.now();
+  await withTimeout(
+    new Promise((resolve) => setTimeout(resolve, durationMs)),
+    timeoutMs,
+    `wait(${turn.name})`,
+  );
+  const responseBody = { success: true, durationMs };
+  return {
+    statusCode: 200,
+    responseBody,
+    responseText: JSON.stringify(responseBody),
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+function turnUsesStatusResponse(turnKind: string): boolean {
+  return turnKind === "api" || turnKind === "tick" || turnKind === "wait";
+}
+
 async function runTurnAssertions(
   turn: ScenarioTurn,
   execution: ExecutedTurn,
@@ -1409,20 +1560,19 @@ async function runTurnAssertions(
   const kind = typeof turn.kind === "string" ? turn.kind : "message";
 
   if (typeof turn.assertResponse === "function") {
-    const result =
-      kind === "api" || kind === "tick"
-        ? await (
-            turn.assertResponse as (status: number, body: unknown) => unknown
-          )(execution.statusCode ?? 0, execution.responseBody)
-        : await (turn.assertResponse as (text: string) => unknown)(
-            execution.responseText ?? "",
-          );
+    const result = turnUsesStatusResponse(kind)
+      ? await (
+          turn.assertResponse as (status: number, body: unknown) => unknown
+        )(execution.statusCode ?? 0, execution.responseBody)
+      : await (turn.assertResponse as (text: string) => unknown)(
+          execution.responseText ?? "",
+        );
     if (typeof result === "string" && result.length > 0) {
       failures.push(`assertResponse: ${result}`);
     }
   }
 
-  if (kind === "api" || kind === "tick") {
+  if (turnUsesStatusResponse(kind)) {
     const expectedStatus = (turn as { expectedStatus: number }).expectedStatus;
     if (
       typeof expectedStatus === "number" &&
@@ -1452,19 +1602,76 @@ async function runTurnAssertions(
     }
   }
 
-  // responseIncludesAny / forbiddenActions / responseIncludesAll (inline)
-  const includesAny = (turn as { responseIncludesAny?: unknown })
-    .responseIncludesAny;
-  if (Array.isArray(includesAny) && includesAny.length > 0) {
-    const text = (execution.responseText ?? "").toLowerCase();
-    const ok = includesAny.some(
-      (p) => typeof p === "string" && text.includes(p.toLowerCase()),
+  const expectedActions = stringList(
+    (turn as { expectedActions?: unknown }).expectedActions,
+  );
+  if (expectedActions.length > 0) {
+    const realActions = execution.actionsCalled.filter(
+      (action) => !isSynthesizedReplyAction(action),
+    );
+    const ok = realActions.some((action) =>
+      actionMatchesScenarioExpectation(action.actionName, expectedActions),
     );
     if (!ok) {
+      const realActionNames =
+        realActions.map((action) => action.actionName).join(",") || "(none)";
+      const capturedActionNames =
+        execution.actionsCalled.map((action) => action.actionName).join(",") ||
+        "(none)";
+      const capturedDetail =
+        capturedActionNames === realActionNames
+          ? ""
+          : `; captured actions: [${capturedActionNames}]`;
       failures.push(
-        `responseIncludesAny: expected response to include any of [${includesAny.join(
+        `expectedActions: expected action in [${expectedActions.join(
           ",",
-        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
+        )}], saw actions [${realActionNames}]${capturedDetail}`,
+      );
+    }
+  }
+
+  // Inline turn assertions.
+  const includesAny = toTurnMatcherArray(
+    (turn as { responseIncludesAny?: unknown }).responseIncludesAny,
+  );
+  if (includesAny.length > 0) {
+    const text = execution.responseText ?? "";
+    const ok = includesAny.some((p) => matchesTurnMatcher(text, p));
+    if (!ok) {
+      failures.push(
+        `responseIncludesAny: expected response to include any of [${formatTurnMatchers(
+          includesAny,
+        )}], saw ${JSON.stringify(text)}`,
+      );
+    }
+  }
+  const includesAll = toTurnMatcherArray(
+    (turn as { responseIncludesAll?: unknown }).responseIncludesAll,
+  );
+  if (includesAll.length > 0) {
+    const text = execution.responseText ?? "";
+    const missing = includesAll.filter((p) => !matchesTurnMatcher(text, p));
+    if (missing.length > 0) {
+      failures.push(
+        `responseIncludesAll: expected response to include ${formatTurnMatcher(
+          missing[0] as TurnMatcher,
+        )}, saw ${JSON.stringify(text)}`,
+      );
+    }
+  }
+  const excludes = toTurnMatcherArray(
+    (turn as { responseExcludes?: unknown }).responseExcludes,
+  );
+  if (excludes.length > 0) {
+    const text = execution.responseText ?? "";
+    const hits = excludes.filter((pattern) =>
+      matchesTurnMatcher(text, pattern),
+    );
+    if (hits.length > 0) {
+      failures.push(
+        `responseExcludes: response included forbidden pattern(s) [${formatTurnMatchers(
+          hits,
+        )}], saw ${JSON.stringify(text)}`,
       );
     }
   }
@@ -1477,6 +1684,59 @@ async function runTurnAssertions(
       failures.push(
         `forbiddenActions triggered: ${hits.map((h) => h.actionName).join(",")}`,
       );
+    }
+  }
+  const plannerIncludesAll = toTurnMatcherArray(
+    (turn as { plannerIncludesAll?: unknown }).plannerIncludesAll,
+  );
+  const plannerIncludesAny = toTurnMatcherArray(
+    (turn as { plannerIncludesAny?: unknown }).plannerIncludesAny,
+  );
+  const plannerExcludes = toTurnMatcherArray(
+    (turn as { plannerExcludes?: unknown }).plannerExcludes,
+  );
+  if (
+    plannerIncludesAll.length > 0 ||
+    plannerIncludesAny.length > 0 ||
+    plannerExcludes.length > 0
+  ) {
+    const plannerBlob = buildPlannerAssertionBlob(execution);
+    const plannerPreview = JSON.stringify(plannerBlob.slice(0, 500));
+    if (plannerIncludesAll.length > 0) {
+      const missing = plannerIncludesAll.filter(
+        (p) => !matchesTurnMatcher(plannerBlob, p),
+      );
+      if (missing.length > 0) {
+        failures.push(
+          `plannerIncludesAll: expected planner trace to include ${formatTurnMatcher(
+            missing[0] as TurnMatcher,
+          )}, saw ${plannerPreview}`,
+        );
+      }
+    }
+    if (plannerIncludesAny.length > 0) {
+      const ok = plannerIncludesAny.some((p) =>
+        matchesTurnMatcher(plannerBlob, p),
+      );
+      if (!ok) {
+        failures.push(
+          `plannerIncludesAny: expected planner trace to include any of [${formatTurnMatchers(
+            plannerIncludesAny,
+          )}], saw ${plannerPreview}`,
+        );
+      }
+    }
+    if (plannerExcludes.length > 0) {
+      const hits = plannerExcludes.filter((p) =>
+        matchesTurnMatcher(plannerBlob, p),
+      );
+      if (hits.length > 0) {
+        failures.push(
+          `plannerExcludes: expected planner trace to exclude [${formatTurnMatchers(
+            hits,
+          )}], saw ${plannerPreview}`,
+        );
+      }
     }
   }
 
@@ -1679,6 +1939,7 @@ export async function runScenario(
         kind !== "action" &&
         kind !== "api" &&
         kind !== "tick" &&
+        kind !== "wait" &&
         kind !== "voice"
       ) {
         report.turns.push({
@@ -1736,16 +1997,24 @@ export async function runScenario(
                       opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
                     )),
                   }
-                : {
-                    actionsCalled: [],
-                    ...(await executeMessageTurn(
-                      runtime,
-                      turn,
-                      resolveTurnRoom(turn, rooms),
-                      logicalNow,
-                      opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-                    )),
-                  };
+                : kind === "wait"
+                  ? {
+                      actionsCalled: [],
+                      ...(await executeWaitTurn(
+                        turn,
+                        opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                      )),
+                    }
+                  : {
+                      actionsCalled: [],
+                      ...(await executeMessageTurn(
+                        runtime,
+                        turn,
+                        resolveTurnRoom(turn, rooms),
+                        logicalNow,
+                        opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                      )),
+                    };
       let actionsThisTurn = interceptor.actions.slice(actionsBefore);
       // Synthesize an implicit REPLY capture when the runtime emitted text
       // via the message callback but the LLM failed to select REPLY in its

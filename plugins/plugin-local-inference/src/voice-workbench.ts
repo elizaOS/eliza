@@ -60,6 +60,10 @@ export {
 	type VoiceTurnObservation,
 	type VoiceWorkbenchServices,
 } from "./services/voice/workbench-headless-runner";
+export {
+	createRealVoiceWorkbenchRuntimeFromEnv,
+	type RealVoiceWorkbenchRuntime,
+} from "./services/voice/workbench-real-services";
 
 export {
 	groundTruthMockServices,

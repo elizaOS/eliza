@@ -2,14 +2,15 @@
  * Embeddings via LM Studio's OpenAI-compatible `/v1/embeddings` endpoint.
  *
  * LM Studio only exposes embeddings when the user explicitly loads an embedding-capable
- * model (e.g. `nomic-embed-text-v1.5-Q4_K_M`). If `LMSTUDIO_EMBEDDING_MODEL` is not set
- * and the server has no embedding model loaded, this handler returns a zero vector with
- * a logged warning — the runtime stays alive but the agent's recall quality degrades
- * until the operator configures one.
+ * model (e.g. `nomic-embed-text-v1.5-Q4_K_M`). When `LMSTUDIO_EMBEDDING_MODEL` is unset
+ * (no embedding model configured at all), this handler returns a zero vector with a
+ * logged warning so a text-only deployment stays alive — embeddings are simply absent,
+ * not failing.
  *
- * Why a zero vector instead of throwing: parity with `plugin-ollama`. The embedding
- * path is hit during message persistence; throwing would crash every inbound message
- * when the local server is configured for text-only.
+ * A real embed failure is different: when the provider is configured but the request
+ * errors, this throws (matching `plugin-openai`/`plugin-ollama`/`plugin-elizacloud`).
+ * Fabricating a zero vector on error silently poisons the vector store and degrades RAG
+ * with no signal — see #9324. Recall callers fail open to keyword search on the throw.
  */
 
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
@@ -77,6 +78,6 @@ export async function handleTextEmbedding(
     return embedding;
   } catch (error) {
     logger.error({ error }, "[LMStudio] Error generating embedding");
-    return new Array<number>(DEFAULT_ZERO_VECTOR_DIM).fill(0);
+    throw error;
   }
 }
