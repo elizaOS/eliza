@@ -290,6 +290,55 @@ describe("scenario memory seeds", () => {
       }),
     );
   });
+
+  it("maps direct rolodex platform handles and recent news", async () => {
+    const { ctx, relationships } = createRelationshipSeedContext();
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      content: {
+        kind: "rolodex-entity",
+        name: "Alex Rivera",
+        primaryChannel: "telegram",
+        telegramHandle: "@arivera",
+        recentNews: "promoted to VP Engineering at Acme",
+      },
+    } as ScenarioSeedStep);
+
+    expect(result).toBeUndefined();
+    expect(relationships.addHandle).toHaveBeenCalledWith(expect.any(String), {
+      platform: "telegram",
+      identifier: "@arivera",
+      displayLabel: "Alex Rivera",
+      isPrimary: true,
+    });
+    expect(relationships.addContact).toHaveBeenCalledWith(
+      expect.any(String),
+      ["acquaintance"],
+      expect.objectContaining({
+        notes: expect.stringContaining(
+          "Recent news: promoted to VP Engineering at Acme",
+        ),
+      }),
+      { displayName: "Alex Rivera" },
+    );
+  });
+
+  it("continues to ignore unsupported memory seed kinds", async () => {
+    const { ctx, relationships, runtime } = createRelationshipSeedContext();
+
+    const result = await applyScenarioSeedStep(ctx, {
+      type: "memory",
+      content: {
+        kind: "inbound-message",
+        text: "hello",
+      },
+    } as ScenarioSeedStep);
+
+    expect(result).toBeUndefined();
+    expect(runtime.getService).not.toHaveBeenCalled();
+    expect(relationships.addContact).not.toHaveBeenCalled();
+  });
 });
 
 describe("scenario gmail seeds", () => {
