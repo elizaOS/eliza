@@ -337,7 +337,7 @@ export const twitterProvider: SocialMediaProvider = {
         fetchedAt: new Date(),
       };
     } catch (error) {
-      logger.warn("[Twitter] getMetrics failed", {
+      logger.warn("[Twitter] getPostAnalytics failed", {
         error: extractErrorMessage(error),
       });
       return null;
