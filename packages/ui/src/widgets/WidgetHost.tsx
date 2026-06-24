@@ -18,6 +18,7 @@ import { useNow } from "../hooks/useNow";
 import { useAppSelectorShallow } from "../state";
 import { useNotifications } from "../state/notifications/notification-store";
 import { useEnabledViewKinds } from "../state/useViewKinds";
+import { useHomeAttentionSignals } from "./home-attention-store";
 import {
   type HomeWidgetSignal,
   homeSignalsFromEvents,
@@ -28,9 +29,6 @@ import {
 import { resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
-
-/** The home surface only ever shows the top few highest-priority widgets. */
-const HOME_MAX_VISIBLE = 6;
 
 export interface WidgetUiActionEventDetail {
   pluginId: string;
@@ -98,6 +96,14 @@ class WidgetErrorBoundary extends Component<
 
 // -- WidgetHost --------------------------------------------------------------
 
+/**
+ * Safety bound on home cards. The home surface ranks every declared widget by
+ * importance and renders them in order; each widget self-hides (renders `null`)
+ * when it has nothing attention-worthy, so the *visible* count is naturally
+ * small. This cap is just a guard against a pathological all-active state.
+ */
+const HOME_RENDER_CAP = 12;
+
 export interface WidgetHostProps {
   /** Which slot to render widgets for. */
   slot: WidgetSlot;
@@ -136,6 +142,7 @@ export function WidgetHost({
   // Live importance inputs for the home ranker. Subscribed unconditionally
   // (hooks can't be conditional) but only consumed for the `home` slot below.
   const { notifications } = useNotifications();
+  const selfAttention = useHomeAttentionSignals();
   const now = useNow();
 
   const resolved = useMemo(() => {
@@ -146,14 +153,17 @@ export function WidgetHost({
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
   }, [slot, plugins, filter, enabledKinds]);
 
-  // The home surface must not render every declared widget — it ranks by
-  // current importance and shows only the top-N (#9143). Importance = a stable
-  // base priority (declaration `order`) plus recent attention signals derived
-  // from the live activity stream and the unread-notification inbox, each
-  // attributed to the widgets whose `signalKinds` subscribe to that kind and
-  // decayed by recency. `now` comes from `useNow` (0 on first render, real
-  // clock installed in an effect) so the render path never calls `Date.now()`.
-  // Other slots render every resolved widget unchanged.
+  // The home surface ranks every declared widget by current importance and
+  // renders them in that order; each widget self-hides (renders `null`) when it
+  // has nothing attention-worthy, so the visible set is naturally focused
+  // (#9143). Importance = a stable base priority (declaration `order`) plus:
+  //  - decayed signals derived from the live activity stream + unread inbox,
+  //    attributed to widgets whose `signalKinds` subscribe to that kind, and
+  //  - sustained self-published attention (a widget floating itself up on its
+  //    own data, e.g. an overdrawn balance), stamped `now` so it doesn't decay.
+  // `now` comes from `useNow` (0 on first render, real clock in an effect) so
+  // the render path never calls `Date.now()`. Other slots render every resolved
+  // widget unchanged.
   const displayed = useMemo(() => {
     if (slot !== "home") return resolved;
     const declarations = resolved.map((entry) => entry.declaration);
@@ -167,18 +177,19 @@ export function WidgetHost({
         })),
         declarations,
       ),
+      ...selfAttention.map((entry) => ({ ...entry, timestamp: now })),
     ];
     const byKey = new Map(
       resolved.map((entry) => [homeWidgetKey(entry.declaration), entry]),
     );
     return rankHomeWidgets(declarations, signals, {
       now,
-      maxVisible: HOME_MAX_VISIBLE,
+      maxVisible: HOME_RENDER_CAP,
     }).flatMap((ranked) => {
       const entry = byKey.get(homeWidgetKey(ranked.declaration));
       return entry ? [entry] : [];
     });
-  }, [slot, resolved, events, notifications, now]);
+  }, [slot, resolved, events, notifications, selfAttention, now]);
 
   const pluginById = useMemo(() => {
     const map = new Map<string, (typeof plugins)[number]>();
@@ -209,6 +220,7 @@ export function WidgetHost({
           pluginState,
           events,
           clearEvents,
+          slot,
         };
 
         if (Component) {
