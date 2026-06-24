@@ -462,7 +462,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
           type="button"
           aria-label={t("workflowGraph.closeDrawer")}
           tabIndex={isOpen ? 0 : -1}
-          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors   "
           onClick={onClose}
         >
           <X className="h-3.5 w-3.5" />
@@ -693,9 +693,7 @@ export function WorkflowGraphViewer({
 
   const hasNodes = nodes.length > 0;
 
-  const borderClass = isGenerating
-    ? "animate-pulse ring-2 ring-blue-500/50"
-    : "ring-1 ring-border/30";
+  const borderClass = isGenerating ? "animate-pulse  " : " ";
   const chrome = graphChrome(uiTheme);
 
   return (

@@ -36,7 +36,7 @@ export function CollapsibleSidebarSection({
 }: CollapsibleSidebarSectionProps): React.JSX.Element {
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const hoverHideClass = hoverActionsOnDesktop
-    ? " opacity-0 transition-opacity group-hover/section:opacity-100 focus-visible:opacity-100"
+    ? " opacity-0 transition-opacity group-hover/section:opacity-100 "
     : "";
   const bodyId = `${testIdPrefix}-body-${sectionKey}`;
   const hasChildren = React.Children.count(children) > 0;

@@ -136,7 +136,7 @@ function NotificationRow({
         type="button"
         aria-label="Dismiss notification"
         onClick={handleRemove}
-        className="absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-0 transition-opacity hover:bg-card hover:text-txt focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-0 transition-opacity hover:bg-card hover:text-txt  group-hover:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
       </button>

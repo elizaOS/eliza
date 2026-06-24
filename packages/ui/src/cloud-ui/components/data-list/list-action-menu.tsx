@@ -82,7 +82,7 @@ export function ListActionMenu({
 
           const Icon = item.icon;
           const className = cn(
-            item.destructive && "text-destructive focus:text-destructive",
+            item.destructive && "text-destructive ",
             item.className,
           );
 

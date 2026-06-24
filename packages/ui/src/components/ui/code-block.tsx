@@ -73,7 +73,7 @@ export const CodeBlock = React.forwardRef<HTMLElement, CodeBlockProps>(
         {copyValue !== null ? (
           <CopyButton
             value={copyValue}
-            className="absolute right-1.5 top-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
+            className="absolute right-1.5 top-1.5   "
           />
         ) : null}
       </div>

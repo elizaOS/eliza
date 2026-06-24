@@ -217,7 +217,7 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
       data-task-id={threadId}
       data-task-status={status}
       onClick={handleOpen}
-      className="my-2 flex w-full items-start gap-2 rounded-sm border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+      className="my-2 flex w-full items-start gap-2 rounded-sm border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-bg-hover   "
     >
       <span
         className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}

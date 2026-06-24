@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 
 /**
  * The tour spotlight: a full-screen overlay that
- *  - draws a breathing orange glow ring around the target (the indicator that
+ *  - draws a breathing orange glow  around the target (the indicator that
  *    points at the next control);
  *  - floats a small instruction card near the target (auto-flips above/below);
  *  - for a centered card (welcome / finish) dims the whole screen instead.
@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
  */
 
 const BRAND = "#FF5800";
-const PAD = 8; // glow ring inset around the target
+const PAD = 8; // glow  inset around the target
 
 export interface SpotlightCardProps {
   title: string;

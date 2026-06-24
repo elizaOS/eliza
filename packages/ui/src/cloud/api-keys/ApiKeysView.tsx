@@ -416,7 +416,7 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                   setFormData({ ...formData, name: e.target.value })
                 }
                 autoFocus
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40   "
               />
             </div>
 
@@ -440,7 +440,7 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                   setFormData({ ...formData, description: e.target.value })
                 }
                 rows={3}
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40   "
               />
             </div>
 
@@ -456,7 +456,7 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                   setRateLimitPreset(value as RateLimitPreset)
                 }
               >
-                <SelectTrigger className="rounded-sm border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[#FF5800]">
+                <SelectTrigger className="rounded-sm border-white/10 bg-black/40 text-white  ">
                   <SelectValue
                     placeholder={t("cloud.apiKeys.selectLimit", {
                       defaultValue: "Select a limit",
@@ -468,7 +468,7 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                     <SelectItem
                       key={preset.value}
                       value={preset.value}
-                      className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
+                      className="rounded-sm text-white hover:bg-white/10 "
                     >
                       {t(preset.labelKey, {
                         defaultValue: preset.defaultLabel,
@@ -502,7 +502,7 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
                     }
                     min={100}
                     step={100}
-                    className="rounded-sm border-white/10 bg-black/60 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                    className="rounded-sm border-white/10 bg-black/60 text-white placeholder:text-white/40   "
                   />
                 </div>
               )}

@@ -527,7 +527,7 @@ function AgentCardInner({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleDeleteClick}
-                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
+                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
                     >
                       <Trash2 className="h-4 w-4 mr-2 text-red-500" />
                       {t("cloud.agentCard.delete", { defaultValue: "Delete" })}
@@ -547,7 +547,7 @@ function AgentCardInner({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleRemoveSaved}
-                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
+                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
                     >
                       <X className="h-4 w-4 mr-2 text-red-500" />
                       {t("cloud.agentCard.remove", { defaultValue: "Remove" })}
@@ -749,7 +749,7 @@ function AgentCardInner({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleDeleteClick}
-                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
+                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
                 >
                   <Trash2 className="h-4 w-4 mr-2 text-red-500" />
                   {t("cloud.agentCard.delete", { defaultValue: "Delete" })}
@@ -769,7 +769,7 @@ function AgentCardInner({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleRemoveSaved}
-                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
+                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
                 >
                   <X className="h-4 w-4 mr-2 text-red-500" />
                   {t("cloud.agentCard.remove", { defaultValue: "Remove" })}

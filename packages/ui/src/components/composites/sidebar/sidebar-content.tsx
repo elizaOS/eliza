@@ -168,7 +168,7 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
     ref,
   ) {
     const sharedClassName = cn(
-      "group flex h-auto w-full min-w-0 items-start justify-start gap-3 rounded-sm px-3.5 py-3 text-left transition-[background-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
+      "group flex h-auto w-full min-w-0 items-start justify-start gap-3 rounded-sm px-3.5 py-3 text-left transition-[background-color,color,box-shadow,transform] duration-150   ",
       active
         ? navActiveClassVertical
         : variant === "accent-soft"
@@ -251,7 +251,7 @@ export const SidebarItemButton = React.forwardRef<
       type="button"
       data-sidebar-item-button
       className={cn(
-        "flex h-auto min-w-0 flex-1 self-stretch items-start gap-3 rounded-none p-0 text-left focus-visible:outline-none",
+        "flex h-auto min-w-0 flex-1 self-stretch items-start gap-3 rounded-none p-0 text-left ",
         className,
       )}
       {...props}
@@ -335,7 +335,7 @@ export const SidebarRailItem = React.forwardRef<
       type="button"
       data-sidebar-rail-item
       className={cn(
-        "relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-border/24 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 active:scale-[0.98]",
+        "relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-border/24 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150    active:scale-[0.98]",
         active
           ? navActiveClassVertical
           : "bg-card text-muted-strong hover:border-border/38 hover:text-txt ",

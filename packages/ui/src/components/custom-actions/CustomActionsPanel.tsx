@@ -241,7 +241,7 @@ export function CustomActionsPanel({
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("customactionspanel.SearchByNameDesc")}
-                className="w-full h-8 bg-surface text-xs placeholder:text-muted/50 focus-visible:ring-1 focus-visible:ring-accent"
+                className="w-full h-8 bg-surface text-xs placeholder:text-muted/50  "
               />
             </div>
 

@@ -63,7 +63,7 @@ export function ProviderCard({
       title={`${label} · ${stateLabel}`}
       {...agentProps}
       className={cn(
-        "inline-flex min-h-[2.25rem] max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+        "inline-flex min-h-[2.25rem] max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors   ",
         selected
           ? "border-accent/50 bg-accent/12 text-accent"
           : current

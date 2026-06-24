@@ -36,7 +36,6 @@ const BrandTabsTrigger = React.forwardRef<
       "inline-flex items-center gap-2 rounded-sm px-6 py-1.5 text-sm font-medium transition-colors whitespace-nowrap",
       "border-b-2 border-transparent text-txt/70 hover:text-txt",
       "data-[state=active]:border-txt data-[state=active]:bg-bg-hover data-[state=active]:text-txt",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       "disabled:pointer-events-none disabled:opacity-50",
       className,
     )}
@@ -51,10 +50,7 @@ const BrandTabsContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
-    className={cn(
-      "mt-8 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-      className,
-    )}
+    className={cn("mt-8", className)}
     {...props}
   />
 ));

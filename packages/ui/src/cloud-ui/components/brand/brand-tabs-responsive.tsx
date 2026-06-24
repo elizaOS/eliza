@@ -108,7 +108,7 @@ export function BrandTabsResponsive({
                 disabled={tab.disabled}
                 className={cn(
                   "text-txt text-xs cursor-pointer",
-                  "hover:bg-bg-hover focus:bg-bg-hover",
+                  "hover:bg-bg-hover ",
                   "data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed",
                 )}
               >
@@ -142,7 +142,6 @@ export function BrandTabsResponsive({
               "border-b-2 border-transparent",
               "text-txt/70 hover:text-txt",
               "data-[state=active]:border-txt data-[state=active]:bg-bg-hover data-[state=active]:text-txt",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               "disabled:pointer-events-none disabled:opacity-50",
             )}
           >

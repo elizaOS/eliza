@@ -44,7 +44,7 @@ export const ChatThreadLayout = React.forwardRef<
     gameModalComposerGapPx = 18,
     gameModalMessageBottomFallback = "5.25rem",
     gameModalMessageTop = "calc(-100% + 1.5rem)",
-    imageDragOver = false,
+    imageDragOver: _imageDragOver = false,
     messagesClassName,
     messagesRef,
     messagesStyle,
@@ -85,7 +85,6 @@ export const ChatThreadLayout = React.forwardRef<
       className={cn(
         "relative flex min-h-0 flex-1 flex-col",
         isGameModal ? "overflow-visible pointer-events-none" : "bg-transparent",
-        imageDragOver && "ring-2 ring-inset ring-accent",
         className,
       )}
       {...props}

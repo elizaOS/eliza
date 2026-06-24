@@ -10,7 +10,7 @@ export function getConfigInputClassName({
   hasError?: boolean;
 }) {
   return cn(
-    "w-full border border-border bg-card font-[var(--mono)] box-border transition-[border-color,box-shadow,background-color] focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-muted placeholder:opacity-60",
+    "w-full border border-border bg-card font-[var(--mono)] box-border transition-[border-color,box-shadow,background-color]     placeholder:text-muted placeholder:opacity-60",
     density === "compact"
       ? "h-8 px-2 py-1 text-xs"
       : "h-9 rounded-sm px-3 py-2 text-sm",
@@ -31,7 +31,7 @@ export function getConfigTextareaClassName({
   hasError?: boolean;
 }) {
   return cn(
-    "w-full border border-border bg-card font-[var(--mono)] box-border transition-[border-color,box-shadow,background-color] focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent resize-y",
+    "w-full border border-border bg-card font-[var(--mono)] box-border transition-[border-color,box-shadow,background-color]     resize-y",
     density === "compact"
       ? "min-h-16 px-2 py-1 text-xs"
       : "min-h-[72px] max-h-[400px] rounded-sm px-3 py-2 text-sm",

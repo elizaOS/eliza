@@ -46,7 +46,7 @@ export function HomePill({
         "pointer-events-auto relative mb-3",
         // Generous tap target
         "flex h-8 w-32 items-center justify-center",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+        "    ",
         phase === "booting" && "cursor-not-allowed opacity-60",
       )}
     >

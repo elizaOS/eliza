@@ -215,7 +215,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               placeholder={t("cloud.appSettings.appNamePlaceholder", {
                 defaultValue: "My Awesome App",
               })}
-              className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+              className="bg-black/40 border-white/10  rounded-sm"
             />
           </div>
 
@@ -235,7 +235,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 defaultValue: "A brief description of your app...",
               })}
               rows={3}
-              className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 resize-none rounded-sm"
+              className="bg-black/40 border-white/10  resize-none rounded-sm"
             />
           </div>
 
@@ -252,7 +252,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   setFormData({ ...formData, app_url: e.target.value })
                 }
                 placeholder="https://myapp.com"
-                className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+                className="bg-black/40 border-white/10  rounded-sm"
               />
             </div>
 
@@ -270,7 +270,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   setFormData({ ...formData, website_url: e.target.value })
                 }
                 placeholder="https://website.com"
-                className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+                className="bg-black/40 border-white/10  rounded-sm"
               />
             </div>
           </div>
@@ -289,7 +289,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 setFormData({ ...formData, contact_email: e.target.value })
               }
               placeholder="contact@myapp.com"
-              className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+              className="bg-black/40 border-white/10  rounded-sm"
             />
           </div>
 
@@ -339,7 +339,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             value={newOrigin}
             onChange={(e) => setNewOrigin(e.target.value)}
             placeholder="https://example.com"
-            className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
+            className="bg-black/40 border-white/10  rounded-sm"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();

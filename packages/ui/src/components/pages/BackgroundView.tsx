@@ -59,8 +59,8 @@ function ColorSwatch({
       title={preset.label}
       aria-label={`Set background to ${preset.label}`}
       aria-pressed={selected}
-      className={`relative h-9 w-9 shrink-0 rounded-full ring-offset-2 ring-offset-bg/0 transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        selected ? "ring-2 ring-txt" : "ring-1 ring-border/60"
+      className={`relative h-9 w-9 shrink-0 rounded-full   transition-transform hover:scale-110    ${
+        selected ? " " : " "
       }`}
       style={{ backgroundColor: preset.color }}
       {...agentProps}
@@ -200,7 +200,7 @@ export function BackgroundView() {
               onClick={() => colorInputRef.current?.click()}
               title="Custom color"
               aria-label="Pick a custom background color"
-              className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-1 ring-border/60 transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full   transition-transform hover:scale-110   "
               style={{
                 background:
                   "conic-gradient(from 0deg, #ef5a1f, #f59e0b, #059669, #2563eb, #7c3aed, #e11d48, #ef5a1f)",
@@ -229,7 +229,7 @@ export function BackgroundView() {
               onClick={onUploadClick}
               title="Upload image"
               aria-label="Upload a background image"
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent   "
               {...uploadButton.agentProps}
             >
               <ImagePlus className="h-5 w-5" aria-hidden />
@@ -251,7 +251,7 @@ export function BackgroundView() {
                 title="Generate image"
                 aria-label="Generate a background image"
                 aria-pressed={promptOpen}
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-colors    ${
                   promptOpen
                     ? "bg-accent text-accent-foreground"
                     : "bg-bg-accent/70 text-txt hover:bg-bg-accent"
@@ -297,14 +297,14 @@ export function BackgroundView() {
                 disabled={generating}
                 // biome-ignore lint/a11y/noAutofocus: focus the field the user just opened
                 autoFocus
-                className="min-w-0 flex-1 rounded-xl border border-border/50 bg-bg/60 px-3 py-2 text-sm text-txt placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-w-0 flex-1 rounded-xl border border-border/50 bg-bg/60 px-3 py-2 text-sm text-txt placeholder:text-muted   "
               />
               <button
                 type="submit"
                 disabled={generating || prompt.trim().length === 0}
                 title="Generate"
                 aria-label="Generate background from prompt"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground transition-colors hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground transition-colors hover:bg-accent/90    disabled:opacity-50"
               >
                 {generating ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

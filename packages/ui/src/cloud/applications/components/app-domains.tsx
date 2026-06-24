@@ -500,7 +500,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setNewDomain("");
                             }
                           }}
-                          className="flex-1 bg-black/30 border-white/10 focus:border-[#FF5800]/50 rounded-sm placeholder:text-neutral-600"
+                          className="flex-1 bg-black/30 border-white/10  rounded-sm placeholder:text-neutral-600"
                         />
                         <div className="flex gap-2">
                           <Button

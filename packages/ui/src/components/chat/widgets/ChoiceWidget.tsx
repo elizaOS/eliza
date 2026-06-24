@@ -113,7 +113,7 @@ export function ChoiceWidget({
               data-testid="choice-custom-input"
               value={customText}
               placeholder="Type your answer…"
-              className="h-7 min-w-40 rounded-md border border-border bg-transparent px-2 text-xs outline-none focus:border-accent"
+              className="h-7 min-w-40 rounded-md border border-border bg-transparent px-2 text-xs outline-none "
               onChange={(e) => setCustomText(e.currentTarget.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {

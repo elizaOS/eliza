@@ -135,7 +135,7 @@ export function AssistantOverlay({
         "bg-bg/95",
         "border border-border/40",
         "",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+        "    ",
         // Enter motion (skipped under prefers-reduced-motion)
         "motion-safe:animate-[shell-overlay-in_220ms_ease-out]",
       ].join(" ")}
@@ -144,7 +144,7 @@ export function AssistantOverlay({
         type="button"
         aria-label="Close assistant"
         onClick={onClose}
-        className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-card/60 text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+        className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-card/60 text-muted transition-colors hover:text-txt     "
       >
         <X aria-hidden="true" className="h-4 w-4" />
       </button>
