@@ -696,6 +696,19 @@ function buildNativeRequestBody(
   if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
+  // cerebras gpt-oss runs a hidden-reasoning pass before answering even when the
+  // caller wants none — measured ~4s/call vs ~0.7s with reasoning suppressed. The
+  // runtime signals "don't reason" via providerOptions.eliza.thinking="off" (e.g.
+  // the Stage-1 RESPONSE_HANDLER formatting call), but resolveNativeProviderOptions
+  // drops the eliza block, so it never reached the wire. Honor it as cerebras's
+  // reasoning_effort:"low". Cerebras-gated (the plugin's isReasoningModel does NOT
+  // match gpt-oss); other providers ignore the field.
+  if (
+    isCerebrasServedModel(modelName) &&
+    recordAt(asRecord(params.providerOptions), "eliza").thinking === "off"
+  ) {
+    requestBody.reasoning_effort = "low";
+  }
   if (tools) {
     requestBody.tools = tools;
   }
