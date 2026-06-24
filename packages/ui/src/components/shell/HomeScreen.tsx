@@ -6,9 +6,12 @@ import {
   Phone,
 } from "lucide-react";
 import type * as React from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useActivityEvents } from "../../hooks/useActivityEvents";
+import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
+import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
@@ -24,6 +27,54 @@ const HOME_ENTER_CSS = `
   .home-enter { animation: none; }
 }
 `;
+
+/**
+ * The entrance fade-up must play exactly ONCE, on first mount — not on every
+ * re-render or resize (which would re-apply the `opacity 0→1` animation and
+ * flash the cards). This hook returns the `home-enter` class only for the first
+ * commit, then permanently empty: after the initial paint the cards keep their
+ * settled (fully opaque) state and a parent re-render / resize can never replay
+ * the fade. Pure CSS `forwards` doesn't protect against the class being
+ * re-evaluated, so we drop it from the tree once it has run (#9304).
+ */
+function useEnterOnceClass(): string {
+  // `played` is set in a layout effect after the first commit so the very first
+  // render still carries `home-enter` (the animation runs), and every render
+  // after that omits it.
+  const [played, setPlayed] = useState(false);
+  const ranRef = useRef(false);
+  useEffect(() => {
+    if (ranRef.current) return;
+    ranRef.current = true;
+    // Defer one frame so the entrance animation is committed before we strip the
+    // class; stripping immediately could cancel it mid-flight on slow paints.
+    const id = window.setTimeout(() => setPlayed(true), 700);
+    return () => window.clearTimeout(id);
+  }, []);
+  return played ? "" : "home-enter";
+}
+
+/**
+ * Dev/test-only home layout-shift observer. Installs the shared
+ * `layout-shift` PerformanceObserver (the same contract the e2e + KPI specs
+ * read via `window.__ELIZA_LAYOUT_SHIFTS__`) so a CLS regression on the home —
+ * a card popping in and jumping the page — is observable in the real app.
+ * Gated behind `isRenderTelemetryEnabled()` exactly like the render telemetry,
+ * so production builds install nothing.
+ */
+function useHomeLayoutShiftObserver(): void {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isRenderTelemetryEnabled()) return;
+    try {
+      // The init body is idempotent (no-ops if already installed), so mounting
+      // multiple home surfaces is safe.
+      new Function(LAYOUT_SHIFT_OBSERVER_INIT)();
+    } catch {
+      // layout-shift unsupported in this engine — the observer init swallows it.
+    }
+  }, []);
+}
 
 // Where a home tile sends you. Builtin tabs go through setTab; plugin / remote
 // views go through the eliza:navigate:view event. The mount injects the handler.
@@ -115,6 +166,11 @@ export function HomeScreen({
   const tiles = HOME_TILES.filter((t) => !t.nativeOs || showNativeOsTiles);
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
+  // The entrance fade plays once, on first mount only — never re-triggered by a
+  // re-render or resize (#9304).
+  const enterClass = useEnterOnceClass();
+  // Dev/test-only: observe home layout shifts on the shared telemetry channel.
+  useHomeLayoutShiftObserver();
 
   return (
     <div
@@ -130,12 +186,14 @@ export function HomeScreen({
       <style>{HOME_ENTER_CSS}</style>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
         {clockAccessory ? (
-          <div className="home-enter flex justify-end">{clockAccessory}</div>
+          <div className={cn(enterClass, "flex justify-end")}>
+            {clockAccessory}
+          </div>
         ) : null}
 
         {/* The prioritized home widgets (#9143). WidgetHost renders nothing when
             no widget has content, so the home stays clean otherwise. */}
-        <div className="home-enter" style={{ animationDelay: "70ms" }}>
+        <div className={enterClass} style={{ animationDelay: "70ms" }}>
           <WidgetHost
             slot="home"
             layout="grid"
@@ -148,7 +206,7 @@ export function HomeScreen({
           <nav
             aria-label="Apps"
             data-testid="home-tiles"
-            className="home-enter mt-2"
+            className={cn(enterClass, "mt-2")}
             style={{ animationDelay: "150ms" }}
           >
             <div className="grid grid-cols-4 gap-3">
