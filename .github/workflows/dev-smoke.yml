@@ -131,3 +131,17 @@ jobs:
 
       - name: Run bun dev onboarding chat smoke
         run: bun run --cwd packages/app test:dev-smoke
+
+      # The smoke has historically failed inside gotoChatComposer (the /chat
+      # composer never paints) with no captured renderer state, making the
+      # actual blocking gate impossible to pin down. Upload the Playwright
+      # trace/screenshot/error-context so the failure is diagnosable.
+      - name: Upload dev-smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: dev-smoke-results
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
