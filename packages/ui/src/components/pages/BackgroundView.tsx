@@ -251,7 +251,7 @@ export function BackgroundView() {
                 title="Generate image"
                 aria-label="Generate a background image"
                 aria-pressed={promptOpen}
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-colors    ${
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring    ${
                   promptOpen
                     ? "bg-accent text-accent-foreground"
                     : "bg-bg-accent/70 text-txt hover:bg-bg-accent"
@@ -268,7 +268,7 @@ export function BackgroundView() {
                 onClick={() => undoBackgroundConfig()}
                 title="Undo"
                 aria-label="Undo background change"
-                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent"
+                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-accent/70 text-txt transition-colors hover:bg-bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 {...undoButton.agentProps}
               >
                 <Undo2 className="h-5 w-5" aria-hidden />
