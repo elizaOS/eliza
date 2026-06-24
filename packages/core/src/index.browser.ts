@@ -7,6 +7,7 @@
  */
 
 export * from "./actions";
+export * from "./activity-plaintext";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
 // Export core modules (all browser-compatible after refactoring)
