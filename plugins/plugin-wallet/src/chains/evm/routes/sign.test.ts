@@ -43,6 +43,8 @@ function res(): RouteResponse & {
 } {
   const response = {
     headers: {} as Record<string, string>,
+    statusCode: undefined as number | undefined,
+    body: undefined as unknown,
     status(code: number) {
       this.statusCode = code;
       return this;
@@ -54,7 +56,7 @@ function res(): RouteResponse & {
       this.headers[name] = value;
     },
   };
-  return response as RouteResponse & {
+  return response as unknown as RouteResponse & {
     statusCode?: number;
     body?: unknown;
     headers: Record<string, string>;
@@ -64,7 +66,8 @@ function res(): RouteResponse & {
 function route(name: string) {
   const found = evmSignRoutes.find((candidate) => candidate.name === name);
   if (!found) throw new Error(`missing route ${name}`);
-  return found;
+  if (!found.handler) throw new Error(`route ${name} has no handler`);
+  return { ...found, handler: found.handler };
 }
 
 describe("EVM browser signing routes", () => {

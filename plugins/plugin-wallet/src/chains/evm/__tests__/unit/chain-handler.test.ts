@@ -12,7 +12,7 @@ const RECIPIENT = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
 const HASH = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
-function createFakeWalletProvider(sendTransaction = vi.fn(async () => HASH)) {
+function createFakeWalletProvider(sendTransaction = vi.fn(async (..._args: unknown[]) => HASH)) {
   return {
     chains: { base },
     getSupportedChains: () => ["base"],
@@ -21,7 +21,7 @@ function createFakeWalletProvider(sendTransaction = vi.fn(async () => HASH)) {
       account: { address: ACCOUNT },
       sendTransaction,
     }),
-  } as WalletProvider;
+  } as unknown as WalletProvider;
 }
 
 const context = {
@@ -33,7 +33,7 @@ const context = {
 
 describe("EVM wallet chain handler", () => {
   it("prepares transfers without signing or sending", () => {
-    const sendTransaction = vi.fn(async () => HASH);
+    const sendTransaction = vi.fn(async (..._args: unknown[]) => HASH);
     const handler = createEvmWalletChainHandler("base", base, {
       walletProvider: createFakeWalletProvider(sendTransaction),
     });
@@ -61,7 +61,7 @@ describe("EVM wallet chain handler", () => {
   });
 
   it("executes native transfers through the chain handler", async () => {
-    const sendTransaction = vi.fn(async () => HASH);
+    const sendTransaction = vi.fn(async (..._args: unknown[]) => HASH);
     const handler = createEvmWalletChainHandler("base", base, {
       walletProvider: createFakeWalletProvider(sendTransaction),
     });
