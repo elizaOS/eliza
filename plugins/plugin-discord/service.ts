@@ -58,7 +58,7 @@ import {
  *    to use the generic emitEvent overload.
  */
 import {
-	AttachmentBuilder,
+	type AttachmentBuilder,
 	type Channel,
 	type Collection,
 	ChannelType as DiscordChannelType,
@@ -137,7 +137,7 @@ import type {
 } from "./types";
 import { DiscordEventTypes } from "./types";
 import {
-	getAttachmentFileName,
+	buildOutboundDiscordAttachment,
 	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
 	splitMessage,
@@ -1459,9 +1459,8 @@ export class DiscordService extends Service implements IDiscordService {
 					if (content.attachments && content.attachments.length > 0) {
 						for (const media of content.attachments) {
 							if (media.url) {
-								const fileName = getAttachmentFileName(media);
 								files.push(
-									new AttachmentBuilder(media.url, { name: fileName }),
+									await buildOutboundDiscordAttachment(media, runtime),
 								);
 							}
 						}

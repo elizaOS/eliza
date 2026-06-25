@@ -1,4 +1,5 @@
 import {
+	ContentType,
 	type IAgentRuntime,
 	type IMessageService,
 	logger,
@@ -9,7 +10,7 @@ import {
 } from "@elizaos/core";
 import {
 	ActionRowBuilder,
-	type AttachmentBuilder,
+	AttachmentBuilder,
 	ButtonBuilder,
 	ChannelType,
 	type Message as DiscordMessage,
@@ -309,6 +310,48 @@ export function getAttachmentFileName(media: Media): string {
 	const hasExtension = /\.\w{1,5}$/i.test(baseName);
 
 	return hasExtension ? baseName : `${baseName}${extension}`;
+}
+
+/** Fetch video/audio bytes locally so private URLs (e.g. zerollama /content) upload reliably. */
+export async function buildOutboundDiscordAttachment(
+	media: Media,
+	runtime?: Pick<IAgentRuntime, "logger">,
+): Promise<AttachmentBuilder> {
+	const fileName = getAttachmentFileName(media);
+	const url = media.url?.trim();
+	if (!url) {
+		return new AttachmentBuilder(Buffer.alloc(0), { name: fileName });
+	}
+
+	const preferFetchedBytes =
+		(media.contentType === ContentType.VIDEO ||
+			media.contentType === ContentType.AUDIO) &&
+		/^https?:\/\//i.test(url);
+
+	if (preferFetchedBytes) {
+		try {
+			const response = await fetch(url);
+			if (response.ok) {
+				const buffer = Buffer.from(await response.arrayBuffer());
+				return new AttachmentBuilder(buffer, { name: fileName });
+			}
+			runtime?.logger.warn(
+				{
+					src: "plugin:discord:attachment",
+					url,
+					status: response.status,
+				},
+				"Media fetch failed; falling back to URL attachment",
+			);
+		} catch (error) {
+			runtime?.logger.warn(
+				{ src: "plugin:discord:attachment", url, error },
+				"Media fetch failed; falling back to URL attachment",
+			);
+		}
+	}
+
+	return new AttachmentBuilder(url, { name: fileName });
 }
 
 export async function generateSummary(

@@ -1702,6 +1702,66 @@ function normalizeVisibleTextForDuplicateCheck(text: string): string {
 	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+/** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
+const MEDIA_CONTENT_URL_RE =
+	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
+
+function collectMediaDeliveryUrls(actionResults: ActionResult[]): string[] {
+	const urls = new Set<string>();
+	for (const result of actionResults) {
+		if (!result.success) continue;
+		const data = result.data;
+		if (!data || typeof data !== "object") continue;
+		for (const key of [
+			"videoUrl",
+			"mediaUrl",
+			"imageUrl",
+			"audioUrl",
+			"url",
+		] as const) {
+			const value = data[key];
+			if (typeof value === "string" && value.trim()) {
+				urls.add(value.trim());
+			}
+		}
+	}
+	return [...urls];
+}
+
+export function sanitizeReplyTextAfterMediaDelivery(
+	text: string,
+	deliveredUrls: readonly string[],
+): string {
+	let cleaned = text.trim();
+	if (!cleaned) return cleaned;
+
+	for (const url of deliveredUrls) {
+		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
+	}
+	cleaned = cleaned.replace(MEDIA_CONTENT_URL_RE, "");
+	cleaned = cleaned
+		.replace(
+			/^\s*(?:here(?:'s| is| you go)?(?:\s+it\s+is)?|done(?:\.|\s+video'?s?\s+(?:up|live|ready))?|your video(?: is ready)?)\s*:?\s*/i,
+			"",
+		)
+		.replace(/:\s*$/g, "")
+		.replace(/<\s*>/g, "")
+		.replace(/\(\s*\)/g, "")
+		.replace(/\s{2,}/g, " ")
+		.trim();
+
+	if (
+		/^(?:here|done|your video\b|it is|video'?s?\s+(?:up|live|ready))[^.?!]*:?\s*$/i.test(
+			cleaned,
+		)
+	) {
+		cleaned = "";
+	}
+
+	return cleaned;
+}
+
 function createV5ReplyStrategyResult(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1710,6 +1770,7 @@ function createV5ReplyStrategyResult(args: {
 	text: string;
 	thought: string;
 	mode?: StrategyMode;
+	attachments?: Media[];
 }): StrategyResult {
 	const responseContent: Content = {
 		thought: args.thought,
@@ -1718,6 +1779,7 @@ function createV5ReplyStrategyResult(args: {
 		text: args.text,
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
+		...(args.attachments?.length ? { attachments: args.attachments } : {}),
 	};
 
 	return {
@@ -6177,32 +6239,38 @@ export async function runV5MessageRuntimeStage1(args: {
 			actionResults.length > 0
 				? withActionResultsForPrompt(plannerState, actionResults)
 				: plannerState;
-		const plannedText = String(plannerResult.finalMessage ?? "").trim();
+		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
+		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
+		const plannedText = sanitizeReplyTextAfterMediaDelivery(
+			plannedTextRaw,
+			deliveredMediaUrls,
+		);
 		const plannedTextRepeatsEarlyReply =
 			earlyReplySent &&
 			normalizeVisibleTextForDuplicateCheck(plannedText) ===
 				normalizeVisibleTextForDuplicateCheck(earlyReplyText);
+		const shouldSendPlannedText =
+			Boolean(plannedText) && !plannedTextRepeatsEarlyReply;
 
 		return {
 			kind: "planned_reply",
 			messageHandler,
-			result:
-				plannedText && !plannedTextRepeatsEarlyReply
-					? createV5ReplyStrategyResult({
-							...args,
-							state: finalPlannerState,
-							text: plannedText,
-							thought:
-								plannerResult.evaluator?.thought ??
-								plannerResult.trajectory.steps.at(-1)?.thought ??
-								messageHandler.thought,
-						})
-					: {
-							responseContent: null,
-							responseMessages: [],
-							state: finalPlannerState,
-							mode: "none",
-						},
+			result: shouldSendPlannedText
+				? createV5ReplyStrategyResult({
+						...args,
+						state: finalPlannerState,
+						text: plannedText,
+						thought:
+							plannerResult.evaluator?.thought ??
+							plannerResult.trajectory.steps.at(-1)?.thought ??
+							messageHandler.thought,
+					})
+				: {
+						responseContent: null,
+						responseMessages: [],
+						state: finalPlannerState,
+						mode: "none",
+					},
 		};
 	} catch (err) {
 		endStatus = "errored";
@@ -8603,6 +8671,10 @@ function shouldRewriteActionCallback(
 	actionName?: string,
 ): response is Content & { text: string } {
 	if (!response || typeof response.text !== "string") return false;
+	if (!response.text.trim() && !response.attachments?.length) return false;
+	// Media actions already produced a file attachment; deliver it directly instead
+	// of spending another model call rewriting placeholder text.
+	if (response.attachments?.some((media) => Boolean(media?.url))) return false;
 	if (!response.text.trim()) return false;
 	if (response.source === "voice") return false;
 	if (response.source === "voice-cache") return false;
@@ -10277,9 +10349,11 @@ export class DefaultMessageService implements IMessageService {
 						}
 					}
 					if (callback) {
-						await callback(responseContent);
-						simpleReplyDelivered = true;
-						markInference(INFERENCE_MARKS.replyDelivered);
+						if (responseContent) {
+							await callback(responseContent);
+							simpleReplyDelivered = true;
+							markInference(INFERENCE_MARKS.replyDelivered);
+						}
 					}
 				}
 			}
