@@ -978,13 +978,13 @@ def _render_readme(manifest: dict[str, Any]) -> str:
         )
     elif contract["trainLocalReady"]:
         training_note = (
-            "This candidate is train-local ready for the current Qwen path as "
+            "This candidate is train-local ready for the current Eliza-1 path as "
             f"`{contract['trainingReadySchema']}`."
         )
     else:
         training_note = (
             "This candidate is not directly train-local ready for the current "
-            "Qwen path; convert it to `eliza_native_v1` before training."
+            "Eliza-1 path; convert it to `eliza_native_v1` before training."
         )
     return (
         "---\n"

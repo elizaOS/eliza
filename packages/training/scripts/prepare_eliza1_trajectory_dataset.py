@@ -19,7 +19,7 @@ Outputs:
   * `manifest.json` with split counts, source counts, action counts, and
     privacy redaction totals.
 
-The internal trajectory record is provider-agnostic: a Qwen/ChatML-oriented
+The internal trajectory record is provider-agnostic: a Gemma 4-oriented
 `messages` array, OpenAI-style function `tools`, canonicalized `actions`, and
 source/quality metadata. The default disk splits are converted back to the
 existing `eliza_native_v1` training row shape because `train_local.py` loads
@@ -46,6 +46,9 @@ DEFAULT_ALIAS_PATH = TRAINING_ROOT / "config" / "eliza1_action_aliases.json"
 
 SCHEMA_VERSION = "eliza.eliza1_trajectory_record.v1"
 MANIFEST_SCHEMA = "eliza.eliza1_trajectory_dataset_manifest.v1"
+DEFAULT_BASE_MODEL = "google/gemma-4-E2B"
+TARGET_MODEL_FAMILY = "gemma"
+TARGET_CHAT_TEMPLATE = "gemma4"
 NATIVE_FORMAT = "eliza_native_v1"
 NATIVE_BOUNDARIES = {"vercel_ai_sdk.generateText", "vercel_ai_sdk.streamText"}
 TRAINING_BOUNDARY = "vercel_ai_sdk.generateText"
@@ -675,10 +678,10 @@ def quality_block(success: bool, score: float, reasons: list[str]) -> dict[str, 
 
 def target_block(base_model: str) -> dict[str, str]:
     return {
-        "modelFamily": "qwen",
+        "modelFamily": TARGET_MODEL_FAMILY,
         "baseModel": base_model,
         "sftFormat": "messages",
-        "chatTemplate": "chatml",
+        "chatTemplate": TARGET_CHAT_TEMPLATE,
     }
 
 
@@ -1500,7 +1503,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Input JSON/JSONL file or directory. Repeatable.",
     )
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--base-model", default="Qwen3.5/3.6")
+    parser.add_argument("--base-model", default=DEFAULT_BASE_MODEL)
     parser.add_argument("--val-ratio", type=float, default=0.05)
     parser.add_argument("--test-ratio", type=float, default=0.05)
     parser.add_argument("--seed", default="eliza1-trajectory-sft-v1")
