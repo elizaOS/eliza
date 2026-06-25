@@ -12,16 +12,11 @@
  * It is a single, honest-skip, pure-HTTP driver:
  *   1. auth preflight    GET /api/v1/credits/balance -> 200 (operator-provisioned
  *                        funded showcase org exists on staging).
- *   2. register          POST /api/v1/apps -> an app id (no metadata write).
- *   3. deploy            POST /api/v1/apps/:id/deploy -> 202 BUILDING. The clone
- *                        image is resolved OPERATOR-side: because a single
- *                        APP_DEFAULT_IMAGE can only point at one image and
- *                        metadata.imageTag is not REST-settable, the operator maps
- *                        this app's name to ghcr.io/elizaos/example-clone-ur-crush:showcase
- *                        via APP_PREBUILT_IMAGES (the per-app prebuilt-image
- *                        resolver, app-image-resolver.ts). Without that mapping the
- *                        deploy would pull the EDAD default and the clone-content
- *                        assertion below fails loudly - which is the point.
+ *   2. register          POST /api/v1/apps -> an app id.
+ *   3. deploy            POST /api/v1/apps/:id/deploy with repo/ref/Dockerfile
+ *                        build hints -> 202 BUILDING. The normal app deploy
+ *                        backend builds Clone Ur Crush from source, then runs it
+ *                        in an app container.
  *   4. poll              GET /api/v1/apps/:id/deploy/status until READY (real ~5s
  *                        cadence, ~10min cap; no mock control-plane tick).
  *   5. assert it SERVES  the deployed *.apps.elizacloud.ai production_url returns
@@ -61,14 +56,18 @@ const MIN_SHOWCASE_BALANCE_USD = 1;
 const POLL_INTERVAL_MS = 5_000;
 const POLL_CAP_MS = 10 * 60_000;
 
-/**
- * Clone Ur Crush's descriptor. The name PREFIX ("Clone Your Crush Showcase") is
- * what the operator maps to the clone image in APP_PREBUILT_IMAGES, so the
- * timestamped run name still resolves to the right image.
- */
+const SHOWCASE_REPO_URL =
+  process.env.SHOWCASE_APPS_REPO_URL ?? "https://github.com/elizaOS/eliza.git";
+const SHOWCASE_REF =
+  process.env.SHOWCASE_APPS_REF ?? process.env.GITHUB_SHA ?? "develop";
+
+/** Clone Ur Crush's descriptor for the normal source-build deploy path. */
 const CUC = {
   name: "Clone Your Crush Showcase",
   appUrl: "https://clone-ur-crush.example",
+  repoUrl: SHOWCASE_REPO_URL,
+  ref: SHOWCASE_REF,
+  dockerfile: "packages/examples/cloud/clone-ur-crush/Dockerfile.cloud",
 } as const;
 
 interface AppSummary {
@@ -103,7 +102,7 @@ test.describe("real-staging Clone Ur Crush deploy serves its subdomain (#9300)",
       !process.env.CLOUD_E2E_API_KEY,
     "real-staging Clone Ur Crush driver: needs MONETIZED_LOOP_REAL=1 + " +
       "MONETIZED_LOOP_BASE_URL + CLOUD_E2E_API_KEY (operator-provisioned showcase " +
-      "account) AND the clone image mapped via APP_PREBUILT_IMAGES on the worker.",
+      "account) and the normal app deploy builder/daemon armed.",
   );
 
   test("real Clone Ur Crush deploy serves its subdomain", async () => {
@@ -147,10 +146,15 @@ test.describe("real-staging Clone Ur Crush deploy serves its subdomain (#9300)",
       if (!appId) throw new Error("apps.create did not return an app id");
       logger.info("[cuc-real] registered app", { appId, api });
 
-      // -- 3. deploy through the REAL route - image mapped operator-side. ----
+      // -- 3. deploy through the REAL route - source build, no image map. ----
       const started = await authed<DeployEnvelope>(
         "POST",
         `/api/v1/apps/${appId}/deploy`,
+        {
+          repoUrl: CUC.repoUrl,
+          ref: CUC.ref,
+          dockerfile: CUC.dockerfile,
+        },
       );
       expect(started.status, "deploy accepted (202)").toBe(202);
       expect(started.json.status, "deploy starts BUILDING").toBe("BUILDING");

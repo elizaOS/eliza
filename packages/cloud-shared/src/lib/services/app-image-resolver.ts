@@ -39,11 +39,16 @@ interface ResolverApp {
   repoUrl?: string;
 }
 
+function buildContextFor(repo: string, sourceRef?: string): string {
+  if (!sourceRef || repo.includes("#")) return repo;
+  return `${repo}#${sourceRef}`;
+}
+
 /** A `resolveImage` that builds + pushes the app image from its repo. */
 export function makeBuildFromRepoResolver(deps: BuildFromRepoResolverDeps): AppImageResolver {
   return async (app) => {
     const metaRepo = typeof app.metadata?.repoUrl === "string" ? app.metadata.repoUrl : undefined;
-    const repo = app.repoUrl ?? metaRepo;
+    const repo = metaRepo ?? app.repoUrl;
     if (!repo) return undefined;
 
     const sourceRef = typeof app.metadata?.ref === "string" ? app.metadata.ref : undefined;
@@ -52,7 +57,7 @@ export function makeBuildFromRepoResolver(deps: BuildFromRepoResolverDeps): AppI
     const { imageRef } = await deps.builder.build({
       registry: deps.registry,
       appId: app.id,
-      context: repo,
+      context: buildContextFor(repo, sourceRef),
       dockerfile,
       sourceRef,
       // Push so the deploy/worker node can pull the freshly built image.

@@ -32,12 +32,7 @@ import {
   makeNodeAppDeployRunner,
 } from "./app-deploy-runner";
 import { AppImageBuilder, type BuildExec } from "./app-image-builder";
-import {
-  type AppImageResolver,
-  composeImageResolvers,
-  makeBuildFromRepoResolver,
-  makePrebuiltImageMapResolver,
-} from "./app-image-resolver";
+import { type AppImageResolver, makeBuildFromRepoResolver } from "./app-image-resolver";
 import { buildContainerExecutorDeps, makeNodeBuilderExec } from "./container-executor-deps";
 import { setContainerExecutorDeps } from "./container-job-service";
 import { containerJobsWriter } from "./container-jobs-writer";
@@ -69,12 +64,11 @@ export interface AppsDeployBackendConfig {
  */
 export function configureAppsDeployBackend(config: AppsDeployBackendConfig): void {
   // BUILD-FROM-REPO ("Vercel-like": the platform builds the user's repo, no
-  // manual image push) is armed when a registry is configured. The builder exec
-  // is the explicit one if passed, else the app node's own SSH (it already has
-  // Docker + buildx) — so the common case needs only `APPS_IMAGE_REGISTRY` set on
-  // the daemon. With no registry, resolveImage stays undefined and the runner
-  // falls back to app.metadata.imageTag / APP_DEFAULT_IMAGE (the prebuilt path) —
-  // unchanged behavior.
+  // manual image push) is armed when a registry is configured and the builder
+  // host gate returns an exec (see container-executor-deps/app-builder-host).
+  // With no armed builder, resolveImage stays undefined and the runner falls
+  // back to app.metadata.imageTag / APP_DEFAULT_IMAGE (the legacy prebuilt path)
+  // — unchanged behavior.
   const registry = config.registry ?? process.env.APPS_IMAGE_REGISTRY;
   const dockerfile = config.dockerfile ?? process.env.APPS_BUILD_DOCKERFILE;
   const buildExec = config.buildExec ?? (registry ? makeNodeBuilderExec() : null);
@@ -87,14 +81,7 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
     const builder = new AppImageBuilder({ exec: buildExec });
     buildResolver = makeBuildFromRepoResolver({ builder, registry, dockerfile });
   }
-  // Operator per-app prebuilt-image map (APP_PREBUILT_IMAGES) — lets >1 distinct
-  // prebuilt app (e.g. the EDAD + Clone Ur Crush showcase apps, #9300) deploy on
-  // real staging without a per-app git build. undefined when the env is unset, so
-  // build-from-repo / metadata.imageTag / APP_DEFAULT_IMAGE behaviour is unchanged.
-  const prebuiltResolver = makePrebuiltImageMapResolver();
-  // build-from-repo wins (an app with a repo builds from it); the operator map is
-  // the fallback for repo-less apps the operator wants to pin to a specific image.
-  const resolveImage = composeImageResolvers(buildResolver, prebuiltResolver);
+  const resolveImage = buildResolver;
 
   // ENCRYPTION-FREE path (env-sourced cluster admin DSN): when
   // APPS_TENANT_ADMIN_DSN is set, the daemon needs no SECRETS_MASTER_KEY — the
@@ -139,9 +126,6 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
     registry: registry ?? null,
     port: config.port ?? 3000,
     mode: adminDsnFromEnv ? "env-sourced (no field-encryption)" : "encrypted",
-    images:
-      [buildResolver ? "build-from-repo" : null, prebuiltResolver ? "prebuilt-map" : null]
-        .filter(Boolean)
-        .join("+") || "prebuilt (imageTag/APP_DEFAULT_IMAGE)",
+    images: resolveImage ? "build-from-repo" : "prebuilt (imageTag/APP_DEFAULT_IMAGE)",
   });
 }
