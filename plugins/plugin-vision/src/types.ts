@@ -1,3 +1,5 @@
+import type { DescribePauseReason } from "./describe-backpressure";
+
 export const VisionServiceType = {
   VISION: "VISION" as const,
 };
@@ -15,12 +17,20 @@ export interface CameraInfo {
 }
 
 export interface SceneDescription {
+  /** Freshest processed frame timestamp for object/person/change signals. */
   timestamp: number;
+  /** Timestamp of the VLM prose in `description`; may be older than frame data. */
+  descriptionTimestamp?: number;
   description: string;
   objects: DetectedObject[];
   people: PersonInfo[];
   sceneChanged: boolean;
   changePercentage: number;
+  /** True when the VLM prose was reused after a describe skip. */
+  descriptionStale?: boolean;
+  /** True when the VLM describe step is currently paused by backpressure. */
+  describePaused?: boolean;
+  describePauseReason?: Exclude<DescribePauseReason, null>;
   audioTranscription?: string;
 }
 

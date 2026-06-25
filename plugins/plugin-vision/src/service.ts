@@ -17,7 +17,10 @@ import {
   StreamingAudioCaptureService,
   type StreamingAudioConfig,
 } from "./audio-capture-stream";
-import { DescribeBackpressureController } from "./describe-backpressure";
+import {
+  DescribeBackpressureController,
+  type DescribePauseReason,
+} from "./describe-backpressure";
 import { DirtyTileDescriber } from "./dirty-tile-describer";
 import {
   createTileDescribeFn,
@@ -887,6 +890,7 @@ export class VisionService extends Service {
   ): Promise<void> {
     try {
       const currentTime = Date.now();
+      const previousSceneDescription = this.lastSceneDescription;
 
       // Test-input override: when ELIZA_VISION_TEST_INPUT=image, replace the
       // captured frame with the fixture PNG so the rest of the pipeline runs
@@ -918,7 +922,15 @@ export class VisionService extends Service {
         timeSinceVlmUpdate >= vlmUpdateInterval || // Time threshold
         changePercentage >= vlmChangeThreshold; // Change threshold
 
-      let description = this.lastTfDescription;
+      let description =
+        previousSceneDescription?.description ?? this.lastTfDescription;
+      let descriptionTimestamp =
+        previousSceneDescription?.descriptionTimestamp ??
+        previousSceneDescription?.timestamp ??
+        frame.timestamp;
+      let descriptionStale = false;
+      let describePaused = false;
+      let describePauseReason: Exclude<DescribePauseReason, null> | undefined;
 
       // Determine if we should update TensorFlow detections
       const timeSinceTfUpdate = currentTime - this.lastTfUpdateTime;
@@ -1101,6 +1113,18 @@ export class VisionService extends Service {
       } else if (describeGate?.transitionedTo === "active") {
         logger.info("[VisionService] VLM describe resumed");
       }
+      if (describeGate?.warnPaused) {
+        const stats = this.describeBackpressure.stats();
+        logger.warn(
+          {
+            reason: describeGate.reason,
+            pausedForMs: describeGate.pausedForMs,
+            describesSkipped: stats.describesSkipped,
+            memoryGrowthBytes: stats.memoryGrowthBytes,
+          },
+          "[VisionService] VLM describe still paused; reusing stale scene description",
+        );
+      }
       if (shouldUpdateVlm && describeGate?.describe) {
         // Prefer the change-gated per-tile describe on incremental updates: once
         // a prior scene description exists we only re-describe the tiles that
@@ -1135,11 +1159,22 @@ export class VisionService extends Service {
           ));
         this.lastVlmUpdateTime = currentTime;
         this.lastTfDescription = description;
+        descriptionTimestamp = frame.timestamp;
         logger.debug(
           `[VisionService] VLM updated: ${timeSinceVlmUpdate}ms since last update, ${changePercentage.toFixed(1)}% change${
             incremental ? " (per-tile)" : " (full-frame)"
           }`,
         );
+      } else if (shouldUpdateVlm && describeGate && !describeGate.describe) {
+        describePaused = true;
+        describePauseReason = describeGate.reason ?? undefined;
+        if (previousSceneDescription?.description) {
+          description = previousSceneDescription.description;
+          descriptionTimestamp =
+            previousSceneDescription.descriptionTimestamp ??
+            previousSceneDescription.timestamp;
+          descriptionStale = true;
+        }
       }
 
       // Update entity tracker
@@ -1153,11 +1188,15 @@ export class VisionService extends Service {
       // Create scene description
       this.lastSceneDescription = {
         timestamp: frame.timestamp,
+        descriptionTimestamp,
         description,
         objects: detectedObjects,
         people,
         sceneChanged: shouldUpdateVlm || shouldUpdateTf,
         changePercentage,
+        descriptionStale,
+        describePaused,
+        ...(describePauseReason ? { describePauseReason } : {}),
       };
 
       // Enhanced logging

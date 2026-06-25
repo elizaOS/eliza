@@ -9,6 +9,7 @@ describe("DescribeBackpressureController", () => {
       expect(d.describe).toBe(true);
       expect(d.reason).toBeNull();
       expect(d.transitionedTo).toBeNull();
+      expect(d.warnPaused).toBe(false);
     }
     const stats = ctrl.stats();
     expect(stats.paused).toBe(false);
@@ -38,6 +39,7 @@ describe("DescribeBackpressureController", () => {
     const second = ctrl.evaluate();
     expect(second.describe).toBe(false);
     expect(second.transitionedTo).toBeNull();
+    expect(second.pausedForMs).toBe(5_000);
 
     expect(ctrl.stats().describesSkipped).toBe(2);
     expect(ctrl.stats().pauseTransitions).toBe(1);
@@ -75,8 +77,8 @@ describe("DescribeBackpressureController", () => {
     expect(d.transitionedTo).toBe("active");
   });
 
-  it("pauses on local RSS over the cap and self-recovers when RSS drops", () => {
-    let rss = 100 * 1024 * 1024; // 100 MB
+  it("pauses on local RSS growth over the baseline and self-recovers when RSS drops", () => {
+    let rss = 2_000 * 1024 * 1024; // steady 2 GB process baseline
     const cap = 500 * 1024 * 1024; // 500 MB
     const ctrl = new DescribeBackpressureController({
       memoryCapBytes: cap,
@@ -84,17 +86,31 @@ describe("DescribeBackpressureController", () => {
     });
 
     expect(ctrl.evaluate().describe).toBe(true);
+    expect(ctrl.stats().memoryBaselineBytes).toBe(2_000 * 1024 * 1024);
+    expect(ctrl.stats().memoryGrowthBytes).toBe(0);
 
-    rss = 600 * 1024 * 1024; // over cap
+    rss = 2_600 * 1024 * 1024; // 600 MB growth over baseline
     const over = ctrl.evaluate();
     expect(over.describe).toBe(false);
     expect(over.reason).toBe("memory-cap");
     expect(over.transitionedTo).toBe("paused");
+    expect(ctrl.stats().memoryGrowthBytes).toBe(600 * 1024 * 1024);
 
-    rss = 200 * 1024 * 1024; // back under cap
+    rss = 2_200 * 1024 * 1024; // back under baseline + cap
     const under = ctrl.evaluate();
     expect(under.describe).toBe(true);
     expect(under.transitionedTo).toBe("active");
+  });
+
+  it("does not permanently pause when steady-state RSS already exceeds the cap", () => {
+    const ctrl = new DescribeBackpressureController({
+      memoryCapBytes: 500 * 1024 * 1024,
+      sampleRssBytes: () => 3_000 * 1024 * 1024,
+    });
+
+    expect(ctrl.evaluate().describe).toBe(true);
+    expect(ctrl.evaluate().describe).toBe(true);
+    expect(ctrl.stats().describesSkipped).toBe(0);
   });
 
   it("disables the local cap when memoryCapBytes is 0", () => {
@@ -107,18 +123,48 @@ describe("DescribeBackpressureController", () => {
 
   it("reports arbiter pressure as the reason when both signals are active", () => {
     let now = 0;
+    let rss = 1024;
     const ctrl = new DescribeBackpressureController({
       memoryCapBytes: 1,
-      sampleRssBytes: () => 1024, // always over the tiny cap
+      sampleRssBytes: () => rss,
       now: () => now,
     });
 
-    // Cap alone first.
+    // Capture baseline, then let the cap trip on local growth.
+    expect(ctrl.evaluate().describe).toBe(true);
+    rss = 2048;
     expect(ctrl.evaluate().reason).toBe("memory-cap");
 
     // Arbiter pressure should now take precedence in the reported reason.
     ctrl.setPressure("critical");
     now += 1;
     expect(ctrl.evaluate().reason).toBe("arbiter-pressure");
+  });
+
+  it("requests throttled warnings for a continuous pause", () => {
+    let now = 0;
+    const ctrl = new DescribeBackpressureController({
+      arbiterPauseCooldownMs: 300_000,
+      pauseWarningThresholdMs: 60_000,
+      pauseWarningIntervalMs: 30_000,
+      now: () => now,
+    });
+
+    ctrl.setPressure("low");
+    expect(ctrl.evaluate().warnPaused).toBe(false);
+
+    now = 59_000;
+    expect(ctrl.evaluate().warnPaused).toBe(false);
+
+    now = 60_000;
+    const firstWarning = ctrl.evaluate();
+    expect(firstWarning.warnPaused).toBe(true);
+    expect(firstWarning.pausedForMs).toBe(60_000);
+
+    now = 70_000;
+    expect(ctrl.evaluate().warnPaused).toBe(false);
+
+    now = 90_000;
+    expect(ctrl.evaluate().warnPaused).toBe(true);
   });
 });
