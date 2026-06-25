@@ -142,7 +142,7 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   that are head_dim-coupled. They do NOT match Gemma's MQA geometry
 //   (n_head_kv=1) with dual head dims (512 global / 256 SWA), so Gemma 4
 //   ships stock q8_0 KV and these kernels are OPTIONAL, never required.
-//   They stay compiled into the shared lib for the legacy Qwen tiers and the
+//   They stay compiled into the shared lib for legacy non-Gemma tiers and the
 //   shared OmniVoice/ASR FFI symbols, but no Gemma tier declares them
 //   required.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
@@ -210,7 +210,7 @@ export const Eliza1LineageSchema = z.object({
 	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector lineage. When
 	// `files.turn` ships the bundled `livekit/turn-detector` ONNX (the
 	// ≤1.7B-tier `v1.2.2-en` SmolLM2 distill or the ≥4B-tier `v0.4.1-intl`
-	// pruned Qwen2.5-0.5B), this records the upstream repo + license. Apache-2.0
+	// multilingual detector), this records the upstream repo + license. Apache-2.0
 	// fallback path is `latishab/turnsense`.
 	turn: lineageEntry.optional(),
 	// Voice Wave 2 (2026-05-14): acoustic-prosody emotion classifier lineage.
@@ -281,12 +281,11 @@ export const Eliza1FilesSchema = z.object({
 	mtp: z.array(Eliza1FileEntrySchema),
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
-	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers), a
-	// Silero-VAD GGUF, and an optional openWakeWord GGUF (the combined GGUF
-	// carries the mel filterbank + speech embedding model + every per-phrase
-	// head). All three are optional in the schema — the 2b entry tier
-	// intentionally omits the dedicated embedding (pools from text backbone)
-	// and a tier may ship without wake-word support.
+	// embedding model on non-lite tiers, a Silero-VAD GGUF, and an optional
+	// openWakeWord GGUF (the combined GGUF carries the mel filterbank + speech
+	// embedding model + every per-phrase head). All three are optional in the
+	// schema — the 2b entry tier intentionally omits the dedicated embedding
+	// (pools from text backbone) and a tier may ship without wake-word support.
 	//
 	// Schema-level optionality: empty array = "this bundle does not
 	// ship this component"; the validator enforces tier-specific
@@ -309,7 +308,7 @@ export const Eliza1FilesSchema = z.object({
 	// `stage_turn_detector` in
 	// `packages/training/scripts/manifest/stage_eliza1_bundle_assets.py`):
 	// 2b ships the EN-only SmolLM2-135M distill; 4b/9b/27b ship the
-	// multilingual pruned Qwen2.5-0.5B.
+	// multilingual detector.
 	turn: z.array(Eliza1FileEntrySchema).optional(),
 	// Eliza-1 EOT LoRA adapter — optional, complements `turn`. When
 	// present, the runtime layers this adapter onto the in-process

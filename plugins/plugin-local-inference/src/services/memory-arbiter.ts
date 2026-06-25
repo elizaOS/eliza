@@ -46,7 +46,7 @@
  *   arbiter.registerCapability({
  *     capability: "vision-describe",
  *     residentRole: "vision",
- *     load: async (modelKey) => loadQwen3VL(modelKey),
+ *     load: async (modelKey) => loadVisionModel(modelKey),
  *     unload: async (handle) => handle.dispose(),
  *     run: async (handle, req) => handle.describe(req.imageBytes),
  *   });

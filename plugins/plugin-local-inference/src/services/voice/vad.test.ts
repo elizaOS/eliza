@@ -324,11 +324,11 @@ describe("VadDetector", () => {
 });
 
 describe("GgmlSileroVad", () => {
-	it("documents the auto provider order: optional Qwen toolkit adapter → fused native Silero", () => {
+	it("documents the auto provider order: optional external VAD adapter → fused native Silero", () => {
 		// Fused `silero-ggml` (the one libelizainference handle) is the sole
-		// on-device VAD runtime; the optional injected `qwen-toolkit` adapter is
+		// on-device VAD runtime; the optional injected `external-vad` adapter is
 		// tried first only when a caller supplies one.
-		expect(vadProviderOrder()).toEqual(["qwen-toolkit", "silero-ggml"]);
+		expect(vadProviderOrder()).toEqual(["external-vad", "silero-ggml"]);
 		expect(vadProviderOrder("silero-ggml")).toEqual(["silero-ggml"]);
 	});
 
@@ -336,8 +336,8 @@ describe("GgmlSileroVad", () => {
 		expect(NativeSileroVad).toBe(GgmlSileroVad);
 	});
 
-	it("prefers a supplied Qwen toolkit VAD adapter over the native provider", async () => {
-		const qwenVad = new ScriptedSilero([
+	it("prefers a supplied external VAD adapter over the native provider", async () => {
+		const externalVad = new ScriptedSilero([
 			0.01, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02,
 		]);
 		const ffi = fakeFfi("x", {
@@ -345,20 +345,20 @@ describe("GgmlSileroVad", () => {
 			vadProbs: [0.01],
 		});
 		const resolved = await resolveVadProvider({
-			qwenToolkitVad: {
+			externalVad: {
 				isAvailable: () => true,
-				loadVad: async () => qwenVad,
+				loadVad: async () => externalVad,
 			},
 			ffi,
 			ctx: 1n,
 		});
 
-		expect(resolved.id).toBe("qwen-toolkit");
-		expect(resolved.vad).toBe(qwenVad);
+		expect(resolved.id).toBe("external-vad");
+		expect(resolved.vad).toBe(externalVad);
 
 		const det = await createVadDetector({
-			qwenToolkitVad: {
-				loadVad: async () => qwenVad,
+			externalVad: {
+				loadVad: async () => externalVad,
 			},
 			ffi,
 			ctx: 1n,
@@ -388,15 +388,15 @@ describe("GgmlSileroVad", () => {
 	});
 
 	it("createSileroVadDetector goes through the unified resolver", async () => {
-		// The Qwen toolkit adapter short-circuits resolution before any
+		// The external adapter short-circuits resolution before any
 		// FFI / model-file checks run, which exercises the unified resolver
 		// end-to-end without needing a libelizainference build.
-		const qwenVad = new ScriptedSilero([
+		const externalVad = new ScriptedSilero([
 			0.01, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02,
 		]);
 		const det = await createSileroVadDetector({
-			qwenToolkitVad: {
-				loadVad: async () => qwenVad,
+			externalVad: {
+				loadVad: async () => externalVad,
 			},
 			config: {
 				onsetThreshold: 0.5,
