@@ -36,13 +36,13 @@ def test_build_queue_expands_grouped_audit_failures() -> None:
             ],
             "backendVerification": [
                 {
-                    "name": "0_8b required backend verification passed",
+                    "name": "2b required backend verification passed",
                     "detail": "metal: fail, vulkan: fail, cpu: fail",
                 }
             ],
             "manifestEvalGates": [
                 {
-                    "name": "0_8b manifest eval gates passed",
+                    "name": "2b manifest eval gates passed",
                     "detail": "evals.textEval.passed: False",
                 }
             ],
@@ -55,10 +55,10 @@ def test_build_queue_expands_grouped_audit_failures() -> None:
         "4b:missing-release-files",
         "4b:manifest-runtime-surface",
         "4b:checksum-surface",
-        "0_8b:backend:cpu",
-        "0_8b:backend:metal",
-        "0_8b:backend:vulkan",
-        "0_8b:eval-suite",
+        "2b:backend:cpu",
+        "2b:backend:metal",
+        "2b:backend:vulkan",
+        "2b:eval-suite",
     ]
     missing = items[0]
     assert missing.requires_hardware is True
@@ -77,7 +77,7 @@ def test_build_queue_expands_grouped_audit_failures() -> None:
     assert cpu.requires_hardware is False
     assert cpu.command.startswith("python3 packages/training/scripts/manifest/release_process_guard.py && ")
     assert "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0" in cpu.command
-    assert "--bundle-dir /bundles/eliza-1-0_8b.bundle" in cpu.command
+    assert "--bundle-dir /bundles/eliza-1-2b.bundle" in cpu.command
     assert "make -C plugins/plugin-local-inference/native/verify reference-test" in cpu.command
     assert "evals/cpu_reference.json" in cpu.evidence[1]
     metal = items[4]
@@ -115,17 +115,17 @@ def test_filter_queue_selects_next_local_item() -> None:
         "failuresByCategory": {
             "backendVerification": [
                 {
-                    "name": "0_8b required backend verification passed",
+                    "name": "2b required backend verification passed",
                     "detail": "metal: fail, vulkan: fail, cpu: fail",
                 },
                 {
-                    "name": "2b required backend verification passed",
+                    "name": "4b required backend verification passed",
                     "detail": "metal: fail, cpu: fail",
                 },
             ],
             "manifestEvalGates": [
                 {
-                    "name": "0_8b manifest eval gates passed",
+                    "name": "2b manifest eval gates passed",
                     "detail": "evals.textEval.passed: False",
                 }
             ],
@@ -135,7 +135,7 @@ def test_filter_queue_selects_next_local_item() -> None:
 
     selected = filter_queue(items, local_only=True, limit=1)
 
-    assert [item.id for item in selected] == ["0_8b:backend:cpu"]
+    assert [item.id for item in selected] == ["2b:backend:cpu"]
 
 
 def test_filter_queue_can_select_hardware_for_tier_and_category() -> None:
@@ -174,7 +174,7 @@ def test_build_queue_accepts_custom_verify_dir() -> None:
         "failuresByCategory": {
             "backendVerification": [
                 {
-                    "name": "0_8b required backend verification passed",
+                    "name": "2b required backend verification passed",
                     "detail": "cpu: fail",
                 }
             ],
@@ -272,7 +272,7 @@ def test_build_queue_expands_platform_evidence_blockers() -> None:
         "failuresByCategory": {
             "platformEvidence": [
                 {
-                    "name": "0_8b required platform evidence passed",
+                    "name": "2b required platform evidence passed",
                     "detail": (
                         "ios-arm64-metal: status='pending', ios-arm64-metal: report='not-run', "
                         "linux-x64-vulkan: status='pending', linux-x64-vulkan: report='not-run', "
@@ -286,13 +286,13 @@ def test_build_queue_expands_platform_evidence_blockers() -> None:
     items = build_queue(summary, bundle_root="/bundles", eval_python="python3")
 
     assert [item.id for item in items] == [
-        "0_8b:platform:ios-arm64-metal",
-        "0_8b:platform:linux-x64-vulkan",
-        "0_8b:platform:android-adreno-vulkan",
+        "2b:platform:ios-arm64-metal",
+        "2b:platform:linux-x64-vulkan",
+        "2b:platform:android-adreno-vulkan",
     ]
     assert all(item.requires_hardware for item in items)
     assert all(item.category == "platformEvidence" for item in items)
-    assert "bundles/0_8b/evidence/platform/ios-arm64-metal.json" in items[0].evidence
+    assert "bundles/2b/evidence/platform/ios-arm64-metal.json" in items[0].evidence
     assert "real device/host identifier" in items[0].command
 
 
@@ -342,7 +342,7 @@ def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
 
     items = build_queue(summary, bundle_root="/bundles", eval_python="python3")
 
-    assert [item.id for item in items] == ["4b:mtp-drafter", "0_8b:fine-tune-comparison"]
+    assert [item.id for item in items] == ["4b:mtp-drafter", "2b:fine-tune-comparison"]
     mtp = items[0]
     assert mtp.requires_hardware is True
     assert mtp.category == "mtpDrafter"
@@ -362,10 +362,13 @@ def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
     assert finetune.category == "fineTuneComparison"
     assert "scripts/run_pipeline.py" in finetune.command
     assert "scripts/benchmark/native_tool_call_bench.py" in finetune.command
-    assert "--model checkpoints/eliza-1-0_8b-finetuned-v2/final" in finetune.command
-    assert "--test-file /tmp/eliza-1-training/sft/0_8b/test.jsonl" in finetune.command
+    assert "--registry-key gemma4-e2b" in finetune.command
+    assert "--model checkpoints/eliza-1-2b-finetuned-v2/final" in finetune.command
+    assert "--test-file /tmp/eliza-1-training/sft/2b/test.jsonl" in finetune.command
     assert "--out-dir /tmp/eliza-1-finetune-native-tool-call" in finetune.command
-    assert "bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf" in finetune.evidence
+    assert "0_8b" not in finetune.command
+    assert "bundles/2b/finetuned-v2/eliza-1-2b-sft.gguf" in finetune.evidence
+    assert all("0_8b" not in evidence for evidence in finetune.evidence)
 
 
 def test_build_queue_maps_27b_256k_mtp_to_validation_tier_27b() -> None:
