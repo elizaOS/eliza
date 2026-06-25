@@ -972,7 +972,11 @@ async function generateTextWithModel(
 
   const operationName = `${modelType} request using ${modelName}`;
 
-  if (params.stream) {
+  // Structured-output calls must not stream: the parsed native object is only
+  // available on the non-stream `generateText` result (returned via
+  // `buildNativeTextResult` below). A streamed structured call would emit raw
+  // text chunks and discard the parsed object, so fall through to generateText.
+  if (params.stream && !paramsWithAttachments.responseSchema) {
     try {
       const streamResult = streamText(generateParams);
       const providerMetadataPromise: Promise<unknown> = Promise.resolve(
@@ -1000,22 +1004,48 @@ async function generateTextWithModel(
           for await (const chunk of streamResult.textStream) {
             yield chunk;
           }
+          // The AI SDK's `textStream` terminates with zero chunks on a hard
+          // failure (auth/transport) instead of throwing — the real error
+          // (e.g. APICallError 401) only rejects the companion promises. Await
+          // `finishReason` here so an errored/empty stream re-throws the real
+          // cause (matching the non-stream generateText branch) rather than
+          // silently returning ''. The happy path resolves with a value.
+          await streamResult.finishReason;
           completed = true;
+        } catch (error) {
+          throw formatModelError(operationName, error);
         } finally {
           if (completed) {
             await usagePromise.catch(ignoreUsageError);
           }
         }
       }
+      // The streaming path primarily consumes `textStream`. The AI SDK's
+      // companion promises (text/toolCalls/finishReason/usage) reject on an
+      // empty stream ("No output generated") even when no caller awaits them,
+      // which otherwise surfaces as an unhandled rejection. Attach a no-op catch
+      // so each bare promise is always considered handled; real consumers still
+      // observe the value or error. Mirrors plugin-openai's `handledPromise`.
+      const handledPromise = <T>(value: T | PromiseLike<T>): Promise<T> => {
+        const promise = Promise.resolve(value);
+        promise.catch(() => {});
+        return promise;
+      };
       return {
         textStream: textStreamWithUsage(),
-        text: Promise.resolve(streamResult.text).then(async (text) => {
-          await usagePromise.catch(ignoreUsageError);
-          return text;
-        }),
-        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(streamResult.toolCalls) } : {}),
-        usage: usagePromise,
-        finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
+        text: handledPromise(
+          Promise.resolve(streamResult.text).then(async (text) => {
+            await usagePromise.catch(ignoreUsageError);
+            return text;
+          })
+        ),
+        ...(shouldReturnNativeResult
+          ? { toolCalls: handledPromise(Promise.resolve(streamResult.toolCalls)) }
+          : {}),
+        usage: handledPromise(usagePromise),
+        finishReason: handledPromise(
+          Promise.resolve(streamResult.finishReason) as Promise<string | undefined>
+        ),
       };
     } catch (error) {
       throw formatModelError(operationName, error);
