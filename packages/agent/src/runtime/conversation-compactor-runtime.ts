@@ -1085,7 +1085,7 @@ function syntheticCompactionMemory(args: {
       tags: ["compaction", "conversation-summary"],
       strategy: args.strategy,
       hookSource: args.source,
-      telemetry: args.telemetry as unknown as JsonValue,
+      telemetry: JSON.parse(JSON.stringify(args.telemetry)) as JsonValue,
     },
   };
 }
