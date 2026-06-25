@@ -32,7 +32,10 @@ import {
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { BRIEF_NARRATIVE_INSTRUCTIONS } from "../lifeops/optimized-prompt-instructions.js";
+import {
+  BRIEF_NARRATIVE_INSTRUCTIONS,
+  MEETING_PREP_INSTRUCTIONS,
+} from "../lifeops/optimized-prompt-instructions.js";
 import type {
   LifeOpsBriefing,
   LifeOpsBriefingCalendarItem,
@@ -44,7 +47,10 @@ import type {
   LifeOpsBriefingSections,
 } from "../types/briefing.js";
 
-export { BRIEF_NARRATIVE_INSTRUCTIONS } from "../lifeops/optimized-prompt-instructions.js";
+export {
+  BRIEF_NARRATIVE_INSTRUCTIONS,
+  MEETING_PREP_INSTRUCTIONS,
+} from "../lifeops/optimized-prompt-instructions.js";
 
 const ACTION_NAME = "BRIEF";
 
@@ -55,6 +61,7 @@ const SUBACTIONS = [
 ] as const;
 
 type Subaction = (typeof SUBACTIONS)[number];
+type BriefOptimizationTask = "morning_brief" | "meeting_prep";
 
 const SIMILE_NAMES: readonly string[] = [
   "BRIEF",
@@ -64,6 +71,9 @@ const SIMILE_NAMES: readonly string[] = [
   "WEEKLY_BRIEF",
   "COMPOSE_BRIEFING",
   "DAILY_DIGEST",
+  "MEETING_PREP",
+  "PREBRIEF",
+  "MEETING_DOSSIER",
 ];
 
 const SIMILE_TO_SUBACTION: Readonly<Record<string, Subaction>> = {
@@ -101,6 +111,7 @@ interface BriefActionParameters {
   period?: LifeOpsBriefingPeriod | string;
   include?: BriefIncludeFlags;
   format?: "narrative" | "json";
+  optimizationTask?: BriefOptimizationTask | string;
 }
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
@@ -450,6 +461,29 @@ function newBriefingId(): string {
   return `brief-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function messageText(message: Memory): string {
+  const value = message.content.text;
+  return typeof value === "string" ? value : "";
+}
+
+function resolveBriefOptimizationTask(args: {
+  params: BriefActionParameters;
+  message: Memory;
+}): BriefOptimizationTask {
+  if (args.params.optimizationTask === "meeting_prep") {
+    return "meeting_prep";
+  }
+  if (args.params.optimizationTask === "morning_brief") {
+    return "morning_brief";
+  }
+
+  const text = messageText(args.message).toLowerCase();
+  const asksForMeetingPrep =
+    /\b(prep|prebrief|brief me|dossier|agenda|risk register)\b/u.test(text) &&
+    /\b(meeting|board|client|call|agenda|presentation|interview)\b/u.test(text);
+  return asksForMeetingPrep ? "meeting_prep" : "morning_brief";
+}
+
 // Static instruction block for the briefing narrative. This is the optimization
 // target for the `morning_brief` LifeOps task (#8795): an OptimizedPromptService
 // artifact, when present, replaces it; otherwise this inline baseline is used,
@@ -460,6 +494,7 @@ export function buildNarrativePrompt(args: {
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
   runtime?: IAgentRuntime;
+  optimizationTask?: BriefOptimizationTask;
 }): string {
   const payload = JSON.stringify(
     {
@@ -470,13 +505,23 @@ export function buildNarrativePrompt(args: {
     null,
     2,
   );
-  const instructions = args.runtime
-    ? resolveOptimizedPromptForRuntime(
-        args.runtime,
-        "morning_brief",
-        BRIEF_NARRATIVE_INSTRUCTIONS,
-      )
-    : BRIEF_NARRATIVE_INSTRUCTIONS;
+  const optimizationTask = args.optimizationTask ?? "morning_brief";
+  const instructions =
+    optimizationTask === "meeting_prep"
+      ? args.runtime
+        ? resolveOptimizedPromptForRuntime(
+            args.runtime,
+            "meeting_prep",
+            MEETING_PREP_INSTRUCTIONS,
+          )
+        : MEETING_PREP_INSTRUCTIONS
+      : args.runtime
+        ? resolveOptimizedPromptForRuntime(
+            args.runtime,
+            "morning_brief",
+            BRIEF_NARRATIVE_INSTRUCTIONS,
+          )
+        : BRIEF_NARRATIVE_INSTRUCTIONS;
   return `You are composing the owner's ${args.kind} briefing for ${args.period}.
 
 ${instructions}
@@ -490,6 +535,7 @@ async function composeNarrative(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  optimizationTask: BriefOptimizationTask;
 }): Promise<string | undefined> {
   if (typeof args.runtime.useModel !== "function") {
     return undefined;
@@ -499,11 +545,13 @@ async function composeNarrative(args: {
     period: args.period,
     sections: args.sections,
     runtime: args.runtime,
+    optimizationTask: args.optimizationTask,
   });
-  // Tag the trajectory with the `morning_brief` LifeOps task so the call buckets
-  // into its per-capability dataset for the GEPA loop (#8795).
-  const raw = await runWithTrajectoryContext({ purpose: "morning_brief" }, () =>
-    args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+  // Tag the trajectory with the exact LifeOps prompt task resolved above so the
+  // call buckets into its per-capability dataset for the GEPA loop (#8795).
+  const raw = await runWithTrajectoryContext(
+    { purpose: args.optimizationTask },
+    () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
   );
   return typeof raw === "string" ? raw.trim() : undefined;
 }
@@ -514,6 +562,7 @@ async function assembleBriefing(args: {
   period: LifeOpsBriefingPeriod;
   include: ReturnType<typeof resolveIncludeFlags>;
   format: "narrative" | "json";
+  optimizationTask: BriefOptimizationTask;
 }): Promise<LifeOpsBriefing> {
   const composers = activeComposers;
   const [calendarItems, inboxItems, lifeItems, moneyItems] = await Promise.all([
@@ -546,6 +595,7 @@ async function assembleBriefing(args: {
       kind,
       period: args.period,
       sections,
+      optimizationTask: args.optimizationTask,
     });
   }
 
@@ -661,6 +711,7 @@ export const briefAction: Action & {
     const period = resolvePeriod(params, subaction);
     const format: "narrative" | "json" =
       params.format === "json" ? "json" : "narrative";
+    const optimizationTask = resolveBriefOptimizationTask({ params, message });
 
     const briefing = await assembleBriefing({
       runtime,
@@ -668,6 +719,7 @@ export const briefAction: Action & {
       period,
       include,
       format,
+      optimizationTask,
     });
 
     const text =
@@ -689,6 +741,7 @@ export const briefAction: Action & {
       text,
       data: {
         subaction,
+        optimizationTask,
         briefing,
         briefingId: briefing.id,
       },

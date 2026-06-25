@@ -5,14 +5,23 @@
  * {@link AppImageBuilder} and returns the pushed, resolvable ref.
  *
  * Returns `undefined` when the app has no repo, so the deploy runner falls
- * through to `app.metadata.imageTag` / `APP_DEFAULT_IMAGE` (e.g. a prebuilt or
- * smoke-test image) — never an error for the no-repo case.
+ * through to `app.metadata.imageTag` / `APP_DEFAULT_IMAGE` for legacy/prebuilt
+ * lanes — never an error for the no-repo case.
  *
  * Docker builds git URLs natively (`docker build <git-url>#ref:subdir`), so the
  * repo URL is passed straight through as the build context — no clone step.
  */
 
 import type { AppImageBuilder } from "./app-image-builder";
+
+/**
+ * A `resolveImage` the deploy runner calls; undefined → fall through. Matches
+ * `AppDeployRunnerDeps["resolveImage"]` exactly (sync or async return) so the
+ * resolvers here are interchangeable with the runner's option.
+ */
+export type AppImageResolver = (
+  app: ResolverApp,
+) => Promise<string | undefined> | string | undefined;
 
 export interface BuildFromRepoResolverDeps {
   builder: AppImageBuilder;
@@ -31,20 +40,20 @@ interface ResolverApp {
 }
 
 /** A `resolveImage` that builds + pushes the app image from its repo. */
-export function makeBuildFromRepoResolver(
-  deps: BuildFromRepoResolverDeps,
-): (app: ResolverApp) => Promise<string | undefined> {
+export function makeBuildFromRepoResolver(deps: BuildFromRepoResolverDeps): AppImageResolver {
   return async (app) => {
     const metaRepo = typeof app.metadata?.repoUrl === "string" ? app.metadata.repoUrl : undefined;
     const repo = app.repoUrl ?? metaRepo;
     if (!repo) return undefined;
 
     const sourceRef = typeof app.metadata?.ref === "string" ? app.metadata.ref : undefined;
+    const dockerfile =
+      typeof app.metadata?.dockerfile === "string" ? app.metadata.dockerfile : deps.dockerfile;
     const { imageRef } = await deps.builder.build({
       registry: deps.registry,
       appId: app.id,
       context: repo,
-      dockerfile: deps.dockerfile,
+      dockerfile,
       sourceRef,
       // Push so the deploy/worker node can pull the freshly built image.
       push: true,

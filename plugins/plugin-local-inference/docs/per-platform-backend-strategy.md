@@ -41,6 +41,39 @@ efficiency." There is no separate per-platform runtime to add.
   §11). Out-of-process OS model services cannot satisfy the single-runtime
   contract.
 
+### 2a. Every voice/vision model is already on its optimal backend — MEASURED, no ANE win to capture
+
+A natural follow-up: the **always-on** gate models (Silero VAD, openWakeWord) run
+continuously, so wouldn't the ANE save battery vs the GPU? **Measured on this Apple
+Silicon Mac (ANE present, CoreML native) — the answer is no, on two counts:**
+
+1. They **don't run on the GPU** — both ship on **native CPU** (pure scalar C, "no
+   ggml link"): `silero_vad_runtime.c` / `wakeword_runtime.c`, whose
+   `*_active_backend()` returns `"native-cpu"`.
+2. The **ANE is slower** for a model this tiny. Ran Silero VAD v5 ONNX (2.3 MB LSTM)
+   200×32 ms windows, CoreML EP (ANE) vs CPU EP: **CPU 0.227 ms/window vs ANE
+   0.798 ms/window — the ANE is 3.5× slower** (identical outputs). ANE dispatch
+   overhead dominates a few-layer LSTM; the ANE wins on *large* fixed-graph models
+   (Kokoro), not tiny per-frame gates. Evidence:
+   `native/verify/evidence/platform/coreml-ane-vs-cpu-voice-gate-2026-06-24.md`.
+
+So the architecture already routes every model to its optimal backend by compute
+profile, and it's verified:
+
+| Model | Cadence | Backend | Right call |
+|---|---|---|---|
+| LLM (Gemma) decode | per-token, dynamic KV | **Metal** | ANE can't do dynamic decode |
+| Vision mmproj / Qwen3-ASR | bursty | **Metal** | GPU-sized bursty work |
+| Kokoro TTS | per-utterance | **CoreML** (`kokoro_5s.mlmodelc`) | larger fixed-graph → ANE helps |
+| **Silero VAD** | always-on | **native CPU** | tiny LSTM → CPU fastest+lowest-power (measured; ANE 3.5× slower) |
+| **openWakeWord** | always-on | **native CPU** | same |
+
+**Bottom line for "optimize voice for CoreML on iOS":** there is **no un-captured
+CoreML/ANE win** — Kokoro already uses CoreML where it pays off, and the tiny
+always-on gates are correctly on the CPU (the ANE would *regress* them, measured).
+The system is already optimal. LiteRT-LM (the Android-NPU analogue) would hit the
+same tiny-model dispatch-overhead wall for the gate models.
+
 ## 3. LiteRT-LM — not used; permitted only as a future in-process Android-NPU backend
 
 - **Not present in the resolved code path.** No LiteRT/TFLite/MediaPipe LLM runtime

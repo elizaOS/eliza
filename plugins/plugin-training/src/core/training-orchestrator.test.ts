@@ -18,7 +18,7 @@ describe("training orchestrator baselines", () => {
       ["calendar_extract", "Plan the calendar action for this request."],
       ["schedule_plan", "Plan the scheduling negotiation action"],
       ["reminder_dispatch", "Write a short reminder nudge"],
-      ["inbox_triage", "Plan the Gmail/inbox triage action"],
+      ["inbox_triage", "Classify each message into one of these categories"],
       ["meeting_prep", "Prepare the next working block"],
       ["morning_brief", "Render a concise narrative paragraph"],
       ["health_checkin", "Plan the HEALTH action"],

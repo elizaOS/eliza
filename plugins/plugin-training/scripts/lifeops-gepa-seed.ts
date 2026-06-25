@@ -30,10 +30,8 @@ import {
   type OptimizedPromptTask,
 } from "@elizaos/core";
 import { CALENDAR_PLAN_INSTRUCTIONS } from "../../plugin-calendar/src/actions/optimized-prompt-instructions.ts";
-import {
-  GMAIL_PLAN_INSTRUCTIONS,
-  SCHEDULE_PLAN_INSTRUCTIONS,
-} from "../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts";
+import { INBOX_TRIAGE_INSTRUCTIONS } from "../../plugin-inbox/src/inbox/triage-classifier.ts";
+import { SCHEDULE_PLAN_INSTRUCTIONS } from "../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts";
 import { getTrainingUseModelAdapter } from "../src/core/cerebras-eval-model.ts";
 import {
   createPromptScorer,
@@ -106,19 +104,35 @@ function expectedSchedulePlan(fields: Record<string, unknown>): string {
   return JSON.stringify(fields);
 }
 
-function gmailPlannerInput(currentMessage: string): string {
-  return ["Current request:", currentMessage.trim() || "(empty)"].join("\n");
+function inboxClassificationInput(args: {
+  senderName: string;
+  channel?: string;
+  text: string;
+  ownerContext?: string;
+}): string {
+  return [
+    "Owner context:",
+    args.ownerContext ??
+      "The owner prioritizes legal, finance, and calendar-critical messages.",
+    "",
+    "Messages:",
+    JSON.stringify(
+      [
+        {
+          id: "msg-1",
+          senderName: args.senderName,
+          channel: args.channel ?? "email",
+          text: args.text,
+        },
+      ],
+      null,
+      2,
+    ),
+  ].join("\n");
 }
 
-function expectedGmailPlan(fields: Record<string, unknown>): string {
-  return Object.entries(fields)
-    .map(([key, value]) => {
-      if (Array.isArray(value)) {
-        return `${key}: ${value.join(" || ")}`;
-      }
-      return `${key}: ${value === null ? "null" : String(value)}`;
-    })
-    .join("\n");
+function expectedInboxClassification(fields: Record<string, unknown>): string {
+  return JSON.stringify(fields);
 }
 
 export const SEED_TASKS: Record<string, SeedTask> = {
@@ -413,105 +427,107 @@ export const SEED_TASKS: Record<string, SeedTask> = {
       },
     ],
   },
-  // inbox_triage is the live Gmail/inbox planner. The baseline returns
-  // line-based fields (not JSON), so the seed expectations mirror that wire
-  // format and the scorer accepts structured `key: value` output.
+  // inbox_triage is the live cross-channel classifier in plugin-inbox. Keep
+  // the seed rows aligned with INBOX_TRIAGE_INSTRUCTIONS so GEPA optimizes the
+  // production classifier, not the old PA Gmail planner.
   inbox_triage: {
     task: "inbox_triage",
-    baseline: GMAIL_PLAN_INSTRUCTIONS,
+    baseline: INBOX_TRIAGE_INSTRUCTIONS,
     dataset: [
       {
         input: {
-          user: gmailPlannerInput(
-            "Clean up my inbox and show me anything urgent first.",
-          ),
+          user: inboxClassificationInput({
+            senderName: "CFO",
+            text: "Wire cutoff is in 20 minutes and we need your approval on the settlement transfer.",
+          }),
         },
-        expectedOutput: expectedGmailPlan({
-          subaction: "triage",
-          shouldAct: true,
+        expectedOutput: expectedInboxClassification({
+          category: "urgent",
+          urgency: "high",
         }),
       },
       {
         input: {
-          user: gmailPlannerInput(
-            "Tell me which legal or finance threads still need a reply today.",
-          ),
+          user: inboxClassificationInput({
+            senderName: "Mia",
+            text: "Can you confirm whether 2pm works and send the deck before the client call?",
+          }),
         },
-        expectedOutput: expectedGmailPlan({
-          subaction: "needs_response",
-          shouldAct: true,
-          queries: ["legal", "finance"],
+        expectedOutput: expectedInboxClassification({
+          category: "needs_reply",
+          urgency: "medium",
         }),
       },
       {
         input: {
-          user: gmailPlannerInput(
-            "Find the vendor renewal invoice email from Northstar.",
-          ),
+          user: inboxClassificationInput({
+            senderName: "Northstar Vendor",
+            text: "Your renewal invoice is attached for records. No action is needed unless details changed.",
+          }),
         },
-        expectedOutput: expectedGmailPlan({
-          subaction: "search",
-          shouldAct: true,
-          queries: ["vendor renewal invoice Northstar", "Northstar invoice"],
+        expectedOutput: expectedInboxClassification({
+          category: "info",
+          urgency: "low",
         }),
       },
       {
         input: {
-          user: gmailPlannerInput(
-            "Read me Taylor's boarding pass email for the Denver flight.",
-          ),
+          user: inboxClassificationInput({
+            senderName: "Airline",
+            text: "Boarding pass for Denver is ready. Gate B12. Boarding starts at 4:35pm.",
+          }),
         },
-        expectedOutput: expectedGmailPlan({
-          subaction: "read",
-          shouldAct: true,
-          queries: [
-            "Taylor boarding pass Denver",
-            "Denver flight boarding pass",
-          ],
+        expectedOutput: expectedInboxClassification({
+          category: "notify",
+          urgency: "medium",
         }),
       },
       {
         input: {
-          user: gmailPlannerInput(
-            "Draft a reply to Mia saying I can meet at 2pm and asking her to send the deck.",
-          ),
+          user: inboxClassificationInput({
+            senderName: "Marketing Newsletter",
+            text: "This week's roundup: five productivity tips and our latest product launch.",
+          }),
         },
-        expectedOutput: expectedGmailPlan({
-          subaction: "draft_reply",
-          shouldAct: true,
-          queries: ["Mia deck meeting 2pm", "from:Mia deck"],
+        expectedOutput: expectedInboxClassification({
+          category: "ignore",
+          urgency: "low",
         }),
       },
       {
         input: {
-          user: gmailPlannerInput(
-            "Reply to Alex that I approved the contractor quote, but do not mention budget details.",
-          ),
+          user: inboxClassificationInput({
+            senderName: "Ana",
+            text: "¿Puedes revisar la factura de renovación hoy y decirme si la aprobamos?",
+          }),
         },
-        expectedOutput: expectedGmailPlan({
-          subaction: "send_reply",
-          shouldAct: true,
-          queries: ["Alex contractor quote", "from:Alex quote"],
+        expectedOutput: expectedInboxClassification({
+          category: "needs_reply",
+          urgency: "medium",
         }),
       },
       {
         input: {
-          user: gmailPlannerInput(
-            "Busca el correo de Ana sobre la factura de renovación y dime si necesita respuesta.",
-          ),
+          user: inboxClassificationInput({
+            senderName: "Security",
+            text: "Unusual login detected from a new device. Confirm whether this was you.",
+          }),
         },
-        expectedOutput: expectedGmailPlan({
-          subaction: "needs_response",
-          shouldAct: true,
-          queries: ["Ana factura renovación", "Ana renewal invoice"],
+        expectedOutput: expectedInboxClassification({
+          category: "urgent",
+          urgency: "high",
         }),
       },
       {
         input: {
-          user: gmailPlannerInput("Can you do something with my email?"),
+          user: inboxClassificationInput({
+            senderName: "Calendar Bot",
+            text: "Room booking accepted for tomorrow's staff meeting.",
+          }),
         },
-        expectedOutput: expectedGmailPlan({
-          shouldAct: false,
+        expectedOutput: expectedInboxClassification({
+          category: "info",
+          urgency: "low",
         }),
       },
     ],
@@ -590,15 +606,15 @@ function validateOptimizedPromptForTask(
       "trip_window",
     ],
     inbox_triage: [
-      "subaction",
-      "shouldAct",
-      "queries",
-      "triage",
-      "needs_response",
-      "search",
-      "read",
-      "draft_reply",
-      "send_reply",
+      "ignore",
+      "info",
+      "notify",
+      "needs_reply",
+      "urgent",
+      "urgency",
+      "confidence",
+      "reasoning",
+      "suggestedResponse",
     ],
     schedule_plan: [
       "subaction",

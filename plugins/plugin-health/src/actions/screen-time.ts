@@ -8,11 +8,16 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import {
+  resolveOptimizedPromptForRuntime,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import type {
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeSource,
   LifeOpsScreenTimeSummary,
 } from "../contracts/lifeops.js";
+import { SCREENTIME_RECAP_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 
 export { SCREENTIME_RECAP_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 
@@ -144,6 +149,7 @@ export interface CreateScreenTimeActionRunnerOptions {
     scenario: string;
     fallback: string;
     context?: Record<string, unknown>;
+    additionalRules?: string[];
   }) => Promise<string>;
   resolveActionArgs: <TSubaction extends string, TParams>(input: {
     runtime: IAgentRuntime;
@@ -305,6 +311,22 @@ function buildReportSummary(
         `- ${app.appName || app.bundleId}: ${formatMinutes(app.totalMs)}m`,
     )
     .join("\n");
+}
+
+export function buildScreenTimeRecapRules(runtime?: IAgentRuntime): string[] {
+  const instructions = runtime
+    ? resolveOptimizedPromptForRuntime(
+        runtime,
+        "screentime_recap",
+        SCREENTIME_RECAP_INSTRUCTIONS,
+      )
+    : SCREENTIME_RECAP_INSTRUCTIONS;
+
+  return [
+    "For screen-time recap replies, follow this optimizable policy:",
+    instructions,
+    "Use only the provided screen-time context and canonical fallback facts.",
+  ];
 }
 
 type RespondPayload<T extends NonNullable<ActionResult["data"]> | undefined> = {
@@ -500,15 +522,20 @@ export function createScreenTimeActionRunner(
     >(
       payload: RespondPayload<T>,
     ): Promise<ActionResult> => {
-      const text = await adapters.renderReply({
-        runtime,
-        message,
-        state,
-        intent,
-        scenario: payload.scenario,
-        fallback: payload.fallback,
-        context: payload.context,
-      });
+      const text = await runWithTrajectoryContext(
+        { purpose: "screentime_recap" },
+        () =>
+          adapters.renderReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: payload.scenario,
+            fallback: payload.fallback,
+            context: payload.context,
+            additionalRules: buildScreenTimeRecapRules(runtime),
+          }),
+      );
       await callback?.({ text, source: "action", action: ACTION_NAME });
       return {
         text,

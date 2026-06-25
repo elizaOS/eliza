@@ -82,6 +82,151 @@ describe("activityEventToPlaintext", () => {
 			plaintext: "A raw assistant event",
 		});
 	});
+
+	it("summarizes typed agent event streams instead of dropping rich runtime work", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "action",
+				sessionKey: "room-1",
+				payload: {
+					type: "complete",
+					actionName: "BRIEF",
+					duration: 1250,
+					output: { briefingId: "brief-1" },
+				},
+			}),
+		).toEqual({
+			eventType: "action_complete",
+			plaintext: 'Action completed: BRIEF (1.3s): {"briefingId":"brief-1"}',
+			stream: "action",
+			sessionId: "room-1",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "tool",
+				payload: {
+					type: "tool_error",
+					toolName: "web_fetch",
+					error: "Request blocked",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "tool_error",
+			plaintext: "Tool failed: web_fetch: Request blocked",
+			stream: "tool",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "message",
+				payload: {
+					type: "received",
+					channel: "discord",
+					content: "Can you check this?",
+					hasAttachments: true,
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "message_received",
+			plaintext:
+				"Message received on discord with attachments: Can you check this?",
+		});
+	});
+
+	it("summarizes lifecycle, evaluator, provider, memory, assistant, and error streams", () => {
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "lifecycle",
+				payload: { type: "run_end", success: true, duration: 2000 },
+			}),
+		)?.toMatchObject({
+			eventType: "run_end",
+			plaintext: "Run completed (2.0s)",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "evaluator",
+				payload: {
+					type: "complete",
+					evaluatorName: "fact-check",
+					validated: false,
+					result: { reason: "missing source" },
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "evaluator_complete",
+			plaintext:
+				'Evaluator completed without validation: fact-check: {"reason":"missing source"}',
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "provider",
+				payload: {
+					type: "complete",
+					providerName: "calendar",
+					fromCache: true,
+					data: { count: 3 },
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "provider_cached",
+			plaintext: 'Provider served from cache: calendar: {"count":3}',
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "memory",
+				payload: {
+					type: "search",
+					tableName: "memories",
+					count: 2,
+					duration: 30,
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "memory_search",
+			plaintext: "Memory searched in memories (2 results) (30ms)",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "assistant",
+				payload: {
+					type: "plan",
+					content: "Check inbox, then draft reply.",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "assistant_plan",
+			plaintext: "Assistant plan: Check inbox, then draft reply.",
+		});
+
+		expect(
+			activityEventToPlaintext({
+				type: "agent_event",
+				stream: "error",
+				payload: {
+					type: "warning",
+					code: "LISTENER_ERROR",
+					message: "One listener failed",
+				},
+			}),
+		)?.toMatchObject({
+			eventType: "warning",
+			plaintext: "Warning LISTENER_ERROR: One listener failed",
+		});
+	});
 });
 
 describe("trajectory plaintext serializers", () => {

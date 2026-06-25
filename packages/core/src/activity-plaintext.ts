@@ -78,6 +78,10 @@ function readFiniteNumber(value: unknown): number | undefined {
 		: undefined;
 }
 
+function readBoolean(value: unknown): boolean | undefined {
+	return typeof value === "boolean" ? value : undefined;
+}
+
 function normalizePlaintext(value: string, maxLength: number): string {
 	const normalized = value.replace(/\s+/g, " ").trim();
 	return normalized.length > maxLength
@@ -166,20 +170,53 @@ function assistantSourceToEventType(source: string): string | null {
 	}
 }
 
-function summarizeAgentEvent(
+function agentEventSessionId(
 	event: Record<string, unknown>,
-	maxLength: number,
-	options: ActivityPlaintextOptions,
-): ActivityPlaintextSummary | null {
-	const stream = readString(event.stream) ?? "";
-	const payload = nestedRecord(event, "payload") ?? nestedRecord(event, "data");
+	payload: Record<string, unknown> | undefined,
+): string | undefined {
+	return (
+		readString(event.sessionKey) ??
+		readString(event.sessionId) ??
+		readString(payload?.sessionKey)
+	);
+}
 
-	if (stream === "assistant") {
-		const source = readString(payload?.source) ?? "";
-		const text = firstString(payload, ["text", "summary", "message"]);
-		const eventType =
-			assistantSourceToEventType(source) ??
-			(options.includeUnknownAssistantText && source ? source : null);
+function durationSuffix(payload: Record<string, unknown>): string {
+	const duration = formatDuration(payload.duration ?? payload.durationMs);
+	return duration ? ` (${duration})` : "";
+}
+
+function previewFrom(
+	payload: Record<string, unknown>,
+	keys: readonly string[],
+	maxLength: number,
+): string | null {
+	for (const key of keys) {
+		const value = payload[key];
+		const preview = safeJsonPreview(value, Math.min(maxLength, 80));
+		if (preview) return preview;
+	}
+	return null;
+}
+
+function suffixDetail(base: string, detail: string | null | undefined): string {
+	return detail ? `${base}: ${detail}` : base;
+}
+
+function summarizeAssistantStream(params: {
+	payload: Record<string, unknown> | undefined;
+	maxLength: number;
+	stream: string;
+	sessionId?: string;
+	options: ActivityPlaintextOptions;
+}): ActivityPlaintextSummary | null {
+	const { payload, maxLength, stream, sessionId, options } = params;
+	const source = readString(payload?.source) ?? "";
+	const text = firstString(payload, ["text", "summary", "message", "content"]);
+	const eventType =
+		assistantSourceToEventType(source) ??
+		(source && options.includeUnknownAssistantText ? source : null);
+	if (source) {
 		if (!eventType || !text) return null;
 		return activityResult({
 			eventType,
@@ -187,6 +224,379 @@ function summarizeAgentEvent(
 			maxLength,
 			stream,
 			source,
+			sessionId,
+		});
+	}
+
+	const assistantType = readString(payload?.type);
+	if (!assistantType || !text) return null;
+	const label =
+		assistantType === "message"
+			? "Assistant message"
+			: assistantType === "thought"
+				? "Assistant thought"
+				: assistantType === "plan"
+					? "Assistant plan"
+					: assistantType === "reflection"
+						? "Assistant reflection"
+						: "Assistant activity";
+	return activityResult({
+		eventType:
+			assistantType === "message" ? "message" : `assistant_${assistantType}`,
+		plaintext: `${label}: ${text}`,
+		maxLength,
+		stream,
+		sessionId,
+	});
+}
+
+function summarizeLifecycleStream(params: {
+	payload: Record<string, unknown>;
+	maxLength: number;
+	stream: string;
+	sessionId?: string;
+}): ActivityPlaintextSummary | null {
+	const { payload, maxLength, stream, sessionId } = params;
+	const type = readString(payload.type) ?? "event";
+	const stepName = firstString(payload, ["stepName", "name"]);
+	const actionName = firstString(payload, ["actionName", "name"]);
+	const success = readBoolean(payload.success);
+	const error = firstString(payload, ["error", "message"]);
+	let eventType = type;
+	let plaintext: string;
+
+	switch (type) {
+		case "run_start":
+			plaintext = "Run started";
+			break;
+		case "run_end":
+			eventType = success === false ? "error" : "run_end";
+			plaintext =
+				success === false
+					? suffixDetail("Run failed", error)
+					: `Run completed${durationSuffix(payload)}`;
+			break;
+		case "step_start":
+			plaintext = `Step started: ${stepName ?? "step"}`;
+			break;
+		case "step_end":
+			eventType = success === false ? "error" : "step_end";
+			plaintext =
+				success === false
+					? suffixDetail(`Step failed: ${stepName ?? "step"}`, error)
+					: `Step completed: ${stepName ?? "step"}${durationSuffix(payload)}`;
+			break;
+		case "context_loaded":
+			plaintext = "Context loaded";
+			break;
+		case "action_start":
+			eventType = "action_start";
+			plaintext = `Action started: ${actionName ?? "action"}`;
+			break;
+		case "action_end":
+			eventType = success === false ? "action_error" : "action_complete";
+			plaintext =
+				success === false
+					? suffixDetail(`Action failed: ${actionName ?? "action"}`, error)
+					: `Action completed: ${actionName ?? "action"}${durationSuffix(payload)}`;
+			break;
+		default:
+			plaintext = type.replace(/_/g, " ");
+			break;
+	}
+
+	return activityResult({
+		eventType,
+		plaintext,
+		maxLength,
+		stream,
+		sessionId,
+	});
+}
+
+function summarizeActionStream(params: {
+	payload: Record<string, unknown>;
+	maxLength: number;
+	stream: string;
+	sessionId?: string;
+}): ActivityPlaintextSummary | null {
+	const { payload, maxLength, stream, sessionId } = params;
+	const type = readString(payload.type) ?? "event";
+	const actionName = firstString(payload, ["actionName", "handler", "name"]);
+	const detail =
+		firstString(payload, ["error"]) ??
+		previewFrom(payload, ["output", "input"], maxLength);
+	const eventType =
+		type === "error" || readBoolean(payload.success) === false
+			? "action_error"
+			: type === "complete"
+				? "action_complete"
+				: type === "skipped"
+					? "action_skipped"
+					: "action_start";
+	const verb =
+		eventType === "action_error"
+			? "failed"
+			: eventType === "action_complete"
+				? "completed"
+				: eventType === "action_skipped"
+					? "skipped"
+					: "started";
+	const duration =
+		verb === "completed" || verb === "failed" ? durationSuffix(payload) : "";
+	return activityResult({
+		eventType,
+		plaintext: suffixDetail(
+			`Action ${verb}: ${actionName ?? "action"}${duration}`,
+			detail,
+		),
+		maxLength,
+		stream,
+		sessionId,
+	});
+}
+
+function summarizeToolStream(params: {
+	payload: Record<string, unknown>;
+	maxLength: number;
+	stream: string;
+	sessionId?: string;
+}): ActivityPlaintextSummary | null {
+	const { payload, maxLength, stream, sessionId } = params;
+	const type = readString(payload.type) ?? "tool_call";
+	const toolName = firstString(payload, ["toolName", "name"]) ?? "tool";
+	const detail =
+		firstString(payload, ["error"]) ??
+		previewFrom(payload, ["output", "input"], maxLength);
+	const eventType =
+		type === "tool_error"
+			? "tool_error"
+			: type === "tool_result"
+				? "tool_result"
+				: "tool_call";
+	const verb =
+		eventType === "tool_error"
+			? "failed"
+			: eventType === "tool_result"
+				? "completed"
+				: "called";
+	const duration =
+		verb === "completed" || verb === "failed" ? durationSuffix(payload) : "";
+	return activityResult({
+		eventType,
+		plaintext: suffixDetail(`Tool ${verb}: ${toolName}${duration}`, detail),
+		maxLength,
+		stream,
+		sessionId,
+	});
+}
+
+function summarizeEvaluatorStream(params: {
+	payload: Record<string, unknown>;
+	maxLength: number;
+	stream: string;
+	sessionId?: string;
+}): ActivityPlaintextSummary | null {
+	const { payload, maxLength, stream, sessionId } = params;
+	const type = readString(payload.type) ?? "event";
+	const evaluatorName = firstString(payload, ["evaluatorName", "name"]);
+	const detail =
+		firstString(payload, ["error"]) ??
+		previewFrom(payload, ["result"], maxLength);
+	const eventType =
+		type === "error"
+			? "evaluator_error"
+			: type === "complete"
+				? "evaluator_complete"
+				: type === "skipped"
+					? "evaluator_skipped"
+					: "evaluator_start";
+	const verb =
+		eventType === "evaluator_error"
+			? "failed"
+			: eventType === "evaluator_complete"
+				? readBoolean(payload.validated) === false
+					? "completed without validation"
+					: "completed"
+				: eventType === "evaluator_skipped"
+					? "skipped"
+					: "started";
+	const duration =
+		eventType === "evaluator_complete" || eventType === "evaluator_error"
+			? durationSuffix(payload)
+			: "";
+	return activityResult({
+		eventType,
+		plaintext: suffixDetail(
+			`Evaluator ${verb}: ${evaluatorName ?? "evaluator"}${duration}`,
+			detail,
+		),
+		maxLength,
+		stream,
+		sessionId,
+	});
+}
+
+function summarizeProviderStream(params: {
+	payload: Record<string, unknown>;
+	maxLength: number;
+	stream: string;
+	sessionId?: string;
+}): ActivityPlaintextSummary | null {
+	const { payload, maxLength, stream, sessionId } = params;
+	const type = readString(payload.type) ?? "event";
+	const providerName = firstString(payload, ["providerName", "name"]);
+	const detail =
+		firstString(payload, ["error"]) ??
+		previewFrom(payload, ["data"], maxLength);
+	const eventType =
+		type === "error"
+			? "provider_error"
+			: type === "cached" || readBoolean(payload.fromCache) === true
+				? "provider_cached"
+				: type === "complete"
+					? "provider_complete"
+					: "provider_start";
+	const verb =
+		eventType === "provider_error"
+			? "failed"
+			: eventType === "provider_cached"
+				? "served from cache"
+				: eventType === "provider_complete"
+					? "completed"
+					: "started";
+	const duration =
+		eventType === "provider_complete" || eventType === "provider_error"
+			? durationSuffix(payload)
+			: "";
+	return activityResult({
+		eventType,
+		plaintext: suffixDetail(
+			`Provider ${verb}: ${providerName ?? "provider"}${duration}`,
+			detail,
+		),
+		maxLength,
+		stream,
+		sessionId,
+	});
+}
+
+function summarizeMessageStream(params: {
+	payload: Record<string, unknown>;
+	maxLength: number;
+	stream: string;
+	sessionId?: string;
+}): ActivityPlaintextSummary | null {
+	const { payload, maxLength, stream, sessionId } = params;
+	const type = readString(payload.type) ?? "received";
+	const channel = firstString(payload, ["channel", "source"]);
+	const content = firstString(payload, ["content", "text", "message"]);
+	const attachmentText =
+		readBoolean(payload.hasAttachments) === true ? " with attachments" : "";
+	const eventType = `message_${type}`;
+	const verb =
+		type === "sent"
+			? "sent"
+			: type === "queued"
+				? "queued"
+				: type === "failed"
+					? "failed"
+					: "received";
+	const base = `Message ${verb}${channel ? ` on ${channel}` : ""}${attachmentText}`;
+	const detail = type === "failed" ? firstString(payload, ["error"]) : content;
+	return activityResult({
+		eventType,
+		plaintext: suffixDetail(base, detail),
+		maxLength,
+		stream,
+		sessionId,
+	});
+}
+
+function summarizeMemoryStream(params: {
+	payload: Record<string, unknown>;
+	maxLength: number;
+	stream: string;
+	sessionId?: string;
+}): ActivityPlaintextSummary | null {
+	const { payload, maxLength, stream, sessionId } = params;
+	const type = readString(payload.type) ?? "event";
+	const tableName = firstString(payload, ["tableName", "collection"]);
+	const preview = firstString(payload, ["error", "preview"]);
+	const count = readFiniteNumber(payload.count);
+	const location = tableName ? ` in ${tableName}` : "";
+	const eventType = `memory_${type}`;
+	let plaintext: string;
+	switch (type) {
+		case "create":
+			plaintext = `Memory created${location}`;
+			break;
+		case "update":
+			plaintext = `Memory updated${location}`;
+			break;
+		case "delete":
+			plaintext = `Memory deleted${location}`;
+			break;
+		case "search":
+			plaintext = `Memory searched${location}${
+				count !== undefined ? ` (${count} result${count === 1 ? "" : "s"})` : ""
+			}${durationSuffix(payload)}`;
+			break;
+		case "retrieved":
+			plaintext = `Memory retrieved${location}${
+				count !== undefined ? ` (${count} item${count === 1 ? "" : "s"})` : ""
+			}`;
+			break;
+		default:
+			plaintext = `Memory ${type.replace(/_/g, " ")}${location}`;
+			break;
+	}
+	return activityResult({
+		eventType,
+		plaintext: suffixDetail(plaintext, preview ?? null),
+		maxLength,
+		stream,
+		sessionId,
+	});
+}
+
+function summarizeErrorStream(params: {
+	payload: Record<string, unknown>;
+	maxLength: number;
+	stream: string;
+	sessionId?: string;
+}): ActivityPlaintextSummary | null {
+	const { payload, maxLength, stream, sessionId } = params;
+	const type = readString(payload.type) === "warning" ? "warning" : "error";
+	const code = firstString(payload, ["code"]);
+	const message = firstString(payload, ["message", "error"]) ?? "Unknown error";
+	return activityResult({
+		eventType: type,
+		plaintext: `${type === "warning" ? "Warning" : "Error"}${
+			code ? ` ${code}` : ""
+		}: ${message}`,
+		maxLength,
+		stream,
+		sessionId,
+	});
+}
+
+function summarizeAgentEvent(
+	event: Record<string, unknown>,
+	maxLength: number,
+	options: ActivityPlaintextOptions,
+): ActivityPlaintextSummary | null {
+	const stream = readString(event.stream) ?? "";
+	const payload = nestedRecord(event, "payload") ?? nestedRecord(event, "data");
+	const sessionId = agentEventSessionId(event, payload);
+
+	if (stream === "assistant") {
+		return summarizeAssistantStream({
+			payload,
+			maxLength,
+			stream,
+			sessionId,
+			options,
 		});
 	}
 
@@ -213,10 +623,42 @@ function summarizeAgentEvent(
 			plaintext: text,
 			maxLength,
 			stream,
+			sessionId,
 		});
 	}
 
-	return null;
+	if (!payload) return null;
+
+	switch (stream) {
+		case "lifecycle":
+			return summarizeLifecycleStream({
+				payload,
+				maxLength,
+				stream,
+				sessionId,
+			});
+		case "action":
+			return summarizeActionStream({ payload, maxLength, stream, sessionId });
+		case "tool":
+			return summarizeToolStream({ payload, maxLength, stream, sessionId });
+		case "evaluator":
+			return summarizeEvaluatorStream({
+				payload,
+				maxLength,
+				stream,
+				sessionId,
+			});
+		case "provider":
+			return summarizeProviderStream({ payload, maxLength, stream, sessionId });
+		case "message":
+			return summarizeMessageStream({ payload, maxLength, stream, sessionId });
+		case "memory":
+			return summarizeMemoryStream({ payload, maxLength, stream, sessionId });
+		case "error":
+			return summarizeErrorStream({ payload, maxLength, stream, sessionId });
+		default:
+			return null;
+	}
 }
 
 function summarizePtyEvent(

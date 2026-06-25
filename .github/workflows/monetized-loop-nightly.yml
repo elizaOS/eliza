@@ -150,7 +150,7 @@ jobs:
 
       - name: Run monetized full loop + example-apps showcase (real Hetzner)
         if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
-        run: bun run cloud:e2e -- monetized-full-loop.spec.ts example-apps-showcase.spec.ts example-edad-real-deploy.spec.ts
+        run: bun run cloud:e2e -- monetized-full-loop.spec.ts example-apps-showcase.spec.ts example-edad-real-deploy.spec.ts example-clone-ur-crush-real-deploy.spec.ts
         env:
           CI: "true"
           E2E_RECORD: "1"

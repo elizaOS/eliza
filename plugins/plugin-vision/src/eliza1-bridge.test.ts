@@ -101,7 +101,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
   });
 
   // Token-budget guards (#9105): OCR text fused into the IMAGE_DESCRIPTION prompt
-  // is cheap vs re-describing, but must not blow the budget — service.ts clamps
+  // is cheap vs re-describing, but must not blow the budget; service.ts clamps
   // it to SCENE_DESCRIPTION_OCR_LINE_LIMIT (40 lines) and
   // SCENE_DESCRIPTION_OCR_TEXT_LIMIT (2000 chars) in normalizeOcrTextForPrompt.
   function sceneWithOcr(service: VisionService, fullScreenOCR: string): void {
@@ -151,7 +151,7 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
       imageDescriptionResult: { description: "A wall of text." },
     });
     const service = new VisionService(runtime);
-    // Three distinct ~1000-char lines (~3000 chars total) — under the 40-line
+    // Three distinct ~1000-char lines (~3000 chars total), under the 40-line
     // cap but well over the 2000-char cap; without the slice it would be ~3000.
     sceneWithOcr(
       service,
