@@ -28,12 +28,13 @@ on:
         type: boolean
         default: false
       base_model:
-        description: 'Base model to use (e.g., Qwen/Qwen2.5-7B-Instruct)'
+        description: 'Base model to use (default: google/gemma-4-E4B-it)'
         required: false
         type: string
 
 env:
   PYTHON_VERSION: '3.11'
+  FEED_DEFAULT_BASE_MODEL: 'google/gemma-4-E4B-it'
 
 # Prevent concurrent training runs
 concurrency:
@@ -176,7 +177,7 @@ jobs:
           if [ -n "$BASE_MODEL_INPUT" ]; then
             echo "base_model=$BASE_MODEL_INPUT" >> $GITHUB_OUTPUT
           else
-            echo "base_model=Qwen/Qwen2.5-7B-Instruct" >> $GITHUB_OUTPUT
+            echo "base_model=$FEED_DEFAULT_BASE_MODEL" >> $GITHUB_OUTPUT
           fi
           
           # Generate model version
@@ -276,6 +277,7 @@ jobs:
               try:
                   pool = await asyncpg.create_pool(os.getenv('DATABASE_URL'))
                   base_model_override = os.getenv('BASE_MODEL_OVERRIDE', '')
+                  default_base_model = os.getenv('FEED_DEFAULT_BASE_MODEL', 'google/gemma-4-E4B-it')
                   
                   # Count training bundles
                   bundle_count = await pool.fetchval('''
@@ -295,7 +297,7 @@ jobs:
                       base_model = base_model_override
                       strategy = 'override'
                   else:
-                      base_model = 'Qwen/Qwen2.5-7B-Instruct'
+                      base_model = default_base_model
                       strategy = 'default'
                   
                   print(f'📦 Selected model: {base_model}')
@@ -310,8 +312,9 @@ jobs:
                   
               except Exception as e:
                   print(f'❌ Model selection failed: {e}', file=sys.stderr)
+                  default_base_model = os.getenv('FEED_DEFAULT_BASE_MODEL', 'google/gemma-4-E4B-it')
                   with open(os.getenv('GITHUB_OUTPUT'), 'a') as f:
-                      f.write('base_model=Qwen/Qwen2.5-7B-Instruct\\n')
+                      f.write(f'base_model={default_base_model}\\n')
                       f.write('strategy=fallback\\n')
                   sys.exit(1)
           

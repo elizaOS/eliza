@@ -132,15 +132,15 @@ export const GET = withErrorHandling(async function GET() {
       topScores,
       modelBaselines: [
         {
-          name: "Qwen3.5-4B + SFT (ours)",
-          params: "4B",
+          name: "Gemma 4 E4B + SFT (ours)",
+          params: "E4B",
           overall: 71.0,
           attack: 74.8,
           legit: 67.2,
         },
         {
-          name: "Qwen3 32B",
-          params: "32B",
+          name: "Gemma 4 31B",
+          params: "31B",
           overall: 70.9,
           attack: 64.0,
           legit: 77.8,

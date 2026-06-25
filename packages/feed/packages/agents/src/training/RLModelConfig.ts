@@ -23,6 +23,8 @@ export type QuantizationMode = "none" | "4bit" | "8bit";
  */
 export type ModelTier = "small" | "medium" | "large" | "xlarge";
 
+export const FEED_DEFAULT_BASE_MODEL = "google/gemma-4-E4B-it";
+
 export interface ModelTierConfig {
   name: string;
   model: string;
@@ -37,59 +39,60 @@ export interface ModelTierConfig {
 
 /**
  * Available model tiers - scale up when resources allow
- * All models have 128K context (critical requirement)
- * Quantized models reduce VRAM by ~4x (4-bit) or ~2x (8-bit)
+ * Gemma 4 E2B/E4B use 128K context; 12B/31B use 256K context.
+ * The quantized model ids point at Google's hosted QAT GGUF repos.
  */
 export const MODEL_TIERS: Record<ModelTier, ModelTierConfig> = {
   small: {
-    name: "Small (4B)",
-    model: "unsloth/Qwen3-4B-128K",
-    quantizedModel4bit: "unsloth/Qwen3-4B-128K-bnb-4bit",
-    quantizedModel8bit: "unsloth/Qwen3-4B-128K-GGUF",
-    params: "4B",
+    name: "Small (Gemma 4 E2B)",
+    model: "google/gemma-4-E2B-it",
+    quantizedModel4bit: "google/gemma-4-E2B-it-qat-q4_0-gguf",
+    quantizedModel8bit: "google/gemma-4-E2B-it-qat-q4_0-gguf",
+    params: "E2B",
     context: 131072, // 128K context
-    minVramGb: 8,
+    minVramGb: 6,
     minVramGb4bit: 3,
     minVramGb8bit: 5,
   },
   medium: {
-    name: "Medium (8B)",
-    model: "unsloth/Qwen3-8B-128K",
-    quantizedModel4bit: "unsloth/Qwen3-8B-128K-bnb-4bit",
-    quantizedModel8bit: "unsloth/Qwen3-8B-128K-GGUF",
-    params: "8B",
+    name: "Medium (Gemma 4 E4B)",
+    model: FEED_DEFAULT_BASE_MODEL,
+    quantizedModel4bit: "google/gemma-4-E4B-it-qat-q4_0-gguf",
+    quantizedModel8bit: "google/gemma-4-E4B-it-qat-q4_0-gguf",
+    params: "E4B",
     context: 131072, // 128K context
-    minVramGb: 16,
-    minVramGb4bit: 5,
-    minVramGb8bit: 9,
+    minVramGb: 10,
+    minVramGb4bit: 4,
+    minVramGb8bit: 7,
   },
   large: {
-    name: "Large (14B)",
-    model: "unsloth/Qwen3-14B-128K",
-    quantizedModel4bit: "unsloth/Qwen3-14B-128K-bnb-4bit",
-    quantizedModel8bit: "unsloth/Qwen3-14B-128K-GGUF",
-    params: "14B",
-    context: 131072, // 128K context
-    minVramGb: 24,
-    minVramGb4bit: 8,
-    minVramGb8bit: 14,
+    name: "Large (Gemma 4 12B)",
+    model: "google/gemma-4-12B-it",
+    quantizedModel4bit: "google/gemma-4-12B-it-qat-q4_0-gguf",
+    quantizedModel8bit: "google/gemma-4-12B-it-qat-q4_0-gguf",
+    params: "12B",
+    context: 262144, // 256K context
+    minVramGb: 32,
+    minVramGb4bit: 10,
+    minVramGb8bit: 18,
   },
   xlarge: {
-    name: "XLarge (32B)",
-    model: "unsloth/Qwen3-32B-128K",
-    quantizedModel4bit: "unsloth/Qwen3-32B-128K-bnb-4bit",
-    quantizedModel8bit: "unsloth/Qwen3-32B-128K-GGUF",
-    params: "32B",
-    context: 131072, // 128K context
-    minVramGb: 48,
-    minVramGb4bit: 16,
-    minVramGb8bit: 28,
+    name: "XLarge (Gemma 4 31B)",
+    model: "google/gemma-4-31B-it",
+    quantizedModel4bit: "google/gemma-4-31B-it-qat-q4_0-gguf",
+    quantizedModel8bit: "google/gemma-4-31B-it-qat-q4_0-gguf",
+    params: "31B",
+    context: 262144, // 256K context
+    minVramGb: 80,
+    minVramGb4bit: 24,
+    minVramGb8bit: 44,
   },
 };
 
 /**
  * Multi-model configuration for running multiple archetypes simultaneously
- * Optimized for 16GB VRAM (RTX 5090)
+ * Optimized for local multi-archetype runs where one GPU may host several
+ * Gemma 4 QAT GGUF models at once.
  */
 export interface MultiModelConfig {
   totalVramGb: number;
@@ -103,13 +106,11 @@ export interface MultiModelConfig {
  * Optimizes for running multiple archetype models simultaneously
  */
 export function getMultiModelConfig(vramGb: number): MultiModelConfig {
-  // For 16GB VRAM, we want to run 4+ models using 4-bit quantization
-  // Each 4B model at 4-bit uses ~3GB VRAM
-  // Each 8B model at 4-bit uses ~5GB VRAM
+  // Prefer the E2B tier for local multi-model coverage. Single-model and
+  // hosted training defaults use FEED_DEFAULT_BASE_MODEL (Gemma 4 E4B).
 
   if (vramGb >= 16) {
-    // 16GB: Can run 4x 4B models (4-bit) or 3x 8B models (4-bit)
-    // Prefer 4B for more archetype coverage
+    // 16GB: four E2B QAT GGUF models with room for orchestration overhead.
     return {
       totalVramGb: vramGb,
       maxConcurrentModels: 4,
@@ -117,7 +118,7 @@ export function getMultiModelConfig(vramGb: number): MultiModelConfig {
       modelTier: "small",
     };
   } else if (vramGb >= 12) {
-    // 12GB: Can run 3x 4B models (4-bit)
+    // 12GB: three E2B QAT GGUF models.
     return {
       totalVramGb: vramGb,
       maxConcurrentModels: 3,
@@ -125,7 +126,7 @@ export function getMultiModelConfig(vramGb: number): MultiModelConfig {
       modelTier: "small",
     };
   } else if (vramGb >= 8) {
-    // 8GB: Can run 2x 4B models (4-bit)
+    // 8GB: two E2B QAT GGUF models.
     return {
       totalVramGb: vramGb,
       maxConcurrentModels: 2,
