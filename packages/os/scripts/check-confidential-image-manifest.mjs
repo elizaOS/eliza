@@ -16,6 +16,7 @@
 // Runner: plain `node` (no third-party deps).
 //   node packages/os/scripts/check-confidential-image-manifest.mjs
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { validateAgainstSchema } from "./json-schema-lite.mjs";
 import { parseArgs, readJson, repoRoot } from "./os-release-lib.mjs";
 
@@ -94,6 +95,6 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }

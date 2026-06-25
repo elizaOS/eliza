@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const repoRoot = path.resolve(
-  new URL("../../..", import.meta.url).pathname,
+  fileURLToPath(new URL("../../..", import.meta.url)),
 );
 export const defaultManifestPath = path.join(
   repoRoot,

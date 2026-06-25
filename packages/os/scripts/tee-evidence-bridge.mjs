@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { pathToFileURL } from "node:url";
 // OS-side runtime-evidence exposure bridge (plan OS-2, contract "Runtime
 // Evidence Bridge"). Transforms a platform quote into the normalized TeeEvidence
 // document consumed by packages/agent/src/services/dstack-tee-provider.ts and
@@ -136,6 +137,6 @@ async function main() {
   console.log(`TEE evidence (mock) written and bound to golden: ${output}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }

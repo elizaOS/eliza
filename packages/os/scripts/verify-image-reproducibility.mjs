@@ -36,6 +36,7 @@
 //   node packages/os/scripts/verify-image-reproducibility.mjs --input <manifest>
 //   node packages/os/scripts/verify-image-reproducibility.mjs --build-a A --build-b B
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   fileExists,
   parseArgs,
@@ -218,12 +219,17 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const allowAbsent = args["allow-absent"] === true;
 
-  if (typeof args["build-a"] === "string" || typeof args["build-b"] === "string") {
+  if (
+    typeof args["build-a"] === "string" ||
+    typeof args["build-b"] === "string"
+  ) {
     if (
       typeof args["build-a"] !== "string" ||
       typeof args["build-b"] !== "string"
     ) {
-      console.error("error: double-build mode needs both --build-a and --build-b");
+      console.error(
+        "error: double-build mode needs both --build-a and --build-b",
+      );
       process.exit(2);
     }
     const [manifestA, manifestB] = await Promise.all([
@@ -243,7 +249,9 @@ async function main() {
     });
     if (!result.ok) {
       for (const error of result.errors) console.error(`error: ${error}`);
-      console.error("confidential-image-reproducibility (double-build): FAIL-CLOSED");
+      console.error(
+        "confidential-image-reproducibility (double-build): FAIL-CLOSED",
+      );
       process.exit(1);
     }
     console.log(
@@ -266,7 +274,9 @@ async function main() {
           "packages/os/linux/confidential/image-manifest.example.json",
         );
   const componentsDir =
-    typeof args["components-dir"] === "string" ? args["components-dir"] : undefined;
+    typeof args["components-dir"] === "string"
+      ? args["components-dir"]
+      : undefined;
   const manifest = await readJson(input);
   const result = await verifyManifest(manifest, componentsDir, { allowAbsent });
 
@@ -278,7 +288,9 @@ async function main() {
   if (result.blocked) {
     for (const error of result.errors) console.error(`  ${error}`);
     if (result.verified.length > 0) {
-      console.error(`  (recomputed-and-matched: ${result.verified.join(", ")})`);
+      console.error(
+        `  (recomputed-and-matched: ${result.verified.join(", ")})`,
+      );
     }
     console.error("confidential-image-reproducibility: BLOCKED (exit 3)");
     process.exit(3);
@@ -289,6 +301,6 @@ async function main() {
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }
