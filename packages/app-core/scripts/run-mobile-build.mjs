@@ -492,7 +492,7 @@ function resolveJavaHome() {
     }
   }
   if (process.platform === "win32") {
-    const programFiles = process.env.ProgramFiles || "C:\Program Files";
+    const programFiles = process.env.ProgramFiles || "C:\\Program Files";
     for (const vendor of ["Eclipse Adoptium", "Microsoft", "Java", "Zulu"]) {
       const vendorRoot = path.join(programFiles, vendor);
       if (!fs.existsSync(vendorRoot)) continue;
