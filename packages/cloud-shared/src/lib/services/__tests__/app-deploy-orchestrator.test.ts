@@ -82,6 +82,44 @@ describe("deployApp", () => {
     expect(seen.row?.port).toBe(8080);
   });
 
+  test("injects runtime env into a stateless app container", async () => {
+    const { seen, deps: d } = deps();
+    await deployApp(
+      {
+        ...REQ,
+        env: {
+          ELIZA_APP_ID: REQ.appId,
+          ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
+        },
+      },
+      d,
+    );
+    expect(seen.row?.environmentVars).toEqual({
+      ELIZA_APP_ID: REQ.appId,
+      ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
+    });
+  });
+
+  test("platform DB env wins over caller-provided DB keys", async () => {
+    const { seen, deps: d } = deps();
+    await deployApp(
+      {
+        ...REQ_ISOLATED,
+        env: {
+          DATABASE_URL: "postgresql://not-the-tenant-db",
+          POSTGRES_URL: "postgresql://also-not-the-tenant-db",
+          ELIZA_APP_ID: REQ.appId,
+        },
+      },
+      d,
+    );
+    expect(seen.row?.environmentVars).toEqual({
+      DATABASE_URL: TENANT_DSN,
+      POSTGRES_URL: TENANT_DSN,
+      ELIZA_APP_ID: REQ.appId,
+    });
+  });
+
   test("surfaces a DB-provisioning failure before creating any container", async () => {
     let created = false;
     const { deps: d } = deps({

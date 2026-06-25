@@ -1,12 +1,9 @@
 name: Build Example App Images
 
-# Builds + pushes the example-app showcase images consumed by the Apps/Product 2
-# showcase e2e loop. Each example app gets its own job and image tag.
-#
-# The showcase spec (packages/test/cloud-e2e/tests/example-apps-showcase.spec.ts)
-# deploys `ghcr.io/elizaos/example-edad:showcase` via the prebuilt-image path
-# (app.metadata.imageTag → app-deploy-runner.ts), but nothing in the repo built
-# that image. This workflow is that missing piece.
+# Builds + pushes standalone example-app images as a smoke/publish lane. The
+# #9300 real-staging showcase loop deploys these apps from source through the
+# normal app deploy builder (`POST /api/v1/apps/:id/deploy` with repo/ref/
+# Dockerfile), not by pinning these tags operator-side.
 #
 # Why we bundle on the runner instead of building ./Dockerfile from scratch:
 #   server.ts imports `@elizaos/cloud-sdk` (workspace:*). That only resolves

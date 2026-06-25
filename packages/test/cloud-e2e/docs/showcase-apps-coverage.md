@@ -76,8 +76,9 @@ Seeded by [`src/helpers/showcase.ts`](../src/helpers/showcase.ts)
   with **no secrets**, so the loop stays green even when no PR touches the cloud
   paths (e.g. a dependency bump). Uploads Playwright report + video + logs.
 - **Nightly (scaffold, real Hetzner).** The `loop` job sets
-  `MONETIZED_LOOP_REAL=1`, under which both specs skip at the describe level. It
-  activates the moment the live-staging driver + secrets
+  `MONETIZED_LOOP_REAL=1`, under which the mock showcase spec skips at the
+  describe level and the real deploy drivers run. It activates the moment the
+  live-staging driver + secrets
   (`HCLOUD_TOKEN_CI`, `CLOUD_E2E_API_KEY` for the real showcase account) exist -
   see below. Until then it honest-skips (green-but-skipped); it never passes a
   mock assertion off as real.
@@ -111,42 +112,37 @@ operator-gated. To activate the `loop` job for the showcase account:
 2. **Seed CI secrets** in the `ci-hetzner-e2e` GitHub environment: `HCLOUD_TOKEN_CI`
    (CI-scoped Hetzner project) and `CLOUD_E2E_API_KEY` (the showcase account's
    long-lived bearer token). Optionally set `MONETIZED_LOOP_BASE_URL`.
-3. **Pin the showcase images operator-side.** `metadata.imageTag` is NOT settable
-   via REST, so images are resolved operator-side and the real drivers stay
-   pure-HTTP. Two mechanisms:
-   - **Single app:** `APP_DEFAULT_IMAGE=ghcr.io/elizaos/example-edad:showcase`
-     (the GHCR image `build-example-app-images.yml` builds). `resolveImageRef`
-     (`app-deploy-runner.ts`) falls back to it when no resolver/metadata image is
-     present.
-   - **Both apps (a single `APP_DEFAULT_IMAGE` can only point at ONE image):** set
-     `APP_PREBUILT_IMAGES` — a JSON map of app-name PREFIX → image ref — on the
-     **provisioning daemon** (it arms `makePrebuiltImageMapResolver`, see
-     `app-image-resolver.ts`), e.g.
-     ```json
-     {"eDad Showcase":"ghcr.io/elizaos/example-edad:showcase",
-      "Clone Your Crush Showcase":"ghcr.io/elizaos/example-clone-ur-crush:showcase"}
-     ```
-     The real drivers register their apps with those name prefixes (plus a run
-     timestamp), so each deploys its OWN image without the driver writing metadata
-     or holding a staging `DATABASE_URL`. Unset → behaviour is unchanged
-     (`APP_DEFAULT_IMAGE` only).
+3. **Arm the normal app deploy builder.** The real drivers do not pin operator
+   images. They register apps over HTTP, then call
+   `POST /api/v1/apps/:id/deploy` with the repo URL, ref, and app Dockerfile the
+   same way an agent-built app using the Eliza Cloud app path would. On the
+   provisioning daemon, set:
+   - `APPS_IMAGE_REGISTRY` to the registry namespace where freshly built app
+     images are pushed.
+   - `APPS_BUILD_FROM_REPO_ENABLED=1`.
+   - `APPS_BUILDS_HOST` to a dedicated builder host that is logged in to the
+     registry and supports `docker buildx` with the `docker-container` driver.
+     If there is no dedicated host, `APPS_BUILD_ON_RUNTIME_NODE=1` is an explicit
+     operator opt-in to build on the runtime node.
 
-   Also put the showcase org in `APPS_DEPLOY_ALLOWED_ORG_IDS` with `APPS_DEPLOY_ENABLED=1`.
+   Also put the showcase org in `APPS_DEPLOY_ALLOWED_ORG_IDS` with
+   `APPS_DEPLOY_ENABLED=1`.
 4. **The real-mode driver (slice 1 — landed).**
    [`tests/example-edad-real-deploy.spec.ts`](../tests/example-edad-real-deploy.spec.ts)
-   is the pure-HTTP deploy-and-serve driver. It honest-skips at the describe level
+   and
+   [`tests/example-clone-ur-crush-real-deploy.spec.ts`](../tests/example-clone-ur-crush-real-deploy.spec.ts)
+   are pure-HTTP deploy-and-serve drivers. They honest-skip at the describe level
    unless `MONETIZED_LOOP_REAL=1` + `MONETIZED_LOOP_BASE_URL` + `CLOUD_E2E_API_KEY`
    are all set (so per-PR / mock CI never reaches live staging), and otherwise:
-   auth-preflights the showcase key, registers EDAD (the `SHOWCASE_APPS`
-   descriptor), deploys via the real `POST /deploy` route, polls
+   auth-preflight the showcase key, register the app, deploy via the real
+   `POST /deploy` route with `repoUrl`, `ref`, and `dockerfile`, poll
    `GET /deploy/status` to READY (real ~5s cadence, ~10min cap, **no** mock
-   control-plane tick), then asserts the app flips to deployed/remote, its
-   `*.apps.elizacloud.ai` `production_url` **actually serves** (`fetch` 200 +
-   EDAD's own `/api/config` self-report, not the mock `mock-app-container`), and
-   the ingress on-demand-TLS `ask` gate authorizes the live host — with
-   **guaranteed teardown** (`DELETE /api/v1/apps/:id` full cleanup) in a `finally`
-   so a real run leaves no orphan billable container. It is a NEW file, so the
-   mock showcase spec above is unchanged (it already skips itself when `REAL=1`).
+   control-plane tick), then assert the app flips to deployed/remote, its
+   `*.apps.elizacloud.ai` `production_url` **actually serves** the app's own UI,
+   and the ingress on-demand-TLS `ask` gate authorizes the live host — with
+   **guaranteed teardown** (`DELETE /api/v1/apps/:id` full cleanup) in a
+   `finally` so a real run leaves no orphan billable container. The mock showcase
+   spec above is unchanged (it already skips itself when `REAL=1`).
 5. **The monetized half (slice 2 — follow-up).** Drive a real charge → app
    earning → redeemable through real HTTP routes (the mock spec drives this
    in-process via `appCreditsService.deductCredits`; a real driver must push it
