@@ -26,8 +26,10 @@ import {
 	type RuntimeEventSink,
 	type SelfVoiceSimilarityResolver,
 	type TurnTranscriber,
+	type VadSegmenter,
 } from "./audio-frame-consumer";
 import type { VoiceAttributionOutput } from "./speaker/attribution-pipeline";
+import type { PcmFrame, VadEvent } from "./types";
 import { VadDetector } from "./vad";
 
 const SR = 16_000;
@@ -468,5 +470,104 @@ describe("AudioFrameConsumer — ASR transcript join (#8786)", () => {
 		await driveOneTurn(consumer);
 		expect(runtime.emitted.length).toBe(1);
 		expect(runtime.emitted[0].payload.text).toBe("");
+	});
+});
+
+// --- echo cancellation wiring (#9455) ----------------------------------------
+
+/** VadSegmenter that just records every frame the consumer pushes downstream. */
+class RecordingVad implements VadSegmenter {
+	readonly frames: Float32Array[] = [];
+	get inSpeech(): boolean {
+		return false;
+	}
+	onVadEvent(_listener: (event: VadEvent) => void): () => void {
+		return () => {};
+	}
+	async pushFrame(frame: PcmFrame): Promise<void> {
+		this.frames.push(frame.pcm);
+	}
+	async flush(): Promise<void> {}
+	reset(): void {}
+}
+
+describe("AudioFrameConsumer — echo cancellation (#9455)", () => {
+	const SR = 16000;
+	const BLOCK = 320;
+	function farSignal(n: number, seed = 1): Float32Array {
+		const x = new Float32Array(n);
+		let s = seed >>> 0;
+		let p1 = 0;
+		let p2 = 0;
+		for (let i = 0; i < n; i++) {
+			s = (s * 1103515245 + 12345) & 0x7fffffff;
+			const w = s / 0x3fffffff - 1;
+			p1 = 0.92 * p1 + 0.08 * w;
+			p2 = 0.85 * p2 + 0.15 * p1;
+			x[i] = p2 * 3;
+		}
+		return x;
+	}
+	function echoOf(x: Float32Array): Float32Array {
+		const delay = 35;
+		const tail = 90;
+		const h = new Float32Array(delay + tail);
+		for (let k = 0; k < tail; k++)
+			h[delay + k] = Math.exp(-k / 25) * (k % 2 ? -0.6 : 0.8) * 0.22;
+		const y = new Float32Array(x.length);
+		for (let n = 0; n < x.length; n++) {
+			let acc = 0;
+			for (let k = 0; k < h.length; k++) if (n - k >= 0) acc += h[k] * x[n - k];
+			y[n] = acc;
+		}
+		return y;
+	}
+	const power = (a: Float32Array) =>
+		a.reduce((p, v) => p + v * v, 0) / Math.max(1, a.length);
+
+	function makeConsumer(vad: RecordingVad, far: Float32Array | null) {
+		return new AudioFrameConsumer(
+			{
+				vad,
+				pipeline: new FakePipeline("e"),
+				runtime: new FakeRuntime(),
+				...(far
+					? {
+							echoReference: (ts: number, samples: number) => {
+								const off = Math.round((ts - 1000) / 20) * BLOCK;
+								return far.subarray(off, off + samples);
+							},
+						}
+					: {}),
+			},
+			{ source: { kind: "device", deviceId: "pixel" }, preRollSeconds: 0 },
+		);
+	}
+
+	it("cancels the agent's echo on the mic before VAD when echoReference is wired", async () => {
+		const N = SR * 3;
+		const far = farSignal(N);
+		const echo = echoOf(far); // the agent's TTS leaking into the mic
+		const vad = new RecordingVad();
+		const consumer = makeConsumer(vad, far);
+		let ts = 1000;
+		for (let off = 0; off + BLOCK <= N; off += BLOCK) {
+			await consumer.pushDecodedFrame(echo.subarray(off, off + BLOCK), ts);
+			ts += 20;
+		}
+		// after convergence, the recorded (post-AEC) frames carry far less echo
+		// energy than the raw mic frames did.
+		const lateOut = vad.frames[vad.frames.length - 1];
+		const lateRawOff = (vad.frames.length - 1) * BLOCK;
+		const lateRaw = echo.subarray(lateRawOff, lateRawOff + BLOCK);
+		expect(power(lateOut)).toBeLessThan(power(lateRaw) * 0.1); // >10 dB
+	});
+
+	it("leaves the mic untouched when no echoReference is wired", async () => {
+		const vad = new RecordingVad();
+		const consumer = makeConsumer(vad, null);
+		const frame = farSignal(BLOCK, 7);
+		await consumer.pushDecodedFrame(frame, 1000);
+		expect(Array.from(vad.frames[0])).toEqual(Array.from(frame));
 	});
 });
