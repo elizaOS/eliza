@@ -97,12 +97,40 @@ for _scenario in ALL_SCENARIOS:
 
 
 def count_lifeops_scenarios() -> dict[str, int | str | float]:
+    """Honest base-vs-robustness scenario accounting.
+
+    The corpus has ``len(CORE_SCENARIOS)`` distinct, hand-authored *base*
+    scenarios. Each base is then re-emitted ``EDGE_EXPANSION_MULTIPLIER``
+    times under fixed prompt-prefix framings (polite/urgent/mobile/…). An
+    edge variant shares the SAME ``ground_truth_actions``,
+    ``required_outputs`` and ``world_seed`` as its base — only the prompt
+    wording (``id``/``name``/``instruction``/``description``) differs. They
+    are prompt-robustness *runs*, not new distinct scenarios, so the count
+    must not present ``total`` as if it were a count of distinct scenarios.
+
+    Legacy numeric keys (``existing`` / ``added`` / ``total`` /
+    ``multiplierAdded``) are kept for back-compat. The ``base`` /
+    ``variantsPerBase`` / ``totalRuns`` keys and ``summary`` string state the
+    base-vs-variant split explicitly.
+    """
+    base = len(CORE_SCENARIOS)
+    variants_per_base = EDGE_EXPANSION_MULTIPLIER
+    total_runs = len(ALL_SCENARIOS)
     return {
         "suite": "lifeops-bench",
-        "existing": len(CORE_SCENARIOS),
+        # Legacy keys (kept for back-compat with existing consumers/tests).
+        "existing": base,
         "added": len(EDGE_EXPANDED_SCENARIOS),
-        "total": len(ALL_SCENARIOS),
-        "multiplierAdded": len(EDGE_EXPANDED_SCENARIOS) / len(CORE_SCENARIOS),
+        "total": total_runs,
+        "multiplierAdded": len(EDGE_EXPANDED_SCENARIOS) / base,
+        # Honest, explicitly-labelled split.
+        "base": base,
+        "variantsPerBase": variants_per_base,
+        "totalRuns": total_runs,
+        "summary": (
+            f"{base} base scenarios; {variants_per_base}x prompt-prefix "
+            f"robustness variants = {total_runs} runs"
+        ),
     }
 
 

@@ -50,7 +50,7 @@ pytest tests/ -v
 | `eliza_lifeops_bench/evaluator.py` | LIVE-mode simulated-user + judge wiring |
 | `eliza_lifeops_bench/scorer.py` | state_hash, output_substring, pass@k |
 | `eliza_lifeops_bench/lifeworld/` | Deterministic in-memory world state |
-| `eliza_lifeops_bench/scenarios/` | 492 static + 528 live scenarios by domain |
+| `eliza_lifeops_bench/scenarios/` | 1020 base scenarios (492 static + 528 live) by domain; `__init__.py` expands each 10x under fixed prompt-prefix framings into 11220 robustness runs (variant keeps its base's ground-truth/required-outputs/world-seed) |
 | `eliza_lifeops_bench/agents/` | Adapters: eliza, hermes, openclaw, cerebras-direct, perfect, smithers, wrong |
 | `eliza_lifeops_bench/clients/` | Provider clients (Cerebras, Anthropic, Hermes) |
 | `data/snapshots/` | Seeded deterministic LifeWorld snapshots |
