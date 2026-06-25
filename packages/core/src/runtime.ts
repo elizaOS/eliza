@@ -734,6 +734,12 @@ function isMessagingAdapter(
 	);
 }
 
+/** Options for {@link AgentRuntime.stop}. */
+export type RuntimeStopOptions = {
+	/** Skip in-flight service waits and cap service teardown (Ctrl-C / dev). */
+	fast?: boolean;
+};
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100;
 	readonly agentId: UUID;
@@ -1917,7 +1923,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Stops all started services and clears runtime caches/handlers.
 	 * For full teardown (including DB/adapter connection), call close() after stop().
 	 */
-	async stop() {
+	async stop(options?: RuntimeStopOptions): Promise<void> {
 		if (this.stopped) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
@@ -1925,22 +1931,103 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
+		const fast = options?.fast === true;
+		if (fast) {
+			process.env.ELIZA_FAST_SHUTDOWN = "1";
+		}
+		try {
+			await this._stopServices(fast);
+		} finally {
+			if (fast) {
+				delete process.env.ELIZA_FAST_SHUTDOWN;
+			}
+		}
+	}
+
+	private async _stopServices(fast: boolean): Promise<void> {
 		this.stopped = true;
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId },
+			{ src: "agent", agentId: this.agentId, fast },
 			"Stopping runtime",
 		);
 
-		// Wait for any in-flight service starts so we don't leave services running
+		// Wait briefly for in-flight service starts so we don't leave services
+		// running. Cap the wait so Ctrl-C during dev isn't blocked by a slow
+		// deferred plugin start (e.g. catalog sync still settling).
+		const inFlightKeys = Array.from(this.startingServices.keys());
 		const inFlight = Array.from(this.startingServices.values());
 		if (inFlight.length > 0) {
-			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, count: inFlight.length },
-				"Waiting for in-flight service starts before stopping",
-			);
-			await Promise.all(inFlight);
+			if (fast) {
+				this.logger.info(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						serviceTypes: inFlightKeys,
+					},
+					"Fast shutdown: skipping wait for in-flight service starts",
+				);
+				this.startingServices.clear();
+			} else {
+				const parsedInFlightTimeout = Number(
+					process.env.ELIZA_SHUTDOWN_SERVICE_START_TIMEOUT_MS,
+				);
+				const inFlightTimeoutMs =
+					parsedInFlightTimeout === 0
+						? 0
+						: Number.isFinite(parsedInFlightTimeout) &&
+								parsedInFlightTimeout > 0
+							? parsedInFlightTimeout
+							: 1000;
+				if (inFlightTimeoutMs === 0) {
+					this.logger.info(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							serviceTypes: inFlightKeys,
+						},
+						"Skipping wait for in-flight service starts",
+					);
+					this.startingServices.clear();
+				} else {
+					this.logger.info(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							count: inFlight.length,
+							serviceTypes: inFlightKeys,
+							timeoutMs: inFlightTimeoutMs,
+						},
+						"Waiting for in-flight service starts before stopping",
+					);
+					const waitStartedAt = Date.now();
+					let timedOut = false;
+					await Promise.race([
+						Promise.all(inFlight),
+						new Promise<void>((resolve) => {
+							setTimeout(() => {
+								timedOut = true;
+								resolve();
+							}, inFlightTimeoutMs);
+						}),
+					]);
+					if (timedOut && this.startingServices.size > 0) {
+						this.logger.warn(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								serviceTypes: inFlightKeys,
+								timeoutMs: inFlightTimeoutMs,
+								elapsedMs: Date.now() - waitStartedAt,
+							},
+							"Timed out waiting for in-flight service starts; proceeding with shutdown",
+						);
+						this.startingServices.clear();
+					}
+				}
+			}
 		}
 
+		const serviceStopTasks: Promise<void>[] = [];
 		for (const [serviceType, services] of this.services) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, serviceType },
@@ -1948,23 +2035,36 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			for (const service of services) {
 				const maybe = service as { stop?: () => Promise<void> } | null;
-				// A null/undefined service entry must not throw "null is not an
-				// object" and abort the whole stop loop (this breaks agent reset).
 				if (maybe && typeof maybe.stop === "function") {
-					// Isolate each service's stop() — one failing service should not
-					// prevent the rest from stopping (also critical for reset).
-					try {
-						await maybe.stop();
-					} catch (err) {
-						this.logger.warn(
-							{
-								src: "agent",
-								agentId: this.agentId,
-								serviceType,
-								error: err instanceof Error ? err.message : String(err),
-							},
-							"Service stop() threw; continuing",
+					if (fast) {
+						serviceStopTasks.push(
+							Promise.resolve(maybe.stop()).catch((error) => {
+								this.logger.warn(
+									{
+										src: "agent",
+										agentId: this.agentId,
+										serviceType,
+										error:
+											error instanceof Error ? error.message : String(error),
+									},
+									"Service stop failed during fast shutdown",
+								);
+							}),
 						);
+					} else {
+						try {
+							await maybe.stop();
+						} catch (err) {
+							this.logger.warn(
+								{
+									src: "agent",
+									agentId: this.agentId,
+									serviceType,
+									error: err instanceof Error ? err.message : String(err),
+								},
+								"Service stop() threw; continuing",
+							);
+						}
 					}
 				} else if (!maybe) {
 					this.logger.warn(
@@ -1978,6 +2078,22 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 				}
 			}
+		}
+		if (fast && serviceStopTasks.length > 0) {
+			const parsedServiceStopTimeout = Number(
+				process.env.ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS,
+			);
+			const serviceStopTimeoutMs =
+				Number.isFinite(parsedServiceStopTimeout) &&
+				parsedServiceStopTimeout > 0
+					? parsedServiceStopTimeout
+					: 500;
+			await Promise.race([
+				Promise.allSettled(serviceStopTasks),
+				new Promise<void>((resolve) => {
+					setTimeout(resolve, serviceStopTimeoutMs);
+				}),
+			]);
 		}
 
 		// Reject any pending service load promises so callers don't hang

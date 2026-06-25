@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { EmbeddingGenerationService } from "./embedding";
@@ -60,6 +60,16 @@ function makeItem(id: string, text: string | undefined) {
 }
 
 describe("EmbeddingGenerationService drain config", () => {
+	const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
+
+	afterEach(() => {
+		if (previousFastShutdown === undefined) {
+			delete process.env.ELIZA_FAST_SHUTDOWN;
+		} else {
+			process.env.ELIZA_FAST_SHUTDOWN = previousFastShutdown;
+		}
+	});
+
 	test("wires processBatch when a TEXT_EMBEDDING_BATCH model is registered", async () => {
 		const runtime = makeRuntime({ batch: true });
 		const service = (await EmbeddingGenerationService.start(
@@ -87,6 +97,25 @@ describe("EmbeddingGenerationService drain config", () => {
 		expect(queue.options.processBatch).toBeUndefined();
 
 		await service.stop();
+	});
+
+	test("fast shutdown clears queued embeddings instead of flushing high-priority work", async () => {
+		const updateMemory = vi.fn(async () => {});
+		const runtime = makeRuntime({ batch: false, updateMemory });
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+		// biome-ignore lint/suspicious/noExplicitAny: exercise the private event handler directly
+		await (service as any).handleEmbeddingRequest(
+			makeItem("id-fast-stop", "queued text"),
+		);
+		expect(service.getQueueSize()).toBe(1);
+
+		process.env.ELIZA_FAST_SHUTDOWN = "1";
+		await service.stop();
+
+		expect(service.getQueueSize()).toBe(0);
+		expect(updateMemory).not.toHaveBeenCalled();
 	});
 });
 
