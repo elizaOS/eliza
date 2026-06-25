@@ -7,6 +7,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
@@ -149,9 +151,11 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
         }
 
 
-def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path, monkeypatch) -> None:
-    """4b ships a separate embedding artifact; if present, its lineage entry
-    must survive (the bundle stager places it before lineage)."""
+def test_stage_real_bundle_rejects_retired_qwen_embedding_artifact(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Active Gemma bundles must not carry the retired Qwen embedding artifact."""
     monkeypatch.setattr(stage, "_repo_root", lambda: tmp_path)
     bundle = tmp_path / "eliza-1-4b.bundle"
     bundle.mkdir(parents=True)
@@ -169,14 +173,8 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
         skip_assets=True, skip_wakeword=True, link_mode="copy",
         version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,
     )
-    report = stage.stage_real_bundle(args)
-    assert report["checksumValidation"]["ok"] is True
-    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["lineage"]["embedding"]["base"] == "Qwen/Qwen3-Embedding-0.6B-GGUF"
-    assert manifest["files"]["embedding"][0]["path"] == "embedding/eliza-1-embedding.gguf"
-    # 4b ships both half-context and native-context variants.
-    ctxs = sorted(f["ctx"] for f in manifest["files"]["text"])
-    assert ctxs == [131072, 262144]
+    with pytest.raises(SystemExit, match="retired Qwen embedding artifacts"):
+        stage.stage_real_bundle(args)
 
 
 def test_remove_stale_text_variants_handles_27b_256k_bundle_names(tmp_path: Path) -> None:

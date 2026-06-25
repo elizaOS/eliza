@@ -16,6 +16,9 @@ Usage:
         --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf.eliza1.json \
         --drafter-gguf /tmp/eliza1-eval-models/gemma4-mtp-drafter-2b.gguf \
         --drafter-source <license-reviewed drafter source> \
+        --asr-repo <verified Gemma ASR-capable repo> \
+        --asr-file <asr model gguf path> \
+        --asr-mmproj-file <asr projector gguf path> \
         --vision-gguf /tmp/eliza1-eval-models/mmproj-2b.gguf \
         --out /tmp/eliza1-stage/eliza-1-2b
 """
@@ -77,7 +80,9 @@ DRAFTER_SOURCE_BY_TIER = {
     "27b": "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
 }
 
-# Frozen tier-agnostic voice/ASR/VAD/cache bytes live in the canonical model repo.
+# Frozen tier-agnostic VAD/cache bytes live in the canonical model repo.
+# ASR is supplied explicitly so candidate staging cannot silently inherit
+# retired Qwen assets from an older bundle.
 ASSETS_REPO = "elizaos/eliza-1"
 ASSETS_TIER = "2b"
 
@@ -172,6 +177,32 @@ def main(argv: list[str] | None = None) -> int:
             "official upstream assistant sources."
         ),
     )
+    ap.add_argument(
+        "--asr-repo",
+        default=None,
+        help=(
+            "Verified Gemma ASR-capable HF repo for the ASR GGUF assets. "
+            "Required; retired Qwen ASR repos require --allow-retired-qwen-asr."
+        ),
+    )
+    ap.add_argument(
+        "--asr-file",
+        default=None,
+        help="Exact ASR model GGUF path inside --asr-repo.",
+    )
+    ap.add_argument(
+        "--asr-mmproj-file",
+        default=None,
+        help="Exact ASR mmproj/projector GGUF path inside --asr-repo.",
+    )
+    ap.add_argument(
+        "--allow-retired-qwen-asr",
+        action="store_true",
+        help=(
+            "Allow retired Qwen3-ASR repos for explicit legacy candidate "
+            "reproduction. Do not use for active Gemma Eliza-1 releases."
+        ),
+    )
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--licenses-from", type=Path, default=None,
                     help="Dir of LICENSE.* files to copy into licenses/.")
@@ -193,6 +224,18 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(
             "--drafter-matches-target requires --drafter-source naming the "
             "matched Eliza-1 drafter run, not just the default upstream source."
+        )
+    asr_repo = A.resolve_asr_repo(
+        argparse.Namespace(
+            asr_repo=args.asr_repo,
+            allow_retired_qwen_asr=args.allow_retired_qwen_asr,
+        ),
+        tier,
+    )
+    if not args.asr_file or not args.asr_mmproj_file:
+        raise SystemExit(
+            "candidate staging requires --asr-file and --asr-mmproj-file for "
+            "the verified ASR source"
         )
     out = args.out.resolve()
     text_rel = PP.text_artifact_name(tier, TEXT_CONTEXT_BY_TIER[tier])
@@ -293,21 +336,58 @@ def main(argv: list[str] | None = None) -> int:
     # Native VAD is the release artifact; the ONNX file is a legacy fallback and
     # is intentionally not listed in the manifest.
     asset_map = [
-        (ASSETS_REPO, f"{ASSETS_TIER}/asr/eliza-1-asr.gguf", out / "asr" / "eliza-1-asr.gguf"),
-        (ASSETS_REPO, f"{ASSETS_TIER}/asr/eliza-1-asr-mmproj.gguf", out / "asr" / "eliza-1-asr-mmproj.gguf"),
+        (asr_repo, args.asr_file, out / "asr" / "eliza-1-asr.gguf"),
+        (asr_repo, args.asr_mmproj_file, out / "asr" / "eliza-1-asr-mmproj.gguf"),
         (A.VAD_NATIVE_REPO, "voice/vad/silero-vad-v5.gguf", out / "vad" / "silero-vad-v5.gguf"),
         (ASSETS_REPO, f"{ASSETS_TIER}/cache/voice-preset-default.bin", out / "cache" / "voice-preset-default.bin"),
-        (ASSETS_REPO, f"{ASSETS_TIER}/licenses/LICENSE.asr", out / "licenses" / "LICENSE.asr"),
         (ASSETS_REPO, f"{ASSETS_TIER}/licenses/LICENSE.vad", out / "licenses" / "LICENSE.vad"),
         (ASSETS_REPO, f"{ASSETS_TIER}/licenses/LICENSE.voice", out / "licenses" / "LICENSE.voice"),
-        (ASSETS_REPO, f"{ASSETS_TIER}/lineage.json", out / "evidence" / "assets-lineage.json"),
-        (ASSETS_REPO, f"{ASSETS_TIER}/evidence/bundle-assets.json", out / "evidence" / "bundle-assets.json"),
     ]
     for rel in M.required_voice_artifacts_for_tier(tier):
         repo, remote, dest = voice_asset_source(tier, rel)
         asset_map.append((repo, remote, out / dest))
     for repo, remote, dest in asset_map:
         download_asset(repo, remote, dest)
+    (out / "licenses" / "LICENSE.asr").write_text(
+        "Eliza-1 ASR model license notice.\n\n"
+        f"ASR GGUF assets staged from {asr_repo}:\n"
+        f"- {args.asr_file}\n"
+        f"- {args.asr_mmproj_file}\n\n"
+        "Review the upstream model card and license before release.\n"
+    )
+    asset_lineage = {
+        "schemaVersion": 1,
+        "tier": tier,
+        "generatedAt": generated_at,
+        "voice": {"base": voice_source_note(tier), "license": "apache-2.0"},
+        "asr": {
+            "base": asr_repo,
+            "files": [args.asr_file, args.asr_mmproj_file],
+            "license": "review upstream model card before release",
+        },
+        "vad": {"base": A.VAD_NATIVE_REPO, "license": "mit"},
+        "cache": {"base": ASSETS_REPO, "license": "apache-2.0"},
+    }
+    (out / "evidence" / "assets-lineage.json").write_text(
+        json.dumps(asset_lineage, indent=2) + "\n"
+    )
+    (out / "evidence" / "bundle-assets.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "tier": tier,
+                "generatedAt": generated_at,
+                "asrRepo": asr_repo,
+                "asrRemotePath": args.asr_file,
+                "asrMmprojRemotePath": args.asr_mmproj_file,
+                "voiceBackends": list(M.VOICE_BACKENDS_BY_TIER[tier]),
+                "vadRepo": A.VAD_NATIVE_REPO,
+                "cacheRepo": ASSETS_REPO,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
 
     # extra licenses (text / mtp / vision / eliza-1) from a local bundle dir if given
     if args.licenses_from and args.licenses_from.is_dir():
@@ -422,7 +502,10 @@ def main(argv: list[str] | None = None) -> int:
             base=f"{TEXT_BASE_BY_TIER[tier]} vision projector",
             license="apache-2.0; review upstream model card before release",
         ),
-        "asr": M.LineageEntry(base=A.ASR_REPO_BY_TIER[tier], license="apache-2.0; review upstream model card before release"),
+        "asr": M.LineageEntry(
+            base=asr_repo,
+            license="review upstream model card before release",
+        ),
         "vad": M.LineageEntry(base=A.VAD_NATIVE_REPO, license="mit"),
     }
 
@@ -470,7 +553,11 @@ def main(argv: list[str] | None = None) -> int:
                 "files": list(M.required_voice_artifacts_for_tier(tier)),
                 "note": "frozen TTS assets, not fine-tuned",
             },
-            "asr": {"repo": A.ASR_REPO_BY_TIER[tier], "note": "frozen, not fine-tuned"},
+            "asr": {
+                "repo": asr_repo,
+                "files": [args.asr_file, args.asr_mmproj_file],
+                "note": "frozen, not fine-tuned",
+            },
             "vad": {"repo": A.VAD_NATIVE_REPO, "note": "frozen native Silero v5 GGUF"},
             "drafter": {
                 "repo": drafter_source,
@@ -556,12 +643,14 @@ def main(argv: list[str] | None = None) -> int:
     # --- README ---
     (out / "README.md").write_text(
         _render_readme(tier, manifest, drafter_source, optimized=optimized,
-                       eval_results=eval_results, text_rel=text_rel)
+                       eval_results=eval_results, text_rel=text_rel,
+                       asr_repo=asr_repo)
     )
 
     print(f"staged {tier} bundle at {out}")
     print(f"  text sha256={text_sha}")
     print(f"  drafter sha256={drafter_sha} (source {drafter_source})")
+    print(f"  asr source={asr_repo}")
     return 0
 
 
@@ -573,6 +662,7 @@ def _render_readme(
     optimized: bool,
     eval_results: dict[str, Any],
     text_rel: str,
+    asr_repo: str,
 ) -> str:
     base_repo = TEXT_BASE_BY_TIER[tier]
     if optimized:
@@ -624,9 +714,8 @@ release bar (every supported backend kernel-verified, every eval green) is met.
 
 {text_para}
 - **Voice / ASR / VAD / cache**: frozen upstream assets —
-  {", ".join(M.VOICE_BACKENDS_BY_TIER[tier])} TTS, local ASR placeholder
-  assets, native Silero-VAD v5.1.2, and the default speaker preset. Not
-  fine-tuned.
+  {", ".join(M.VOICE_BACKENDS_BY_TIER[tier])} TTS, ASR from `{asr_repo}`,
+  native Silero-VAD v5.1.2, and the default speaker preset. Not fine-tuned.
   Licenses in `licenses/`.
 - **MTP drafter** (`mtp/drafter-{tier}.gguf`): the **upstream
   `{drafter_source}` artifact** — it must share the Gemma 4 tokenizer with the
