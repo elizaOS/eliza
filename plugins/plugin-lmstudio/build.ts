@@ -61,15 +61,12 @@ await build({
 console.log("Generating TypeScript declarations...");
 const { mkdir, writeFile } = await import("node:fs/promises");
 const { $ } = await import("bun");
-const tscPath = join(
-  ROOT,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "tsc.exe" : "tsc"
-);
-
 try {
-  await $`${tscPath} --project tsconfig.build.json`;
+  // Resolve tsc via bun PATH resolution (bunx). bun hoists tsc to the
+  // REPO-ROOT node_modules/.bin, so the per-plugin `${ROOT}/node_modules/.bin/
+  // tsc.exe` path does not exist on Windows — the spawn failed and the plugin
+  // silently shipped with no fresh .d.ts. bunx resolves tsc on every platform.
+  await $`bunx tsc --project tsconfig.build.json`;
 } catch {
   console.warn(
     "Warning: TypeScript declaration generation failed; continuing with bundled JS outputs only."
