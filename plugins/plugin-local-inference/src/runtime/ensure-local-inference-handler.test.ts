@@ -552,6 +552,7 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(engineState.transcribePcm).toHaveBeenCalledWith(
 			{ pcm: new Float32Array([0]), sampleRate: 16_000 },
 			undefined,
+			undefined,
 		);
 	});
 
