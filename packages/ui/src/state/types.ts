@@ -166,9 +166,9 @@ export const FIRST_RUN_PERMISSION_LABELS: Record<SystemPermissionId, string> = {
 };
 
 import type { ActionBanner } from "./action-banner";
-import type { ActionNotice } from "./action-notice";
+import type { ActionNotice, ActionTone } from "./action-notice";
 
-export type { ActionBanner, ActionNotice };
+export type { ActionBanner, ActionNotice, ActionTone };
 
 export type LifecycleAction = "start" | "stop" | "restart" | "reset";
 
@@ -1062,7 +1062,7 @@ export interface AppActions {
   // Action notice
   setActionNotice: (
     text: string,
-    tone?: "info" | "success" | "error",
+    tone?: ActionTone,
     ttlMs?: number,
     once?: boolean,
     busy?: boolean,

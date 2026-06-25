@@ -3,6 +3,7 @@ import { SHARE_TARGET_EVENT } from "../../events";
 import { PerfOverlay } from "../../perf/PerfOverlay";
 import type { ShareTargetPayload } from "../../platform/init";
 
+import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useAppSelector } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import type { ActionNotice } from "../../state/types";
@@ -68,7 +69,7 @@ export function ShellOverlays({
         return;
       }
       const preview = text.length > 80 ? `${text.slice(0, 77)}...` : text;
-      setActionNotice(`Shared: ${preview}`, "info", 4000);
+      setActionNotice(`Shared: ${preview}`, "info", TOAST_TTL_MS.notification);
     };
 
     for (const queued of drainShareQueue()) {

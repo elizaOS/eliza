@@ -11,6 +11,7 @@ import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
 } from "../events";
+import { type ActionTone, TOAST_TTL_MS } from "./action-notice";
 import {
   loadPersistedFirstRunComplete,
   savePersistedFirstRunComplete,
@@ -373,8 +374,8 @@ export function useLifecycleState(): LifecycleStateHook {
   const setActionNotice = useCallback(
     (
       text: string,
-      tone: "info" | "success" | "error" = "info",
-      ttlMs = 2800,
+      tone: ActionTone = "info",
+      ttlMs = TOAST_TTL_MS.default,
       once = false,
       busy = false,
     ) => {

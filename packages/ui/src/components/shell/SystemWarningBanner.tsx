@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useAppSelector } from "../../state";
+import { TOAST_TTL_MS } from "../../state/action-notice";
 import { Button } from "../ui/button";
 
 // z-[9998] mirrors Z_SYSTEM_BANNER in ../../lib/floating-layers.ts.
 // Kept as a literal so Tailwind v4's source scanner emits the utility.
 
-const AUTO_DISMISS_MS = 20_000;
+const AUTO_DISMISS_MS = TOAST_TTL_MS.systemWarning;
 
 /**
  * Renders yellow warning banners for system-level warnings

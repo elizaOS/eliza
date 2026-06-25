@@ -16,7 +16,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import {
@@ -47,6 +47,33 @@ const CATEGORY_ICON: Record<NotificationCategory, ReactNode> = {
 function categoryIcon(category: NotificationCategory): ReactNode {
   return CATEGORY_ICON[category] ?? CATEGORY_ICON.general;
 }
+
+const CATEGORY_LABEL: Record<NotificationCategory, string> = {
+  reminder: "Reminders",
+  task: "Tasks",
+  workflow: "Workflows",
+  agent: "Agents",
+  approval: "Approvals",
+  message: "Messages",
+  health: "Health",
+  system: "System",
+  general: "General",
+};
+
+/** Stable display order for the category filter chips. */
+const CATEGORY_ORDER: NotificationCategory[] = [
+  "approval",
+  "agent",
+  "task",
+  "workflow",
+  "reminder",
+  "message",
+  "health",
+  "system",
+  "general",
+];
+
+type CategoryFilter = NotificationCategory | "all";
 
 /** Best-effort navigation for a notification deep link. */
 function navigateDeepLink(deepLink: string): void {
@@ -144,6 +171,69 @@ function NotificationRow({
   );
 }
 
+function CategoryFilterBar({
+  categories,
+  active,
+  onSelect,
+}: {
+  categories: NotificationCategory[];
+  active: CategoryFilter;
+  onSelect: (next: CategoryFilter) => void;
+}): ReactNode {
+  return (
+    <div
+      className="flex items-center gap-1 overflow-x-auto border-b border-border px-2 py-1.5"
+      role="tablist"
+      aria-label="Filter notifications by category"
+    >
+      <FilterChip
+        label="All"
+        active={active === "all"}
+        onSelect={() => onSelect("all")}
+      />
+      {categories.map((category) => (
+        <FilterChip
+          key={category}
+          label={CATEGORY_LABEL[category]}
+          icon={categoryIcon(category)}
+          active={active === category}
+          onSelect={() => onSelect(category)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FilterChip({
+  label,
+  icon,
+  active,
+  onSelect,
+}: {
+  label: string;
+  icon?: ReactNode;
+  active: boolean;
+  onSelect: () => void;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onSelect}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+        active
+          ? "bg-accent text-accent-foreground hover:bg-accent/85"
+          : "text-muted-strong hover:bg-surface hover:text-txt",
+      )}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
 /**
  * Notification center — a floating bell + unread badge that opens a panel
  * listing the agent's notifications. Self-contained: reads the notification
@@ -162,6 +252,29 @@ export function NotificationCenter({
 }): ReactNode {
   const { notifications, unreadCount } = useNotifications();
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
+
+  // Categories actually present in the inbox, in a stable display order. Drives
+  // the filter chips — empty/single-category inboxes get no filter clutter.
+  const presentCategories = useMemo(() => {
+    const present = new Set(notifications.map((n) => n.category));
+    return CATEGORY_ORDER.filter((category) => present.has(category));
+  }, [notifications]);
+
+  // Fall back to "all" when the active category drains (its last item was read
+  // away / cleared), so the list never shows an empty filtered view by accident.
+  const effectiveCategory =
+    activeCategory !== "all" && !presentCategories.includes(activeCategory)
+      ? "all"
+      : activeCategory;
+
+  const visibleNotifications = useMemo(
+    () =>
+      effectiveCategory === "all"
+        ? notifications
+        : notifications.filter((n) => n.category === effectiveCategory),
+    [notifications, effectiveCategory],
+  );
 
   // Boot the notification store (hydrate + subscribe to the live stream) and
   // route its interrupt toasts through the shell's ActionNotice. Idempotent —
@@ -244,6 +357,13 @@ export function NotificationCenter({
             )}
           </div>
         </div>
+        {presentCategories.length > 1 && (
+          <CategoryFilterBar
+            categories={presentCategories}
+            active={effectiveCategory}
+            onSelect={setActiveCategory}
+          />
+        )}
         {notifications.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
             <Inbox className="h-7 w-7 text-muted/70" />
@@ -251,7 +371,7 @@ export function NotificationCenter({
           </div>
         ) : (
           <ul className="max-h-[min(440px,60vh)] overflow-y-auto p-1.5">
-            {notifications.map((notification) => (
+            {visibleNotifications.map((notification) => (
               <NotificationRow
                 key={notification.id}
                 notification={notification}

@@ -3,6 +3,11 @@ import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import { showNativeNotification } from "../../bridge/native-notifications";
+import {
+  type ActionTone,
+  TOAST_TTL_MS,
+  toastToneForPriority,
+} from "../action-notice";
 
 /**
  * Notification center store.
@@ -23,8 +28,7 @@ export interface NotificationState {
   hydrated: boolean;
 }
 
-type ToastTone = "info" | "success" | "error";
-type ToastSink = (text: string, tone?: ToastTone, ttlMs?: number) => void;
+type ToastSink = (text: string, tone?: ActionTone, ttlMs?: number) => void;
 
 let state: NotificationState = {
   notifications: [],
@@ -64,10 +68,6 @@ function upsert(notification: AgentNotification): AgentNotification[] {
 function isWindowFocused(): boolean {
   if (typeof document === "undefined") return true;
   return document.visibilityState === "visible" && document.hasFocus();
-}
-
-function toastTone(priority: AgentNotification["priority"]): ToastTone {
-  return priority === "urgent" ? "error" : "info";
 }
 
 async function fireDesktopNotification(
@@ -123,8 +123,10 @@ function deliver(notification: AgentNotification): void {
       : notification.title;
     toastSink(
       text,
-      toastTone(notification.priority),
-      interruptive ? 7000 : 4000,
+      toastToneForPriority(notification.priority),
+      interruptive
+        ? TOAST_TTL_MS.notificationInterruptive
+        : TOAST_TTL_MS.notification,
     );
   }
 }
