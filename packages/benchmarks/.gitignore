@@ -109,6 +109,12 @@ swe-bench-workspace/
 # CompactBench --output captures
 compactbench/results*.jsonl
 compactbench/results*.json
+compactbench/external/
+# Deleted EVM benchmark local run output
+evm/metrics/
+evm/skill_runner/_test_skill.ts
+# Deleted LoCA benchmark local lockfile
+loca-bench/uv.lock
 # Trust handler result captures
 trust/results*.json
 # VoiceBench synthesized dataset (rebuilt by run.sh)
