@@ -25,10 +25,6 @@ import {
 	LOCAL_INFERENCE_PROVIDER_ID,
 	LOCAL_INFERENCE_TEXT_MODEL_TYPES,
 } from "./provider.js";
-import {
-	assertManifestEvalsPassed,
-	CandidateModelActivationError,
-} from "./services/active-model.js";
 import { classifyDeviceTier } from "./services/device-tier.js";
 
 // Lazy service handle. Importing `./services/service.js` eagerly evaluates the
@@ -1525,6 +1521,11 @@ export async function handleLocalInferenceRoutes(
 		// `eliza-1.manifest.json` is reachable next to the installed bundle
 		// (see `defaultManifestLoader`); external-scan / non-bundle installs
 		// are passed through.
+		// Lazy: active-model.js pulls the engine (~545ms). Load it here, on the
+		// model-activation path (the engine is needed to activate anyway), so it
+		// stays off the boot-blocking plugin import (issue #9565).
+		const { assertManifestEvalsPassed, CandidateModelActivationError } =
+			await import("./services/active-model.js");
 		try {
 			assertManifestEvalsPassed(installed);
 		} catch (err) {
