@@ -40,6 +40,7 @@ import type {
 	ElizaInferenceFfi,
 } from "./ffi-bindings.js";
 import { loadElizaInferenceFfi } from "./ffi-bindings.js";
+import { PlaybackEchoReference } from "./playback-echo-reference.js";
 import { VoiceProfileStore } from "./profile-store.js";
 import { VoiceAttributionPipeline } from "./speaker/attribution-pipeline.js";
 import { FusedDiarizer } from "./speaker/diarizer-fused.js";
@@ -47,6 +48,19 @@ import { FusedSpeakerEncoder } from "./speaker/encoder-fused.js";
 import { GgmlSileroVad, VadDetector } from "./vad.js";
 
 export type { RuntimeEventSink } from "./audio-frame-consumer.js";
+
+/**
+ * Resolve the fixed playback→mic transport delay (ms) for echo-reference
+ * alignment from the environment. The per-platform value is tuned on a device
+ * (the bulk-delay calibration in #9583); absent or invalid → 0 (the adaptive
+ * taps absorb the residual lag within their tail).
+ */
+function playbackToMicDelayMs(): number {
+	const raw = process.env.ELIZA_VOICE_PLAYBACK_TO_MIC_DELAY_MS?.trim();
+	if (!raw) return 0;
+	const value = Number(raw);
+	return Number.isFinite(value) && value >= 0 ? value : 0;
+}
 
 /** Resolve the on-device voice-model directory (env override wins). Doubles as
  *  the fused context bundle root — the runtime resolves per-model GGUFs from it. */
@@ -100,6 +114,8 @@ export interface LiveDiarizationStatus {
 	framesDropped: number;
 	/** Turns segmented + attributed so far. */
 	turnsObserved: number;
+	/** Agent TTS playback samples observed as the AEC far-end reference (#9583). */
+	playbackSamplesObserved: number;
 	/** The most recent attributed turns (capped), for device-evidence reads. */
 	recentTurns: LiveDiarizationTurnSummary[];
 	/** Populated only when readiness failed — the precise blocker. */
@@ -142,6 +158,17 @@ export class LiveDiarizationSession {
 	private buildError: string | null = null;
 	/** True once the fused ASR region is mmap-acquired for per-turn transcribe. */
 	private asrRegionAcquired = false;
+	/**
+	 * Far-end (agent TTS playback) reference for acoustic echo cancellation
+	 * (#9583). Fed by `observePlayback` from the playback tap; its `reference`
+	 * read is the consumer's `echoReference` provider, so every mic frame is
+	 * echo-cancelled against the time-aligned playback before VAD/attribution.
+	 */
+	private readonly playbackReference = new PlaybackEchoReference({
+		playbackToMicDelayMs: playbackToMicDelayMs(),
+	});
+	/** Cumulative playback samples observed (status / device evidence). */
+	private playbackSamplesObserved = 0;
 
 	constructor(private readonly runtime: RuntimeEventSink) {}
 
@@ -225,6 +252,12 @@ export class LiveDiarizationSession {
 				pipeline,
 				runtime: this.runtime,
 				...(transcribe ? { transcribe } : {}),
+				// #9583: cancel the agent's own TTS echo off the mic before VAD.
+				// `observePlayback` feeds the far-end; this answers each mic frame's
+				// window with the time-aligned playback (null when the agent is
+				// silent → byte-identical passthrough).
+				echoReference: (timestampMs, samples) =>
+					this.playbackReference.reference(timestampMs, samples),
 			},
 			config,
 		);
@@ -288,6 +321,24 @@ export class LiveDiarizationSession {
 		}
 	}
 
+	/**
+	 * Record a chunk of the agent's TTS playback PCM (the far-end echo reference),
+	 * anchored to the playback-clock ms at which its first sample is played
+	 * (#9583). The echo canceller subtracts the time-aligned playback from each
+	 * mic frame, so the agent never transcribes its own voice. Fed from the
+	 * playback tap (the same audio the scheduler hands to output). PCM must be
+	 * 16 kHz mono Float32 [-1, 1] — the mic pipeline's single rate.
+	 */
+	observePlayback(pcm: Float32Array, sampleRate: number, atMs: number): void {
+		this.playbackReference.observePlayback(pcm, sampleRate, atMs);
+		this.playbackSamplesObserved += pcm.length;
+	}
+
+	/** Drop all buffered playback (call when playback stops / on a hard boundary). */
+	resetPlayback(): void {
+		this.playbackReference.reset();
+	}
+
 	/** Flush any open segment (call on stopAudioFrames) and await attribution. */
 	async flush(): Promise<void> {
 		if (this.consumer) await this.consumer.flush();
@@ -307,6 +358,7 @@ export class LiveDiarizationSession {
 			framesReceived: this.framesReceived,
 			framesDropped: this.consumer?.droppedFrames ?? 0,
 			turnsObserved: this.turnsObserved,
+			playbackSamplesObserved: this.playbackSamplesObserved,
 			recentTurns: [...this.recentTurns],
 			...(this.buildError ? { error: this.buildError } : {}),
 		};
@@ -314,6 +366,7 @@ export class LiveDiarizationSession {
 
 	/** Release native handles + listeners. */
 	async close(): Promise<void> {
+		this.playbackReference.reset();
 		await this.consumer?.close();
 		if (this.asrRegionAcquired && this.ffi && this.ctx !== null) {
 			try {

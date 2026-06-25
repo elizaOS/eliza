@@ -9,6 +9,9 @@ export {
 	AudioFrameDecodeError,
 	type AudioFrameEvent,
 	decodeAudioFramePcm,
+	decodePlaybackFramePcm,
+	type EchoReferenceProvider,
+	type PlaybackFrameEvent,
 	type RuntimeEventSink,
 	type VadSegmenter,
 } from "./audio-frame-consumer";
@@ -59,6 +62,10 @@ export {
 	type EchoDelayOptions,
 	estimateEchoDelaySamples,
 } from "./echo-delay";
+export {
+	PlaybackEchoReference,
+	type PlaybackEchoReferenceConfig,
+} from "./playback-echo-reference";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,

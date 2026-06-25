@@ -101,7 +101,17 @@ export function decodeAudioFramePcm(frame: AudioFrameEvent): Float32Array {
 			`[audio-frame-consumer] expected ${AUDIO_FRAME_PIPELINE_SAMPLE_RATE} Hz; got ${frame.sampleRate} Hz. Capture at 16 kHz (startAudioFrames default).`,
 		);
 	}
-	const bytes = base64ToBytes(frame.pcm16);
+	return decodeBase64Le16(frame.pcm16);
+}
+
+/**
+ * Decode a base64 little-endian s16 PCM payload into a Float32 [-1, 1] window.
+ * Shared by the mic (`decodeAudioFramePcm`) and far-end playback
+ * (`decodePlaybackFramePcm`) wire boundaries — both transports carry the same
+ * LE-s16 encoding.
+ */
+function decodeBase64Le16(pcm16: string): Float32Array {
+	const bytes = base64ToBytes(pcm16);
 	if (bytes.length % 2 !== 0) {
 		throw new AudioFrameDecodeError(
 			`[audio-frame-consumer] PCM byte length ${bytes.length} is odd — not a whole number of s16 samples`,
@@ -116,6 +126,35 @@ export function decodeAudioFramePcm(frame: AudioFrameEvent): Float32Array {
 		out[i] = view.getInt16(i * 2, true) / 32_768;
 	}
 	return out;
+}
+
+/**
+ * The agent's TTS playback (far-end) PCM for one report, mirroring the mic
+ * `AudioFrameEvent` wire shape (#9583). The WebView/native playback path reports
+ * the PCM it actually played so the agent's echo canceller can subtract the
+ * time-aligned far-end from the mic.
+ */
+export interface PlaybackFrameEvent {
+	/** Base64-encoded little-endian signed 16-bit mono PCM that was played. */
+	pcm16: string;
+	/** Sample rate of the played PCM in Hz (must be 16000 — the pipeline rate). */
+	sampleRate: number;
+	/** Playback-clock ms at which the first sample of this chunk was played. */
+	atMs: number;
+}
+
+/**
+ * Decode a {@link PlaybackFrameEvent} into the Float32 [-1, 1] window the
+ * playback echo-reference store buffers. Asserts the 16 kHz pipeline rate rather
+ * than resampling silently (a wrong far-end rate would mis-align the canceller).
+ */
+export function decodePlaybackFramePcm(frame: PlaybackFrameEvent): Float32Array {
+	if (frame.sampleRate !== AUDIO_FRAME_PIPELINE_SAMPLE_RATE) {
+		throw new AudioFrameDecodeError(
+			`[audio-frame-consumer] expected ${AUDIO_FRAME_PIPELINE_SAMPLE_RATE} Hz playback; got ${frame.sampleRate} Hz`,
+		);
+	}
+	return decodeBase64Le16(frame.pcm16);
 }
 
 /**

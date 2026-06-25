@@ -28,6 +28,7 @@ import {
 	type TurnTranscriber,
 	type VadSegmenter,
 } from "./audio-frame-consumer";
+import { PlaybackEchoReference } from "./playback-echo-reference";
 import type { VoiceAttributionOutput } from "./speaker/attribution-pipeline";
 import type { PcmFrame, VadEvent } from "./types";
 import { VadDetector } from "./vad";
@@ -569,5 +570,99 @@ describe("AudioFrameConsumer — echo cancellation (#9455)", () => {
 		const frame = farSignal(BLOCK, 7);
 		await consumer.pushDecodedFrame(frame, 1000);
 		expect(Array.from(vad.frames[0])).toEqual(Array.from(frame));
+	});
+});
+
+// --- echoReference wiring via the real PlaybackEchoReference store (#9583) ----
+
+describe("AudioFrameConsumer × PlaybackEchoReference wiring (#9583)", () => {
+	const SR = 16000;
+	const BLOCK = 320; // 20 ms mic frame
+
+	// A spectrally-rich far-end (the agent's TTS), reused from the #9455 model.
+	function farSignal(n: number, seed = 1): Float32Array {
+		const x = new Float32Array(n);
+		let s = seed >>> 0;
+		let p1 = 0;
+		let p2 = 0;
+		for (let i = 0; i < n; i++) {
+			s = (s * 1103515245 + 12345) & 0x7fffffff;
+			const w = s / 0x3fffffff - 1;
+			p1 = 0.92 * p1 + 0.08 * w;
+			p2 = 0.85 * p2 + 0.15 * p1;
+			x[i] = p2 * 3;
+		}
+		return x;
+	}
+	function echoOf(x: Float32Array): Float32Array {
+		const delay = 35;
+		const tail = 90;
+		const h = new Float32Array(delay + tail);
+		for (let k = 0; k < tail; k++)
+			h[delay + k] = Math.exp(-k / 25) * (k % 2 ? -0.6 : 0.8) * 0.22;
+		const y = new Float32Array(x.length);
+		for (let n = 0; n < x.length; n++) {
+			let acc = 0;
+			for (let k = 0; k < h.length; k++) if (n - k >= 0) acc += h[k] * x[n - k];
+			y[n] = acc;
+		}
+		return y;
+	}
+	const power = (a: Float32Array) =>
+		a.reduce((p, v) => p + v * v, 0) / Math.max(1, a.length);
+
+	it("cancels the agent's echo when the store is the echoReference provider", async () => {
+		// The store is fed the far-end playback chunk-by-chunk on the playback
+		// clock, and the consumer's echoReference reads it back per mic frame — the
+		// real device wiring, end to end, with no test-only alignment closure.
+		const store = new PlaybackEchoReference();
+		const vad = new RecordingVad();
+		const consumer = new AudioFrameConsumer(
+			{
+				vad,
+				pipeline: new FakePipeline("e"),
+				runtime: new FakeRuntime(),
+				echoReference: (ts, samples) => store.reference(ts, samples),
+			},
+			{ source: { kind: "device", deviceId: "pixel" }, preRollSeconds: 0 },
+		);
+
+		const N = SR * 3;
+		const far = farSignal(N);
+		const echo = echoOf(far); // the agent's TTS leaking into the mic
+		let ts = 1000;
+		for (let off = 0; off + BLOCK <= N; off += BLOCK) {
+			// Observe the playback for this 20 ms window at the same clock the mic
+			// frame is stamped with, then push the (echo-contaminated) mic frame.
+			store.observePlayback(far.subarray(off, off + BLOCK), SR, ts);
+			await consumer.pushDecodedFrame(echo.subarray(off, off + BLOCK), ts);
+			ts += 20;
+		}
+
+		// After convergence the recorded (post-AEC) frame carries far less echo
+		// energy than the raw mic frame did — >10 dB ERLE, matching #9455's gate.
+		const lateOut = vad.frames[vad.frames.length - 1];
+		const lateRawOff = (vad.frames.length - 1) * BLOCK;
+		const lateRaw = echo.subarray(lateRawOff, lateRawOff + BLOCK);
+		expect(power(lateOut)).toBeLessThan(power(lateRaw) * 0.1);
+	});
+
+	it("passes the mic through unchanged when no playback was observed", async () => {
+		// Store wired but never fed (agent silent) → reference() is null → the
+		// canceller is a byte-identical passthrough, never suppressing a barge-in.
+		const store = new PlaybackEchoReference();
+		const vad = new RecordingVad();
+		const consumer = new AudioFrameConsumer(
+			{
+				vad,
+				pipeline: new FakePipeline("e"),
+				runtime: new FakeRuntime(),
+				echoReference: (ts, samples) => store.reference(ts, samples),
+			},
+			{ source: { kind: "device", deviceId: "pixel" }, preRollSeconds: 0 },
+		);
+		const userSpeech = farSignal(BLOCK, 7);
+		await consumer.pushDecodedFrame(userSpeech, 1000);
+		expect(Array.from(vad.frames[0])).toEqual(Array.from(userSpeech));
 	});
 });

@@ -12,6 +12,12 @@
  *   POST /api/voice/audio-frames        body: { frames: AudioFrameEvent[],
  *                                               flush?: boolean }
  *                                       → { ok, framesReceived, turnsObserved }
+ *   POST /api/voice/playback-frames     body: { frames: PlaybackFrameEvent[],
+ *                                               reset?: boolean }
+ *                                       → { ok, playbackSamplesObserved }
+ *                                       (#9583: the agent's TTS playback PCM,
+ *                                        the far-end echo reference the canceller
+ *                                        subtracts from the mic)
  *   GET  /api/voice/audio-frames/status → LiveDiarizationStatus (device evidence)
  *
  * Auth follows the compat pattern: trusted-loopback OR the compat API token.
@@ -20,7 +26,13 @@
  */
 
 import type http from "node:http";
-import type { AudioFrameEvent } from "../services/voice/audio-frame-consumer.js";
+import {
+	AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
+	AudioFrameDecodeError,
+	type AudioFrameEvent,
+	decodePlaybackFramePcm,
+	type PlaybackFrameEvent,
+} from "../services/voice/audio-frame-consumer.js";
 import {
 	LiveDiarizationSession,
 	type RuntimeEventSink,
@@ -64,6 +76,16 @@ function isAudioFrameEvent(value: unknown): value is AudioFrameEvent {
 	);
 }
 
+function isPlaybackFrameEvent(value: unknown): value is PlaybackFrameEvent {
+	if (!value || typeof value !== "object") return false;
+	const f = value as Partial<PlaybackFrameEvent>;
+	return (
+		typeof f.pcm16 === "string" &&
+		typeof f.sampleRate === "number" &&
+		typeof f.atMs === "number"
+	);
+}
+
 export async function handleLiveDiarizationRoute(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -80,6 +102,51 @@ export async function handleLiveDiarizationRoute(
 			return true;
 		}
 		sendJson(res, 200, await current.status());
+		return true;
+	}
+
+	if (url.pathname === "/api/voice/playback-frames" && method === "POST") {
+		// #9583: the far-end (agent TTS playback) report. The playback path POSTs
+		// the PCM it actually played, time-stamped to the playback clock, so the
+		// echo canceller can subtract the agent's own voice from the mic.
+		if (!ensureCompatApiAuthorized(req, res)) return true;
+		const current = getSession(state);
+		if (!current) {
+			sendJsonError(res, 503, "Runtime not ready");
+			return true;
+		}
+		const body = await readCompatJsonBody(req, res);
+		if (!body) return true;
+		const rawFrames = body.frames;
+		if (!Array.isArray(rawFrames)) {
+			sendJsonError(res, 400, "Expected { frames: PlaybackFrameEvent[] }");
+			return true;
+		}
+		const frames = rawFrames.filter(isPlaybackFrameEvent);
+		if (frames.length !== rawFrames.length) {
+			sendJsonError(
+				res,
+				400,
+				`Malformed frame(s): ${rawFrames.length - frames.length} of ${rawFrames.length} did not match PlaybackFrameEvent`,
+			);
+			return true;
+		}
+		let observed = 0;
+		try {
+			for (const frame of frames) {
+				const pcm = decodePlaybackFramePcm(frame);
+				current.observePlayback(pcm, AUDIO_FRAME_PIPELINE_SAMPLE_RATE, frame.atMs);
+				observed += pcm.length;
+			}
+		} catch (err) {
+			if (err instanceof AudioFrameDecodeError) {
+				sendJsonError(res, 400, err.message);
+				return true;
+			}
+			throw err;
+		}
+		if (body.reset === true) current.resetPlayback();
+		sendJson(res, 200, { ok: true, playbackSamplesObserved: observed });
 		return true;
 	}
 

@@ -211,3 +211,115 @@ describe("handleLiveDiarizationRoute", () => {
 		expect(res.statusCode).toBe(503);
 	});
 });
+
+describe("handleLiveDiarizationRoute — playback-frames (#9583)", () => {
+	/** A well-formed PlaybackFrameEvent (20 ms of played PCM at 16 kHz). */
+	function playbackFrame(atMs: number, samples = 320) {
+		const pcm16 = Buffer.alloc(samples * 2).toString("base64");
+		return { pcm16, sampleRate: 16_000, atMs };
+	}
+
+	it("accepts a well-formed playback batch (no models needed) and counts samples", async () => {
+		// observePlayback only touches the in-memory echo reference, so the route
+		// returns 200 even on a host with no on-device voice GGUFs.
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: [playbackFrame(1000), playbackFrame(1020)] },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(200);
+		const body = res.json() as { ok: boolean; playbackSamplesObserved: number };
+		expect(body.ok).toBe(true);
+		expect(body.playbackSamplesObserved).toBe(640);
+	});
+
+	it("surfaces the observed playback in the status payload", async () => {
+		await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: [playbackFrame(2000)] },
+			}),
+			new FakeRes() as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		const res = new FakeRes();
+		await handleLiveDiarizationRoute(
+			makeReq({ method: "GET", url: "/api/voice/audio-frames/status" }),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		const status = res.json() as { playbackSamplesObserved: number };
+		expect(status.playbackSamplesObserved).toBe(320);
+	});
+
+	it("rejects a malformed playback frame with 400", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: [{ pcm16: "AA==" /* missing sampleRate/atMs */ }] },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(400);
+		expect((res.json() as { error: string }).error).toMatch(/Malformed/);
+	});
+
+	it("rejects a wrong-rate playback frame with 400 (no silent resample)", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: [{ ...playbackFrame(1000), sampleRate: 48_000 }] },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(400);
+		expect((res.json() as { error: string }).error).toMatch(/48000 Hz/);
+	});
+
+	it("rejects a non-array playback frames field with 400", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: "nope" },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(400);
+	});
+
+	it("rejects a non-loopback caller with 401", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: [playbackFrame(1000)] },
+				remoteAddress: "10.0.0.5",
+				host: "example.com",
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(401);
+	});
+});
