@@ -69,7 +69,7 @@ WebSocket RPC connection to a Eliza gateway with mDNS/Bonjour discovery of local
 
 ## @elizaos/capacitor-swabble
 
-Continuous background wake-word detection. Uses the native Speech framework on iOS, `SpeechRecognizer` on Android, or Whisper.cpp on desktop. Falls back to the Web Speech API in browser environments.
+Continuous background wake-word detection. Uses the native Speech framework on iOS and `SpeechRecognizer` on Android. Desktop and browser environments use Web Speech or explicitly configured local-inference ASR.
 
 ### Methods
 
@@ -99,7 +99,7 @@ Continuous background wake-word detection. Uses the native Speech framework on i
 
 ## @elizaos/capacitor-talkmode
 
-Full speech pipeline integrating STT, chat relay to the agent, and TTS output. STT uses native recognition or Whisper; TTS uses ElevenLabs streaming or native speech synthesis. The pipeline is stateful — only one phase is active at a time.
+Full speech pipeline integrating STT, chat relay to the agent, and TTS output. STT uses native recognition on mobile, Web Speech on web/desktop, or local-inference ASR when a verified Gemma bundle is configured; TTS uses ElevenLabs streaming or native speech synthesis. The pipeline is stateful — only one phase is active at a time.
 
 ### Methods
 

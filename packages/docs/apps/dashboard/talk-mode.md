@@ -1,10 +1,10 @@
 ---
 title: Talk Mode
 sidebarTitle: Talk Mode
-description: Full voice conversation with your Eliza agent using offline speech recognition, text-to-speech, and voice activity detection.
+description: Full voice conversation with your Eliza agent using renderer speech recognition, text-to-speech, and voice activity detection.
 ---
 
-Talk Mode provides a full voice conversation pipeline for the Eliza desktop app. It combines offline speech-to-text (Whisper.cpp), streaming text-to-speech (ElevenLabs), and voice activity detection into a seamless hands-free experience.
+Talk Mode provides a full voice conversation pipeline for the Eliza desktop app. The current Electrobun bridge uses renderer speech recognition for speech-to-text, streaming text-to-speech through ElevenLabs when configured, and voice activity detection for turn boundaries.
 
 <Info>
 Talk Mode is a native desktop feature. It requires the Electrobun desktop app — it is not available in the web dashboard or mobile app.
@@ -13,7 +13,7 @@ Talk Mode is a native desktop feature. It requires the Electrobun desktop app �
 ## How It Works
 
 1. **You speak** — the microphone captures audio and streams PCM samples to the main process
-2. **Speech recognition** — Whisper.cpp transcribes your speech to text offline
+2. **Speech recognition** — the desktop bridge delegates transcription to the renderer speech recognizer
 3. **Agent processes** — the transcript is sent to the agent as a message
 4. **Agent speaks** — the response is converted to speech via ElevenLabs and played back
 
@@ -38,11 +38,11 @@ Talk Mode is configured through the `TalkModeConfig` interface:
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `engine` | string | `"whisper"` | `"whisper"` for offline Whisper.cpp, `"web"` for browser Web Speech API |
-| `modelSize` | string | `"base"` | Whisper model size: `"tiny"`, `"base"`, `"small"`, `"medium"`, `"large"` |
+| `engine` | string | `"web"` | Active desktop speech recognizer. The current Electrobun RPC schema supports `"web"`. |
+| `modelSize` | string | `"base"` | Legacy compatibility field; ignored by the Web Speech path |
 | `language` | string | — | Optional language code for transcription |
 
-Larger Whisper models are more accurate but require more memory and processing time. If Whisper is unavailable, Talk Mode falls back to the Web Speech API automatically.
+Local-inference ASR is configured separately through the voice/local models path and requires an explicitly verified Gemma ASR bundle.
 
 ### Text-to-Speech (TTS)
 
@@ -83,19 +83,16 @@ Talk Mode communicates between the renderer and main process via IPC:
 | `talkmode:getState` | Query current state |
 | `talkmode:isEnabled` | Check if Talk Mode is available |
 | `talkmode:updateConfig` | Update configuration |
-| `talkmode:isWhisperAvailable` | Check Whisper.cpp availability |
-| `talkmode:getWhisperInfo` | Get Whisper model info |
+| `talkmode:audioChunk` | Submit a base64-encoded audio chunk while listening |
 
 ### Events (Main → Renderer)
 
 | Channel | Description |
 |---------|-------------|
 | `talkmode:transcript` | Transcription result with `isFinal` flag |
-| `talkmode:speaking` | Speaking state changed |
 | `talkmode:speakComplete` | Playback finished |
-| `talkmode:audioChunk` | Base64-encoded audio chunk for playback |
-| `talkmode:audioComplete` | All audio chunks sent |
-| `talkmode:stateChange` | State machine transition |
+| `talkmode:audioChunkPush` | Base64-encoded audio chunk for playback or renderer-side recognition |
+| `talkmode:stateChanged` | State machine transition |
 | `talkmode:error` | Error with diagnostic `code` |
 
 ## Related
