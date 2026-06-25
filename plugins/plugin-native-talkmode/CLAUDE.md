@@ -76,8 +76,8 @@ Config is passed at runtime via `TalkMode.start({ config })` or `TalkMode.update
 | `tts.outputFormat` | `string` | e.g. `"pcm_24000"`, `"mp3_44100"` |
 | `tts.interruptOnSpeech` | `boolean` | Stop TTS when mic detects speech |
 | `tts.voiceAliases` | `Record<string,string>` | Alias → voiceId mapping |
-| `stt.engine` | `"whisper"` \| `"web"` | STT backend preference |
-| `stt.modelSize` | `"tiny"` \| `"base"` \| `"small"` \| `"medium"` \| `"large"` | Whisper model |
+| `stt.engine` | `"native"` \| `"web"` | STT backend preference |
+| `stt.modelSize` | `"tiny"` \| `"base"` \| `"small"` \| `"medium"` \| `"large"` | Legacy compatibility field; ignored by current recognizers |
 | `stt.language` | `string` | BCP-47 language code (e.g. `"en"`) |
 | `stt.sampleRate` | `number` | Audio sample rate in Hz (default 16000) |
 | `silenceWindowMs` | `number` | Silence gap before finalising transcript (ms) |

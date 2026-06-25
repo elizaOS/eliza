@@ -19,7 +19,7 @@ parallel `AudioRecord` while `SpeechRecognizer` holds the mic does not get the
 mic — `AudioRecord` either fails to reach `RECORDSTATE_RECORDING` or reads
 silence. The three options from the brief:
 
-- (a) AudioRecord-only mode replacing SpeechRecognizer (PCM → whisper/local ASR).
+- (a) AudioRecord-only mode replacing SpeechRecognizer (PCM -> local-inference ASR).
 - (b) Coexistence, if the device permits it.
 - (c) A distinct "diarization mode" that suspends SpeechRecognizer while
   AudioRecord runs.
@@ -36,9 +36,9 @@ Coexistence (b) was **measured infeasible on the Pixel 9a** (see verification):
 `AudioRecord` reaches `RECORDING` and frames flow only AFTER STT is suspended;
 the design proactively suspends rather than relying on concurrent capture.
 
-Option (a) — AudioRecord-only + whisper transcription — is a strict superset of
+Option (a) — AudioRecord-only + local transcription — is a strict superset of
 this PCM capture (the PCM produced here is exactly what a local-ASR consumer
-would feed whisper). It is left to the JS consumer: this layer's job is to
+would feed to local ASR). It is left to the JS consumer: this layer's job is to
 deliver verified PCM frames; transcription backend choice lives above it.
 
 ## API (added)
