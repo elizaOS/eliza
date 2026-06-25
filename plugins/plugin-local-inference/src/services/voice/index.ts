@@ -49,6 +49,11 @@ export {
 	type FullContext,
 	mergeContext,
 } from "./eager-context-builder";
+export {
+	computeErle,
+	NlmsEchoCanceller,
+	type NlmsEchoCancellerConfig,
+} from "./echo-canceller";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
@@ -122,11 +127,6 @@ export {
 	type LiveKitGgmlTurnDetectorOptions,
 	turnDetectorGgufForTier,
 } from "./eot-classifier-ggml";
-export {
-	computeErle,
-	NlmsEchoCanceller,
-	type NlmsEchoCancellerConfig,
-} from "./echo-canceller";
 export { VoiceStartupError } from "./errors";
 export * from "./ffi-bindings";
 export {
