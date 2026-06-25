@@ -28,6 +28,12 @@ import {
   type JniVoicePipelineOptions,
 } from "./jni-voice-pipeline";
 
+declare global {
+  interface Window {
+    __jniVoice?: JniVoiceControl;
+  }
+}
+
 export interface JniVoiceTurnSummary {
   turnId: string;
   durationMs: number;
@@ -183,8 +189,7 @@ export function installJniVoiceHarness(
   };
 
   if (!installed && typeof window !== "undefined") {
-    (window as unknown as { __jniVoice?: JniVoiceControl }).__jniVoice =
-      control;
+    window.__jniVoice = control;
     installed = true;
   }
   return control;

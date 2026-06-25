@@ -258,4 +258,4 @@ import { ElizaClient as _ElizaClient } from "./client-base";
 // Annotating with ElizaClient (which TypeScript normalizes to the canonical
 // @elizaos/ui export) makes augmented methods visible to callers. The
 // prototype has all methods at runtime via the augmenting side-effect imports.
-export const client: ElizaClient = new _ElizaClient() as unknown as ElizaClient;
+export const client: ElizaClient = new _ElizaClient();

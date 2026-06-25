@@ -9,11 +9,11 @@ import type { RegistryAppInfo } from "../../api";
 import { userAgentHasElizaOSMarker } from "../../platform/aosp-user-agent";
 import type { OverlayApp } from "./overlay-app-api";
 
-const OVERLAY_APP_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
-
-type OverlayAppRegistryHost = {
-  [OVERLAY_APP_REGISTRY_KEY]?: Map<string, OverlayApp>;
-};
+declare global {
+  // A single global slot, declared on the shared global scope so it is visible
+  // on both `window` (`Window & typeof globalThis`) and `globalThis`.
+  var __elizaosOverlayAppRegistry__: Map<string, OverlayApp> | undefined;
+}
 
 // Anchor the registry on the real browser `window` when present, falling back
 // to `globalThis`. The app build can hand a duplicated or shimmed `globalThis`
@@ -24,20 +24,18 @@ type OverlayAppRegistryHost = {
 // object every browser chunk shares. Resolve the host (and the Map) on every
 // access — never freeze a Map reference at module scope — so all copies of this
 // module converge on one shared registry regardless of evaluation order.
-function getOverlayRegistryHost(): OverlayAppRegistryHost {
-  return (typeof window !== "undefined"
-    ? window
-    : globalThis) as unknown as OverlayAppRegistryHost;
+function getOverlayRegistryHost(): typeof globalThis {
+  return typeof window !== "undefined" ? window : globalThis;
 }
 
 function getOverlayRegistry(): Map<string, OverlayApp> {
   const host = getOverlayRegistryHost();
-  const existing = host[OVERLAY_APP_REGISTRY_KEY];
+  const existing = host.__elizaosOverlayAppRegistry__;
   if (existing) {
     return existing;
   }
   const next = new Map<string, OverlayApp>();
-  host[OVERLAY_APP_REGISTRY_KEY] = next;
+  host.__elizaosOverlayAppRegistry__ = next;
   return next;
 }
 

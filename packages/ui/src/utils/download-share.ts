@@ -12,6 +12,19 @@
  * access is guarded with `typeof` checks and never assumes the bridge exists.
  */
 
+/* ── File System Access API (Chromium; not yet in the DOM lib) ─────────── */
+
+declare global {
+  interface Window {
+    showSaveFilePicker?: (opts: { suggestedName?: string }) => Promise<{
+      createWritable: () => Promise<{
+        write: (data: Blob) => Promise<void>;
+        close: () => Promise<void>;
+      }>;
+    }>;
+  }
+}
+
 /* ── Capacitor global bridge (structural, dependency-free) ─────────────── */
 
 interface CapacitorShareLike {
@@ -280,10 +293,10 @@ export async function downloadAttachment(
   }
 
   // File System Access API (Chromium desktop/web) — lets the user choose where.
+  const picker =
+    typeof window !== "undefined" ? window.showSaveFilePicker : undefined;
   if (
-    typeof window !== "undefined" &&
-    typeof (window as { showSaveFilePicker?: unknown }).showSaveFilePicker ===
-      "function" &&
+    typeof picker === "function" &&
     typeof fetch === "function" &&
     !url.startsWith("data:")
   ) {
@@ -291,16 +304,6 @@ export async function downloadAttachment(
       const res = await fetch(url);
       if (res.ok) {
         const blob = await res.blob();
-        const picker = (
-          window as unknown as {
-            showSaveFilePicker: (opts: { suggestedName?: string }) => Promise<{
-              createWritable: () => Promise<{
-                write: (data: Blob) => Promise<void>;
-                close: () => Promise<void>;
-              }>;
-            }>;
-          }
-        ).showSaveFilePicker;
         const handle = await picker({ suggestedName: filename });
         const writable = await handle.createWritable();
         await writable.write(blob);

@@ -22,6 +22,12 @@ import { getTalkModePlugin } from "../bridge/native-plugins";
 import { MOBILE_LOCAL_AGENT_API_BASE } from "../first-run/mobile-runtime-mode";
 import { AudioFramePump } from "./audio-frame-pump";
 
+declare global {
+  interface Window {
+    __diarizationPump?: DiarizationPumpControl;
+  }
+}
+
 const STATUS_PATH = "/api/voice/audio-frames/status";
 
 export interface DiarizationPumpControl {
@@ -73,9 +79,7 @@ export function installDiarizationPumpHarness(): DiarizationPumpControl {
   };
 
   if (!installed && typeof window !== "undefined") {
-    (
-      window as unknown as { __diarizationPump?: DiarizationPumpControl }
-    ).__diarizationPump = control;
+    window.__diarizationPump = control;
     installed = true;
   }
   return control;

@@ -115,6 +115,18 @@ export type {
   VoiceTurn,
 } from "../voice/voice-chat-types";
 
+declare global {
+  interface Window {
+    /**
+     * Headless-test observability flag — set true the first time a real TTS
+     * playback starts. The voice self-test + real-audio e2e poll this to prove
+     * audio flowed (the only honest "reply was spoken" signal in a headless
+     * browser).
+     */
+    __voicePlaybackStarted?: boolean;
+  }
+}
+
 // ── Shared mutable state ─────────────────────────────────────────────
 
 let sharedAudioCtx: AudioContext | null = null;
@@ -276,9 +288,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     // voice self-test + real-audio e2e poll this to prove audio flowed (the
     // only honest "reply was spoken" signal in a headless browser).
     if (typeof window !== "undefined") {
-      (
-        window as unknown as { __voicePlaybackStarted?: boolean }
-      ).__voicePlaybackStarted = true;
+      window.__voicePlaybackStarted = true;
     }
   });
 
