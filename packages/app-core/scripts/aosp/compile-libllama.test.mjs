@@ -6,7 +6,7 @@ import {
   resolveAndroidNdkHostDir,
   resolveDefaultAndroidAssetsDir,
   resolveHomebrewFormulaIncludeDirs,
-} from "./compile-libllama.mjs";
+} from "./compile-libllama-paths.mjs";
 
 const tmpDirs = [];
 

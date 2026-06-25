@@ -68,6 +68,63 @@ describe("OpenRouter native text plumbing", () => {
     });
   });
 
+  it("normalizes runtime tool-definition arrays into provider-safe toolsets", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      toolCalls: [{ toolName: "HANDLE_RESPONSE", input: { replyText: "ok" } }],
+      finishReason: "tool-calls",
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+      jsonSchema: (schema: unknown) => ({ schema }),
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const { handleResponseHandler } = await import("../models/text");
+    await handleResponseHandler(createRuntime(), {
+      prompt: "handle this message",
+      tools: [
+        {
+          name: "HANDLE_RESPONSE",
+          description: "Stage 1 response handler",
+          parameters: {
+            type: "object",
+            properties: {
+              replyText: { type: "string" },
+            },
+          },
+        },
+      ],
+      toolChoice: { type: "function", function: { name: "HANDLE_RESPONSE" } },
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(call.tools as Record<string, unknown>)).toEqual(["HANDLE_RESPONSE"]);
+    expect(call.tools).not.toHaveProperty("0");
+    expect(call.tools).toEqual({
+      HANDLE_RESPONSE: {
+        description: "Stage 1 response handler",
+        inputSchema: {
+          schema: {
+            type: "object",
+            properties: {
+              replyText: { type: "string" },
+            },
+          },
+        },
+      },
+    });
+    expect(call.toolChoice).toEqual({
+      type: "tool",
+      toolName: "HANDLE_RESPONSE",
+    });
+  });
+
   it("preserves attachments when native messages are supplied", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
