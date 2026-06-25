@@ -1190,7 +1190,72 @@ function resolveStructuredCalendarSubaction(
   return null;
 }
 
-function parseExplicitLocalDate(
+/**
+ * Small spelled-out cardinals so everyday/child/elderly phrasing like "in two
+ * days" or "a week from today" resolves deterministically, not just digits.
+ */
+const RELATIVE_NUMBER_WORDS: Record<string, number> = {
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+};
+
+function relativeCountToNumber(token: string): number | null {
+  if (/^\d{1,3}$/.test(token)) return Number(token);
+  return RELATIVE_NUMBER_WORDS[token] ?? null;
+}
+
+/**
+ * Resolve common relative-date phrasing to a day offset from today, or null.
+ * Handles "today", "tomorrow", "yesterday", "day after tomorrow",
+ * "day before yesterday", "in N days/weeks", and "N days/weeks from now|today"
+ * (#8795). These are everyday phrasings the calendar action's own examples use
+ * (e.g. "Schedule a meeting with Alex at 3pm tomorrow") that the deterministic
+ * resolver previously returned null for, forcing an avoidable LLM round-trip.
+ *
+ * Multi-word and count patterns are checked before the bare "today"/"tomorrow"
+ * words so "3 days from today" is +3, not 0.
+ */
+function parseRelativeDayOffset(text: string): number | null {
+  if (/\bday after tomorrow\b/.test(text)) return 2;
+  if (/\bday before yesterday\b/.test(text)) return -2;
+
+  const inMatch = text.match(
+    /\bin (\d{1,3}|a|an|one|two|three|four|five|six|seven|eight|nine|ten) (days?|weeks?)\b/,
+  );
+  if (inMatch?.[1] && inMatch[2]) {
+    const count = relativeCountToNumber(inMatch[1]);
+    if (count !== null) {
+      return inMatch[2].startsWith("week") ? count * 7 : count;
+    }
+  }
+
+  const fromNowMatch = text.match(
+    /\b(\d{1,3}|a|an|one|two|three|four|five|six|seven|eight|nine|ten) (days?|weeks?) from (?:now|today)\b/,
+  );
+  if (fromNowMatch?.[1] && fromNowMatch[2]) {
+    const count = relativeCountToNumber(fromNowMatch[1]);
+    if (count !== null) {
+      return fromNowMatch[2].startsWith("week") ? count * 7 : count;
+    }
+  }
+
+  if (/\btomorrow\b/.test(text)) return 1;
+  if (/\byesterday\b/.test(text)) return -1;
+  if (/\btoday\b/.test(text)) return 0;
+  return null;
+}
+
+export function parseExplicitLocalDate(
   value: string,
   timeZone: string,
 ): { year: number; month: number; day: number } | null {
@@ -1270,6 +1335,21 @@ function parseExplicitLocalDate(
         delta,
       );
     }
+  }
+
+  // Relative-date phrasing fallback ("tomorrow", "in 2 days", "a week from
+  // today", …) — checked after the specific date patterns so e.g. an ISO date
+  // still wins (#8795).
+  const relativeOffset = parseRelativeDayOffset(normalized);
+  if (relativeOffset !== null) {
+    return addDaysToLocalDate(
+      {
+        year: localToday.year,
+        month: localToday.month,
+        day: localToday.day,
+      },
+      relativeOffset,
+    );
   }
 
   return null;
