@@ -107,7 +107,7 @@ type DnsLookupAllFn = (
   options: { all: true },
 ) => Promise<DnsLookupRecord[] | DnsLookupRecord>;
 
-let dnsLookupImpl: DnsLookupAllFn = dnsLookup as unknown as DnsLookupAllFn;
+let dnsLookupImpl: DnsLookupAllFn = dnsLookup as DnsLookupAllFn;
 
 function getApiPort(): string {
   return String(resolveServerOnlyPort(process.env));
@@ -416,7 +416,7 @@ export function __setPinnedFetchImplForTests(
 }
 
 export function __setDnsLookupImplForTests(impl: DnsLookupAllFn | null): void {
-  dnsLookupImpl = impl ?? (dnsLookup as unknown as DnsLookupAllFn);
+  dnsLookupImpl = impl ?? (dnsLookup as DnsLookupAllFn);
 }
 
 async function resolveUrlSafety(url: string): Promise<{
