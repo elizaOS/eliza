@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const nextCliPath = require.resolve("next/dist/bin/next");
+const nextVersion = require("next/package.json").version;
+const nextMajor = Number.parseInt(nextVersion.split(".")[0] ?? "0", 10);
+const nextBuildArgs = ["build", ...(nextMajor >= 16 ? ["--webpack"] : [])];
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -65,7 +68,7 @@ async function runNextBuild() {
   await writeTempTypesInclude();
 
   const exitCode = await new Promise((resolve) => {
-    const child = spawn(process.execPath, [nextCliPath, "build", "--webpack"], {
+    const child = spawn(process.execPath, [nextCliPath, ...nextBuildArgs], {
       cwd: packageRoot,
       env: {
         ...process.env,

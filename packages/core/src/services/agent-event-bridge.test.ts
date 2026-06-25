@@ -6,16 +6,19 @@ import type {
 	EvaluatorEventPayload,
 	MessagePayload,
 } from "../types/events.ts";
+import type { NotificationInput } from "../types/notification.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { ServiceType } from "../types/service.ts";
 import {
 	bridgeActionCompletedToStreams,
 	bridgeActionStartedToStreams,
+	bridgeConnectorMessageReceivedToStreams,
 	bridgeEvaluatorCompletedToStreams,
 	bridgeEvaluatorStartedToStreams,
 	bridgeMessageReceivedToStreams,
 	bridgeRunEndedToStreams,
 	bridgeRunStartedToStreams,
+	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
 } from "./agent-event-bridge.ts";
 import { AgentEventService } from "./agentEvent.ts";
 
@@ -26,9 +29,11 @@ const WORLD_ID = "33333333-3333-3333-3333-333333333333";
 async function createCtx(opts: { withService?: boolean } = {}): Promise<{
 	runtime: IAgentRuntime;
 	events: AgentEventPayload[];
+	notifications: NotificationInput[];
 }> {
 	const withService = opts.withService ?? true;
 	const events: AgentEventPayload[] = [];
+	const notifications: NotificationInput[] = [];
 
 	const runtimeBase = createMockRuntime({
 		agentId: "00000000-0000-0000-0000-0000000000aa",
@@ -43,11 +48,21 @@ async function createCtx(opts: { withService?: boolean } = {}): Promise<{
 
 	const runtime = createMockRuntime({
 		...runtimeBase,
-		getService: (type: string) =>
-			type === ServiceType.AGENT_EVENT ? service : null,
+		getService: (type: string) => {
+			if (type === ServiceType.AGENT_EVENT) return service;
+			if (type === ServiceType.NOTIFICATION) {
+				return {
+					notify: async (input: NotificationInput) => {
+						notifications.push(input);
+						return input;
+					},
+				};
+			}
+			return null;
+		},
 	});
 
-	return { runtime, events };
+	return { runtime, events, notifications };
 }
 
 function actionPayload(
@@ -66,6 +81,33 @@ function actionPayload(
 			source: "client_chat",
 		},
 	} as unknown as ActionEventPayload;
+}
+
+function messagePayload(
+	runtime: IAgentRuntime,
+	overrides: Partial<MessagePayload> = {},
+): MessagePayload {
+	return {
+		runtime,
+		source: "discord",
+		message: {
+			id: "44444444-4444-4444-4444-444444444444",
+			entityId: "55555555-5555-5555-5555-555555555555",
+			roomId: ROOM_ID,
+			agentId: runtime.agentId,
+			content: {
+				text: "Can you check this?",
+				source: "discord",
+				url: "https://discord.example/message/1",
+			},
+			metadata: {
+				sessionKey: "discord:room:1",
+				sender: { username: "alice" },
+				wasMentioned: true,
+			},
+		},
+		...overrides,
+	} as unknown as MessagePayload;
 }
 
 describe("agent-event-bridge", () => {
@@ -226,6 +268,112 @@ describe("agent-event-bridge", () => {
 		expect(evals[1]?.data).toMatchObject({
 			evaluatorName: "post_turn",
 			validated: true,
+		});
+	});
+
+	it("bridges MESSAGE_RECEIVED to activity plus a guarded connector notification", async () => {
+		const { runtime, events, notifications } = await createCtx();
+		await bridgeMessageReceivedToStreams(messagePayload(runtime));
+
+		const messageEvent = events.find((e) => e.stream === "message");
+		expect(messageEvent?.runId).toBe("44444444-4444-4444-4444-444444444444");
+		expect(messageEvent?.sessionKey).toBe("discord:room:1");
+		expect(messageEvent?.data).toMatchObject({
+			type: "received",
+			channel: "discord",
+			userId: "55555555-5555-5555-5555-555555555555",
+			roomId: ROOM_ID,
+			content: "Can you check this?",
+			hasAttachments: false,
+		});
+
+		expect(notifications).toHaveLength(1);
+		expect(notifications[0]).toMatchObject({
+			title: "New discord message from alice",
+			body: "Can you check this?",
+			category: "message",
+			priority: "high",
+			source: "discord",
+			deepLink: "https://discord.example/message/1",
+			groupKey: `message:discord:${ROOM_ID}`,
+		});
+	});
+
+	it("does not create inbox notifications for local client chat or self messages", async () => {
+		const { runtime, events, notifications } = await createCtx();
+		await bridgeMessageReceivedToStreams(
+			messagePayload(runtime, {
+				source: "client_chat",
+				message: {
+					...messagePayload(runtime).message,
+					content: { text: "local prompt", source: "client_chat" },
+				},
+			} as Partial<MessagePayload>),
+		);
+		await bridgeMessageReceivedToStreams(
+			messagePayload(runtime, {
+				message: {
+					...messagePayload(runtime).message,
+					entityId: runtime.agentId,
+				},
+			} as Partial<MessagePayload>),
+		);
+
+		expect(events.filter((e) => e.stream === "message")).toHaveLength(2);
+		expect(notifications).toHaveLength(0);
+	});
+
+	it("bridges raw connector message events that lack canonical Memory payloads", async () => {
+		expect(CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES).toContain(
+			"TWITCH_MESSAGE_RECEIVED",
+		);
+
+		const { runtime, events, notifications } = await createCtx();
+		await bridgeConnectorMessageReceivedToStreams("TWITCH_MESSAGE_RECEIVED", {
+			runtime,
+			accountId: "main",
+			message: {
+				id: "twitch-message-1",
+				channel: "ops",
+				text: "Check the stream health",
+				user: {
+					userId: "twitch-user-1",
+					displayName: "Alice",
+				},
+				timestamp: new Date("2026-06-24T12:00:00.000Z"),
+			},
+		});
+
+		const messageEvent = events.find((e) => e.stream === "message");
+		expect(messageEvent).toMatchObject({
+			runId: "twitch-message-1",
+			sessionKey: "twitch:ops",
+			data: {
+				type: "received",
+				channel: "ops",
+				userId: "twitch-user-1",
+				roomId: "ops",
+				content: "Check the stream health",
+				hasAttachments: false,
+				deliveredAt: Date.parse("2026-06-24T12:00:00.000Z"),
+			},
+		});
+
+		expect(notifications).toHaveLength(1);
+		expect(notifications[0]).toMatchObject({
+			title: "New ops message from Alice",
+			body: "Check the stream health",
+			category: "message",
+			priority: "normal",
+			source: "twitch",
+			groupKey: "message:twitch:ops",
+			data: {
+				source: "twitch",
+				messageId: "twitch-message-1",
+				roomId: "ops",
+				entityId: "twitch-user-1",
+				accountId: "main",
+			},
 		});
 	});
 

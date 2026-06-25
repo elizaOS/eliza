@@ -10,6 +10,7 @@ import {
   createMessageMemory,
   createUniqueUuid,
   type EventPayload,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   type IMessageService,
@@ -251,8 +252,6 @@ import {
   type SignalSettings,
 } from "./types";
 
-const DEFAULT_SIGNAL_HTTP_HOST = "127.0.0.1";
-const DEFAULT_SIGNAL_HTTP_PORT = 8080;
 const DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS = 30_000;
 export const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
@@ -1444,14 +1443,23 @@ export class SignalService extends Service implements ISignalService {
       room = await this.ensureRoomExists(msg.sender, msg.groupId, normalizedAccountId);
     }
 
+    const autoReply = this.settings.autoReply && !lifeOpsPassiveConnectorsEnabled(this.runtime);
+
     // Inbound messages are always ingested (memory + MESSAGE_RECEIVED event)
     // so the user can read history and dispatch sends through LifeOps. The
     // agent only auto-generates a reply when SIGNAL_AUTO_REPLY is explicitly
     // enabled — default-off prevents the runtime from speaking on the user's
     // behalf to real Signal contacts.
-    if (this.settings.autoReply && !lifeOpsPassiveConnectorsEnabled(this.runtime)) {
+    if (autoReply) {
       await this.processMessage(memory, room, msg.sender, msg.groupId, normalizedAccountId);
+      return;
     }
+
+    await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+      runtime: this.runtime,
+      message: memory,
+      source: "signal",
+    });
   }
 
   private async handleReaction(

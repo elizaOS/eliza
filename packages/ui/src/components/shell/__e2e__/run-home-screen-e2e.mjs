@@ -199,6 +199,19 @@ async function longPressPan(page, tileTestId) {
   await page.waitForTimeout(600); // hold past LONG_PRESS_MS (450) while panned
   await page.mouse.up();
 }
+// A STATIONARY hold past the long-press window: the intentional gesture that
+// enters edit mode now that the Edit button is gone.
+async function longPressHold(page, tileTestId) {
+  const btn = page.getByTestId(tileTestId).locator("button").first();
+  const box = await btn.boundingBox();
+  if (!box) throw new Error(`missing tile bounds: ${tileTestId}`);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.waitForTimeout(600); // hold past LONG_PRESS_MS (450), no movement
+  await page.mouse.up();
+}
 async function waitForSurfacePageSettled(p, pageName) {
   await p.waitForFunction((expectedPage) => {
     const surface = document.querySelector(
@@ -349,6 +362,24 @@ try {
     (await mobile.getByTestId("springboard-tile-views").count()) === 0,
     "Views self-link is absent from Springboard",
   );
+
+  // ── Real image icons — the favorites carry a hero image, so each renders an
+  // <img> tile (not the glyph fallback). On device the agent serves the branded
+  // SVG at /api/views/:id/hero, resolved through the runtime API base so it
+  // loads on native (file://) shells too.
+  for (const id of ["settings", "activity", "files", "tasks"]) {
+    const img = mobile.getByTestId(`springboard-image-${id}`);
+    assert(
+      (await img.count()) === 1 && (await img.isVisible()),
+      `favorite "${id}" renders a real image icon (hero <img>, not a glyph)`,
+    );
+    const src = await img.getAttribute("src");
+    assert(
+      typeof src === "string" && src.startsWith("data:image/svg+xml"),
+      `favorite "${id}" image src is the branded hero (${String(src).slice(0, 24)}…)`,
+    );
+  }
+
   await snap(mobile, "mobile-springboard");
 
   // ── ONE page indicator — the doubled-dots regression (#4) ────────────────
@@ -371,42 +402,46 @@ try {
     "the single indicator shows Home + 2 springboard-page dots",
   );
 
-  // ── Distinct per-view icons — the placeholder-icon regression (#5) ───────
-  const glyphClasses = await mobile.$$eval("[data-view-visual] svg", (svgs) =>
-    Array.from(
-      new Set(
-        svgs
-          .map((s) =>
-            Array.from(s.classList).find((c) => c.startsWith("lucide-")),
-          )
-          .filter(Boolean),
-      ),
+  // ── Real per-view images — every tile shows a branded hero IMAGE (generated
+  // client-side as a data URI when no real hero exists), never a bare glyph.
+  // Each view's hero is deterministic per id, so the srcs are distinct.
+  const imageSrcs = await mobile.$$eval(
+    '[data-testid^="springboard-image-"]',
+    (imgs) =>
+      Array.from(
+        new Set(imgs.map((i) => i.getAttribute("src") ?? "")),
+      ).filter(Boolean),
+  );
+  assert(
+    imageSrcs.length >= 5,
+    `springboard tiles render varied hero images, not one placeholder (${imageSrcs.length} distinct)`,
+  );
+  assert(
+    imageSrcs.every(
+      (s) => s.startsWith("data:image/") || /^(https?:|\/api\/)/.test(s),
     ),
+    "every tile renders a real hero image (data-URI / served), not a glyph",
   );
   assert(
-    glyphClasses.length >= 5,
-    `springboard tiles render varied glyphs, not one placeholder (${glyphClasses.length} distinct)`,
-  );
-  assert(
-    !(glyphClasses.length === 1 && glyphClasses[0] === "lucide-layout-grid"),
-    "tiles are not all the generic layout-grid placeholder",
+    (await mobile.locator("[data-view-visual] svg").count()) === 0,
+    "no tile falls back to the bare Lucide glyph",
   );
 
   // ── A swipe that starts ON a tile never ghost-fires edit mode (#3) ───────
   await longPressPan(mobile, "springboard-tile-app0");
   assert(
-    (await mobile.getByRole("button", { name: "Done", exact: true }).count()) ===
-      0,
+    (await mobile.getByTestId("springboard-fav-app0").count()) === 0,
     "a pan/swipe that starts on a tile does NOT enter edit mode",
   );
 
-  // ── Edit → swipe back → HOME, with edit mode RESET (#3) ──────────────────
-  await mobile.getByRole("button", { name: "Edit", exact: true }).click();
+  // ── Long-press → edit → swipe back → HOME, with edit mode RESET (#3) ──────
+  // There is no Edit button: a STATIONARY long-press on a tile is the sole entry
+  // into edit mode (per-tile pin badges appear).
+  await longPressHold(mobile, "springboard-tile-app0");
   await mobile.waitForTimeout(150);
   assert(
-    (await mobile.getByRole("button", { name: "Done", exact: true }).count()) ===
-      1,
-    "the Edit button enters edit mode (Done shown)",
+    (await mobile.getByTestId("springboard-fav-app0").count()) === 1,
+    "a stationary long-press enters edit mode (pin badges shown, no Edit button)",
   );
   await snap(mobile, "mobile-springboard-edit");
   await swipeRight(mobile.getByTestId("home-springboard-springboard-page"));
@@ -421,11 +456,7 @@ try {
   await swipeLeft(mobile.getByTestId("home-springboard-home-page"));
   await waitForSurfacePageSettled(mobile, "springboard");
   assert(
-    (await mobile.getByRole("button", { name: "Edit", exact: true }).count()) ===
-      1 &&
-      (await mobile
-        .getByRole("button", { name: "Done", exact: true })
-        .count()) === 0,
+    (await mobile.getByTestId("springboard-fav-app0").count()) === 0,
     "re-opening the springboard is a clean launch view (edit mode auto-reset)",
   );
 

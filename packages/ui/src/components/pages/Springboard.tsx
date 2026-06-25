@@ -2,10 +2,10 @@
  * Springboard — iOS-like app/view launcher.
  *
  * Renders every available view as a names-only icon on swipeable pages plus a
- * pinned favorites dock. Tap launches; the Edit toggle (or long-press) enters
- * edit mode where icons can be reordered (drag), favorited into the dock, and —
- * for manageable (dynamic developer) views — edited or deleted. Page order is
- * persisted via the pure `springboard-layout` model. Favorites are
+ * pinned favorites dock. Tap launches; long-press enters edit mode where icons
+ * can be reordered (drag), favorited into the dock, and — for manageable
+ * (dynamic developer) views — edited or deleted. Page order is persisted via
+ * the pure `springboard-layout` model. Favorites are
  * controlled-optional: when `onToggleFavorite` is supplied the dock reflects the
  * caller's `favoriteIds`; otherwise favorites are kept locally. Fully
  * token-themed (light/dark + overrides) and renders no background of its own —
@@ -99,7 +99,7 @@ const IconTile = memo(function IconTile({
   const pressStart = useRef<{ x: number; y: number } | null>(null);
 
   const clear = () => {
-    if (timer.current) {
+    if (timer.current !== null) {
       clearTimeout(timer.current);
       timer.current = null;
     }
@@ -145,9 +145,12 @@ const IconTile = memo(function IconTile({
           onPointerCancel={clear}
           className={cn(
             // ViewTileImage handles image-vs-glyph internally, so the button is
-            // one constant surface. Translucent filter effects (#9281) and
-            // focus rings (#9292) were deliberately removed on develop.
-            "h-16 w-16 overflow-hidden rounded-2xl bg-bg-accent/60 text-foreground transition-colors hover:bg-bg-accent",
+            // one constant surface. The hero image (object-cover) covers the
+            // tile when it loads; this dark neutral fill + white glyph is the
+            // fallback so a tile reads as a real app icon (not a bare glyph
+            // floating on the background) even before/without the image. Filter
+            // effects (#9281) and focus rings (#9292) were removed on develop.
+            "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
             editing && "animate-pulse",
           )}
         >
@@ -171,10 +174,11 @@ const IconTile = memo(function IconTile({
               onToggleFavorite(entry.id);
             }}
             className={cn(
-              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold",
+              // Filled chips stay legible across image and dark tile backgrounds.
+              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold shadow-md ring-1",
               favorited
-                ? "bg-accent text-accent-foreground"
-                : "bg-border text-foreground",
+                ? "bg-accent text-white ring-black/20"
+                : "bg-white text-neutral-900 ring-black/15",
             )}
           >
             {favorited ? "★" : "+"}
@@ -213,7 +217,7 @@ const IconTile = memo(function IconTile({
           </div>
         ) : null}
       </div>
-      <span className="max-w-[4.5rem] truncate text-center text-[11px] leading-tight text-muted">
+      <span className="max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
         {entry.label}
       </span>
     </div>
@@ -335,13 +339,6 @@ export function Springboard({
     [onLaunch],
   );
 
-  const enterEditMode = useCallback(() => {
-    if (!editing) {
-      emitViewInteraction({ source: "springboard", action: "edit-mode-enter" });
-    }
-    setEditingState(true);
-  }, [editing, setEditingState]);
-
   const toggleEditMode = useCallback(() => {
     emitViewInteraction({
       source: "springboard",
@@ -407,7 +404,7 @@ export function Springboard({
         onToggleFavorite={toggleFav}
         onEdit={onEditView}
         onDelete={onDeleteView}
-        onLongPress={enterEditMode}
+        onLongPress={toggleEditMode}
       />
     ),
     [
@@ -417,7 +414,7 @@ export function Springboard({
       toggleFav,
       onEditView,
       onDeleteView,
-      enterEditMode,
+      toggleEditMode,
     ],
   );
 
@@ -426,26 +423,13 @@ export function Springboard({
       className={cn("flex min-h-0 flex-1 flex-col", className)}
       data-testid="springboard"
     >
-      <div className="flex items-center justify-end px-4 pt-2">
-        <button
-          type="button"
-          onClick={toggleEditMode}
-          className={cn(
-            "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-            editing
-              ? "bg-accent text-accent-foreground"
-              : "bg-bg-accent/60 text-muted hover:bg-bg-accent",
-          )}
-        >
-          {editing ? "Done" : "Edit"}
-        </button>
-      </div>
-
-      {/* Featured / favorites row at the top of the springboard. */}
+      {/* Favorites bar — pinned to the TOP of the springboard (not an iOS-style
+          bottom dock). There is no Edit button: long-press any icon toggles
+          edit mode (reorder / pin / unpin), and a right-flick leaves it. */}
       {favoriteEntries.length > 0 ? (
         <div
           data-testid="springboard-dock"
-          className="mx-3 mt-1 mb-2 flex items-center justify-center gap-3 rounded-3xl bg-bg-accent/90 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
+          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md sm:mx-4 sm:gap-4 sm:px-6"
         >
           {favoriteEntries.map((entry) => (
             <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
@@ -491,10 +475,10 @@ export function Springboard({
               onEdgeSwipeRight?.();
             }
           }}
-          className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 py-6"
+          className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pt-2 pb-8"
         >
           {loading && entries.length === 0 ? (
-            <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5">
+            <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
               {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
                 <div
                   key={id}
@@ -510,7 +494,7 @@ export function Springboard({
               axis="y"
               values={pages[clampedPage] ?? []}
               onReorder={(next) => handleReorder(clampedPage, next as string[])}
-              className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5"
+              className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5"
             >
               {(pages[clampedPage] ?? []).map((id) => {
                 const entry = byId.get(id);

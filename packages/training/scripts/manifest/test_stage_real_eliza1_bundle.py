@@ -29,7 +29,7 @@ def _seed_assets(bundle: Path) -> None:
     --skip-assets path has a valid starting point (no HF network)."""
     _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"omnivoice-base")
     _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"omnivoice-tok")
-    _write(bundle / "tts" / "kokoro" / "model_q4.onnx", b"kokoro-model")
+    _write(bundle / "tts" / "kokoro" / "kokoro-82m-v1_0-Q4_K_M.gguf", b"kokoro-model")
     _write(bundle / "tts" / "kokoro" / "tokenizer.json", b"kokoro-tokenizer")
     _write(bundle / "tts" / "kokoro" / "voices" / "af_bella.bin", b"kokoro-voice")
     _write(bundle / "asr" / "eliza-1-asr.gguf", b"asr")
@@ -82,7 +82,7 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
             else None
         ),
     )
-    bundle = tmp_path / "eliza-1-0_8b.bundle"
+    bundle = tmp_path / "eliza-1-2b.bundle"
     bundle.mkdir(parents=True)
     _seed_assets(bundle)
     recipes = _seed_recipes(tmp_path / "recipes")
@@ -91,7 +91,7 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     vision_gguf = _write(tmp_path / "src" / "mmproj.gguf", b"vision-weights")
 
     args = argparse.Namespace(
-        tier="0_8b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
+        tier="2b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
         recipes_dir=recipes, vision_gguf=vision_gguf,
         text_lineage_repo="google/gemma-4-E2B", text_lineage_rev="deadbeef",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
@@ -107,16 +107,16 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert report["manifestValidation"]["publishReadyOk"] is False
 
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["id"] == "eliza-1-0_8b"
+    assert manifest["id"] == "eliza-1-2b"
     assert manifest["defaultEligible"] is False
     assert manifest["lineage"]["text"]["base"] == "google/gemma-4-E2B@deadbeef"
-    # 0_8b ships no separate embedding artifact (text backbone IS the embedding).
+    # 2b ships no separate embedding artifact (text backbone IS the embedding).
     assert "embedding" not in manifest["lineage"]
     assert "drafter" in manifest["lineage"]
     assert sorted(f["ctx"] for f in manifest["files"]["text"]) == [131072, 262144]
-    assert manifest["files"]["text"][0]["path"] == "text/eliza-1-0_8b-128k.gguf"
-    assert manifest["files"]["mtp"][0]["path"] == "mtp/drafter-0_8b.gguf"
-    assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-0_8b.gguf"
+    assert manifest["files"]["text"][0]["path"] == "text/eliza-1-2b-128k.gguf"
+    assert manifest["files"]["mtp"][0]["path"] == "mtp/drafter-2b.gguf"
+    assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-2b.gguf"
     assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.gguf"
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
@@ -130,12 +130,12 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     target_meta = json.loads((bundle / "mtp" / "target-meta.json").read_text())
     assert target_meta["status"] == "weights-staged"
     assert target_meta["mtpEnabled"] is True
-    assert target_meta["targetText"]["path"] == "text/eliza-1-0_8b-256k.gguf"
+    assert target_meta["targetText"]["path"] == "text/eliza-1-2b-256k.gguf"
     assert target_meta["targetText"]["finalElizaWeights"] is True
-    assert target_meta["drafter"]["path"] == "mtp/drafter-0_8b.gguf"
+    assert target_meta["drafter"]["path"] == "mtp/drafter-2b.gguf"
     assert target_meta["kernelCaps"]["required"]
-    assert not (bundle / "mtp" / "mtp-disabled-0_8b.release-policy.json").exists()
-    assert (bundle / "mtp" / "drafter-0_8b.gguf").is_file()
+    assert not (bundle / "mtp" / "mtp-disabled-2b.release-policy.json").exists()
+    assert (bundle / "mtp" / "drafter-2b.gguf").is_file()
 
     # wakeword lineage entry must have been dropped (no wakeword files staged).
     lineage = json.loads((bundle / "lineage.json").read_text())

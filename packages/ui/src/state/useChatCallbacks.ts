@@ -388,6 +388,8 @@ export interface UseChatCallbacksDeps {
   loadConversationMessages: (
     convId: string,
   ) => Promise<LoadConversationMessagesResult>;
+  /** Warm the message cache for adjacent conversations (smooth swipe nav). */
+  prefetchConversationMessages: (ids: readonly string[]) => void;
   loadPlugins: () => Promise<unknown>;
 
   // Cloud state
@@ -501,6 +503,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     resetBackendConnection,
     loadConversations,
     loadConversationMessages,
+    prefetchConversationMessages,
     loadPlugins,
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -1128,6 +1131,25 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       setUnreadConversations,
     ],
   );
+
+  // Warm the message cache for the conversations on either side of the active
+  // one (the list is most-recent-first) whenever the active conversation
+  // changes — including the initial hydrated one, so even the FIRST horizontal
+  // swipe paints instantly from cache instead of waiting on the network.
+  // Best-effort and deduped inside prefetchConversationMessages.
+  useEffect(() => {
+    if (!activeConversationId) return;
+    const order = conversationsRef.current;
+    const idx = order.findIndex((c) => c.id === activeConversationId);
+    if (idx < 0) return;
+    const neighbors = [
+      order[idx - 2]?.id,
+      order[idx - 1]?.id,
+      order[idx + 1]?.id,
+      order[idx + 2]?.id,
+    ].filter((n): n is string => typeof n === "string");
+    if (neighbors.length > 0) prefetchConversationMessages(neighbors);
+  }, [activeConversationId, prefetchConversationMessages, conversationsRef]);
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {

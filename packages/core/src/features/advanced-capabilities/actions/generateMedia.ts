@@ -449,6 +449,7 @@ export const generateMediaAction = {
 			id: v4(),
 			url,
 			title,
+			source: "media-generation",
 			contentType: contentTypeFor(request.mediaType),
 			description: result.revisedPrompt ?? request.prompt,
 		};

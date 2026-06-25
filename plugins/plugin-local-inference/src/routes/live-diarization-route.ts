@@ -27,7 +27,10 @@
  */
 
 import type http from "node:http";
-import type { AudioFrameEvent } from "../services/voice/audio-frame-consumer.js";
+import type {
+	AudioFrameEvent,
+	EchoReferenceProvider,
+} from "../services/voice/audio-frame-consumer.js";
 import {
 	LiveDiarizationSession,
 	type RuntimeEventSink,
@@ -42,6 +45,28 @@ import {
 
 let session: LiveDiarizationSession | null = null;
 
+type RuntimeEchoReferenceSource = RuntimeEventSink & {
+	/**
+	 * Optional live far-end playback provider. Hosts that can tap agent TTS PCM
+	 * expose this so the diarization consumer can run AEC before VAD.
+	 */
+	voiceEchoReferenceProvider?: EchoReferenceProvider | null;
+	getVoiceEchoReferenceProvider?: () =>
+		| EchoReferenceProvider
+		| null
+		| undefined;
+};
+
+function resolveRuntimeEchoReference(
+	runtime: RuntimeEventSink,
+): EchoReferenceProvider | null {
+	const source = runtime as RuntimeEchoReferenceSource;
+	if (typeof source.getVoiceEchoReferenceProvider === "function") {
+		return source.getVoiceEchoReferenceProvider() ?? null;
+	}
+	return source.voiceEchoReferenceProvider ?? null;
+}
+
 /** Lazily own one session per agent process, bound to the live runtime. */
 function getSession(state: CompatRuntimeState): LiveDiarizationSession | null {
 	const runtime = state.current as RuntimeEventSink | null;
@@ -50,7 +75,7 @@ function getSession(state: CompatRuntimeState): LiveDiarizationSession | null {
 		// Thread a host-supplied echo reference (if any) into the live AEC path
 		// so the NLMS canceller has a far-end signal without the playback-frames
 		// ingest route (#9583).
-		const echoReference = runtime.voiceEchoReferenceProvider;
+		const echoReference = resolveRuntimeEchoReference(runtime);
 		session = new LiveDiarizationSession(
 			runtime,
 			echoReference ? { echoReference } : {},

@@ -4,16 +4,19 @@ import type { ViewEntry } from "../../hooks/view-catalog";
 import { assert, waitForTestId } from "../../storybook/home-widget-decorator";
 import { Springboard } from "./Springboard";
 
-/** Find a <button> by its exact trimmed text (the toolbar Edit/Done toggle). */
-function buttonByText(
-  root: HTMLElement,
-  text: string,
-): HTMLButtonElement | null {
-  return (
-    [...root.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === text,
-    ) ?? null
-  );
+/**
+ * Drive a real long-press on a tile — the only way into edit mode now that the
+ * Edit button is gone. The story-gate keeps real timers, so this presses for
+ * real (pointerdown → 520ms hold → pointerup).
+ */
+async function longPressTile(root: HTMLElement, testId: string): Promise<void> {
+  const target = root.querySelector(`[data-testid="${testId}"] button`);
+  if (!(target instanceof HTMLButtonElement)) {
+    throw new Error(`${testId} tile button not found`);
+  }
+  target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 520));
+  target.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
 }
 
 function entry(id: string, label: string, icon: string): ViewEntry {
@@ -106,42 +109,42 @@ export const TileLaunch: Story = {
 };
 
 /**
- * Edit mode via the toolbar toggle: "Edit" → jiggle mode (per-tile pin badges
- * appear, the toggle reads "Done") → "Done" exits.
+ * Edit mode is a long-press toggle (there is no Edit button): one long-press on
+ * a tile enters jiggle mode (per-tile pin badges appear); a second long-press
+ * exits it.
  */
 export const EditModeToggle: Story = {
   args: { entries: VIEWS },
   play: async ({ canvasElement }) => {
-    buttonByText(canvasElement, "Edit")?.click();
+    await longPressTile(canvasElement, "springboard-tile-wallet");
     // The per-tile pin affordance appears after the re-render (poll for it).
     await waitForTestId(canvasElement, "springboard-fav-wallet");
-    assert(buttonByText(canvasElement, "Done"), "the toggle now reads Done");
-    buttonByText(canvasElement, "Done")?.click();
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    assert(buttonByText(canvasElement, "Edit"), "the toggle returns to Edit");
+    await longPressTile(canvasElement, "springboard-tile-wallet");
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert(
+      !canvasElement.querySelector('[data-testid="springboard-fav-wallet"]'),
+      "a second long-press exits edit mode (pin badges gone)",
+    );
   },
 };
 
 /**
  * Hold-to-edit: a 450ms press on a tile (not a tap) enters edit mode — the iOS
- * gesture. The story-gate keeps real timers, so the press is driven for real
- * (pointerdown → 520ms → pointerup) rather than faked. (The full pointer/touch
- * gesture incl. swipe-paging is covered end-to-end by `test:springboard-e2e`.)
+ * gesture and the sole entry point now that the Edit button is gone. The
+ * story-gate keeps real timers, so the press is driven for real (pointerdown →
+ * 520ms → pointerup) rather than faked. (The full pointer/touch gesture incl.
+ * swipe-paging is covered end-to-end by `test:springboard-e2e`.)
  */
 export const LongPressToEdit: Story = {
   args: { entries: VIEWS },
   play: async ({ canvasElement }) => {
-    const target = canvasElement.querySelector(
-      '[data-testid="springboard-tile-wallet"] button',
+    await longPressTile(canvasElement, "springboard-tile-wallet");
+    // Edit mode shows per-tile pin badges; assert one is present.
+    await waitForTestId(canvasElement, "springboard-fav-wallet");
+    assert(
+      canvasElement.querySelector('[data-testid="springboard-fav-wallet"]'),
+      "a 520ms long-press entered edit mode (pin badge shown)",
     );
-    assert(target instanceof HTMLButtonElement, "wallet tile button exists");
-    target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 520));
-    target.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
-    const done = [...canvasElement.querySelectorAll("button")].some(
-      (b) => b.textContent?.trim() === "Done",
-    );
-    assert(done, "a 520ms long-press entered edit mode (Done shown)");
   },
 };
 
@@ -167,7 +170,7 @@ export const FavoriteIntoDock: Story = {
     );
   },
   play: async ({ canvasElement }) => {
-    buttonByText(canvasElement, "Edit")?.click();
+    await longPressTile(canvasElement, "springboard-tile-memories");
     const fav = await waitForTestId(canvasElement, "springboard-fav-memories");
     fav.click();
     const dock = await waitForTestId(canvasElement, "springboard-dock");

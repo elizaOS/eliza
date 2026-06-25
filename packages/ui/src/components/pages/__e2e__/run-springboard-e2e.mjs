@@ -18,6 +18,7 @@
  */
 
 import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -36,6 +37,59 @@ function assert(cond, msg) {
   return cond;
 }
 
+// The tile hero-image resolver (ViewTileImage → resolveApiUrl) imports the
+// @elizaos/shared barrel, which transitively reaches @elizaos/core / node
+// builtins — all DEAD in the browser at render (the springboard renders from
+// the fixture's hand-built entries; no API base is set so URLs pass through
+// unchanged). Stub @elizaos/core to a no-op Proxy and every node builtin to a
+// no-op module so the browser bundle builds, mirroring run-home-screen-e2e. If
+// any of it actually ran at module load, the page-error guard below would catch
+// it.
+const stubElizaCore = {
+  name: "stub-eliza-core",
+  setup(b) {
+    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
+      path: args.path,
+      namespace: "eliza-core-stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
+      contents: `
+        const noop = new Proxy(() => noop, { get: () => noop });
+        module.exports = new Proxy(
+          { isViewVisible: () => true, dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])) },
+          { get: (t, p) => (p in t ? t[p] : noop) },
+        );
+      `,
+      loader: "js",
+    }));
+  },
+};
+const nodeBuiltins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]);
+const stubNodeBuiltins = {
+  name: "stub-node-builtins",
+  setup(b) {
+    b.onResolve({ filter: /.*/ }, (args) => {
+      const bare = args.path.replace(/^node:/, "").split("/")[0];
+      if (
+        args.path.startsWith("node:") ||
+        nodeBuiltins.has(args.path) ||
+        builtinModules.includes(bare)
+      ) {
+        return { path: args.path, namespace: "node-stub" };
+      }
+      return null;
+    });
+    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
+      contents:
+        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+      loader: "js",
+    }));
+  },
+};
+
 const result = await build({
   entryPoints: [join(here, "springboard-fixture.tsx")],
   bundle: true,
@@ -44,6 +98,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
+  plugins: [stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
@@ -51,6 +106,8 @@ console.log(`✓ fixture bundled (${js.length} bytes)`);
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>springboard e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%;background:#0a0d16;color:#f4f4f5}</style>
+<!-- Shim node-ish globals the dead-in-browser graph touches at module init. -->
+<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "springboard.html");
 await writeFile(htmlPath, html);
@@ -138,12 +195,13 @@ async function captureViewport(name, viewport, deviceScaleFactor) {
   assert(images >= 1, `${name}: ≥1 image tile renders (${images})`);
   await snap(page, `${name}-rest`);
 
-  // Enter edit mode via the "Edit" button.
-  await page.getByRole("button", { name: "Edit" }).click();
+  // Enter edit mode via a long-press on a tile (the Edit button was removed —
+  // long-press is the sole entry point now).
+  await longPress(page, "springboard-tile-wallet", 500);
   await page.waitForTimeout(300);
   assert(
-    (await page.getByRole("button", { name: "Done" }).count()) === 1,
-    `${name}: Edit button toggles to "Done"`,
+    (await page.getByTestId("springboard-fav-wallet").count()) === 1,
+    `${name}: long-press enters edit mode (pin badges shown, no Edit button)`,
   );
   await snap(page, `${name}-edit`);
   await page.close();
@@ -185,18 +243,22 @@ assert(
 await longPress(page, `springboard-tile-wallet`, 500);
 await page.waitForTimeout(250);
 assert(
-  (await page.getByRole("button", { name: "Done" }).count()) === 1,
-  "long-press (500ms) enters edit mode",
+  (await page.getByTestId("springboard-fav-wallet").count()) === 1,
+  "long-press (500ms) enters edit mode (pin badges shown)",
 );
 
 // 3. Toggle a favorite via the per-tile fav button (visible in edit mode).
 await page.getByTestId("springboard-fav-calendar").click();
 await page.waitForTimeout(250);
 
-// 4. Page navigation — click the "Page 2" dot. Exit edit first (dots show in
-//    both modes, but exit so the walkthrough ends on a clean grid).
-await page.getByRole("button", { name: "Done" }).click();
-await page.waitForTimeout(200);
+// 4. Page navigation — click the "Page 2" dot. Exit edit first (a second
+//    long-press toggles it off) so the walkthrough ends on a clean grid.
+await longPress(page, `springboard-tile-wallet`, 500);
+await page.waitForTimeout(250);
+assert(
+  (await page.getByTestId("springboard-fav-wallet").count()) === 0,
+  "a second long-press exits edit mode",
+);
 const page2 = page.getByRole("button", { name: "Page 2" });
 if ((await page2.count()) > 0) {
   await page2.click();

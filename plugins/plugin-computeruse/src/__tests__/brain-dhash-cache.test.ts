@@ -100,7 +100,7 @@ function make2dPng(
   ]);
 }
 
-function dummyScene(): Scene {
+function dummyScene(overrides: Partial<Scene> = {}): Scene {
   return {
     timestamp: 1,
     displays: [
@@ -118,6 +118,7 @@ function dummyScene(): Scene {
     ax: [],
     vlm_scene: null,
     vlm_elements: null,
+    ...overrides,
   };
 }
 function captures(frame: Buffer): Map<number, DisplayCapture> {
@@ -187,7 +188,7 @@ describe("Brain frame-dHash describe cache (M3)", () => {
     expect(dhB).not.toBeNull();
     const dist = hamming(dhA as bigint, dhB as bigint);
     expect(dist).toBeGreaterThan(0); // not byte-identical (exact cache would still hit)
-    expect(dist).toBeLessThanOrEqual(BRAIN_DHASH_HAMMING_THRESHOLD);
+    expect(dist).toBeLessThan(BRAIN_DHASH_HAMMING_THRESHOLD);
 
     let calls = 0;
     const brain = new Brain(null, {
@@ -203,13 +204,70 @@ describe("Brain frame-dHash describe cache (M3)", () => {
       captures: captures(base),
     });
     const second = await brain.observeAndPlan({
-      scene: dummyScene(),
+      scene: dummyScene({ timestamp: 2 }),
       goal: "click save",
       captures: captures(nudged), // near-identical → reuse the plan, skip the model
     });
     expect(calls).toBe(1);
     expect(second).toEqual(first);
     expect(brain.getStats().cacheHits).toBe(1);
+  });
+
+  it("re-invokes for a semantic scene change even when the frame remains near-identical", async () => {
+    const base = make2dPng(5);
+    const nudged = make2dPng(5, { x: 24, y: 24, w: 8, h: 8, delta: 128 });
+    const dhA = frameDhash(base);
+    const dhB = frameDhash(nudged);
+    expect(dhA).not.toBeNull();
+    expect(dhB).not.toBeNull();
+    expect(hamming(dhA as bigint, dhB as bigint)).toBeLessThan(
+      BRAIN_DHASH_HAMMING_THRESHOLD,
+    );
+
+    let calls = 0;
+    const brain = new Brain(null, {
+      imagePolicy: "always",
+      invokeModel: async () => {
+        calls += 1;
+        return VALID;
+      },
+    });
+    const saveScene = dummyScene({
+      ocr: [
+        {
+          id: "t0-1",
+          text: "Save",
+          bbox: [1, 1, 8, 3],
+          conf: 0.99,
+          displayId: 0,
+        },
+      ],
+    });
+    const deleteScene = dummyScene({
+      timestamp: 2,
+      ocr: [
+        {
+          id: "t0-1",
+          text: "Delete",
+          bbox: [1, 1, 8, 3],
+          conf: 0.99,
+          displayId: 0,
+        },
+      ],
+    });
+
+    await brain.observeAndPlan({
+      scene: saveScene,
+      goal: "click save",
+      captures: captures(base),
+    });
+    await brain.observeAndPlan({
+      scene: deleteScene,
+      goal: "click save",
+      captures: captures(nudged),
+    });
+    expect(calls).toBe(2);
+    expect(brain.getStats().cacheHits).toBe(0);
   });
 
   it("re-invokes for a visually different frame", async () => {

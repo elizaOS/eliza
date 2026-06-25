@@ -1,7 +1,24 @@
 import { useState } from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
+import { resolveApiUrl } from "../../utils/asset-url";
 import { emitViewInteraction } from "../../view-telemetry";
 import { ViewIcon } from "./ViewIcon";
+
+/**
+ * Resolve a tile hero URL into one reachable from the renderer. The hero source
+ * is a root-relative API path (`/api/views/<id>/hero`) on built-in views, which
+ * resolves correctly on the web (same origin) but NOT in native/desktop shells
+ * that run on `file://` / `capacitor://` — there a bare `/api/...` path points at
+ * the SPA, not the agent backend, so the image 404s and every tile falls back to
+ * the bare glyph (the "no image icons" report). Routing root-relative paths
+ * through `resolveApiUrl` prepends the runtime API base so the branded hero image
+ * loads everywhere. Already-absolute URLs (http/https/data/blob) pass through.
+ */
+function resolveTileImageUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("//")) return url;
+  return resolveApiUrl(url);
+}
 
 /**
  * The shared visual core for a launcher tile: render the view's hero
@@ -32,8 +49,13 @@ export function ViewTileImage({
   /** data-testid for the <img>, when a caller asserts on it. */
   imageTestId?: string;
 }) {
-  const [failed, setFailed] = useState(false);
-  const url = failed ? undefined : entry.imageUrl;
+  const [failure, setFailure] = useState<"none" | "primary" | "all">("none");
+  const primaryUrl =
+    failure === "none" ? resolveTileImageUrl(entry.imageUrl) : undefined;
+  const fallbackUrl =
+    failure !== "all" ? resolveTileImageUrl(entry.fallbackImageUrl) : undefined;
+  const url = primaryUrl ?? fallbackUrl;
+  const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
 
   if (url) {
     return (
@@ -50,7 +72,7 @@ export function ViewTileImage({
               action: "hero-image-error",
               viewId: entry.id,
             });
-            setFailed(true);
+            setFailure(primaryUrl && hasFallback ? "primary" : "all");
           }}
           className="h-full w-full object-cover"
           data-testid={imageTestId}

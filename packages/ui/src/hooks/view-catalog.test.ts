@@ -65,6 +65,25 @@ describe("mergeViewCatalog", () => {
     expect(claw?.label).toBe("Arcade");
     expect(claw?.heroUrl).toBe("/api/apps/hero/arcade");
     expect(claw?.hasHero).toBe(true);
+    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/svg\+xml,/);
+  });
+
+  it("generates branded image fallbacks for entries without real hero art", () => {
+    const entries = merge({
+      views: [makeView("calendar", { label: "Calendar" })],
+      catalog: [
+        makeApp({ name: "@elizaos/plugin-notes", displayName: "Notes" }),
+      ],
+    });
+
+    const calendar = entries.find((e) => e.id === "calendar");
+    const notes = entries.find((e) => e.id === "@elizaos/plugin-notes");
+    expect(calendar?.heroUrl).toBeUndefined();
+    expect(calendar?.imageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(calendar?.fallbackImageUrl).toBe(calendar?.imageUrl);
+    expect(notes?.heroUrl).toBeUndefined();
+    expect(notes?.imageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(notes?.fallbackImageUrl).toBe(notes?.imageUrl);
   });
 
   it("dedupes: a catalog app whose plugin is already a loaded view is not shown twice", () => {

@@ -1191,7 +1191,7 @@ def validate_manifest(
                             f"provenance.sourceModels.{slot}.repo: required non-empty string"
                         )
                     elif rs == "base-v1":
-                        repo_error = canonical_qwen_source_repo_error(
+                        repo_error = canonical_source_repo_error(
                             slot, repo, tier=manifest.get("tier")
                         )
                         if repo_error is not None:
@@ -1437,13 +1437,13 @@ def validate_manifest(
     return tuple(errors)
 
 
-def canonical_qwen_source_repo_error(
+def canonical_source_repo_error(
     slot: str,
     repo: str,
     *,
     tier: str | None = None,
 ) -> str | None:
-    """Return an error for known Qwen ASR/embedding provenance misspellings.
+    """Return an error for non-canonical base-v1 source repositories.
 
     All text tiers (2b/4b/9b/27b) are Gemma 4. ASR and embedding are separate
     Qwen3 components with their own published GGUF repos. The release pipeline

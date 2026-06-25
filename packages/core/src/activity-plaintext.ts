@@ -774,16 +774,42 @@ function trajectoryRecordFromInput(
 		: record;
 }
 
+function parseTrajectoryStepsJson(value: unknown): TrajectoryStepRecord[] {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		return [];
+	}
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		return Array.isArray(parsed) ? (parsed as TrajectoryStepRecord[]) : [];
+	} catch {
+		return [];
+	}
+}
+
+function collectTrajectorySteps(
+	input: TrajectoryPlaintextInput | TrajectoryDetailRecord,
+): TrajectoryStepRecord[] {
+	const record = trajectoryRecordFromInput(input);
+	const directSteps =
+		isRecord(input) && Array.isArray(input.steps)
+			? (input.steps as TrajectoryStepRecord[])
+			: [];
+	const nestedSteps =
+		record !== input && Array.isArray(record.steps)
+			? (record.steps as TrajectoryStepRecord[])
+			: [];
+	const jsonSteps = parseTrajectoryStepsJson(record.stepsJson);
+	return [...directSteps, ...nestedSteps, ...jsonSteps];
+}
+
 function collectLlmCalls(
 	input: TrajectoryPlaintextInput | TrajectoryDetailRecord,
 ): TrajectoryLlmCallRecord[] {
 	const direct =
 		isRecord(input) && Array.isArray(input.llmCalls) ? input.llmCalls : [];
-	const steps =
-		isRecord(input) && Array.isArray(input.steps) ? input.steps : [];
 	return [
 		...(direct as TrajectoryLlmCallRecord[]),
-		...(steps as TrajectoryStepRecord[]).flatMap((step) => step.llmCalls ?? []),
+		...collectTrajectorySteps(input).flatMap((step) => step.llmCalls ?? []),
 	];
 }
 
@@ -794,11 +820,9 @@ function collectProviderAccesses(
 		isRecord(input) && Array.isArray(input.providerAccesses)
 			? input.providerAccesses
 			: [];
-	const steps =
-		isRecord(input) && Array.isArray(input.steps) ? input.steps : [];
 	return [
 		...(direct as TrajectoryProviderAccessRecord[]),
-		...(steps as TrajectoryStepRecord[]).flatMap(
+		...collectTrajectorySteps(input).flatMap(
 			(step) => step.providerAccesses ?? [],
 		),
 	];
@@ -926,18 +950,20 @@ export function trajectoryToPlaintext(
 	if (selectedCalls.length > 0) {
 		lines.push("LLM calls:");
 		for (const call of selectedCalls) {
+			const callId = readString(call.callId);
 			const label =
 				readString(call.purpose) ??
 				readString(call.actionType) ??
 				readString(call.stepType) ??
 				"llm";
+			const labelWithId = callId ? `LLM call ${callId}: ${label}` : label;
 			const model = [call.provider, call.model].filter(Boolean).join("/");
 			const preview = safeJsonPreview(
 				call.response ?? call.userPrompt ?? call.prompt,
 				maxFieldLength,
 			);
 			lines.push(
-				`- ${label}${model ? ` ${model}` : ""}${preview ? `: ${preview}` : ""}`,
+				`- ${labelWithId}${model ? ` ${model}` : ""}${preview ? `: ${preview}` : ""}`,
 			);
 		}
 		if (llmCalls.length > selectedCalls.length) {

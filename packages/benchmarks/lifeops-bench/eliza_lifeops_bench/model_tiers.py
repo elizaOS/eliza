@@ -48,18 +48,18 @@ DEFAULT_TIERS: dict[ModelTier, TierSpec] = {
     "small": TierSpec(
         tier="small",
         provider="local-llama-cpp",
-        model_name="eliza-1-2b",
+        model_name="gemma-4-e2b-q4_k_m",
         bundle_path="~/.eliza/local-inference/models/eliza-1-2b.bundle",
-        context_window=32_768,
-        notes="Tier-A smoke lane; mtp fork or Ollama fallback",
+        context_window=65_536,
+        notes="Tier-A smoke lane; eliza-1 2B entry tier (Gemma 4 E2B) via mtp fork or Ollama fallback",
     ),
     "mid": TierSpec(
         tier="mid",
         provider="local-llama-cpp",
-        model_name="eliza-1-4b",
+        model_name="gemma-4-e4b-q4_k_m",
         bundle_path="~/.eliza/local-inference/models/eliza-1-4b.bundle",
         context_window=65_536,
-        notes="Tier-B manual/scheduled",
+        notes="Tier-B manual/scheduled (Gemma 4 E4B)",
     ),
     "large": TierSpec(
         tier="large",

@@ -176,7 +176,7 @@ export async function handleAgentAdminRoutes(
   if (method === "POST" && pathname === "/api/agent/reset") {
     try {
       if (state.runtime) {
-        await state.runtime.stop();
+        await state.runtime.stop({ fast: true });
         state.runtime = null;
       }
 

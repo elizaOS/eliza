@@ -13,6 +13,8 @@ DisruptionKind = Literal[
     "rule_change",
 ]
 
+ExpectedWorldMutation = Literal["auto", "changed", "unchanged", "optional"]
+
 
 class Domain(Enum):
     """Life-assistant task domain."""
@@ -140,6 +142,7 @@ class Scenario:
     success_criteria: list[str] = field(default_factory=list)
     world_assertions: list[str] = field(default_factory=list)
     disruptions: list[Disruption] = field(default_factory=list)
+    expected_world_mutation: ExpectedWorldMutation = "auto"
 
 
 def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:

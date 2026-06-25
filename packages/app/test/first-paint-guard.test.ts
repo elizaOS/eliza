@@ -8,8 +8,8 @@
  * (companion registration + scene-status hook + inference-notice resolver) so a
  * future eager `import("@elizaos/plugin-…")` added to that await fails CI here
  * instead of silently expanding cold start. Everything else must ride the
- * deferred idle path (BOOT_CONFIG_DEFERRED_MODULE_LOADERS /
- * SIDE_EFFECT_APP_MODULE_LOADERS).
+ * deferred idle path after React has had a paint opportunity
+ * (BOOT_CONFIG_DEFERRED_MODULE_LOADERS / SIDE_EFFECT_APP_MODULE_LOADERS).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -76,10 +76,18 @@ describe("first-paint critical path", () => {
       // …but still referenced so the deferred loader actually loads it.
       expect(mainSrc).toContain(importer);
     }
-    // The deferred loader list exists and is scheduled off the critical path.
+    // The deferred loader list exists and is scheduled after React has a paint
+    // opportunity, not from initializeAppModules() before mount.
     expect(mainSrc).toContain("BOOT_CONFIG_DEFERRED_MODULE_LOADERS");
-    expect(mainSrc).toMatch(
+    const initializer = initializeAppModulesSource();
+    expect(initializer).not.toMatch(
       /scheduleAppModuleIdleLoads\(\s*BOOT_CONFIG_DEFERRED_MODULE_LOADERS\s*\)/,
+    );
+    expect(initializer).not.toMatch(
+      /scheduleAppModuleIdleLoads\(\s*SIDE_EFFECT_APP_MODULE_LOADERS\s*\)/,
+    );
+    expect(mainSrc).toMatch(
+      /function scheduleDeferredAppModuleLoadsAfterPaint\(\)[\s\S]*scheduleAfterReactPaint\([\s\S]*scheduleAppModuleIdleLoads\(\s*BOOT_CONFIG_DEFERRED_MODULE_LOADERS\s*\)[\s\S]*scheduleAppModuleIdleLoads\(\s*SIDE_EFFECT_APP_MODULE_LOADERS\s*\)/,
     );
   });
 
@@ -88,8 +96,17 @@ describe("first-paint critical path", () => {
     // path awaits app modules, then mounts. (Special window-shell paths mount
     // earlier by design and are out of scope.)
     const appModulesIdx = mainSrc.indexOf("await initializeAppModules();");
-    const mountIdx = mainSrc.indexOf("mountReactApp();\n  await initializePlatform();");
+    const mountIdx = mainSrc.indexOf(
+      "mountReactApp();\n  scheduleDeferredAppModuleLoadsAfterPaint();\n  await initializePlatform();",
+    );
     expect(appModulesIdx).toBeGreaterThan(-1);
     expect(mountIdx).toBeGreaterThan(appModulesIdx);
+  });
+
+  it("schedules deferred app modules only after the main React mount", () => {
+    const mountIdx = mainSrc.indexOf(
+      "mountReactApp();\n  scheduleDeferredAppModuleLoadsAfterPaint();\n  await initializePlatform();",
+    );
+    expect(mountIdx).toBeGreaterThan(-1);
   });
 });

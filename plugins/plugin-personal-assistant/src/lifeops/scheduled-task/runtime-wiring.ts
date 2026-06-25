@@ -43,12 +43,14 @@ import {
 } from "@elizaos/plugin-scheduling";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
+import { resolveDefaultTimeZone } from "../defaults.js";
 import { resolveGlobalPauseStore } from "../global-pause/store.js";
 import {
   ownerFactsToView,
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
 import { LifeOpsRepository } from "../repository.js";
+import { preferEffectiveMergedState } from "../schedule-state.js";
 import { getSendPolicyRegistry } from "../send-policy/index.js";
 import { getActivitySignalBus } from "../signals/bus.js";
 
@@ -135,7 +137,37 @@ function defaultOwnerFactsProvider(
 ): () => Promise<OwnerFactsView> {
   return async () => {
     const store = resolveOwnerFactStore(runtime);
-    return ownerFactsToView(await store.read());
+    const view = ownerFactsToView(await store.read());
+    const timezone = view.timezone ?? resolveDefaultTimeZone();
+    try {
+      const repo = new LifeOpsRepository(runtime);
+      const [local, cloud] = await Promise.all([
+        repo.getScheduleMergedState(runtime.agentId, "local", timezone),
+        repo.getScheduleMergedState(runtime.agentId, "cloud", timezone),
+      ]);
+      const effective = preferEffectiveMergedState({
+        now: new Date(),
+        local,
+        cloud,
+      });
+      const sampleCount = effective?.baseline?.sampleCount;
+      if (typeof sampleCount === "number" && Number.isFinite(sampleCount)) {
+        view.personalBaseline = {
+          sampleCount,
+          windowDays: effective.baseline?.windowDays,
+        };
+      }
+    } catch (error) {
+      logger.warn(
+        {
+          src: "lifeops:scheduled-task:runtime-wiring",
+          agentId: runtime.agentId,
+          error,
+        },
+        "Failed to project schedule baseline sample count into owner facts; baseline-dependent gates will deny until it is available.",
+      );
+    }
+    return view;
   };
 }
 

@@ -52,6 +52,19 @@ export interface DeploymentRecord {
   startedAt: string;
 }
 
+function deployMetadataFor(
+  current: Record<string, unknown>,
+  input: Pick<CreateDeploymentInput, "dockerfile" | "ref" | "repoUrl">,
+): Record<string, unknown> | undefined {
+  if (!input.repoUrl && !input.ref && !input.dockerfile) return undefined;
+  return {
+    ...current,
+    ...(input.repoUrl ? { repoUrl: input.repoUrl } : {}),
+    ...(input.ref ? { ref: input.ref } : {}),
+    ...(input.dockerfile ? { dockerfile: input.dockerfile } : {}),
+  };
+}
+
 /**
  * Enqueue an APP_DEPLOY job (pg-free) so the daemon runs the real isolated
  * deploy. The Worker deploy route wires this so `createDeployment` never touches
@@ -117,9 +130,11 @@ export class AppDeploymentsService {
     assertDeployable(existing);
 
     const startedAt = new Date();
+    const deploymentMetadata = deployMetadataFor(existing.metadata ?? {}, input);
     const updated = await appsService.update(input.appId, {
       deployment_status: "building",
       last_deployed_at: startedAt,
+      ...(deploymentMetadata ? { metadata: deploymentMetadata } : {}),
     });
     if (!updated) {
       throw new Error("Failed to record deployment start");

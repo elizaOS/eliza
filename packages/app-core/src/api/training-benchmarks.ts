@@ -212,16 +212,6 @@ function resolveBenchmarkStateDir(env: NodeJS.ProcessEnv): string {
 // Reader — opens the SQLite file in read-only mode for each request
 // ---------------------------------------------------------------------------
 
-interface DbRunRow {
-  id: number | bigint;
-  model_id: string;
-  benchmark: string;
-  score: number;
-  ts: number | bigint;
-  dataset_version: string;
-  code_commit: string;
-}
-
 interface BenchmarkResultsReader {
   ready: boolean;
   getHistory(args: {
@@ -278,11 +268,10 @@ export function openBenchmarkResultsReader(
   return {
     ready: true,
     getHistory({ modelId, benchmark, limit }): BenchmarkRunDTO[] {
-      const rows = historyStmt.all(modelId, benchmark, limit).map(readDbRunRow);
-      return rows.map(rowToDto);
+      return historyStmt.all(modelId, benchmark, limit).map(rowToDto);
     },
     getLatest({ modelId, benchmark }): BenchmarkRunDTO | null {
-      const rows = latestStmt.all(modelId, benchmark).map(readDbRunRow);
+      const rows = latestStmt.all(modelId, benchmark);
       if (rows.length === 0) return null;
       return rowToDto(rows[0]);
     },
@@ -292,50 +281,47 @@ export function openBenchmarkResultsReader(
   };
 }
 
-function readDbRunRow(row: Record<string, unknown>): DbRunRow {
+function rowToDto(row: Record<string, unknown>): BenchmarkRunDTO {
   return {
-    id: readIntegerLike(row.id, "id"),
-    model_id: readString(row.model_id, "model_id"),
-    benchmark: readString(row.benchmark, "benchmark"),
-    score: readFiniteNumber(row.score, "score"),
-    ts: readIntegerLike(row.ts, "ts"),
-    dataset_version: readString(row.dataset_version, "dataset_version"),
-    code_commit: readString(row.code_commit, "code_commit"),
+    id: readSqliteInteger(row, "id"),
+    modelId: readSqliteString(row, "model_id"),
+    benchmark: readSqliteString(row, "benchmark"),
+    score: readSqliteNumber(row, "score"),
+    ts: readSqliteInteger(row, "ts"),
+    datasetVersion: readSqliteString(row, "dataset_version"),
+    codeCommit: readSqliteString(row, "code_commit"),
   };
 }
 
-function readIntegerLike(value: unknown, field: string): number | bigint {
-  if (typeof value === "number" && Number.isInteger(value)) return value;
-  if (typeof value === "bigint") return value;
-  throw new Error(
-    `[TrainingBenchmarks] Invalid benchmark row: ${field} must be an integer`,
-  );
-}
-
-function readFiniteNumber(value: unknown, field: string): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  throw new Error(
-    `[TrainingBenchmarks] Invalid benchmark row: ${field} must be a finite number`,
-  );
-}
-
-function readString(value: unknown, field: string): string {
+function readSqliteString(
+  row: Record<string, unknown>,
+  column: string,
+): string {
+  const value = row[column];
   if (typeof value === "string") return value;
-  throw new Error(
-    `[TrainingBenchmarks] Invalid benchmark row: ${field} must be a string`,
-  );
+  throw new Error(`Invalid benchmark row: ${column} must be a string`);
 }
 
-function rowToDto(row: DbRunRow): BenchmarkRunDTO {
-  return {
-    id: Number(row.id),
-    modelId: row.model_id,
-    benchmark: row.benchmark,
-    score: row.score,
-    ts: Number(row.ts),
-    datasetVersion: row.dataset_version,
-    codeCommit: row.code_commit,
-  };
+function readSqliteNumber(
+  row: Record<string, unknown>,
+  column: string,
+): number {
+  const value = row[column];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  throw new Error(`Invalid benchmark row: ${column} must be a finite number`);
+}
+
+function readSqliteInteger(
+  row: Record<string, unknown>,
+  column: string,
+): number {
+  const value = row[column];
+  if (typeof value === "number" && Number.isSafeInteger(value)) return value;
+  if (typeof value === "bigint") {
+    const asNumber = Number(value);
+    if (Number.isSafeInteger(asNumber)) return asNumber;
+  }
+  throw new Error(`Invalid benchmark row: ${column} must be a safe integer`);
 }
 
 // ---------------------------------------------------------------------------

@@ -52,8 +52,9 @@ export function useWidgetNavigation(): {
 
 export type HomeWidgetTone = "default" | "danger" | "warn";
 
+// Default values sit on the orange home wallpaper; keep them high contrast.
 const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
-  default: "text-txt",
+  default: "text-white",
   danger: "text-danger",
   warn: "text-warn",
 };
@@ -103,13 +104,14 @@ export function HomeWidgetCard({
       title={label}
       onClick={onActivate}
       className={cn(
-        "group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-card/75 px-3 py-2.5 text-left",
-        "transition-colors hover:bg-card",
+        // Dark neutral glass keeps white text and orange status values legible.
+        "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/45 px-3 py-2.5 text-left backdrop-blur-md",
+        "transition-colors hover:bg-black/55",
       )}
     >
       <span
         className={cn(
-          "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg/60 text-muted [&>svg]:h-4 [&>svg]:w-4",
+          "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/85 [&>svg]:h-4 [&>svg]:w-4",
           tone === "danger" && "text-danger",
           tone === "warn" && "text-warn",
         )}
@@ -119,7 +121,8 @@ export function HomeWidgetCard({
           <span
             aria-hidden
             className={cn(
-              "absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-card",
+              // Use a filled dot; the ring only separates it from the icon.
+              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-black/40",
               TONE_DOT_CLASS[tone],
             )}
           />
@@ -143,7 +146,7 @@ export function HomeWidgetCard({
       </span>
 
       {meta != null ? (
-        <span className="shrink-0 text-2xs tabular-nums text-muted">
+        <span className="shrink-0 text-2xs tabular-nums text-white/60">
           {meta}
         </span>
       ) : null}

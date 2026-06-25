@@ -8,6 +8,8 @@ name: Voice Live E2E
 # What it proves (no mocks at any stage):
 #   - Real fused ASR: the provisioned libelizainference + ASR bundle
 #     transcribes real speech.
+#   - Real fused Kokoro TTS: the provisioned libelizainference loads the
+#     published Kokoro GGUF + voice .bin and synthesizes audible PCM.
 #   - Optional mixed round-trip: when cloud voice/LLM keys are present, real
 #     generated speech flows through fused local ASR, a live cloud LLM, and
 #     live cloud TTS.
@@ -222,7 +224,6 @@ jobs:
 
           SRC_BUNDLE="$(first_existing_dir \
             "${ELIZA_ASR_BUNDLE:-}" \
-            "$HOME/.eliza/local-inference/models/eliza-1-0_8b.bundle" \
             "$HOME/.eliza/local-inference/models/eliza-1-2b.bundle")"
           require_dir "ASR region" "$SRC_BUNDLE/asr"
 
@@ -253,13 +254,21 @@ jobs:
           download_sha "$base/voice/vad/silero-vad-v5.1.2.ggml.bin" \
             "$BUNDLE/vad/silero-vad-v5.1.2.ggml.bin" \
             "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf"
-          download_sha "$base/bundles/0_8b/vad/silero-vad-v5.gguf" \
+          download_sha "$base/bundles/2b/vad/silero-vad-v5.gguf" \
             "$BUNDLE/vad/silero-vad-v5.gguf" \
             "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995"
+          download_sha "$base/bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" \
+            "$BUNDLE/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" \
+            "cb5440c3e2eadccae635ff5089cbe07082697910a611f323dc5278b9f6659c1e"
+          download_sha "$base/bundles/2b/tts/kokoro/voices/af_bella.bin" \
+            "$BUNDLE/tts/kokoro/voices/af_bella.bin" \
+            "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b"
 
           {
             echo "ELIZA_ASR_BUNDLE=$BUNDLE"
             echo "ELIZA_INFERENCE_LIBRARY=$FUSED_LIB"
+            echo "ELIZA_KOKORO_MODEL_DIR=$BUNDLE/tts/kokoro"
+            echo "ELIZA_KOKORO_DEFAULT_VOICE_ID=af_bella"
             echo "ELIZA_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
             echo "ELIZA_DIARIZ_GGUF=$BUNDLE/diariz/pyannote-segmentation-3.0.gguf"
             echo "ELIZA_TEST_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"
@@ -273,8 +282,14 @@ jobs:
             echo "sourceBundle=$SRC_BUNDLE"
             echo "overlayBundle=$BUNDLE"
             echo "fusedLib=$FUSED_LIB"
-            find "$BUNDLE" -maxdepth 2 -type f -printf '%P %s bytes\n' | sort
+            find "$BUNDLE" -maxdepth 4 -type f -printf '%P %s bytes\n' | sort
           } | tee "$VOICE_REAL_MATRIX_OUT/provisioning.txt"
+
+      - name: Real Kokoro GGUF synth smoke
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-local-inference test:kokoro:real \
+            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/kokoro-real-smoke.log"
 
       - name: Real fused attribution smoke
         run: |

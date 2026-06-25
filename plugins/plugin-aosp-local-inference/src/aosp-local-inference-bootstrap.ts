@@ -343,18 +343,19 @@ function normalizeChatRole(
  * and leave legacy `prompt` unset; without this bridge the native loader sees
  * an empty string and `eliza_inference_tokenize` returns zero tokens.
  *
- * The Eliza-1 bundle is a qwen3.5-family model, so we render the qwen ChatML
- * template
- * (`<|im_start|>role\n…<|im_end|>`) with a trailing `<|im_start|>assistant`
- * generation marker. The generate path MUST tokenize this with
- * parse_special=true so the role markers become real control tokens instead of
- * literal text the model parrots back (which is what produced replies like
- * "|im_start| user …"), and stops on `<|im_end|>`. If a non-qwen GGUF is ever
- * served through this path the template has to become family-aware (or call the
- * model's baked chat template).
+ * The Eliza-1 bundle is a Gemma 4 model, so we render the Gemma turn template
+ * (`<start_of_turn>role\n…<end_of_turn>`) with a trailing
+ * `<start_of_turn>model` generation marker. The generate path MUST tokenize
+ * this with parse_special=true so the turn delimiters become real control
+ * tokens instead of literal text the model parrots back, and stops on
+ * `<end_of_turn>`.
  */
-const QWEN_IM_START = "<|im_start|>";
-const QWEN_IM_END = "<|im_end|>";
+const GEMMA_START_OF_TURN = "<start_of_turn>";
+const GEMMA_END_OF_TURN = "<end_of_turn>";
+
+function gemmaRole(role: "system" | "user" | "assistant" | "tool"): string {
+  return role === "assistant" ? "model" : role;
+}
 
 export function flattenGenerateTextParamsForAospPrompt(
   params: GenerateTextParams,
@@ -363,8 +364,11 @@ export function flattenGenerateTextParamsForAospPrompt(
     return params.prompt;
   }
 
-  const chatmlBlock = (role: string, content: string) =>
-    `${QWEN_IM_START}${role}\n${content}${QWEN_IM_END}`;
+  const gemmaBlock = (
+    role: "system" | "user" | "assistant" | "tool",
+    content: string,
+  ) =>
+    `${GEMMA_START_OF_TURN}${gemmaRole(role)}\n${content}${GEMMA_END_OF_TURN}`;
 
   const messages = params.messages ?? [];
   if (messages.length > 0) {
@@ -377,17 +381,17 @@ export function flattenGenerateTextParamsForAospPrompt(
       typeof params.system === "string" &&
       params.system
     ) {
-      blocks.push(chatmlBlock("system", params.system.trim()));
+      blocks.push(gemmaBlock("system", params.system.trim()));
     }
     for (const message of messages) {
       const content = renderMessageContent(message.content);
       if (!content) continue;
-      blocks.push(chatmlBlock(normalizeChatRole(message.role), content));
+      blocks.push(gemmaBlock(normalizeChatRole(message.role), content));
     }
     if (blocks.length > 0) {
       const lastRole = normalizeChatRole(messages[messages.length - 1]?.role);
       if (lastRole !== "assistant") {
-        blocks.push(`${QWEN_IM_START}assistant\n`);
+        blocks.push(`${GEMMA_START_OF_TURN}model\n`);
       }
       return blocks.join("\n");
     }
@@ -402,7 +406,7 @@ export function flattenGenerateTextParamsForAospPrompt(
   }
 
   if (typeof params.system === "string" && params.system.length > 0) {
-    return `${chatmlBlock("system", params.system.trim())}\n${QWEN_IM_START}assistant\n`;
+    return `${gemmaBlock("system", params.system.trim())}\n${GEMMA_START_OF_TURN}model\n`;
   }
 
   return "";
@@ -414,14 +418,14 @@ export function buildGenerateArgsFromParams(
   const args: Parameters<AospLoader["generate"]>[0] = {
     prompt: flattenGenerateTextParamsForAospPrompt(params),
   };
-  // Always stop at qwen ChatML turn boundaries. With parse_special=true the
-  // model's <|im_end|> is its EOG token (the fused stream ends the turn on it),
-  // but the text stops are a belt-and-suspenders guard against the model
-  // continuing past its turn or opening a new <|im_start|> role.
+  // Always stop at Gemma turn boundaries. With parse_special=true the model's
+  // <end_of_turn> is its EOG token (the fused stream ends the turn on it), but
+  // the text stops are a belt-and-suspenders guard against the model
+  // continuing past its turn or opening a new <start_of_turn> role.
   args.stopSequences = [
     ...(params.stopSequences ?? []),
-    QWEN_IM_END,
-    QWEN_IM_START,
+    GEMMA_END_OF_TURN,
+    GEMMA_START_OF_TURN,
   ];
   if (params.maxTokens !== undefined) {
     args.maxTokens = params.maxTokens;
@@ -2541,6 +2545,7 @@ interface AospFusedTextLoaderState {
   bundleRoot: string;
   modelPath: string;
   gpuLayers?: number;
+  contextSize: number | null;
   draftModelPath: string | null;
 }
 
@@ -2571,8 +2576,8 @@ function tokenizeFused(
     state.ctx,
     helpers.ptr(textBuf),
     BigInt(textLen),
-    // add_special=1, parse_special=1 — render ChatML control tokens as real
-    // control tokens (the prompt is already ChatML-formatted upstream).
+    // add_special=1, parse_special=1 — render Gemma control tokens as real
+    // control tokens (the prompt is already Gemma-formatted upstream).
     1,
     1,
     helpers.ptr(outTokensPtr),
@@ -2706,7 +2711,7 @@ function dlopenFusedTextLib(ffi: BunFfiModule, libPath: string) {
  * created lazily on the first `loadModel`, with the bundle root derived from
  * the resolved `modelPath` — so the loader can be built at boot even before
  * the model has been downloaded (the lifecycle resolves/auto-downloads the
- * GGUF, then calls `loadModel(target)`). `generate` tokenizes the ChatML
+ * GGUF, then calls `loadModel(target)`). `generate` tokenizes the Gemma
  * prompt and runs the streaming open→prefill→next→close loop.
  */
 export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> {
@@ -2794,6 +2799,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           }),
           bundleRoot,
           modelPath: args.modelPath,
+          contextSize: args.contextSize ?? null,
           draftModelPath: null,
         };
       }
@@ -2820,6 +2826,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
       }
 
       state.modelPath = args.modelPath;
+      state.contextSize = args.contextSize ?? state.contextSize ?? null;
       state.draftModelPath = draftModelPath;
       if (typeof args.gpuLayers === "number") {
         state.gpuLayers = args.gpuLayers;
@@ -2873,6 +2880,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         draftMax: active.draftModelPath ? 16 : 0,
         mtpDrafterPath: active.draftModelPath,
         disableThinking: false,
+        contextSize: active.contextSize,
       };
       const result = await streamGenerate(active.binding, {
         ctx: active.ctx,

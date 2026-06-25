@@ -313,6 +313,7 @@ declare module "./client-base" {
     }>;
     getConversationMessages(
       id: string,
+      options?: { signal?: AbortSignal },
     ): Promise<{ messages: ConversationMessage[] }>;
     /**
      * Fetch the cross-channel inbox. Returns the most recent
@@ -925,6 +926,7 @@ ElizaClient.prototype.createConversation = async function (
 ElizaClient.prototype.getConversationMessages = async function (
   this: ElizaClient,
   id,
+  options,
 ) {
   let response: { messages: ConversationMessage[] } | null = null;
   try {
@@ -938,8 +940,12 @@ ElizaClient.prototype.getConversationMessages = async function (
   } catch {
     response = null;
   }
+  // The HTTP path is abortable (a rapid conversation swipe cancels the prior
+  // in-flight load so stacked requests don't race to set the thread); the
+  // desktop bridge path is local + fast and ignores the signal.
   response ??= await this.fetch<{ messages: ConversationMessage[] }>(
     `/api/conversations/${encodeURIComponent(id)}/messages`,
+    options?.signal ? { signal: options.signal } : undefined,
   );
   return {
     messages: response.messages.map((message) => {

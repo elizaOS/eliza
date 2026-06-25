@@ -1,6 +1,4 @@
-import { readEnv } from "./read-env.js";
-
-/** Log levels at or below debug — matches @elizaos/logger filtering. */
+/** Log levels at or below debug, matching @elizaos/logger filtering. */
 const DEBUG_OR_TRACE_LEVELS = new Set(["trace", "verbose", "debug"]);
 
 export type ModelLookupCallerTrace = {
@@ -16,9 +14,8 @@ const INTERNAL_FRAME_RE =
 const STACK_FRAME_WITH_FN_RE = /^(?:async )?(.+?) \((.+?):(\d+):(\d+)\)$/;
 const STACK_FRAME_FILE_ONLY_RE = /^(.+?):(\d+):(\d+)$/;
 
-function isDebugOrTraceLogLevel(): boolean {
-	const level = (readEnv("LOG_LEVEL") ?? "info").toLowerCase();
-	return DEBUG_OR_TRACE_LEVELS.has(level);
+function isDebugOrTraceLogLevel(logLevel: string | undefined): boolean {
+	return DEBUG_OR_TRACE_LEVELS.has(String(logLevel ?? "info").toLowerCase());
 }
 
 function parseFrameOrigin(line: string): string | null {
@@ -30,19 +27,19 @@ function parseFrameOrigin(line: string): string | null {
 	const file = withFn?.[2] ?? STACK_FRAME_FILE_ONLY_RE.exec(rest)?.[1];
 	if (!file) return null;
 
-	let path = file.trim();
-	if (path.startsWith("file://")) {
-		path = path.slice("file://".length);
+	let framePath = file.trim();
+	if (framePath.startsWith("file://")) {
+		framePath = framePath.slice("file://".length);
 	}
-	path = path.replace(/\\/g, "/");
+	framePath = framePath.replace(/\\/g, "/");
 
-	if (INTERNAL_FRAME_RE.test(path)) return null;
+	if (INTERNAL_FRAME_RE.test(framePath)) return null;
 	if (withFn?.[1] && INTERNAL_FRAME_RE.test(withFn[1])) return null;
 
-	const pluginMatch = /(?:^|\/)plugins\/([^/]+)\//.exec(path);
+	const pluginMatch = /(?:^|\/)plugins\/([^/]+)\//.exec(framePath);
 	if (pluginMatch?.[1]) return pluginMatch[1];
 
-	const packageMatch = /(?:^|\/)packages\/([^/]+)\//.exec(path);
+	const packageMatch = /(?:^|\/)packages\/([^/]+)\//.exec(framePath);
 	if (packageMatch?.[1]) return packageMatch[1];
 
 	return null;
@@ -59,12 +56,13 @@ function dedupeConsecutive(names: string[]): string[] {
 
 /**
  * Capture a trimmed stack for `runtime.useModel()` calls.
- * Returns plugin or package names only — no file paths or line numbers.
+ * Returns plugin or package names only: no file paths or line numbers.
  */
 export function captureModelLookupCaller(
+	logLevel: string | undefined,
 	maxFrames = 4,
 ): ModelLookupCallerTrace | undefined {
-	if (!isDebugOrTraceLogLevel()) return undefined;
+	if (!isDebugOrTraceLogLevel(logLevel)) return undefined;
 
 	const stack = new Error("model lookup").stack;
 	if (!stack) return undefined;

@@ -103,7 +103,7 @@ class LicenseAttestation:
 # The text backbone, the MTP drafter (distilled from the text
 # backbone) and the embedding model are all Apache-2.0 (Qwen3 family on
 # HuggingFace ships the Apache-2.0 LICENSE). Voice artifacts are tiered:
-# 0_8b/2b/4b/9b ship OmniVoice first with Kokoro fallback, and 27B-class
+# 2b/4b/9b ship OmniVoice first with Kokoro fallback, and 27B-class
 # tiers ship OmniVoice only. Kokoro and OmniVoice weights both declare
 # Apache-2.0; omnivoice.cpp C++ glue is MIT but is a code dependency, not a
 # shipped weight. Qwen3-ASR is Apache-2.0. Silero VAD is MIT. openWakeWord
@@ -148,19 +148,19 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         spdx="Apache-2.0",
         text_file=_APACHE,
         upstream_repo=(
-            "onnx-community/Kokoro-82M-v1.0-ONNX; "
+            "elizaos/eliza-1 Kokoro-82M GGUF (original hexgrad/Kokoro-82M); "
             "Serveurperso/OmniVoice-GGUF; ServeurpersoCom/omnivoice.cpp"
         ),
-        upstream_url="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder=(
             "the Kokoro authors; the OmniVoice / omnivoice.cpp authors; "
             "Qwen-TTS lineage (Alibaba Cloud)"
         ),
         note=(
-            "The active Eliza-1 TTS policy is tiered: 0_8b, 2b, 4b, and 9b "
+            "The active Eliza-1 TTS policy is tiered: 2b, 4b, and 9b "
             "ship OmniVoice first with Kokoro fallback; 27B-class tiers ship "
-            "OmniVoice only. Kokoro ONNX assets are staged from "
-            "onnx-community/Kokoro-82M-v1.0-ONNX. OmniVoice GGUF assets, when "
+            "OmniVoice only. Kokoro GGUF assets are staged from "
+            "elizaos/eliza-1 (converted from hexgrad/Kokoro-82M). OmniVoice GGUF assets, when "
             "present, are staged from Serveurperso/OmniVoice-GGUF (Qwen3-TTS "
             "lineage), and omnivoice.cpp is a MIT-licensed code dependency, not "
             "a shipped weight. OmniVoice singing/emotion tag data carries "
@@ -230,9 +230,9 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
             "Qwen3-Embedding-0.6B (1024-dim, Matryoshka, 32k ctx), shipped as a "
-            "separate embedding/ artifact on non-lite tiers. On 0_8b the embedding "
-            "model IS the text backbone with --pooling last — no duplicate weights, "
-            "no separate embedding/ artifact, and this file is absent on 0_8b. "
+            "separate embedding/ artifact on tiers that need it. On tiers without "
+            "a separate embedding artifact, the embedding model IS the text backbone "
+            "with --pooling last — no duplicate weights are shipped. "
             "Declared upstream license: Apache-2.0."
         ),
         tiers=("4b",),
@@ -344,7 +344,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "and CC-compatible terms; see the per-component LICENSE.* files and the "
             "manifest lineage / provenance blocks for the full breakdown. The "
             "bundle-level term follows the most-restrictive shipped component. "
-            "0_8b/2b/4b mobile bundles include the narrow OmniVoice voice "
+            "2b/4b mobile bundles include the narrow OmniVoice voice "
             "ladder; 9b and 27B-class bundles that include OmniVoice singing/"
             "emotion data carry CC-BY-NC-SA lineage. Individual permissively "
             "licensed components remain usable under their own terms. If the "
@@ -373,14 +373,14 @@ def _voice_attestation_for_components(
             component="voice (Kokoro TTS)",
             spdx="Apache-2.0",
             text_file=_APACHE,
-            upstream_repo="onnx-community/Kokoro-82M-v1.0-ONNX",
-            upstream_url="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+            upstream_repo="elizaos/eliza-1 Kokoro-82M GGUF (original hexgrad/Kokoro-82M)",
+            upstream_url="https://huggingface.co/elizaos/eliza-1",
             copyright_holder="the Kokoro authors",
             note=(
                 "This legacy/no-OmniVoice Eliza-1 bundle is Kokoro-only for TTS. It "
                 "ships no OmniVoice GGUF weights and no OmniVoice quant ladder. "
-                "Kokoro ONNX assets are staged from "
-                "onnx-community/Kokoro-82M-v1.0-ONNX and declare Apache-2.0."
+                "Kokoro GGUF assets are staged from elizaos/eliza-1 and declare "
+                "Apache-2.0 through the original hexgrad/Kokoro-82M lineage."
             ),
         )
     if has_omnivoice and not has_kokoro:

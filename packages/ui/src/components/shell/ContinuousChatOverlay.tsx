@@ -1031,6 +1031,9 @@ export function ContinuousChatOverlay({
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
+  // True while a clear/swipe is fetching an uncached thread — gates the empty
+  // thread's loading spinner. Defaulted for minimal mock controllers.
+  const conversationLoading = controller.conversationLoading ?? false;
 
   // Horizontal swipe between conversations (#8929). `swipeDx` is the live
   // horizontal drag (+left toward the next/older chat, -right toward the
@@ -3154,8 +3157,12 @@ export function ContinuousChatOverlay({
 
             {/* The conversation. Height animates 0 (collapsed) → half → full; the
             inner log scrolls. The grabber owns the drag, so dragging the messages
-            just scrolls them. */}
-            {hasThread ? (
+            just scrolls them. Rendered whenever the sheet is OPEN — not just when
+            there are messages — so an empty conversation (a fresh/cleared chat
+            before its greeting lands, or one with 0 messages) keeps the sheet at
+            its size and shows a loading state instead of collapsing to just the
+            header + composer (the reported "chat area disappears on clear" bug). */}
+            {hasThread || sheetOpen ? (
               <motion.div
                 data-testid="chat-thread"
                 className={cn(
@@ -3197,6 +3204,19 @@ export function ContinuousChatOverlay({
                   {...(sheetOpen ? conversationSwipe : {})}
                   className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none]  [&::-webkit-scrollbar]:hidden"
                 >
+                  {/* Empty-thread loading: a fresh/cleared chat awaiting its
+                      greeting, or a swipe past the prefetch window. Centered
+                      spinner so the open sheet reads as "loading," never as a
+                      broken empty box. Cache-hit swipes paint instantly, so this
+                      only shows on a genuine network wait. */}
+                  {visibleMessages.length === 0 && conversationLoading ? (
+                    <div
+                      data-testid="chat-thread-loading"
+                      className="pointer-events-none absolute inset-0 grid place-items-center"
+                    >
+                      <Loader2 className="h-6 w-6 animate-spin text-[#FF5800]" />
+                    </div>
+                  ) : null}
                   {/* Topic chips bar (#8928): the channel's current topics,
                       sticky above the scrolling transcript. Tap a chip to jump
                       to (and expand) its group. Hidden when nothing is tagged. */}

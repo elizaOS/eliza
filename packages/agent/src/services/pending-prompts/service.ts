@@ -11,9 +11,14 @@
  * Mirrors `KnowledgeGraphService` (lifecycle + getService accessor).
  */
 
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type PendingUserAction,
+  Service,
+} from "@elizaos/core";
 import {
   createPendingPromptsStore,
+  type ExpectedReplyKind,
   type PendingPromptsStore,
 } from "./store.ts";
 
@@ -35,6 +40,41 @@ export class PendingPromptsService extends Service {
   getStore(): PendingPromptsStore {
     return createPendingPromptsStore(this.runtime);
   }
+
+  /**
+   * Canonical "agent is waiting on you" projection for all open prompts.
+   * UI/provider surfaces should consume this instead of reshaping store records.
+   */
+  async listPendingUserActions(): Promise<PendingUserAction[]> {
+    const prompts = await this.getStore().listAll();
+    return prompts.map((prompt) => ({
+      id: prompt.taskId,
+      kind: "pending_prompt",
+      source: "pending-prompts",
+      title: prompt.promptSnippet,
+      roomId: prompt.roomId,
+      expectedReplyKind: prompt.expectedReplyKind,
+      weight: promptWeight(prompt.expectedReplyKind),
+      resolution: {
+        target: "pending_prompt",
+        requestId: prompt.taskId,
+      },
+      data: {
+        expectedReplyKind: prompt.expectedReplyKind,
+      },
+      createdAt: Date.parse(prompt.firedAt),
+      expiresAt:
+        prompt.expiresAt && Number.isFinite(Date.parse(prompt.expiresAt))
+          ? Date.parse(prompt.expiresAt)
+          : null,
+    }));
+  }
+}
+
+function promptWeight(kind: ExpectedReplyKind): number {
+  if (kind === "approval") return 9;
+  if (kind === "yes_no") return 7;
+  return 6;
 }
 
 /**

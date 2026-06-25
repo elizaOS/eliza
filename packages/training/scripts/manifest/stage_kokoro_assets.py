@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage Kokoro ONNX assets into existing Eliza-1 bundles.
+"""Stage Kokoro GGUF assets into existing Eliza-1 bundles.
 
 This is intentionally separate from the OmniVoice/ASR/VAD staging helper:
 small Eliza-1 tiers can add Kokoro to already-built raw/base bundles without
 re-running text quantization or MTP staging. The script downloads the
-canonical Kokoro ONNX export and bundled voice packs, adds them to
+canonical Kokoro GGUF export and bundled voice packs, adds them to
 ``files.voice`` in ``eliza-1.manifest.json``, writes provenance evidence, and
 regenerates ``checksums/SHA256SUMS``. For small-tier releases, pass
 ``--kokoro-only`` to remove OmniVoice TTS payloads from the manifest and
@@ -34,33 +34,23 @@ try:
 except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_manifest import validate_manifest
 
-KOKORO_REPO: Final[str] = "onnx-community/Kokoro-82M-v1.0-ONNX"
+KOKORO_REPO: Final[str] = "elizaos/eliza-1"
 DEFAULT_BUNDLES_ROOT: Final[Path] = Path.home() / ".eliza" / "local-inference" / "models"
 KOKORO_RELEASE_ROOT: Final[str] = "tts/kokoro"
-KOKORO_MODEL_REMOTE: Final[str] = "onnx/model_q4.onnx"
-KOKORO_TOKENIZER_REMOTE: Final[str] = "tokenizer.json"
-KOKORO_MODEL_BUNDLE_PATH: Final[str] = f"{KOKORO_RELEASE_ROOT}/model_q4.onnx"
-KOKORO_TOKENIZER_BUNDLE_PATH: Final[str] = f"{KOKORO_RELEASE_ROOT}/tokenizer.json"
-# Default voice-remote template: `voices/<voice>.bin` matches the upstream
-# `onnx-community/Kokoro-82M-v1.0-ONNX` layout. Per-voice HF repos (e.g.
-    # `elizaos/eliza-1` under `voice/kokoro/voices/<voice>/`) ship the file at the repo
-# root as `voice.bin`. The `--voice-remote-template` flag lets the caller
-# override the lookup path while keeping the same `--repo-id` plumbing.
-DEFAULT_VOICE_REMOTE_TEMPLATE: Final[str] = "voices/{voice}.bin"
-DEFAULT_VOICES: Final[tuple[str, ...]] = (
-    "af_bella",
-    "af_sarah",
-    "af_nicole",
-    "af_sky",
-    "am_michael",
-    "am_adam",
-    "bf_emma",
-    "bf_isabella",
-    "bm_george",
-    "bm_lewis",
+KOKORO_MODEL_REMOTE_TEMPLATE: Final[str] = (
+    "bundles/{tier}/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf"
 )
+KOKORO_TOKENIZER_REMOTE_TEMPLATE: Final[str] = "bundles/{tier}/tts/kokoro/tokenizer.json"
+KOKORO_MODEL_BUNDLE_PATH: Final[str] = f"{KOKORO_RELEASE_ROOT}/kokoro-82m-v1_0-Q4_K_M.gguf"
+KOKORO_TOKENIZER_BUNDLE_PATH: Final[str] = f"{KOKORO_RELEASE_ROOT}/tokenizer.json"
+# Default voice-remote template: tiered bundle paths in `elizaos/eliza-1`.
+# Per-voice HF repos can still pass a template without `{tier}` (for example
+# `voice.bin`) while keeping the same `--repo-id` plumbing.
+DEFAULT_VOICE_REMOTE_TEMPLATE: Final[str] = "bundles/{tier}/tts/kokoro/voices/{voice}.bin"
+DEFAULT_VOICES: Final[tuple[str, ...]] = ("af_bella",)
 KOKORO_LICENSE_TEXT: Final[str] = (
-    "Kokoro-82M ONNX assets staged from onnx-community/Kokoro-82M-v1.0-ONNX.\n"
+    "Kokoro-82M GGUF assets staged from elizaos/eliza-1.\n"
+    "Original Kokoro upstream: hexgrad/Kokoro-82M.\n"
     "Declared upstream license: Apache-2.0.\n"
 )
 
@@ -118,6 +108,27 @@ def _bundle_dir_for_tier(root: Path, tier: str) -> Path:
     return root / f"eliza-1-{tier}.bundle"
 
 
+def _bundle_tier(bundle_dir: Path) -> str:
+    manifest_path = _manifest_path(bundle_dir)
+    if manifest_path.is_file():
+        with manifest_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        tier = data.get("tier") if isinstance(data, dict) else None
+        if isinstance(tier, str) and tier:
+            return tier
+    name = bundle_dir.name
+    prefix = "eliza-1-"
+    suffix = ".bundle"
+    if name.startswith(prefix) and name.endswith(suffix):
+        tier = name[len(prefix) : -len(suffix)]
+        if tier:
+            return tier
+    raise ValueError(
+        f"could not determine Eliza-1 tier for {bundle_dir}; "
+        "use an eliza-1-<tier>.bundle directory or include manifest.tier"
+    )
+
+
 def _safe_bundle_path(bundle_dir: Path, rel: str) -> Path:
     if not rel or Path(rel).is_absolute():
         raise ValueError(f"invalid bundle-relative path: {rel!r}")
@@ -153,16 +164,17 @@ def _write_manifest(bundle_dir: Path, manifest: dict[str, Any]) -> None:
 def _voice_remote_paths(
     voices: Sequence[str],
     *,
+    tier: str,
     voice_remote_template: str = DEFAULT_VOICE_REMOTE_TEMPLATE,
     include_base_assets: bool = True,
 ) -> list[tuple[str, str, str]]:
     """Compute (role, remote_path, bundle_path) tuples for HF downloads.
 
-    `voice_remote_template` accepts `{voice}` as a placeholder so per-voice
-    HF repos (e.g. ones that ship the embedding at the repo root as
-    `voice.bin`) can override the default `voices/<voice>.bin` layout.
+    `voice_remote_template` accepts `{tier}` and `{voice}` placeholders so
+    callers can use the default tiered `elizaos/eliza-1` bundle layout or
+    per-voice HF repos that ship a single `voice.bin` at the repo root.
 
-    `include_base_assets` controls whether the Kokoro ONNX model and tokenizer
+    `include_base_assets` controls whether the Kokoro GGUF model and tokenizer
     are also requested. When pulling additional voices from per-voice HF
     repos that do NOT carry the base model, set it to False to avoid 404s.
     """
@@ -170,12 +182,20 @@ def _voice_remote_paths(
     if include_base_assets:
         out.extend(
             [
-                ("kokoro-onnx", KOKORO_MODEL_REMOTE, KOKORO_MODEL_BUNDLE_PATH),
-                ("kokoro-tokenizer", KOKORO_TOKENIZER_REMOTE, KOKORO_TOKENIZER_BUNDLE_PATH),
+                (
+                    "kokoro-gguf",
+                    KOKORO_MODEL_REMOTE_TEMPLATE.format(tier=tier),
+                    KOKORO_MODEL_BUNDLE_PATH,
+                ),
+                (
+                    "kokoro-tokenizer",
+                    KOKORO_TOKENIZER_REMOTE_TEMPLATE.format(tier=tier),
+                    KOKORO_TOKENIZER_BUNDLE_PATH,
+                ),
             ]
         )
     for voice in voices:
-        remote = voice_remote_template.format(voice=voice)
+        remote = voice_remote_template.format(tier=tier, voice=voice)
         out.append(
             (
                 "kokoro-voice",
@@ -352,6 +372,7 @@ def stage_kokoro_bundle(
     bundle_dir = bundle_dir.resolve()
     if not bundle_dir.is_dir():
         raise FileNotFoundError(f"missing bundle directory: {bundle_dir}")
+    tier = _bundle_tier(bundle_dir)
     if not dry_run:
         _load_manifest(bundle_dir)
     revision = _repo_revision(repo_id, dry_run=dry_run)
@@ -368,6 +389,7 @@ def stage_kokoro_bundle(
         )
         for role, remote, rel in _voice_remote_paths(
             voices,
+            tier=tier,
             voice_remote_template=voice_remote_template,
             include_base_assets=include_base_assets,
         )
@@ -376,6 +398,7 @@ def stage_kokoro_bundle(
         "schemaVersion": 1,
         "generatedAt": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "bundleDir": str(bundle_dir),
+        "tier": tier,
         "repo": repo_id,
         "revision": revision,
         "voices": list(voices),
@@ -436,18 +459,17 @@ def main(argv: list[str] | None = None) -> int:
         "--voice-remote-template",
         default=DEFAULT_VOICE_REMOTE_TEMPLATE,
         help=(
-            "Per-voice remote path template. Default `voices/{voice}.bin` matches "
-            "the upstream onnx-community Kokoro repo. Per-voice HF repos that "
-            "ship the embedding under `voice/kokoro/voices/<voice>/` in `elizaos/eliza-1` "
-            "should pass `voice.bin` (no `{voice}` placeholder needed since the "
-            "repo only carries one voice)."
+            "Per-voice remote path template. The default matches "
+            "the tiered `elizaos/eliza-1` Kokoro bundle layout and accepts "
+            "`{tier}` plus `{voice}`. Per-voice HF repos can pass `voice.bin` "
+            "(no placeholders needed when the repo only carries one voice)."
         ),
     )
     ap.add_argument(
         "--no-base-assets",
         action="store_true",
         help=(
-            "Skip the base Kokoro ONNX + tokenizer download. Use when --repo-id "
+            "Skip the base Kokoro GGUF + tokenizer download. Use when --repo-id "
             "points at a per-voice HF repo that does not carry the base model."
         ),
     )

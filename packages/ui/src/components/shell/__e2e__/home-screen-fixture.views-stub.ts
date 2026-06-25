@@ -20,6 +20,7 @@ function builtinView(
   path: string,
   icon?: string,
   visibleInManager = false,
+  heroImageUrl?: string,
 ): ViewRegistryEntry {
   return {
     id,
@@ -34,7 +35,28 @@ function builtinView(
     // grid (system ids like settings/files/tasks are exempt from that gate).
     visibleInManager,
     viewKind: "release",
+    // A real hero image (the agent serves a branded SVG at /api/views/:id/hero
+    // on device). Provided as an inline data-URI here so the file:// e2e renders
+    // the actual <img> tile path — proving the springboard shows real image
+    // icons, not the glyph fallback.
+    ...(heroImageUrl
+      ? { hasHeroImage: true, heroImageUrl }
+      : {}),
   };
+}
+
+/** A distinct branded-tile data-URI hero (gradient square), keyed by hue. */
+function heroDataUri(hue: number): string {
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>` +
+    `<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>` +
+    `<stop offset='0' stop-color='hsl(${hue} 72% 56%)'/>` +
+    `<stop offset='1' stop-color='hsl(${(hue + 38) % 360} 70% 42%)'/>` +
+    `</linearGradient></defs>` +
+    `<rect width='64' height='64' fill='url(#g)'/>` +
+    `<circle cx='44' cy='20' r='22' fill='#ffffff' opacity='0.18'/>` +
+    `</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 // A roster big enough to fill TWO springboard pages (page size 20). The four
@@ -59,11 +81,13 @@ export function useRoutableViews() {
       // the e2e can assert their ABSENCE.
       builtinView("chat", "Chat", "/chat"),
       builtinView("views", "Views", "/views"),
-      // Dock favorites — DISTINCT per-view icons (#5 regression check).
-      builtinView("settings", "Settings", "/settings", "Settings"),
-      builtinView("activity", "Activity", "/activity", "Activity", true),
-      builtinView("files", "Files", "/apps/files", "FolderClosed"),
-      builtinView("tasks", "Tasks", "/apps/tasks", "ListTodo"),
+      // Dock favorites — real branded hero IMAGES (the agent serves these on
+      // device); rendered as <img> tiles, proving the springboard shows real
+      // image icons, not the glyph fallback (task: real image icons).
+      builtinView("settings", "Settings", "/settings", "Settings", false, heroDataUri(28)),
+      builtinView("activity", "Activity", "/activity", "Activity", true, heroDataUri(150)),
+      builtinView("files", "Files", "/apps/files", "FolderClosed", false, heroDataUri(210)),
+      builtinView("tasks", "Tasks", "/apps/tasks", "ListTodo", false, heroDataUri(280)),
       ...gridViews,
     ],
     loading: false,

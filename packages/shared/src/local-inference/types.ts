@@ -101,8 +101,9 @@ export interface InstalledModel {
   companionFor?: string;
   /**
    * Which desktop text runtime serves this model. Always `"fused-eliza1"` — an
-   * Eliza-1 bundle served by the full pipeline (same-file MTP, fork KV kernels,
-   * fused voice/vision). The local stack is Eliza-1 only (#8808). Backfilled at
+   * Eliza-1 bundle served by the full pipeline (Gemma separate-drafter MTP when
+   * staged, fork KV kernels, fused voice/vision). The local stack is Eliza-1 only
+   * (#8808). Backfilled at
    * the registry-read boundary for legacy rows via
    * `classifyInstalledModelRuntimeClass`; consumers read the field rather than
    * re-deriving it from the id.
@@ -271,8 +272,8 @@ export interface LocalRuntimeAcceleration {
     /**
      * Bundle-relative path to a separate MTP drafter GGUF. Gemma 4 ships an
      * official standalone drafter, loaded via `-md <drafterFile>
-     * --spec-type draft-mtp`. (Omitting it selects same-file MTP, where a
-     * NextN head is embedded in the text GGUF — the retired Qwen3.5 path.)
+     * --spec-type draft-mtp`. Shipped Gemma text tiers must not fall back to the
+     * retired same-file NextN path when this file is absent.
      */
     drafterFile?: string;
     /** Default draft range passed to the native MTP runner. */

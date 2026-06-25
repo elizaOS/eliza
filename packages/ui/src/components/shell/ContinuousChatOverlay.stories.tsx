@@ -88,6 +88,7 @@ function makeController(
     openSettings: () => {},
     stop: () => {},
     conversationNav: NO_NAV,
+    conversationLoading: false,
     ...overrides,
   };
 }

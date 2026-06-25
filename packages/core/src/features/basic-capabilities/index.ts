@@ -23,11 +23,13 @@ import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
 import {
 	bridgeActionCompletedToStreams,
 	bridgeActionStartedToStreams,
+	bridgeConnectorMessageReceivedToStreams,
 	bridgeEvaluatorCompletedToStreams,
 	bridgeEvaluatorStartedToStreams,
 	bridgeMessageReceivedToStreams,
 	bridgeRunEndedToStreams,
 	bridgeRunStartedToStreams,
+	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
 } from "../../services/agent-event-bridge.ts";
 import { ChannelTopicsService } from "../../services/channel-topics.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
@@ -46,6 +48,7 @@ import type {
 	ControlMessagePayload,
 	EntityPayload,
 	EvaluatorEventPayload,
+	EventPayload,
 	IAgentRuntime,
 	IMessageBusService,
 	InvokePayload,
@@ -950,13 +953,26 @@ const controlMessageHandler = async ({
 // Events Configuration
 // ============================================================================
 
+const connectorMessageReceivedEvents = Object.fromEntries(
+	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES.map((eventType) => [
+		eventType,
+		[
+			async (payload: EventPayload) => {
+				await bridgeConnectorMessageReceivedToStreams(eventType, payload);
+			},
+		],
+	]),
+) as unknown as PluginEvents;
+
 const events: PluginEvents = {
+	...connectorMessageReceivedEvents,
+
 	// Bridge every connector's inbound message onto the AgentEventService
 	// `message` stream so the home activity rail shows the agent fielding
 	// messages (Discord/Telegram/etc.), not just orchestrator tasks (#9449).
 	[EventType.MESSAGE_RECEIVED]: [
 		async (payload: MessagePayload) => {
-			bridgeMessageReceivedToStreams(payload);
+			await bridgeMessageReceivedToStreams(payload);
 		},
 	],
 	[EventType.REACTION_RECEIVED]: [

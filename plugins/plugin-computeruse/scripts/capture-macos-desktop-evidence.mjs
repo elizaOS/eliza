@@ -171,6 +171,24 @@ function displayForPoint(displays, x, y) {
   );
 }
 
+function usableWindow(windowInfo) {
+  const app = String(windowInfo?.app ?? "").trim();
+  const title = String(windowInfo?.title ?? "").trim();
+  const id = String(windowInfo?.id ?? "").trim();
+  const meaningfulApp = app.length > 0 && app.toLowerCase() !== "unknown";
+  const meaningfulTitle = title.length > 0 && title.toLowerCase() !== "unknown";
+  return id.length > 0 && (meaningfulApp || meaningfulTitle);
+}
+
+function focusableWindow(windowInfo) {
+  const app = String(windowInfo?.app ?? "").trim();
+  return (
+    usableWindow(windowInfo) &&
+    app.length > 0 &&
+    app.toLowerCase() !== "unknown"
+  );
+}
+
 async function waitForPendingApproval(service) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 5000) {
@@ -263,16 +281,20 @@ async function runTextEditInputCheck(service, displays) {
       previousWindow = activeBefore.window;
     }
 
-    runText("osascript", [
-      "-e",
-      'tell application "TextEdit"',
-      "-e",
-      "activate",
-      "-e",
-      'make new document with properties {text:""}',
-      "-e",
-      "end tell",
-    ]);
+    runText(
+      "osascript",
+      [
+        "-e",
+        'tell application "TextEdit"',
+        "-e",
+        "activate",
+        "-e",
+        'make new document with properties {text:""}',
+        "-e",
+        "end tell",
+      ],
+      { timeout: 30_000 },
+    );
     createdDocument = true;
     await new Promise((resolve) => setTimeout(resolve, 700));
 
@@ -290,9 +312,11 @@ async function runTextEditInputCheck(service, displays) {
       windowId: active.window.id,
     });
     if (!boundsResult.success || !boundsResult.bounds) {
-      throw new Error(
-        `could not read TextEdit bounds: ${boundsResult.error ?? "unknown"}`,
-      );
+      const rawReason = boundsResult.error ?? "unknown";
+      const reason = String(rawReason).includes("Window not found")
+        ? `${rawReason}; listWindows could not resolve the TextEdit window. Grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry.`
+        : rawReason;
+      throw new Error(`could not read TextEdit bounds: ${reason}`);
     }
 
     const bounds = boundsResult.bounds;
@@ -445,7 +469,7 @@ async function runBrowserCheck(service, outDir, artifacts) {
   };
 }
 
-async function runApprovalCheck(outDir) {
+async function runApprovalCheck(outDir, artifacts) {
   const approvalPath = path.join(outDir, "approval-full-control.txt");
 
   const smartService = await ComputerUseService.start(
@@ -505,6 +529,7 @@ async function runApprovalCheck(outDir) {
         `full_control file_write failed: ${fullWrite.error ?? "unknown"}`,
       );
     }
+    artifacts.push(relativeToRepo(approvalPath));
 
     smartService.setApprovalMode("off");
     const offResult = await smartService.executeCommand("screenshot");
@@ -683,10 +708,32 @@ async function main() {
       if (!list.success || !Array.isArray(list.windows)) {
         throw new Error(`list_windows failed: ${list.error ?? "unknown"}`);
       }
+      const usableWindows = list.windows.filter(usableWindow);
+      if (list.windows.length === 0) {
+        throw new Error(
+          "list_windows returned no visible windows; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
+        );
+      }
+      if (usableWindows.length === 0) {
+        throw new Error(
+          "list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
+        );
+      }
+      const focusableWindows = usableWindows.filter(focusableWindow);
+      if (focusableWindows.length === 0) {
+        throw new Error(
+          "list_windows returned windows without focusable application names; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
+        );
+      }
       const active = await service.executeWindowAction({
         action: "get_current_window_id",
       });
-      const target = active?.window ?? list.windows[0];
+      const target =
+        active?.window && focusableWindow(active.window)
+          ? (focusableWindows.find(
+              (windowInfo) => windowInfo.id === active.window.id,
+            ) ?? focusableWindows[0])
+          : focusableWindows[0];
       if (!target) throw new Error("no visible window available to focus");
       const focus = await service.executeCommand("switch_to_window", {
         windowId: target.id,
@@ -724,31 +771,41 @@ async function main() {
         ["Accessibility proof skipped by --skip-input"],
       );
     } else {
-      const inputResult = await runTextEditInputCheck(service, displays);
-      setCheck(
-        checks,
-        details,
-        "mouseKeyboardInput",
-        inputResult.status,
-        inputResult.requiredEvidence,
-        { details: inputResult.details },
-      );
-      setCheck(
-        checks,
-        details,
-        "accessibilityPermission",
-        "passed",
-        [
-          "granted Accessibility permission allowed TextEdit focus, window bounds, click, key_combo, and type operations",
-          "missing Accessibility permission is classified by desktop service errors when TCC blocks input or System Events access",
-        ],
-        {
-          details: {
-            activeWindow: inputResult.details.activeWindow,
-            bounds: inputResult.details.bounds,
+      try {
+        const inputResult = await runTextEditInputCheck(service, displays);
+        setCheck(
+          checks,
+          details,
+          "mouseKeyboardInput",
+          inputResult.status,
+          inputResult.requiredEvidence,
+          { details: inputResult.details },
+        );
+        setCheck(
+          checks,
+          details,
+          "accessibilityPermission",
+          "passed",
+          [
+            "granted Accessibility permission allowed TextEdit focus, window bounds, click, key_combo, and type operations",
+            "missing Accessibility permission is classified by desktop service errors when TCC blocks input or System Events access",
+          ],
+          {
+            details: {
+              activeWindow: inputResult.details.activeWindow,
+              bounds: inputResult.details.bounds,
+            },
           },
-        },
-      );
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setCheck(checks, details, "mouseKeyboardInput", "failed", [
+          `controlled TextEdit input proof failed: ${message}`,
+        ]);
+        setCheck(checks, details, "accessibilityPermission", "failed", [
+          `Accessibility-gated input/window proof failed: ${message}`,
+        ]);
+      }
     }
 
     if (options.skipBrowser) {
@@ -800,7 +857,7 @@ async function main() {
     });
 
     await runCheck(checks, details, "approvalMode", () =>
-      runApprovalCheck(options.outDir),
+      runApprovalCheck(options.outDir, artifacts),
     );
   } finally {
     await service.stop();
@@ -813,6 +870,23 @@ async function main() {
     ["passed", "blocked_by_platform"].includes(check.status),
   );
   const failed = manifestChecks.some((check) => check.status === "failed");
+  const manifestPath = path.join(
+    options.outDir,
+    "macos-desktop-validation.json",
+  );
+  const reportPath = path.join(options.outDir, "report.json");
+  const readmePath = path.join(options.outDir, "README.md");
+  const stableManifestPath = path.join(options.outDir, "manifest.json");
+  const finalArtifacts = Array.from(
+    new Set([
+      ...artifacts,
+      relativeToRepo(manifestPath),
+      relativeToRepo(reportPath),
+      relativeToRepo(readmePath),
+      relativeToRepo(stableManifestPath),
+    ]),
+  );
+
   const manifest = {
     schemaVersion: 1,
     platform: "macos-desktop",
@@ -832,7 +906,7 @@ async function main() {
       buildId,
       validatedAt: generatedAt,
       validator: `bun scripts/${SCRIPT_NAME} (${gitHead})`,
-      artifacts,
+      artifacts: finalArtifacts,
     },
     checks: manifestChecks,
   };
@@ -855,16 +929,9 @@ async function main() {
     details,
   };
 
-  const manifestPath = path.join(
-    options.outDir,
-    "macos-desktop-validation.json",
-  );
-  const reportPath = path.join(options.outDir, "report.json");
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-  artifacts.push(relativeToRepo(manifestPath), relativeToRepo(reportPath));
 
-  const readmePath = path.join(options.outDir, "README.md");
   await writeFile(
     readmePath,
     [
@@ -878,7 +945,7 @@ async function main() {
       `- Git: \`${gitHead}\``,
       "",
       "Artifacts:",
-      ...artifacts.map((artifact) => `- \`${artifact}\``),
+      ...finalArtifacts.map((artifact) => `- \`${artifact}\``),
       "",
       "Validate the generated manifest with:",
       "",
@@ -890,7 +957,6 @@ async function main() {
     "utf8",
   );
 
-  const stableManifestPath = path.join(options.outDir, "manifest.json");
   await copyFile(manifestPath, stableManifestPath);
 
   console.log(

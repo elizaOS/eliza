@@ -79,7 +79,11 @@ function makeMockBinding(
         drafterAccepted: 0,
       } satisfies AospLlmStreamStep;
     }
-    return steps[stepIdx++]!;
+    const step = steps[stepIdx++];
+    if (!step) {
+      throw new Error("mock stream exhausted unexpectedly");
+    }
+    return step;
   });
   const cancel = mock(() => {
     cancelled = true;
@@ -117,6 +121,7 @@ const DEFAULT_CONFIG: AospLlmStreamConfig = {
   draftMax: 0,
   mtpDrafterPath: null,
   disableThinking: false,
+  contextSize: 4096,
 };
 
 const STEPS: AospLlmStreamStep[] = [
@@ -254,7 +259,7 @@ describe("streamGenerateIterable", () => {
       collected.push(step);
     }
     expect(collected.length).toBe(3);
-    expect(collected[2]!.done).toBe(true);
+    expect(collected[2]?.done).toBe(true);
     expect(spies.close).toHaveBeenCalledTimes(1);
   });
 
@@ -268,8 +273,9 @@ describe("streamGenerateIterable", () => {
     const first = await iter[Symbol.asyncIterator]().next();
     expect(first.done).toBe(false);
     // `for await` cleanup invokes return() on the iterator → finally block fires.
-    if (iter[Symbol.asyncIterator]().return) {
-      await iter[Symbol.asyncIterator]().return!();
+    const iterator = iter[Symbol.asyncIterator]();
+    if (iterator.return) {
+      await iterator.return();
     }
     expect(spies.close).toHaveBeenCalledTimes(1);
   });

@@ -159,9 +159,17 @@ describe("Home ↔ Springboard composed surface", () => {
     openSpringboard();
     expect(surface.getAttribute("data-page")).toBe("springboard");
 
-    // Enter edit mode via the Edit button.
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
+    // Enter edit mode via a long-press on a tile (the Edit button was removed).
+    vi.useFakeTimers();
+    const settingsTile = screen
+      .getByTestId("springboard-tile-settings")
+      .querySelector("button");
+    if (!settingsTile) throw new Error("settings tile button missing");
+    fireEvent.pointerDown(settingsTile, { clientX: 50, clientY: 50 });
+    act(() => vi.advanceTimersByTime(600));
+    fireEvent.pointerUp(settingsTile);
+    vi.useRealTimers();
+    // Edit mode is on: per-tile pin affordances appear (no Done button now).
     expect(screen.getByTestId("springboard-fav-settings")).toBeTruthy();
 
     // Swipe back. This is the exact gesture that used to strand the user in
@@ -172,8 +180,6 @@ describe("Home ↔ Springboard composed surface", () => {
     // Re-enter the springboard: it must be a CLEAN launch view, not stale edit.
     openSpringboard();
     expect(surface.getAttribute("data-page")).toBe("springboard");
-    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
     expect(screen.queryByTestId("springboard-fav-settings")).toBeNull();
   });
 
@@ -190,8 +196,8 @@ describe("Home ↔ Springboard composed surface", () => {
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 50 });
     fireEvent.pointerMove(tile, { clientX: 90, clientY: 52 }); // dx 40 > slop
     act(() => vi.advanceTimersByTime(600));
-    // Swipe ⇒ NOT a long-press ⇒ NOT edit mode.
-    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+    // Swipe ⇒ NOT a long-press ⇒ NOT edit mode (no pin affordances surfaced).
+    expect(screen.queryByTestId("springboard-fav-app0")).toBeNull();
 
     // Control: a STATIONARY hold past the threshold DOES enter edit mode, so the
     // intentional long-press affordance still works.
@@ -201,7 +207,7 @@ describe("Home ↔ Springboard composed surface", () => {
     if (!tile2) throw new Error("tile button missing");
     fireEvent.pointerDown(tile2, { clientX: 50, clientY: 50 });
     act(() => vi.advanceTimersByTime(600));
-    expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
+    expect(screen.getByTestId("springboard-fav-app1")).toBeTruthy();
   });
 
   it("tapping a rail dot jumps directly to that surface", () => {
@@ -229,8 +235,8 @@ describe("Home ↔ Springboard composed surface", () => {
     const filesImage = screen.getByTestId(
       "springboard-image-files",
     ) as HTMLImageElement;
-    expect(settingsImage.getAttribute("src")).toBe("/api/views/settings/hero");
-    expect(filesImage.getAttribute("src")).toBe("/api/views/files/hero");
+    expect(settingsImage.getAttribute("src")).toMatch(/^data:image\/svg\+xml,/);
+    expect(filesImage.getAttribute("src")).toMatch(/^data:image\/svg\+xml,/);
     expect(settingsImage.getAttribute("src")).not.toBe(
       filesImage.getAttribute("src"),
     );

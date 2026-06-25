@@ -1,6 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
-import type { IAgentRuntime } from "../../types/runtime";
 import type { Task } from "../../types/task";
 import { TaskDrain } from "./task-drain";
 

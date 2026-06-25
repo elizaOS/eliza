@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { captureModelLookupCaller } from "./model-lookup-caller.js";
 
-function probeLookupCaller(): ReturnType<typeof captureModelLookupCaller> {
-	return captureModelLookupCaller();
+function probeLookupCaller(
+	logLevel: string | undefined,
+): ReturnType<typeof captureModelLookupCaller> {
+	return captureModelLookupCaller(logLevel);
 }
 
-function nestedLookupCaller(): ReturnType<typeof captureModelLookupCaller> {
-	return probeLookupCaller();
+function nestedLookupCaller(
+	logLevel: string | undefined,
+): ReturnType<typeof captureModelLookupCaller> {
+	return probeLookupCaller(logLevel);
 }
 
 describe("captureModelLookupCaller", () => {
@@ -20,14 +24,14 @@ describe("captureModelLookupCaller", () => {
 		}
 	});
 
-	it("returns undefined when LOG_LEVEL is above debug", () => {
-		process.env.LOG_LEVEL = "info";
-		expect(probeLookupCaller()).toBeUndefined();
+	it("returns undefined when the runtime log level is above debug", () => {
+		process.env.LOG_LEVEL = "debug";
+		expect(probeLookupCaller("info")).toBeUndefined();
 	});
 
-	it("returns package names only at debug log level", () => {
-		process.env.LOG_LEVEL = "debug";
-		const trace = nestedLookupCaller();
+	it("returns package names when the runtime log level is debug", () => {
+		delete process.env.LOG_LEVEL;
+		const trace = nestedLookupCaller("debug");
 		expect(trace).toBeDefined();
 		expect(trace?.caller).toBe("core");
 		expect(trace?.callerStack).toEqual(["core"]);

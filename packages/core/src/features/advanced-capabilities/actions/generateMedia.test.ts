@@ -94,4 +94,42 @@ describe("generateMediaAction availability", () => {
 			},
 		});
 	});
+
+	it("marks generated media attachments for connector delivery", async () => {
+		const callback = vi.fn();
+		const generateMedia = vi.fn(async () => ({
+			mediaType: "video",
+			videoUrl: "https://cdn.example.com/generated/clip.mp4",
+			mimeType: "video/mp4",
+		}));
+		const result = await generateMediaAction.handler?.(
+			runtimeWithMediaService(true, generateMedia),
+			message,
+			undefined,
+			{
+				parameters: { mediaType: "video", prompt: "glass lighthouse" },
+			},
+			callback,
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			values: {
+				mediaGenerated: true,
+				mediaType: "video",
+			},
+		});
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				source: "media-generation",
+				attachments: [
+					expect.objectContaining({
+						url: "https://cdn.example.com/generated/clip.mp4",
+						source: "media-generation",
+						contentType: "video",
+					}),
+				],
+			}),
+		);
+	});
 });

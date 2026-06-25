@@ -81,15 +81,15 @@ ASSETS: Final[tuple[AssetSpec, ...]] = (
     ),
     AssetSpec(
         "kokoro",
-        "kokoro-v1.0-q4.onnx",
-        "onnx-community/Kokoro-82M-v1.0-ONNX",
-        "onnx/model_q4.onnx",
+        "kokoro-82m-v1_0-Q4_K_M.gguf",
+        "elizaos/eliza-1",
+        "bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
     ),
     AssetSpec(
         "kokoro",
         "voices/af_bella.bin",
-        "onnx-community/Kokoro-82M-v1.0-ONNX",
-        "voices/af_bella.bin",
+        "elizaos/eliza-1",
+        "voice/kokoro/voices/af_bella.bin",
     ),
     AssetSpec(
         "omnivoice",

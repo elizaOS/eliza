@@ -1,6 +1,8 @@
 <!doctype html><html><head><meta charset="utf-8"><title>springboard e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%;background:#0a0d16;color:#f4f4f5}</style>
+<!-- Shim node-ish globals the dead-in-browser graph touches at module init. -->
+<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 </head><body><div id="root"></div><script>"use strict";
 (() => {
   var __create = Object.create;
@@ -12765,6 +12767,17 @@
     }
   });
 
+  // eliza-core-stub:@elizaos/core
+  var require_core = __commonJS({
+    "eliza-core-stub:@elizaos/core"(exports, module) {
+      var noop2 = new Proxy(() => noop2, { get: () => noop2 });
+      module.exports = new Proxy(
+        { isViewVisible: () => true, dedupeModalities: (m2) => Array.from(new Set(Array.isArray(m2) ? m2 : [])) },
+        { get: (t, p) => p in t ? t[p] : noop2 }
+      );
+    }
+  });
+
   // packages/ui/src/components/pages/__e2e__/springboard-fixture.tsx
   var React = __toESM(require_react(), 1);
   var import_react30 = __toESM(require_react(), 1);
@@ -25374,6 +25387,79 @@
   // packages/ui/src/components/views/ViewTileImage.tsx
   var import_react27 = __toESM(require_react(), 1);
 
+  // packages/ui/src/config/boot-config-store.ts
+  var import_core = __toESM(require_core(), 1);
+  var DEFAULT_BOOT_CONFIG = {
+    branding: {},
+    cloudApiBase: "https://www.elizacloud.ai"
+  };
+  var BOOT_CONFIG_STORE_KEY = /* @__PURE__ */ Symbol.for("elizaos.app.boot-config");
+  var BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
+  function getGlobalSlot() {
+    return globalThis;
+  }
+  function getBootConfigStore() {
+    const globalObject = getGlobalSlot();
+    const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
+    if (mirroredWindowConfig) {
+      const mirroredStore = { current: mirroredWindowConfig };
+      globalObject[BOOT_CONFIG_STORE_KEY] = mirroredStore;
+      return mirroredStore;
+    }
+    const existing = globalObject[BOOT_CONFIG_STORE_KEY];
+    if (existing && typeof existing === "object" && "current" in existing) {
+      return existing;
+    }
+    const store = { current: DEFAULT_BOOT_CONFIG };
+    globalObject[BOOT_CONFIG_STORE_KEY] = store;
+    globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
+    return store;
+  }
+  function getBootConfig() {
+    return getBootConfigStore().current;
+  }
+
+  // packages/shared/src/utils/eliza-globals.ts
+  function getElizaWindow() {
+    return typeof window === "undefined" ? null : window;
+  }
+  function readTrimmedString(value) {
+    if (typeof value !== "string") {
+      return void 0;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : void 0;
+  }
+  function getElizaApiBase() {
+    const elizaWindow = getElizaWindow();
+    return readTrimmedString(elizaWindow?.__ELIZA_API_BASE__) ?? readTrimmedString(elizaWindow?.__ELIZAOS_API_BASE__);
+  }
+
+  // packages/ui/src/utils/asset-url.ts
+  var ELIZA_API_BASE_SESSION_KEY = "elizaos_api_base";
+  function readSessionStorageApiBase() {
+    try {
+      if (typeof window === "undefined") return void 0;
+      const raw = window.sessionStorage.getItem(ELIZA_API_BASE_SESSION_KEY);
+      const trimmed = raw?.trim();
+      return trimmed && trimmed.length > 0 ? trimmed : void 0;
+    } catch {
+      return void 0;
+    }
+  }
+  function resolveApiUrl(apiPath) {
+    const bootRaw = getBootConfig().apiBase?.trim();
+    const boot = bootRaw && bootRaw.length > 0 ? bootRaw : void 0;
+    const injectedRaw = getElizaApiBase()?.trim();
+    const injected = injectedRaw && injectedRaw.length > 0 ? injectedRaw : void 0;
+    const stored = readSessionStorageApiBase();
+    const base = boot ?? injected ?? stored;
+    if (!base) return apiPath;
+    const normalized = base.replace(/\/+$/, "");
+    const suffix = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+    return `${normalized}${suffix}`;
+  }
+
   // packages/ui/src/components/views/ViewIcon.tsx
   var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
   var ICONS = {
@@ -25500,6 +25586,11 @@
 
   // packages/ui/src/components/views/ViewTileImage.tsx
   var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
+  function resolveTileImageUrl(url) {
+    if (!url) return void 0;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("//")) return url;
+    return resolveApiUrl(url);
+  }
   function ViewTileImage({
     entry,
     source,
@@ -25507,8 +25598,11 @@
     glyphClassName = "h-6 w-6",
     imageTestId
   }) {
-    const [failed, setFailed] = (0, import_react27.useState)(false);
-    const url = failed ? void 0 : entry.imageUrl;
+    const [failure, setFailure] = (0, import_react27.useState)("none");
+    const primaryUrl = failure === "none" ? resolveTileImageUrl(entry.imageUrl) : void 0;
+    const fallbackUrl = failure !== "all" ? resolveTileImageUrl(entry.fallbackImageUrl) : void 0;
+    const url = primaryUrl ?? fallbackUrl;
+    const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
     if (url) {
       return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: containerClassName, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
         "img",
@@ -25524,7 +25618,7 @@
               action: "hero-image-error",
               viewId: entry.id
             });
-            setFailed(true);
+            setFailure(primaryUrl && hasFallback ? "primary" : "all");
           },
           className: "h-full w-full object-cover",
           "data-testid": imageTestId
@@ -25561,7 +25655,7 @@
     const timer = (0, import_react29.useRef)(null);
     const pressStart = (0, import_react29.useRef)(null);
     const clear = () => {
-      if (timer.current) {
+      if (timer.current !== null) {
         clearTimeout(timer.current);
         timer.current = null;
       }
@@ -25599,9 +25693,12 @@
                 onPointerCancel: clear,
                 className: cn(
                   // ViewTileImage handles image-vs-glyph internally, so the button is
-                  // one constant surface. Translucent filter effects (#9281) and
-                  // focus rings (#9292) were deliberately removed on develop.
-                  "h-16 w-16 overflow-hidden rounded-2xl bg-bg-accent/60 text-foreground transition-colors hover:bg-bg-accent",
+                  // one constant surface. The hero image (object-cover) covers the
+                  // tile when it loads; this dark neutral fill + white glyph is the
+                  // fallback so a tile reads as a real app icon (not a bare glyph
+                  // floating on the background) even before/without the image. Filter
+                  // effects (#9281) and focus rings (#9292) were removed on develop.
+                  "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
                   editing && "animate-pulse"
                 ),
                 children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -25627,8 +25724,9 @@
                   onToggleFavorite(entry.id);
                 },
                 className: cn(
-                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold",
-                  favorited ? "bg-accent text-accent-foreground" : "bg-border text-foreground"
+                  // Filled chips stay legible across image and dark tile backgrounds.
+                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold shadow-md ring-1",
+                  favorited ? "bg-accent text-white ring-black/20" : "bg-white text-neutral-900 ring-black/15"
                 ),
                 children: favorited ? "\u2605" : "+"
               }
@@ -25664,7 +25762,7 @@
               ) : null
             ] }) : null
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "max-w-[4.5rem] truncate text-center text-[11px] leading-tight text-muted", children: entry.label })
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]", children: entry.label })
         ]
       }
     );
@@ -25765,12 +25863,6 @@
       },
       [onLaunch]
     );
-    const enterEditMode = (0, import_react29.useCallback)(() => {
-      if (!editing) {
-        emitViewInteraction({ source: "springboard", action: "edit-mode-enter" });
-      }
-      setEditingState(true);
-    }, [editing, setEditingState]);
     const toggleEditMode = (0, import_react29.useCallback)(() => {
       emitViewInteraction({
         source: "springboard",
@@ -25822,7 +25914,7 @@
           onToggleFavorite: toggleFav,
           onEdit: onEditView,
           onDelete: onDeleteView,
-          onLongPress: enterEditMode
+          onLongPress: toggleEditMode
         }
       ),
       [
@@ -25832,7 +25924,7 @@
         toggleFav,
         onEditView,
         onDeleteView,
-        enterEditMode
+        toggleEditMode
       ]
     );
     return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
@@ -25841,23 +25933,11 @@
         className: cn("flex min-h-0 flex-1 flex-col", className),
         "data-testid": "springboard",
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex items-center justify-end px-4 pt-2", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-            "button",
-            {
-              type: "button",
-              onClick: toggleEditMode,
-              className: cn(
-                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                editing ? "bg-accent text-accent-foreground" : "bg-bg-accent/60 text-muted hover:bg-bg-accent"
-              ),
-              children: editing ? "Done" : "Edit"
-            }
-          ) }),
           favoriteEntries.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             "div",
             {
               "data-testid": "springboard-dock",
-              className: "mx-3 mt-1 mb-2 flex items-center justify-center gap-3 rounded-3xl bg-bg-accent/90 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6",
+              className: "mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md sm:mx-4 sm:gap-4 sm:px-6",
               children: favoriteEntries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { children: renderTile(entry, true) }, `dock-${entry.id}`))
             }
           ) : null,
@@ -25889,8 +25969,8 @@
                     onEdgeSwipeRight?.();
                   }
                 },
-                className: "flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 py-6",
-                children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id3) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                className: "flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
+                children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id3) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
                   "div",
                   {
                     className: "flex flex-col items-center gap-1.5 opacity-60",
@@ -25906,7 +25986,7 @@
                     axis: "y",
                     values: pages[clampedPage] ?? [],
                     onReorder: (next) => handleReorder(clampedPage, next),
-                    className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5",
+                    className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5",
                     children: (pages[clampedPage] ?? []).map((id3) => {
                       const entry = byId.get(id3);
                       if (!entry) return null;

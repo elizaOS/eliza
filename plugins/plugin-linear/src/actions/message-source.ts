@@ -1,7 +1,7 @@
 import type { Memory } from "@elizaos/core";
 
 export function getMessageSource(message: Memory): string | undefined {
-  const source = message.content.source;
+  const source = (message.content as { source?: unknown }).source;
   return typeof source === "string" ? source : undefined;
 }
 

@@ -537,4 +537,23 @@ describe("openBenchmarkResultsReader", () => {
     expect(reader.getLatest({ modelId: "m", benchmark: "b" })?.score).toBe(0.9);
     reader.close();
   });
+
+  it("rejects rows with unexpected SQLite column types", () => {
+    const dbPath = path.join(tmpDir, "results.db");
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath);
+    db.exec(SCHEMA_SQL);
+    db.prepare(
+      `INSERT INTO benchmark_runs (
+         model_id, benchmark, score, ts, dataset_version, code_commit, raw_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run("m", "b", "not-a-score", 100, "2024-12", "abc1234", "{}");
+    db.close();
+
+    const reader = openBenchmarkResultsReader(dbPath);
+    expect(() =>
+      reader.getHistory({ modelId: "m", benchmark: "b", limit: 10 }),
+    ).toThrow("score must be a finite number");
+    reader.close();
+  });
 });

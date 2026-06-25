@@ -21,15 +21,17 @@ assumptions. The verified state after running every model on this machine:
 | pyannote-segmentation-3.0 diarizer | `libvoice_classifier.dylib` | Real SincNet+BiLSTM forward. **Detected 2 speakers at correct boundaries (734-2474ms female, 2969-4915ms male) from real mixed audio in 852ms.** |
 | OWNER voice verification | `voice-profiles/` TS | 47 tests pass. Prompt-injection via transcript has zero effect; voice alone (0.33) never reaches the 0.6 OWNER grant floor. |
 
-Verification scripts (run with `ELIZA_VOICE_CLASSIFIER_LIB` pointing at the built dylib):
-- `packages/benchmarks/voice/verify-native-ggml.mjs` — encoder + diarizer load + forward
-- `packages/benchmarks/voice/verify-real-voice-separation.mjs` — real-voice cosine separation
-- `packages/benchmarks/voice/verify-real-diarization.mjs` — real 2-speaker diarization in one window
+Current runnable verification scripts:
+- `packages/benchmarks/voice/local-acoustic-eval.mjs` — **real-audio diarizer + WeSpeaker eval** through the fused inference library (Apple Silicon, no GPU runner; supersedes the removed `three-voice-e2e-real.mjs`, see §0.6 for that run's historical numbers)
+- `packages/benchmarks/voice/voice-real-ci-matrix.mjs` — provisioned CI real matrix with fused library, GGUFs, generated speech, and ElevenLabs fixtures
 - `packages/benchmarks/voice/owner-voice-first-run.mjs` — OWNER enroll/recognize/reject/attack
-- `packages/benchmarks/voice/three-voice-scenario.mjs` — 7-turn scene, synthetic audio (superseded)
-- `packages/benchmarks/voice/local-acoustic-eval.mjs` — **real-audio diarizer + WeSpeaker eval** (Apple Silicon, no GPU runner; supersedes the removed `three-voice-e2e-real.mjs`, see §0.6 for that run's historical numbers)
-- `packages/benchmarks/voice/verify-enrollment-attribution.mjs` — enrollment-based speaker attribution (3/3 humans)
+- `packages/benchmarks/voice/three-voice-scenario.mjs` — 7-turn scene, synthetic audio (superseded for real acoustics)
 - `packages/benchmarks/voice/verify-kokoro-agent-voice.mjs` — **Kokoro agent voice** (ONNX) + ASR round-trip
+
+Historical scripts removed after direct `libvoice_classifier` encoder/diarizer
+exports were retired: `verify-native-ggml.mjs`,
+`verify-real-voice-separation.mjs`, `verify-real-diarization.mjs`, and
+`verify-enrollment-attribution.mjs`.
 
 ### 0.6 Integrated three-voice scenario (real audio, real models)
 
@@ -42,7 +44,7 @@ real eliza-1 ASR. The numbers below are retained as that run's historical record
 - **ASR transcripts recorded:** mean WER 0.171 (5/7 turns WER 0; 2 truncated on long clauses).
 - **Should-respond: 5/5 correct** on the *real ASR text* — agent replies on "Eliza" turns (1,4,6), silent on ambient (2,5).
 - **Diarizer: 2 speakers detected in every window** — real separation of 2 people on one stream.
-- **Speaker re-ID:** naive per-turn cosine clustering over-segments (4 entities, not 2 — within-speaker 0.135 overlaps between-speaker 0.044-0.147 on short single clips). **Enrollment averaging fixes it: `verify-enrollment-attribution.mjs` attributes held-out human turns 3/3** (Alice 0.30 vs Bob 0.08; Bob 0.33 vs Alice 0.13). This is the production path (same as OWNER first-run). **Caveat:** two *same-gender* OmniVoice designs (Alice vs the agent's female voice) land close (0.36 vs 0.30) and confuse — same-gender separation needs voice cloning (`--ref-wav`) or distinct recorded speakers; gender is the strong cue. Enroll only real human speakers, not the agent's own (known) voice.
+- **Speaker re-ID:** naive per-turn cosine clustering over-segments (4 entities, not 2 — within-speaker 0.135 overlaps between-speaker 0.044-0.147 on short single clips). **Enrollment averaging fixed the historical held-out attribution run 3/3** (Alice 0.30 vs Bob 0.08; Bob 0.33 vs Alice 0.13). This is the production path (same as OWNER first-run). **Caveat:** two *same-gender* OmniVoice designs (Alice vs the agent's female voice) land close (0.36 vs 0.30) and confuse — same-gender separation needs voice cloning (`--ref-wav`) or distinct recorded speakers; gender is the strong cue. Enroll only real human speakers, not the agent's own (known) voice.
 - **Agent voice via Kokoro: WORKING** (`verify-kokoro-agent-voice.mjs`). Kokoro v1.0 ONNX via onnxruntime-node + npm phonemizer + af_bella; agent lines synthesized and ASR round-trip WER 0 (short) / 0.375 mean. RTF ~7.7 on CPU. The integrated scenario can use Kokoro for agent turns and OmniVoice for the two humans.
 - **Perf:** OmniVoice CLI reloads the model per call (~20s each); production must use the resident FFI TTS path (`eliza_inference_tts_synthesize`).
 

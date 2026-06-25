@@ -159,21 +159,31 @@ describe("brand surfaces", () => {
     // boot never flashes a different orange before the home background paints.
     // The previous `#08080a` near-black is a slop value and should not regress.
     expect(html).not.toContain("#08080a");
-    expect(html).toMatch(/--launch-bg:\s*#ef5a1f/);
+    expect(html).toMatch(new RegExp(`--launch-bg:\\s*${LAUNCH_ORANGE}`));
     expect(html).toMatch(
-      /html,\s*body,\s*#root\s*\{[^}]*background-color:\s*var\(--launch-bg,\s*#ef5a1f\)/s,
+      new RegExp(
+        `html,\\s*body,\\s*#root\\s*\\{[^}]*background-color:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        "s",
+      ),
     );
     expect(html).not.toMatch(/background-color:\s*var\(--bg/);
+    // The pre-#9565 brand-accent fallback must not regress.
     expect(html).not.toMatch(/var\(--bg,\s*#FF5800\)/);
   });
 
   it("renderer root CSS keeps the pre-app surface on the home-background orange", () => {
     const styles = read("../ui/src/styles/styles.css");
     expect(styles).toMatch(
-      /body\s*\{[^}]*background:\s*var\(--launch-bg,\s*#ef5a1f\)/s,
+      new RegExp(
+        `body\\s*\\{[^}]*background:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        "s",
+      ),
     );
     expect(styles).toMatch(
-      /#root\s*\{[^}]*background:\s*var\(--launch-bg,\s*#ef5a1f\)/s,
+      new RegExp(
+        `#root\\s*\\{[^}]*background:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        "s",
+      ),
     );
     expect(styles).not.toMatch(/#root\s*\{[^}]*background:\s*var\(--bg\)/s);
   });

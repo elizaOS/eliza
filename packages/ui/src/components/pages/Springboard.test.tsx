@@ -35,6 +35,23 @@ function imageEntry(id: string, label: string, imageUrl: string): ViewEntry {
 
 const FEW = [entry("chat", "Chat"), entry("settings", "Settings")];
 
+/**
+ * Enter edit mode the only way the springboard now offers it — a long-press on a
+ * tile (the visible Edit button was removed per product). Self-contained: it
+ * installs fake timers just for the long-press window so callers that otherwise
+ * run on real timers stay unaffected.
+ */
+function longPressToEdit(label: string): void {
+  vi.useFakeTimers();
+  const tile = screen.getByRole("button", { name: label });
+  fireEvent.pointerDown(tile);
+  act(() => {
+    vi.advanceTimersByTime(450);
+  });
+  fireEvent.pointerUp(tile);
+  vi.useRealTimers();
+}
+
 beforeEach(() => window.localStorage.clear());
 afterEach(() => cleanup());
 
@@ -58,7 +75,7 @@ describe("Springboard", () => {
   it("does not launch while editing", () => {
     const onLaunch = vi.fn();
     render(<Springboard entries={FEW} onLaunch={onLaunch} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    longPressToEdit("Settings");
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(onLaunch).not.toHaveBeenCalled();
   });
@@ -68,7 +85,7 @@ describe("Springboard", () => {
     // genuinely adds it to the dock rather than toggling off a pre-seeded id.
     const entries = [entry("notes", "Notes"), entry("settings", "Settings")];
     render(<Springboard entries={entries} onLaunch={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    longPressToEdit("Notes");
     fireEvent.click(screen.getByTestId("springboard-fav-notes"));
     // The dock now contains a Notes tile (keyed dock-notes).
     expect(screen.getByTestId("springboard-tile-notes")).toBeTruthy();
@@ -169,16 +186,15 @@ describe("Springboard long-press to edit", () => {
   it("enters edit mode after a long press on a tile", () => {
     vi.useFakeTimers();
     render(<Springboard entries={FEW} onLaunch={() => {}} />);
-    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    // Resting: no per-tile pin affordances (there is no Edit button anymore).
+    expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Chat" }));
     act(() => {
       vi.advanceTimersByTime(450);
     });
 
-    // Edit mode is on: the toggle now reads "Done" and per-tile pin affordances
-    // appear.
-    expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
+    // Edit mode is on: per-tile pin affordances appear.
     expect(screen.getByTestId("springboard-fav-chat")).toBeTruthy();
   });
 
@@ -194,8 +210,7 @@ describe("Springboard long-press to edit", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    // Still resting: toggle reads "Edit", no pin affordances.
-    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    // Still resting: no pin affordances surfaced.
     expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
   });
 
@@ -213,7 +228,6 @@ describe("Springboard long-press to edit", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
     expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
   });
 });
@@ -255,7 +269,7 @@ describe("Springboard dock favorites (local, uncontrolled)", () => {
         onLaunch={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    longPressToEdit("Notes");
     fireEvent.click(screen.getByTestId("springboard-fav-notes"));
     expect(
       within(screen.getByTestId("springboard-dock")).getByText("Notes"),
@@ -272,7 +286,7 @@ describe("Springboard dock favorites (local, uncontrolled)", () => {
 
   it("evicts the oldest favorite when the dock is full", () => {
     render(<Springboard entries={MANY} onLaunch={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    longPressToEdit("A");
     for (const id of ["a", "b", "c", "d", "e"]) {
       fireEvent.click(screen.getByTestId(`springboard-fav-${id}`));
     }

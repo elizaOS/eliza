@@ -45,26 +45,51 @@ function safeTimestamp(value: string): string {
 }
 
 const TRAINING_TIER_KEYS: Record<string, string> = {
-  "2b": "qwen3.5-2b",
-  "4b": "qwen3.5-4b",
-  "9b": "qwen3.5-9b",
-  "27b": "qwen3.6-27b",
+  "2b": "gemma4-e2b",
+  "4b": "gemma4-e4b",
+  "9b": "gemma4-12b",
+  "27b": "gemma4-31b",
+  "eliza-1-2b": "gemma4-e2b",
+  "eliza-1-4b": "gemma4-e4b",
+  "eliza-1-9b": "gemma4-12b",
+  "eliza-1-27b": "gemma4-31b",
+  "gemma4-e2b": "gemma4-e2b",
+  "gemma4-e4b": "gemma4-e4b",
+  "gemma4-12b": "gemma4-12b",
+  "gemma4-31b": "gemma4-31b",
+  "gemma-4-e2b": "gemma4-e2b",
+  "gemma-4-e4b": "gemma4-e4b",
+  "gemma-4-12b": "gemma4-12b",
+  "gemma-4-31b": "gemma4-31b",
+  "google/gemma-4-e2b": "gemma4-e2b",
+  "google/gemma-4-e4b": "gemma4-e4b",
+  "google/gemma-4-12b": "gemma4-12b",
+  "google/gemma-4-31b": "gemma4-31b",
+  "google-gemma-4-e2b": "gemma4-e2b",
+  "google-gemma-4-e4b": "gemma4-e4b",
+  "google-gemma-4-12b": "gemma4-12b",
+  "google-gemma-4-31b": "gemma4-31b",
+  "qwen3.5-2b": "gemma4-e2b",
+  "qwen3.5-4b": "gemma4-e4b",
+  "qwen3.5-9b": "gemma4-12b",
+  "qwen3.5-27b": "gemma4-31b",
+  "qwen3.6-27b": "gemma4-31b",
 };
 
 function normalizeTrainingTierKey(value: string): string {
   const trimmed = value.trim();
-  const key = trimmed.toLowerCase();
-  return TRAINING_TIER_KEYS[key] ?? trimmed;
+  const key = trimmed.toLowerCase().replace(/_/g, "-");
+  return (
+    TRAINING_TIER_KEYS[key] ??
+    TRAINING_TIER_KEYS[key.replace(/\//g, "-")] ??
+    trimmed
+  );
 }
 
 export function benchmarkVsCerebrasTierList(value: string | undefined): string {
   const raw = value?.trim() || ELIZA_ONE_BENCHMARK_TIER_LIST;
   if (raw.toLowerCase() === "all") return "all";
-  return raw
-    .split(",")
-    .map(normalizeTrainingTierKey)
-    .filter(Boolean)
-    .join(",");
+  return raw.split(",").map(normalizeTrainingTierKey).filter(Boolean).join(",");
 }
 
 function collectProcess(

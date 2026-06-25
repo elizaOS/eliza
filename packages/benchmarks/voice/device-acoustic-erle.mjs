@@ -38,21 +38,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { computeErle } from "../../../plugins/plugin-local-inference/src/services/voice/echo-metrics.ts";
 import { NlmsEchoCanceller } from "../../../plugins/plugin-local-inference/src/services/voice/nlms-echo-canceller.ts";
-
-/** Echo-return-loss-enhancement (dB): 10·log10(E[near²]/E[residual²]). */
-function computeErle(nearEnd, residual) {
-  let nearEnergy = 0;
-  let residualEnergy = 0;
-  const len = Math.min(nearEnd.length, residual.length);
-  for (let i = 0; i < len; i++) {
-    nearEnergy += nearEnd[i] * nearEnd[i];
-    residualEnergy += residual[i] * residual[i];
-  }
-  if (nearEnergy === 0) return 0;
-  if (residualEnergy === 0) return Number.POSITIVE_INFINITY;
-  return 10 * Math.log10(nearEnergy / residualEnergy);
-}
 
 const SR = 16000;
 const SILENCE_SEC = 1.0; // discard avfoundation capture warmup
@@ -262,7 +249,9 @@ async function main() {
   // first energy above the recording's leading noise floor.
   const nearOnset = findOnset(near, Math.floor(0.4 * SR));
   if (nearOnset < 0) {
-    console.log("\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (mic never rose above its noise floor).");
+    console.log(
+      "\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (mic never rose above its noise floor).",
+    );
     process.exitCode = 2;
     return;
   }
@@ -272,7 +261,13 @@ async function main() {
   const refLen = Math.min(Math.floor(1.5 * SR), speechN - Math.floor(0.3 * SR));
   const ref = far.subarray(refStart, refStart + refLen);
   const coarseLag = refStart + coarseOffset; // expected position of ref in near
-  const { offset, score } = refineOffset(near, ref, refStart, coarseLag, Math.floor(0.15 * SR));
+  const { offset, score } = refineOffset(
+    near,
+    ref,
+    refStart,
+    coarseLag,
+    Math.floor(0.15 * SR),
+  );
   const alignMs = (offset / SR) * 1000;
   console.log(
     `[device-aec] TTS onset@near ${nearOnset}; refined far→near offset=${offset} (${alignMs.toFixed(1)} ms, incl. capture-start skew), corr peak=${score.toFixed(3)}`,

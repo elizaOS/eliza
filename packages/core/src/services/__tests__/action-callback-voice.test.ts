@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
-import type { HandlerCallback, IAgentRuntime, Memory } from "../../types";
+import type { HandlerCallback, Memory } from "../../types";
 import { ModelType } from "../../types";
 import { wrapSingleTurnVisibleCallback } from "../message";
 

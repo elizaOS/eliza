@@ -55,13 +55,13 @@ export const BRAIN_MAX_ROIS = 2;
 /** Bound on the per-Brain dHash→BrainOutput cache (LRU-ish, oldest evicted). */
 export const BRAIN_DHASH_CACHE_MAX = 16;
 /**
- * Max dHash Hamming distance for a cached plan to be reused for a new frame
- * (#9581 continuous-understanding tuning). Exact-equality (distance 0) re-burned
- * the IMAGE_DESCRIPTION model on cosmetically-identical frames — cursor jitter,
- * a blinking caret, anti-aliasing, a 1-px scroll all flip a few dHash bits.
- * Matches `SCREEN_STATE_HAMMING_THRESHOLD` (the same 64-bit dHash drives
- * ScreenStateStore's change detection), so "the screen didn't meaningfully
- * change" means the same thing to the cache and to the change detector.
+ * dHash Hamming threshold for cached-plan reuse (#9581 continuous-understanding
+ * tuning). Exact-equality (distance 0) re-burned the IMAGE_DESCRIPTION model on
+ * cosmetically-identical frames — cursor jitter, a blinking caret, anti-aliasing,
+ * and tiny scroll noise all flip a few dHash bits.
+ *
+ * This mirrors `SCREEN_STATE_HAMMING_THRESHOLD`: distances below the threshold
+ * are unchanged; distances at or above it are changed and must re-plan.
  */
 export const BRAIN_DHASH_HAMMING_THRESHOLD = 5;
 /**
@@ -135,6 +135,46 @@ export interface BrainStats {
 const COORDINATE_ACTION_KINDS: ReadonlySet<BrainProposedAction["kind"]> =
   new Set(["click", "double_click", "right_click", "scroll", "drag"]);
 
+function sceneCacheSignature(scene: Scene): string {
+  return JSON.stringify({
+    displays: scene.displays.map((display) => ({
+      id: display.id,
+      name: display.name,
+      bounds: display.bounds,
+      primary: display.primary,
+      scaleFactor: display.scaleFactor,
+    })),
+    focused_window: scene.focused_window,
+    apps: scene.apps.map((app) => ({
+      name: app.name,
+      pid: app.pid,
+      windows: app.windows.map((window) => ({
+        id: window.id,
+        title: window.title,
+        bounds: window.bounds,
+        displayId: window.displayId,
+      })),
+    })),
+    ocr: scene.ocr.map((box) => ({
+      id: box.id,
+      text: box.text,
+      bbox: box.bbox,
+      conf: Number(box.conf.toFixed(3)),
+      displayId: box.displayId,
+    })),
+    ax: scene.ax.map((node) => ({
+      id: node.id,
+      role: node.role,
+      label: node.label,
+      bbox: node.bbox,
+      actions: node.actions,
+      displayId: node.displayId,
+    })),
+    vlm_scene: scene.vlm_scene,
+    vlm_elements: scene.vlm_elements,
+  });
+}
+
 export class BrainParseError extends Error {
   constructor(
     message: string,
@@ -186,6 +226,7 @@ export class Brain {
   private readonly dhashCache: Array<{
     dh: bigint;
     goal: string;
+    sceneSignature: string;
     output: BrainOutput;
   }> = [];
   private readonly imagePolicy: BrainImagePolicy;
@@ -214,9 +255,10 @@ export class Brain {
   private cacheKey(
     frame: Buffer,
     goal: string,
-  ): { dh: bigint; goal: string } | null {
+    sceneSignature: string,
+  ): { dh: bigint; goal: string; sceneSignature: string } | null {
     const dh = frameDhash(frame);
-    return dh === null ? null : { dh, goal };
+    return dh === null ? null : { dh, goal, sceneSignature };
   }
 
   /**
@@ -225,12 +267,17 @@ export class Brain {
    * just a byte-identical one. On a hit the entry is moved to the end (LRU), so
    * a steadily-evolving screen keeps its most-recent close match warm.
    */
-  private findCached(dh: bigint, goal: string): BrainOutput | null {
+  private findCached(
+    dh: bigint,
+    goal: string,
+    sceneSignature: string,
+  ): BrainOutput | null {
     for (let i = this.dhashCache.length - 1; i >= 0; i--) {
       const entry = this.dhashCache[i]!;
       if (
         entry.goal === goal &&
-        hamming(entry.dh, dh) <= BRAIN_DHASH_HAMMING_THRESHOLD
+        entry.sceneSignature === sceneSignature &&
+        hamming(entry.dh, dh) < BRAIN_DHASH_HAMMING_THRESHOLD
       ) {
         this.dhashCache.splice(i, 1);
         this.dhashCache.push(entry);
@@ -241,7 +288,7 @@ export class Brain {
   }
 
   private rememberOutput(
-    key: { dh: bigint; goal: string } | null,
+    key: { dh: bigint; goal: string; sceneSignature: string } | null,
     output: BrainOutput,
   ): BrainOutput {
     if (key) {
@@ -249,7 +296,12 @@ export class Brain {
       if (this.dhashCache.length >= BRAIN_DHASH_CACHE_MAX) {
         this.dhashCache.shift();
       }
-      this.dhashCache.push({ dh: key.dh, goal: key.goal, output });
+      this.dhashCache.push({
+        dh: key.dh,
+        goal: key.goal,
+        sceneSignature: key.sceneSignature,
+        output,
+      });
     }
     return output;
   }
@@ -274,9 +326,14 @@ export class Brain {
     // Frame-dHash cache: a near-identical screen + same goal → reuse the prior
     // plan, skip the (possibly remote) IMAGE_DESCRIPTION call. Tolerant to a few
     // dHash bits so cosmetic churn (cursor, caret, anti-aliasing) still hits.
-    const key = this.cacheKey(targetCapture.frame, input.goal);
+    const sceneSignature = sceneCacheSignature(input.scene);
+    const key = this.cacheKey(
+      targetCapture.frame,
+      input.goal,
+      sceneSignature,
+    );
     if (key) {
-      const cached = this.findCached(key.dh, key.goal);
+      const cached = this.findCached(key.dh, key.goal, key.sceneSignature);
       if (cached) {
         this.cacheHits += 1;
         return cached;

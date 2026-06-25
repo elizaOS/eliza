@@ -138,6 +138,7 @@ export {
 	ConnectorAuthMethod,
 } from "./types";
 export * from "./types/message-service";
+export { PENDING_USER_ACTION_WEIGHT } from "./types/pending-user-action";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 export type {
 	EnabledViewKinds,

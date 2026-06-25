@@ -501,7 +501,7 @@ describe("training collection runner", () => {
       benchmarkVsCerebras: {
         trainingRoot: fakeTrainingRoot,
         dryRun: true,
-        tiers: "qwen3.5-2b",
+        tiers: "gemma4-e2b",
         benchmark: "hermes",
         variants: "both",
         maxSamples: 1,
@@ -580,7 +580,7 @@ describe("training collection runner", () => {
           trained: { variant: "trained" },
         },
         benchmarkVsCerebras: {
-          tiers: "qwen3.5-2b",
+          tiers: "gemma4-e2b",
           benchmark: "hermes",
           variants: "both",
         },

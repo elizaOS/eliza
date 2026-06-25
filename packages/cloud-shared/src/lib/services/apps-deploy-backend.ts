@@ -32,7 +32,12 @@ import {
   makeNodeAppDeployRunner,
 } from "./app-deploy-runner";
 import { AppImageBuilder, type BuildExec } from "./app-image-builder";
-import { type AppImageResolver, makeBuildFromRepoResolver } from "./app-image-resolver";
+import {
+  type AppImageResolver,
+  composeImageResolvers,
+  makeBuildFromRepoResolver,
+  makePrebuiltImageMapResolver,
+} from "./app-image-resolver";
 import { buildContainerExecutorDeps, makeNodeBuilderExec } from "./container-executor-deps";
 import { setContainerExecutorDeps } from "./container-job-service";
 import { containerJobsWriter } from "./container-jobs-writer";
@@ -66,10 +71,9 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
   // BUILD-FROM-REPO ("Vercel-like": the platform builds the user's repo, no
   // manual image push) is armed when a registry is configured. The builder exec
   // is the explicit one if passed, else the app node's own SSH (it already has
-  // Docker + buildx) — so the common case needs only `APPS_IMAGE_REGISTRY` set on
-  // the daemon. With no registry, resolveImage stays undefined and the runner
-  // falls back to app.metadata.imageTag / APP_DEFAULT_IMAGE (the prebuilt path) —
-  // unchanged behavior.
+  // Docker + buildx). With no armed builder, buildResolver stays undefined and
+  // the runner falls back through the optional APP_PREBUILT_IMAGES map, then
+  // app.metadata.imageTag / APP_DEFAULT_IMAGE (the legacy prebuilt path).
   const registry = config.registry ?? process.env.APPS_IMAGE_REGISTRY;
   const dockerfile = config.dockerfile ?? process.env.APPS_BUILD_DOCKERFILE;
   const buildExec = config.buildExec ?? (registry ? makeNodeBuilderExec() : null);
@@ -82,7 +86,15 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
     const builder = new AppImageBuilder({ exec: buildExec });
     buildResolver = makeBuildFromRepoResolver({ builder, registry, dockerfile });
   }
-  const resolveImage = buildResolver;
+  const prebuiltMapResolver = makePrebuiltImageMapResolver();
+  const resolveImage = composeImageResolvers(buildResolver, prebuiltMapResolver);
+  const imageMode = buildResolver
+    ? prebuiltMapResolver
+      ? "build-from-repo + APP_PREBUILT_IMAGES"
+      : "build-from-repo"
+    : prebuiltMapResolver
+      ? "APP_PREBUILT_IMAGES + imageTag/APP_DEFAULT_IMAGE"
+      : "prebuilt (imageTag/APP_DEFAULT_IMAGE)";
 
   // ENCRYPTION-FREE path (env-sourced cluster admin DSN): when
   // APPS_TENANT_ADMIN_DSN is set, the daemon needs no SECRETS_MASTER_KEY — the
@@ -127,6 +139,6 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
     registry: registry ?? null,
     port: config.port ?? 3000,
     mode: adminDsnFromEnv ? "env-sourced (no field-encryption)" : "encrypted",
-    images: buildResolver ? "build-from-repo" : "prebuilt (imageTag/APP_DEFAULT_IMAGE)",
+    images: imageMode,
   });
 }

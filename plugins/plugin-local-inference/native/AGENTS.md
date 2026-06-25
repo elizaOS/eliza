@@ -72,10 +72,11 @@ Backbones (do not change without explicit human approval):
   | `9b`                  | OmniVoice **and** Kokoro| OmniVoice|
   | `27b` / `27b-256k` | OmniVoice only  | OmniVoice|
 
-  - **Kokoro** = Kokoro-82M ONNX (`onnx-community/Kokoro-82M-v1.0-ONNX`,
-    ~80 MB int8). ~97ms CPU TTFB. Fixed voice packs, no per-user
-    cloning. Bundled at `tts/kokoro/{model_q4.onnx,tokenizer.json,
-    voices/<voice>.bin}` in each shipping tier. Backend implementation:
+  - **Kokoro** = Kokoro-82M GGUF staged from `elizaos/eliza-1`
+    (original `hexgrad/Kokoro-82M`, Q4_K_M). Fixed voice packs, no per-user
+    cloning. Bundled at
+    `tts/kokoro/{kokoro-82m-v1_0-Q4_K_M.gguf,tokenizer.json,voices/<voice>.bin}`
+    in each shipping tier. Backend implementation:
     `plugins/plugin-local-inference/src/services/voice/kokoro/`.
   - **OmniVoice** = Qwen3-TTS lineage. Upstream at
     `https://github.com/ServeurpersoCom/omnivoice.cpp`, mirrored at
@@ -240,7 +241,7 @@ elizaos/eliza-1/
       eliza-1-<tier>-<ctx>.gguf    # text (+ inline vision where supported)
     tts/
       # Kokoro fallback shipped on 2b/4b/9b:
-      kokoro/model_q4.onnx
+      kokoro/kokoro-82m-v1_0-Q4_K_M.gguf
       kokoro/tokenizer.json
       kokoro/voices/<voice>.bin
       # OmniVoice shipped on every active tier. Default install stages a
@@ -697,11 +698,11 @@ backend nightly.
 
 ---
 
-## 11. ONNX deprecation status (updated K7, 2026-05-15)
+## 11. ONNX deprecation status (updated Kokoro GGUF, 2026-06-25)
 
 **Single on-device runtime: ONE managed library (`libelizainference`), ONE
 pipe, no sidecar/subprocess/TCP. No ONNX in resolved code path as of K7 for:
-VAD, wake-word, turn-detector (preferred), Kokoro (default=fork), OmniVoice,
+VAD, wake-word, turn-detector (preferred), Kokoro (fused GGUF), OmniVoice,
 ASR. Three voice classifier models remain ONNX-active, blocked on K1/K2/K3
 native ports.**
 
@@ -729,7 +730,7 @@ deprecated and will be removed from the runtime path once all native ports land.
 | MTP speculative decoding | fork `llama-server` `--spec-type mtp` | DONE |
 | Text EOT (Eliza1EotClassifier) | fork `node-llama-cpp` P(`<|im_end|>`) | DONE (preferred path when text model loaded) |
 | LiveKit EOT (GGUF) | `eot-classifier-ggml.ts::LiveKitGgmlTurnDetector` | DONE (J1.d) — preferred over ONNX when GGUF on disk |
-| Kokoro TTS | `pick-runtime.ts` defaults to `KOKORO_BACKEND=fork` → llama-server `/v1/audio/speech` | DONE (J2/K4 default) — ONNX reachable only via env override |
+| Kokoro TTS | fused FFI `eliza_inference_kokoro_*` + `tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf` | DONE (#9588) — GGUF-only runtime discovery |
 
 ### Compute-gated (ONNX still active in resolved runtime)
 
@@ -739,7 +740,6 @@ deprecated and will be removed from the runtime path once all native ports land.
 | WeSpeaker R34-LM | scalar C forward exists in `voice-classifier-cpp/src/voice_speaker.c`; production TS still routes ONNX until GGUF binding/parity promotion | K2 | parity + pipeline promotion |
 | pyannote-3 diarizer | scalar C forward exists in `voice-classifier-cpp/src/voice_diarizer.c`; production TS still routes ONNX until GGUF binding/parity promotion | K3 | parity + pipeline promotion |
 | LiveKit EOT (ONNX last-resort) | ONNX is last-resort in engine.ts chain (Eliza1Eot → GgmlTD → OnnxTD → Heuristic); ONNX reachable when GGUF not on disk | K7/J1.d | Remove OnnxTD from chain or guarantee GGUF on all tiers |
-| Kokoro ONNX runway | `KokoroOnnxRuntime` reachable via `KOKORO_BACKEND=onnx` | K4 | Remove class after K4 GGUF lands |
 
 **Rule:** do NOT remove `onnxruntime-node` from `plugin-local-inference/package.json`
 until every compute-gated head above is replaced. Premature removal crashes the

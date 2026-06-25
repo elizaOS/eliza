@@ -141,13 +141,13 @@ def _write_bundle(
 
 
 def test_plan_bundle_uses_single_repo_bundle_prefix(tmp_path: Path):
-    _write_bundle(tmp_path, "0_8b")
+    _write_bundle(tmp_path, "2b")
 
-    plan = P.plan_bundle(tmp_path, "0_8b")
+    plan = P.plan_bundle(tmp_path, "2b")
 
     assert plan.uploadable is True
-    assert plan.path_in_repo == "bundles/0_8b"
-    assert plan.manifest_id == "eliza-1-0_8b"
+    assert plan.path_in_repo == "bundles/2b"
+    assert plan.manifest_id == "eliza-1-2b"
     assert plan.errors == ()
 
 
@@ -174,7 +174,7 @@ def test_plan_bundle_reports_manifest_sha_mismatch(tmp_path: Path):
 def test_publishable_bundle_files_exclude_source_artifacts(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
     (bundle / "source" / "text").mkdir(parents=True)
-    (bundle / "source" / "text" / "raw-qwen.gguf").write_bytes(b"raw")
+    (bundle / "source" / "text" / "raw-gemma4.gguf").write_bytes(b"raw")
     (bundle / "licenses").mkdir(exist_ok=True)
     (bundle / "licenses" / "LICENSE.text").write_text("license", encoding="utf-8")
     (bundle / "lineage.json").write_text("{}", encoding="utf-8")
@@ -183,7 +183,7 @@ def test_publishable_bundle_files_exclude_source_artifacts(tmp_path: Path):
     rels = P._publishable_bundle_relpaths(bundle, manifest)
     plan = P.plan_bundle(tmp_path, "2b")
 
-    assert "source/text/raw-qwen.gguf" not in rels
+    assert "source/text/raw-gemma4.gguf" not in rels
     assert "licenses/LICENSE.text" in rels
     assert "lineage.json" in rels
     assert plan.file_count == len(rels)
@@ -192,7 +192,7 @@ def test_publishable_bundle_files_exclude_source_artifacts(tmp_path: Path):
 def test_large_folder_mirror_uses_publishable_files_only(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
     (bundle / "source" / "text").mkdir(parents=True)
-    (bundle / "source" / "text" / "raw-qwen.gguf").write_bytes(b"raw")
+    (bundle / "source" / "text" / "raw-gemma4.gguf").write_bytes(b"raw")
     plan = P.plan_bundle(tmp_path, "2b")
 
     staging = P._mirror_for_large_folder_upload(plan, tmp_path / "stage")
@@ -200,8 +200,17 @@ def test_large_folder_mirror_uses_publishable_files_only(tmp_path: Path):
     assert (staging / "bundles" / "2b" / "eliza-1.manifest.json").is_file()
     assert (staging / "bundles" / "2b" / "text" / "eliza-1-2b-128k.gguf").is_file()
     assert not (
-        staging / "bundles" / "2b" / "source" / "text" / "raw-qwen.gguf"
+        staging / "bundles" / "2b" / "source" / "text" / "raw-gemma4.gguf"
     ).exists()
+
+
+def test_model_card_advertises_gemma_lineage() -> None:
+    card = P.build_model_card(P.DEFAULT_REPO_ID, [])
+
+    assert "  - gemma" in card
+    assert "  - gemma4" in card
+    assert "Gemma 4 GGUF weights" in card
+    assert "qwen" not in card.lower()
 
 
 def test_voice_policy_can_warn_or_block(tmp_path: Path):
@@ -221,7 +230,6 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
 
 def test_tier_choices_cover_release_size_matrix() -> None:
     assert P.TIERS == (
-        "0_8b",
         "2b",
         "4b",
         "9b",
@@ -316,7 +324,7 @@ def test_plan_bundle_accepts_uploaded_status_with_complete_uploaded_paths(
 
 
 def test_plan_bundle_reports_release_blocking_reasons(tmp_path: Path):
-    bundle = _write_bundle(tmp_path, "0_8b")
+    bundle = _write_bundle(tmp_path, "2b")
     release_path = bundle / "evidence" / "release.json"
     release = json.loads(release_path.read_text())
     release["releaseState"] = "weights-staged"
@@ -330,7 +338,7 @@ def test_plan_bundle_reports_release_blocking_reasons(tmp_path: Path):
     ]
     release_path.write_text(json.dumps(release), encoding="utf-8")
 
-    plan = P.plan_bundle(tmp_path, "0_8b")
+    plan = P.plan_bundle(tmp_path, "2b")
 
     assert plan.uploadable is False
     assert any("text_eval failed" in e for e in plan.errors)
@@ -340,13 +348,13 @@ def test_plan_bundle_reports_release_blocking_reasons(tmp_path: Path):
 
 
 def test_plan_bundle_blocks_stale_release_evidence_checksum(tmp_path: Path):
-    bundle = _write_bundle(tmp_path, "0_8b")
+    bundle = _write_bundle(tmp_path, "2b")
     release_path = bundle / "evidence" / "release.json"
     release = json.loads(release_path.read_text())
     release["generatedAt"] = "2026-05-15T00:00:00Z"
     release_path.write_text(json.dumps(release), encoding="utf-8")
 
-    plan = P.plan_bundle(tmp_path, "0_8b")
+    plan = P.plan_bundle(tmp_path, "2b")
 
     assert plan.uploadable is False
     assert any("checksum mismatch for evidence/release.json" in e for e in plan.errors)
@@ -355,13 +363,13 @@ def test_plan_bundle_blocks_stale_release_evidence_checksum(tmp_path: Path):
 def test_plan_bundle_blocks_harness_eval_missing_from_evidence_and_checksums(
     tmp_path: Path,
 ):
-    bundle = _write_bundle(tmp_path, "0_8b")
+    bundle = _write_bundle(tmp_path, "2b")
     (bundle / "evals" / "android_e2e.json").write_text(
         json.dumps({"status": "pass"}),
         encoding="utf-8",
     )
 
-    plan = P.plan_bundle(tmp_path, "0_8b")
+    plan = P.plan_bundle(tmp_path, "2b")
 
     assert plan.uploadable is False
     assert any("evalReports missing shipped eval file" in e for e in plan.errors)
@@ -370,10 +378,10 @@ def test_plan_bundle_blocks_harness_eval_missing_from_evidence_and_checksums(
     )
 
 
-def test_plan_bundle_accepts_0_8b_mtp_weight_claim(tmp_path: Path):
-    _write_bundle(tmp_path, "0_8b")
+def test_plan_bundle_accepts_mtp_weight_claim_for_mtp_tier(tmp_path: Path):
+    _write_bundle(tmp_path, "2b")
 
-    plan = P.plan_bundle(tmp_path, "0_8b")
+    plan = P.plan_bundle(tmp_path, "2b")
 
     assert plan.uploadable is True
     assert not any("weights lists MTP path" in e for e in plan.errors)
@@ -387,7 +395,7 @@ def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):
             "--bundles-root",
             str(tmp_path),
             "--tier",
-            "0_8b",
+            "2b",
             "--dry-run",
             "--allow-missing",
             "--report",
@@ -397,4 +405,4 @@ def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):
 
     assert rc == 0
     assert "Eliza-1 model repo publish plan" in capsys.readouterr().out
-    assert json.loads(report.read_text())["plans"][0]["tier"] == "0_8b"
+    assert json.loads(report.read_text())["plans"][0]["tier"] == "2b"

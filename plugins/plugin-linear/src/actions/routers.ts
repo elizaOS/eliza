@@ -16,6 +16,7 @@ import { createIssueAction } from "./createIssue";
 import { deleteIssueAction } from "./deleteIssue";
 import { getActivityAction } from "./getActivity";
 import { getIssueAction } from "./getIssue";
+import { getMessageSource } from "./message-source";
 import { searchIssuesAction } from "./searchIssues";
 import { updateIssueAction } from "./updateIssue";
 
@@ -292,7 +293,7 @@ async function dispatchRoute<T extends LinearRouterResultData>(
   if (!route) {
     const subactions = routes.map((candidate) => candidate.subaction).join(", ");
     const text = `${routerName} requires one of these subactions: ${subactions}.`;
-    await callback?.({ text, source: message.content?.source });
+    await callback?.({ text, source: getMessageSource(message) });
     const data: T = {
       actionName: routerName,
       router: routerName,

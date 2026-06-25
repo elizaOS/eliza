@@ -112,7 +112,7 @@ describe("VOICE_MODEL_VERSIONS bookkeeping", () => {
           sizeBytes: 885_098,
         }),
         expect.objectContaining({
-          filename: "bundles/0_8b/vad/silero-vad-v5.gguf",
+          filename: "bundles/2b/vad/silero-vad-v5.gguf",
           sha256:
             "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
           sizeBytes: 620_736,

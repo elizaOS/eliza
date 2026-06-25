@@ -7,7 +7,8 @@
  * unregistered gate kind as a hard `deny` ("unknown gate kind: <kind>"), so the
  * pack could NEVER fire — every attempt skipped. These tests assert the gate
  * resolves and that driving the sleep-recap gate kinds through the registry
- * (the same lookup the runner performs) yields no "unknown gate kind" decision.
+ * (the same lookup the runner performs) yields no "unknown gate kind" decision,
+ * while still honoring the pack's min-sample contract.
  */
 
 import { describe, expect, it } from "vitest";
@@ -38,11 +39,19 @@ function lookupGateDecision(
   return { kind: "allow" };
 }
 
-function makeContext(task: ScheduledTask): GateEvaluationContext {
+function makeContext(
+  task: ScheduledTask,
+  sampleCount?: number,
+): GateEvaluationContext {
   return {
     task,
     nowIso: "2026-05-09T12:00:00.000Z",
-    ownerFacts: { timezone: "UTC" },
+    ownerFacts: {
+      timezone: "UTC",
+      ...(sampleCount === undefined
+        ? {}
+        : { personalBaseline: { sampleCount, windowDays: 28 } }),
+    },
     activity: { hasSignalSince: () => false },
     subjectStore: { wasUpdatedSince: () => false },
   };
@@ -82,16 +91,42 @@ describe("registerBuiltInGates: personal_baseline_sufficient (#8795)", () => {
     expect(reg.get("personal_baseline_sufficient")).not.toBeNull();
   });
 
-  it("evaluates personal_baseline_sufficient to allow (warn-once fallthrough)", async () => {
+  it("allows personal_baseline_sufficient when sample count meets minSamples", async () => {
     const reg = createTaskGateRegistry();
     registerBuiltInGates(reg);
     const gate = reg.get("personal_baseline_sufficient");
     expect(gate).not.toBeNull();
     const decision = await gate?.evaluate(
       sleepRecapTask(),
-      makeContext(sleepRecapTask()),
+      makeContext(sleepRecapTask(), 5),
     );
     expect(decision).toEqual({ kind: "allow" });
+  });
+
+  it("denies personal_baseline_sufficient when sample count is too low", async () => {
+    const reg = createTaskGateRegistry();
+    registerBuiltInGates(reg);
+    const task = sleepRecapTask();
+    const decision = await reg
+      .get("personal_baseline_sufficient")
+      ?.evaluate(task, makeContext(task, 4));
+    expect(decision).toEqual({
+      kind: "deny",
+      reason: "personal_baseline_sufficient: sample count 4 < 5",
+    });
+  });
+
+  it("denies personal_baseline_sufficient when no sample count is available", async () => {
+    const reg = createTaskGateRegistry();
+    registerBuiltInGates(reg);
+    const task = sleepRecapTask();
+    const decision = await reg
+      .get("personal_baseline_sufficient")
+      ?.evaluate(task, makeContext(task));
+    expect(decision).toEqual({
+      kind: "deny",
+      reason: "personal_baseline_sufficient: sample count unavailable",
+    });
   });
 
   it("does not yield an 'unknown gate kind' decision for any sleep-recap gate", () => {

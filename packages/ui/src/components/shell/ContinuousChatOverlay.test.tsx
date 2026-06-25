@@ -1413,3 +1413,64 @@ describe("ContinuousChatOverlay swipe-nav", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 });
+
+// The reported bug: clearing the chat dropped all messages, which unmounted the
+// whole thread region, collapsing the open sheet to just the header + composer.
+// The fix renders the thread whenever the sheet is OPEN (not only when there are
+// messages), so an emptied/cleared conversation keeps its size and shows a
+// loading state until its greeting lands.
+describe("ContinuousChatOverlay — empty thread while the sheet is open", () => {
+  function openSheetToHalf(): void {
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "half",
+    );
+  }
+
+  it("keeps the thread mounted (no collapse) when the open conversation empties, and shows the loading spinner", () => {
+    // Open with messages present (the gesture needs a thread to open into).
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={makeController()} />,
+    );
+    openSheetToHalf();
+    expect(document.getElementById("continuous-thread")).not.toBeNull();
+
+    // Emptying the conversation (a clear in flight, awaiting the greeting) must
+    // NOT unmount the thread — the sheet stays open at its size with a spinner.
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [],
+          conversationLoading: true,
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.getElementById("continuous-thread")).not.toBeNull();
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "half",
+    );
+    expect(screen.getByTestId("chat-thread-loading")).toBeTruthy();
+  });
+
+  it("shows no spinner on an empty open thread that is not loading", () => {
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={makeController()} />,
+    );
+    openSheetToHalf();
+
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [],
+          conversationLoading: false,
+        } as Partial<ShellController>)}
+      />,
+    );
+    // Thread stays mounted, but with no in-flight load there is no spinner.
+    expect(document.getElementById("continuous-thread")).not.toBeNull();
+    expect(screen.queryByTestId("chat-thread-loading")).toBeNull();
+  });
+});

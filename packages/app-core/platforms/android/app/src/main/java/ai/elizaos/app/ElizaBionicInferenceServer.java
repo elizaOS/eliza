@@ -61,6 +61,7 @@ final class ElizaBionicInferenceServer {
     private long residentCtx = 0L;
     private long residentStream = 0L;
     private String residentBundle = null;
+    private String residentDrafterPath = "";
     /** The previous turn's prompt tokens — used to find the longest common prefix
      *  with the next turn's prompt so its KV can be reused (only the delta is
      *  re-prefilled). null when the stream has no reusable KV (first turn / after
@@ -103,12 +104,13 @@ final class ElizaBionicInferenceServer {
         // (stock f16, only ~0.4 GB at 8k ctx for the 2B). This is the intended
         // Gemma KV path, not a fallback.
         setEnvIfAbsent("ELIZA_BIONIC_KV_QUANT", "0");
-        // Arm MTP speculative decode. Gemma-4 ships a SEPARATE drafter
+        // Allow MTP speculative decode when a Gemma-4 SEPARATE drafter
         // (mtp/drafter-<tier>.gguf, loaded via "-md … --spec-type draft-mtp") —
         // NOT a same-file NextN head embedded in the text GGUF; the JNI threads
-        // cfg.mtp_drafter_path when the drafter is present. MTP accelerates
-        // DECODE ~1.5x and stays dormant until the trained drafter GGUF artifact
-        // ships (training-gated). The resident path uses MTP + full reset;
+        // cfg.mtp_drafter_path when the TS bridge has staged one. MTP stays
+        // dormant when no drafter path is supplied; the retired same-file path
+        // is intentionally not used for Gemma bundles. The resident path uses
+        // MTP + full reset;
         // prefix-KV reuse via reset_keep (resetAndPrefillResident →
         // nativeLlmStreamResetKeep) stays wired for caches that support bounded
         // partial removal (llama_memory_seq_rm).
@@ -253,9 +255,11 @@ final class ElizaBionicInferenceServer {
                 return errorJson("unsupported op: " + op);
             }
             String prompt = req.optString("prompt", "");
+            String drafterPath = req.optString("drafterPath", "");
             int maxTokens = req.optInt("maxTokens", 256);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
-                + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
+                + " maxTokens=" + maxTokens + ", bundle=" + bundleDir
+                + ", drafter=" + (drafterPath.isEmpty() ? "(none)" : drafterPath));
             // RESIDENT path (default): the model + context stay loaded across turns;
             // only the KV cache + sampler are reset and the prompt re-prefilled per
             // turn, so we skip the ~7-8s model RELOAD that nativeLlmSelfTest paid every
@@ -267,7 +271,7 @@ final class ElizaBionicInferenceServer {
             // ELIZA_BIONIC_RESIDENT=0 to force the old path).
             if (!"0".equals(System.getenv("ELIZA_BIONIC_RESIDENT"))) {
                 try {
-                    String r = generateResident(bundleDir, prompt, maxTokens);
+                    String r = generateResident(bundleDir, drafterPath, prompt, maxTokens);
                     Log.i(TAG, "GENERATE result (resident): "
                         + (r.length() > 200 ? r.substring(0, 200) + "…" : r));
                     return r;
@@ -291,12 +295,12 @@ final class ElizaBionicInferenceServer {
      * we skip the ~7-8s model reload. Greedy decode (temp=0, top_k=1), all-GPU.
      * Returns the same {ok,tokens,ms,tokS,text} JSON as nativeLlmSelfTest.
      */
-    private String generateResident(String bundleDir, String prompt, int maxTokens)
+    private String generateResident(String bundleDir, String drafterPath, String prompt, int maxTokens)
             throws org.json.JSONException {
         synchronized (residentLock) {
             ensureResidentCtx(bundleDir);
             final long t0 = android.os.SystemClock.elapsedRealtime();
-            resetAndPrefillResident(prompt);
+            resetAndPrefillResident(prompt, drafterPath);
             final StringBuilder sb = new StringBuilder();
             int produced = 0;
             final int cap = maxTokens > 0 ? maxTokens : 32;
@@ -335,6 +339,7 @@ final class ElizaBionicInferenceServer {
     private void generateStreamRequest(String requestJson, DataOutputStream out)
             throws IOException {
         String bundleDir = defaultBundleDir;
+        String drafterPath = "";
         String prompt = "";
         int maxTokens = 256;
         try {
@@ -343,13 +348,14 @@ final class ElizaBionicInferenceServer {
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
+            drafterPath = req.optString("drafterPath", "");
             prompt = req.optString("prompt", "");
             maxTokens = req.optInt("maxTokens", 256);
         } catch (org.json.JSONException e) {
             writeFrame(out, errorJson(e.getMessage() == null ? e.toString() : e.getMessage()));
             return;
         }
-        generateStream(bundleDir, prompt, maxTokens, out);
+        generateStream(bundleDir, drafterPath, prompt, maxTokens, out);
     }
 
     /**
@@ -361,16 +367,17 @@ final class ElizaBionicInferenceServer {
      * whole reply) and unblocks phrase-chunked LLM→TTS. The buffered op="generate"
      * is unchanged for non-streaming callers (embed/tts/self-test).
      */
-    private void generateStream(String bundleDir, String prompt, int maxTokens,
+    private void generateStream(String bundleDir, String drafterPath, String prompt, int maxTokens,
                                 DataOutputStream out) throws IOException {
         Log.i(TAG, "GENERATE_STREAM from agent: " + prompt.length() + " prompt chars,"
-            + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
+            + " maxTokens=" + maxTokens + ", bundle=" + bundleDir
+            + ", drafter=" + (drafterPath.isEmpty() ? "(none)" : drafterPath));
         final StringBuilder sb = new StringBuilder();
         try {
             synchronized (residentLock) {
                 ensureResidentCtx(bundleDir);
                 final long t0 = android.os.SystemClock.elapsedRealtime();
-                resetAndPrefillResident(prompt);
+                resetAndPrefillResident(prompt, drafterPath);
                 int produced = 0;
                 final int cap = maxTokens > 0 ? maxTokens : 32;
                 while (produced < cap) {
@@ -443,6 +450,7 @@ final class ElizaBionicInferenceServer {
                 residentCtx = 0L;
             }
             residentBundle = null;
+            residentDrafterPath = "";
             residentPrevTokens = null;
         }
     }
@@ -457,13 +465,21 @@ final class ElizaBionicInferenceServer {
      * prefix or the stream can't be trimmed (e.g. an MTP stream). Caller holds
      * residentLock.
      */
-    private void resetAndPrefillResident(String prompt) {
+    private void resetAndPrefillResident(String prompt, String drafterPath) {
+        final String effectiveDrafterPath = drafterPath == null ? "" : drafterPath;
+        if (residentStream != 0L && !effectiveDrafterPath.equals(residentDrafterPath)) {
+            ElizaVoiceNative.nativeLlmStreamClose(residentStream);
+            residentStream = 0L;
+            residentPrevTokens = null;
+        }
         if (residentStream == 0L) {
             residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+                residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1,
+                effectiveDrafterPath);
             if (residentStream == 0L) {
                 throw new IllegalStateException("resident streamOpen failed");
             }
+            residentDrafterPath = effectiveDrafterPath;
             residentPrevTokens = null;
         }
         final int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
@@ -489,10 +505,12 @@ final class ElizaBionicInferenceServer {
             if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 1) {
                 ElizaVoiceNative.nativeLlmStreamClose(residentStream);
                 residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1,
+                    effectiveDrafterPath);
                 if (residentStream == 0L) {
                     throw new IllegalStateException("resident streamReopen failed");
                 }
+                residentDrafterPath = effectiveDrafterPath;
             }
             applied = 0;
         }

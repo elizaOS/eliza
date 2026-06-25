@@ -1,11 +1,16 @@
 import {
 	ContentType,
+	fetchRemoteMedia,
 	type IAgentRuntime,
 	type IMessageService,
+	isBlockedHostname,
+	isPrivateIpAddress,
 	logger,
 	type Media,
+	MediaFetchError,
 	ModelType,
 	type ReplyToMode,
+	type SsrfPolicy,
 	trimTokens,
 } from "@elizaos/core";
 import {
@@ -312,19 +317,55 @@ export function getAttachmentFileName(media: Media): string {
 	return hasExtension ? baseName : `${baseName}${extension}`;
 }
 
+const DEFAULT_OUTBOUND_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_OUTBOUND_ATTACHMENT_TIMEOUT_MS = 120_000;
+
+function positiveIntEnv(name: string, fallback: number): number {
+	const parsed = Number(process.env[name]);
+	return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function shouldFetchGeneratedMediaBytes(media: Media): boolean {
+	return (
+		media.source === "media-generation" &&
+		(media.contentType === ContentType.VIDEO ||
+			media.contentType === ContentType.AUDIO)
+	);
+}
+
+function summarizeAttachmentUrl(url: string): { host?: string; path?: string } {
+	try {
+		const parsed = new URL(url);
+		return {
+			host: parsed.host,
+			path: parsed.pathname.split("/").slice(0, 4).join("/"),
+		};
+	} catch {
+		return {};
+	}
+}
+
+function generatedMediaFetchPolicy(url: string): SsrfPolicy | undefined {
+	try {
+		const host = new URL(url).hostname.trim().toLowerCase().replace(/\.$/, "");
+		return host ? { allowedHostnames: [host] } : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function isPrivateOrInternalUrl(url: string): boolean {
+	try {
+		const host = new URL(url).hostname;
+		return isBlockedHostname(host) || isPrivateIpAddress(host);
+	} catch {
+		return true;
+	}
+}
+
 /**
- * Fetch video/audio bytes locally so private URLs (e.g. zerollama `/content`)
- * upload reliably to Discord, which cannot reach the agent's LAN.
- *
- * SSRF note: this deliberately uses an UNGUARDED `fetch` rather than
- * `fetchWithSsrfGuard`. The whole point is to read the agent's own
- * generated-media URLs, which are private/LAN endpoints the SSRF guard blocks
- * by design — guarding here would defeat the feature. The input `media` is the
- * agent's OUTBOUND reply content (`content.attachments` produced by the agent's
- * own GENERATE_MEDIA / media providers), not untrusted inbound user input, so
- * the fetch target is agent-controlled. Only `http(s)` VIDEO/AUDIO URLs are
- * byte-fetched; anything else is passed to Discord as a plain URL attachment.
- * Do NOT route untrusted/user-supplied URLs through this helper.
+ * Build a Discord attachment. Generated audio/video URLs are fetched through
+ * the core SSRF guard.
  */
 export async function buildOutboundDiscordAttachment(
 	media: Media,
@@ -336,36 +377,45 @@ export async function buildOutboundDiscordAttachment(
 		return new AttachmentBuilder(Buffer.alloc(0), { name: fileName });
 	}
 
-	const preferFetchedBytes =
-		(media.contentType === ContentType.VIDEO ||
-			media.contentType === ContentType.AUDIO) &&
-		/^https?:\/\//i.test(url);
-
-	if (preferFetchedBytes) {
-		try {
-			// Unguarded by design — see the SSRF note on this function.
-			const response = await fetch(url);
-			if (response.ok) {
-				const buffer = Buffer.from(await response.arrayBuffer());
-				return new AttachmentBuilder(buffer, { name: fileName });
-			}
-			runtime?.logger.warn(
-				{
-					src: "plugin:discord:attachment",
-					url,
-					status: response.status,
-				},
-				"Media fetch failed; falling back to URL attachment",
-			);
-		} catch (error) {
-			runtime?.logger.warn(
-				{ src: "plugin:discord:attachment", url, error },
-				"Media fetch failed; falling back to URL attachment",
-			);
-		}
+	if (!shouldFetchGeneratedMediaBytes(media)) {
+		return new AttachmentBuilder(url, { name: fileName });
 	}
 
-	return new AttachmentBuilder(url, { name: fileName });
+	try {
+		const fetched = await fetchRemoteMedia({
+			url,
+			filePathHint: fileName,
+			maxBytes: positiveIntEnv(
+				"DISCORD_ATTACHMENT_FETCH_MAX_BYTES",
+				DEFAULT_OUTBOUND_ATTACHMENT_MAX_BYTES,
+			),
+			timeoutMs: positiveIntEnv(
+				"DISCORD_ATTACHMENT_FETCH_TIMEOUT_MS",
+				DEFAULT_OUTBOUND_ATTACHMENT_TIMEOUT_MS,
+			),
+			ssrfPolicy: generatedMediaFetchPolicy(url),
+		});
+		return new AttachmentBuilder(fetched.buffer, { name: fileName });
+	} catch (error) {
+		runtime?.logger.warn(
+			{
+				src: "plugin:discord:attachment",
+				...summarizeAttachmentUrl(url),
+				contentType: media.contentType,
+				error:
+					error instanceof MediaFetchError
+						? error.code
+						: error instanceof Error
+							? error.name
+							: String(error),
+			},
+			"Generated media fetch failed",
+		);
+		if (!isPrivateOrInternalUrl(url)) {
+			return new AttachmentBuilder(url, { name: fileName });
+		}
+		throw error;
+	}
 }
 
 export async function generateSummary(

@@ -110,7 +110,7 @@ def base_kwargs(tier: str = "4b") -> dict:
         kwargs["files"]["vision"] = []
     if VOICE_BACKENDS_BY_TIER[tier] == ("kokoro",):
         kwargs["files"]["voice"] = [
-            FileEntry(path="tts/kokoro/model_q4.onnx", sha256=SHA),
+            FileEntry(path="tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf", sha256=SHA),
             FileEntry(path="tts/kokoro/tokenizer.json", sha256=SHA),
             FileEntry(path="tts/kokoro/voices/af_bella.bin", sha256=SHA),
         ]
@@ -727,7 +727,7 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     assert validate_manifest(manifest) == ()
 
 
-def test_base_v1_27b_provenance_requires_qwen36_text_source():
+def test_base_v1_27b_provenance_requires_gemma4_text_source():
     kwargs = base_kwargs("27b")
     prov = _base_v1_provenance()
     prov["sourceModels"]["text"] = {"repo": "google/gemma-4-31B"}

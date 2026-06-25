@@ -108,7 +108,7 @@ describe("parseDisabledTasksEnv", () => {
 		expect(parsed.has("media_description")).toBe(false);
 	});
 
-	test("silently drops unknown task names", () => {
+	test("warns and drops unknown task names", () => {
 		const parsed = parseDisabledTasksEnv("response,not_a_real_task,planner");
 		expect(parsed.has("response")).toBe(true);
 		expect(parsed.size).toBe(1);

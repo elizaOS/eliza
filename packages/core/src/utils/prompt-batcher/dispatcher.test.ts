@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
 import type { ResolvedSection } from "../../types/prompt-batcher";
-import type { IAgentRuntime } from "../../types/runtime";
 import { PromptDispatcher } from "./dispatcher";
 
 function makeResolvedSection(id: string, maxRetries: number): ResolvedSection {

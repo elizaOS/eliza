@@ -107,7 +107,6 @@ type PinnedFetchInput = {
 };
 
 type PinnedFetchImpl = (input: PinnedFetchInput) => Promise<Response>;
-type ResponseBodyChunk = Uint8Array<ArrayBuffer>;
 
 function toRequestHeaders(headers: Headers): Record<string, string> {
 	const normalized: Record<string, string> = {};
@@ -117,22 +116,36 @@ function toRequestHeaders(headers: Headers): Record<string, string> {
 	return normalized;
 }
 
-function toResponseBodyChunk(chunk: Buffer | string): ResponseBodyChunk {
-	const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-	return Uint8Array.from(bytes);
+function nodeReadableChunkToUint8Array(
+	chunk: Buffer | Uint8Array | string,
+): Uint8Array {
+	if (typeof chunk === "string") {
+		return new Uint8Array(Buffer.from(chunk));
+	}
+	return new Uint8Array(chunk);
 }
 
 function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
-	return new ReadableStream<ResponseBodyChunk>({
-		start(controller) {
-			stream.on("data", (chunk: Buffer | string) => {
-				controller.enqueue(toResponseBodyChunk(chunk));
-			});
-			stream.once("end", () => controller.close());
-			stream.once("error", (error) => controller.error(error));
+	const iterator = stream[Symbol.asyncIterator]() as AsyncIterator<
+		Buffer | Uint8Array | string
+	>;
+
+	return new ReadableStream<Uint8Array>({
+		async pull(controller) {
+			try {
+				const next = await iterator.next();
+				if (next.done) {
+					controller.close();
+					return;
+				}
+				controller.enqueue(nodeReadableChunkToUint8Array(next.value));
+			} catch (error) {
+				controller.error(error);
+			}
 		},
-		cancel() {
-			stream.destroy();
+		async cancel(reason) {
+			await iterator.return?.();
+			stream.destroy(reason instanceof Error ? reason : undefined);
 		},
 	});
 }

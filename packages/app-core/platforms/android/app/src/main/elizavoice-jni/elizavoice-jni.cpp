@@ -407,19 +407,6 @@ bool bionic_bool_env_or_default(const char* name, bool fallback) {
     return fallback;
 }
 
-bool bionic_bundle_allows_same_file_mtp(const char* bundle_dir) {
-    if (!bundle_dir || bundle_dir[0] == '\0') return false;
-    const std::string path(bundle_dir);
-    return path.find("eliza-1-2b") != std::string::npos ||
-           path.find("eliza-1-4b") != std::string::npos ||
-           path.find("eliza-1-9b") != std::string::npos ||
-           path.find("eliza-1-27b") != std::string::npos ||
-           path.find("/2b") != std::string::npos ||
-           path.find("/4b") != std::string::npos ||
-           path.find("/9b") != std::string::npos ||
-           path.find("/27b") != std::string::npos;
-}
-
 int bionic_int_env_or_default(const char* name, int fallback) {
     const char* v = std::getenv(name);
     if (!v || v[0] == '\0') return fallback;
@@ -438,11 +425,10 @@ int bionic_int_env_or_default(const char* name, int fallback) {
 // shipping path; F16 KV is correct. ELIZA_BIONIC_KV_QUANT=1 is left as an
 // explicit lab override for head_dim=128 test bundles only.
 //
-// MTP is enabled by default for same-file NextN tiers (2B+) when a bundle path
-// is known, and remains off for 0.8B. Gemma's separate-drafter MTP needs a real
-// drafter GGUF, which the base bundles do not yet ship, so on-device speculative
-// decode engages only where a same-file NextN head is present. ELIZA_BIONIC_MTP
-// can force on/off for native experiments.
+// MTP is enabled only when the caller supplies a Gemma separate-drafter GGUF.
+// Omitting cfg.mtp_drafter_path would select the retired same-file NextN path,
+// so shipped Gemma bundles without a staged drafter run plain decode even if
+// ELIZA_BIONIC_MTP is set in the app process.
 //
 // The two static names below outlive the cfg they're attached to (cfg is a
 // stack struct consumed synchronously by eliza_inference_llm_stream_open).
@@ -460,16 +446,21 @@ void arm_bionic_text_cfg(eliza_llm_stream_config_t& cfg,
              "already minimal)");
     }
 
-    const bool default_mtp = bionic_bundle_allows_same_file_mtp(bundle_dir);
-    if (bionic_bool_env_or_default("ELIZA_BIONIC_MTP", default_mtp)) {
+    (void)bundle_dir;
+    const bool has_drafter =
+        cfg.mtp_drafter_path && cfg.mtp_drafter_path[0] != '\0';
+    if (has_drafter && bionic_bool_env_or_default("ELIZA_BIONIC_MTP", true)) {
         int draft_min = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MIN", 1);
-        int draft_max = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MAX", 2);
+        int draft_max = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MAX", 1);
         if (draft_min < 1) draft_min = 1;
         if (draft_max < draft_min) draft_max = draft_min;
         cfg.draft_min = draft_min;
         cfg.draft_max = draft_max;
-        LOGI("bionic text cfg: MTP ON (draft_min=%d draft_max=%d, same-file)",
-             draft_min, draft_max);
+        LOGI("bionic text cfg: MTP ON (draft_min=%d draft_max=%d, drafter=%s)",
+             draft_min, draft_max, cfg.mtp_drafter_path);
+    } else {
+        LOGI("bionic text cfg: MTP OFF (%s)",
+             has_drafter ? "disabled by ELIZA_BIONIC_MTP" : "no drafter");
     }
 }
 
@@ -1267,17 +1258,14 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamOpen(
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = nGpuLayers;
     cfg.mtp_drafter_path = drafter.empty() ? nullptr : drafter.c_str();
-    // Arm safe runtime optimizations (stock f16/q8_0 KV for the shipped Gemma 4
-    // tiers; MTP when a caller/env supplies a draft window).
-    // A caller-supplied drafter path is separate-drafter MTP and needs its own
-    // draft window — only arm the same-file MTP env override when no drafter
-    // was passed.
+    // Arm safe runtime optimizations: stock f16/q8_0 KV for the shipped Gemma 4
+    // tiers, and separate-drafter MTP only when the caller passes a drafter.
     arm_bionic_text_cfg(cfg);
     if (!drafter.empty() && cfg.draft_min <= 0) {
         // Separate drafter supplied but env left the window 0; give it the
         // single-head default so the drafter actually drives speculation.
         cfg.draft_min = 1;
-        cfg.draft_max = 2;
+        cfg.draft_max = 1;
     }
     char* outError = nullptr;
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
@@ -1416,8 +1404,8 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     cfg.top_p = 1.0f;
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = -1;   // all-GPU when the vulkan lib is staged
-    // Arm safe runtime optimizations (stock f16/q8_0 KV for the shipped Gemma 4
-    // tiers; same-file MTP on 2B+ bundles, or env override for lab runs).
+    // Arm safe runtime optimizations (stock f16/q8_0 KV for shipped Gemma 4
+    // tiers; no MTP here because nativeLlmSelfTest has no drafter argument).
     arm_bionic_text_cfg(cfg, bundleDir.c_str());
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
     if (!s) {

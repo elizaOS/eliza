@@ -54,6 +54,7 @@ function pending(
   return {
     id: patch.id as PendingUserAction["id"],
     kind: patch.kind ?? "approval",
+    source: patch.source ?? "approval-service",
     title: patch.title ?? "Post this tweet?",
     createdAt: Date.now() - (patch.ageMs ?? 0),
     roomId: (patch.roomId ??

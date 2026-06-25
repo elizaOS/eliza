@@ -164,6 +164,7 @@ declare global {
 
 const appModuleCache = new Map<string, Promise<unknown>>();
 const { createRoot } = ReactDomClient;
+let deferredAppModuleLoadsScheduled = false;
 
 // Renderer cold-start telemetry (#9565). The trace adopts a native-host-injected
 // id when present (Electrobun/Capacitor) so one device launch shares a single
@@ -560,6 +561,22 @@ function scheduleAppModuleIdleWork(work: () => void): void {
   window.setTimeout(work, 50);
 }
 
+function scheduleAfterReactPaint(work: () => void): void {
+  if (typeof window === "undefined") {
+    work();
+    return;
+  }
+
+  if (typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(work);
+    });
+    return;
+  }
+
+  window.setTimeout(work, 0);
+}
+
 function scheduleAppModuleIdleLoads(
   loaders: readonly SideEffectAppModuleLoader[],
 ): void {
@@ -591,6 +608,20 @@ function scheduleAppModuleIdleLoads(
   };
 
   scheduleAppModuleIdleWork(pump);
+}
+
+function scheduleDeferredAppModuleLoadsAfterPaint(): void {
+  if (deferredAppModuleLoadsScheduled) return;
+  deferredAppModuleLoadsScheduled = true;
+
+  scheduleAfterReactPaint(() => {
+    // These modules register routes, tabs, overlay apps, and feature surfaces,
+    // but no component from them is needed to paint the startup shell. Schedule
+    // them only after React has had a paint opportunity so idle imports cannot
+    // compete with the first visible boot surface.
+    scheduleAppModuleIdleLoads(BOOT_CONFIG_DEFERRED_MODULE_LOADERS);
+    scheduleAppModuleIdleLoads(SIDE_EFFECT_APP_MODULE_LOADERS);
+  });
 }
 
 function buildAppBootConfig({
@@ -692,14 +723,6 @@ function initializeAppModules(): Promise<void> {
           companionInferenceNoticeModule.resolveCompanionInferenceNotice,
       }),
     );
-
-    // The boot-config-contributing plugins (above) and the side-effect plugins
-    // (games, wallet-ui, trajectory-logger, feature registrations) export no
-    // components used at first paint, so load them OFF the first-paint critical
-    // path. Their nav tabs / overlay apps register a tick later; React.lazy
-    // covers the gap.
-    scheduleAppModuleIdleLoads(BOOT_CONFIG_DEFERRED_MODULE_LOADERS);
-    scheduleAppModuleIdleLoads(SIDE_EFFECT_APP_MODULE_LOADERS);
   })();
 
   return appModulesInitialized;
@@ -2748,6 +2771,7 @@ async function main(): Promise<void> {
   if (isPopoutWindow()) {
     injectPopoutApiBase();
     mountReactApp();
+    scheduleDeferredAppModuleLoadsAfterPaint();
     return;
   }
 
@@ -2760,6 +2784,7 @@ async function main(): Promise<void> {
     await initializeStorageBridge();
     initializeCapacitorBridge();
     mountReactApp();
+    scheduleDeferredAppModuleLoadsAfterPaint();
     return;
   }
 
@@ -2795,6 +2820,7 @@ async function main(): Promise<void> {
   markStartup("bridges:end", { platform });
   measureStartup("bridges", "bridges:start", "bridges:end");
   mountReactApp();
+  scheduleDeferredAppModuleLoadsAfterPaint();
   await initializePlatform();
 }
 

@@ -29,8 +29,11 @@
 //   its musl Android targets, so the resulting ABI matches what bun expects
 //   when it dlopen()s libllama.so via bun:ffi at runtime.
 //
-//   Minimum tested: zig 0.13.0. Earlier versions ship older libc++ headers
-//   that miss <bit> / <span> shims llama.cpp's CMake feature checks rely on.
+//   Arm64/aarch64-musl is pinned to zig 0.13.x. Earlier versions ship older
+//   libc++ headers that miss <bit> / <span> shims llama.cpp's CMake feature
+//   checks rely on, and newer host toolchains have regressed this lane (zig
+//   0.16's lld SIGSEGVs the aarch64-linux-musl link). Keep that target on the
+//   tested 0.13 line until the upstream linker crash is cleared.
 //
 // llama.cpp pin (matches the fork the runtime loads via
 // plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts):
@@ -159,9 +162,11 @@
 //   call (Commandment 8: don't hide broken pipelines behind fallbacks).
 //
 // Repo-root resolution:
-//   The script defaults `--assets-dir` to
-//   `<repoRoot>/packages/app/android/app/src/main/assets/agent` and
-//   `--cache-dir` to `~/.cache/eliza-android-agent/llama-cpp-<tag>`.
+//   The script defaults `--assets-dir` to the first app shell found under
+//   `<repoRoot>/packages/app`, `<repoRoot>/apps/app`, or
+//   `<repoRoot>/eliza/packages/app`, then appends
+//   `android/app/src/main/assets/agent`. `--cache-dir` defaults to
+//   `~/.cache/eliza-android-agent/llama-cpp-<tag>`.
 //   `<repoRoot>` is derived from this script's location: walk up from
 //   `eliza/packages/app-core/scripts/aosp/` to the host repo root by
 //   default, but when the parent host repo invokes this via the
@@ -221,6 +226,8 @@ export const LLAMA_CPP_TAG = "v1.2.0-eliza";
 export const LLAMA_CPP_COMMIT = "32a7911dced6230ce544c43a6399f5bd721cab90";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
+export const AARCH64_MUSL_ZIG_MIN_VERSION = "0.13.0";
+export const AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE = "0.14.0";
 // Floor for the RVV-on riscv64 build. Zig 0.13's bundled LLVM rejects the
 // GCC-style `-march=rv64gcv*` ISA string the vendored llama.cpp's
 // ggml-cpu/CMakeLists hard-codes when GGML_RVV / GGML_RV_ZFH / etc. are ON;
@@ -394,6 +401,55 @@ export function parseAndroidTarget(target) {
   return { target, arch, backend, fused, androidAbi };
 }
 
+export function resolveAndroidNdkHostDir(
+  prebuiltRoot,
+  { platform = os.platform(), arch = os.arch(), entries } = {},
+) {
+  const dirs =
+    entries ??
+    (fs.existsSync(prebuiltRoot) ? fs.readdirSync(prebuiltRoot) : []);
+  const hostDirs = dirs
+    .filter((d) => /^(linux|darwin|windows)-(x86_64|aarch64|arm64)$/.test(d))
+    .sort();
+  const hostPrefix =
+    platform === "win32"
+      ? "windows"
+      : platform === "linux" || platform === "darwin"
+        ? platform
+        : null;
+  if (!hostPrefix) return null;
+
+  const preferredArch =
+    arch === "x64" ? "x86_64" : arch === "arm64" ? "arm64" : arch;
+  const archCandidates =
+    preferredArch === "arm64"
+      ? ["arm64", "aarch64", "x86_64"]
+      : [preferredArch, "x86_64"];
+  return (
+    archCandidates
+      .map((candidate) => `${hostPrefix}-${candidate}`)
+      .find((candidate) => hostDirs.includes(candidate)) ??
+    hostDirs.find((candidate) => candidate.startsWith(`${hostPrefix}-`)) ??
+    null
+  );
+}
+
+export function resolveHomebrewFormulaIncludeDirs(
+  formula,
+  prefixes = ["/opt/homebrew", "/usr/local"],
+) {
+  const includeDirs = [];
+  for (const prefix of prefixes) {
+    includeDirs.push(path.join(prefix, "opt", formula, "include"));
+    const cellar = path.join(prefix, "Cellar", formula);
+    if (!fs.existsSync(cellar)) continue;
+    for (const version of fs.readdirSync(cellar).sort(compareSemver)) {
+      includeDirs.push(path.join(cellar, version, "include"));
+    }
+  }
+  return includeDirs;
+}
+
 /**
  * GGML_VULKAN CMake flags for the android-arm64 Vulkan backend. Points cmake at
  * the NDK's host `glslc` (the shader compiler ggml-vulkan's codegen invokes),
@@ -430,19 +486,20 @@ export function resolveAndroidVulkanCmakeFlags({
   // `linux-x86_64` — the same NDK ships `darwin-x86_64` on macOS hosts, so
   // hardcoding linux made the Android Vulkan build Linux-only (#9508).
   const prebuiltRoot = path.join(ndk, "toolchains/llvm/prebuilt");
-  const hostDir = fs.existsSync(prebuiltRoot)
-    ? (fs
-        .readdirSync(prebuiltRoot)
-        .find((d) => /-(x86_64|aarch64|arm64)$/.test(d)) ?? null)
-    : null;
+  const hostDir = resolveAndroidNdkHostDir(prebuiltRoot);
   if (!hostDir) {
     throw new Error(
       `[compile-libllama] No NDK host toolchain under ${prebuiltRoot} ` +
-        `(need a linux-x86_64 / darwin-x86_64 prebuilt).`,
+        `(need a host-matching linux/darwin/windows prebuilt).`,
     );
   }
   const sysroot = path.join(prebuiltRoot, hostDir, "sysroot");
-  const glslc = path.join(ndk, "shader-tools", hostDir, "glslc");
+  const glslc = path.join(
+    ndk,
+    "shader-tools",
+    hostDir,
+    os.platform() === "win32" ? "glslc.exe" : "glslc",
+  );
   const libBase = path.join(sysroot, "usr/lib/aarch64-linux-android");
   const apis = fs.existsSync(libBase)
     ? fs
@@ -471,10 +528,7 @@ export function resolveAndroidVulkanCmakeFlags({
     process.env.VULKAN_SDK && path.join(process.env.VULKAN_SDK, "include"),
     "/usr/include",
     "/usr/local/include",
-    // macOS homebrew prefixes (vulkan-headers) — the Vulkan-Hpp headers are
-    // arch-independent, so the host set is fine for the arm64 cross-compile.
-    "/opt/homebrew/include",
-    "/usr/local/Cellar",
+    ...resolveHomebrewFormulaIncludeDirs("vulkan-headers"),
   ].filter(Boolean);
   const hostVulkanDir = headerCandidates
     .map((d) => path.join(d, "vulkan"))
@@ -516,10 +570,7 @@ export function resolveAndroidVulkanCmakeFlags({
     process.env.VULKAN_SDK && path.join(process.env.VULKAN_SDK, "include"),
     "/usr/include",
     "/usr/local/include",
-    // macOS homebrew prefixes (vulkan-headers) — the Vulkan-Hpp headers are
-    // arch-independent, so the host set is fine for the arm64 cross-compile.
-    "/opt/homebrew/include",
-    "/usr/local/Cellar",
+    ...resolveHomebrewFormulaIncludeDirs("spirv-headers"),
   ].filter(Boolean);
   const hostSpirvRoot = spirvCandidates.find((d) =>
     fs.existsSync(path.join(d, "spirv/unified1/spirv.hpp")),
@@ -534,7 +585,9 @@ export function resolveAndroidVulkanCmakeFlags({
   }
   const stagedSpirv = path.join(incRoot, "spirv");
   fs.rmSync(stagedSpirv, { recursive: true, force: true });
-  fs.cpSync(path.join(hostSpirvRoot, "spirv"), stagedSpirv, { recursive: true });
+  fs.cpSync(path.join(hostSpirvRoot, "spirv"), stagedSpirv, {
+    recursive: true,
+  });
 
   for (const [name, p] of [
     ["vulkan/vulkan.hpp", path.join(stagedVulkan, "vulkan.hpp")],
@@ -555,19 +608,45 @@ export function resolveAndroidVulkanCmakeFlags({
   ];
 }
 
+export function resolveDefaultAndroidAssetsDir({ root = repoRoot } = {}) {
+  const appRelativeCandidates = [
+    path.join("packages", "app"),
+    path.join("apps", "app"),
+    path.join("eliza", "packages", "app"),
+  ];
+  for (const appRelative of appRelativeCandidates) {
+    const appRoot = path.join(root, appRelative);
+    if (
+      fs.existsSync(path.join(appRoot, "android")) ||
+      fs.existsSync(path.join(appRoot, "package.json"))
+    ) {
+      return path.join(
+        appRoot,
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "agent",
+      );
+    }
+  }
+  return path.join(
+    root,
+    "packages",
+    "app",
+    "android",
+    "app",
+    "src",
+    "main",
+    "assets",
+    "agent",
+  );
+}
+
 export function parseArgs(argv) {
   const args = {
-    androidAssetsDir: path.join(
-      repoRoot,
-      "packages",
-      "app",
-      "android",
-      "app",
-      "src",
-      "main",
-      "assets",
-      "agent",
-    ),
+    androidAssetsDir: resolveDefaultAndroidAssetsDir(),
     cacheDir: path.join(
       os.homedir(),
       ".cache",
@@ -775,7 +854,11 @@ export function zigSeries(version) {
     .split(/[-+]/)[0]
     .split(".")
     .map((n) => Number.parseInt(n, 10));
-  if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) {
+  if (
+    parts.length < 2 ||
+    !Number.isFinite(parts[0]) ||
+    !Number.isFinite(parts[1])
+  ) {
     return null;
   }
   return `${parts[0]}.${parts[1]}`;
@@ -1276,18 +1359,18 @@ export function ensureZigDrivers({
   // forwards the whole array with every quote and space preserved.
   const riscv64ArgFilter =
     abi === "riscv64" && !riscv64MarchPassthrough
-      ? '_n=$#\n' +
-        'i=0\n' +
-        'while [ $i -lt $_n ]; do\n' +
-        '  arg=$1\n' +
-        '  shift\n' +
-        '  i=$((i+1))\n' +
+      ? "_n=$#\n" +
+        "i=0\n" +
+        "while [ $i -lt $_n ]; do\n" +
+        "  arg=$1\n" +
+        "  shift\n" +
+        "  i=$((i+1))\n" +
         '  case "$arg" in\n' +
-        '    -march=rv64gc|-march=rv64gc_*) ;;\n' +
-        '    -mabi=lp64d|-mabi=lp64) ;;\n' +
+        "    -march=rv64gc|-march=rv64gc_*) ;;\n" +
+        "    -mabi=lp64d|-mabi=lp64) ;;\n" +
         '    *) set -- "$@" "$arg" ;;\n' +
-        '  esac\n' +
-        'done\n'
+        "  esac\n" +
+        "done\n"
       : null;
 
   // arm64: the ggml-cpu CMakeLists emits the GCC-style ISA string
@@ -1305,22 +1388,22 @@ export function ensureZigDrivers({
   // through untouched (there shouldn't be one for arm64).
   const arm64ArgFilter =
     abi === "arm64-v8a"
-      ? '_n=$#\n' +
-        'i=0\n' +
-        'while [ $i -lt $_n ]; do\n' +
-        '  arg=$1\n' +
-        '  shift\n' +
-        '  i=$((i+1))\n' +
+      ? "_n=$#\n" +
+        "i=0\n" +
+        "while [ $i -lt $_n ]; do\n" +
+        "  arg=$1\n" +
+        "  shift\n" +
+        "  i=$((i+1))\n" +
         '  case "$arg" in\n' +
-        '    -march=armv8.*-a+*)\n' +
+        "    -march=armv8.*-a+*)\n" +
         '      _feats=""\n' +
-        '      case "$arg" in *+dotprod*) _feats="${_feats}+dotprod" ;; esac\n' +
-        '      case "$arg" in *+i8mm*) _feats="${_feats}+i8mm" ;; esac\n' +
-        '      case "$arg" in *+fp16*) _feats="${_feats}+fullfp16" ;; esac\n' +
-        '      set -- "$@" "-mcpu=generic${_feats}" ;;\n' +
+        `      case "$arg" in *+dotprod*) _feats="\${_feats}+dotprod" ;; esac\n` +
+        `      case "$arg" in *+i8mm*) _feats="\${_feats}+i8mm" ;; esac\n` +
+        `      case "$arg" in *+fp16*) _feats="\${_feats}+fullfp16" ;; esac\n` +
+        `      set -- "$@" "-mcpu=generic\${_feats}" ;;\n` +
         '    *) set -- "$@" "$arg" ;;\n' +
-        '  esac\n' +
-        'done\n'
+        "  esac\n" +
+        "done\n"
       : null;
 
   const argFilter = riscv64ArgFilter ?? arm64ArgFilter;
@@ -1425,7 +1508,10 @@ export function buildLibllamaForAbi({
         `reason=${riscv64Plan.reason}`,
     );
   }
-  const riscv64BuildFlags = riscv64CmakeFlagsForPlan({ abi, plan: riscv64Plan });
+  const riscv64BuildFlags = riscv64CmakeFlagsForPlan({
+    abi,
+    plan: riscv64Plan,
+  });
 
   // x86_64: the mobile x86_64 ABI only ever runs on cuttlefish / the Android
   // x86_64 emulator (both KVM-backed by an AVX2-class host, and our emulator
@@ -1605,12 +1691,28 @@ export function buildLibllamaForAbi({
   // The target name is `llama-server` on the apothic fork (verified against
   // the upstream b8198 examples/server/CMakeLists.txt: `add_executable(
   // ${TARGET} server.cpp ...)` with `set(TARGET llama-server)`).
+  //
+  // Non-fatal for the library build: llama-server is the optional AOSP
+  // MTP/spec-decode HTTP path, but the required in-process libs below
+  // (libllama.so/libggml*.so and, for fused targets, libelizainference.so) are
+  // verified separately. On the musl cross-link this target can fail to resolve
+  // its httplib/OpenSSL deps (undefined `httplib::*` / `SSLClient` symbols).
+  // In that case stage-android-agent warns about the missing server and runtime
+  // falls back to the non-MTP path instead of losing the whole native build.
   log(`[compile-libllama] Compiling llama-server for ${abi} with -j${jobs}`);
-  spawn(
-    "cmake",
-    ["--build", buildDir, "--target", "llama-server", "-j", String(jobs)],
-    {},
-  );
+  try {
+    spawn(
+      "cmake",
+      ["--build", buildDir, "--target", "llama-server", "-j", String(jobs)],
+      {},
+    );
+  } catch (err) {
+    log(
+      `[compile-libllama] WARN: llama-server failed to build for ${abi}; ` +
+        `continuing — it bundles nothing into the APK and libllama.so/libelizainference.so are unaffected. ` +
+        `Cause: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   // libllama.so and the ggml shared-library family are all transitive build
   // products of the `llama` target. b4500's NEEDED chain (verified via
@@ -1636,7 +1738,7 @@ export function buildLibllamaForAbi({
   let llamaOut = null;
   let ggmlOuts = [];
   let runtimeSiblingOuts = [];
-  let sonameAliases = [];
+  const sonameAliases = [];
   if (!isStaticFused) {
     const builtLlama = locateBuiltLib(buildDir, "libllama.so");
     if (!builtLlama) {
@@ -1798,7 +1900,6 @@ export function buildLibllamaForAbi({
     omnivoiceServer: fusedServerOut,
   };
 }
-
 
 /**
  * Find every `libggml*.so` under the build tree. b4500 shipped plain .so
@@ -2018,7 +2119,7 @@ function locateBuiltLib(buildDir, soName) {
  */
 // Cache of the resolved llvm-strip path (from the Android NDK toolchain).
 // Set once on first call so we don't re-walk the NDK dir for every artifact.
-let _ndkLlvmStripPathCache = undefined;
+let _ndkLlvmStripPathCache;
 function locateNdkLlvmStrip() {
   if (_ndkLlvmStripPathCache !== undefined) return _ndkLlvmStripPathCache;
   // Honor the same env-var ladder as build-llama-cpp-mtp's resolveAndroidNdk()
@@ -2116,11 +2217,9 @@ function stripBinary({ filePath, zigBin, log }) {
   // for riscv64 until Zig 0.14's objcopy lands across all build hosts.
   const llvmStrip = locateNdkLlvmStrip();
   if (llvmStrip) {
-    const llvmStripResult = spawnSync(
-      llvmStrip,
-      ["--strip-all", filePath],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
+    const llvmStripResult = spawnSync(llvmStrip, ["--strip-all", filePath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     if (llvmStripResult.status === 0) return true;
     log(
       `[compile-libllama] DEBUG: NDK llvm-strip (${llvmStrip}) failed ` +
@@ -2257,6 +2356,12 @@ export function describeAndroidTargetDryRun({
   log(`  src=${srcDir}`);
   log(`  build=${buildDir}`);
   log(`  install=${abiAssetDir}`);
+  if (parsed.androidAbi === "arm64-v8a") {
+    log(
+      `  zig requirement: ${AARCH64_MUSL_ZIG_MIN_VERSION} <= version < ` +
+        `${AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE} (aarch64-linux-musl pin)`,
+    );
+  }
   if (parsed.fused) {
     log(`  omnivoice: merged in-fork path (tools/omnivoice/)`);
   }

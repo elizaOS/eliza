@@ -95,6 +95,11 @@ function buildLocalizedCharacterPayload(
 
 // ── Hook deps ─────────────────────────────────────────────────────────────
 
+// Upper bound on the in-memory conversation-message prefetch cache. Holds the
+// active conversation plus several neighbors in each swipe direction; oldest
+// entries are evicted first.
+const CONVERSATION_MESSAGE_CACHE_MAX = 16;
+
 export interface DataLoadersDeps {
   // Autonomy refs + setters (from useChatState)
   autonomousStoreRef: RefObject<
@@ -267,6 +272,35 @@ export function useDataLoaders(deps: DataLoadersDeps) {
 
   // ── Conversations ───────────────────────────────────────────────────
 
+  // Prefetch cache: conversationId → its filtered messages. Adjacent
+  // conversations are warmed on every select (prefetchConversationMessages) so a
+  // horizontal swipe paints the thread instantly from memory instead of waiting
+  // on the network. Capped (LRU-ish via Map insertion order) so it can't grow
+  // without bound as the user swipes through a long history.
+  const conversationMessageCacheRef = useRef<
+    Map<string, ConversationMessage[]>
+  >(new Map());
+  // Abort the prior in-flight active-conversation load when a newer one starts:
+  // a fast swipe stacks selects, and only the latest should win the thread.
+  const activeMessageLoadAbortRef = useRef<AbortController | null>(null);
+  // Per-id prefetch aborts so a neighbor is never double-fetched.
+  const prefetchAbortRef = useRef<Map<string, AbortController>>(new Map());
+
+  const cacheConversationMessages = useCallback(
+    (id: string, messages: ConversationMessage[]) => {
+      const cache = conversationMessageCacheRef.current;
+      // Re-insert to move to the most-recent position (eviction is oldest-first).
+      cache.delete(id);
+      cache.set(id, messages);
+      while (cache.size > CONVERSATION_MESSAGE_CACHE_MAX) {
+        const oldest = cache.keys().next().value;
+        if (oldest === undefined) break;
+        cache.delete(oldest);
+      }
+    },
+    [],
+  );
+
   const loadConversations = useCallback(async (): Promise<
     Conversation[] | null
   > => {
@@ -282,15 +316,45 @@ export function useDataLoaders(deps: DataLoadersDeps) {
 
   const loadConversationMessages = useCallback(
     async (convId: string): Promise<LoadConversationMessagesResult> => {
+      // A newer active-conversation load supersedes any prior in-flight one so a
+      // rapid swipe doesn't let an older fetch clobber the latest thread.
+      activeMessageLoadAbortRef.current?.abort();
+      const controller = new AbortController();
+      activeMessageLoadAbortRef.current = controller;
+      const { signal } = controller;
+
+      // Instant paint from the prefetch cache (a swiped-to neighbor) so the
+      // thread never flashes empty mid-swipe; the fetch below still revalidates.
+      const cached = conversationMessageCacheRef.current.get(convId);
+      if (cached) {
+        greetingFiredRef.current = hasConversationBootstrapMessage(cached);
+        conversationMessagesRef.current = cached;
+        setConversationMessages(cached);
+      }
+
       try {
-        const { messages } = await client.getConversationMessages(convId);
+        const { messages } = await client.getConversationMessages(convId, {
+          signal,
+        });
+        // Superseded by a newer load while in flight — let the newer one own the
+        // thread instead of committing this stale result.
+        if (signal.aborted) return { ok: true };
         const nextMessages = filterRenderableConversationMessages(messages);
+        cacheConversationMessages(convId, nextMessages);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
         setConversationMessages(nextMessages);
         return { ok: true };
       } catch (err) {
+        // A newer load aborted this one (fast swipe); the newer load owns the
+        // thread, so report success and let the caller skip its error path.
+        if (
+          signal.aborted ||
+          (err as { name?: string }).name === "AbortError"
+        ) {
+          return { ok: true };
+        }
         const status = (err as { status?: number }).status;
         if (status === 404) {
           const refreshed = await client.listConversations().catch(() => null);
@@ -308,7 +372,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
             setActiveConversationId(null);
             activeConversationIdRef.current = null;
           }
-          // The conversation is definitively gone (404) — clear the thread.
+          // The conversation is definitively gone (404) — clear the thread and
+          // drop any stale cache entry so a later swipe can't resurrect it.
+          conversationMessageCacheRef.current.delete(convId);
           greetingFiredRef.current = false;
           conversationMessagesRef.current = [];
           setConversationMessages([]);
@@ -317,8 +383,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         // wipe the thread. The message store is reused as the on-screen history,
         // and blanking it on a flaky-connection reload looked like the app ate
         // the entire conversation (the data is still server-side; a later reload
-        // restores it). Keep the existing messages and let the caller surface a
-        // transient error instead.
+        // restores it). If we already painted from the prefetch cache, the user
+        // is looking at usable (if slightly stale) content, so treat the failed
+        // revalidation as a soft success rather than surfacing an error over it.
+        if (cached && status !== 404) return { ok: true };
         return {
           ok: false,
           status,
@@ -331,12 +399,45 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     },
     [
       activeConversationIdRef,
+      cacheConversationMessages,
       conversationMessagesRef,
       greetingFiredRef,
       setActiveConversationId,
       setConversationMessages,
       setConversations,
     ],
+  );
+
+  // Warm the prefetch cache for adjacent conversations so a horizontal swipe
+  // paints instantly. Best-effort + abortable: an id already cached or already
+  // in flight is skipped, and a miss just means the eventual select does a
+  // normal (spinner-backed) load.
+  const prefetchConversationMessages = useCallback(
+    (ids: readonly string[]) => {
+      for (const id of ids) {
+        if (!id) continue;
+        if (conversationMessageCacheRef.current.has(id)) continue;
+        if (prefetchAbortRef.current.has(id)) continue;
+        const controller = new AbortController();
+        prefetchAbortRef.current.set(id, controller);
+        void client
+          .getConversationMessages(id, { signal: controller.signal })
+          .then(({ messages }) => {
+            if (controller.signal.aborted) return;
+            cacheConversationMessages(
+              id,
+              filterRenderableConversationMessages(messages),
+            );
+          })
+          .catch(() => {
+            // Prefetch is opportunistic warming; ignore failures.
+          })
+          .finally(() => {
+            prefetchAbortRef.current.delete(id);
+          });
+      }
+    },
+    [cacheConversationMessages],
   );
 
   // ── BSC trade / steward wrappers ────────────────────────────────────
@@ -619,6 +720,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     // Conversations
     loadConversations,
     loadConversationMessages,
+    prefetchConversationMessages,
     // BSC / Steward / Trading
     getBscTradePreflight,
     getBscTradeQuote,

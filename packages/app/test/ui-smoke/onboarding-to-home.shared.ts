@@ -581,12 +581,9 @@ export async function completeOnboardingToHome(
 
 /**
  * Swipe-left on the home page → the rail pans to the springboard, then assert a
- * real launcher tile. Uses a real left-flick (a pointer drag of `steps` moves
- * past the 72px RAIL_FLICK_THRESHOLD, clearly horizontal) — exactly the gesture
- * HomeSpringboardSurface's pointer handlers consume — proving the in-app swipe,
- * not just a navigation event. The handlers key off `isPrimary` + clientX/Y and
- * are pointerType-agnostic, so the same drag drives both the desktop and the
- * touch (`hasTouch:true, isMobile:true`) contexts.
+ * real launcher tile. Uses a real left-flick that moves past the 72px
+ * RAIL_FLICK_THRESHOLD. Touch-capable mobile contexts drive the gesture through
+ * Chromium's touch-input path; desktop contexts use a mouse pointer drag.
  */
 export async function swipeLeftToSpringboard(
   page: Page,
@@ -598,13 +595,43 @@ export async function swipeLeftToSpringboard(
   if (!box) throw new Error("home-springboard-home-page has no bounding box");
   const startX = box.x + box.width * 0.72;
   const midY = box.y + box.height * 0.5;
-  await page.mouse.move(startX, midY);
-  await page.mouse.down();
-  // Several steps so pointermove fires with a clearly-horizontal, > -72px dx.
-  for (let i = 1; i <= 6; i++) {
-    await page.mouse.move(startX - i * 40, midY);
+  const touchCapable = await page.evaluate(
+    () =>
+      navigator.maxTouchPoints > 0 ||
+      window.matchMedia("(pointer: coarse)").matches,
+  );
+
+  if (touchCapable) {
+    const client = await page.context().newCDPSession(page);
+    try {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x: startX, y: midY, id: 1, radiusX: 4, radiusY: 4 }],
+      });
+      for (let i = 1; i <= 6; i++) {
+        await client.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [
+            { x: startX - i * 40, y: midY, id: 1, radiusX: 4, radiusY: 4 },
+          ],
+        });
+      }
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+    } finally {
+      await client.detach().catch(() => undefined);
+    }
+  } else {
+    await page.mouse.move(startX, midY);
+    await page.mouse.down();
+    // Several steps so pointermove fires with a clearly-horizontal, > -72px dx.
+    for (let i = 1; i <= 6; i++) {
+      await page.mouse.move(startX - i * 40, midY);
+    }
+    await page.mouse.up();
   }
-  await page.mouse.up();
 
   await expect(surface).toHaveAttribute("data-page", "springboard", {
     timeout: 10_000,

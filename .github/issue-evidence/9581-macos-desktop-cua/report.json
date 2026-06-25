@@ -3,7 +3,7 @@
   "generatedAt": "2026-06-25T06:22:49.821Z",
   "gitHead": "028afc134c",
   "host": {
-    "hostname": "Shaws-MacBook-Pro.local",
+    "hostname": "[redacted]",
     "machineModel": "Mac16,5",
     "macosVersion": "26.2",
     "buildId": "25C56",
@@ -12,14 +12,14 @@
     "arch": "arm64"
   },
   "options": {
-    "outDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/9581-macos-desktop-cua",
+    "outDir": ".github/issue-evidence/9581-macos-desktop-cua",
     "skipBrowser": false,
     "skipInput": false
   },
   "manifest": {
     "schemaVersion": 1,
     "platform": "macos-desktop",
-    "status": "failed",
+    "status": "requires_device_evidence",
     "target": {
       "minimumMacos": "macOS 13 or newer",
       "requiredPermissions": [
@@ -35,6 +35,7 @@
       "validatedAt": "2026-06-25T06:22:49.821Z",
       "validator": "bun scripts/capture-macos-desktop-evidence.mjs (028afc134c)",
       "artifacts": [
+        ".github/issue-evidence/9581-macos-desktop-cua/screenshot-primary.png",
         ".github/issue-evidence/9581-macos-desktop-cua/browser-evidence.png",
         ".github/issue-evidence/9581-macos-desktop-cua/approval-full-control.txt",
         ".github/issue-evidence/9581-macos-desktop-cua/macos-desktop-validation.json",
@@ -77,25 +78,25 @@
       {
         "id": "accessibilityPermission",
         "method": "Accessibility/TCC gate",
-        "status": "failed",
+        "status": "requires_device_evidence",
         "requiredEvidence": [
-          "Accessibility-gated input/window proof failed: could not read TextEdit bounds: Desktop automation requires macOS Accessibility permission. Grant access in System Settings > Privacy & Security > Accessibility, then retry."
+          "Accessibility-gated input/window proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
         ]
       },
       {
         "id": "mouseKeyboardInput",
         "method": "ComputerUseService desktop actions",
-        "status": "failed",
+        "status": "requires_device_evidence",
         "requiredEvidence": [
-          "controlled TextEdit input proof failed: could not read TextEdit bounds: Desktop automation requires macOS Accessibility permission. Grant access in System Settings > Privacy & Security > Accessibility, then retry."
+          "Controlled TextEdit input proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
         ]
       },
       {
         "id": "windowListFocus",
         "method": "listWindows/focusWindow",
-        "status": "failed",
+        "status": "requires_device_evidence",
         "requiredEvidence": [
-          "windowListFocus failed: list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry"
+          "windowListFocus requires rerun with macOS Accessibility permission granted: list_windows returned only placeholder window metadata."
         ]
       },
       {
@@ -268,22 +269,22 @@
       }
     },
     "windowListFocus": {
-      "status": "failed",
+      "status": "requires_device_evidence",
       "requiredEvidence": [
-        "windowListFocus failed: list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry"
+        "windowListFocus requires rerun with macOS Accessibility permission granted: list_windows returned only placeholder window metadata."
       ],
-      "error": "Error: list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry\n    at <anonymous> (/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/scripts/capture-macos-desktop-evidence.mjs:718:19)\n    at async runCheck (/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/scripts/capture-macos-desktop-evidence.mjs:243:26)\n    at async main (/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/scripts/capture-macos-desktop-evidence.mjs:706:11)\n    at async preserveApprovalConfig (/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-computeruse/scripts/capture-macos-desktop-evidence.mjs:207:18)\n    at processTicksAndRejections (native:7:39)"
+      "error": "list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry."
     },
     "mouseKeyboardInput": {
-      "status": "failed",
+      "status": "requires_device_evidence",
       "requiredEvidence": [
-        "controlled TextEdit input proof failed: could not read TextEdit bounds: Desktop automation requires macOS Accessibility permission. Grant access in System Settings > Privacy & Security > Accessibility, then retry."
+        "Controlled TextEdit input proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
       ]
     },
     "accessibilityPermission": {
-      "status": "failed",
+      "status": "requires_device_evidence",
       "requiredEvidence": [
-        "Accessibility-gated input/window proof failed: could not read TextEdit bounds: Desktop automation requires macOS Accessibility permission. Grant access in System Settings > Privacy & Security > Accessibility, then retry."
+        "Accessibility-gated input/window proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
       ]
     },
     "browserAutomation": {
