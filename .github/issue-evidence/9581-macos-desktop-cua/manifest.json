@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "platform": "macos-desktop",
-  "status": "requires_device_evidence",
+  "status": "failed",
   "target": {
     "minimumMacos": "macOS 13 or newer",
     "requiredPermissions": [
@@ -17,6 +17,7 @@
     "validatedAt": "2026-06-25T06:22:49.821Z",
     "validator": "bun scripts/capture-macos-desktop-evidence.mjs (028afc134c)",
     "artifacts": [
+      ".github/issue-evidence/9581-macos-desktop-cua/screenshot-primary.png",
       ".github/issue-evidence/9581-macos-desktop-cua/browser-evidence.png",
       ".github/issue-evidence/9581-macos-desktop-cua/approval-full-control.txt",
       ".github/issue-evidence/9581-macos-desktop-cua/macos-desktop-validation.json",
@@ -59,27 +60,24 @@
     {
       "id": "accessibilityPermission",
       "method": "Accessibility/TCC gate",
-      "status": "requires_device_evidence",
+      "status": "failed",
       "requiredEvidence": [
-        "requires a macOS host with Accessibility (TCC) permission granted to the runner; ungranted on this M4 Max run so window-list/focus + input + Accessibility could not be exercised (the other 6 checks passed on real hardware)",
         "Accessibility-gated input/window proof failed: could not read TextEdit bounds: Desktop automation requires macOS Accessibility permission. Grant access in System Settings > Privacy & Security > Accessibility, then retry."
       ]
     },
     {
       "id": "mouseKeyboardInput",
       "method": "ComputerUseService desktop actions",
-      "status": "requires_device_evidence",
+      "status": "failed",
       "requiredEvidence": [
-        "requires a macOS host with Accessibility (TCC) permission granted to the runner; ungranted on this M4 Max run so window-list/focus + input + Accessibility could not be exercised (the other 6 checks passed on real hardware)",
         "controlled TextEdit input proof failed: could not read TextEdit bounds: Desktop automation requires macOS Accessibility permission. Grant access in System Settings > Privacy & Security > Accessibility, then retry."
       ]
     },
     {
       "id": "windowListFocus",
       "method": "listWindows/focusWindow",
-      "status": "requires_device_evidence",
+      "status": "failed",
       "requiredEvidence": [
-        "requires a macOS host with Accessibility (TCC) permission granted to the runner; ungranted on this M4 Max run so window-list/focus + input + Accessibility could not be exercised (the other 6 checks passed on real hardware)",
         "windowListFocus failed: list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry"
       ]
     },
