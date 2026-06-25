@@ -48,6 +48,30 @@ export function toolNameFromRpcBody(body: McpProxyJson): string {
   return typeof name === "string" && name.length > 0 ? name : "unknown";
 }
 
+/**
+ * Decide what an `/api/mcp/proxy/[mcpId]` GET caller may see for a `live` MCP.
+ *
+ * `userMcpsService.getById` is unscoped (no org / is_public filter), and a `live`
+ * MCP can still be non-public, so the route must gate access itself (mirrors GET
+ * /api/v1/mcps/[mcpId]). Pure + exported so the rule is unit-tested without a
+ * live Worker/DB:
+ *  - owner (same org)            → full access, real endpoint;
+ *  - non-owner of a public MCP   → access, but the platform proxy URL only (the
+ *                                  operator's raw external_endpoint is hidden);
+ *  - non-owner of a non-public   → no access (route returns the same 404 as a
+ *    MCP                           missing one).
+ */
+export function resolveMcpProxyView(params: {
+  mcpOrganizationId: string;
+  mcpIsPublic: boolean;
+  viewerOrganizationId: string | null | undefined;
+}): { allowed: boolean; isOwner: boolean } {
+  const isOwner =
+    !!params.viewerOrganizationId &&
+    params.viewerOrganizationId === params.mcpOrganizationId;
+  return { allowed: isOwner || params.mcpIsPublic, isOwner };
+}
+
 export async function parseJsonBody(request: Request): Promise<McpProxyJson> {
   const contentType = request.headers.get("content-type");
   if (!contentType?.includes("application/json")) {
@@ -78,6 +102,18 @@ app.get("/", async (c) => {
     return c.json({ error: "MCP is not available" }, 404);
   }
 
+  // Auth is optional so the public MCP catalog stays anonymously browsable;
+  // resolveMcpProxyView enforces the owner-or-public access rule.
+  const viewer = await requireUserOrApiKeyWithOrg(c).catch(() => null);
+  const { allowed, isOwner } = resolveMcpProxyView({
+    mcpOrganizationId: mcp.organization_id,
+    mcpIsPublic: mcp.is_public,
+    viewerOrganizationId: viewer?.organization_id,
+  });
+  if (!allowed) {
+    return c.json({ error: "MCP not found" }, 404);
+  }
+
   const baseUrl = c.env.NEXT_PUBLIC_APP_URL ?? "https://www.elizacloud.ai";
 
   return c.json({
@@ -91,7 +127,12 @@ app.get("/", async (c) => {
       x402PriceUsd: mcp.x402_price_usd,
       x402Enabled: mcp.x402_enabled,
     },
-    endpoint: userMcpsService.getEndpointUrl(mcp, baseUrl),
+    // Owners see the real endpoint (incl. their own external URL); non-owners
+    // browsing a public MCP get the platform proxy URL so the operator's raw
+    // external_endpoint is never disclosed.
+    endpoint: isOwner
+      ? userMcpsService.getEndpointUrl(mcp, baseUrl)
+      : `${baseUrl}/api/mcp/proxy/${mcp.id}`,
     transport: mcp.transport_type,
   });
 });

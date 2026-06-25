@@ -12,6 +12,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type McpProxyJson,
   parseJsonBody,
+  resolveMcpProxyView,
   toolNameFromRpcBody,
 } from "../mcp/proxy/[mcpId]/route";
 
@@ -115,5 +116,64 @@ describe("parseJsonBody", () => {
       headers: { "content-type": "application/json" },
     });
     await expect(parseJsonBody(req)).rejects.toThrow();
+  });
+});
+
+describe("resolveMcpProxyView (cross-org access gate)", () => {
+  const OWNER = "org-owner";
+  const OTHER = "org-other";
+
+  test("owner of a non-public MCP gets full access", () => {
+    const view = resolveMcpProxyView({
+      mcpOrganizationId: OWNER,
+      mcpIsPublic: false,
+      viewerOrganizationId: OWNER,
+    });
+    expect(view).toEqual({ allowed: true, isOwner: true });
+  });
+
+  test("non-owner is denied a non-public MCP (no cross-org disclosure)", () => {
+    const view = resolveMcpProxyView({
+      mcpOrganizationId: OWNER,
+      mcpIsPublic: false,
+      viewerOrganizationId: OTHER,
+    });
+    expect(view).toEqual({ allowed: false, isOwner: false });
+  });
+
+  test("anonymous caller is denied a non-public MCP", () => {
+    const view = resolveMcpProxyView({
+      mcpOrganizationId: OWNER,
+      mcpIsPublic: false,
+      viewerOrganizationId: null,
+    });
+    expect(view).toEqual({ allowed: false, isOwner: false });
+  });
+
+  test("non-owner may view a public MCP but is not treated as owner", () => {
+    const view = resolveMcpProxyView({
+      mcpOrganizationId: OWNER,
+      mcpIsPublic: true,
+      viewerOrganizationId: OTHER,
+    });
+    expect(view).toEqual({ allowed: true, isOwner: false });
+  });
+
+  test("anonymous caller may view a public MCP (catalog browse)", () => {
+    const view = resolveMcpProxyView({
+      mcpOrganizationId: OWNER,
+      mcpIsPublic: true,
+      viewerOrganizationId: undefined,
+    });
+    expect(view).toEqual({ allowed: true, isOwner: false });
+  });
+
+  test("empty-string viewer org is never treated as owner", () => {
+    const view = resolveMcpProxyView({
+      mcpOrganizationId: "",
+      mcpIsPublic: false,
+      viewerOrganizationId: "",
+    });
+    expect(view).toEqual({ allowed: false, isOwner: false });
   });
 });
