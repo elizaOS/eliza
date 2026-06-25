@@ -104,6 +104,18 @@ async function resolveRelativeSpecifier(fromFile, specifier) {
   if (await exists(path.join(resolved, "index.js"))) {
     return `${specifier}/index.js`;
   }
+  // Declaration-only modules: a bundled build (e.g. `bun build` with a single
+  // entrypoint) emits one `dist/index.js` but still writes per-file `.d.ts`
+  // declarations. Those `.d.ts` re-exports have no sibling `.js`, yet the
+  // specifier must still carry a `.js` extension for NodeNext consumers — type
+  // resolution maps the `.js` specifier onto the adjacent `.d.ts`. Without this,
+  // a bare `from "./x"` in a `.d.ts` is unresolvable for NodeNext importers.
+  if (await exists(`${resolved}.d.ts`)) {
+    return `${specifier}.js`;
+  }
+  if (await exists(path.join(resolved, "index.d.ts"))) {
+    return `${specifier}/index.js`;
+  }
   return specifier;
 }
 
