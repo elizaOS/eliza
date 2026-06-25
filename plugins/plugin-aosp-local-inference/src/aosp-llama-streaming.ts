@@ -275,7 +275,7 @@ export function createAospStreamingLlmBinding(deps: {
   const isNull = (p: unknown): boolean =>
     p === null || p === undefined || p === 0 || p === 0n;
   const toBig = (p: AospLlmStreamHandle): bigint =>
-    typeof p === "bigint" ? p : BigInt(p as unknown as number);
+    typeof p === "bigint" ? p : BigInt(p);
 
   return {
     llmStreamSupported(): boolean {
