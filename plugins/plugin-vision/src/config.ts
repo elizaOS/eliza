@@ -153,7 +153,7 @@ export class ConfigurationManager {
 
       return parsed;
     } catch (error) {
-      logger.error("[ConfigurationManager] Invalid configuration:", error);
+      logger.error({ error }, "[ConfigurationManager] Invalid configuration:");
       if (error instanceof z.ZodError) {
         logger.error(
           "[ConfigurationManager] Validation errors:",
@@ -216,8 +216,8 @@ export class ConfigurationManager {
       logger.info("[ConfigurationManager] Configuration updated");
     } catch (error) {
       logger.error(
+        { error },
         "[ConfigurationManager] Failed to update configuration:",
-        error,
       );
       throw error;
     }

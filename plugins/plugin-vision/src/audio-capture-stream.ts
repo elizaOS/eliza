@@ -64,7 +64,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
 
       logger.info("[StreamingAudio] Streaming audio capture initialized");
     } catch (error) {
-      logger.error("[StreamingAudio] Failed to initialize:", error);
+      logger.error({ error }, "[StreamingAudio] Failed to initialize:");
       throw error;
     }
   }
@@ -255,7 +255,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
         this.emit("transcription", { text: result, isFinal: false });
       }
     } catch (error) {
-      logger.error("[StreamingAudio] Transcription error:", error);
+      logger.error({ error }, "[StreamingAudio] Transcription error:");
     }
 
     this.transcriptionInProgress = false;
@@ -302,7 +302,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
         }, this.config.responseDelay ?? 3000);
       }
     } catch (error) {
-      logger.error("[StreamingAudio] Final transcription error:", error);
+      logger.error({ error }, "[StreamingAudio] Final transcription error:");
     } finally {
       // Clear audio buffer
       this.audioBuffer = [];
@@ -357,7 +357,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
 
       return result as string;
     } catch (error) {
-      logger.error("[StreamingAudio] Transcription failed:", error);
+      logger.error({ error }, "[StreamingAudio] Transcription failed:");
       return null;
     }
   }
@@ -406,7 +406,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
       // Emit event for response generation
       this.emit("utteranceComplete", transcription);
     } catch (error) {
-      logger.error("[StreamingAudio] Response generation error:", error);
+      logger.error({ error }, "[StreamingAudio] Response generation error:");
     }
   }
 
@@ -427,7 +427,10 @@ export class StreamingAudioCaptureService extends EventEmitter {
 
       logger.info("[StreamingAudio] Audio transcription stored in context");
     } catch (error) {
-      logger.error("[StreamingAudio] Failed to create audio memory:", error);
+      logger.error(
+        { error },
+        "[StreamingAudio] Failed to create audio memory:",
+      );
     }
   }
 

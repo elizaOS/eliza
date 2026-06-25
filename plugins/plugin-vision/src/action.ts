@@ -863,7 +863,7 @@ async function runCapture(
       },
     };
   } catch (error) {
-    logger.error("[VISION/capture] Error capturing image:", error);
+    logger.error({ error }, "[VISION/capture] Error capturing image:");
     const thought = "An error occurred while trying to capture an image.";
     const errorMessage = error instanceof Error ? error.message : String(error);
     const text = `Error capturing image: ${errorMessage}`;
@@ -1052,7 +1052,7 @@ async function runSetMode(
       data: { actionName: "VISION", op: "set_mode", visionMode: newMode },
     };
   } catch (error) {
-    logger.error("[VISION/set_mode] Error changing vision mode:", error);
+    logger.error({ error }, "[VISION/set_mode] Error changing vision mode:");
     const errorMessage = error instanceof Error ? error.message : String(error);
     const thought = "An error occurred while trying to change the vision mode.";
     const text = `Error changing vision mode: ${errorMessage}`;
@@ -1222,7 +1222,7 @@ async function runNameEntity(
       };
     }
   } catch (error) {
-    logger.error("[VISION/name_entity] Error:", error);
+    logger.error({ error }, "[VISION/name_entity] Error:");
     const thought = "Failed to name entity.";
     const text = `Sorry, I couldn't name the entity: ${error instanceof Error ? error.message : "Unknown error"}`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
@@ -1384,7 +1384,7 @@ async function runIdentifyPerson(
       },
     };
   } catch (error) {
-    logger.error("[VISION/identify_person] Error:", error);
+    logger.error({ error }, "[VISION/identify_person] Error:");
     const thought = "Failed to identify people.";
     const text = `Sorry, I couldn't identify people: ${error instanceof Error ? error.message : "Unknown error"}`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
@@ -1494,7 +1494,7 @@ async function runTrackEntity(
       },
     };
   } catch (error) {
-    logger.error("[VISION/track_entity] Error:", error);
+    logger.error({ error }, "[VISION/track_entity] Error:");
     const thought = "Failed to track entities.";
     const text = `Sorry, I couldn't track entities: ${error instanceof Error ? error.message : "Unknown error"}`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);

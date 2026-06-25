@@ -61,7 +61,7 @@ export class AudioCaptureService {
 
       logger.info("[AudioCapture] Audio capture initialized");
     } catch (error) {
-      logger.error("[AudioCapture] Failed to initialize:", error);
+      logger.error({ error }, "[AudioCapture] Failed to initialize:");
       throw error;
     }
   }
@@ -181,7 +181,7 @@ export class AudioCaptureService {
 
       return null;
     } catch (error) {
-      logger.error("[AudioCapture] Recording/transcription failed:", error);
+      logger.error({ error }, "[AudioCapture] Recording/transcription failed:");
       await fs.unlink(audioFile).catch(() => {});
       return null;
     } finally {
@@ -245,7 +245,7 @@ export class AudioCaptureService {
       // createMemory requires runtime-specific database adapter implementation
       logger.info("[AudioCapture] Audio transcription stored in context");
     } catch (error) {
-      logger.error("[AudioCapture] Failed to create audio memory:", error);
+      logger.error({ error }, "[AudioCapture] Failed to create audio memory:");
     }
   }
 
@@ -306,7 +306,7 @@ export class AudioCaptureService {
         }
       }
     } catch (error) {
-      logger.error("[AudioCapture] Failed to list audio devices:", error);
+      logger.error({ error }, "[AudioCapture] Failed to list audio devices:");
     }
 
     return devices;

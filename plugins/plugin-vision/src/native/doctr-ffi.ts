@@ -43,8 +43,7 @@ function defaultLibraryPath(): string {
 /** Where the runtime expects GGUF weights. */
 export function defaultDetWeightsPath(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ??
-    path.join(os.homedir(), ".eliza");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return (
     process.env.ELIZA_DOCTR_DET_GGUF ??
     path.join(stateDir, "models", "vision", "doctr-det.gguf")
@@ -53,8 +52,7 @@ export function defaultDetWeightsPath(): string {
 
 export function defaultRecWeightsPath(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ??
-    path.join(os.homedir(), ".eliza");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return (
     process.env.ELIZA_DOCTR_REC_GGUF ??
     path.join(stateDir, "models", "vision", "doctr-rec.gguf")
@@ -187,7 +185,7 @@ export async function loadDoctrBindings(): Promise<DocTRBindings | null> {
       } catch (error) {
         logger.warn(
           `${MODULE_TAG} dlopen failed for ${libPath}:`,
-          error instanceof Error ? error.message : error,
+          error instanceof Error ? error.message : String(error),
         );
         return null;
       }

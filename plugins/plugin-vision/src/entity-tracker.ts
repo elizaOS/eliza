@@ -325,7 +325,7 @@ export class EntityTracker {
         }
       }
     } catch (error) {
-      logger.error("[EntityTracker] Failed to sync with runtime:", error);
+      logger.error({ error }, "[EntityTracker] Failed to sync with runtime:");
     }
   }
 
