@@ -13,13 +13,14 @@
  *   totalCredits       = baseCredits + markupCredits + platformFeeCredits
  *
  * `markupPercent` is the creator / affiliate markup expressed as a percentage
- * (0..100). `platformFeeRate` is the platform's cut expressed as a fraction
- * (0..1) and defaults to `0` so routes that only charge a creator markup do
- * not accidentally pick up a platform fee. The MCP-proxy affiliate flow opts
- * in by passing `platformFeeRate: DEFAULT_PLATFORM_FEE_RATE`.
+ * (0..`MAX_MARKUP_PERCENT`). `platformFeeRate` is the platform's cut expressed
+ * as a fraction (0..1) and defaults to `0` so routes that only charge a creator
+ * markup do not accidentally pick up a platform fee. The MCP-proxy affiliate
+ * flow opts in by passing `platformFeeRate: DEFAULT_PLATFORM_FEE_RATE`.
  */
 
 export const DEFAULT_PLATFORM_FEE_RATE = 0.2;
+export const MAX_MARKUP_PERCENT = 1000;
 
 export interface CreditMarkupBreakdown {
   /** Base cost (credits or USD) before markups. */
@@ -35,7 +36,7 @@ export interface CreditMarkupBreakdown {
 export interface CreditMarkupInput {
   /** Base cost (credits or USD) before markups. Must be a non-negative finite number. */
   baseCredits: number;
-  /** Creator / affiliate markup percentage in the range 0..100. */
+  /** Creator / affiliate markup percentage in the range 0..MAX_MARKUP_PERCENT. */
   markupPercent: number;
   /**
    * Platform fee rate expressed as a fraction (e.g. 0.2 for 20%). Defaults
@@ -72,7 +73,7 @@ export function calculateCreditMarkup(input: CreditMarkupInput): CreditMarkupBre
   assertFiniteNonNegative(baseCredits, "baseCredits");
   assertFiniteNonNegative(markupPercent, "markupPercent");
   assertFiniteNonNegative(platformFeeRate, "platformFeeRate");
-  assertAtMost(markupPercent, 100, "markupPercent");
+  assertAtMost(markupPercent, MAX_MARKUP_PERCENT, "markupPercent");
   assertAtMost(platformFeeRate, 1, "platformFeeRate");
 
   const markupCredits = baseCredits * (markupPercent / 100);

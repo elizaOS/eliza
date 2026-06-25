@@ -3,6 +3,7 @@ export {
   type CreditMarkupInput,
   calculateCreditMarkup,
   DEFAULT_PLATFORM_FEE_RATE,
+  MAX_MARKUP_PERCENT,
 } from "./credit-markup.js";
 export {
   applyMarkup,

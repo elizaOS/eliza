@@ -348,6 +348,25 @@ async function handleChat(
         markupPercent: character.monetization_enabled ? markupPct : 0,
       });
 
+    const reconciliation = await reservation.reconcile(actualTotal);
+    if (reconciliation?.adjustmentType === "uncollected_overage") {
+      logger.error("[Agent A2A] Final usage overage was not collected", {
+        agentId: character.id,
+        ownerId: character.user_id,
+        consumerOrgId: authUser.organization_id,
+        reserved: reconciliation.reservedAmount,
+        actual: reconciliation.actualCost,
+      });
+      return c.json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32003,
+          message: "Insufficient credits for final usage cost",
+        },
+        id: rpcId,
+      });
+    }
+
     if (character.monetization_enabled && actualCreatorMarkup > 0) {
       await agentMonetizationService.recordCreatorEarnings({
         agentId: character.id,
@@ -368,8 +387,6 @@ async function handleChat(
         },
       );
     }
-
-    await reservation.reconcile(actualTotal);
 
     return c.json({
       jsonrpc: "2.0",

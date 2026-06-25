@@ -21,7 +21,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   calculateCost,
-  estimateTokens,
+  estimateRequestCost,
   getProviderFromModel,
 } from "@/lib/pricing";
 import {
@@ -235,7 +235,7 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   }
 });
 
-async function handleToolCall(
+export async function handleToolCall(
   c: AppContext,
   character: {
     id: string;
@@ -319,17 +319,23 @@ async function handleToolCall(
       effectiveThinkingBudget != null
         ? baseOutputTokens + effectiveThinkingBudget
         : baseOutputTokens;
+    const estimatedBaseCost = await estimateRequestCost(
+      model,
+      messages,
+      estimatedOutputTokens,
+    );
+    const { totalCredits: estimatedTotalCost } = calculateCreditMarkup({
+      baseCredits: estimatedBaseCost,
+      markupPercent: character.monetization_enabled ? markupPct : 0,
+    });
 
     let reservation: CreditReservation;
     try {
       reservation = await creditsService.reserve({
         organizationId: authUser.organization_id,
-        model,
-        provider,
-        estimatedInputTokens: estimateTokens(systemPrompt + message),
-        estimatedOutputTokens,
+        amount: estimatedTotalCost,
         userId: authUser.id,
-        description: `Agent MCP: ${character.name}`,
+        description: `Agent MCP: ${character.name} (${model})`,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
@@ -381,6 +387,25 @@ async function handleToolCall(
           markupPercent: character.monetization_enabled ? markupPct : 0,
         });
 
+      const reconciliation = await reservation.reconcile(actualTotal);
+      if (reconciliation?.adjustmentType === "uncollected_overage") {
+        logger.error("[Agent MCP] Final usage overage was not collected", {
+          agentId: character.id,
+          ownerId: character.user_id,
+          consumerOrgId: authUser.organization_id,
+          reserved: reconciliation.reservedAmount,
+          actual: reconciliation.actualCost,
+        });
+        return c.json({
+          jsonrpc: "2.0",
+          error: {
+            code: -32003,
+            message: "Insufficient credits for final usage cost",
+          },
+          id: rpcId,
+        });
+      }
+
       if (character.monetization_enabled && actualCreatorMarkup > 0) {
         await agentMonetizationService.recordCreatorEarnings({
           agentId: character.id,
@@ -401,8 +426,6 @@ async function handleToolCall(
           },
         );
       }
-
-      await reservation.reconcile(actualTotal);
 
       return c.json({
         jsonrpc: "2.0",

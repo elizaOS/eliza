@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { calculateCreditMarkup, DEFAULT_PLATFORM_FEE_RATE } from "./credit-markup";
+import {
+  calculateCreditMarkup,
+  DEFAULT_PLATFORM_FEE_RATE,
+  MAX_MARKUP_PERCENT,
+} from "./credit-markup";
 
 describe("calculateCreditMarkup", () => {
   test("applies basic creator markup with no platform fee", () => {
@@ -93,10 +97,22 @@ describe("calculateCreditMarkup", () => {
     ).toThrow(RangeError);
   });
 
+  test("applies creator markup above 100%, up to the validated ceiling", () => {
+    expect(calculateCreditMarkup({ baseCredits: 10, markupPercent: 500 })).toEqual({
+      baseCredits: 10,
+      markupCredits: 50,
+      platformFeeCredits: 0,
+      totalCredits: 60,
+    });
+    expect(() =>
+      calculateCreditMarkup({ baseCredits: 1, markupPercent: MAX_MARKUP_PERCENT }),
+    ).not.toThrow();
+  });
+
   test("rejects values above documented markup and platform fee bounds", () => {
-    expect(() => calculateCreditMarkup({ baseCredits: 1, markupPercent: 100.0001 })).toThrow(
-      RangeError,
-    );
+    expect(() =>
+      calculateCreditMarkup({ baseCredits: 1, markupPercent: MAX_MARKUP_PERCENT + 0.0001 }),
+    ).toThrow(RangeError);
     expect(() =>
       calculateCreditMarkup({
         baseCredits: 1,
