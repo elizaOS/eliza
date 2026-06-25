@@ -1,8 +1,10 @@
 import { existsSync, statSync } from "node:fs";
+import { filterByAccessContext } from "../../access-control/filter";
 import { createUniqueUuid } from "../../entities";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
 import {
+	type AccessContext,
 	type Content,
 	type CustomMetadata,
 	type IAgentRuntime,
@@ -326,6 +328,7 @@ export class DocumentService extends Service {
 	private async filterVisibleMemories(
 		memories: Memory[],
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<Memory[]> {
 		const visible: Memory[] = [];
 		for (const memory of memories) {
@@ -333,7 +336,14 @@ export class DocumentService extends Service {
 				visible.push(memory);
 			}
 		}
-		return visible;
+		// When the caller threads in an AccessContext (who is asking, in which
+		// world, with what role), apply the scope-read primitive as a second,
+		// strictly-subtractive gate. A memory must clear BOTH this and
+		// `canAccessDocument` above to be returned, so a requester can never widen
+		// their view by routing through this path. With no AccessContext the
+		// behaviour is unchanged (single-tenant byte-for-byte).
+		if (!accessContext) return visible;
+		return filterByAccessContext(visible, accessContext, this.runtime.agentId);
 	}
 
 	async getDocumentById(
@@ -868,6 +878,7 @@ export class DocumentService extends Service {
 		message: Memory,
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		searchMode?: SearchMode,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for document query");
@@ -893,15 +904,20 @@ export class DocumentService extends Service {
 		}
 
 		if (effectiveMode === "keyword") {
-			return this._keywordSearch(queryText, filterScope, message);
+			return this._keywordSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+			);
 		}
 
 		if (effectiveMode === "vector") {
-			return this._vectorSearch(queryText, filterScope, message);
+			return this._vectorSearch(queryText, filterScope, message, accessContext);
 		}
 
 		// hybrid: vector + BM25 combined
-		return this._hybridSearch(queryText, filterScope, message);
+		return this._hybridSearch(queryText, filterScope, message, accessContext);
 	}
 
 	/** Pure vector (cosine-similarity) search — original behaviour. */
@@ -909,13 +925,19 @@ export class DocumentService extends Service {
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		// Bound the recall embed and fail open to keyword/BM25 recall on a
 		// slow/unavailable embed (issue #47): a slow embed costs recall richness,
 		// never reply latency. `embedRecallQuery` caches + dedupes per turn.
 		const embedding = await embedRecallQuery(this.runtime, queryText);
 		if (!embedding) {
-			return this._keywordSearch(queryText, filterScope, message);
+			return this._keywordSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+			);
 		}
 
 		const fragments = await this.runtime.searchMemories({
@@ -930,6 +952,7 @@ export class DocumentService extends Service {
 		const visibleFragments = await this.filterVisibleMemories(
 			fragments.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
 			message,
+			accessContext,
 		);
 
 		return visibleFragments
@@ -951,6 +974,7 @@ export class DocumentService extends Service {
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		const allFragments = await this.runtime.getMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
@@ -964,6 +988,7 @@ export class DocumentService extends Service {
 				this.isDocumentFragmentMemory(fragment),
 			),
 			message,
+			accessContext,
 		);
 		const valid = visibleFragments.filter(
 			(f) => f.id !== undefined && f.content.text,
@@ -1000,6 +1025,7 @@ export class DocumentService extends Service {
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		// Bound the recall embed and fail open to keyword/BM25 recall on a
 		// slow/unavailable embed (issue #47). `_keywordSearch` is the same BM25
@@ -1007,7 +1033,12 @@ export class DocumentService extends Service {
 		// gracefully to keyword-only recall instead of blocking the reply.
 		const embedding = await embedRecallQuery(this.runtime, queryText);
 		if (!embedding) {
-			return this._keywordSearch(queryText, filterScope, message);
+			return this._keywordSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+			);
 		}
 
 		// Fetch a larger candidate set so BM25 can re-rank meaningfully
@@ -1023,6 +1054,7 @@ export class DocumentService extends Service {
 		const visibleCandidates = await this.filterVisibleMemories(
 			candidates.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
 			message,
+			accessContext,
 		);
 		const valid = visibleCandidates.filter(
 			(f) => f.id !== undefined && f.content.text,

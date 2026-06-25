@@ -15,12 +15,14 @@
 import crypto from "node:crypto";
 
 import type {
+  AccessContext,
   AgentRuntime,
   Content,
   createMessageMemory,
+  Memory,
   UUID,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { buildAccessContext, parseJSONObjectFromText } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import {
@@ -206,6 +208,38 @@ export async function maybeAugmentChatMessageWithDocuments(
   }
 
   const agentId = runtime.agentId as UUID;
+
+  // Build the requester's AccessContext from the ORIGINAL message — who is
+  // asking, in which world, with what role — BEFORE the searchMessage below
+  // coerces an empty entityId to the agentId. Threading this into
+  // searchDocuments makes the documents service apply the scope-read filter
+  // (filterByAccessContext) as a non-bypassable post-filter, so retrieval
+  // returns only fragments this requester is permitted to see. A failure to
+  // resolve a world leaves role/worldId undefined, which the filter treats as
+  // "no elevated access" (least-privileged USER) rather than unrestricted.
+  let accessContext: AccessContext | undefined;
+  if (
+    typeof message.entityId === "string" &&
+    message.entityId.length > 0 &&
+    message.entityId !== agentId
+  ) {
+    try {
+      accessContext = await buildAccessContext(runtime, message as Memory);
+    } catch (error) {
+      // Fail closed: when the requester can't be resolved we still pass a
+      // minimal context pinned to their entity so the read runs as the
+      // least-privileged USER rather than dropping the gate entirely.
+      runtime.logger.warn(
+        {
+          src: "api:chat-augmentation",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Access-context resolution failed; falling back to requester-only scope",
+      );
+      accessContext = { requesterEntityId: message.entityId as UUID };
+    }
+  }
+
   const roomId =
     typeof message.roomId === "string" && message.roomId.trim().length > 0
       ? (message.roomId as UUID)
@@ -247,6 +281,8 @@ export async function maybeAugmentChatMessageWithDocuments(
             },
           },
           { roomId: scopeRoomId },
+          undefined,
+          accessContext,
         )) ?? [],
     );
     return { matches: result.value, timedOut: result.timedOut };
