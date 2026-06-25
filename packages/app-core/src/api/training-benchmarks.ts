@@ -210,16 +210,6 @@ function resolveBenchmarkStateDir(env: NodeJS.ProcessEnv): string {
 // Reader — opens the SQLite file in read-only mode for each request
 // ---------------------------------------------------------------------------
 
-interface DbRunRow {
-  id: number | bigint;
-  model_id: string;
-  benchmark: string;
-  score: number;
-  ts: number | bigint;
-  dataset_version: string;
-  code_commit: string;
-}
-
 interface BenchmarkResultsReader {
   ready: boolean;
   getHistory(args: {
@@ -276,11 +266,10 @@ export function openBenchmarkResultsReader(
   return {
     ready: true,
     getHistory({ modelId, benchmark, limit }): BenchmarkRunDTO[] {
-      const rows = historyStmt.all(modelId, benchmark, limit) as DbRunRow[];
-      return rows.map(rowToDto);
+      return historyStmt.all(modelId, benchmark, limit).map(rowToDto);
     },
     getLatest({ modelId, benchmark }): BenchmarkRunDTO | null {
-      const rows = latestStmt.all(modelId, benchmark) as DbRunRow[];
+      const rows = latestStmt.all(modelId, benchmark);
       if (rows.length === 0) return null;
       return rowToDto(rows[0]);
     },
@@ -290,16 +279,41 @@ export function openBenchmarkResultsReader(
   };
 }
 
-function rowToDto(row: DbRunRow): BenchmarkRunDTO {
+function rowToDto(row: Record<string, unknown>): BenchmarkRunDTO {
   return {
-    id: Number(row.id),
-    modelId: row.model_id,
-    benchmark: row.benchmark,
-    score: row.score,
-    ts: Number(row.ts),
-    datasetVersion: row.dataset_version,
-    codeCommit: row.code_commit,
+    id: readSqliteInteger(row, "id"),
+    modelId: readSqliteString(row, "model_id"),
+    benchmark: readSqliteString(row, "benchmark"),
+    score: readSqliteNumber(row, "score"),
+    ts: readSqliteInteger(row, "ts"),
+    datasetVersion: readSqliteString(row, "dataset_version"),
+    codeCommit: readSqliteString(row, "code_commit"),
   };
+}
+
+function readSqliteString(
+  row: Record<string, unknown>,
+  column: string,
+): string {
+  const value = row[column];
+  if (typeof value === "string") return value;
+  throw new Error(`Invalid benchmark row: ${column} must be a string`);
+}
+
+function readSqliteNumber(row: Record<string, unknown>, column: string): number {
+  const value = row[column];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  throw new Error(`Invalid benchmark row: ${column} must be a finite number`);
+}
+
+function readSqliteInteger(row: Record<string, unknown>, column: string): number {
+  const value = row[column];
+  if (typeof value === "number" && Number.isSafeInteger(value)) return value;
+  if (typeof value === "bigint") {
+    const asNumber = Number(value);
+    if (Number.isSafeInteger(asNumber)) return asNumber;
+  }
+  throw new Error(`Invalid benchmark row: ${column} must be a safe integer`);
 }
 
 // ---------------------------------------------------------------------------
