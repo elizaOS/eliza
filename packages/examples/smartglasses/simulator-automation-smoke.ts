@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
-import type { Readable } from "node:stream";
 import { dirname } from "node:path";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 
