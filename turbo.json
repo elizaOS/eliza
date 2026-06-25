@@ -10,7 +10,25 @@
     "build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      "inputs": [
+        "src/**",
+        "index.ts",
+        "index.node.ts",
+        "index.browser.ts",
+        "build.ts",
+        "build.mjs",
+        "tsup.config.ts",
+        "tsup.config.*.ts",
+        "tsdown.config.ts",
+        "vite.config.ts",
+        "vite.config.*.ts",
+        "tsconfig.json",
+        "tsconfig.*.json",
+        "package.json",
+        "assets/**",
+        "public/**"
+      ]
     },
     "@elizaos-benchmarks/lib#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
@@ -34,7 +52,8 @@
     },
     "@elizaos/prompts#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": [],
+      "cache": false
     },
     "eliza-vrm-demo#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],

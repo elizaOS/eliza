@@ -799,8 +799,12 @@ function summarizeScenarioRun(
     acc[status] = (acc[status] ?? 0) + 1;
     return acc;
   }, {});
+  // resolveManifestFilePath (not resolveManifestPath): existsSync(dir) works for
+  // directories too, so a runDir stored cwd-relative resolves deterministically
+  // (manifest-relative if that exists on disk, else the cwd-relative location)
+  // instead of luck-depending on the manifest dir being no deeper than cwd.
   const runDir =
-    resolveManifestPath(path, payload.runDir) ??
+    resolveManifestFilePath(path, payload.runDir) ??
     (path.endsWith("matrix.json") ? dirname(path) : undefined);
   const nativeJsonlPath = resolveManifestFilePath(path, payload.nativeJsonlPath);
   const nativeManifestPath = resolveManifestFilePath(
