@@ -26,14 +26,17 @@ import {
 } from "../../db/repositories/jobs";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { apps } from "../../db/schemas/apps";
+import { containers } from "../../db/schemas/containers";
 import { jobs } from "../../db/schemas/jobs";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import { isValidUUID } from "../utils/validation";
 import { withTimeout } from "../utils/with-timeout";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
 import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
+import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } from "./eliza-sandbox";
@@ -1538,6 +1541,23 @@ export class ProvisioningJobService {
           const { appId } = readAppDeployJobData(job);
           await appsService.invalidateCache(appId);
         }
+        // container_provision flips apps.deployment_status with a raw in-tx
+        // update (bypassing the appsService cache), so evict the app read cache
+        // here too — otherwise the cache-backed deploy-status route keeps
+        // reporting `building` until the 5-min TTL. The in-tx writeback already
+        // org-scoped the flip; an appId that matched no app is a harmless evict.
+        if (updated?.status === "failed" && job.type === JOB_TYPES.CONTAINER_PROVISION) {
+          const { containerId } = readContainerProvisionJobData(job);
+          const [row] = await dbWrite
+            .select({ projectName: containers.project_name })
+            .from(containers)
+            .where(eq(containers.id, containerId))
+            .limit(1);
+          const appId = row?.projectName;
+          if (appId && isValidUUID(appId)) {
+            await appsService.invalidateCache(appId);
+          }
+        }
       }
     }
   }
@@ -1590,6 +1610,44 @@ export class ProvisioningJobService {
           logger.warn(
             "[provisioning-jobs] Marked app deployment as failed after permanent failure",
             { jobId: job.id, appId },
+          );
+        };
+      }
+      // Apps / Product 2: the APP_DEPLOY job above only self-completes after
+      // enqueuing the real CONTAINER_PROVISION, so a SUCCESSFUL deploy that then
+      // fails to provision its container exhausts retries HERE — and would
+      // otherwise strand the app in `building` forever (the success path's
+      // markAppDeployed is the only other writer of deployment_status). The
+      // app-deploy container is created with `project_name = appId` AND
+      // `organization_id = app.organization_id` (app-deploy-runner), so the app
+      // id and owning org both live on the container row. Unlike markAppDeployed
+      // — which only runs inside the apps container backend — this writeback
+      // fires for EVERY CONTAINER_PROVISION job, including plain/coding
+      // /v1/containers rows whose `project_name` is a user-supplied slug that can
+      // be made to look like a UUID. So we (1) require a real UUID and (2) scope
+      // the flip to the container's OWN organization: a user can never name a
+      // container after ANOTHER tenant's app id and flip that app to `failed`,
+      // because the cross-org WHERE matches zero rows.
+      case JOB_TYPES.CONTAINER_PROVISION: {
+        const { containerId } = readContainerProvisionJobData(job);
+        return async (tx) => {
+          const [row] = await tx
+            .select({
+              projectName: containers.project_name,
+              organizationId: containers.organization_id,
+            })
+            .from(containers)
+            .where(eq(containers.id, containerId))
+            .limit(1);
+          const appId = row?.projectName;
+          if (!appId || !isValidUUID(appId)) return;
+          await tx
+            .update(apps)
+            .set({ deployment_status: "failed", updated_at: new Date() })
+            .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)));
+          logger.warn(
+            "[provisioning-jobs] Marked app deployment as failed after container provision permanent failure",
+            { jobId: job.id, containerId, appId },
           );
         };
       }
