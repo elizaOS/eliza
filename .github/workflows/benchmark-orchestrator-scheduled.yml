@@ -1,0 +1,157 @@
+# Benchmark orchestrator — scheduled real-model lane
+#
+# Runs a core subset of registry benchmarks through the Python orchestrator on a
+# REAL model provider (Groq), so the suite is actually exercised end-to-end on a
+# schedule rather than only vitest-testing the bridge code (#9475). Before this
+# lane, `python -m benchmarks.orchestrator run` was invoked by exactly one
+# workflow (hyperliquid-bench-live.yml), leaving 42/43 registered benchmarks
+# with zero scheduled real-model runs.
+#
+# OPERATOR PREREQUISITE: add a `GROQ_API_KEY` repo secret. With no secret
+# configured this workflow SKIPS GRACEFULLY — it never fails CI when the key is
+# absent (mirrors hyperliquid-bench-live.yml's gate).
+#
+# The benchmark subset (bfcl, action-calling, agentbench, tau_bench, mint,
+# context_bench) is the confirmed-real, bridge-wired core that routes through a
+# real AgentRuntime + LLM plugins via the eliza-adapter.
+#
+# Required repo secret (self-documented):
+#   GROQ_API_KEY          — Groq API key for the real-model orchestrator run.
+
+name: Benchmark orchestrator (scheduled)
+
+on:
+  schedule:
+    # Mondays 06:00 UTC — a weekly real-model smoke of the core registry subset.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      benchmarks:
+        description: "Comma-separated registry benchmark ids"
+        required: false
+        type: string
+        default: "bfcl,action-calling,agentbench,tau_bench,mint,context_bench"
+      provider:
+        description: "Model provider"
+        required: false
+        type: string
+        default: "groq"
+      model:
+        description: "Model name"
+        required: false
+        type: string
+        default: "openai/gpt-oss-120b"
+
+concurrency:
+  group: benchmark-orchestrator-scheduled-${{ github.ref }}
+  cancel-in-progress: false
+
+# Default to least privilege.
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24"
+
+jobs:
+  orchestrator-run:
+    name: orchestrator-run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    steps:
+      # ------------------------------------------------------------------
+      # Gate: skip everything (exit 0) when GROQ_API_KEY is unset, so this
+      # workflow never fails CI when the secret is not configured. Mirrors the
+      # gate in hyperliquid-bench-live.yml.
+      # ------------------------------------------------------------------
+      - name: Check GROQ_API_KEY secret
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ -z "${GROQ_API_KEY:-}" ]; then
+            echo "::notice::Benchmark orchestrator scheduled run skipped — GROQ_API_KEY is not configured. Add it as a repo secret to enable real-model orchestrator runs."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Python
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Node.js
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        if: steps.gate.outputs.skip != 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      # ------------------------------------------------------------------
+      # The orchestrator package is `benchmarks` under `packages/`, so the
+      # module is invoked as `python -m benchmarks.orchestrator` with
+      # `PYTHONPATH=packages` from the repo root.
+      # ------------------------------------------------------------------
+      - name: Validate runtime gates
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          PYTHONPATH=packages python -m benchmarks.orchestrator validate-runtime-gates --json
+
+      - name: Run core registry subset on a real model
+        if: steps.gate.outputs.skip != 'true'
+        id: run
+        env:
+          BENCHMARKS: ${{ inputs.benchmarks || 'bfcl,action-calling,agentbench,tau_bench,mint,context_bench' }}
+          PROVIDER: ${{ inputs.provider || 'groq' }}
+          MODEL: ${{ inputs.model || 'openai/gpt-oss-120b' }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          PYTHONPATH=packages python -m benchmarks.orchestrator run \
+            --benchmarks "$BENCHMARKS" \
+            --provider "$PROVIDER" \
+            --model "$MODEL" \
+            --force \
+            --show-incompatible \
+            2>&1 | tee orchestrator-scheduled.log
+
+      - name: Validate latest publishability (rejects mock/sample/demo rows)
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          PYTHONPATH=packages python -m benchmarks.orchestrator validate-latest-publishability \
+            --include-benchmarks "${{ inputs.benchmarks || 'bfcl,action-calling,agentbench,tau_bench,mint,context_bench' }}"
+
+      - name: Upload orchestrator artifacts
+        if: always() && steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: benchmark-orchestrator-scheduled-${{ github.run_id }}
+          path: |
+            packages/benchmarks/benchmark_results/**
+            orchestrator-scheduled.log
+          if-no-files-found: warn
+          retention-days: 90
