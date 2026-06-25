@@ -55,6 +55,22 @@ interface MessageContentProps {
  * inline primitive so they keep their place in the sentence. Returns the raw
  * string unchanged when there is no backticked span (the common case).
  */
+/**
+ * An OAuth authorizationUrl is an agent/cloud-supplied field that flows into
+ * window.open(). A hosted consent screen is always https, so require https and
+ * reject anything else — a `javascript:`/`data:` value would otherwise execute
+ * in the opened window. `new URL()` also normalizes away control-char scheme
+ * obfuscation (e.g. `java\tscript:`).
+ */
+function isHttpsAuthorizationUrl(url: unknown): url is string {
+  if (typeof url !== "string" || url.length === 0) return false;
+  try {
+    return new URL(url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function renderInlineText(text: string): ReactNode {
   if (!text.includes("`")) return text;
   const parts = splitInlineCode(text);
@@ -563,8 +579,7 @@ export function SensitiveRequestBlock({
   const canStartOAuth =
     status === "pending" &&
     request.form?.kind === "oauth" &&
-    typeof request.form.authorizationUrl === "string" &&
-    request.form.authorizationUrl.length > 0;
+    isHttpsAuthorizationUrl(request.form.authorizationUrl);
 
   const canSubmit = fields.every((field) => {
     if (!field.required) return true;
@@ -718,7 +733,12 @@ export function SensitiveRequestBlock({
           authorizing={authorizing}
           onStart={() => {
             const url = request.form?.authorizationUrl;
-            if (!url) return;
+            // Re-validate at the sink (defense-in-depth): only an https consent
+            // URL may reach window.open.
+            if (!isHttpsAuthorizationUrl(url)) {
+              setError("Invalid authorization URL.");
+              return;
+            }
             try {
               // SECURITY: we never embed the authorizationUrl in chat text.
               // It is only opened in a popup. We deliberately do NOT pass

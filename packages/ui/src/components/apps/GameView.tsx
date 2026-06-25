@@ -33,6 +33,7 @@ import {
   openExternalUrl,
   preOpenWindow,
 } from "../../utils";
+import { safeAttachmentUrl } from "../../utils/attachment-url";
 import { formatTime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -707,8 +708,15 @@ export function GameView() {
   const hasActiveRun = Boolean(activeGameRun);
   const hasViewer = Boolean(activeGameRun?.viewer?.url);
   const viewerAttached = activeGameRun?.viewerAttachment === "attached";
-  const openableUrl =
-    resolvedActiveGameViewerUrl || resolvedActiveGameLaunchUrl || "";
+  // Scheme-guard the viewer/launch URL before it reaches a navigation sink
+  // (<a href>, popup.location.href via navigatePreOpenedWindow). viewer.url /
+  // launchUrl come from a plugin/cloud-app run record (attacker-influenceable),
+  // and a javascript:/data: value would otherwise execute in the app origin or
+  // open-redirect the tab. safeAttachmentUrl returns "" for a disallowed scheme,
+  // which disables the open affordance / omits the href.
+  const openableUrl = safeAttachmentUrl(
+    resolvedActiveGameViewerUrl || resolvedActiveGameLaunchUrl || "",
+  );
   const canAttachViewer =
     Boolean(activeGameRun?.viewer?.url) &&
     activeGameRun?.viewerAttachment === "detached";
