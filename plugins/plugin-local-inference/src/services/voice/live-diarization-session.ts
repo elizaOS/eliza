@@ -301,7 +301,8 @@ export class LiveDiarizationSession {
 				// built-in playback buffer fed by pushPlayback.
 				echoReference:
 					this.options.echoReference ??
-					((_timestampMs, samples) => this.echoReferenceFrame(samples)),
+					((timestampMs, samples) =>
+						this.echoReferenceFrame(timestampMs, samples)),
 			}),
 			config,
 		);
@@ -362,8 +363,12 @@ export class LiveDiarizationSession {
 	 * is zero-filled (⇒ NLMS passthrough) until the device streams playback.
 	 * Public so the wiring is unit-testable without the fused FFI.
 	 */
-	echoReferenceFrame(samples: number): Float32Array {
-		return this.echoBuffer.referenceFor(samples, this.echoDelaySamples);
+	echoReferenceFrame(timestampMs: number, samples: number): Float32Array {
+		return this.echoBuffer.referenceAt(
+			timestampMs,
+			samples,
+			this.echoDelaySamples,
+		);
 	}
 
 	/**
@@ -376,7 +381,7 @@ export class LiveDiarizationSession {
 	 */
 	pushPlayback(frames: AudioFrameEvent[]): void {
 		for (const frame of frames) {
-			this.echoBuffer.push(decodeAudioFramePcm(frame));
+			this.echoBuffer.pushAt(frame.timestamp, decodeAudioFramePcm(frame));
 		}
 	}
 

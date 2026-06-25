@@ -53,17 +53,17 @@ function ramp(n: number): Float32Array {
 describe("LiveDiarizationSession echo reference", () => {
 	it("returns a zero far-end reference before any playback is pushed", () => {
 		const session = new LiveDiarizationSession(fakeRuntime());
-		const ref = session.echoReferenceFrame(320);
+		const ref = session.echoReferenceFrame(0, 320);
 		expect(ref).toHaveLength(320);
 		expect(ref.every((v) => v === 0)).toBe(true);
 	});
 
-	it("aligns the most-recent pushed playback as the far-end (delay 0)", () => {
+	it("aligns playback by frame timestamp as the far-end (delay 0)", () => {
 		const session = new LiveDiarizationSession(fakeRuntime());
 		const playback = ramp(320);
 		session.pushPlayback([playbackFrame(playback, 0)]);
 
-		const ref = session.echoReferenceFrame(320);
+		const ref = session.echoReferenceFrame(0, 320);
 		expect(ref).toHaveLength(320);
 		// Not zero-filled — the canceller now has a real far-end to cancel.
 		expect(ref.some((v) => v !== 0)).toBe(true);
@@ -79,7 +79,7 @@ describe("LiveDiarizationSession echo reference", () => {
 		const playback = ramp(640);
 		session.pushPlayback([playbackFrame(playback, 0)]);
 
-		const ref = session.echoReferenceFrame(320);
+		const ref = session.echoReferenceFrame(20, 320);
 		expect(ref).toHaveLength(320);
 		// The aligned window is the LAST 320 of the 640 pushed (delay 0).
 		for (let i = 0; i < 320; i += 1) {
@@ -92,9 +92,24 @@ describe("LiveDiarizationSession echo reference", () => {
 	it("resetPlayback drops buffered far-end (barge-in / playback stop)", () => {
 		const session = new LiveDiarizationSession(fakeRuntime());
 		session.pushPlayback([playbackFrame(ramp(320), 0)]);
-		expect(session.echoReferenceFrame(320).some((v) => v !== 0)).toBe(true);
+		expect(session.echoReferenceFrame(0, 320).some((v) => v !== 0)).toBe(true);
 
 		session.resetPlayback();
-		expect(session.echoReferenceFrame(320).every((v) => v === 0)).toBe(true);
+		expect(session.echoReferenceFrame(0, 320).every((v) => v === 0)).toBe(true);
+	});
+
+	it("zero-fills natural gaps between playback frames", () => {
+		const session = new LiveDiarizationSession(fakeRuntime());
+		const first = ramp(320);
+		const later = ramp(320);
+		session.pushPlayback([playbackFrame(first, 0), playbackFrame(later, 5)]);
+
+		expect(session.echoReferenceFrame(0, 320).some((v) => v !== 0)).toBe(true);
+		expect(session.echoReferenceFrame(40, 320).every((v) => v === 0)).toBe(
+			true,
+		);
+		expect(session.echoReferenceFrame(100, 320).some((v) => v !== 0)).toBe(
+			true,
+		);
 	});
 });

@@ -298,6 +298,22 @@ describe("handleLiveDiarizationRoute", () => {
 		expect(res.json()).toMatchObject({ ok: true, framesPushed: 0 });
 	});
 
+	it("resets stale playback before accepting a fresh playback batch", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { reset: true, frames: [silentFrame(0)] },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toMatchObject({ ok: true, framesPushed: 1 });
+	});
+
 	it("rejects malformed playback frames with 400", async () => {
 		const res = new FakeRes();
 		const handled = await handleLiveDiarizationRoute(

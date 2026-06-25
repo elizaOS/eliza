@@ -58,4 +58,29 @@ describe("EchoReferenceBuffer (#9583)", () => {
 		expect(buf.position).toBe(0);
 		expect(Array.from(buf.referenceFor(3, 0))).toEqual([0, 0, 0]);
 	});
+
+	it("preserves timestamp gaps between playback bursts", () => {
+		const buf = new EchoReferenceBuffer({
+			capacitySamples: 4000,
+			sampleRateHz: 16_000,
+		});
+		buf.pushAt(1000, ramp(0, 4)); // samples 0..3
+		buf.pushAt(1100, ramp(100, 4)); // samples 1600..1603
+
+		expect(Array.from(buf.referenceAt(1000, 4, 0))).toEqual([1, 2, 3, 4]);
+		expect(Array.from(buf.referenceAt(1050, 4, 0))).toEqual([0, 0, 0, 0]);
+		expect(Array.from(buf.referenceAt(1100, 4, 0))).toEqual([
+			101, 102, 103, 104,
+		]);
+	});
+
+	it("applies delay to timestamp-aligned reads", () => {
+		const buf = new EchoReferenceBuffer({
+			capacitySamples: 1000,
+			sampleRateHz: 16_000,
+		});
+		buf.pushAt(0, ramp(0, 10));
+
+		expect(Array.from(buf.referenceAt(0.25, 4, 2))).toEqual([3, 4, 5, 6]);
+	});
 });
