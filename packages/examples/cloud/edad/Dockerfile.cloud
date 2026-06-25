@@ -3,9 +3,8 @@
 # Build context: repository root, for example:
 #   docker build -f packages/examples/cloud/edad/Dockerfile.cloud .
 #
-# This mirrors the showcase image workflow: build the workspace SDK inside the
-# repo context, bundle EDAD's Bun server with the SDK inlined, then ship only the
-# self-contained runtime files.
+# This mirrors the showcase image workflow: bundle EDAD's Bun server with the
+# Cloud SDK source inlined, then ship only the self-contained runtime files.
 ARG BUN_BASE=oven/bun:canary-alpine
 
 FROM ${BUN_BASE} AS builder
@@ -13,15 +12,15 @@ FROM ${BUN_BASE} AS builder
 WORKDIR /repo
 ENV NODE_ENV=production
 ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
-ENV ELIZA_SKIP_ARTIFACT_SYNC=1
 
-COPY . .
+COPY packages/cloud-sdk ./packages/cloud-sdk
+COPY packages/examples/cloud/edad ./packages/examples/cloud/edad
 
-RUN bun install --no-frozen-lockfile
-RUN cd packages/cloud-sdk && bun run build
+RUN mkdir -p packages/examples/cloud/edad/node_modules/@elizaos && \
+  ln -s /repo/packages/cloud-sdk packages/examples/cloud/edad/node_modules/@elizaos/cloud-sdk
 RUN cd packages/examples/cloud/edad && \
   rm -rf ./dist && \
-  bun build server.ts --outdir=./dist --target=bun --format=esm && \
+  bun build --conditions=eliza-source server.ts --outdir=./dist --target=bun --format=esm && \
   cp -r public ./dist/public && \
   test -f ./dist/server.js && \
   ! grep -q "@elizaos/cloud-sdk" ./dist/server.js
