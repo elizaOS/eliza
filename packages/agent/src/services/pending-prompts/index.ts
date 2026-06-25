@@ -15,5 +15,6 @@ export {
   type PendingPrompt,
   type PendingPromptRecordInput,
   type PendingPromptsStore,
+  type PendingPromptWithRoom,
   type RecordedPendingPrompt,
 } from "./store.ts";

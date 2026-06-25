@@ -21,6 +21,7 @@ import type {
   ApprovalRequest,
   ApprovalRequestState,
 } from "../services/approval/types.ts";
+import { PENDING_PROMPTS_SERVICE } from "../services/pending-prompts/service.ts";
 
 interface ApprovalRouteRuntime {
   agentId?: string;
@@ -35,8 +36,10 @@ interface AgentApprovalServiceLike {
   getQueue: (agentId?: string) => ApprovalQueue;
 }
 
-interface TaskApprovalServiceLike {
-  listPendingUserActions: () => PendingUserAction[];
+interface PendingUserActionServiceLike {
+  listPendingUserActions: () =>
+    | PendingUserAction[]
+    | Promise<PendingUserAction[]>;
 }
 
 export interface ApprovalRequestDto {
@@ -75,13 +78,13 @@ function isAgentApprovalService(
   );
 }
 
-function isTaskApprovalService(
+function isPendingUserActionService(
   value: unknown,
-): value is TaskApprovalServiceLike {
+): value is PendingUserActionServiceLike {
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as TaskApprovalServiceLike).listPendingUserActions ===
+    typeof (value as PendingUserActionServiceLike).listPendingUserActions ===
       "function"
   );
 }
@@ -109,12 +112,13 @@ function getAgentApprovalQueue(
   return service.getQueue(state.runtime?.agentId);
 }
 
-function listTaskApprovalActions(
+async function listServicePendingUserActions(
   state: ApprovalRouteState,
-): PendingUserAction[] {
-  const service = state.runtime?.getService(ServiceType.APPROVAL);
-  if (!isTaskApprovalService(service)) return [];
-  return service.listPendingUserActions();
+  serviceType: string,
+): Promise<PendingUserAction[]> {
+  const service = state.runtime?.getService(serviceType);
+  if (!isPendingUserActionService(service)) return [];
+  return await service.listPendingUserActions();
 }
 
 function toIso(value: Date | null): string | null {
@@ -200,11 +204,16 @@ export async function handleApprovalRoute(
 
   const queue = getAgentApprovalQueue(state);
   const approvals = queue ? await queue.list(filter) : [];
+  const [taskApprovalActions, pendingPromptActions] = await Promise.all([
+    listServicePendingUserActions(state, ServiceType.APPROVAL),
+    listServicePendingUserActions(state, PENDING_PROMPTS_SERVICE),
+  ]);
   const pendingUserActions = [
     ...approvals
       .filter((approval) => approval.state === "pending")
       .map(approvalToPendingUserAction),
-    ...listTaskApprovalActions(state),
+    ...taskApprovalActions,
+    ...pendingPromptActions,
   ];
 
   helpers.json(res, {

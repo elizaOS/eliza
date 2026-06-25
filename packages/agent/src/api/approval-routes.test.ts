@@ -7,6 +7,7 @@ import type {
   ApprovalQueue,
   ApprovalRequest,
 } from "../services/approval/types.ts";
+import { PENDING_PROMPTS_SERVICE } from "../services/pending-prompts/service.ts";
 import { handleApprovalRoute } from "./approval-routes.ts";
 
 const req = (url: string) => ({ url }) as http.IncomingMessage;
@@ -47,6 +48,7 @@ function approval(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
 function runtimeWithApprovals(args: {
   queueApprovals?: ApprovalRequest[];
   taskActions?: PendingUserAction[];
+  promptActions?: PendingUserAction[];
 }) {
   const queueList = vi.fn(async () => args.queueApprovals ?? []);
   const queue = { list: queueList } as unknown as ApprovalQueue;
@@ -58,6 +60,11 @@ function runtimeWithApprovals(args: {
         if (type === ServiceType.APPROVAL) {
           return {
             listPendingUserActions: () => args.taskActions ?? [],
+          };
+        }
+        if (type === PENDING_PROMPTS_SERVICE) {
+          return {
+            listPendingUserActions: async () => args.promptActions ?? [],
           };
         }
         return null;
@@ -89,9 +96,18 @@ describe("handleApprovalRoute", () => {
       title: "Allow shell command?",
       createdAt: Date.parse("2026-06-24T18:02:00.000Z"),
     };
+    const promptAction: PendingUserAction = {
+      id: "prompt-1",
+      kind: "pending_prompt",
+      source: "pending-prompts",
+      title: "Did you take meds?",
+      expectedReplyKind: "yes_no",
+      createdAt: Date.parse("2026-06-24T18:03:00.000Z"),
+    };
     const { runtime, queueList } = runtimeWithApprovals({
       queueApprovals: [approval()],
       taskActions: [taskAction],
+      promptActions: [promptAction],
     });
     const helpers = makeHelpers();
 
@@ -131,6 +147,7 @@ describe("handleApprovalRoute", () => {
         },
       }),
       taskAction,
+      promptAction,
     ]);
   });
 

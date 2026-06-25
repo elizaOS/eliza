@@ -65,6 +65,50 @@ describe("PendingPromptsService", () => {
     await service.stop();
   });
 
+  it("lists pending prompts across rooms as canonical pending user actions", async () => {
+    const runtime = makeRuntime();
+    const service = await PendingPromptsService.start(runtime);
+    const store = service.getStore();
+    await store.record({
+      taskId: "task-a",
+      roomId: "room-a",
+      promptSnippet: "Approve the calendar change?",
+      firedAt: "2026-06-24T18:00:00.000Z",
+      expectedReplyKind: "approval",
+      expiresAt: "2026-06-24T19:00:00.000Z",
+    });
+    await store.record({
+      taskId: "task-b",
+      roomId: "room-b",
+      promptSnippet: "How did lunch go?",
+      firedAt: "2026-06-24T18:05:00.000Z",
+      expectedReplyKind: "free_form",
+    });
+
+    expect(await store.listAll()).toEqual([
+      expect.objectContaining({ taskId: "task-b", roomId: "room-b" }),
+      expect.objectContaining({ taskId: "task-a", roomId: "room-a" }),
+    ]);
+    expect(await service.listPendingUserActions()).toEqual([
+      expect.objectContaining({
+        id: "task-b",
+        kind: "pending_prompt",
+        roomId: "room-b",
+        expectedReplyKind: "free_form",
+        weight: 6,
+        resolution: { target: "pending_prompt", requestId: "task-b" },
+      }),
+      expect.objectContaining({
+        id: "task-a",
+        kind: "pending_prompt",
+        roomId: "room-a",
+        expectedReplyKind: "approval",
+        weight: 9,
+        expiresAt: Date.parse("2026-06-24T19:00:00.000Z"),
+      }),
+    ]);
+  });
+
   it("retains expired prompts only within the reopen window", async () => {
     const runtime = makeRuntime();
     const store = (await PendingPromptsService.start(runtime)).getStore();
