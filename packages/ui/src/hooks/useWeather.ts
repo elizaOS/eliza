@@ -92,19 +92,44 @@ function writeCache(value: CachedWeather): void {
   }
 }
 
-/** Resolve coordinates from the device first, then a coarse IP fallback. */
+/** Has the user ALREADY granted geolocation? We never trigger the OS permission
+ *  prompt from the home — precise device location is used only when it's already
+ *  allowed; otherwise the coarse IP lookup is the no-prompt default. */
+async function geolocationAlreadyGranted(): Promise<boolean> {
+  try {
+    const perms = (
+      navigator as unknown as {
+        permissions?: {
+          query?: (d: { name: string }) => Promise<{ state: string }>;
+        };
+      }
+    ).permissions;
+    if (!perms?.query) return false;
+    const status = await perms.query({ name: "geolocation" });
+    return status.state === "granted";
+  } catch {
+    // Permissions API unsupported (older WebKit) — stay on the IP fallback.
+    return false;
+  }
+}
+
+/** Resolve coordinates: precise device location ONLY if already granted (no
+ *  prompt), else a coarse IP fallback. */
 async function resolveCoords(): Promise<{ coords: Coords; city: string }> {
-  const deviceCoords = await new Promise<Coords | null>((resolve) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      resolve(null);
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      () => resolve(null),
-      { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
-    );
-  });
+  const canUseDevice =
+    typeof navigator !== "undefined" &&
+    !!navigator.geolocation &&
+    (await geolocationAlreadyGranted());
+  const deviceCoords = canUseDevice
+    ? await new Promise<Coords | null>((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) =>
+            resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+          () => resolve(null),
+          { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
+        );
+      })
+    : null;
 
   // Even with device coords we want a city label, and the IP lookup supplies a
   // fallback location when permission was denied. One request covers both.
