@@ -163,6 +163,67 @@ function isLoopbackHostname(hostname: string): boolean {
   return h === "127.0.0.1" || h === "localhost" || h === "::1";
 }
 
+/**
+ * Whether a persisted `remote` apiBase is safe to dial at restore. The persisted
+ * active-server record lives in localStorage (mirrored to native Preferences),
+ * so an XSS or a malicious same-origin plugin view could have written it. Only
+ * dial — and attach the bearer token to — a trusted host; otherwise the record
+ * is dropped and the app falls back to first-run (fail closed) rather than
+ * silently connecting to an attacker-chosen server at boot.
+ *
+ * Trust mirrors the app's full policy (createUrlTrustPolicy in
+ * `packages/app/src/url-trust-policy.ts`, which `@elizaos/ui` cannot import):
+ * loopback, the current page origin, and private/LAN/CGNAT/link-local hosts —
+ * never an arbitrary public host. Keep the private-host set in sync with
+ * `isTrustedPrivateHttpHost` there. `local`/`cloud` records use their own
+ * validated branches in {@link applyRestoredConnection} and are not gated here.
+ */
+export function isTrustedRestoreApiBaseUrl(
+  apiBase: string | undefined,
+): boolean {
+  if (!apiBase) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(apiBase);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (isLoopbackHostname(host) || host === "0.0.0.0") return true;
+  if (
+    typeof window !== "undefined" &&
+    host === window.location.hostname.toLowerCase()
+  ) {
+    return true;
+  }
+  // IPv6 ULA (fc00::/7) / link-local (fe80::/10).
+  if (
+    host.includes(":") &&
+    (host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:"))
+  ) {
+    return true;
+  }
+  // RFC1918 / CGNAT (tailscale) / link-local IPv4 + private name suffixes.
+  return (
+    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    host === "local" ||
+    host === "internal" ||
+    host === "lan" ||
+    host === "ts.net" ||
+    host.endsWith(".local") ||
+    host.endsWith(".lan") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".ts.net")
+  );
+}
+
 // Re-resolve a persisted loopback apiBase against whatever port the
 // dev orchestrator / Electrobun bridge actually bound this run. A
 // previous session may have captured a stale port (e.g. 31337) when
@@ -297,6 +358,16 @@ export async function applyRestoredConnection(args: {
   const reconciled = reconcilePersistedApiBaseWithLive(
     restoredActiveServer.apiBase,
   );
+  // SECURITY backstop (the primary gate is canRestoreActiveServer): never dial
+  // an untrusted persisted remote host or attach the bearer token to it — drop
+  // the record and fall back to first-run instead.
+  if (!isTrustedRestoreApiBaseUrl(reconciled)) {
+    logger.warn(
+      `[startup-phase-restore] dropping persisted remote active-server with untrusted apiBase host: ${reconciled ?? "(none)"}`,
+    );
+    clearPersistedActiveServer();
+    return;
+  }
   if (reconciled && reconciled !== restoredActiveServer.apiBase) {
     savePersistedActiveServer({
       ...restoredActiveServer,
@@ -329,6 +400,13 @@ export function canRestoreActiveServer(args: {
   isDesktop: boolean;
 }): boolean {
   if (args.server.apiBase) {
+    // A "remote" record with an untrusted apiBase host must not be restored —
+    // restoring it would dial an attacker-chosen server with the persisted
+    // bearer token. Untrusted → not restorable → the caller clears it and falls
+    // back to first-run. local/cloud branches validate their own hosts.
+    if (args.server.kind === "remote") {
+      return isTrustedRestoreApiBaseUrl(args.server.apiBase);
+    }
     return true;
   }
 
