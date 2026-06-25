@@ -480,11 +480,11 @@ function runtimeForTier(
     //
     // Draft window = 1 (single speculative token). The bionic/desktop FFI
     // MTP engine uses a FIXED window equal to `draftMax` (no adaptive
-    // acceptance schedule — `eliza-inference-ffi.cpp` sets
+    // acceptance schedule; `eliza-inference-ffi.cpp` sets
     // `sp.draft.n_max = draft_max`), so the catalog value is the live window.
     // The gemma4-assistant NextN head reliably predicts exactly one token;
     // its multi-token acceptance collapses past the first, so a larger window
-    // burns draft forwards that get rejected and REGRESSES decode. Measured on
+    // burns draft forwards that get rejected and regresses decode. Measured on
     // Apple M-series Metal against the eliza-1-2b (Q8) target, greedy, across
     // 3 prompts:
     //   draftMax=1 => 1.37-1.66x win | =2 => ~0.90x | =4 => 0.61x | =6 => 0.37x
