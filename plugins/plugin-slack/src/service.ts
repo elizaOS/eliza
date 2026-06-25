@@ -383,9 +383,9 @@ export class SlackService extends Service implements ISlackService {
   private channelCache: Map<string, SlackChannel> = new Map();
   private isConnected = false;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.character = runtime.character;
+    this.character = this.runtime.character;
     this.settings = this.loadSettings();
 
     // Parse allowed channel IDs for the legacy/default account path.
