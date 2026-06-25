@@ -40,9 +40,7 @@ export function deploymentIdFor(app: {
   // deploy-status route (the real-staging deploy bug behind #9300).
   last_deployed_at: Date | string | null;
 }): string {
-  const ts = app.last_deployed_at
-    ? new Date(app.last_deployed_at).toISOString()
-    : "0";
+  const ts = app.last_deployed_at ? new Date(app.last_deployed_at).toISOString() : "0";
   return `${app.id}:${ts}`;
 }
 

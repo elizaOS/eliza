@@ -25,7 +25,6 @@ import {
 	ChannelType as DiscordChannelType,
 	type Guild,
 	type GuildMember,
-	type VoiceChannel,
 	type VoiceState,
 } from "discord.js";
 import prism from "prism-media";
