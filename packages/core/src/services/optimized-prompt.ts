@@ -40,7 +40,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import {
-	open,
 	readFile,
 	readlink,
 	rename,
@@ -838,8 +837,7 @@ async function claimNextVersionPath(
 		const finalPath = join(dir, `v${candidate}.json`);
 		const claimPath = join(dir, `.v${candidate}.json.claim`);
 		try {
-			const handle = await open(claimPath, "wx");
-			await handle.close();
+			await writeFile(claimPath, "", { flag: "wx" });
 			return { nextVersion: candidate, finalPath, claimPath };
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
