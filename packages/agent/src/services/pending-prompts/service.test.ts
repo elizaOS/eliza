@@ -80,6 +80,40 @@ describe("PendingPromptsService", () => {
     expect((await store.list(roomId)).length).toBe(0);
   });
 
+  it("lists open prompts across indexed rooms newest-first", async () => {
+    const runtime = makeRuntime();
+    const store = (await PendingPromptsService.start(runtime)).getStore();
+    await store.record({
+      taskId: "task-older",
+      roomId: "room-a",
+      promptSnippet: "older prompt",
+      firedAt: "2026-06-24T18:00:00.000Z",
+      expectedReplyKind: "free_form",
+    });
+    await store.record({
+      taskId: "task-newer",
+      roomId: "room-b",
+      promptSnippet: "newer prompt",
+      firedAt: "2026-06-24T18:05:00.000Z",
+      expectedReplyKind: "approval",
+    });
+    await store.record({
+      taskId: "task-expired",
+      roomId: "room-c",
+      promptSnippet: "expired prompt",
+      firedAt: "2026-06-23T18:00:00.000Z",
+      expiresAt: "2026-06-23T18:01:00.000Z",
+      reopenWindowHours: 1,
+    });
+
+    expect(
+      await store.listAll({ now: new Date("2026-06-24T18:10:00.000Z") }),
+    ).toEqual([
+      expect.objectContaining({ taskId: "task-newer", roomId: "room-b" }),
+      expect.objectContaining({ taskId: "task-older", roomId: "room-a" }),
+    ]);
+  });
+
   it("resolvePendingPromptsService returns null when unregistered", () => {
     const runtime = {
       getService: () => null,

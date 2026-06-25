@@ -32,6 +32,10 @@ export interface PendingPrompt {
   expiresAt?: string;
 }
 
+export interface PendingPromptWithRoom extends PendingPrompt {
+  roomId: string;
+}
+
 export interface RecordedPendingPrompt extends PendingPrompt {
   roomId: string;
   /**
@@ -62,6 +66,11 @@ export interface PendingPromptsStore {
     roomId: string,
     opts?: { lookbackMinutes?: number; now?: Date },
   ): Promise<PendingPrompt[]>;
+  /** List open prompts across every indexed room for UI/provider surfaces. */
+  listAll(opts?: {
+    lookbackMinutes?: number;
+    now?: Date;
+  }): Promise<PendingPromptWithRoom[]>;
   /** Resolve a pending prompt (called when the runner records a terminal verb). */
   resolve(roomId: string, taskId: string): Promise<void>;
   /** Remove all entries for a task during lifecycle cleanup. */
@@ -144,7 +153,7 @@ export function createPendingPromptsStore(
 ): PendingPromptsStore {
   const cache: RuntimeCacheLike = runtime;
 
-  return {
+  const store: PendingPromptsStore = {
     async record(
       input: PendingPromptRecordInput,
     ): Promise<RecordedPendingPrompt> {
@@ -242,6 +251,23 @@ export function createPendingPromptsStore(
         });
     },
 
+    async listAll(
+      opts: { lookbackMinutes?: number; now?: Date } = {},
+    ): Promise<PendingPromptWithRoom[]> {
+      const rooms = await listRooms(cache);
+      const perRoom = await Promise.all(
+        rooms.map(async (roomId) =>
+          (await store.list(roomId, opts)).map((prompt) => ({
+            ...prompt,
+            roomId,
+          })),
+        ),
+      );
+      return perRoom
+        .flat()
+        .sort((a, b) => Date.parse(b.firedAt) - Date.parse(a.firedAt));
+    },
+
     async resolve(roomId: string, taskId: string): Promise<void> {
       const existing = await loadRoom(cache, roomId);
       const next = existing.filter((entry) => entry.taskId !== taskId);
@@ -281,4 +307,5 @@ export function createPendingPromptsStore(
       }
     },
   };
+  return store;
 }
