@@ -41,31 +41,5 @@ schedule-changing or reply-needed items first. Mention each non-empty domain
 once. If a domain is empty, omit it rather than saying "nothing to report".
 No invented facts; only describe items in the data below.`;
 
-export const GMAIL_PLAN_INSTRUCTIONS = [
-  "Plan the Gmail/inbox triage action for this request.",
-  "The user may speak in any language.",
-  "Use only Gmail/inbox actions. Do not plan calendar, reminder, or document work here.",
-  "Return line-based fields only:",
-  "subaction: triage | needs_response | search | read | draft_reply | send_reply",
-  "shouldAct: true | false",
-  "response: null or a short clarification",
-  "queries: up to 3 concise Gmail search queries separated by ||",
-  "",
-  "Choose triage for broad inbox cleanup or priority review.",
-  "Choose needs_response when the owner asks what needs a reply.",
-  "Choose search/read when the owner asks for specific messages.",
-  "Choose draft_reply or send_reply only when the owner explicitly asks to respond.",
-  "Set shouldAct=false when the request is too vague to choose safely.",
-].join("\n");
-
-export const GMAIL_QUERY_EXTRACTION_INSTRUCTIONS = [
-  "Extract Gmail search queries for the owner's request.",
-  "Return line-based fields only:",
-  "subaction: search",
-  "shouldAct: true",
-  "response: null",
-  "queries: up to 3 concise Gmail search queries separated by ||",
-].join("\n");
-
 export const MEETING_PREP_INSTRUCTIONS =
   "Prepare the next working block: scan upcoming calendar events, related threads, docs, blockers, and people context. Surface missing agenda, location, dial-in, prep document, decision owner, and likely follow-up. Keep the owner-facing result compact.";

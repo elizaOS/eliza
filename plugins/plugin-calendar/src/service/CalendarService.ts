@@ -197,10 +197,10 @@ export class CalendarService extends Service {
   private readonly repo: CalendarRepository;
   private gate: CalendarHostGate;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.repo = new CalendarRepository(runtime);
-    this.gate = createDefaultCalendarHostGate(runtime);
+    this.repo = new CalendarRepository(this.runtime);
+    this.gate = createDefaultCalendarHostGate(this.runtime);
   }
 
   static override async start(runtime: IAgentRuntime): Promise<CalendarService> {

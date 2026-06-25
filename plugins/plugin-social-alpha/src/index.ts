@@ -47,7 +47,7 @@ export const socialAlphaPlugin: Plugin = {
 	services: [CommunityInvestorService],
 	providers: [socialAlphaProvider],
 	routes: communityInvestorRoutes,
-	events: events as unknown as Plugin["events"],
+	events: events as Plugin["events"],
 	views: [
 		{
 			id: "social-alpha",

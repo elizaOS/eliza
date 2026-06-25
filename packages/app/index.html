@@ -270,13 +270,13 @@
   </script>
   <style>
     /* FOUC guard — runs before external CSS so we use concrete values.
-       The fallback is the default home-background orange (#ef5a1f, the
-       DEFAULT_BACKGROUND_COLOR the StartupShell loader and ShaderBackground
-       use — packages/ui/src/state/ui-preferences.ts): until base.css defines
-       --bg, the first paint is that exact orange in every theme, so the page
-       never flashes black/white — or a *different* orange — before the home
-       background appears. Once --bg resolves the body follows the theme, and
-       #root paints its own --bg over this anyway once the app mounts. */
+       The fallback is the home background orange (#ef5a1f — DEFAULT_BACKGROUND_COLOR,
+       the color the home ShaderBackground and the StartupShell loader paint,
+       packages/ui/src/components/shell/StartupShell.tsx): until base.css defines
+       --bg, the first paint is the home orange in every theme, so the page never
+       flashes black/white — nor a *different* orange (#9565) — before the loader
+       appears. Once --bg resolves the body follows the theme, and #root paints its
+       own --bg over this anyway once the app mounts. */
     html, body {
       margin: 0;
       padding: 0;

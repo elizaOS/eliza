@@ -1780,14 +1780,17 @@ function handleDeepLink(url: string): void {
             );
             break;
           }
-          const token =
-            parsed.searchParams.get("token") ??
-            parsed.searchParams.get("accessToken") ??
-            null;
+          // SECURITY: never accept a bearer token from an OS-delivered deep
+          // link. A crafted `<scheme>://connect?url=…&token=…` would otherwise
+          // authenticate the session with an ATTACKER-supplied token against an
+          // attacker gateway (full MITM of subsequent agent traffic). No
+          // legitimate flow passes a token this way — remote auth goes through
+          // the cloudLaunchSession exchange. The host repoint is preserved for
+          // the legitimate local-agent connect feature.
           const connection = applyLaunchConnection({
             kind: "remote",
             apiBase: validatedUrl.href,
-            token,
+            token: null,
             allowPublicHttps: true,
           });
           dispatchAppEvent(CONNECT_EVENT, {
