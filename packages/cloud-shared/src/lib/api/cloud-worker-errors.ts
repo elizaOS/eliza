@@ -97,7 +97,7 @@ function inferCodeFromStatus(status: number): ApiErrorCode {
   return "internal_error";
 }
 
-function safeUnknownErrorMessage(error: unknown): string {
+export function safeUnknownErrorMessage(error: unknown): string {
   if (error instanceof Error && !isInfrastructureError(error)) {
     const status = inferStatusFromLegacyError(error);
     if (status < 500) return error.message;

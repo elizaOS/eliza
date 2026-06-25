@@ -444,7 +444,7 @@ function buildSegmentedUserContentFromSegments(
 function buildSegmentedUserContentForMessages(
   params: GenerateTextParamsWithProviderOptions
 ): UserContent | undefined {
-  const dynamicSegments = (params.promptSegments ?? []).filter((segment) => !segment.stable);
+  const dynamicSegments = (params.promptSegments ?? []).filter((segment: PromptSegment) => !segment.stable);
   if (dynamicSegments.length === 0 && (params.attachments?.length ?? 0) === 0) {
     return undefined;
   }
@@ -503,7 +503,7 @@ function buildSegmentCacheControls(
   // longer matching prefix that a later breakpoint creates — we lose
   // granularity on partial-prefix hits but not coverage.
   const stableIndices: number[] = [];
-  (params.promptSegments ?? []).forEach((segment, index) => {
+  (params.promptSegments ?? []).forEach((segment: PromptSegment, index: number) => {
     if (segment.stable) stableIndices.push(index);
   });
   for (const index of stableIndices.slice(-maxSegmentBreakpoints)) {
