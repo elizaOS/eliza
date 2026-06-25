@@ -93,7 +93,7 @@ const M = {
     "vad/silero-vad-v5.1.2.ggml.bin",
     "vad/silero-vad-v5.gguf",
     "voice/vad/silero-vad-v5.1.2.ggml.bin",
-    "bundles/0_8b/vad/silero-vad-v5.gguf",
+    "bundles/2b/vad/silero-vad-v5.gguf",
   ),
   enc: firstExisting(
     "wespeaker-resnet34-lm.gguf",
