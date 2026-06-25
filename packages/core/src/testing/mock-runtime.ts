@@ -29,8 +29,7 @@
  * ```
  */
 
-import { vi } from "vitest";
-import type { Character, IAgentRuntime, Memory, State, UUID } from "../types";
+import type { Character, IAgentRuntime, UUID } from "../types";
 
 /** Stable zero-UUID used as the default agent/entity id in unit tests. */
 export const MOCK_AGENT_ID = "00000000-0000-0000-0000-000000000000" as UUID;
@@ -51,14 +50,21 @@ const MOCK_CHARACTER: Character = {
 };
 
 /**
- * Build a typed mock {@link IAgentRuntime} for a unit test. Common methods are
- * pre-stubbed as `vi.fn()` (assertable, no-op by default); pass `overrides` to
- * replace any field with a test-specific implementation. The `overrides` are
- * type-checked against `IAgentRuntime`.
+ * Build a typed mock {@link IAgentRuntime} for a unit test. Only the structural
+ * required properties (`agentId`, `character`, the registry arrays/maps) are
+ * defaulted; methods are intentionally left unset so the factory is a
+ * behavior-preserving drop-in for the minimal cast-mocks it replaces. Pass the
+ * methods (and any other fields) a test needs via `overrides` — now type-checked
+ * against `IAgentRuntime`, unlike the `as unknown as` casts.
  */
 export function createMockRuntime(
 	overrides: Partial<IAgentRuntime> = {},
 ): IAgentRuntime {
+	// Only structural, required properties are defaulted. Methods are deliberately
+	// NOT pre-stubbed: the cast-mocks this replaces were minimal by design, and a
+	// method a test never set must stay `undefined` so migrating to this factory
+	// is behavior-preserving. Tests pass the methods they need via `overrides`
+	// (now type-checked), exactly as the hand-rolled cast-mocks did.
 	const base: Partial<IAgentRuntime> = {
 		agentId: MOCK_AGENT_ID,
 		character: MOCK_CHARACTER,
@@ -69,22 +75,6 @@ export function createMockRuntime(
 		routes: [],
 		services: new Map(),
 		stateCache: new Map(),
-		getSetting: vi.fn(() => null),
-		getService: vi.fn(() => null),
-		getServicesByType: vi.fn(() => []),
-		getAllServices: vi.fn(() => new Map()),
-		registerService: vi.fn(async () => {}),
-		useModel: vi.fn(async () => "" as never),
-		emitEvent: vi.fn(async () => {}),
-		composeState: vi.fn(async () => ({}) as State),
-		createMemory: vi.fn(async () => MOCK_AGENT_ID),
-		getMemories: vi.fn(async () => [] as Memory[]),
-		getMemoryById: vi.fn(async () => null),
-		getCache: vi.fn(async () => undefined),
-		setCache: vi.fn(async () => true),
-		getRoom: vi.fn(async () => null),
-		getEntityById: vi.fn(async () => null),
-		ensureConnection: vi.fn(async () => {}),
 		...overrides,
 	};
 
