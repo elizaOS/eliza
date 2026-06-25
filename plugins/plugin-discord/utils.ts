@@ -5,6 +5,7 @@ import {
 	ModelType,
 	type ReplyToMode,
 	trimTokens,
+	IMessageService,
 } from "@elizaos/core";
 import {
 	ActionRowBuilder,
@@ -35,14 +36,6 @@ export interface MessagingAPI {
 		agentId: string,
 		message: unknown,
 		options?: { onResponse?: unknown },
-	) => Promise<unknown>;
-}
-
-export interface MessageServiceAPI {
-	handleMessage: (
-		runtime: IAgentRuntime,
-		message: unknown,
-		callback: unknown,
 	) => Promise<unknown>;
 }
 
@@ -84,7 +77,7 @@ export function getMessagingAPI(runtime: IAgentRuntime): MessagingAPI | null {
 
 export function getMessageService(
 	runtime: IAgentRuntime,
-): MessageServiceAPI | null {
+): IMessageService | null {
 	if (hasMessageService(runtime)) {
 		return runtime.messageService;
 	}

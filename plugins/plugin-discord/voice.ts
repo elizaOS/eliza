@@ -1552,7 +1552,7 @@ export class VoiceManager extends EventEmitter {
 			}
 
 			const voiceChannel = guild.channels.cache.find(
-				(channel: VoiceChannel) =>
+				(channel) =>
 					channel.id === channelId &&
 					channel.type === DiscordChannelType.GuildVoice,
 			);

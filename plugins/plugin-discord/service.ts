@@ -1282,13 +1282,13 @@ export class DiscordService extends Service implements IDiscordService {
 	 *
 	 * @param {IAgentRuntime} runtime - The AgentRuntime instance
 	 */
-	constructor(runtime: IAgentRuntime) {
+	constructor(runtime?: IAgentRuntime) {
 		super(runtime);
 
 		// Load Discord settings with proper priority (env vars > character settings > defaults)
-		this.discordSettings = getDiscordSettings(runtime);
+		this.discordSettings = getDiscordSettings(this.runtime);
 
-		this.character = runtime.character;
+		this.character = this.runtime.character;
 
 		this.defaultAccountId = normalizeAccountId(
 			resolveDefaultDiscordAccountId(this.runtime),
@@ -1324,7 +1324,7 @@ export class DiscordService extends Service implements IDiscordService {
 				"Initialized Discord account client pool",
 			);
 		} catch (error) {
-			runtime.logger.error(
+			this.runtime.logger.error(
 				`Error initializing Discord client: ${error instanceof Error ? error.message : String(error)}`,
 			);
 			this.syncLegacyDefaultAliases(null);
