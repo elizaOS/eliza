@@ -14,6 +14,21 @@ type UseJsonRenderMessageResult = {
   text: string;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function toStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) &&
+    value.every((item): item is string => typeof item === "string")
+    ? value
+    : undefined;
+}
+
 function toDataParts(
   parts: readonly MessagePart[] | null | undefined,
 ): DataPart[] {
@@ -38,10 +53,10 @@ export function useJsonRenderMessage(
 
     const { root, elements, state } = officialSpec;
     const components = Object.entries(elements).map(([id, el]) => {
-      const record = el as unknown as Record<string, unknown>;
-      const type = record.type as string | undefined;
-      const props = record.props as Record<string, unknown> | undefined;
-      const children = record.children as string[] | undefined;
+      const record = toRecord(el);
+      const type = typeof record.type === "string" ? record.type : undefined;
+      const props = toRecord(record.props);
+      const children = toStringArray(record.children);
       return {
         id,
         component: type ?? "unknown",
