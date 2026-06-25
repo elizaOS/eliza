@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   formatError,
   resolveApiToken,
@@ -929,8 +930,12 @@ async function resolveRendererUrl(): Promise<string> {
   }
 
   if (!rendererUrl) {
-    // Last resort: file:// (may have CORS issues with crossorigin module scripts)
-    rendererUrl = `file://${path.join(resolveRendererAssetDir(import.meta.dir), "index.html")}`;
+    // Last resort: file:// (may have CORS issues with crossorigin module scripts).
+    // pathToFileURL builds a valid file:///C:/… URL on Windows; `file://${winPath}`
+    // would be malformed (backslashes, drive letter parsed as host) and not load.
+    rendererUrl = pathToFileURL(
+      path.join(resolveRendererAssetDir(import.meta.dir), "index.html"),
+    ).href;
     logger.warn(
       "[Main] Falling back to file:// renderer URL — CORS issues possible",
     );
