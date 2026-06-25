@@ -23,7 +23,7 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import {
-	AttachmentBuilder,
+	type AttachmentBuilder,
 	type Channel,
 	type Client,
 	ChannelType as DiscordChannelType,

@@ -58,7 +58,7 @@ import {
  *    to use the generic emitEvent overload.
  */
 import {
-	AttachmentBuilder,
+	type AttachmentBuilder,
 	type Channel,
 	type Collection,
 	ChannelType as DiscordChannelType,

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
-import { Service } from "../types/service";
 import type { IAgentRuntime } from "../types/runtime";
+import { Service } from "../types/service";
 
 function createDeferred<T>() {
 	let resolve!: (value: T) => void;
