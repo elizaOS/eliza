@@ -59,6 +59,7 @@ const DEFAULT_CONFIG: AospLlmStreamConfig = {
   draftMax: 0,
   mtpDrafterPath: null,
   disableThinking: false,
+  contextSize: 4096,
 };
 
 /* -------------------------------------------------------------------- */
@@ -119,7 +120,7 @@ describe("fusedAospTextSupported (ABI-v9 gate)", () => {
 /* -------------------------------------------------------------------- */
 
 describe("createAospStreamingLlmBinding", () => {
-  it("threads gpuLayers + KV-cache types into the 80-byte stream config", () => {
+  it("threads gpuLayers, KV-cache types, and context size into the 88-byte stream config", () => {
     const { helpers, viewFor } = makeFakeHelpers();
     let capturedStruct: Buffer | undefined;
     const symbols = {
@@ -154,12 +155,14 @@ describe("createAospStreamingLlmBinding", () => {
 
     expect(capturedStruct).toBeDefined();
     const struct = capturedStruct!;
-    expect(struct.byteLength).toBe(80);
+    expect(struct.byteLength).toBe(88);
     // off 60 = n_gpu_layers
     expect(struct.readInt32LE(60)).toBe(99);
     // off 64/72 = cache_type_k / cache_type_v pointers — non-NULL when set.
     expect(struct.readBigUInt64LE(64)).not.toBe(0n);
     expect(struct.readBigUInt64LE(72)).not.toBe(0n);
+    // off 80 = context_size (ABI v9).
+    expect(struct.readInt32LE(80)).toBe(4096);
   });
 
   it("writes n_gpu_layers = -1 (default) and NULL cache types when untuned", () => {
@@ -193,6 +196,7 @@ describe("createAospStreamingLlmBinding", () => {
     expect(struct!.readInt32LE(60)).toBe(-1);
     expect(struct!.readBigUInt64LE(64)).toBe(0n);
     expect(struct!.readBigUInt64LE(72)).toBe(0n);
+    expect(struct!.readInt32LE(80)).toBe(4096);
   });
 
   it("drives open→prefill→next→close through streamGenerate", async () => {

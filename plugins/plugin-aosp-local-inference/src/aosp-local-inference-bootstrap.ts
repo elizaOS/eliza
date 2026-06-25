@@ -2541,6 +2541,7 @@ interface AospFusedTextLoaderState {
   bundleRoot: string;
   modelPath: string;
   gpuLayers?: number;
+  contextSize: number | null;
   draftModelPath: string | null;
 }
 
@@ -2794,6 +2795,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           }),
           bundleRoot,
           modelPath: args.modelPath,
+          contextSize: args.contextSize ?? null,
           draftModelPath: null,
         };
       }
@@ -2820,6 +2822,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
       }
 
       state.modelPath = args.modelPath;
+      state.contextSize = args.contextSize ?? state.contextSize ?? null;
       state.draftModelPath = draftModelPath;
       if (typeof args.gpuLayers === "number") {
         state.gpuLayers = args.gpuLayers;
@@ -2873,6 +2876,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         draftMax: active.draftModelPath ? 16 : 0,
         mtpDrafterPath: active.draftModelPath,
         disableThinking: false,
+        contextSize: active.contextSize,
       };
       const result = await streamGenerate(active.binding, {
         ctx: active.ctx,

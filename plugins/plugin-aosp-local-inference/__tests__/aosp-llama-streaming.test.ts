@@ -117,6 +117,7 @@ const DEFAULT_CONFIG: AospLlmStreamConfig = {
   draftMax: 0,
   mtpDrafterPath: null,
   disableThinking: false,
+  contextSize: 4096,
 };
 
 const STEPS: AospLlmStreamStep[] = [
