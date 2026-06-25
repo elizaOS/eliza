@@ -94,8 +94,16 @@ describe("runComputerUseAgentLoop — model-call telemetry (#9105)", () => {
     );
 
     expect(report.reason).toBe("finish");
-    // First (and only) model call cannot be a cache hit.
-    expect(report.modelStats).toEqual({ invocations: 1, cacheHits: 0 });
+    // First (and only) model call cannot be a cache hit. `finish` needs no
+    // coordinate, so the default "on-escalation" policy plans imageless and
+    // counts the saved image tokens (frame header is not a real IHDR → the
+    // estimate uses the BRAIN_MAX_PIXELS ceiling).
+    expect(report.modelStats).toEqual({
+      invocations: 1,
+      cacheHits: 0,
+      imagelessCalls: 1,
+      estImageTokensSaved: 1748,
+    });
   });
 
   it("counts one model invocation per planning step", async () => {
@@ -121,9 +129,11 @@ describe("runComputerUseAgentLoop — model-call telemetry (#9105)", () => {
     expect(report.reason).toBe("max_steps");
     expect(report.steps.length).toBe(3);
     // One invocation per step; the synthetic frame is not a decodable PNG so
-    // the dHash cache never engages.
+    // the dHash cache never engages. `wait` needs no coordinate, so every step
+    // plans imageless under the default "on-escalation" policy.
     expect(report.modelStats?.invocations).toBe(3);
     expect(report.modelStats?.cacheHits).toBe(0);
+    expect(report.modelStats?.imagelessCalls).toBe(3);
   });
 
   it("leaves modelStats undefined when the loop does not implement getStats()", async () => {

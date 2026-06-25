@@ -19,6 +19,13 @@
  * routes through its content-hash cache, so identical frames don't burn
  * inference budget twice.
  *
+ * Image policy (#9105): the compact scene already carries OCR text + AX boxes,
+ * which usually suffice to pick the next target, so the default
+ * `"on-escalation"` policy plans from that text-only context with NO image and
+ * attaches the ~1.3 MP frame only when the planned target cannot be grounded
+ * against the OCR/AX boxes (or a strict-retry fires). `"always"` keeps the
+ * legacy behaviour (image on every call); `"never"` never attaches pixels.
+ *
  * Parse strictness:
  *   - We try to parse the response as JSON (either the literal string or
  *     `result.description`).
@@ -33,15 +40,35 @@ import {
   ModelType,
 } from "@elizaos/core";
 import type { DisplayCapture } from "../platform/capture.js";
-import { frameDhash } from "../scene/dhash.js";
+import { frameDhash, pngDimensions } from "../scene/dhash.js";
 import type { Scene } from "../scene/scene-types.js";
 import { serializeSceneForPrompt } from "../scene/serialize.js";
-import type { BrainOutput, BrainRoi } from "./types.js";
+import { resolveReference } from "./actor.js";
+import type { BrainOutput, BrainProposedAction, BrainRoi } from "./types.js";
 
 export const BRAIN_MAX_PIXELS = 1_310_720; // 1280 * 32 * 32 ≈ 1.3 MP cap
 export const BRAIN_MAX_ROIS = 2;
 /** Bound on the per-Brain dHash→BrainOutput cache (LRU-ish, oldest evicted). */
 export const BRAIN_DHASH_CACHE_MAX = 16;
+/**
+ * Image-token estimate per source pixel for a vision model with the Qwen3-VL /
+ * OS-Atlas `max_pixels` convention: one visual token ≈ a 28×28 (≈750 px) patch.
+ * Used only to quantify the saving when a frame is *not* attached (#9105).
+ */
+export const BRAIN_PIXELS_PER_IMAGE_TOKEN = 750;
+
+/**
+ * When to attach the raw screenshot to the planning model (#9105):
+ *   - `"always"`     — attach the pixels on every call (legacy behaviour).
+ *   - `"on-escalation"` — plan from the compact OCR/AX scene with no image
+ *                         first; attach pixels only when the planned target
+ *                         cannot be grounded against the OCR/AX boxes or a
+ *                         strict-retry fires. Default.
+ *   - `"never"`      — never attach the screenshot; plan from the scene alone.
+ */
+export type BrainImagePolicy = "always" | "on-escalation" | "never";
+
+export const DEFAULT_BRAIN_IMAGE_POLICY: BrainImagePolicy = "on-escalation";
 
 /** Token-accounting snapshot for a Brain instance (#9105 M3). */
 export interface BrainStats {
@@ -49,7 +76,27 @@ export interface BrainStats {
   invocations: number;
   /** Describe calls served from the frame-dHash cache (no model call). */
   cacheHits: number;
+  /**
+   * Model calls issued with NO screenshot attached (the scene's OCR/AX text
+   * sufficed). Each one saved roughly one full-frame image's worth of tokens.
+   */
+  imagelessCalls: number;
+  /**
+   * Estimated image tokens NOT sent because of imageless calls — the sum of
+   * `(width * height) / BRAIN_PIXELS_PER_IMAGE_TOKEN` over every imageless
+   * call, capped per frame at `BRAIN_MAX_PIXELS`.
+   */
+  estImageTokensSaved: number;
 }
+
+/**
+ * Action kinds whose dispatch needs a grounded display-local coordinate. For
+ * these, an imageless plan is only safe when its `ref`/rationale resolves to an
+ * OCR/AX box; otherwise the Brain escalates to the pixels. The remaining kinds
+ * (type/hotkey/key/wait/finish) carry everything in their args.
+ */
+const COORDINATE_ACTION_KINDS: ReadonlySet<BrainProposedAction["kind"]> =
+  new Set(["click", "double_click", "right_click", "scroll", "drag"]);
 
 export class BrainParseError extends Error {
   constructor(
@@ -68,6 +115,12 @@ export interface BrainDeps {
     prompt: string;
     displayId: number;
   }) => Promise<string | ImageDescriptionResult>;
+  /**
+   * When to attach the raw screenshot to the planning model (#9105). Defaults
+   * to `"on-escalation"` — plan from the compact OCR/AX scene first and only
+   * attach the ~1.3 MP frame when the planned target cannot be grounded.
+   */
+  imagePolicy?: BrainImagePolicy;
 }
 
 export interface BrainInput {
@@ -94,17 +147,27 @@ export class Brain {
    * cutting the dominant CUA-loop token cost regardless of backend (#9105 M3).
    */
   private readonly dhashCache = new Map<string, BrainOutput>();
+  private readonly imagePolicy: BrainImagePolicy;
   private invocations = 0;
   private cacheHits = 0;
+  private imagelessCalls = 0;
+  private estImageTokensSaved = 0;
 
   constructor(
     private readonly runtime: IAgentRuntime | null,
     private readonly deps: BrainDeps = {},
-  ) {}
+  ) {
+    this.imagePolicy = deps.imagePolicy ?? DEFAULT_BRAIN_IMAGE_POLICY;
+  }
 
-  /** Token-accounting snapshot (model calls vs cache hits). */
+  /** Token-accounting snapshot (model calls, cache hits, imageless savings). */
   getStats(): BrainStats {
-    return { invocations: this.invocations, cacheHits: this.cacheHits };
+    return {
+      invocations: this.invocations,
+      cacheHits: this.cacheHits,
+      imagelessCalls: this.imagelessCalls,
+      estImageTokensSaved: this.estImageTokensSaved,
+    };
   }
 
   private cacheKey(frame: Buffer, goal: string): string | null {
@@ -152,14 +215,7 @@ export class Brain {
       }
     }
 
-    const dataUrl = await encodeForBrain(targetCapture.frame);
-    const prompt = brainPromptFor(compactScene, input.goal, /*strict*/ false);
-    this.invocations += 1;
-    const first = await this.invoke({
-      imageUrl: dataUrl,
-      prompt,
-      displayId: targetCapture.display.id,
-    });
+    const displayId = targetCapture.display.id;
     const tryParse = (raw: string): BrainOutput | null => {
       try {
         return parseBrainOutput(raw);
@@ -167,20 +223,79 @@ export class Brain {
         return null;
       }
     };
-    const rawFirst = extractText(first);
-    const parsed = tryParse(rawFirst);
-    if (parsed) return this.rememberOutput(key, enforceCaps(parsed));
-    // Strict retry — same image, stricter prompt.
+    const lightPrompt = brainPromptFor(
+      compactScene,
+      input.goal,
+      /*strict*/ false,
+    );
     const strictPrompt = brainPromptFor(
       compactScene,
       input.goal,
       /*strict*/ true,
     );
+
+    // ── Pass 1: plan from the compact OCR/AX scene with NO image, unless the
+    // policy demands the pixels up front (#9105). The compact scene already
+    // carries the OCR text + AX boxes the planner needs to pick a target.
+    if (this.imagePolicy !== "always") {
+      this.invocations += 1;
+      const imageless = await this.invoke({
+        imageUrl: "",
+        prompt: lightPrompt,
+        displayId,
+      });
+      const parsedImageless = tryParse(extractText(imageless));
+      if (parsedImageless) {
+        const capped = enforceCaps(parsedImageless);
+        // Keep the imageless plan when its target is grounded against the
+        // OCR/AX boxes (or it needs no coordinate at all), OR when the policy
+        // forbids ever attaching pixels. Otherwise fall through to escalation.
+        if (
+          this.imagePolicy === "never" ||
+          this.resolvesWithoutImage(input.scene, capped)
+        ) {
+          this.recordImageless(targetCapture.frame);
+          return this.rememberOutput(key, capped);
+        }
+      } else if (this.imagePolicy === "never") {
+        // No pixels available to escalate to — strict-retry imageless once.
+        this.invocations += 1;
+        const strictImageless = await this.invoke({
+          imageUrl: "",
+          prompt: strictPrompt,
+          displayId,
+        });
+        const rawStrict = extractText(strictImageless);
+        const parsedStrict = tryParse(rawStrict);
+        if (parsedStrict) {
+          this.recordImageless(targetCapture.frame);
+          return this.rememberOutput(key, enforceCaps(parsedStrict));
+        }
+        throw new BrainParseError(
+          "Brain output is not valid JSON conforming to BrainOutput after retry",
+          rawStrict,
+        );
+      }
+    }
+
+    // ── Escalation: attach the pixels. Either policy === "always", or the
+    // imageless plan could not be grounded / parsed. The existing encode +
+    // strict-retry path runs from here unchanged.
+    const dataUrl = await encodeForBrain(targetCapture.frame);
+    this.invocations += 1;
+    const first = await this.invoke({
+      imageUrl: dataUrl,
+      prompt: lightPrompt,
+      displayId,
+    });
+    const parsed = tryParse(extractText(first));
+    if (parsed) return this.rememberOutput(key, enforceCaps(parsed));
+    // Strict retry — same image, stricter prompt.
     this.invocations += 1;
     const second = await this.invoke({
       imageUrl: dataUrl,
       prompt: strictPrompt,
-      displayId: targetCapture.display.id,
+      displayId,
     });
     const rawSecond = extractText(second);
     const parsedRetry = tryParse(rawSecond);
@@ -189,6 +304,31 @@ export class Brain {
       "Brain output is not valid JSON conforming to BrainOutput after retry",
       rawSecond,
     );
+  }
+
+  /**
+   * True when the imageless plan needs no screenshot to dispatch: a
+   * non-coordinate action (type/hotkey/key/wait/finish) carries everything in
+   * its args, and a coordinate action is fine when its `ref`/rationale resolves
+   * to a concrete OCR/AX box. When the target cannot be grounded we escalate to
+   * the pixels — correctness over token saving.
+   */
+  private resolvesWithoutImage(scene: Scene, output: BrainOutput): boolean {
+    const action: BrainProposedAction = output.proposed_action;
+    if (!COORDINATE_ACTION_KINDS.has(action.kind)) return true;
+    return (
+      resolveReference(
+        scene,
+        action.ref,
+        action.rationale,
+        output.target_display_id,
+      ) !== null
+    );
+  }
+
+  private recordImageless(frame: Buffer): void {
+    this.imagelessCalls += 1;
+    this.estImageTokensSaved += estimateImageTokens(frame);
   }
 
   private async invoke(args: {
@@ -373,4 +513,19 @@ function extractText(value: string | ImageDescriptionResult): string {
  */
 export async function encodeForBrain(png: Buffer): Promise<string> {
   return `data:image/png;base64,${png.toString("base64")}`;
+}
+
+/**
+ * Estimate the visual tokens a frame would have cost the planning model, for
+ * the "tokens saved by going imageless" telemetry (#9105). The backends apply a
+ * `max_pixels` downscale, so the per-frame estimate is capped at
+ * `BRAIN_MAX_PIXELS`. Falls back to the cap when the PNG header is unreadable —
+ * an attached frame would have been downscaled to that ceiling regardless.
+ */
+export function estimateImageTokens(png: Buffer): number {
+  const dims = pngDimensions(png);
+  const pixels = dims
+    ? Math.min(dims.width * dims.height, BRAIN_MAX_PIXELS)
+    : BRAIN_MAX_PIXELS;
+  return Math.round(pixels / BRAIN_PIXELS_PER_IMAGE_TOKEN);
 }

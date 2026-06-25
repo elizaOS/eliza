@@ -253,9 +253,11 @@ export async function runComputerUseAgentLoop(
           loop: loop.name,
           invocations: stats.invocations,
           cacheHits: stats.cacheHits,
+          imagelessCalls: stats.imagelessCalls,
+          estImageTokensSaved: stats.estImageTokensSaved,
           steps: report.steps.length,
         },
-        `[computeruse/agent] ${stats.invocations} model call(s), ${stats.cacheHits} cache hit(s) over ${report.steps.length} step(s)`,
+        `[computeruse/agent] ${stats.invocations} model call(s), ${stats.cacheHits} cache hit(s), ${stats.imagelessCalls} imageless (~${stats.estImageTokensSaved} image tokens saved) over ${report.steps.length} step(s)`,
       );
     }
     await runOnRunEnd(middlewares, {
