@@ -27,7 +27,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
 const LOADER_PATH = path.join(
   repoRoot,
   "packages/ui/src/components/views/DynamicViewLoader.tsx",
@@ -51,7 +54,9 @@ export async function getHostExternalSpecifiers() {
   }
   const braceStart = source.indexOf("{", declStart);
   if (braceStart === -1) {
-    throw new Error("[view-bundle-guard] malformed HOST_EXTERNAL_IMPORTERS literal");
+    throw new Error(
+      "[view-bundle-guard] malformed HOST_EXTERNAL_IMPORTERS literal",
+    );
   }
 
   const specifiers = new Set();
@@ -136,7 +141,9 @@ export async function getHostExternalSpecifiers() {
   }
 
   if (specifiers.size === 0) {
-    throw new Error("[view-bundle-guard] extracted zero host-external specifiers — parser broke");
+    throw new Error(
+      "[view-bundle-guard] extracted zero host-external specifiers — parser broke",
+    );
   }
   return specifiers;
 }
@@ -148,7 +155,8 @@ function bareImportSpecifiers(source) {
     const t = line.trimStart();
     if (!t.startsWith("import") && !t.startsWith("export")) continue;
     const m =
-      t.match(/\bfrom\s*["']([^"']+)["']/) || t.match(/^import\s*["']([^"']+)["']/);
+      t.match(/\bfrom\s*["']([^"']+)["']/) ||
+      t.match(/^import\s*["']([^"']+)["']/);
     if (!m) continue;
     const spec = m[1];
     if (spec.startsWith(".") || spec.startsWith("/")) continue;
@@ -157,57 +165,105 @@ function bareImportSpecifiers(source) {
   return out;
 }
 
-async function listBuiltBundles() {
+async function listExpectedViewBundles() {
   const pluginsDir = path.join(repoRoot, "plugins");
   const names = await fs.readdir(pluginsDir).catch(() => []);
   const bundles = [];
   for (const name of names) {
-    const bundle = path.join(pluginsDir, name, "dist/views/bundle.js");
+    const config = path.join(pluginsDir, name, "vite.config.views.ts");
     try {
-      await fs.access(bundle);
-      bundles.push({ name, bundle });
+      await fs.access(config);
     } catch {
-      // not built — nothing to validate
+      continue;
+    }
+    const bundle = path.join(pluginsDir, name, "dist/views/bundle.js");
+    const relativeBundle = path.relative(repoRoot, bundle);
+    const relativeConfig = path.relative(repoRoot, config);
+    bundles.push({ name, bundle, relativeBundle, relativeConfig });
+  }
+  return bundles.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function listBuiltBundles() {
+  const expected = await listExpectedViewBundles();
+  const bundles = [];
+  const missingBundles = [];
+  for (const entry of expected) {
+    try {
+      await fs.access(entry.bundle);
+      bundles.push(entry);
+    } catch {
+      missingBundles.push(entry);
     }
   }
-  return bundles;
+  return { bundles, missingBundles, expectedBundleCount: expected.length };
 }
 
 /**
- * Validate every built view bundle. Returns a list of violations
- * `{ plugin, specifier }`; empty when every bundle is loadable.
+ * Validate every expected view bundle. Returns missing bundle records plus
+ * import violations `{ plugin, specifier }`; both empty when every bundle is
+ * present and loadable.
  */
 export async function validateViewBundles() {
   const allowed = await getHostExternalSpecifiers();
-  const bundles = await listBuiltBundles();
+  const { bundles, missingBundles, expectedBundleCount } =
+    await listBuiltBundles();
   const violations = [];
   for (const { name, bundle } of bundles) {
     const source = await fs.readFile(bundle, "utf8");
     for (const spec of bareImportSpecifiers(source)) {
-      if (!allowed.has(spec)) violations.push({ plugin: name, specifier: spec });
+      if (!allowed.has(spec))
+        violations.push({ plugin: name, specifier: spec });
     }
   }
-  return { violations, bundleCount: bundles.length, allowedCount: allowed.size };
+  return {
+    violations,
+    missingBundles,
+    bundleCount: bundles.length,
+    expectedBundleCount,
+    allowedCount: allowed.size,
+  };
 }
 
 // CLI entry: `bun packages/scripts/view-bundle-import-guard.mjs`
 if (import.meta.main || process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { violations, bundleCount, allowedCount } = await validateViewBundles();
-  if (violations.length === 0) {
+  const {
+    violations,
+    missingBundles,
+    bundleCount,
+    expectedBundleCount,
+    allowedCount,
+  } = await validateViewBundles();
+  if (missingBundles.length === 0 && violations.length === 0) {
     console.log(
-      `[view-bundle-guard] OK — ${bundleCount} bundle(s) import only host-external specifiers (${allowedCount} allowed).`,
+      `[view-bundle-guard] OK — ${bundleCount}/${expectedBundleCount} bundle(s) present and import only host-external specifiers (${allowedCount} allowed).`,
     );
     process.exit(0);
   }
-  console.error(
-    `[view-bundle-guard] ${violations.length} un-loadable import(s) found.\n` +
-      "These specifiers are externalised by the view build but NOT rewritable by\n" +
-      "DynamicViewLoader, so the view fails to load in the browser. Import them from\n" +
-      "a specifier the loader's HOST_EXTERNAL_IMPORTERS map already provides (e.g. the\n" +
-      "`@elizaos/ui/components` barrel) instead of a deep subpath.\n",
-  );
-  for (const v of violations) {
-    console.error(`  ✗ ${v.plugin}: ${v.specifier}`);
+  if (missingBundles.length > 0) {
+    console.error(
+      `[view-bundle-guard] ${missingBundles.length} expected view bundle(s) missing.\n` +
+        "Each plugin with vite.config.views.ts must produce dist/views/bundle.js during\n" +
+        "the Turbo build; otherwise the root build would ship a view manifest with no\n" +
+        "browser-loadable bundle.\n",
+    );
+    for (const bundle of missingBundles) {
+      console.error(
+        `  ✗ ${bundle.name}: missing ${bundle.relativeBundle} (declared by ${bundle.relativeConfig})`,
+      );
+    }
+  }
+  if (violations.length > 0) {
+    console.error(
+      `[view-bundle-guard] ${violations.length} un-loadable import(s) found.\n` +
+        "These specifiers are externalised by the view build but NOT rewritable by\n" +
+        "DynamicViewLoader, so the view fails to load in the browser. Import them from\n" +
+        "a specifier the loader's HOST_EXTERNAL_IMPORTERS map already provides (e.g. the\n" +
+        "`@elizaos/ui/components` barrel) instead of a deep subpath.\n",
+    );
+    for (const v of violations) {
+      console.error(`  ✗ ${v.plugin}: ${v.specifier}`);
+    }
   }
   process.exit(1);
 }
