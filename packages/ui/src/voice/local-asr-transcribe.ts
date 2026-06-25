@@ -88,7 +88,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {
     binary += String.fromCharCode(
-      ...(bytes.subarray(i, i + chunk) as unknown as number[]),
+      ...Array.from(bytes.subarray(i, i + chunk)),
     );
   }
   return btoa(binary);
