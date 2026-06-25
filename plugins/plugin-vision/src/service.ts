@@ -17,6 +17,7 @@ import {
   StreamingAudioCaptureService,
   type StreamingAudioConfig,
 } from "./audio-capture-stream";
+import { DescribeBackpressureController } from "./describe-backpressure";
 import { DirtyTileDescriber } from "./dirty-tile-describer";
 import {
   createTileDescribeFn,
@@ -31,6 +32,7 @@ import {
   assertValidVisionImageBuffer,
   parseVisionDataImageUrl,
 } from "./image-input";
+import { resolveArbiterFromRuntime } from "./lifecycle";
 import { OCRService } from "./ocr-service";
 import { ScreenCaptureService } from "./screen-capture";
 import { getTestImage } from "./test-input";
@@ -243,6 +245,13 @@ export class VisionService extends Service {
   private lastVlmUpdateTime = 0;
   private lastTfDescription = "";
 
+  // Memory-pressure pause owner for the continuous VLM describe step
+  // (#9105 M8 / #9581). Gates only the expensive IMAGE_DESCRIPTION call;
+  // OCR/YOLO/dHash keep running while describing is paused. Fed by both the
+  // WS1 memory arbiter (when present) and a local RSS cap (always).
+  private readonly describeBackpressure: DescribeBackpressureController;
+  private arbiterUnsubscribe: (() => void) | null = null;
+
   // Change-gated per-tile describe (#9105). Built lazily on first VLM tick:
   // null until we know whether a perceptual hash is available. When present it
   // re-describes only the screen tiles that changed since the previous frame;
@@ -293,6 +302,21 @@ export class VisionService extends Service {
 
     // Initialize OCR service
     this.ocrService = new OCRService();
+
+    // Memory-pressure pause owner for the continuous describe loop. The cap
+    // mirrors the documented MAX_MEMORY_USAGE_MB setting (default 2000 MB);
+    // `0`/invalid disables the local RSS guard so only arbiter pressure pauses.
+    const memoryCapMb = Number(
+      this.runtime.getSetting("MAX_MEMORY_USAGE_MB") ??
+        this.runtime.getSetting("VISION_MAX_MEMORY_USAGE_MB") ??
+        2000,
+    );
+    this.describeBackpressure = new DescribeBackpressureController({
+      memoryCapBytes:
+        Number.isFinite(memoryCapMb) && memoryCapMb > 0
+          ? memoryCapMb * 1024 * 1024
+          : 0,
+    });
 
     logger.info(
       "[VisionService] Constructed with config:",
@@ -673,6 +697,10 @@ export class VisionService extends Service {
   }
 
   private startProcessing(): void {
+    // Wire the continuous describe loop to the memory arbiter (if WS1 is
+    // loaded) so device memory pressure pauses the expensive VLM describe.
+    this.attachMemoryArbiter();
+
     // Start camera processing if enabled
     if (
       (this.visionConfig.visionMode === VisionMode.CAMERA ||
@@ -689,6 +717,47 @@ export class VisionService extends Service {
     ) {
       this.startScreenProcessing();
     }
+  }
+
+  /**
+   * Subscribe the describe-backpressure controller to WS1 memory-pressure
+   * events. Resolves the arbiter dynamically (no hard dependency on
+   * `@elizaos/plugin-local-inference`); when none is registered the controller
+   * still pauses on the local RSS cap. Idempotent — a prior subscription is
+   * released first so a restart doesn't double-subscribe.
+   */
+  private attachMemoryArbiter(): void {
+    if (this.arbiterUnsubscribe) {
+      this.arbiterUnsubscribe();
+      this.arbiterUnsubscribe = null;
+    }
+    const arbiter = resolveArbiterFromRuntime(this.runtime);
+    if (!arbiter) return;
+    // `onPressure` fires with a non-empty holder list when pressure is high
+    // enough to shed load, and (on the WS1 bridge) an empty list on any
+    // non-nominal tier. Either way that means "pause describing"; the next
+    // tick with no pressure event keeps describing. The bridge only emits on
+    // pressure, so we treat any callback as "critical" and rely on the WS1
+    // side clearing — for finer levels a direct IModelArbiter can be extended
+    // later. Empty/any callback ⇒ pause.
+    this.arbiterUnsubscribe = arbiter.onPressure(() => {
+      this.describeBackpressure.setPressure("critical");
+    });
+    logger.debug("[VisionService] Memory arbiter attached to describe loop");
+  }
+
+  /**
+   * Clear the arbiter-driven pause. Called by the WS1 bridge consumer when
+   * pressure returns to nominal; also exposed so an embedder can resume the
+   * describe loop explicitly.
+   */
+  public resumeDescribeLoop(): void {
+    this.describeBackpressure.setPressure("nominal");
+  }
+
+  /** Current describe-backpressure stats (telemetry / tests). */
+  public getBackpressureStats() {
+    return this.describeBackpressure.stats();
   }
 
   private startFrameProcessing(): void {
@@ -1017,8 +1086,22 @@ export class VisionService extends Service {
 
       // VLM scene description runs after detection so the success path can
       // feed the model the freshly-computed YOLO objects + recognized faces
-      // as additional context alongside the image.
-      if (shouldUpdateVlm) {
+      // as additional context alongside the image. The describe step is the
+      // dominant token + RAM cost, so it is gated by the memory-pressure
+      // backpressure owner: under device pressure or over the RSS cap we skip
+      // the VLM call (keeping the cheap OCR/YOLO/dHash work) and reuse the last
+      // description until pressure clears (#9105 M8 / #9581).
+      const describeGate = shouldUpdateVlm
+        ? this.describeBackpressure.evaluate()
+        : null;
+      if (describeGate?.transitionedTo === "paused") {
+        logger.info(
+          `[VisionService] VLM describe paused (${describeGate.reason}); reusing last scene description`,
+        );
+      } else if (describeGate?.transitionedTo === "active") {
+        logger.info("[VisionService] VLM describe resumed");
+      }
+      if (shouldUpdateVlm && describeGate?.describe) {
         // Prefer the change-gated per-tile describe on incremental updates: once
         // a prior scene description exists we only re-describe the tiles that
         // changed since the last frame (the rest reuse cached tile text), which
@@ -1844,6 +1927,11 @@ export class VisionService extends Service {
     if (this.screenProcessingInterval) {
       clearInterval(this.screenProcessingInterval);
       this.screenProcessingInterval = null;
+    }
+
+    if (this.arbiterUnsubscribe) {
+      this.arbiterUnsubscribe();
+      this.arbiterUnsubscribe = null;
     }
   }
 
