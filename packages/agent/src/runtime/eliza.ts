@@ -42,6 +42,7 @@ import {
   type ResolvedPlugin as RuntimeResolvedPlugin,
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types.ts";
+import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
 
 export {
   CHANNEL_PLUGIN_MAP,
@@ -4328,6 +4329,7 @@ export async function startEliza(
 
   const registerRemoteCodingRunner = async (): Promise<void> => {
     if (isBundledMobileRuntime()) return;
+    if (!shouldLoadRemoteCodingRunnerForBoot(runtime)) return;
     try {
       const { registerE2BRemoteCapabilityRouterIfEnabled } =
         await loadE2BCapabilityRouterModule();
@@ -5358,7 +5360,10 @@ export async function startEliza(
           } catch {
             // non-fatal
           }
-          if (!isBundledMobileRuntime()) {
+          if (
+            !isBundledMobileRuntime() &&
+            shouldLoadRemoteCodingRunnerForBoot(newRuntime)
+          ) {
             try {
               const { registerE2BRemoteCapabilityRouterIfEnabled } =
                 await loadE2BCapabilityRouterModule();
