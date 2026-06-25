@@ -24,6 +24,8 @@ DEFAULT_ALIAS_PATH = TRAINING_ROOT / "config" / "eliza1_action_aliases.json"
 
 sys.path.insert(0, str(SCRIPT_DIR))
 from prepare_eliza1_trajectory_dataset import (  # noqa: E402
+    TARGET_CHAT_TEMPLATE,
+    TARGET_MODEL_FAMILY,
     NATIVE_BOUNDARIES,
     NATIVE_FORMAT,
     SCHEMA_VERSION,
@@ -392,12 +394,22 @@ def validate_record(
     target = record.get("target")
     errs.extend(_check_keyset(target, REQUIRED_TARGET, path="target", allow_extra=False))
     if isinstance(target, dict):
-        if target.get("modelFamily") != "qwen":
-            errs.append(("target_model_family_invalid", "target.modelFamily must be qwen"))
+        if target.get("modelFamily") != TARGET_MODEL_FAMILY:
+            errs.append(
+                (
+                    "target_model_family_invalid",
+                    f"target.modelFamily must be {TARGET_MODEL_FAMILY}",
+                )
+            )
         if target.get("sftFormat") != "messages":
             errs.append(("target_sft_format_invalid", "target.sftFormat must be messages"))
-        if target.get("chatTemplate") != "chatml":
-            errs.append(("target_chat_template_invalid", "target.chatTemplate must be chatml"))
+        if target.get("chatTemplate") != TARGET_CHAT_TEMPLATE:
+            errs.append(
+                (
+                    "target_chat_template_invalid",
+                    f"target.chatTemplate must be {TARGET_CHAT_TEMPLATE}",
+                )
+            )
 
     messages = record.get("messages")
     if not isinstance(messages, list) or not messages:
