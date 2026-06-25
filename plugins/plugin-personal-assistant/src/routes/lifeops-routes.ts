@@ -2670,12 +2670,12 @@ export async function handleLifeOpsRoutes(
     return runRoute(ctx, async (service) => {
       const runtime = ctx.state.runtime;
       if (!runtime) {
-        error(res, "Agent runtime is not available", 503);
+        ctx.error(res, "Agent runtime is not available", 503);
         return;
       }
       const senderEmail = body.senderEmail?.trim();
       if (!senderEmail) {
-        error(res, "senderEmail is required", 400);
+        ctx.error(res, "senderEmail is required", 400);
         return;
       }
       const entityId = String(ctx.state.adminEntityId ?? "lifeops-owner");
