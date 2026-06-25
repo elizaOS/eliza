@@ -7,7 +7,7 @@
 eliza-e2e
 upstreams
 docs
-plugins
+# plugins
 packages/app
 packages/steward
 packages/os
