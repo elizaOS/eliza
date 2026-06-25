@@ -136,6 +136,9 @@ function appendUserContentToMessages(
 
   const nextMessages = [...messages];
   const userMessage = nextMessages[lastUserIndex];
+  if (!userMessage) {
+    return messages;
+  }
   const existingContent = userMessage.content;
   const content = [
     ...(typeof existingContent === "string"
