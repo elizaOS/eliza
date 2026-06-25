@@ -36,6 +36,13 @@ export {
 	loadAospVisionBackend,
 } from "./aosp-unavailable";
 export {
+	getVisionContextAugmenter,
+	registerVisionContextAugmenter,
+	type VisionAugmentResult,
+	type VisionContextAugmenter,
+	type VisionFusedContext,
+} from "./augmenter";
+export {
 	type CapacitorLlamaMtmdBinding,
 	type CapacitorLlamaMtmdHandle,
 	type CapacitorLlamaVisionBackendOptions,

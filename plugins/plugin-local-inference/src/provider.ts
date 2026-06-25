@@ -17,6 +17,7 @@ import {
 
 import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
+import { augmentVisionRequest } from "./services/vision/augmenter.js";
 import {
 	startTranscriptionAction,
 	stopTranscriptionAction,
@@ -821,6 +822,7 @@ function createImageDescriptionHandler() {
 					? modelKeyCandidate
 					: "gemma-vl";
 			const request = paramsToVisionRequest(params);
+			await augmentVisionRequest(request);
 			const result = await arbiter.requestVisionDescribe<
 				typeof request,
 				ImageDescriptionResult | string
