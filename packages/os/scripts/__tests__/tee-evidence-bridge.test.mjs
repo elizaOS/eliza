@@ -17,13 +17,16 @@ import assert from "node:assert/strict";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { readJson } from "../os-release-lib.mjs";
 import {
   buildBoundEvidence,
   goldenMeasurementsOf,
 } from "../tee-evidence-bridge.mjs";
 
-const repoRoot = path.resolve(new URL("../../../..", import.meta.url).pathname);
+const repoRoot = path.resolve(
+  fileURLToPath(new URL("../../../..", import.meta.url)),
+);
 const confidentialManifestPath = path.join(
   repoRoot,
   "packages/os/release/confidential-2026-05-21/manifest.json",
@@ -91,11 +94,7 @@ function assertAcceptedByConsumerContract(evidence) {
   }
   if (evidence.claims !== undefined) {
     for (const [claim, value] of Object.entries(evidence.claims)) {
-      assert.equal(
-        typeof value,
-        "boolean",
-        `claim ${claim} must be boolean`,
-      );
+      assert.equal(typeof value, "boolean", `claim ${claim} must be boolean`);
     }
   }
 }

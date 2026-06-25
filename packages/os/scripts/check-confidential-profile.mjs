@@ -41,6 +41,7 @@
 const FLOOR_GATES = new Set(["confidential-image-reproducibility"]);
 
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   checkConfidentialArtifacts,
   loadArtifacts,
@@ -195,6 +196,6 @@ async function main() {
   console.log("check-confidential-profile: ALL GATES PASS");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }

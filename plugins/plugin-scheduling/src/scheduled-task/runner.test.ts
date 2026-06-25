@@ -941,6 +941,77 @@ describe("ScheduledTaskRunner — dispatcher", () => {
       }),
     );
   });
+
+  it("marks a claimed task failed when the dispatcher throws", async () => {
+    const dispatch = vi.fn(async () => {
+      throw new Error("transport exploded");
+    });
+    const gates = createTaskGateRegistry();
+    registerBuiltInGates(gates);
+    const completionChecks = createCompletionCheckRegistry();
+    registerBuiltInCompletionChecks(completionChecks);
+    const ladders = createEscalationLadderRegistry();
+    registerDefaultEscalationLadders(ladders);
+    const store = createInMemoryScheduledTaskStore();
+    const logStore = createInMemoryScheduledTaskLogStore();
+    const runner = createScheduledTaskRunner({
+      agentId: "t",
+      store,
+      logStore,
+      gates,
+      completionChecks,
+      ladders,
+      anchors: createAnchorRegistry(),
+      consolidation: createConsolidationRegistry(),
+      ownerFacts: async () => ({}),
+      globalPause: { current: async () => ({ active: false }) },
+      activity: { hasSignalSince: () => false },
+      subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: { dispatch },
+      newTaskId: () => "task_dispatch_failed",
+      now: () => new Date("2026-05-09T12:00:00.000Z"),
+    });
+    const task = await runner.schedule(baseInput());
+    const result = await runner.fireWithResult(task.taskId);
+
+    expect(result.kind).toBe("dispatch_failed");
+    if (result.kind !== "dispatch_failed") {
+      throw new Error(`unexpected fire result: ${result.kind}`);
+    }
+    expect(result.error.message).toBe("transport exploded");
+    expect(result.task.state.status).toBe("failed");
+    expect(result.task.state.firedAt).toBe("2026-05-09T12:00:00.000Z");
+    expect(result.task.state.lastDecisionLog).toBe(
+      "dispatch_failed: transport exploded",
+    );
+    expect(result.task.metadata?.lastDispatchError).toEqual({
+      name: "Error",
+      message: "transport exploded",
+    });
+
+    const persisted = await store.get(task.taskId);
+    expect(persisted?.state.status).toBe("failed");
+    expect(persisted?.state.lastDecisionLog).toBe(
+      "dispatch_failed: transport exploded",
+    );
+
+    const log = await logStore.list({
+      agentId: "t",
+      taskId: task.taskId,
+    });
+    expect(log.map((row) => row.transition)).toEqual([
+      "scheduled",
+      "fire_attempt",
+      "fired",
+      "failed",
+    ]);
+    const failed = log.find((row) => row.transition === "failed");
+    expect(failed?.reason).toBe("dispatch_failed: transport exploded");
+    expect(failed?.detail).toEqual({
+      errorName: "Error",
+      message: "transport exploded",
+    });
+  });
 });
 
 describe("ScheduledTaskRunner — executionProfile host-capability substitution", () => {

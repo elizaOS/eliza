@@ -507,6 +507,66 @@ declare module "markdown-it" {
   export = MarkdownIt;
 }
 
+declare module "fluent-ffmpeg" {
+  export interface FfprobeStream {
+    codec_type?: string;
+  }
+
+  export interface FfprobeData {
+    streams?: FfprobeStream[];
+  }
+
+  export interface FfmpegCommand {
+    output(path: string): FfmpegCommand;
+    noVideo(): FfmpegCommand;
+    audioCodec(codec: string): FfmpegCommand;
+    videoCodec(codec: string): FfmpegCommand;
+    screenshots(options: {
+      timestamps: number[];
+      filename: string;
+      folder: string;
+      size: string;
+    }): FfmpegCommand;
+    seekInput(seconds: number): FfmpegCommand;
+    duration(seconds: number): FfmpegCommand;
+    format(format: string): FfmpegCommand;
+    toFormat(format: string): FfmpegCommand;
+    size(size: string): FfmpegCommand;
+    videoBitrate(bitrate: string | number): FfmpegCommand;
+    fps(fps: number): FfmpegCommand;
+    on(event: "end", listener: () => void): FfmpegCommand;
+    on(event: "error", listener: (error: Error) => void): FfmpegCommand;
+    run(): void;
+  }
+
+  interface FfmpegFactory {
+    (input?: string): FfmpegCommand;
+    setFfmpegPath(path: string): void;
+    ffprobe(
+      input: string,
+      callback: (error: Error | null, metadata: FfprobeData) => void,
+    ): void;
+  }
+
+  const ffmpeg: FfmpegFactory;
+  export default ffmpeg;
+}
+
+declare module "pngjs" {
+  export class PNG {
+    constructor(options: { width: number; height: number });
+
+    data: Buffer;
+    height: number;
+    width: number;
+
+    static sync: {
+      read(buffer: Buffer): PNG;
+      write(png: PNG): Buffer;
+    };
+  }
+}
+
 declare module "three/examples/jsm/libs/meshopt_decoder.module.js" {
   export const MeshoptDecoder: {
     supported: boolean;
