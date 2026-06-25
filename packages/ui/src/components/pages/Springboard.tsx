@@ -145,9 +145,12 @@ const IconTile = memo(function IconTile({
           onPointerCancel={clear}
           className={cn(
             // ViewTileImage handles image-vs-glyph internally, so the button is
-            // one constant surface. Translucent filter effects (#9281) and
-            // focus rings (#9292) were deliberately removed on develop.
-            "h-16 w-16 overflow-hidden rounded-2xl bg-bg-accent/60 text-foreground transition-colors hover:bg-bg-accent",
+            // one constant surface. The hero image (object-cover) covers the
+            // tile when it loads; this dark neutral fill + white glyph is the
+            // fallback so a tile reads as a real app icon (not a bare glyph
+            // floating on the background) even before/without the image. Filter
+            // effects (#9281) and focus rings (#9292) were removed on develop.
+            "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
             editing && "animate-pulse",
           )}
         >
@@ -425,7 +428,7 @@ export function Springboard({
       {favoriteEntries.length > 0 ? (
         <div
           data-testid="springboard-dock"
-          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl bg-bg-accent/90 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
+          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md sm:mx-4 sm:gap-4 sm:px-6"
         >
           {favoriteEntries.map((entry) => (
             <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>

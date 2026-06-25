@@ -50,11 +50,11 @@ sequenceDiagram
     participant Shell as StartupShell
     participant Co as useStartupCoordinator
 
-    HTML->>HTML: paint --bg (#ef5a1f fallback)
+    HTML->>HTML: paint --launch-bg (#ef5a1f)
     Main->>Main: ⌖ module-eval
     Main->>Main: ⌖ main-start
     Main->>Mods: ⌖ app-modules:start
-    Note over Mods: BLOCK on app-core + 3 companion modules only;<br/>7 plugins deferred to idle (see optimization below)
+    Note over Mods: BLOCK on app-core + 3 companion modules only;<br/>7 plugins deferred until after React paint (see optimization below)
     Mods-->>Main: ⌖ app-modules:end (measure: app-modules)
     Main->>Br: ⌖ bridges:start (storage + platform bridges)
     Br-->>Main: ⌖ bridges:end (measure: bridges)
@@ -246,10 +246,11 @@ registration + scene-status hook + inference-notice resolver). The other 7
 pre-warm their `React.lazy` chunks — none feeds the boot config build.
 
 Those 7 now ride the existing idle path (`BOOT_CONFIG_DEFERRED_MODULE_LOADERS`
-via `scheduleAppModuleIdleLoads`), exactly like `SIDE_EFFECT_APP_MODULE_LOADERS`.
-The blocking `await Promise.all` is 3 imports instead of 10; their nav tabs /
-overlay apps register a tick later (and on-demand render still triggers the
-cached import if idle work has not run), so no surface is missed. The `app-modules`
+via `scheduleAppModuleIdleLoads`), exactly like `SIDE_EFFECT_APP_MODULE_LOADERS`,
+and the idle wave is kicked only after React has had a paint opportunity. The
+blocking `await Promise.all` is 3 imports instead of 10; their nav tabs / overlay
+apps register a tick later (and on-demand render still triggers the cached
+import if idle work has not run), so no surface is missed. The `app-modules`
 `performance.measure` quantifies the win per boot.
 
 ---

@@ -118,11 +118,24 @@ describe("brand surfaces", () => {
     // boot never flashes a different orange before the home background paints.
     // The previous `#08080a` near-black is a slop value and should not regress.
     expect(html).not.toContain("#08080a");
+    expect(html).toMatch(new RegExp(`--launch-bg:\\s*${LAUNCH_ORANGE}`));
     expect(html).toMatch(
-      new RegExp(`background-color:\\s*var\\(--bg,\\s*${LAUNCH_ORANGE}\\)`),
+      new RegExp(
+        `html,\\s*body,\\s*#root\\s*\\{[^}]*background-color:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        "s",
+      ),
     );
+    expect(html).not.toMatch(/background-color:\s*var\(--bg/);
     // The pre-#9565 brand-accent fallback must not regress.
     expect(html).not.toMatch(/var\(--bg,\s*#FF5800\)/);
+  });
+
+  it("renderer root CSS keeps the pre-app surface on the launch orange", () => {
+    const styles = read("../ui/src/styles/styles.css");
+    expect(styles).toMatch(
+      new RegExp(`background:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`),
+    );
+    expect(styles).not.toMatch(/#root\s*\{[^}]*background:\s*var\(--bg\)/s);
   });
 
   it("no rounded-lg/xl/2xl/3xl chunky rounding in app shell source", () => {
