@@ -187,6 +187,27 @@ export function getAppleVisionOcrProvider(): AppleVisionOcrProvider | null {
   return registeredAppleVisionProvider;
 }
 
+/**
+ * On a plain macOS desktop (no Capacitor), register the native Apple Vision OCR
+ * provider so the AppleVision backend has a bridge — the darwin sibling of the
+ * iOS Capacitor bridge. Lazy-imported to avoid an import cycle, darwin-only,
+ * idempotent (an already-registered provider — e.g. the iOS bridge — wins), and
+ * fails soft when `swift` is absent so the chooser falls through to doCTR.
+ */
+async function ensureMacosVisionOcrProvider(): Promise<void> {
+  if (process.platform !== "darwin") return;
+  if (getAppleVisionOcrProvider()) return;
+  try {
+    const mod = await import("./ocr-service-apple-vision-macos.js");
+    if (!mod.isMacosVisionOcrAvailable()) return;
+    registerAppleVisionOcrProvider(mod.createMacosVisionOcrProvider());
+  } catch (error) {
+    logger.warn(
+      `[OCR] macOS Apple Vision provider unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 class AppleVisionBackend implements OCRBackend {
   readonly name: OCRBackendName = "apple-vision";
   async initialize(): Promise<void> {
@@ -249,6 +270,8 @@ export class OCRService {
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
+
+    await ensureMacosVisionOcrProvider();
 
     logger.info("[OCR] initializing OCR service…");
 
