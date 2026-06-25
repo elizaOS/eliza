@@ -26,4 +26,4 @@ COPY --from=builder /app /app
 EXPOSE 3000
 
 # Run the agent specifically from the monorepo
-CMD ["sh","-c","echo START && bun run start"]
+CMD ["sh","-c","echo Starting Eliza && bun run start"]
