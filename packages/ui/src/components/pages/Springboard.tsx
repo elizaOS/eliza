@@ -213,7 +213,7 @@ const IconTile = memo(function IconTile({
           </div>
         ) : null}
       </div>
-      <span className="max-w-[4.5rem] truncate text-center text-[11px] leading-tight text-muted">
+      <span className="max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
         {entry.label}
       </span>
     </div>
@@ -335,13 +335,6 @@ export function Springboard({
     [onLaunch],
   );
 
-  const enterEditMode = useCallback(() => {
-    if (!editing) {
-      emitViewInteraction({ source: "springboard", action: "edit-mode-enter" });
-    }
-    setEditingState(true);
-  }, [editing, setEditingState]);
-
   const toggleEditMode = useCallback(() => {
     emitViewInteraction({
       source: "springboard",
@@ -407,7 +400,7 @@ export function Springboard({
         onToggleFavorite={toggleFav}
         onEdit={onEditView}
         onDelete={onDeleteView}
-        onLongPress={enterEditMode}
+        onLongPress={toggleEditMode}
       />
     ),
     [
@@ -417,7 +410,7 @@ export function Springboard({
       toggleFav,
       onEditView,
       onDeleteView,
-      enterEditMode,
+      toggleEditMode,
     ],
   );
 
@@ -426,26 +419,13 @@ export function Springboard({
       className={cn("flex min-h-0 flex-1 flex-col", className)}
       data-testid="springboard"
     >
-      <div className="flex items-center justify-end px-4 pt-2">
-        <button
-          type="button"
-          onClick={toggleEditMode}
-          className={cn(
-            "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-            editing
-              ? "bg-accent text-accent-foreground"
-              : "bg-bg-accent/60 text-muted hover:bg-bg-accent",
-          )}
-        >
-          {editing ? "Done" : "Edit"}
-        </button>
-      </div>
-
-      {/* Featured / favorites row at the top of the springboard. */}
+      {/* Favorites bar — pinned to the TOP of the springboard (not an iOS-style
+          bottom dock). There is no Edit button: long-press any icon toggles
+          edit mode (reorder / pin / unpin), and a right-flick leaves it. */}
       {favoriteEntries.length > 0 ? (
         <div
           data-testid="springboard-dock"
-          className="mx-3 mt-1 mb-2 flex items-center justify-center gap-3 rounded-3xl bg-bg-accent/90 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
+          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl bg-bg-accent/90 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
         >
           {favoriteEntries.map((entry) => (
             <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>

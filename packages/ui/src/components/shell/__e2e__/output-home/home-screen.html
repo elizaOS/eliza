@@ -13390,6 +13390,28 @@
     }
   });
 
+  // packages/ui/src/state/notifications/navigate-deep-link.ts
+  function navigateDeepLink(deepLink) {
+    if (typeof window === "undefined") return;
+    if (/^https?:\/\//i.test(deepLink)) {
+      window.open(deepLink, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (deepLink.startsWith("/") && !deepLink.startsWith("//")) {
+      const viewId = deepLink.slice(1).split("/")[0] || void 0;
+      window.dispatchEvent(
+        new CustomEvent("eliza:navigate:view", {
+          detail: { viewId, viewPath: deepLink }
+        })
+      );
+    }
+  }
+  var init_navigate_deep_link = __esm({
+    "packages/ui/src/state/notifications/navigate-deep-link.ts"() {
+      "use strict";
+    }
+  });
+
   // packages/ui/src/bridge/native-plugins.ts
   function getCapacitorPlugins() {
     const capacitor = Capacitor;
@@ -13492,10 +13514,11 @@
         tag: req.id
       });
       if (req.deepLink) {
+        const deepLink = req.deepLink;
         notification.onclick = () => {
           try {
             window.focus();
-            window.location.assign(req.deepLink);
+            navigateDeepLink(deepLink);
           } catch {
           }
         };
@@ -13522,9 +13545,31 @@
     "packages/ui/src/bridge/native-notifications.ts"() {
       "use strict";
       init_dist();
+      init_navigate_deep_link();
       init_native_plugins();
       ANDROID_CHANNEL_ID = "eliza_notifications";
       channelEnsured = false;
+    }
+  });
+
+  // packages/ui/src/state/action-notice.ts
+  function toastToneForPriority(priority) {
+    return priority === "urgent" ? "error" : "info";
+  }
+  var TOAST_TTL_MS;
+  var init_action_notice = __esm({
+    "packages/ui/src/state/action-notice.ts"() {
+      "use strict";
+      TOAST_TTL_MS = {
+        /** Default dwell for a plain `setActionNotice` (quick confirmations). */
+        default: 2800,
+        /** A non-interruptive notification toast (normal/low priority). */
+        notification: 4e3,
+        /** An interruptive notification toast (high/urgent priority). */
+        notificationInterruptive: 7e3,
+        /** A system-warning banner — stays up long enough to be read + acted on. */
+        systemWarning: 2e4
+      };
     }
   });
 
@@ -13550,9 +13595,6 @@
   function isWindowFocused() {
     if (typeof document === "undefined") return true;
     return document.visibilityState === "visible" && document.hasFocus();
-  }
-  function toastTone(priority) {
-    return priority === "urgent" ? "error" : "info";
   }
   async function fireDesktopNotification(notification) {
     await invokeDesktopBridgeRequest({
@@ -13585,8 +13627,8 @@
       const text = notification.body ? `${notification.title} \u2014 ${notification.body}` : notification.title;
       toastSink(
         text,
-        toastTone(notification.priority),
-        interruptive ? 7e3 : 4e3
+        toastToneForPriority(notification.priority),
+        interruptive ? TOAST_TTL_MS.notificationInterruptive : TOAST_TTL_MS.notification
       );
     }
   }
@@ -13625,6 +13667,7 @@
       init_home_screen_fixture_api_stub();
       init_electrobun_rpc();
       init_native_notifications();
+      init_action_notice();
       state = {
         notifications: [],
         unreadCount: 0,
@@ -13814,6 +13857,30 @@
       unreadCount: 1
     };
   }
+  function approvalsPayload() {
+    return {
+      pending: [
+        {
+          id: "approval-1",
+          kind: "approval",
+          title: "Send the signed contract to Acme",
+          createdAt: Date.now() - 45 * 6e4,
+          roomId: "11111111-1111-1111-1111-111111111111",
+          options: [
+            { name: "approve", description: "Approve and send" },
+            { name: "deny", description: "Don't send", isCancel: true }
+          ]
+        },
+        {
+          id: "approval-2",
+          kind: "approval",
+          title: "Confirm the production deploy",
+          createdAt: Date.now() - 5 * 6e4,
+          roomId: "11111111-1111-1111-1111-111111111111"
+        }
+      ]
+    };
+  }
   function homeWidgetRelationshipsPeople() {
     const payload = relationshipsPeople();
     return { people: payload.data, stats: payload.stats };
@@ -13840,7 +13907,8 @@
         test: has("/api/relationships/candidates"),
         body: relationshipsCandidates
       },
-      { test: has("/api/notifications"), body: notificationsPayload }
+      { test: has("/api/notifications"), body: notificationsPayload },
+      { test: has("/api/approvals"), body: approvalsPayload }
     ];
   }
   function jsonResponse(body) {
@@ -15222,40 +15290,48 @@
   var __iconNode15 = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
   var ChevronUp = createLucideIcon("chevron-up", __iconNode15);
 
-  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/clock-3.mjs
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/circle-question-mark.mjs
   var __iconNode16 = [
+    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+    ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", key: "1u773s" }],
+    ["path", { d: "M12 17h.01", key: "p32p05" }]
+  ];
+  var CircleQuestionMark = createLucideIcon("circle-question-mark", __iconNode16);
+
+  // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/clock-3.mjs
+  var __iconNode17 = [
     ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
     ["path", { d: "M12 6v6h4", key: "135r8i" }]
   ];
-  var Clock3 = createLucideIcon("clock-3", __iconNode16);
+  var Clock3 = createLucideIcon("clock-3", __iconNode17);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/clock.mjs
-  var __iconNode17 = [
+  var __iconNode18 = [
     ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
     ["path", { d: "M12 6v6l4 2", key: "mmk7yg" }]
   ];
-  var Clock = createLucideIcon("clock", __iconNode17);
+  var Clock = createLucideIcon("clock", __iconNode18);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/contact.mjs
-  var __iconNode18 = [
+  var __iconNode19 = [
     ["path", { d: "M16 2v2", key: "scm5qe" }],
     ["path", { d: "M7 22v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2", key: "1waht3" }],
     ["path", { d: "M8 2v2", key: "pbkmx" }],
     ["circle", { cx: "12", cy: "11", r: "3", key: "itu57m" }],
     ["rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", key: "12vinp" }]
   ];
-  var Contact = createLucideIcon("contact", __iconNode18);
+  var Contact = createLucideIcon("contact", __iconNode19);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/database.mjs
-  var __iconNode19 = [
+  var __iconNode20 = [
     ["ellipse", { cx: "12", cy: "5", rx: "9", ry: "3", key: "msslwz" }],
     ["path", { d: "M3 5V19A9 3 0 0 0 21 19V5", key: "1wlel7" }],
     ["path", { d: "M3 12A9 3 0 0 0 21 12", key: "mv7ke4" }]
   ];
-  var Database = createLucideIcon("database", __iconNode19);
+  var Database = createLucideIcon("database", __iconNode20);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/earth.mjs
-  var __iconNode20 = [
+  var __iconNode21 = [
     ["path", { d: "M21.54 15H17a2 2 0 0 0-2 2v4.54", key: "1djwo0" }],
     [
       "path",
@@ -15267,10 +15343,10 @@
     ["path", { d: "M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05", key: "14pb5j" }],
     ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }]
   ];
-  var Earth = createLucideIcon("earth", __iconNode20);
+  var Earth = createLucideIcon("earth", __iconNode21);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/eye-off.mjs
-  var __iconNode21 = [
+  var __iconNode22 = [
     [
       "path",
       {
@@ -15288,10 +15364,10 @@
     ],
     ["path", { d: "m2 2 20 20", key: "1ooewy" }]
   ];
-  var EyeOff = createLucideIcon("eye-off", __iconNode21);
+  var EyeOff = createLucideIcon("eye-off", __iconNode22);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/eye.mjs
-  var __iconNode22 = [
+  var __iconNode23 = [
     [
       "path",
       {
@@ -15301,10 +15377,10 @@
     ],
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ];
-  var Eye = createLucideIcon("eye", __iconNode22);
+  var Eye = createLucideIcon("eye", __iconNode23);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/file-text.mjs
-  var __iconNode23 = [
+  var __iconNode24 = [
     [
       "path",
       {
@@ -15317,20 +15393,20 @@
     ["path", { d: "M16 13H8", key: "t4e002" }],
     ["path", { d: "M16 17H8", key: "z1uh3a" }]
   ];
-  var FileText = createLucideIcon("file-text", __iconNode23);
+  var FileText = createLucideIcon("file-text", __iconNode24);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/focus.mjs
-  var __iconNode24 = [
+  var __iconNode25 = [
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }],
     ["path", { d: "M3 7V5a2 2 0 0 1 2-2h2", key: "aa7l1z" }],
     ["path", { d: "M17 3h2a2 2 0 0 1 2 2v2", key: "4qcy5o" }],
     ["path", { d: "M21 17v2a2 2 0 0 1-2 2h-2", key: "6vwrx8" }],
     ["path", { d: "M7 21H5a2 2 0 0 1-2-2v-2", key: "ioqczr" }]
   ];
-  var Focus = createLucideIcon("focus", __iconNode24);
+  var Focus = createLucideIcon("focus", __iconNode25);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/folder-closed.mjs
-  var __iconNode25 = [
+  var __iconNode26 = [
     [
       "path",
       {
@@ -15340,10 +15416,10 @@
     ],
     ["path", { d: "M2 10h20", key: "1ir3d8" }]
   ];
-  var FolderClosed = createLucideIcon("folder-closed", __iconNode25);
+  var FolderClosed = createLucideIcon("folder-closed", __iconNode26);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/gamepad-2.mjs
-  var __iconNode26 = [
+  var __iconNode27 = [
     ["line", { x1: "6", x2: "10", y1: "11", y2: "11", key: "1gktln" }],
     ["line", { x1: "8", x2: "8", y1: "9", y2: "13", key: "qnk9ow" }],
     ["line", { x1: "15", x2: "15.01", y1: "12", y2: "12", key: "krot7o" }],
@@ -15356,28 +15432,28 @@
       }
     ]
   ];
-  var Gamepad2 = createLucideIcon("gamepad-2", __iconNode26);
+  var Gamepad2 = createLucideIcon("gamepad-2", __iconNode27);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/glasses.mjs
-  var __iconNode27 = [
+  var __iconNode28 = [
     ["circle", { cx: "6", cy: "15", r: "4", key: "vux9w4" }],
     ["circle", { cx: "18", cy: "15", r: "4", key: "18o8ve" }],
     ["path", { d: "M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2", key: "1ag4bs" }],
     ["path", { d: "M2.5 13 5 7c.7-1.3 1.4-2 3-2", key: "1hm1gs" }],
     ["path", { d: "M21.5 13 19 7c-.7-1.3-1.5-2-3-2", key: "1r31ai" }]
   ];
-  var Glasses = createLucideIcon("glasses", __iconNode27);
+  var Glasses = createLucideIcon("glasses", __iconNode28);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/globe.mjs
-  var __iconNode28 = [
+  var __iconNode29 = [
     ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
     ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
     ["path", { d: "M2 12h20", key: "9i4pu4" }]
   ];
-  var Globe = createLucideIcon("globe", __iconNode28);
+  var Globe = createLucideIcon("globe", __iconNode29);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/heart-pulse.mjs
-  var __iconNode29 = [
+  var __iconNode30 = [
     [
       "path",
       {
@@ -15387,10 +15463,10 @@
     ],
     ["path", { d: "M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27", key: "auskq0" }]
   ];
-  var HeartPulse = createLucideIcon("heart-pulse", __iconNode29);
+  var HeartPulse = createLucideIcon("heart-pulse", __iconNode30);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/heart.mjs
-  var __iconNode30 = [
+  var __iconNode31 = [
     [
       "path",
       {
@@ -15399,18 +15475,18 @@
       }
     ]
   ];
-  var Heart = createLucideIcon("heart", __iconNode30);
+  var Heart = createLucideIcon("heart", __iconNode31);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/image.mjs
-  var __iconNode31 = [
+  var __iconNode32 = [
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
     ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
     ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
   ];
-  var Image2 = createLucideIcon("image", __iconNode31);
+  var Image2 = createLucideIcon("image", __iconNode32);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/inbox.mjs
-  var __iconNode32 = [
+  var __iconNode33 = [
     ["polyline", { points: "22 12 16 12 14 15 10 15 8 12 2 12", key: "o97t9d" }],
     [
       "path",
@@ -15420,10 +15496,10 @@
       }
     ]
   ];
-  var Inbox = createLucideIcon("inbox", __iconNode32);
+  var Inbox = createLucideIcon("inbox", __iconNode33);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/key-round.mjs
-  var __iconNode33 = [
+  var __iconNode34 = [
     [
       "path",
       {
@@ -15433,19 +15509,19 @@
     ],
     ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
   ];
-  var KeyRound = createLucideIcon("key-round", __iconNode33);
+  var KeyRound = createLucideIcon("key-round", __iconNode34);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/layout-dashboard.mjs
-  var __iconNode34 = [
+  var __iconNode35 = [
     ["rect", { width: "7", height: "9", x: "3", y: "3", rx: "1", key: "10lvy0" }],
     ["rect", { width: "7", height: "5", x: "14", y: "3", rx: "1", key: "16une8" }],
     ["rect", { width: "7", height: "9", x: "14", y: "12", rx: "1", key: "1hutg5" }],
     ["rect", { width: "7", height: "5", x: "3", y: "16", rx: "1", key: "ldoo1y" }]
   ];
-  var LayoutDashboard = createLucideIcon("layout-dashboard", __iconNode34);
+  var LayoutDashboard = createLucideIcon("layout-dashboard", __iconNode35);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/layers.mjs
-  var __iconNode35 = [
+  var __iconNode36 = [
     [
       "path",
       {
@@ -15468,46 +15544,46 @@
       }
     ]
   ];
-  var Layers = createLucideIcon("layers", __iconNode35);
+  var Layers = createLucideIcon("layers", __iconNode36);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/layout-grid.mjs
-  var __iconNode36 = [
+  var __iconNode37 = [
     ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
     ["rect", { width: "7", height: "7", x: "14", y: "3", rx: "1", key: "6d4xhi" }],
     ["rect", { width: "7", height: "7", x: "14", y: "14", rx: "1", key: "nxv5o0" }],
     ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }]
   ];
-  var LayoutGrid = createLucideIcon("layout-grid", __iconNode36);
+  var LayoutGrid = createLucideIcon("layout-grid", __iconNode37);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/list-music.mjs
-  var __iconNode37 = [
+  var __iconNode38 = [
     ["path", { d: "M16 5H3", key: "m91uny" }],
     ["path", { d: "M11 12H3", key: "51ecnj" }],
     ["path", { d: "M11 19H3", key: "zflm78" }],
     ["path", { d: "M21 16V5", key: "yxg4q8" }],
     ["circle", { cx: "18", cy: "16", r: "3", key: "1hluhg" }]
   ];
-  var ListMusic = createLucideIcon("list-music", __iconNode37);
+  var ListMusic = createLucideIcon("list-music", __iconNode38);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/list-todo.mjs
-  var __iconNode38 = [
+  var __iconNode39 = [
     ["path", { d: "M13 5h8", key: "a7qcls" }],
     ["path", { d: "M13 12h8", key: "h98zly" }],
     ["path", { d: "M13 19h8", key: "c3s6r1" }],
     ["path", { d: "m3 17 2 2 4-4", key: "1jhpwq" }],
     ["rect", { x: "3", y: "4", width: "6", height: "6", rx: "1", key: "cif1o7" }]
   ];
-  var ListTodo = createLucideIcon("list-todo", __iconNode38);
+  var ListTodo = createLucideIcon("list-todo", __iconNode39);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/mail.mjs
-  var __iconNode39 = [
+  var __iconNode40 = [
     ["path", { d: "m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7", key: "132q7q" }],
     ["rect", { x: "2", y: "4", width: "20", height: "16", rx: "2", key: "izxlao" }]
   ];
-  var Mail = createLucideIcon("mail", __iconNode39);
+  var Mail = createLucideIcon("mail", __iconNode40);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/message-square.mjs
-  var __iconNode40 = [
+  var __iconNode41 = [
     [
       "path",
       {
@@ -15516,26 +15592,26 @@
       }
     ]
   ];
-  var MessageSquare = createLucideIcon("message-square", __iconNode40);
+  var MessageSquare = createLucideIcon("message-square", __iconNode41);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/mic.mjs
-  var __iconNode41 = [
+  var __iconNode42 = [
     ["path", { d: "M12 19v3", key: "npa21l" }],
     ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
     ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
   ];
-  var Mic = createLucideIcon("mic", __iconNode41);
+  var Mic = createLucideIcon("mic", __iconNode42);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/monitor.mjs
-  var __iconNode42 = [
+  var __iconNode43 = [
     ["rect", { width: "20", height: "14", x: "2", y: "3", rx: "2", key: "48i651" }],
     ["line", { x1: "8", x2: "16", y1: "21", y2: "21", key: "1svkeh" }],
     ["line", { x1: "12", x2: "12", y1: "17", y2: "21", key: "vw1qmm" }]
   ];
-  var Monitor = createLucideIcon("monitor", __iconNode42);
+  var Monitor = createLucideIcon("monitor", __iconNode43);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/moon.mjs
-  var __iconNode43 = [
+  var __iconNode44 = [
     [
       "path",
       {
@@ -15544,28 +15620,28 @@
       }
     ]
   ];
-  var Moon = createLucideIcon("moon", __iconNode43);
+  var Moon = createLucideIcon("moon", __iconNode44);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/music.mjs
-  var __iconNode44 = [
+  var __iconNode45 = [
     ["path", { d: "M9 18V5l12-2v13", key: "1jmyc2" }],
     ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
     ["circle", { cx: "18", cy: "16", r: "3", key: "1hluhg" }]
   ];
-  var Music = createLucideIcon("music", __iconNode44);
+  var Music = createLucideIcon("music", __iconNode45);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/network.mjs
-  var __iconNode45 = [
+  var __iconNode46 = [
     ["rect", { x: "16", y: "16", width: "6", height: "6", rx: "1", key: "4q2zg0" }],
     ["rect", { x: "2", y: "16", width: "6", height: "6", rx: "1", key: "8cvhb9" }],
     ["rect", { x: "9", y: "2", width: "6", height: "6", rx: "1", key: "1egb70" }],
     ["path", { d: "M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3", key: "1jsf9p" }],
     ["path", { d: "M12 12V8", key: "2874zd" }]
   ];
-  var Network = createLucideIcon("network", __iconNode45);
+  var Network = createLucideIcon("network", __iconNode46);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/octagon-alert.mjs
-  var __iconNode46 = [
+  var __iconNode47 = [
     ["path", { d: "M12 16h.01", key: "1drbdi" }],
     ["path", { d: "M12 8v4", key: "1got3b" }],
     [
@@ -15576,10 +15652,10 @@
       }
     ]
   ];
-  var OctagonAlert = createLucideIcon("octagon-alert", __iconNode46);
+  var OctagonAlert = createLucideIcon("octagon-alert", __iconNode47);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/package.mjs
-  var __iconNode47 = [
+  var __iconNode48 = [
     [
       "path",
       {
@@ -15591,17 +15667,17 @@
     ["polyline", { points: "3.29 7 12 12 20.71 7", key: "ousv84" }],
     ["path", { d: "m7.5 4.27 9 5.15", key: "1c824w" }]
   ];
-  var Package = createLucideIcon("package", __iconNode47);
+  var Package = createLucideIcon("package", __iconNode48);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/pause.mjs
-  var __iconNode48 = [
+  var __iconNode49 = [
     ["rect", { x: "14", y: "3", width: "5", height: "18", rx: "1", key: "kaeet6" }],
     ["rect", { x: "5", y: "3", width: "5", height: "18", rx: "1", key: "1wsw3u" }]
   ];
-  var Pause = createLucideIcon("pause", __iconNode48);
+  var Pause = createLucideIcon("pause", __iconNode49);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/pencil.mjs
-  var __iconNode49 = [
+  var __iconNode50 = [
     [
       "path",
       {
@@ -15611,10 +15687,10 @@
     ],
     ["path", { d: "m15 5 4 4", key: "1mk7zo" }]
   ];
-  var Pencil = createLucideIcon("pencil", __iconNode49);
+  var Pencil = createLucideIcon("pencil", __iconNode50);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/phone.mjs
-  var __iconNode50 = [
+  var __iconNode51 = [
     [
       "path",
       {
@@ -15623,10 +15699,10 @@
       }
     ]
   ];
-  var Phone = createLucideIcon("phone", __iconNode50);
+  var Phone = createLucideIcon("phone", __iconNode51);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/play.mjs
-  var __iconNode51 = [
+  var __iconNode52 = [
     [
       "path",
       {
@@ -15635,10 +15711,10 @@
       }
     ]
   ];
-  var Play = createLucideIcon("play", __iconNode51);
+  var Play = createLucideIcon("play", __iconNode52);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/plug.mjs
-  var __iconNode52 = [
+  var __iconNode53 = [
     ["path", { d: "M12 22v-5", key: "1ega77" }],
     ["path", { d: "M15 8V2", key: "18g5xt" }],
     [
@@ -15647,44 +15723,44 @@
     ],
     ["path", { d: "M9 8V2", key: "14iosj" }]
   ];
-  var Plug = createLucideIcon("plug", __iconNode52);
+  var Plug = createLucideIcon("plug", __iconNode53);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/plus.mjs
-  var __iconNode53 = [
+  var __iconNode54 = [
     ["path", { d: "M5 12h14", key: "1ays0h" }],
     ["path", { d: "M12 5v14", key: "s699le" }]
   ];
-  var Plus = createLucideIcon("plus", __iconNode53);
+  var Plus = createLucideIcon("plus", __iconNode54);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/radio.mjs
-  var __iconNode54 = [
+  var __iconNode55 = [
     ["path", { d: "M16.247 7.761a6 6 0 0 1 0 8.478", key: "1fwjs5" }],
     ["path", { d: "M19.075 4.933a10 10 0 0 1 0 14.134", key: "ehdyv1" }],
     ["path", { d: "M4.925 19.067a10 10 0 0 1 0-14.134", key: "1q22gi" }],
     ["path", { d: "M7.753 16.239a6 6 0 0 1 0-8.478", key: "r2q7qm" }],
     ["circle", { cx: "12", cy: "12", r: "2", key: "1c9p78" }]
   ];
-  var Radio = createLucideIcon("radio", __iconNode54);
+  var Radio = createLucideIcon("radio", __iconNode55);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/refresh-cw.mjs
-  var __iconNode55 = [
+  var __iconNode56 = [
     ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
     ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
     ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
     ["path", { d: "M8 16H3v5", key: "1cv678" }]
   ];
-  var RefreshCw = createLucideIcon("refresh-cw", __iconNode55);
+  var RefreshCw = createLucideIcon("refresh-cw", __iconNode56);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/rss.mjs
-  var __iconNode56 = [
+  var __iconNode57 = [
     ["path", { d: "M4 11a9 9 0 0 1 9 9", key: "pv89mb" }],
     ["path", { d: "M4 4a16 16 0 0 1 16 16", key: "k0647b" }],
     ["circle", { cx: "5", cy: "19", r: "1", key: "bfqh0e" }]
   ];
-  var Rss = createLucideIcon("rss", __iconNode56);
+  var Rss = createLucideIcon("rss", __iconNode57);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/scroll-text.mjs
-  var __iconNode57 = [
+  var __iconNode58 = [
     ["path", { d: "M15 12h-5", key: "r7krc0" }],
     ["path", { d: "M15 8h-5", key: "1khuty" }],
     ["path", { d: "M19 17V5a2 2 0 0 0-2-2H4", key: "zz82l3" }],
@@ -15696,17 +15772,17 @@
       }
     ]
   ];
-  var ScrollText = createLucideIcon("scroll-text", __iconNode57);
+  var ScrollText = createLucideIcon("scroll-text", __iconNode58);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/search.mjs
-  var __iconNode58 = [
+  var __iconNode59 = [
     ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
     ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
   ];
-  var Search = createLucideIcon("search", __iconNode58);
+  var Search = createLucideIcon("search", __iconNode59);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/settings.mjs
-  var __iconNode59 = [
+  var __iconNode60 = [
     [
       "path",
       {
@@ -15716,10 +15792,10 @@
     ],
     ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ];
-  var Settings = createLucideIcon("settings", __iconNode59);
+  var Settings = createLucideIcon("settings", __iconNode60);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/shield.mjs
-  var __iconNode60 = [
+  var __iconNode61 = [
     [
       "path",
       {
@@ -15728,10 +15804,10 @@
       }
     ]
   ];
-  var Shield = createLucideIcon("shield", __iconNode60);
+  var Shield = createLucideIcon("shield", __iconNode61);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/shopping-bag.mjs
-  var __iconNode61 = [
+  var __iconNode62 = [
     ["path", { d: "M16 10a4 4 0 0 1-8 0", key: "1ltviw" }],
     ["path", { d: "M3.103 6.034h17.794", key: "awc11p" }],
     [
@@ -15742,17 +15818,17 @@
       }
     ]
   ];
-  var ShoppingBag = createLucideIcon("shopping-bag", __iconNode61);
+  var ShoppingBag = createLucideIcon("shopping-bag", __iconNode62);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/smartphone.mjs
-  var __iconNode62 = [
+  var __iconNode63 = [
     ["rect", { width: "14", height: "20", x: "5", y: "2", rx: "2", ry: "2", key: "1yt0o3" }],
     ["path", { d: "M12 18h.01", key: "mhygvu" }]
   ];
-  var Smartphone = createLucideIcon("smartphone", __iconNode62);
+  var Smartphone = createLucideIcon("smartphone", __iconNode63);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/sparkles.mjs
-  var __iconNode63 = [
+  var __iconNode64 = [
     [
       "path",
       {
@@ -15764,55 +15840,55 @@
     ["path", { d: "M22 4h-4", key: "gwowj6" }],
     ["circle", { cx: "4", cy: "20", r: "2", key: "6kqj1y" }]
   ];
-  var Sparkles = createLucideIcon("sparkles", __iconNode63);
+  var Sparkles = createLucideIcon("sparkles", __iconNode64);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/square-arrow-out-up-right.mjs
-  var __iconNode64 = [
+  var __iconNode65 = [
     ["path", { d: "M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6", key: "y09zxi" }],
     ["path", { d: "m21 3-9 9", key: "mpx6sq" }],
     ["path", { d: "M15 3h6v6", key: "1q9fwt" }]
   ];
-  var SquareArrowOutUpRight = createLucideIcon("square-arrow-out-up-right", __iconNode64);
+  var SquareArrowOutUpRight = createLucideIcon("square-arrow-out-up-right", __iconNode65);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/square-pause.mjs
-  var __iconNode65 = [
+  var __iconNode66 = [
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
     ["line", { x1: "10", x2: "10", y1: "15", y2: "9", key: "c1nkhi" }],
     ["line", { x1: "14", x2: "14", y1: "15", y2: "9", key: "h65svq" }]
   ];
-  var SquarePause = createLucideIcon("square-pause", __iconNode65);
+  var SquarePause = createLucideIcon("square-pause", __iconNode66);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/square-terminal.mjs
-  var __iconNode66 = [
+  var __iconNode67 = [
     ["path", { d: "m7 11 2-2-2-2", key: "1lz0vl" }],
     ["path", { d: "M11 13h4", key: "1p7l4v" }],
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }]
   ];
-  var SquareTerminal = createLucideIcon("square-terminal", __iconNode66);
+  var SquareTerminal = createLucideIcon("square-terminal", __iconNode67);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/square.mjs
-  var __iconNode67 = [
+  var __iconNode68 = [
     ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
   ];
-  var Square = createLucideIcon("square", __iconNode67);
+  var Square = createLucideIcon("square", __iconNode68);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/target.mjs
-  var __iconNode68 = [
+  var __iconNode69 = [
     ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
     ["circle", { cx: "12", cy: "12", r: "6", key: "1vlfrh" }],
     ["circle", { cx: "12", cy: "12", r: "2", key: "1c9p78" }]
   ];
-  var Target = createLucideIcon("target", __iconNode68);
+  var Target = createLucideIcon("target", __iconNode69);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/terminal.mjs
-  var __iconNode69 = [
+  var __iconNode70 = [
     ["path", { d: "M12 19h8", key: "baeox8" }],
     ["path", { d: "m4 17 6-6-6-6", key: "1yngyt" }]
   ];
-  var Terminal = createLucideIcon("terminal", __iconNode69);
+  var Terminal = createLucideIcon("terminal", __iconNode70);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/test-tube-diagonal.mjs
-  var __iconNode70 = [
+  var __iconNode71 = [
     [
       "path",
       { d: "M21 7 6.82 21.18a2.83 2.83 0 0 1-3.99-.01a2.83 2.83 0 0 1 0-4L17 3", key: "1ub6xw" }
@@ -15820,27 +15896,27 @@
     ["path", { d: "m16 2 6 6", key: "1gw87d" }],
     ["path", { d: "M12 16H4", key: "1cjfip" }]
   ];
-  var TestTubeDiagonal = createLucideIcon("test-tube-diagonal", __iconNode70);
+  var TestTubeDiagonal = createLucideIcon("test-tube-diagonal", __iconNode71);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/trash-2.mjs
-  var __iconNode71 = [
+  var __iconNode72 = [
     ["path", { d: "M10 11v6", key: "nco0om" }],
     ["path", { d: "M14 11v6", key: "outv1u" }],
     ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
     ["path", { d: "M3 6h18", key: "d0wm0j" }],
     ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
   ];
-  var Trash2 = createLucideIcon("trash-2", __iconNode71);
+  var Trash2 = createLucideIcon("trash-2", __iconNode72);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/trending-up.mjs
-  var __iconNode72 = [
+  var __iconNode73 = [
     ["path", { d: "M16 7h6v6", key: "box55l" }],
     ["path", { d: "m22 7-8.5 8.5-5-5L2 17", key: "1t1m79" }]
   ];
-  var TrendingUp = createLucideIcon("trending-up", __iconNode72);
+  var TrendingUp = createLucideIcon("trending-up", __iconNode73);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/triangle-alert.mjs
-  var __iconNode73 = [
+  var __iconNode74 = [
     [
       "path",
       {
@@ -15851,34 +15927,34 @@
     ["path", { d: "M12 9v4", key: "juzpu7" }],
     ["path", { d: "M12 17h.01", key: "p32p05" }]
   ];
-  var TriangleAlert = createLucideIcon("triangle-alert", __iconNode73);
+  var TriangleAlert = createLucideIcon("triangle-alert", __iconNode74);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/user-round.mjs
-  var __iconNode74 = [
+  var __iconNode75 = [
     ["circle", { cx: "12", cy: "8", r: "5", key: "1hypcn" }],
     ["path", { d: "M20 21a8 8 0 0 0-16 0", key: "rfgkzh" }]
   ];
-  var UserRound = createLucideIcon("user-round", __iconNode74);
+  var UserRound = createLucideIcon("user-round", __iconNode75);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/users.mjs
-  var __iconNode75 = [
+  var __iconNode76 = [
     ["path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", key: "1yyitq" }],
     ["path", { d: "M16 3.128a4 4 0 0 1 0 7.744", key: "16gr8j" }],
     ["path", { d: "M22 21v-2a4 4 0 0 0-3-3.87", key: "kshegd" }],
     ["circle", { cx: "9", cy: "7", r: "4", key: "nufk8" }]
   ];
-  var Users = createLucideIcon("users", __iconNode75);
+  var Users = createLucideIcon("users", __iconNode76);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/users-round.mjs
-  var __iconNode76 = [
+  var __iconNode77 = [
     ["path", { d: "M18 21a8 8 0 0 0-16 0", key: "3ypg7q" }],
     ["circle", { cx: "10", cy: "8", r: "5", key: "o932ke" }],
     ["path", { d: "M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3", key: "10s06x" }]
   ];
-  var UsersRound = createLucideIcon("users-round", __iconNode76);
+  var UsersRound = createLucideIcon("users-round", __iconNode77);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/wallet.mjs
-  var __iconNode77 = [
+  var __iconNode78 = [
     [
       "path",
       {
@@ -15888,18 +15964,18 @@
     ],
     ["path", { d: "M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4", key: "xoc0q4" }]
   ];
-  var Wallet = createLucideIcon("wallet", __iconNode77);
+  var Wallet = createLucideIcon("wallet", __iconNode78);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/workflow.mjs
-  var __iconNode78 = [
+  var __iconNode79 = [
     ["rect", { width: "8", height: "8", x: "3", y: "3", rx: "2", key: "by2w9f" }],
     ["path", { d: "M7 11v4a2 2 0 0 0 2 2h4", key: "xkn7yn" }],
     ["rect", { width: "8", height: "8", x: "13", y: "13", rx: "2", key: "1cgmvn" }]
   ];
-  var Workflow = createLucideIcon("workflow", __iconNode78);
+  var Workflow = createLucideIcon("workflow", __iconNode79);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/wrench.mjs
-  var __iconNode79 = [
+  var __iconNode80 = [
     [
       "path",
       {
@@ -15908,17 +15984,17 @@
       }
     ]
   ];
-  var Wrench = createLucideIcon("wrench", __iconNode79);
+  var Wrench = createLucideIcon("wrench", __iconNode80);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/x.mjs
-  var __iconNode80 = [
+  var __iconNode81 = [
     ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
     ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
   ];
-  var X = createLucideIcon("x", __iconNode80);
+  var X = createLucideIcon("x", __iconNode81);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/icons/zap.mjs
-  var __iconNode81 = [
+  var __iconNode82 = [
     [
       "path",
       {
@@ -15927,7 +16003,7 @@
       }
     ]
   ];
-  var Zap = createLucideIcon("zap", __iconNode81);
+  var Zap = createLucideIcon("zap", __iconNode82);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/LayoutGroupContext.mjs
   var import_react6 = __toESM(require_react(), 1);
@@ -28747,7 +28823,7 @@
   }
 
   // packages/ui/src/components/shell/HomeScreen.tsx
-  var import_react91 = __toESM(require_react(), 1);
+  var import_react92 = __toESM(require_react(), 1);
 
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.activity-stub.ts
   function useActivityEvents() {
@@ -28820,7 +28896,7 @@
 
   // packages/ui/src/widgets/WidgetHost.tsx
   var import_core31 = __toESM(require_core(), 1);
-  var import_react90 = __toESM(require_react(), 1);
+  var import_react91 = __toESM(require_react(), 1);
 
   // packages/ui/src/components/config-ui/ui-renderer.tsx
   var import_react73 = __toESM(require_react(), 1);
@@ -47159,7 +47235,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         specType: "draft-mtp",
         drafterFile: `mtp/drafter-${tierSlug(id3)}.gguf`,
         draftMin: 1,
-        draftMax: 4,
+        draftMax: 1,
         gpuLayers: "auto"
       };
     }
@@ -48050,6 +48126,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       return incoming;
     }
     return `${existing}${incoming}`;
+  }
+
+  // packages/ui/src/events/index.ts
+  var CHAT_PREFILL_EVENT = "eliza:chat:prefill";
+  function dispatchChatPrefill(detail) {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent(CHAT_PREFILL_EVENT, { detail }));
   }
 
   // packages/ui/src/first-run/mobile-runtime-mode.ts
@@ -53485,8 +53568,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       ...options2,
       draftContextSize: options2.contextSize,
       draftMin: mtp?.draftMin ?? 1,
-      draftMax: mtp?.draftMax ?? 4,
-      speculativeSamples: Math.min(mtp?.draftMax ?? 4, 4),
+      draftMax: mtp?.draftMax ?? 1,
+      speculativeSamples: Math.min(mtp?.draftMax ?? 1, 4),
       mobileSpeculative: true,
       cacheTypeK: catalog?.runtime?.kvCache?.typeK,
       cacheTypeV: catalog?.runtime?.kvCache?.typeV,
@@ -63469,27 +63552,18 @@ Assistant:`;
     ptySessions: []
   });
 
-  // packages/ui/src/state/useAppLifecycleEvents.ts
-  var import_react44 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
+  // packages/shared/src/steward-session-client/index.ts
+  var STEWARD_TOKEN_KEY = "steward_session_token";
+  function readStoredStewardToken() {
+    if (typeof window === "undefined") return null;
+    try {
+      return window.localStorage.getItem(STEWARD_TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  }
 
-  // packages/ui/src/state/useAppProviderEffects.ts
-  var import_react45 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/useAppShellState.ts
-  var import_react46 = __toESM(require_react(), 1);
-
-  // packages/ui/src/state/useCharacterState.ts
-  var import_react47 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/useChatCallbacks.ts
-  var import_react50 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/useChatLifecycle.ts
-  var import_react48 = __toESM(require_react(), 1);
+  // packages/ui/src/state/startup-phase-restore.ts
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/platform/assistant-launch-payload.ts
@@ -63515,23 +63589,38 @@ Assistant:`;
   // packages/ui/src/platform/mobile-permissions-client.ts
   init_native_plugins();
 
+  // packages/ui/src/state/first-run-bootstrap.ts
+  var LOCAL_ACTIVE_SERVER = createPersistedActiveServer({ kind: "local" });
+
+  // packages/ui/src/state/useAppLifecycleEvents.ts
+  var import_react44 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useAppProviderEffects.ts
+  var import_react45 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useAppShellState.ts
+  var import_react46 = __toESM(require_react(), 1);
+
+  // packages/ui/src/state/useCharacterState.ts
+  var import_react47 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useChatCallbacks.ts
+  var import_react50 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useChatLifecycle.ts
+  var import_react48 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
   // packages/ui/src/state/useChatSend.ts
   var import_react49 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/api/client-cloud.ts
   init_dist();
-
-  // packages/shared/src/steward-session-client/index.ts
-  var STEWARD_TOKEN_KEY = "steward_session_token";
-  function readStoredStewardToken() {
-    if (typeof window === "undefined") return null;
-    try {
-      return window.localStorage.getItem(STEWARD_TOKEN_KEY);
-    } catch {
-      return null;
-    }
-  }
 
   // packages/ui/src/cloud/handoff/conversation-handoff.ts
   var DEFAULT_INTERVAL_MS = 5e3;
@@ -66526,6 +66615,7 @@ Assistant:`;
 
   // packages/ui/src/state/useLifecycleState.ts
   var import_react58 = __toESM(require_react(), 1);
+  init_action_notice();
   var INITIAL_LIFECYCLE_STATE = {
     connected: false,
     agentStatus: null,
@@ -66756,18 +66846,17 @@ Assistant:`;
   }
 
   // packages/ui/src/components/apps/overlay-app-registry.ts
-  var OVERLAY_APP_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
   function getOverlayRegistryHost() {
     return typeof window !== "undefined" ? window : globalThis;
   }
   function getOverlayRegistry() {
     const host = getOverlayRegistryHost();
-    const existing = host[OVERLAY_APP_REGISTRY_KEY];
+    const existing = host.__elizaosOverlayAppRegistry__;
     if (existing) {
       return existing;
     }
     const next = /* @__PURE__ */ new Map();
-    host[OVERLAY_APP_REGISTRY_KEY] = next;
+    host.__elizaosOverlayAppRegistry__ = next;
     return next;
   }
   function getAllOverlayApps() {
@@ -66838,12 +66927,6 @@ Assistant:`;
   // packages/ui/src/state/startup-phase-poll.ts
   init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/startup-phase-restore.ts
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/first-run-bootstrap.ts
-  var LOCAL_ACTIVE_SERVER = createPersistedActiveServer({ kind: "local" });
-
   // packages/ui/src/state/startup-phase-runtime.ts
   init_home_screen_fixture_api_stub();
 
@@ -66863,6 +66946,7 @@ Assistant:`;
   var DEFAULT_LANDING_TAB = resolveDefaultLandingTab();
 
   // packages/ui/src/state/index.ts
+  init_action_notice();
   init_app_store();
 
   // packages/ui/src/state/useBackgroundConfig.ts
@@ -72479,7 +72563,40 @@ Assistant:`;
     stopped: "workflow",
     tool_running: "workflow",
     blocked_auto_resolved: "workflow",
-    error: "workflow"
+    error: "workflow",
+    warning: "workflow",
+    run_start: "workflow",
+    run_end: "workflow",
+    step_start: "workflow",
+    step_end: "workflow",
+    context_loaded: "workflow",
+    action_start: "workflow",
+    action_complete: "workflow",
+    action_error: "workflow",
+    action_skipped: "workflow",
+    tool_call: "workflow",
+    tool_result: "workflow",
+    tool_error: "workflow",
+    evaluator_start: "workflow",
+    evaluator_complete: "workflow",
+    evaluator_error: "workflow",
+    evaluator_skipped: "workflow",
+    provider_start: "workflow",
+    provider_complete: "workflow",
+    provider_error: "workflow",
+    provider_cached: "workflow",
+    assistant_thought: "workflow",
+    assistant_plan: "workflow",
+    assistant_reflection: "workflow",
+    message_received: "message",
+    message_sent: "message",
+    message_queued: "message",
+    message_failed: "workflow",
+    memory_create: "activity",
+    memory_update: "activity",
+    memory_delete: "activity",
+    memory_search: "activity",
+    memory_retrieved: "activity"
   };
   function signalKindForEventType(eventType) {
     return EVENT_TYPE_TO_SIGNAL_KIND[eventType] ?? "activity";
@@ -75046,16 +75163,92 @@ Assistant:`;
     Component: MusicPlayerSidebarWidget
   };
 
+  // packages/ui/src/components/chat/widgets/needs-attention.tsx
+  var import_react88 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+  var import_jsx_runtime52 = __toESM(require_jsx_runtime(), 1);
+  var NEEDS_ATTENTION_WIDGET_KEY = "needs-attention/needs-attention.pending";
+  var REFRESH_INTERVAL_MS = 2e4;
+  var STALE_PENDING_AGE_MS = 30 * 6e4;
+  function pendingEqual(a, b) {
+    if (a.length !== b.length) return false;
+    return a.every((item, i) => {
+      const other = b[i];
+      return item.id === other.id && item.title === other.title && item.createdAt === other.createdAt;
+    });
+  }
+  function useApprovals() {
+    const [pending, setPending] = (0, import_react88.useState)([]);
+    const [loaded, setLoaded] = (0, import_react88.useState)(false);
+    const load = (0, import_react88.useCallback)(async () => {
+      try {
+        const { pending: next } = await client.listPendingActions();
+        setPending((prev) => pendingEqual(prev, next) ? prev : next);
+      } catch {
+      } finally {
+        setLoaded(true);
+      }
+    }, []);
+    (0, import_react88.useEffect)(() => {
+      void load();
+    }, [load]);
+    useIntervalWhenDocumentVisible(() => void load(), REFRESH_INTERVAL_MS);
+    return { pending, loaded };
+  }
+  function oldestPending(pending) {
+    if (pending.length === 0) return null;
+    return pending.reduce(
+      (oldest, item) => item.createdAt < oldest.createdAt ? item : oldest
+    );
+  }
+  function NeedsAttentionWidget(_props) {
+    const { pending, loaded } = useApprovals();
+    const top = (0, import_react88.useMemo)(() => oldestPending(pending), [pending]);
+    const weight = (0, import_react88.useMemo)(() => {
+      if (top == null) return null;
+      const stale2 = Date.now() - top.createdAt >= STALE_PENDING_AGE_MS;
+      return stale2 ? HOME_SIGNAL_WEIGHTS.escalation : HOME_SIGNAL_WEIGHTS.approval;
+    }, [top]);
+    usePublishHomeAttention(NEEDS_ATTENTION_WIDGET_KEY, weight);
+    const onActivate = (0, import_react88.useCallback)(() => {
+      if (top == null) return;
+      dispatchChatPrefill({ text: `Approve: ${top.title}`, select: true });
+    }, [top]);
+    if (!loaded || top == null) return null;
+    const count3 = pending.length;
+    const stale = Date.now() - top.createdAt >= STALE_PENDING_AGE_MS;
+    return /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(
+      HomeWidgetCard,
+      {
+        icon: /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(CircleQuestionMark, {}),
+        label: "Needs response",
+        value: top.title,
+        badge: count3,
+        tone: stale ? "warn" : "default",
+        testId: "chat-widget-needs-attention",
+        ariaLabel: `${count3} action${count3 === 1 ? "" : "s"} need your response, oldest: ${top.title}. Respond in chat.`,
+        onActivate
+      }
+    );
+  }
+  var NEEDS_ATTENTION_HOME_WIDGET = {
+    pluginId: "needs-attention",
+    id: "needs-attention.pending",
+    order: 60,
+    signalKinds: ["approval", "escalation"],
+    Component: NeedsAttentionWidget
+  };
+
   // packages/ui/src/components/chat/widgets/notifications.tsx
   init_notification_store();
-  var import_jsx_runtime52 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime53 = __toESM(require_jsx_runtime(), 1);
   var MAX_HOME_NOTIFICATIONS = 4;
   function NotificationRow({
     notification
   }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime52.jsxs)("li", { className: "flex flex-col gap-0.5 px-1 py-1", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("span", { className: "truncate text-xs font-medium text-txt", children: notification.title }),
-      notification.body ? /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("span", { className: "truncate text-2xs text-muted", children: notification.body }) : null
+    return /* @__PURE__ */ (0, import_jsx_runtime53.jsxs)("li", { className: "flex flex-col gap-0.5 px-1 py-1", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("span", { className: "truncate text-xs font-medium text-txt", children: notification.title }),
+      notification.body ? /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("span", { className: "truncate text-2xs text-muted", children: notification.body }) : null
     ] });
   }
   function NotificationsWidget(props) {
@@ -75069,10 +75262,10 @@ Assistant:`;
     if (props.slot === "home") {
       const top = recent[0];
       const urgent = top.priority === "urgent";
-      return /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
         HomeWidgetCard,
         {
-          icon: /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(Bell, {}),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Bell, {}),
           label: "Notifications",
           value: top.title,
           badge: unreadCount > 0 ? unreadCount : void 0,
@@ -75083,22 +75276,22 @@ Assistant:`;
         }
       );
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
       WidgetSection,
       {
         title: "Notifications",
-        icon: /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(Bell, {}),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Bell, {}),
         testId: "widget-notifications",
-        action: unreadCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("span", { className: "rounded-full bg-accent-subtle px-1.5 text-2xs font-medium text-accent", children: unreadCount }) : void 0,
-        children: /* @__PURE__ */ (0, import_jsx_runtime52.jsx)("ul", { className: "flex flex-col gap-0.5", children: recent.map((n) => /* @__PURE__ */ (0, import_jsx_runtime52.jsx)(NotificationRow, { notification: n }, n.id)) })
+        action: unreadCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("span", { className: "rounded-full bg-accent-subtle px-1.5 text-2xs font-medium text-accent", children: unreadCount }) : void 0,
+        children: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)("ul", { className: "flex flex-col gap-0.5", children: recent.map((n) => /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(NotificationRow, { notification: n }, n.id)) })
       }
     );
   }
 
   // packages/ui/src/components/chat/widgets/relationships-attention.tsx
-  var import_react88 = __toESM(require_react(), 1);
+  var import_react89 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
-  var import_jsx_runtime53 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime54 = __toESM(require_jsx_runtime(), 1);
   var RELATIONSHIPS_WIDGET_KEY = "relationships/relationships.attention";
   var RELATIONSHIPS_REFRESH_INTERVAL_MS = 3e4;
   var EMPTY_DATA = {
@@ -75141,9 +75334,9 @@ Assistant:`;
     });
   }
   function RelationshipsAttentionWidget({ slot }) {
-    const [data, setData] = (0, import_react88.useState)(EMPTY_DATA);
+    const [data, setData] = (0, import_react89.useState)(EMPTY_DATA);
     const nav = useWidgetNavigation();
-    const load = (0, import_react88.useCallback)(async () => {
+    const load = (0, import_react89.useCallback)(async () => {
       try {
         const [peopleResult, candidates] = await Promise.all([
           client.getRelationshipsPeople(),
@@ -75157,7 +75350,7 @@ Assistant:`;
       } catch {
       }
     }, []);
-    (0, import_react88.useEffect)(() => {
+    (0, import_react89.useEffect)(() => {
       void load();
     }, [load]);
     useIntervalWhenDocumentVisible(
@@ -75166,7 +75359,7 @@ Assistant:`;
     );
     const pendingCount = data.pendingCandidates.length;
     const hasPendingMerge = pendingCount > 0;
-    const stalest = (0, import_react88.useMemo)(() => data.staleContacts[0] ?? null, [data]);
+    const stalest = (0, import_react89.useMemo)(() => data.staleContacts[0] ?? null, [data]);
     const hasContacts = stalest != null;
     const onHome = slot === "home";
     usePublishHomeAttention(
@@ -75175,10 +75368,10 @@ Assistant:`;
     );
     if (!hasPendingMerge && !hasContacts) return null;
     if (hasPendingMerge) {
-      return /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
         HomeWidgetCard,
         {
-          icon: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Users, {}),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Users, {}),
           label: "People",
           value: "Confirm merge?",
           badge: pendingCount,
@@ -75189,10 +75382,10 @@ Assistant:`;
         }
       );
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(
       HomeWidgetCard,
       {
-        icon: /* @__PURE__ */ (0, import_jsx_runtime53.jsx)(Users, {}),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime54.jsx)(Users, {}),
         label: "Reach out",
         value: stalest.displayName,
         tone: "default",
@@ -75211,11 +75404,11 @@ Assistant:`;
   };
 
   // packages/ui/src/components/chat/widgets/todo.tsx
-  var import_react89 = __toESM(require_react(), 1);
+  var import_react90 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/components/ui/badge.tsx
-  var import_jsx_runtime54 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime55 = __toESM(require_jsx_runtime(), 1);
   var badgeVariants = cva(
     "inline-flex items-center rounded-sm border px-2.5 py-0.5 text-xs font-semibold transition-colors    ",
     {
@@ -75233,11 +75426,11 @@ Assistant:`;
     }
   );
   function Badge({ className, variant, ...props }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime54.jsx)("div", { className: cn(badgeVariants({ variant }), className), ...props });
+    return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { className: cn(badgeVariants({ variant }), className), ...props });
   }
 
   // packages/ui/src/components/chat/widgets/todo.tsx
-  var import_jsx_runtime55 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime56 = __toESM(require_jsx_runtime(), 1);
   var TODO_WIDGET_KEY = "todo/todo.items";
   var TODO_REFRESH_INTERVAL_MS = 15e3;
   var MAX_VISIBLE_TODOS = 8;
@@ -75268,24 +75461,24 @@ Assistant:`;
   function TodoRow({ todo }) {
     const showDescription = todo.description.trim().length > 0 && todo.description !== todo.name;
     const showType = todo.type.trim().length > 0 && todo.type !== "task";
-    return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { className: "rounded-sm border border-border/50 bg-bg/70 p-3", children: /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex items-start gap-2", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "rounded-sm border border-border/50 bg-bg/70 p-3", children: /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { className: "flex items-start gap-2", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
         "span",
         {
           className: `mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${todo.isUrgent ? "bg-danger" : todo.priority != null ? "bg-accent" : "bg-muted"}`
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "min-w-0 flex-1", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex flex-wrap items-center gap-1.5", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("span", { className: "min-w-0 truncate text-xs font-semibold text-txt", children: todo.name }),
-          todo.isUrgent ? /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Badge, { variant: "secondary", className: "text-3xs text-danger", children: "Urgent" }) : null,
-          todo.priority != null ? /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)(Badge, { variant: "secondary", className: "text-3xs", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { className: "min-w-0 flex-1", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { className: "flex flex-wrap items-center gap-1.5", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("span", { className: "min-w-0 truncate text-xs font-semibold text-txt", children: todo.name }),
+          todo.isUrgent ? /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Badge, { variant: "secondary", className: "text-3xs text-danger", children: "Urgent" }) : null,
+          todo.priority != null ? /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)(Badge, { variant: "secondary", className: "text-3xs", children: [
             "P",
             todo.priority
           ] }) : null,
-          showType ? /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(Badge, { variant: "secondary", className: "text-3xs", children: todo.type }) : null
+          showType ? /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Badge, { variant: "secondary", className: "text-3xs", children: todo.type }) : null
         ] }),
-        showDescription ? /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("p", { className: "mt-1 line-clamp-2 text-xs-tight leading-5 text-muted", children: todo.description }) : null
+        showDescription ? /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("p", { className: "mt-1 line-clamp-2 text-xs-tight leading-5 text-muted", children: todo.description }) : null
       ] })
     ] }) });
   }
@@ -75298,26 +75491,26 @@ Assistant:`;
     const visibleTodos = openTodos.slice(0, MAX_VISIBLE_TODOS);
     const remainingCount = openTodos.length - visibleTodos.length;
     if (loading && todos.length === 0) {
-      return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)("div", { className: "py-3 text-xs text-muted", children: "Refreshing todos\u2026" });
+      return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)("div", { className: "py-3 text-xs text-muted", children: "Refreshing todos\u2026" });
     }
     if (openTodos.length === 0) {
-      return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
         EmptyWidgetState,
         {
-          icon: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(ListTodo, { className: "h-8 w-8" }),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(ListTodo, { className: "h-8 w-8" }),
           title: "No open todos"
         }
       );
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("div", { className: "flex flex-col gap-2", children: [
-      visibleTodos.map((todo) => /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(TodoRow, { todo }, todo.id)),
-      remainingCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("p", { className: "px-1 text-xs-tight text-muted", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("div", { className: "flex flex-col gap-2", children: [
+      visibleTodos.map((todo) => /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(TodoRow, { todo }, todo.id)),
+      remainingCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("p", { className: "px-1 text-xs-tight text-muted", children: [
         "+",
         remainingCount,
         " more open todo",
         remainingCount === 1 ? "" : "s"
       ] }) : null,
-      hiddenCompletedCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime55.jsxs)("p", { className: "px-1 text-xs-tight text-muted", children: [
+      hiddenCompletedCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)("p", { className: "px-1 text-xs-tight text-muted", children: [
         hiddenCompletedCount,
         " completed todo",
         hiddenCompletedCount === 1 ? "" : "s",
@@ -75331,21 +75524,21 @@ Assistant:`;
       t: s.t
     }));
     const t2 = appT ?? fallbackTranslate2;
-    const [todos, setTodos] = (0, import_react89.useState)(
+    const [todos, setTodos] = (0, import_react90.useState)(
       () => dedupeTodos(workbench?.todos ?? [])
     );
-    const [todosLoading, setTodosLoading] = (0, import_react89.useState)(false);
-    const mountedRef = (0, import_react89.useRef)(true);
-    (0, import_react89.useEffect)(() => {
+    const [todosLoading, setTodosLoading] = (0, import_react90.useState)(false);
+    const mountedRef = (0, import_react90.useRef)(true);
+    (0, import_react90.useEffect)(() => {
       mountedRef.current = true;
       return () => {
         mountedRef.current = false;
       };
     }, []);
-    (0, import_react89.useEffect)(() => {
+    (0, import_react90.useEffect)(() => {
       setTodos(dedupeTodos(workbench?.todos ?? []));
     }, [workbench?.todos]);
-    const loadTodos = (0, import_react89.useCallback)(
+    const loadTodos = (0, import_react90.useCallback)(
       async (silent = false) => {
         if (!silent && mountedRef.current) {
           setTodosLoading(true);
@@ -75367,7 +75560,7 @@ Assistant:`;
       },
       [workbench?.todos]
     );
-    (0, import_react89.useEffect)(() => {
+    (0, import_react90.useEffect)(() => {
       void loadTodos(todos.length > 0);
     }, [loadTodos, todos.length]);
     useIntervalWhenDocumentVisible(
@@ -75382,13 +75575,13 @@ Assistant:`;
       onHome && hasUrgent ? HOME_SIGNAL_WEIGHTS.reminder : null
     );
     if (onHome && openTodos.length === 0) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
       WidgetSection,
       {
         title: t2("taskseventspanel.Todos", { defaultValue: "Todos" }),
-        icon: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(ListTodo, { className: "h-4 w-4" }),
+        icon: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(ListTodo, { className: "h-4 w-4" }),
         testId: "chat-widget-todos",
-        children: /* @__PURE__ */ (0, import_jsx_runtime55.jsx)(TodoItemsContent, { todos, loading: todosLoading })
+        children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(TodoItemsContent, { todos, loading: todosLoading })
       }
     );
   }
@@ -75423,7 +75616,8 @@ Assistant:`;
     FINANCES_HOME_WIDGET,
     HEALTH_HOME_WIDGET,
     RELATIONSHIPS_HOME_WIDGET,
-    INBOX_HOME_WIDGET
+    INBOX_HOME_WIDGET,
+    NEEDS_ATTENTION_HOME_WIDGET
   ]) {
     registerWidgetComponent(w.pluginId, w.id, w.Component);
   }
@@ -75719,6 +75913,21 @@ Assistant:`;
       defaultEnabled: true,
       signalKinds: INBOX_HOME_WIDGET.signalKinds
     },
+    // Needs response — the canonical "actions requiring your response" card
+    // (#9449). Backed by the core ApprovalService (GET /api/approvals), not a
+    // loadable plugin, so it is always-visible (see
+    // ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS) and self-hides when nothing is
+    // pending. Floats up at approval/escalation weight on its own data.
+    {
+      id: NEEDS_ATTENTION_HOME_WIDGET.id,
+      pluginId: NEEDS_ATTENTION_HOME_WIDGET.pluginId,
+      slot: "home",
+      label: "Needs response",
+      icon: "CircleHelp",
+      order: NEEDS_ATTENTION_HOME_WIDGET.order,
+      defaultEnabled: true,
+      signalKinds: NEEDS_ATTENTION_HOME_WIDGET.signalKinds
+    },
     {
       id: RELATIONSHIPS_HOME_WIDGET.id,
       pluginId: RELATIONSHIPS_HOME_WIDGET.pluginId,
@@ -75821,7 +76030,11 @@ Assistant:`;
     // loadable plugin, so its frontpage widget must render regardless of the
     // plugin snapshot. (#9143). Messages was removed (#9304) — redundant with the
     // always-present chat overlay.
-    "notifications"
+    "notifications",
+    // Needs-response is backed by the core ApprovalService (not a loadable
+    // plugin), so its frontpage widget must render regardless of the plugin
+    // snapshot — it self-hides when no decisions are pending (#9449).
+    "needs-attention"
   ]);
   function isWidgetEnabled(declaration, plugins, source) {
     if (source === "builtin" && declaration.defaultEnabled !== false && ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS.has(declaration.pluginId)) {
@@ -75894,7 +76107,7 @@ Assistant:`;
   var WIDGET_UI_ACTION_EVENT = "eliza:widget-ui-action";
 
   // packages/ui/src/widgets/WidgetHost.tsx
-  var import_jsx_runtime56 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime57 = __toESM(require_jsx_runtime(), 1);
   function dispatchWidgetUiAction(declaration, action, params2) {
     if (typeof window === "undefined") return;
     const detail = {
@@ -75906,7 +76119,7 @@ Assistant:`;
     };
     window.dispatchEvent(new CustomEvent(WIDGET_UI_ACTION_EVENT, { detail }));
   }
-  var WidgetErrorBoundary = class extends import_react90.Component {
+  var WidgetErrorBoundary = class extends import_react91.Component {
     state = { error: null };
     static getDerivedStateFromError(error51) {
       return { error: error51 };
@@ -75915,7 +76128,7 @@ Assistant:`;
     }
     render() {
       if (this.state.error) {
-        return /* @__PURE__ */ (0, import_jsx_runtime56.jsxs)(
+        return /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(
           "div",
           {
             className: "rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger",
@@ -75955,7 +76168,7 @@ Assistant:`;
     const { notifications } = useNotifications();
     const selfAttention = useHomeAttentionSignals();
     const now2 = useNow();
-    const serverDeclarations = (0, import_react90.useMemo)(() => {
+    const serverDeclarations = (0, import_react91.useMemo)(() => {
       return (plugins ?? []).flatMap(
         (plugin) => (plugin.widgets ?? []).flatMap((widget) => {
           if (!isWidgetSlot(widget.slot)) return [];
@@ -75969,14 +76182,14 @@ Assistant:`;
         })
       );
     }, [plugins]);
-    const resolved = (0, import_react90.useMemo)(() => {
+    const resolved = (0, import_react91.useMemo)(() => {
       const all = resolveWidgetsForSlot(slot, plugins ?? [], serverDeclarations);
       const gated = all.filter(
         (entry) => (0, import_core31.isViewVisible)(entry.declaration, enabledKinds)
       );
       return filter2 ? gated.filter((entry) => filter2(entry.declaration)) : gated;
     }, [slot, plugins, serverDeclarations, filter2, enabledKinds]);
-    const notificationSignalInputs = (0, import_react90.useMemo)(
+    const notificationSignalInputs = (0, import_react91.useMemo)(
       () => notifications.map((n) => ({
         priority: n.priority,
         timestamp: n.createdAt,
@@ -75984,7 +76197,7 @@ Assistant:`;
       })),
       [notifications]
     );
-    const ranked = (0, import_react90.useMemo)(() => {
+    const ranked = (0, import_react91.useMemo)(() => {
       if (slot !== "home") return resolved;
       const renderable = resolved.filter((entry) => !entry.defaultWidgetSink);
       const declarations = renderable.map((entry) => entry.declaration);
@@ -76005,21 +76218,21 @@ Assistant:`;
       });
     }, [slot, resolved, events, notificationSignalInputs, selfAttention, now2]);
     const orderKey = ranked.map(({ declaration }) => homeWidgetKey(declaration)).join("|");
-    const displayedRef = (0, import_react90.useRef)({ key: orderKey, resolved, entries: ranked });
+    const displayedRef = (0, import_react91.useRef)({ key: orderKey, resolved, entries: ranked });
     if (displayedRef.current.key !== orderKey || displayedRef.current.resolved !== resolved) {
       displayedRef.current = { key: orderKey, resolved, entries: ranked };
     }
     const displayed = displayedRef.current.entries;
-    const pluginById = (0, import_react90.useMemo)(() => {
+    const pluginById = (0, import_react91.useMemo)(() => {
       const map2 = /* @__PURE__ */ new Map();
       for (const p of plugins ?? []) map2.set(p.id, p);
       return map2;
     }, [plugins]);
-    const widgetPropsBase = (0, import_react90.useMemo)(
+    const widgetPropsBase = (0, import_react91.useMemo)(
       () => ({ events, clearEvents, slot }),
       [events, clearEvents, slot]
     );
-    const children = (0, import_react90.useMemo)(
+    const children = (0, import_react91.useMemo)(
       () => displayed.map(({ declaration, Component: Component3 }) => {
         const widgetKey = `${declaration.pluginId}/${declaration.id}`;
         const widgetProps = {
@@ -76028,15 +76241,15 @@ Assistant:`;
           pluginState: pluginById.get(declaration.pluginId)
         };
         if (Component3) {
-          return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(WidgetErrorBoundary, { widgetId: widgetKey, children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(Component3, { ...widgetProps }) }, widgetKey);
+          return /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(WidgetErrorBoundary, { widgetId: widgetKey, children: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(Component3, { ...widgetProps }) }, widgetKey);
         }
         if (declaration.uiSpec) {
-          return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(WidgetErrorBoundary, { widgetId: widgetKey, children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+          return /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(WidgetErrorBoundary, { widgetId: widgetKey, children: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
             "div",
             {
               className: "min-w-0",
               "data-testid": `widget-uispec-${declaration.id}`,
-              children: /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+              children: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
                 UiRenderer,
                 {
                   spec: declaration.uiSpec,
@@ -76052,7 +76265,7 @@ Assistant:`;
     );
     if (children.length === 0 && hideWhenEmpty) return null;
     const layoutClass = layout2 === "grid" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "flex flex-col gap-3";
-    return /* @__PURE__ */ (0, import_jsx_runtime56.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
       "div",
       {
         className: `${layoutClass} ${className ?? ""}`,
@@ -76066,7 +76279,7 @@ Assistant:`;
   }
 
   // packages/ui/src/components/shell/HomeScreen.tsx
-  var import_jsx_runtime57 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime58 = __toESM(require_jsx_runtime(), 1);
   var HOME_ENTER_CSS = `
 @keyframes home-enter {
   from { opacity: 0; transform: translateY(10px); }
@@ -76078,9 +76291,9 @@ Assistant:`;
 }
 `;
   function useEnterOnceClass() {
-    const [played, setPlayed] = (0, import_react91.useState)(false);
-    const ranRef = (0, import_react91.useRef)(false);
-    (0, import_react91.useEffect)(() => {
+    const [played, setPlayed] = (0, import_react92.useState)(false);
+    const ranRef = (0, import_react92.useRef)(false);
+    (0, import_react92.useEffect)(() => {
       if (ranRef.current) return;
       ranRef.current = true;
       const id3 = window.setTimeout(() => setPlayed(true), 700);
@@ -76089,7 +76302,7 @@ Assistant:`;
     return played ? "" : "home-enter";
   }
   function useHomeLayoutShiftObserver() {
-    (0, import_react91.useEffect)(() => {
+    (0, import_react92.useEffect)(() => {
       if (typeof window === "undefined") return;
       if (!isRenderTelemetryEnabled()) return;
       try {
@@ -76139,7 +76352,7 @@ Assistant:`;
     const { events, clearEvents } = useActivityEvents();
     const enterClass = useEnterOnceClass();
     useHomeLayoutShiftObserver();
-    return /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
       "div",
       {
         "data-testid": "home-screen",
@@ -76151,10 +76364,10 @@ Assistant:`;
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]"
         ),
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("style", { children: HOME_ENTER_CSS }),
-          /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
-            clockAccessory ? /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: cn(enterClass, "flex justify-end"), children: clockAccessory }) : null,
-            /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: enterClass, style: { animationDelay: "70ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("style", { children: HOME_ENTER_CSS }),
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
+            clockAccessory ? /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: cn(enterClass, "flex justify-end"), children: clockAccessory }) : null,
+            /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: enterClass, style: { animationDelay: "70ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
               WidgetHost,
               {
                 slot: "home",
@@ -76163,16 +76376,16 @@ Assistant:`;
                 clearEvents
               }
             ) }),
-            tiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+            tiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
               "nav",
               {
                 "aria-label": "Apps",
                 "data-testid": "home-tiles",
                 className: cn(enterClass, "mt-2"),
                 style: { animationDelay: "150ms" },
-                children: /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
+                children: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
                   const Icon2 = tile.icon;
-                  return /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(
+                  return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
                     "button",
                     {
                       type: "button",
@@ -76187,14 +76400,14 @@ Assistant:`;
                         "hover:bg-white/[0.14]   "
                       ),
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+                        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
                           Icon2,
                           {
                             className: "h-[22px] w-[22px] text-white/90",
                             "aria-hidden": true
                           }
                         ),
-                        /* @__PURE__ */ (0, import_jsx_runtime57.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
+                        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
                       ]
                     },
                     tile.id
@@ -76209,31 +76422,31 @@ Assistant:`;
   }
 
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.tsx
-  var import_jsx_runtime58 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime59 = __toESM(require_jsx_runtime(), 1);
   seedHomeWidgetAppStore();
   seedHomeWidgetNotifications();
   installHomeWidgetFetchMock();
   var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
   var showNativeOsTiles = params.has("native");
   function Harness() {
-    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)(
       "div",
       {
         "data-testid": "home-fixture-root",
         style: { position: "fixed", inset: 0, overflow: "hidden" },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(ShaderBackground, {}),
-          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(ShaderBackground, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
             HomeSpringboardSurface,
             {
-              home: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+              home: /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
                 HomeScreen,
                 {
                   onOpenTile: (t2) => console.log(`[fixture] open ${JSON.stringify(t2)}`),
                   showNativeOsTiles
                 }
               ),
-              springboard: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(SpringboardSurface, {})
+              springboard: /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(SpringboardSurface, {})
             }
           )
         ]
@@ -76241,7 +76454,7 @@ Assistant:`;
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client2.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime58.jsx)(Harness, {}));
+  if (root) (0, import_client2.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime59.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 
@@ -76327,6 +76540,7 @@ lucide-react/dist/esm/icons/check-check.mjs:
 lucide-react/dist/esm/icons/check.mjs:
 lucide-react/dist/esm/icons/chevron-down.mjs:
 lucide-react/dist/esm/icons/chevron-up.mjs:
+lucide-react/dist/esm/icons/circle-question-mark.mjs:
 lucide-react/dist/esm/icons/clock-3.mjs:
 lucide-react/dist/esm/icons/clock.mjs:
 lucide-react/dist/esm/icons/contact.mjs:
