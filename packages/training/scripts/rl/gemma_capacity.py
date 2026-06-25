@@ -197,9 +197,11 @@ MODEL_ALIASES = {
     "eliza-1-9b": "gemma4_12b",
     "google/gemma-4-12b": "gemma4_12b",
     "27b": "gemma4_31b",
+    "27b-256k": "gemma4_31b",
     "31b": "gemma4_31b",
     "gemma4-31b": "gemma4_31b",
     "eliza-1-27b": "gemma4_31b",
+    "eliza-1-27b-256k": "gemma4_31b",
     "google/gemma-4-31b": "gemma4_31b",
 }
 

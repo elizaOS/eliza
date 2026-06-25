@@ -116,6 +116,8 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("google/gemma-4-31B").short_name == "gemma4-31b"
     assert get("eliza-1-27b").short_name == "gemma4-31b"
     assert get("27b").short_name == "gemma4-31b"
+    assert get("27b-256k").short_name == "gemma4-31b"
+    assert get("eliza-1-27b-256k").short_name == "gemma4-31b"
 
 
 def test_no_qwen3_6_fallback_aliases() -> None:
