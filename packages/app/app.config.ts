@@ -36,12 +36,11 @@ const config = {
 
   web: {
     shortName: "Eliza",
-    // Launch/loading orange used by manifest theme_color + background_color,
-    // <meta name="theme-color">, and PWA launch surfaces. Matches the default
-    // home-background orange (#ef5a1f = DEFAULT_BACKGROUND_COLOR) so chrome and
-    // splash never flash a different orange before the home background appears
-    // (issue #9565). The brand accent (logos, buttons) stays #FF5800 / the CSS
-    // --brand-orange and is intentionally separate from these launch surfaces.
+    // Home-background orange (#ef5a1f, DEFAULT_BACKGROUND_COLOR) used by manifest
+    // theme_color / background_color, <meta name="theme-color">, and native launch
+    // surfaces. These are boot/launch first-paint surfaces (PWA splash, OS launch
+    // chrome), so they track the home background — not the brand accent #FF5800 —
+    // to avoid flashing a different orange before the home background paints (#9565).
     themeColor: "#ef5a1f",
     backgroundColor: "#ef5a1f",
     shareImagePath: "/brand/ogembeds/eliza_ogembed.svg",

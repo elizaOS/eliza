@@ -5,8 +5,8 @@
  * {@link AppImageBuilder} and returns the pushed, resolvable ref.
  *
  * Returns `undefined` when the app has no repo, so the deploy runner falls
- * through to `app.metadata.imageTag` / `APP_DEFAULT_IMAGE` for legacy/prebuilt
- * lanes — never an error for the no-repo case.
+ * through to `app.metadata.imageTag` / `APP_DEFAULT_IMAGE` (e.g. a prebuilt or
+ * smoke-test image) — never an error for the no-repo case.
  *
  * Docker builds git URLs natively (`docker build <git-url>#ref:subdir`), so the
  * repo URL is passed straight through as the build context — no clone step.
@@ -46,12 +46,23 @@ function buildContextFor(repo: string, sourceRef?: string): string {
 }
 
 /**
- * Per-app prebuilt-image resolver (#9300). Lets an operator deploy more than
- * one distinct prebuilt app without relying on one global APP_DEFAULT_IMAGE.
+ * Per-app prebuilt-image resolver (#9300). Lets an operator deploy MORE THAN ONE
+ * distinct prebuilt app on real staging without a per-app git build: a single
+ * `APP_DEFAULT_IMAGE` can only point at one image, and `metadata.imageTag` is not
+ * settable over the REST apps-create API, so two distinct showcase apps (EDAD +
+ * Clone Ur Crush) would otherwise both resolve to the SAME default image.
  *
- * Reads APP_PREBUILT_IMAGES as a JSON object mapping an app-name prefix to an
- * image ref. The longest matching prefix wins so timestamped showcase app names
- * still resolve deterministically.
+ * Reads `APP_PREBUILT_IMAGES` — a JSON object mapping an app-NAME PREFIX to an
+ * image ref, e.g.
+ *   {"eDad Showcase":"ghcr.io/elizaos/example-edad:showcase",
+ *    "Clone Your Crush Showcase":"ghcr.io/elizaos/example-clone-ur-crush:showcase"}
+ * and returns the image whose prefix is the LONGEST match for `app.name` (so the
+ * showcase specs' timestamped names — "eDad Showcase 1a2b3c" — still match).
+ *
+ * Returns `undefined` (no resolver) when the env is unset / empty / malformed, so
+ * the deploy runner's existing build-from-repo → metadata.imageTag →
+ * APP_DEFAULT_IMAGE chain is completely unchanged when an operator has not
+ * configured the map.
  */
 export function makePrebuiltImageMapResolver(
   env: NodeJS.ProcessEnv = process.env,
@@ -63,8 +74,8 @@ export function makePrebuiltImageMapResolver(
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     entries = Object.entries(parsed).filter(
-      (entry): entry is [string, string] =>
-        entry[0].length > 0 && typeof entry[1] === "string" && entry[1].length > 0,
+      (e): e is [string, string] =>
+        typeof e[0] === "string" && e[0].length > 0 && typeof e[1] === "string" && e[1].length > 0,
     );
   } catch {
     logger.warn(
@@ -72,8 +83,9 @@ export function makePrebuiltImageMapResolver(
     );
     return undefined;
   }
-
   if (entries.length === 0) return undefined;
+
+  // Longest prefix first → the most specific configured name wins deterministically.
   entries.sort((a, b) => b[0].length - a[0].length);
 
   return async (app) => {
@@ -84,12 +96,17 @@ export function makePrebuiltImageMapResolver(
   };
 }
 
+/**
+ * Compose image resolvers into one; the first to return a non-undefined image
+ * wins. Returns `undefined` when no resolver is active (preserving the runner's
+ * "no resolveImage configured" path). Used to layer the operator prebuilt-image
+ * map behind the build-from-repo resolver.
+ */
 export function composeImageResolvers(
   ...resolvers: Array<AppImageResolver | undefined>
 ): AppImageResolver | undefined {
-  const active = resolvers.filter((resolver): resolver is AppImageResolver => Boolean(resolver));
+  const active = resolvers.filter((r): r is AppImageResolver => Boolean(r));
   if (active.length === 0) return undefined;
-
   return async (app) => {
     for (const resolve of active) {
       const image = await resolve(app);

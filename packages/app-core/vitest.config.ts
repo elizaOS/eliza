@@ -157,6 +157,8 @@ export default defineConfig({
       "scripts/stage-android-agent.test.mjs",
       // Uses bun:test, not vitest.
       "scripts/aosp/stage-default-models.test.mjs",
+      // Uses bun:test, not vitest.
+      "scripts/aosp/compile-libllama-zig-pin.test.mjs",
       ...(process.platform === "win32"
         ? [
             "scripts/lib/apple-entitlement-audit.test.mjs",

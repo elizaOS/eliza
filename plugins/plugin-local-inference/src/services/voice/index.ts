@@ -50,15 +50,11 @@ export {
 	mergeContext,
 } from "./eager-context-builder";
 export {
-	computeErle,
-	NlmsEchoCanceller,
-	type NlmsEchoCancellerConfig,
-} from "./echo-canceller";
-export {
 	type EchoDelayEstimate,
 	type EchoDelayOptions,
 	estimateEchoDelaySamples,
 } from "./echo-delay";
+export { computeErle } from "./echo-metrics";
 export {
 	EchoReferenceBuffer,
 	type EchoReferenceBufferOptions,
@@ -174,6 +170,10 @@ export {
 	pipeMicToRingBuffer,
 	resolveDesktopRecorder,
 } from "./mic-source";
+export {
+	NlmsEchoCanceller,
+	type NlmsEchoCancellerOptions,
+} from "./nlms-echo-canceller";
 export {
 	DEFAULT_OPTIMISTIC_EOT_THRESHOLD,
 	OptimisticGenerationPolicy,

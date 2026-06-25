@@ -95,7 +95,6 @@ describe("brand surfaces", () => {
     expect(colors).toContain(
       `<color name="eliza_orange">${BRAND_ORANGE}</color>`,
     );
-
     const styles = readGeneratedOrTemplate(
       "android/app/src/main/res/values/styles.xml",
     );

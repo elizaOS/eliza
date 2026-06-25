@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
-  assertZigSupportsAndroidAbis,
   resolveAndroidNdkHostDir,
   resolveDefaultAndroidAssetsDir,
   resolveHomebrewFormulaIncludeDirs,
@@ -130,46 +129,5 @@ describe("compile-libllama Android assets dir resolution", () => {
         "agent",
       ),
     );
-  });
-});
-
-describe("compile-libllama Zig compatibility gates", () => {
-  test("accepts the pinned Zig 0.13 line for arm64 musl builds", () => {
-    expect(() =>
-      assertZigSupportsAndroidAbis({
-        version: "0.13.0",
-        abis: ["arm64-v8a"],
-      }),
-    ).not.toThrow();
-    expect(() =>
-      assertZigSupportsAndroidAbis({
-        version: "0.13.1-dev.12+abcd",
-        abis: ["arm64-v8a"],
-      }),
-    ).not.toThrow();
-  });
-
-  test("rejects newer Zig for arm64 musl builds", () => {
-    expect(() =>
-      assertZigSupportsAndroidAbis({
-        version: "0.16.0",
-        abis: ["arm64-v8a"],
-      }),
-    ).toThrow(/zig 0\.16\.0 is not supported.*aarch64-linux-musl/s);
-    expect(() =>
-      assertZigSupportsAndroidAbis({
-        version: "0.14.0",
-        abis: ["arm64-v8a", "riscv64"],
-      }),
-    ).toThrow(/use zig 0\.13\.0 \(0\.13\.x\)/);
-  });
-
-  test("keeps the arm64 pin scoped away from riscv-only builds", () => {
-    expect(() =>
-      assertZigSupportsAndroidAbis({
-        version: "0.14.0",
-        abis: ["riscv64"],
-      }),
-    ).not.toThrow();
   });
 });

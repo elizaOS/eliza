@@ -38,7 +38,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { computeErle } from "../../../plugins/plugin-local-inference/src/services/voice/echo-canceller.ts";
+import { computeErle } from "../../../plugins/plugin-local-inference/src/services/voice/echo-metrics.ts";
 import { NlmsEchoCanceller } from "../../../plugins/plugin-local-inference/src/services/voice/nlms-echo-canceller.ts";
 
 const SR = 16000;
@@ -249,7 +249,9 @@ async function main() {
   // first energy above the recording's leading noise floor.
   const nearOnset = findOnset(near, Math.floor(0.4 * SR));
   if (nearOnset < 0) {
-    console.log("\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (mic never rose above its noise floor).");
+    console.log(
+      "\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (mic never rose above its noise floor).",
+    );
     process.exitCode = 2;
     return;
   }
@@ -259,7 +261,13 @@ async function main() {
   const refLen = Math.min(Math.floor(1.5 * SR), speechN - Math.floor(0.3 * SR));
   const ref = far.subarray(refStart, refStart + refLen);
   const coarseLag = refStart + coarseOffset; // expected position of ref in near
-  const { offset, score } = refineOffset(near, ref, refStart, coarseLag, Math.floor(0.15 * SR));
+  const { offset, score } = refineOffset(
+    near,
+    ref,
+    refStart,
+    coarseLag,
+    Math.floor(0.15 * SR),
+  );
   const alignMs = (offset / SR) * 1000;
   console.log(
     `[device-aec] TTS onset@near ${nearOnset}; refined far→near offset=${offset} (${alignMs.toFixed(1)} ms, incl. capture-start skew), corr peak=${score.toFixed(3)}`,

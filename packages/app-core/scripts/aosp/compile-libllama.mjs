@@ -241,6 +241,31 @@ export const AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE = "0.14.0";
 // ggml/src/ggml-cpu/arch/riscv/quants.c) light up.
 export const MIN_ZIG_RVV_VERSION = "0.14.0";
 
+// Pinned zig series (MAJOR.MINOR) for the aarch64/x86_64 `*-linux-musl`
+// cross-link that produces the Android/cuttlefish + fused (libelizainference)
+// libs. zig 0.16 bundles an LLVM whose `lld` SIGSEGVs while linking the
+// aarch64-linux-musl shared object — a host-toolchain regression that aborts
+// the link with no actionable diagnostic (it looks like an OOM / random crash,
+// not a config error). zig 0.13.x links these targets cleanly, so we pin the
+// series rather than only enforcing a floor: a newer-is-fine `>=` check would
+// silently route an operator's `brew install zig` (0.16) straight into the
+// SIGSEGV. This is intentionally a series pin, not an exact-patch pin — any
+// 0.13.x patch release links fine. The riscv64 RVV path keeps its own
+// MIN_ZIG_RVV_VERSION floor (it needs 0.14+ for the RVV ISA string) and is a
+// distinct musl triple, so it is exempt from this pin (see
+// `assertZigPinForTargets`). An operator who has independently verified their
+// zig's lld links aarch64-linux-musl can override with
+// ELIZA_ALLOW_UNPINNED_ZIG=1, but the default refuses the broken toolchain.
+export const PINNED_ZIG_SERIES_FOR_MUSL_LINK = "0.13";
+// zig triples whose lld link is covered by the 0.13.x pin above. riscv64 is
+// deliberately absent: its RVV build path requires 0.14+ and is gated by
+// MIN_ZIG_RVV_VERSION instead.
+export const PINNED_ZIG_LINK_TRIPLES = Object.freeze([
+  "aarch64-linux-musl",
+  "x86_64-linux-musl",
+]);
+export const ALLOW_UNPINNED_ZIG_ENV = "ELIZA_ALLOW_UNPINNED_ZIG";
+
 // The in-repo submodule checkout of the fork.
 // `repoRoot` resolves to the repo root that contains a top-level package.json.
 const LLAMA_CPP_SUBMODULE_DIR = path.join(
@@ -280,6 +305,33 @@ export const ABI_TARGETS = [
     cmakeProcessor: "riscv64",
   },
 ];
+
+/**
+ * Map a list of Android ABI directory names (`arm64-v8a` | `x86_64` |
+ * `riscv64`) to the distinct zig cross-link triples (`zigTarget`) they build
+ * through. Used to decide which targets the zig-series pin applies to. Throws
+ * on an unknown ABI rather than silently dropping it.
+ *
+ * Exported for tests.
+ *
+ * @param {readonly string[]} abis
+ * @returns {string[]}
+ */
+export function zigTriplesForAbis(abis) {
+  const triples = new Set();
+  for (const abi of abis) {
+    const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
+    if (!target) {
+      throw new Error(
+        `[compile-libllama] unknown Android ABI ${abi}; expected one of ${ABI_TARGETS.map(
+          (t) => t.androidAbi,
+        ).join(", ")}.`,
+      );
+    }
+    triples.add(target.zigTarget);
+  }
+  return [...triples];
+}
 
 // `*-fused` android targets that are wired to real AOSP artifacts.
 // Membership in this set is the only way the fused (omnivoice-grafted) build
@@ -770,28 +822,87 @@ export function probeZig({
 }
 
 /**
- * Validate that the detected Zig version is compatible with the Android ABIs
- * the caller is about to build. The aarch64-linux-musl lane is deliberately
- * pinned to Zig 0.13.x: #9584 captured a host-toolchain regression where Zig
- * 0.16's lld crashes while linking the arm64 musl build. RISC-V still keeps
- * its separate 0.14+ RVV planner below, so the pin is scoped to arm64.
+ * Extract the MAJOR.MINOR series from a zig version string. `0.13.0` -> `0.13`,
+ * `0.13.0-dev.46+abc` -> `0.13`. Returns `null` for an unparseable input so
+ * callers can decide how to treat a missing/garbage version.
  *
  * Exported for tests.
+ *
+ * @param {string} version
+ * @returns {string | null}
  */
-export function assertZigSupportsAndroidAbis({ version, abis }) {
-  if (!abis?.includes("arm64-v8a")) return;
+export function zigSeries(version) {
+  if (typeof version !== "string") return null;
+  const parts = version
+    .replace(/^v/, "")
+    .split(/[-+]/)[0]
+    .split(".")
+    .map((n) => Number.parseInt(n, 10));
   if (
-    compareSemver(version, AARCH64_MUSL_ZIG_MIN_VERSION) >= 0 &&
-    compareSemver(version, AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE) < 0
+    parts.length < 2 ||
+    !Number.isFinite(parts[0]) ||
+    !Number.isFinite(parts[1])
   ) {
+    return null;
+  }
+  return `${parts[0]}.${parts[1]}`;
+}
+
+/**
+ * Enforce the zig-series pin (PINNED_ZIG_SERIES_FOR_MUSL_LINK) for any requested
+ * target whose link goes through one of PINNED_ZIG_LINK_TRIPLES (the
+ * aarch64/x86_64 `*-linux-musl` Android / fused libs). zig 0.16's bundled lld
+ * SIGSEGVs that link, so a plain `>=` floor is not enough — we must reject a
+ * newer-but-broken toolchain too. riscv64-only target sets are exempt (their
+ * RVV path needs 0.14+, gated separately by MIN_ZIG_RVV_VERSION).
+ *
+ * Pure + deterministic: takes the detected version + the resolved triple list +
+ * env, throws on a pin violation, returns nothing on success. No side effects.
+ *
+ * Exported for tests.
+ *
+ * @param {object} params
+ * @param {string} params.version    zig version string from probeZig().
+ * @param {readonly string[]} params.zigTriples  the `zigTarget` triples the run
+ *   will cross-link (e.g. ["aarch64-linux-musl"]).
+ * @param {NodeJS.ProcessEnv} [params.env]
+ */
+export function assertZigPinForTargets({
+  version,
+  zigTriples,
+  env = process.env,
+}) {
+  const pinnedTriples = zigTriples.filter((t) =>
+    PINNED_ZIG_LINK_TRIPLES.includes(t),
+  );
+  if (pinnedTriples.length === 0) {
+    // No pinned-link triple in this run (e.g. riscv64-only) — nothing to pin.
     return;
   }
-  throw new Error(
-    `[compile-libllama] zig ${version} is not supported for arm64-v8a/aarch64-linux-musl builds; ` +
-      `use zig ${AARCH64_MUSL_ZIG_MIN_VERSION} (0.13.x). ` +
-      `Zig >= ${AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE} is blocked for this target because ` +
-      `newer lld builds have crashed the aarch64-linux-musl link (elizaOS/eliza#9584).`,
-  );
+  if (env[ALLOW_UNPINNED_ZIG_ENV] === "1") {
+    console.warn(
+      `[compile-libllama] ${ALLOW_UNPINNED_ZIG_ENV}=1 set; skipping the zig ` +
+        `${PINNED_ZIG_SERIES_FOR_MUSL_LINK}.x pin for ${pinnedTriples.join(", ")} ` +
+        `(zig ${version}). Only safe if you have verified this zig's lld links ` +
+        `aarch64-linux-musl without SIGSEGV.`,
+    );
+    return;
+  }
+  const series = zigSeries(version);
+  if (series !== PINNED_ZIG_SERIES_FOR_MUSL_LINK) {
+    throw new Error(
+      `[compile-libllama] zig ${version} (series ${series ?? "unknown"}) is not ` +
+        `the pinned zig ${PINNED_ZIG_SERIES_FOR_MUSL_LINK}.x required to link ` +
+        `${pinnedTriples.join(", ")}.\n` +
+        `zig 0.16's bundled lld SIGSEGVs the aarch64-linux-musl link, aborting ` +
+        `the fused/Android build with no actionable diagnostic; zig 0.13.x links ` +
+        `it cleanly. Install zig ${PINNED_ZIG_SERIES_FOR_MUSL_LINK}.x and re-run:\n` +
+        `  download the 0.13.x tarball from https://ziglang.org/download/ and put ` +
+        `\`zig\` on PATH (the package-manager \`zig\` is frequently 0.16).\n` +
+        `If you have independently verified your zig's lld links ` +
+        `aarch64-linux-musl, override with ${ALLOW_UNPINNED_ZIG_ENV}=1.`,
+    );
+  }
 }
 
 /**
@@ -1260,10 +1371,10 @@ export function ensureZigDrivers({
         '  case "$arg" in\n' +
         "    -march=armv8.*-a+*)\n" +
         '      _feats=""\n' +
-        '      case "$arg" in *+dotprod*) _feats="${_feats}+dotprod" ;; esac\n' +
-        '      case "$arg" in *+i8mm*) _feats="${_feats}+i8mm" ;; esac\n' +
-        '      case "$arg" in *+fp16*) _feats="${_feats}+fullfp16" ;; esac\n' +
-        '      set -- "$@" "-mcpu=generic${_feats}" ;;\n' +
+        `      case "$arg" in *+dotprod*) _feats="\${_feats}+dotprod" ;; esac\n` +
+        `      case "$arg" in *+i8mm*) _feats="\${_feats}+i8mm" ;; esac\n` +
+        `      case "$arg" in *+fp16*) _feats="\${_feats}+fullfp16" ;; esac\n` +
+        `      set -- "$@" "-mcpu=generic\${_feats}" ;;\n` +
         '    *) set -- "$@" "$arg" ;;\n' +
         "  esac\n" +
         "done\n"
@@ -1585,7 +1696,7 @@ export function buildLibllamaForAbi({
   let llamaOut = null;
   let ggmlOuts = [];
   let runtimeSiblingOuts = [];
-  let sonameAliases = [];
+  const sonameAliases = [];
   if (!isStaticFused) {
     const builtLlama = locateBuiltLib(buildDir, "libllama.so");
     if (!builtLlama) {
@@ -1966,7 +2077,7 @@ function locateBuiltLib(buildDir, soName) {
  */
 // Cache of the resolved llvm-strip path (from the Android NDK toolchain).
 // Set once on first call so we don't re-walk the NDK dir for every artifact.
-let _ndkLlvmStripPathCache = undefined;
+let _ndkLlvmStripPathCache;
 function locateNdkLlvmStrip() {
   if (_ndkLlvmStripPathCache !== undefined) return _ndkLlvmStripPathCache;
   // Honor the same env-var ladder as build-llama-cpp-mtp's resolveAndroidNdk()
@@ -2227,8 +2338,11 @@ export async function main(argv = process.argv.slice(2)) {
   // the build WOULD do.
   if (!args.dryRun) {
     const zigVersion = probeZig();
-    assertZigSupportsAndroidAbis({ version: zigVersion, abis: args.abis });
     console.log(`[compile-libllama] Found zig ${zigVersion}`);
+    assertZigPinForTargets({
+      version: zigVersion,
+      zigTriples: zigTriplesForAbis(args.abis),
+    });
   } else {
     console.log(`[compile-libllama] (dry-run) skipping zig toolchain probe`);
   }
@@ -2432,11 +2546,11 @@ export async function mainTargets(args) {
 
   if (!args.dryRun) {
     const zigVersion = probeZig();
-    assertZigSupportsAndroidAbis({
-      version: zigVersion,
-      abis: [...new Set(args.targets.map((target) => target.androidAbi))],
-    });
     console.log(`[compile-libllama] Found zig ${zigVersion}`);
+    assertZigPinForTargets({
+      version: zigVersion,
+      zigTriples: zigTriplesForAbis(args.targets.map((t) => t.androidAbi)),
+    });
   } else {
     console.log(`[compile-libllama] (dry-run) skipping zig toolchain probe`);
   }
