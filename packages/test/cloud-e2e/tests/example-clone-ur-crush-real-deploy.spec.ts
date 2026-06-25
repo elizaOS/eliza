@@ -182,10 +182,15 @@ test.describe("real-staging Clone Ur Crush deploy serves its subdomain (#9300)",
       );
 
       // -- 5a. the app row reflects a deployed REMOTE runtime. --------------
-      const deployed = await authed<AppEnvelope>("GET", `/api/v1/apps/${appId}`);
+      const deployed = await authed<AppEnvelope>(
+        "GET",
+        `/api/v1/apps/${appId}`,
+      );
       expect(deployed.status, "deployed app readable").toBe(200);
       const deployedApp = deployed.json.app;
-      expect(deployedApp?.deployment_status, "app is deployed").toBe("deployed");
+      expect(deployedApp?.deployment_status, "app is deployed").toBe(
+        "deployed",
+      );
       const productionUrl = deployedApp?.production_url;
       expect(productionUrl, "app row stamps a production_url").toBeTruthy();
       if (!productionUrl) throw new Error("deployed app has no production_url");
