@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeErle, NlmsEchoCanceller } from "./echo-canceller.ts";
+import { applyReverb } from "./corpus-augment.ts";
 
 /** Deterministic PRNG so the test is reproducible. */
 function mulberry32(seed: number): () => number {
@@ -99,5 +100,45 @@ describe("NlmsEchoCanceller", () => {
 		expect(() => aec.process(new Float32Array(4), new Float32Array(8))).toThrow(
 			/same length/,
 		);
+	});
+
+	it("scores a reverberant (Freeverb) echo path — the hard case — alongside the clean FIR", () => {
+		const far = whiteNoise(16_000, 0.3, mulberry32(3));
+
+		// Clean path: a short FIR room impulse (same family as the single-talk test).
+		const cleanNear = applyEcho(far, ROOM_IMPULSE);
+		const cleanResidual = new NlmsEchoCanceller({
+			tailMs: 16,
+			mu: 0.7,
+		}).process(far, cleanNear);
+
+		// Reverberant path: Freeverb/Schroeder leaves a long decaying tail, so the
+		// echo is no longer a short FIR — the hard case for a fixed-tail NLMS. Trim
+		// the reverb tail back to far.length so frames stay aligned.
+		const revNear = applyReverb(far, 16_000, { room: 0.6, wet: 0.5 }).subarray(
+			0,
+			far.length,
+		);
+		const revResidual = new NlmsEchoCanceller({ tailMs: 50, mu: 0.5 }).process(
+			far,
+			revNear,
+		);
+
+		const start = Math.floor(far.length * 0.75);
+		const cleanErle = computeErle(
+			cleanNear.subarray(start),
+			cleanResidual.subarray(start),
+		);
+		const revErle = computeErle(
+			revNear.subarray(start),
+			revResidual.subarray(start),
+		);
+
+		// Calibrated to the observed ~1.11 dB: the canceller still achieves modest,
+		// STABLE cancellation on the reverberant tail (it does not diverge), but it
+		// is materially worse than the clean short-FIR path — exactly why the
+		// reverberant playback path is the load-bearing corpus case for #9455.
+		expect(revErle).toBeGreaterThanOrEqual(0.8);
+		expect(revErle).toBeLessThan(cleanErle);
 	});
 });
