@@ -6,6 +6,11 @@
  * <App /> (packages/ui/src/App.tsx) and `@elizaos/app-core` window
  * orchestration; this test asserts the shell-owned surfaces this package
  * actually controls.
+ *
+ * Two distinct oranges (#9565): boot/launch/loading/splash surfaces use the
+ * HOME-BACKGROUND orange (#ef5a1f, DEFAULT_BACKGROUND_COLOR) so they do not
+ * flash a different orange before the home background paints; the brand/logo
+ * accent (theme accent, App Actions widget, launcher icon) stays #FF5800.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,6 +21,10 @@ const root = join(here, "..");
 const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 
 const BRAND_ORANGE = "#FF5800";
+// DEFAULT_BACKGROUND_COLOR from @elizaos/ui (packages/ui/src/state/ui-preferences.ts):
+// the color the home ShaderBackground + StartupShell loader paint. Boot/launch
+// surfaces track this so boot never flashes the brand accent first (#9565).
+const HOME_BACKGROUND_ORANGE = "#ef5a1f";
 
 function read(rel: string): string {
   return readFileSync(join(root, rel), "utf8");
@@ -33,41 +42,51 @@ function readGeneratedOrTemplate(rel: string): string {
 }
 
 describe("brand surfaces", () => {
-  it("app.config web/theme colors are brand orange", () => {
+  it("app.config web/theme colors are the home-background orange (launch surface)", () => {
     const src = read("app.config.ts");
-    expect(src).toMatch(/themeColor:\s*"#FF5800"/);
-    expect(src).toMatch(/backgroundColor:\s*"#FF5800"/);
+    // theme_color / background_color feed the PWA manifest + <meta theme-color>
+    // + native launch surfaces — all boot/first-paint, so they track the home
+    // background, not the brand accent (#9565).
+    expect(src).toMatch(/themeColor:\s*"#ef5a1f"/);
+    expect(src).toMatch(/backgroundColor:\s*"#ef5a1f"/);
     expect(BRAND_ORANGE).toBe("#FF5800");
+    expect(HOME_BACKGROUND_ORANGE).toBe("#ef5a1f");
   });
 
-  it("capacitor config and native backgrounds are brand orange", () => {
+  it("capacitor config native backgrounds are the home-background orange (launch surface)", () => {
     const src = read("capacitor.config.ts");
-    expect(src).toMatch(/SplashScreen:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
-    expect(src).toMatch(/ios:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
-    expect(src).toMatch(/android:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
+    expect(src).toMatch(/SplashScreen:\s*\{[^}]*backgroundColor:\s*"#ef5a1f"/s);
+    expect(src).toMatch(/ios:\s*\{[^}]*backgroundColor:\s*"#ef5a1f"/s);
+    expect(src).toMatch(/android:\s*\{[^}]*backgroundColor:\s*"#ef5a1f"/s);
   });
 
-  it("Android colors.xml + styles.xml use brand orange for launch + status bar", () => {
+  it("Android colors.xml + styles.xml: launch surfaces home-orange, accents brand-orange", () => {
     const colors = readGeneratedOrTemplate(
       "android/app/src/main/res/values/colors.xml",
     );
+    // Launch splash + launch status bar track the home background.
+    expect(colors).toContain(
+      '<color name="splash_background">#ef5a1f</color>',
+    );
+    // Brand accent (App Actions widget) + theme accent stay brand orange.
     expect(colors).toContain('<color name="eliza_orange">#FF5800</color>');
-    expect(colors).toContain('<color name="splash_background">#FF5800</color>');
     expect(colors).toContain('<color name="colorPrimary">#FF5800</color>');
 
     const styles = readGeneratedOrTemplate(
       "android/app/src/main/res/values/styles.xml",
     );
-    expect(styles).toContain("@color/eliza_orange");
-    expect(styles).toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
+    // The launch status bar points at the launch-splash (home) color so it does
+    // not flash the brand accent before the home background paints (#9565).
+    expect(styles).toMatch(/statusBarColor[^<]*@color\/splash_background/);
   });
 
-  it("iOS LaunchScreen.storyboard backdrop is brand orange", () => {
+  it("iOS LaunchScreen.storyboard backdrop is the home-background orange (launch surface)", () => {
     const xml = readGeneratedOrTemplate(
       "ios/App/App/Base.lproj/LaunchScreen.storyboard",
     );
-    // 1.0 / 0.345 / 0.0 is #FF5800 in sRGB to 3 decimals.
-    expect(xml).toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);
+    // 0.937 / 0.353 / 0.122 is #ef5a1f in sRGB to 3 decimals — the home
+    // background, so iOS does not flash the brand accent on launch (#9565).
+    expect(xml).toMatch(/red="0\.937"\s+green="0\.353"\s+blue="0\.122"/);
   });
 
   it("index.html FOUC fallback is the home background orange, not a foreign color", () => {
