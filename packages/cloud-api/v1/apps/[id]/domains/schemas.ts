@@ -11,7 +11,10 @@ export const domainField = z
   .string()
   .min(4)
   .max(253)
-  .regex(/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i, "Invalid domain format")
+  .regex(
+    /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i,
+    "Invalid domain format",
+  )
   .transform((d) => d.toLowerCase().trim());
 
 export const domainBodySchema = z.object({ domain: domainField });
