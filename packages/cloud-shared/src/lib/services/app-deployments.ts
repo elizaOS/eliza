@@ -201,7 +201,12 @@ export class AppDeploymentsService {
       status: publicStatusFor(app.deployment_status),
       vercelUrl: app.production_url ?? null,
       error: null,
-      startedAt: app.last_deployed_at?.toISOString() ?? new Date(0).toISOString(),
+      // `app` may come from the Redis/KV cache (`getById`), where the timestamp
+      // round-tripped through JSON to an ISO STRING — `new Date(...)` coerces both
+      // a Date and a string; calling `.toISOString()` on the raw string 500s.
+      startedAt: app.last_deployed_at
+        ? new Date(app.last_deployed_at).toISOString()
+        : new Date(0).toISOString(),
     };
   }
 }

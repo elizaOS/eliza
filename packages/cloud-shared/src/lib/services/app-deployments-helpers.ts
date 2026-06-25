@@ -32,8 +32,17 @@ export function publicStatusFor(persisted: AppDeploymentStatus): DeploymentStatu
   return PERSISTED_TO_PUBLIC[persisted];
 }
 
-export function deploymentIdFor(app: { id: string; last_deployed_at: Date | null }): string {
-  const ts = app.last_deployed_at?.toISOString() ?? "0";
+export function deploymentIdFor(app: {
+  id: string;
+  // Cached reads (`appsService.getById` → Redis/KV) round-trip the timestamp
+  // through JSON, so `last_deployed_at` arrives as an ISO STRING, not a Date.
+  // Accept both and coerce — calling `.toISOString()` on a string 500s the
+  // deploy-status route (the real-staging deploy bug behind #9300).
+  last_deployed_at: Date | string | null;
+}): string {
+  const ts = app.last_deployed_at
+    ? new Date(app.last_deployed_at).toISOString()
+    : "0";
   return `${app.id}:${ts}`;
 }
 
