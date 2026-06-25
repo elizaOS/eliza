@@ -69,13 +69,9 @@
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-elizacloud#build",
         "@elizaos/plugin-mcp#build",
-        "@elizaos/plugin-pdf#build",
         "@elizaos/plugin-streaming#build",
         "@elizaos/plugin-workflow#build",
-        "@elizaos/security#build",
-        "@elizaos/capacitor-contacts#build",
-        "@elizaos/capacitor-phone#build",
-        "@elizaos/capacitor-wifi#build"
+        "@elizaos/security#build"
       ],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]

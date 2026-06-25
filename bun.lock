@@ -4884,8 +4884,6 @@
       "name": "@elizaos/plugin-scheduling",
       "version": "2.0.3-beta.2",
       "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "drizzle-orm": "^0.45.1",
