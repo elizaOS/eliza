@@ -13,7 +13,7 @@ import type { Issue, IssueLabel } from "@linear/sdk";
 import { getIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
-import { describeError, getMessageSource } from "./message-source";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import { getRecordValue, getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
@@ -277,7 +277,7 @@ export const getIssueAction: Action = {
       } catch (parseError) {
         logger.warn(
           "Failed to parse LLM response, falling back to regex:",
-          describeError(parseError)
+          formatUnknownError(parseError)
         );
         const issueMatch = content.match(/(\w+-\d+)/);
         if (issueMatch) {
@@ -297,7 +297,7 @@ export const getIssueAction: Action = {
         success: false,
       };
     } catch (error) {
-      logger.error("Failed to get issue:", describeError(error));
+      logger.error("Failed to get issue:", formatUnknownError(error));
       const errorMessage = `❌ Failed to get issue: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

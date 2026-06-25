@@ -13,7 +13,7 @@ import { createCommentTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { CreateCommentParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
-import { describeError, getMessageSource } from "./message-source";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
@@ -233,7 +233,7 @@ export const createCommentAction: Action = {
           } catch (parseError) {
             logger.warn(
               "Failed to parse LLM response, falling back to regex:",
-              describeError(parseError)
+              formatUnknownError(parseError)
             );
             const issueMatch = content.match(
               /(?:comment on|add.*comment.*to|reply to|tell)\s+(\w+-\d+):?\s*(.*)/i
@@ -300,7 +300,7 @@ export const createCommentAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to create comment:", describeError(error));
+      logger.error("Failed to create comment:", formatUnknownError(error));
       const errorMessage = `❌ Failed to create comment: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

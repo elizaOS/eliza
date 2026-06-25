@@ -13,7 +13,7 @@ import { updateIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearIssueInput } from "../types";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
-import { describeError, getMessageSource } from "./message-source";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import {
   getPriorityNumberValue,
   getRecordValue,
@@ -180,7 +180,7 @@ export async function handleUpdateIssue(
     } catch (parseError) {
       logger.warn(
         "Failed to parse LLM response, falling back to regex parsing:",
-        describeError(parseError)
+        formatUnknownError(parseError)
       );
 
       const issueMatch = content.match(/(\w+-\d+)/);
@@ -268,7 +268,7 @@ export async function handleUpdateIssue(
       },
     };
   } catch (error) {
-    logger.error("Failed to update issue:", describeError(error));
+    logger.error("Failed to update issue:", formatUnknownError(error));
     const errorMessage = `❌ Failed to update issue: ${error instanceof Error ? error.message : "Unknown error"}`;
     await callback?.({
       text: errorMessage,

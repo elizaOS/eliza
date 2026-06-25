@@ -13,7 +13,7 @@ import { createIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { CreateIssueParameters, LinearIssueInput } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
-import { describeError, getMessageSource } from "./message-source";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import {
   getPriorityNumberValue,
   getStringArrayValue,
@@ -217,7 +217,7 @@ export const createIssueAction: Action = {
             }
           }
         } catch (parseError) {
-          logger.error("Failed to parse LLM response:", describeError(parseError));
+          logger.error("Failed to parse LLM response:", formatUnknownError(parseError));
           issueData = {
             title: content.length > 100 ? `${content.substring(0, 100)}...` : content,
             description: content,
@@ -291,7 +291,7 @@ export const createIssueAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to create issue:", describeError(error));
+      logger.error("Failed to create issue:", formatUnknownError(error));
       const errorMessage = `❌ Failed to create issue: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

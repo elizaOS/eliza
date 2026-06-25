@@ -137,10 +137,24 @@ jobs:
 
       - name: Build the real fused libelizainference.so (${{ matrix.target }})
         env:
-          # compile-libllama derives the NDK sysroot/glslc from ANDROID_HOME/ndk.
-          ANDROID_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}/../..
+          # compile-libllama's Vulkan resolver expects an SDK root with
+          # <ANDROID_HOME>/ndk/<numeric-version>/ (it lists ndk/, keeps dirs
+          # matching /^\d+\./, takes the highest, and treats it as the NDK root).
+          # nttld/setup-ndk (add-to-path:false, link-to-sdk:false) installs into
+          # the tool cache and exposes the NDK root via outputs.ndk-path — NOT in
+          # an <sdk>/ndk/<version> layout — so ${{ steps.setup-ndk.outputs.ndk-path }}/../..
+          # has no numeric ndk/ subdir and the resolver threw. Stitch a clean
+          # single-NDK SDK below and point ANDROID_HOME at it.
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
         run: |
           set -euo pipefail
+          # ndk/<numeric-version> -> the installed NDK root. r26d == 26.3.11579264
+          # (keep in sync with the ndk-version pin on the setup-ndk step above).
+          # A clean dir holding only this NDK guarantees the resolver's
+          # "highest numeric dir wins" picks r26d, independent of whatever NDK the
+          # runner image happens to preinstall.
+          mkdir -p "$ANDROID_HOME/ndk"
+          ln -sfn "${{ steps.setup-ndk.outputs.ndk-path }}" "$ANDROID_HOME/ndk/26.3.11579264"
           # Builds the REAL fused FFI lib (libelizainference.so) via the
           # zig/musl cross-compile — bun's in-process FFI can only dlopen a
           # musl-linked .so, which the bionic NDK cmake path could not produce.

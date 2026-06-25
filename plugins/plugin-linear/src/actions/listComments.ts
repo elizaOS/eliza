@@ -11,7 +11,7 @@ import {
 import type { LinearService } from "../services/linear";
 import type { ListCommentsParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
-import { describeError, getMessageSource } from "./message-source";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const listCommentsAction: Action = {
@@ -98,7 +98,7 @@ export const listCommentsAction: Action = {
       const comments = await linearService.listComments(issueId, limit, accountId);
       return formatCommentResult(issueId, comments, message, callback);
     } catch (error) {
-      logger.error("Failed to list comments:", describeError(error));
+      logger.error("Failed to list comments:", formatUnknownError(error));
       const errorMessage = `Failed to list comments: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({ text: errorMessage, source: getMessageSource(message) });
       return { text: errorMessage, success: false };

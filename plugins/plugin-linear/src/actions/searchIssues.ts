@@ -13,7 +13,7 @@ import { searchIssuesTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearSearchFilters, SearchIssuesParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
-import { describeError, getMessageSource } from "./message-source";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import {
   getBooleanValue,
   getNumberValue,
@@ -226,7 +226,7 @@ export const searchIssuesAction: Action = {
               }
             });
           } catch (parseError) {
-            logger.error("Failed to parse search filters:", describeError(parseError));
+            logger.error("Failed to parse search filters:", formatUnknownError(parseError));
             // Fallback to simple search
             filters = { query: content };
           }
@@ -323,7 +323,7 @@ export const searchIssuesAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to search issues:", describeError(error));
+      logger.error("Failed to search issues:", formatUnknownError(error));
       const errorMessage = `❌ Failed to search issues: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

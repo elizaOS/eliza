@@ -10,7 +10,7 @@ import {
 import type { LinearService } from "../services/linear";
 import type { UpdateCommentParameters } from "../types/index.js";
 import { getLinearAccountId } from "./account-options";
-import { describeError, getMessageSource } from "./message-source";
+import { formatUnknownError, getMessageSource } from "./message-source";
 
 export async function handleUpdateComment(
   runtime: IAgentRuntime,
@@ -46,7 +46,7 @@ export async function handleUpdateComment(
       data: { commentId: comment.id, accountId },
     };
   } catch (error) {
-    logger.error("Failed to update comment:", describeError(error));
+    logger.error("Failed to update comment:", formatUnknownError(error));
     const errorMessage = `Failed to update comment: ${error instanceof Error ? error.message : "Unknown error"}`;
     await callback?.({ text: errorMessage, source: getMessageSource(message) });
     return { text: errorMessage, success: false };

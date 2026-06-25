@@ -14,7 +14,7 @@ import { deleteIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { DeleteIssueParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
-import { describeError, getMessageSource } from "./message-source";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
@@ -162,7 +162,7 @@ export const deleteIssueAction: Action = {
         } catch (parseError) {
           logger.warn(
             "Failed to parse LLM response, falling back to regex parsing:",
-            describeError(parseError)
+            formatUnknownError(parseError)
           );
 
           const issueMatch = content.match(/(\w+-\d+)/);
@@ -235,7 +235,7 @@ export const deleteIssueAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to delete issue:", describeError(error));
+      logger.error("Failed to delete issue:", formatUnknownError(error));
       const errorMessage = `❌ Failed to delete issue: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

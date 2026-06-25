@@ -11,7 +11,7 @@ import {
 import type { LinearService } from "../services/linear";
 import type { DeleteCommentParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
-import { describeError, getMessageSource } from "./message-source";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const deleteCommentAction: Action = {
@@ -88,7 +88,7 @@ export const deleteCommentAction: Action = {
         data: { commentId, accountId },
       };
     } catch (error) {
-      logger.error("Failed to delete comment:", describeError(error));
+      logger.error("Failed to delete comment:", formatUnknownError(error));
       const errorMessage = `Failed to delete comment: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({ text: errorMessage, source: getMessageSource(message) });
       return { text: errorMessage, success: false };

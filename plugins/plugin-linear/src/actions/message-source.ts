@@ -5,6 +5,12 @@ export function getMessageSource(message: Memory): string | undefined {
   return typeof source === "string" ? source : undefined;
 }
 
-export function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+export function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) return error.stack ?? error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
 }
