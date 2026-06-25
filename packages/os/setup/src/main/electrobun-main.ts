@@ -19,7 +19,7 @@
 
 import { createServer as createNetServer } from "node:net";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import Electrobun, { BrowserWindow } from "electrobun/bun";
 import { createServer } from "../../server";
 
@@ -72,7 +72,10 @@ function resolveRendererIndexUrl(): string {
   // compiled entrypoint location.
   const here = path.dirname(fileURLToPath(import.meta.url));
   const indexPath = path.join(here, "..", "renderer", "index.html");
-  return `file://${indexPath}`;
+  // Build a proper file URL: on Windows `file://${winPath}` yields a malformed
+  // URL (backslashes, drive letter parsed as host) that the webview can't load.
+  // pathToFileURL produces file:///C:/… on Windows and file:///abs on POSIX.
+  return pathToFileURL(indexPath).href;
 }
 
 async function main(): Promise<void> {
