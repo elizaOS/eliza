@@ -29,8 +29,11 @@
 //   its musl Android targets, so the resulting ABI matches what bun expects
 //   when it dlopen()s libllama.so via bun:ffi at runtime.
 //
-//   Minimum tested: zig 0.13.0. Earlier versions ship older libc++ headers
-//   that miss <bit> / <span> shims llama.cpp's CMake feature checks rely on.
+//   Arm64/aarch64-musl is pinned to zig 0.13.x. Earlier versions ship older
+//   libc++ headers that miss <bit> / <span> shims llama.cpp's CMake feature
+//   checks rely on, and newer host toolchains have regressed this lane (zig
+//   0.16's lld SIGSEGVs the aarch64-linux-musl link). Keep that target on the
+//   tested 0.13 line until the upstream linker crash is cleared.
 //
 // llama.cpp pin (matches the fork the runtime loads via
 // plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts):
@@ -221,6 +224,8 @@ export const LLAMA_CPP_TAG = "v1.2.0-eliza";
 export const LLAMA_CPP_COMMIT = "32a7911dced6230ce544c43a6399f5bd721cab90";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
+export const AARCH64_MUSL_ZIG_MIN_VERSION = "0.13.0";
+export const AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE = "0.14.0";
 // Floor for the RVV-on riscv64 build. Zig 0.13's bundled LLVM rejects the
 // GCC-style `-march=rv64gcv*` ISA string the vendored llama.cpp's
 // ggml-cpu/CMakeLists hard-codes when GGML_RVV / GGML_RV_ZFH / etc. are ON;
@@ -734,6 +739,31 @@ export function probeZig({
     );
   }
   return version;
+}
+
+/**
+ * Validate that the detected Zig version is compatible with the Android ABIs
+ * the caller is about to build. The aarch64-linux-musl lane is deliberately
+ * pinned to Zig 0.13.x: #9584 captured a host-toolchain regression where Zig
+ * 0.16's lld crashes while linking the arm64 musl build. RISC-V still keeps
+ * its separate 0.14+ RVV planner below, so the pin is scoped to arm64.
+ *
+ * Exported for tests.
+ */
+export function assertZigSupportsAndroidAbis({ version, abis }) {
+  if (!abis?.includes("arm64-v8a")) return;
+  if (
+    compareSemver(version, AARCH64_MUSL_ZIG_MIN_VERSION) >= 0 &&
+    compareSemver(version, AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE) < 0
+  ) {
+    return;
+  }
+  throw new Error(
+    `[compile-libllama] zig ${version} is not supported for arm64-v8a/aarch64-linux-musl builds; ` +
+      `use zig ${AARCH64_MUSL_ZIG_MIN_VERSION} (0.13.x). ` +
+      `Zig >= ${AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE} is blocked for this target because ` +
+      `newer lld builds have crashed the aarch64-linux-musl link (elizaOS/eliza#9584).`,
+  );
 }
 
 /**
@@ -2076,6 +2106,12 @@ export function describeAndroidTargetDryRun({
   log(`  src=${srcDir}`);
   log(`  build=${buildDir}`);
   log(`  install=${abiAssetDir}`);
+  if (parsed.androidAbi === "arm64-v8a") {
+    log(
+      `  zig requirement: ${AARCH64_MUSL_ZIG_MIN_VERSION} <= version < ` +
+        `${AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE} (aarch64-linux-musl pin)`,
+    );
+  }
   if (parsed.fused) {
     log(`  omnivoice: merged in-fork path (tools/omnivoice/)`);
   }
@@ -2163,6 +2199,7 @@ export async function main(argv = process.argv.slice(2)) {
   // the build WOULD do.
   if (!args.dryRun) {
     const zigVersion = probeZig();
+    assertZigSupportsAndroidAbis({ version: zigVersion, abis: args.abis });
     console.log(`[compile-libllama] Found zig ${zigVersion}`);
   } else {
     console.log(`[compile-libllama] (dry-run) skipping zig toolchain probe`);
@@ -2367,6 +2404,10 @@ export async function mainTargets(args) {
 
   if (!args.dryRun) {
     const zigVersion = probeZig();
+    assertZigSupportsAndroidAbis({
+      version: zigVersion,
+      abis: [...new Set(args.targets.map((target) => target.androidAbi))],
+    });
     console.log(`[compile-libllama] Found zig ${zigVersion}`);
   } else {
     console.log(`[compile-libllama] (dry-run) skipping zig toolchain probe`);
