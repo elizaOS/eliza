@@ -1,5 +1,5 @@
 {
-  "_source": "Fitbit Web API (api.fitbit.com) documented response shapes — https://dev.fitbit.com/build/reference/web-api/. `profile` is GET /1/user/-/profile.json; `activity` is GET /1/user/-/activities/date/{date}.json; `sleep` is GET /1.2/user/-/sleep/date/{date}.json; `heart` is GET /1/user/-/activities/heart/date/{date}/1d.json; `weight` is GET /1/user/-/body/log/weight/date/{date}.json. Field names + units match the real wire shape: activities-heart restingHeartRate bpm, summary.distances[].distance km, summary.caloriesOut kcal, summary.{fairlyActive,veryActive}Minutes minutes, sleep[].duration milliseconds, sleep[].timeInBed/minutesAwake/minutesToFallAsleep minutes, sleep[].levels.data[].seconds seconds, body.log.weight[].weight kg.",
+  "_source": "Fitbit Web API (api.fitbit.com) documented response shapes — https://dev.fitbit.com/build/reference/web-api/. `profile` is GET /1/user/-/profile.json; `activity` is GET /1/user/-/activities/date/{date}.json; `sleep` is GET /1.2/user/-/sleep/date/{date}.json; `heart` is GET /1/user/-/activities/heart/date/{date}/1d.json; `weight` is GET /1/user/-/body/log/weight/date/{date}.json. Field names + units match the real wire shape: activities-heart restingHeartRate bpm, summary.distances[].distance km, summary.caloriesOut kcal, summary.{fairlyActive,veryActive}Minutes minutes, sleep[].duration milliseconds, sleep[].timeInBed/minutesAwake/minutesToFallAsleep minutes, sleep[].levels.data[].seconds seconds, body.log.weight[].weight kg. profile.user.distanceUnit / profile.user.weightUnit carry the account locale (`METRIC` => km/kg, `en_US` => miles/pounds, `en_GB` => miles/stone); with no Accept-Language override the wire distance/weight values are in those units. See https://dev.fitbit.com/build/reference/web-api/developer-guide/application-design/#Localization.",
   "_why": "Replayed through syncHealthConnectorData({token:{provider:'fitbit'}}) so the normalized HealthConnectorSyncPayload (samples + sleepEpisodes + identity) is validated against the real Fitbit per-date shapes. fitbit-connector.real.test.ts re-fetches the live API with a token to detect drift from this recording.",
   "_captured": "2026-06-17",
   "profile": {
@@ -12,6 +12,8 @@
       "height": 167.0,
       "weight": 61.2,
       "timezone": "Europe/London",
+      "distanceUnit": "METRIC",
+      "weightUnit": "METRIC",
       "memberSince": "2024-01-02"
     }
   },

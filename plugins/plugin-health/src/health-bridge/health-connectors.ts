@@ -410,12 +410,49 @@ async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   };
 }
 
+// Fitbit reports distance/weight in the unit system tied to the account's
+// locale, surfaced on the profile as `distanceUnit` / `weightUnit` with the
+// values `en_US` (US: miles, pounds), `en_GB` (UK: miles, stone), or `METRIC`
+// (km, kg). Because we send no `Accept-Language` override, the wire values are
+// exactly those profile-configured units, so the profile is the source of
+// truth for how to read them. See
+// https://dev.fitbit.com/build/reference/web-api/developer-guide/application-design/#Localization
+const METERS_PER_MILE = 1_609.344;
+const KG_PER_POUND = 0.45359237;
+const KG_PER_STONE = 6.35029318;
+
+function fitbitUsesImperialDistance(distanceUnit: string | null): boolean {
+  return distanceUnit === "en_US" || distanceUnit === "en_GB";
+}
+
+function fitbitDistanceMeters(
+  distance: number,
+  distanceUnit: string | null,
+): number {
+  return fitbitUsesImperialDistance(distanceUnit)
+    ? distance * METERS_PER_MILE
+    : distance * 1_000;
+}
+
+function fitbitWeightKg(weight: number, weightUnit: string | null): number {
+  if (weightUnit === "en_US") {
+    return weight * KG_PER_POUND;
+  }
+  if (weightUnit === "en_GB") {
+    return weight * KG_PER_STONE;
+  }
+  return weight;
+}
+
 async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const dates = dateRange(args.startDate, args.endDate);
   const identityJson = await fetchHealthJson({
     token: args.token,
     path: "/1/user/-/profile.json",
   });
+  const profileUser = getRecord(identityJson, "user");
+  const distanceUnit = profileUser ? getText(profileUser, "distanceUnit") : null;
+  const weightUnit = profileUser ? getText(profileUser, "weightUnit") : null;
   const samples: LifeOpsHealthMetricSample[] = [];
   const sleepEpisodes: LifeOpsHealthSleepEpisode[] = [];
   const workouts: LifeOpsHealthWorkout[] = [];
@@ -489,10 +526,14 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           token: args.token,
           grantId: args.grantId,
           metric: "distance_meters",
-          value: totalDistance > 0 ? totalDistance * 1_000 : null,
+          value:
+            totalDistance > 0
+              ? fitbitDistanceMeters(totalDistance, distanceUnit)
+              : null,
           unit: "m",
           startAt: dayAt,
           sourceExternalId: `${date}:fitbit:distance_meters`,
+          metadata: { providerUnit: distanceUnit },
         }),
       ]),
     );
@@ -591,18 +632,25 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
       const loggedAt = normalizeIso(
         `${getText(log, "date") ?? date}T${getText(log, "time") ?? "12:00:00"}`,
       );
+      const rawWeight = getNumber(log, "weight");
       samples.push(
         ...compactSamples([
           sample({
             token: args.token,
             grantId: args.grantId,
             metric: "weight_kg",
-            value: getNumber(log, "weight"),
+            value:
+              rawWeight !== null ? fitbitWeightKg(rawWeight, weightUnit) : null,
             unit: "kg",
             startAt: loggedAt,
             sourceExternalId:
               getText(log, "logId") ?? `${date}:fitbit:weight_kg`,
-            metadata: { providerUnit: getText(log, "weightUnit") },
+            // providerUnit is the unit label Fitbit attached to THIS weight log;
+            // the value is converted to kg using the account locale (weightUnit).
+            metadata: {
+              providerUnit: getText(log, "weightUnit"),
+              providerLocaleUnit: weightUnit,
+            },
           }),
         ]),
       );
