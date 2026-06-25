@@ -20,10 +20,11 @@ function makeResult(
 }
 
 describe("lifeops-gepa-seed", () => {
-  it("exposes calendar and inbox seed tasks", () => {
+  it("exposes calendar, schedule, and inbox seed tasks", () => {
     expect(Object.keys(SEED_TASKS).sort()).toEqual([
       "calendar_extract",
       "inbox_triage",
+      "schedule_plan",
     ]);
   });
 
@@ -47,6 +48,74 @@ describe("lifeops-gepa-seed", () => {
       expect(parsed).not.toHaveProperty("startTime");
       expect(parsed).not.toHaveProperty("endTime");
     }
+  });
+
+  it("uses the live scheduling planner baseline and JSON-shaped examples", () => {
+    const seed = SEED_TASKS.schedule_plan;
+    expect(seed.baseline).toContain("Plan the scheduling negotiation action");
+    expect(seed.baseline).toContain("subaction");
+    expect(seed.baseline).toContain("finalize");
+
+    expect(seed.dataset.length).toBeGreaterThanOrEqual(8);
+
+    const subactions = seed.dataset.map(
+      (example) =>
+        (JSON.parse(example.expectedOutput) as { subaction: string | null })
+          .subaction,
+    );
+    // Every actionable subaction appears at least once.
+    for (const subaction of [
+      "start",
+      "propose",
+      "respond",
+      "finalize",
+      "cancel",
+      "list_active",
+      "list_proposals",
+    ]) {
+      expect(subactions).toContain(subaction);
+    }
+    // The wrong-tool / vague guard (shouldAct=false) is represented.
+    expect(
+      seed.dataset.some((example) => {
+        const parsed = JSON.parse(example.expectedOutput) as {
+          subaction: string | null;
+          shouldAct: boolean;
+        };
+        return parsed.subaction === null && parsed.shouldAct === false;
+      }),
+    ).toBe(true);
+    // Multilingual coverage per the GEPA real-conversation requirement.
+    expect(
+      seed.dataset.some((example) =>
+        /créneau|Acepto|propuesta/.test(example.input.user),
+      ),
+    ).toBe(true);
+
+    for (const example of seed.dataset) {
+      expect(example.input.user).toContain("Current request:");
+      const parsed = JSON.parse(example.expectedOutput) as Record<
+        string,
+        unknown
+      >;
+      expect(parsed).toHaveProperty("subaction");
+      expect(parsed).toHaveProperty("shouldAct");
+    }
+  });
+
+  it("blocks malformed scheduling prompts from persistence", () => {
+    const seed = SEED_TASKS.schedule_plan;
+    const malformed = validatePersistableResult(
+      seed,
+      makeResult("Return JSON with subaction and shouldAct.", 0.9, 0.1),
+    );
+    expect(malformed).toEqual(
+      expect.arrayContaining([expect.stringContaining('"finalize"')]),
+    );
+
+    expect(
+      validatePersistableResult(seed, makeResult(seed.baseline, 0.9, 0.1)),
+    ).toEqual([]);
   });
 
   it("uses the live Gmail planner baseline and line-shaped examples", () => {

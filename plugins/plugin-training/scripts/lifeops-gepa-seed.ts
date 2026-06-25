@@ -30,7 +30,10 @@ import {
   type OptimizedPromptTask,
 } from "@elizaos/core";
 import { CALENDAR_PLAN_INSTRUCTIONS } from "../../plugin-calendar/src/actions/optimized-prompt-instructions.ts";
-import { GMAIL_PLAN_INSTRUCTIONS } from "../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts";
+import {
+  GMAIL_PLAN_INSTRUCTIONS,
+  SCHEDULE_PLAN_INSTRUCTIONS,
+} from "../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts";
 import { getTrainingUseModelAdapter } from "../src/core/cerebras-eval-model.ts";
 import {
   createPromptScorer,
@@ -75,6 +78,31 @@ function calendarPlannerInput(args: CalendarPlannerInputArgs): string {
 }
 
 function expectedCalendarPlan(fields: Record<string, unknown>): string {
+  return JSON.stringify(fields);
+}
+
+interface SchedulingPlannerInputArgs {
+  currentMessage: string;
+  intent?: string;
+  params?: Record<string, unknown>;
+  recentConversation?: string;
+}
+
+function schedulingPlannerInput(args: SchedulingPlannerInputArgs): string {
+  const intent = args.intent ?? args.currentMessage;
+  const params = args.params ?? {};
+  const paramLines = Object.entries(params)
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join("\n");
+  return [
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${intent}`,
+    `Structured parameters:\n${paramLines || "(none)"}`,
+    `Recent conversation:\n${args.recentConversation ?? "(none)"}`,
+  ].join("\n");
+}
+
+function expectedSchedulePlan(fields: Record<string, unknown>): string {
   return JSON.stringify(fields);
 }
 
@@ -240,6 +268,145 @@ export const SEED_TASKS: Record<string, SeedTask> = {
           }),
         },
         expectedOutput: expectedCalendarPlan({
+          subaction: null,
+          shouldAct: false,
+        }),
+      },
+    ],
+  },
+  // schedule_plan is the live scheduling-negotiation planner
+  // (buildSchedulingPlanPrompt → SCHEDULE_PLAN_INSTRUCTIONS). It returns a JSON
+  // object with subaction / shouldAct / response. Rows cover every subaction,
+  // the wrong-tool and vague guards (shouldAct=false), and multilingual,
+  // formal+informal phrasing per the GEPA-real-conversation requirement (#9299).
+  schedule_plan: {
+    task: "schedule_plan",
+    baseline: SCHEDULE_PLAN_INSTRUCTIONS,
+    dataset: [
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage:
+              "Set up a time to meet with Jordan next week for a 30-minute sync.",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: "start",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage:
+              "Propose Thursday at 2pm for the budget review negotiation.",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: "propose",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage: "Accept the 3pm slot Dana proposed.",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: "respond",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage:
+              "Lock in the Tuesday 10am option for the design sync.",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: "finalize",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage:
+              "Cancel the scheduling negotiation for the offsite planning call.",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: "cancel",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage: "Which scheduling negotiations are still open?",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: "list_active",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage:
+              "Show me the proposed times for the Q3 roadmap meeting.",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: "list_proposals",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage:
+              "Trouve un créneau avec Camille la semaine prochaine pour caler une réunion d'une heure.",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: "start",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage:
+              "Acepto la propuesta de las 4 de la tarde de Marco.",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: "respond",
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage: "What's on my calendar today?",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
+          subaction: null,
+          shouldAct: false,
+        }),
+      },
+      {
+        input: {
+          user: schedulingPlannerInput({
+            currentMessage: "Can you help me with scheduling stuff?",
+          }),
+        },
+        expectedOutput: expectedSchedulePlan({
           subaction: null,
           shouldAct: false,
         }),
@@ -432,6 +599,18 @@ function validateOptimizedPromptForTask(
       "read",
       "draft_reply",
       "send_reply",
+    ],
+    schedule_plan: [
+      "subaction",
+      "shouldAct",
+      "response",
+      "start",
+      "propose",
+      "respond",
+      "finalize",
+      "cancel",
+      "list_active",
+      "list_proposals",
     ],
   };
   const requiredFragments = requiredFragmentsByTask[task] ?? [];

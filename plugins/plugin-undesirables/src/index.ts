@@ -122,13 +122,22 @@ You are direct and avoid hype.
 // Types
 // ============================================================
 
+interface SoulMeta {
+  name?: string;
+  archetype?: string;
+  strategy?: string;
+  token_id?: string;
+  adjectives?: string[];
+  [key: string]: unknown;
+}
+
 interface SoulWorkspace {
   soulMd: string;
   systemPrompt: string;
   memory: string;
-  predictions: any[];
+  predictions: unknown[];
   skills: Record<string, string>;
-  meta: Record<string, any>;
+  meta: SoulMeta;
 }
 
 // ============================================================
@@ -178,10 +187,19 @@ async function loadWorkspace(workspacePath: string): Promise<SoulWorkspace> {
     const fmMatch = workspace.soulMd.match(/^---\n([\s\S]*?)\n---/);
     if (fmMatch) {
       try {
-        const parsed = yaml.load(fmMatch[1], { schema: yaml.JSON_SCHEMA }) as Record<string, any>;
+        const parsed = yaml.load(fmMatch[1], { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
         if (parsed && typeof parsed === "object") {
           for (const key of Object.keys(parsed)) {
             if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+            if (key === "adjectives") {
+              const adjectives = parsed[key];
+              if (Array.isArray(adjectives)) {
+                workspace.meta.adjectives = adjectives.filter(
+                  (adjective): adjective is string => typeof adjective === "string"
+                );
+              }
+              continue;
+            }
             workspace.meta[key] = parsed[key];
           }
         }

@@ -158,6 +158,31 @@
           }
         }
       }
+    },
+    {
+      "includes": [
+        "plugins/**/src/**/*.ts",
+        "!plugins/plugin-personal-assistant/**"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/**/src/**/*.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
     }
   ],
   "formatter": {

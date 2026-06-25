@@ -74,9 +74,41 @@ jobs:
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
           script: |
+            set -euo pipefail
             adb root || true
             adb shell setenforce 0 || true
             bun run --cwd packages/app build  # ensure web dist
+
+            mkdir -p packages/app/test-results/android-onboarding-to-home
+            ELIZA_API_PORT=31337 \
+            ELIZA_PAIRING_DISABLED=1 \
+              node packages/app-core/scripts/run-node-tsx.mjs \
+                packages/app-core/scripts/serve-real-local-agent.ts \
+                > packages/app/test-results/android-onboarding-to-home/host-agent.log 2>&1 &
+            HOST_AGENT_PID=$!
+            trap 'kill "$HOST_AGENT_PID" 2>/dev/null || true' EXIT
+            for i in $(seq 1 90); do
+              if curl -fsS \
+                -H 'X-ElizaOS-Client-Id: android-onboarding-ci' \
+                http://127.0.0.1:31337/api/health >/tmp/android-host-agent-health.json; then
+                cat /tmp/android-host-agent-health.json
+                break
+              fi
+              if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
+                echo "Host agent exited before becoming healthy"
+                cat packages/app/test-results/android-onboarding-to-home/host-agent.log
+                exit 1
+              fi
+              sleep 2
+            done
+            curl -fsS \
+              -H 'X-ElizaOS-Client-Id: android-onboarding-ci' \
+              http://127.0.0.1:31337/api/health >/dev/null
+
+            ELIZA_ANDROID_BACKEND=host \
+            ELIZA_ANDROID_REQUIRE_AGENT=1 \
+              bun run --cwd packages/app test:e2e:android:onboarding
+
             ELIZA_ANDROID_REQUIRE_AGENT=${{ github.event.inputs.backend == 'local' && '1' || '0' }} \
               bun run --cwd packages/app test:e2e:android:routes || true
             # Local on-device agent smoke (surfaces failure loudly; expected to

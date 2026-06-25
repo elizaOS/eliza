@@ -80,19 +80,22 @@ function getCandidatePaths(): string[] {
     }
   };
 
+  // On Windows the bundled/installed binary is `yt-dlp.exe`, not `yt-dlp`.
+  const binName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+
   // Walk up from module dir (handles both source and bundled dist layouts)
   for (let depth = 2; depth <= 5; depth++) {
     add(
-      resolve(
-        moduleDir,
-        ...Array(depth).fill(".."),
-        "scripts",
-        "bin",
-        "yt-dlp",
-      ),
+      resolve(moduleDir, ...Array(depth).fill(".."), "scripts", "bin", binName),
     );
   }
-  add(resolve(process.cwd(), "scripts", "bin", "yt-dlp"));
+  add(resolve(process.cwd(), "scripts", "bin", binName));
+
+  if (process.platform === "win32") {
+    // Windows relies on `where`-based PATH discovery below (winget/scoop/choco/
+    // pip shims all register on PATH); the POSIX system dirs do not exist here.
+    return candidates;
+  }
 
   add("/usr/local/bin/yt-dlp");
   add("/usr/bin/yt-dlp");
@@ -132,12 +135,18 @@ export async function checkYtdlpAvailable(): Promise<YtdlpCheckResult> {
     }
   }
 
-  // 3. Try PATH via `command -v` (fast, no cold-start penalty)
+  // 3. Try PATH discovery (fast, no cold-start penalty). Windows' cmd.exe has
+  //    no `command` builtin, so use `where`; `command -v` on POSIX.
   try {
-    const commandPath = execSync("command -v yt-dlp", {
+    const probe =
+      process.platform === "win32" ? "where yt-dlp" : "command -v yt-dlp";
+    // `where` can list multiple matches; take the first resolvable one.
+    const commandPath = execSync(probe, {
       encoding: "utf-8",
       timeout: 3000,
-    }).trim();
+    })
+      .split(/\r?\n/)[0]
+      .trim();
     if (commandPath && existsSync(commandPath)) {
       logger.debug(`Found yt-dlp via PATH: ${commandPath}`);
       cachedPath = commandPath;
@@ -194,10 +203,14 @@ export function checkYtdlpAvailableSync(): YtdlpCheckResult {
   }
 
   try {
-    const commandPath = execSync("command -v yt-dlp", {
+    const probe =
+      process.platform === "win32" ? "where yt-dlp" : "command -v yt-dlp";
+    const commandPath = execSync(probe, {
       encoding: "utf-8",
       timeout: 3000,
-    }).trim();
+    })
+      .split(/\r?\n/)[0]
+      .trim();
     if (commandPath && existsSync(commandPath)) {
       cachedPath = commandPath;
       return { found: true, path: commandPath };

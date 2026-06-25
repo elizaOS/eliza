@@ -8,6 +8,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
 import { registerPhoneGatewayDevice } from "@/lib/services/phone-gateway-devices";
 import { logger } from "@/lib/utils/logger";
@@ -75,7 +76,10 @@ function authorized(c: AppContext): boolean {
     c.req.header("x-eliza-gateway-secret") ??
     c.req.header("x-bluebubbles-gateway-secret") ??
     "";
-  return provided === expected;
+  // Constant-time: this public (session-auth-bypassing) webhook is gated solely
+  // by this header secret, so a plain === would leak it byte-by-byte to a timing
+  // attack and let an attacker forge state-mutating webhook payloads.
+  return timingSafeEqualSecret(provided, expected);
 }
 
 function resolveSender(

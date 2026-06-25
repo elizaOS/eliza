@@ -6,7 +6,7 @@ export type FsAccessMode = "read" | "write";
 // Intentionally uses `any[]` for parameter contravariance. The wrapper
 // generics propagate the real `T` shape to callers; the wrapper body
 // re-validates path-like arguments at runtime via `mobileFsPathLikeToString`.
-export type AnyFn = (...args: any[]) => unknown;
+export type AnyFn = (...args: never[]) => unknown;
 export type MobileFsGlobals = typeof globalThis & {
 	__ELIZA_MOBILE_FS_RESOLVE__?: (
 		inputPath: string,

@@ -1026,14 +1026,7 @@ export class SmartglassesService extends Service {
     payload: Record<string, unknown>,
   ): Promise<void> {
     if (!this.runtime) return;
-    await (
-      this.runtime as unknown as {
-        emitEvent: (
-          event: string,
-          params: Record<string, unknown>,
-        ) => Promise<void>;
-      }
-    ).emitEvent(eventName, {
+    await this.runtime.emitEvent(eventName, {
       runtime: this.runtime,
       source: "@elizaos/plugin-facewear",
       ...payload,

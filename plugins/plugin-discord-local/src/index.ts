@@ -1228,7 +1228,7 @@ function buildDiscordStatusResponse(
       },
     };
   }
-  const detail = service.getStatus() as unknown as DiscordServiceStatusShape;
+  const detail = service.getStatus() as DiscordServiceStatusShape;
   const state: SetupState = detail.authenticated
     ? "paired"
     : detail.lastError
@@ -1265,7 +1265,7 @@ async function handleDiscordStart(
   }
 
   try {
-    const detail = (await service.authorize()) as unknown as DiscordServiceStatusShape;
+    const detail = (await service.authorize()) as DiscordServiceStatusShape;
     const state: SetupState = detail.authenticated
       ? "paired"
       : detail.lastError

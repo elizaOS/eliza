@@ -30,10 +30,6 @@ import {
 import * as viemChains from "viem/chains";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
 
-interface JsonResponse {
-  setHeader?: (name: string, value: string) => void;
-}
-
 class EvmSignInputError extends Error {}
 
 function routeErrorStatus(error: unknown): number {
@@ -42,16 +38,15 @@ function routeErrorStatus(error: unknown): number {
 
 function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
   const origin = (req.headers?.origin as string | undefined) ?? "*";
-  const r = res as unknown as JsonResponse;
-  r.setHeader?.("Access-Control-Allow-Origin", origin);
-  r.setHeader?.("Vary", "Origin");
-  r.setHeader?.("Access-Control-Allow-Methods", "POST, OPTIONS");
-  r.setHeader?.(
+  res.setHeader?.("Access-Control-Allow-Origin", origin);
+  res.setHeader?.("Vary", "Origin");
+  res.setHeader?.("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader?.(
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, X-Wallet-Sign-Token",
   );
-  r.setHeader?.("Access-Control-Allow-Credentials", "true");
-  r.setHeader?.("Access-Control-Max-Age", "600");
+  res.setHeader?.("Access-Control-Allow-Credentials", "true");
+  res.setHeader?.("Access-Control-Max-Age", "600");
 }
 
 function readSignToken(runtime: IAgentRuntime): string | null {
@@ -78,7 +73,7 @@ function authorize(
   runtime: IAgentRuntime,
 ): boolean {
   setCorsHeaders(req, res);
-  if ((req as unknown as { method?: string }).method === "OPTIONS") {
+  if (req.method === "OPTIONS") {
     res.status(204).json({});
     return false;
   }

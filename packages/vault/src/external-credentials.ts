@@ -276,6 +276,13 @@ export async function revealBitwardenLogin(
 ): Promise<ExternalLoginReveal> {
   if (!externalId)
     throw new TypeError("revealBitwardenLogin: externalId required");
+  // The id is interpolated into a shelled `bw get item <id>` on Windows (bw is
+  // a `.cmd` shim), so restrict it to Bitwarden's UUID charset — it can then
+  // carry no shell metacharacters. Bitwarden item ids are always UUIDs.
+  if (!/^[A-Za-z0-9-]+$/.test(externalId))
+    throw new TypeError(
+      `revealBitwardenLogin: invalid externalId "${externalId}"`,
+    );
   const session = await readSessionToken(vault, "bitwarden");
 
   const out = await exec("bw", ["get", "item", externalId], {
@@ -467,6 +474,12 @@ export function defaultExecFn(): ExecFn {
   // subprocesses if a test forgets to inject a test executor.
   return async (cmd, args, opts) => {
     const childProcess = await import("node:child_process");
+    // `bw` is installed on Windows as an npm `.cmd` shim (see install.ts), which
+    // Node's execFile cannot launch without a shell. `op`/`pass-cli` are real
+    // .exe and must NOT use a shell. The only dynamic arg reaching `bw` (the
+    // item id) is validated to a UUID charset by revealBitwardenLogin, so the
+    // win32 shell carries no injection surface.
+    const useShell = process.platform === "win32" && cmd === "bw";
     return new Promise((resolve, reject) => {
       const child = childProcess.execFile(
         cmd,
@@ -476,6 +489,7 @@ export function defaultExecFn(): ExecFn {
           timeout: opts.timeoutMs ?? 10_000,
           maxBuffer: 16 * 1024 * 1024,
           encoding: "utf8",
+          ...(useShell ? { shell: true } : {}),
         },
         (error, stdout, stderr) => {
           if (error) {

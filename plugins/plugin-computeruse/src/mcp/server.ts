@@ -59,7 +59,7 @@ export async function createComputerUseMcpServer(
     // Indirect specifier so the type-checker/bundler doesn't hard-require the
     // optional package at build time.
     const serverSpec = "@modelcontextprotocol/sdk/server/mcp.js";
-    const mod = (await import(serverSpec)) as unknown as {
+    const mod = (await import(serverSpec)) as {
       McpServer: new (info: { name: string; version: string }) => McpServerLike;
     };
     McpServer = mod.McpServer;
@@ -106,7 +106,7 @@ export async function connectComputerUseMcpStdio(
 ): Promise<McpServerLike> {
   const server = await createComputerUseMcpServer(runner);
   const stdioSpec = "@modelcontextprotocol/sdk/server/stdio.js";
-  const { StdioServerTransport } = (await import(stdioSpec)) as unknown as {
+  const { StdioServerTransport } = (await import(stdioSpec)) as {
     StdioServerTransport: new () => unknown;
   };
   await server.connect(new StdioServerTransport());

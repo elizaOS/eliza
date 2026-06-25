@@ -10,7 +10,7 @@
 function isCapacitorNative(): boolean {
   try {
     const cap = (
-      globalThis as unknown as {
+      globalThis as {
         Capacitor?: { isNativePlatform?: () => boolean };
       }
     ).Capacitor;
@@ -23,7 +23,7 @@ function isCapacitorNative(): boolean {
 }
 
 function isElectrobunHost(): boolean {
-  const win = globalThis as unknown as {
+  const win = globalThis as {
     __electrobunWindowId?: number;
     __electrobunWebviewId?: number;
     __ELIZA_ELECTROBUN_RPC__?: unknown;

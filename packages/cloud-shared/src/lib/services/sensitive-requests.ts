@@ -362,7 +362,7 @@ export class SensitiveRequestsService {
         tokenRequired: true,
         ...(params.delivery ?? {}),
       },
-      callback: (params.callback ?? { type: "none" }) as unknown as Record<string, unknown>,
+      callback: (params.callback ?? { type: "none" }) as Record<string, unknown>,
       token_hash: tokenHash,
       expires_at: expiresAt,
       created_by: actor.userId,

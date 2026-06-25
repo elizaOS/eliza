@@ -230,7 +230,7 @@ export class ClaudeCodeSubAgentService {
   async sendPrompt(params: SendPromptParams): Promise<JsonValue> {
     const session = this.requireSession(params.sessionId);
     session.recorder.record(`> ${params.prompt}`);
-    const writer = session.proc.stdin as unknown as {
+    const writer = session.proc.stdin as {
       write(data: string): void;
     };
     writer.write(`${params.prompt}\n`);
@@ -284,7 +284,7 @@ export class ClaudeCodeSubAgentService {
   private async pumpStdout(session: ClaudeCodeSession): Promise<void> {
     if (!session.proc.stdout) return;
     const reader = (
-      session.proc.stdout as unknown as ReadableStream<Uint8Array>
+      session.proc.stdout as ReadableStream<Uint8Array>
     ).getReader();
     const decoder = new TextDecoder();
     let buffer = "";

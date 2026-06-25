@@ -212,7 +212,13 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
 export const LLAMA_CPP_TAG = "v1.2.0-eliza";
-export const LLAMA_CPP_COMMIT = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
+// Must track the `plugins/plugin-local-inference/native/llama.cpp` submodule
+// gitlink on develop. The old pin `33c888a7be` predated the Mali flash-attn
+// subgroup-race fix (the `VK_VENDOR_ID_ARM` `disable_subgroups` branch), so the
+// fused Vulkan lib built from it SIGABRTed mid-decode on Mali GPUs (#9508). This
+// commit is a forward descendant that bakes the mitigation in; the
+// `verify-fused-symbols` gate enforces the marker is present post-build.
+export const LLAMA_CPP_COMMIT = "32a7911dced6230ce544c43a6399f5bd721cab90";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
 // Floor for the RVV-on riscv64 build. Zig 0.13's bundled LLVM rejects the

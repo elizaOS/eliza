@@ -30,12 +30,11 @@ function readShimConfig(): Promise<WalletShimStored | null> {
     try {
       const api =
         (
-          globalThis as unknown as {
+          globalThis as {
             chrome?: typeof chrome;
             browser?: typeof chrome;
           }
-        ).chrome ??
-        (globalThis as unknown as { browser?: typeof chrome }).browser;
+        ).chrome ?? (globalThis as { browser?: typeof chrome }).browser;
       if (!api?.storage?.local?.get) {
         resolve(null);
         return;

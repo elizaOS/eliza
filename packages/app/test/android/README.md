@@ -7,6 +7,7 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 | Layer | What it proves | Driver |
 |---|---|---|
 | `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
+| `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
 | `playwright.android.config.ts` (`test/android/*.android.spec.ts`) | Every route/feature renders on the real WebView against the live backend | Playwright Android driver (`_android`) over the WebView CDP socket |
 
 The Playwright Android suite reuses the canonical route enumerations
@@ -80,6 +81,25 @@ start, model won't download/run, a route won't render, cloud won't provision
 | `--no-emulator-boot` | Use an already-running device, don't boot an AVD |
 | `ELIZA_ANDROID_REQUIRE_AGENT=0` | Don't gate route coverage on local agent health (cloud/remote mode) |
 | `ELIZA_EMULATOR_MEMORY_MB` / `ELIZA_EMULATOR_CORES` | Override emulator sizing |
+
+## CI onboarding lane
+
+`android-device-e2e.yml` now runs a load-bearing first-run lane before the
+best-effort route sweep:
+
+1. Start `packages/app-core/scripts/serve-real-local-agent.ts` on host
+   `127.0.0.1:31337` with pairing disabled and deterministic model handlers.
+2. Boot/install the WebView-debuggable APK on the Android emulator.
+3. Run `test/android/onboarding-to-home.android.spec.ts` with
+   `ELIZA_ANDROID_BACKEND=host`, so global setup wires `adb reverse
+   tcp:31337 -> host:31337`.
+4. The spec navigates the installed app to `/?reset`, taps through Remote
+   onboarding, posts first-run to the real host agent, and asserts
+   `home-springboard-surface[data-page="home"]` plus the chat composer.
+
+Artifacts are written under
+`packages/app/test-results/android-onboarding-to-home/`:
+`home-landing.png`, `onboarding-to-home.mp4`, and `host-agent.log`.
 
 ## On-device agent: where it runs
 

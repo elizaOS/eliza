@@ -645,6 +645,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "does the vendored opencode source include Cerebras endpoint detection? concise",
       command: 'grep -R "Cerebras" /home/example -n 2>/dev/null | head -n 20',
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -664,6 +665,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
       command: "find /home/example -type d -name '*opencode*' 2>/dev/null",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -680,6 +682,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
       command: "ls -R . | head -n 50",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -697,6 +700,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
       command: "ls -R /home/example | grep -i opencode -n",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -714,6 +718,7 @@ describeIfPosix("shellAction", () => {
         "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
       command:
         'grep -R "cerebrasReasoning" -n plugins/plugin-agent-orchestrator/vendor/opencode | head -n 20',
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -1206,6 +1211,43 @@ describe("platform-aware canned resource commands", () => {
     it("resolves the host shell to a known platform dialect", () => {
       const platform: CommandPlatform = resolveCommandPlatform();
       expect(["windows", "macos", "linux"]).toContain(platform);
+    });
+  });
+
+  describe("windows (PowerShell) source inspection", () => {
+    it("rewrites a broad source grep to a PowerShell git-grep/rg/Select-String chain (no POSIX find)", () => {
+      const result = resolveSourceInspectionCommand({
+        messageText:
+          "does the vendored opencode source include Cerebras endpoint detection? concise",
+        command: 'grep -R "Cerebras" /home/example -n 2>/dev/null | head -n 20',
+        platform: "windows",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("git grep -n --recurse-submodules");
+      expect(result.command).toContain("Get-Command rg");
+      expect(result.command).toContain("Select-String");
+      expect(result.command).toContain("$LASTEXITCODE");
+      expect(result.command).toContain("'Cerebras'");
+      // none of the POSIX-only forms survive
+      expect(result.command).not.toContain("command -v");
+      expect(result.command).not.toContain("2>/dev/null");
+      expect(result.command).not.toContain("|| true");
+      expect(result.command).not.toContain('[ -d "$SEARCH_ROOT" ]');
+    });
+
+    it("rewrites a broad source directory walk to a PowerShell Get-ChildItem listing (no sed)", () => {
+      const result = resolveSourceInspectionCommand({
+        messageText:
+          "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+        command: "find /home/example -type d -name '*opencode*' 2>/dev/null",
+        platform: "windows",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Get-ChildItem");
+      expect(result.command).toContain("-notmatch");
+      expect(result.command).toContain("node_modules");
+      expect(result.command).not.toContain("sed -n");
+      expect(result.command).not.toContain('find "$SEARCH_ROOT"');
     });
   });
 });
