@@ -1,0 +1,280 @@
+/**
+ * CreditsService.reconcile() — real PGlite-backed settlement coverage.
+ *
+ * `reconcile()` is the money-settlement seam that runs after every metered
+ * request: it compares the reserved estimate against the actual cost and either
+ * refunds the excess, charges the overage, or no-ops within EPSILON. It had
+ * ZERO real-method coverage. These cases run the REAL method against an
+ * in-process PGlite DB so the real refundCredits / deductCredits SQL (the
+ * FOR UPDATE row-lock, the atomic credit_balance movement, and the
+ * credit_transactions insert) actually executes; balances are read back from
+ * the DB and asserted to the cent. They self-skip if PGlite is unavailable.
+ *
+ * Case 4 PINS today's finding-#1 silent-leak behavior: an overage larger than
+ * the live balance is served but NOT charged (deductCredits refuses to drive
+ * the balance negative and returns success:false WITHOUT throwing, yet reconcile
+ * still reports adjustmentType "overage" with an empty settlement list). This is
+ * pinned, not endorsed — a future policy fix should change it deliberately.
+ */
+
+import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
+
+process.env.DATABASE_URL ||= "pglite://memory";
+process.env.NODE_ENV ||= "test";
+
+const PGLITE_TIMEOUT = 60000;
+
+const ORG_ID = "00000000-0000-0000-0000-0000000000d4";
+const USER_ID = "00000000-0000-0000-0000-0000000000e5";
+
+let dbWrite: typeof import("../../../db/client").dbWrite;
+let creditsService: typeof import("../credits").creditsService;
+let pgliteReady = true;
+
+async function getBalance(): Promise<number> {
+  const res = await dbWrite.execute(
+    `SELECT credit_balance FROM organizations WHERE id = '${ORG_ID}';`,
+  );
+  return Number((res.rows[0] as { credit_balance: string }).credit_balance);
+}
+
+async function seedOrg(balance: string): Promise<void> {
+  await dbWrite.execute(`DELETE FROM credit_transactions WHERE organization_id = '${ORG_ID}';`);
+  await dbWrite.execute(`DELETE FROM organizations WHERE id = '${ORG_ID}';`);
+  await dbWrite.execute(
+    `INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_ID}', '${balance}');`,
+  );
+}
+
+async function countTransactions(): Promise<number> {
+  const res = await dbWrite.execute(
+    `SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id = '${ORG_ID}';`,
+  );
+  return (res.rows[0] as { n: number }).n;
+}
+
+async function countByType(type: string): Promise<number> {
+  const res = await dbWrite.execute(
+    `SELECT count(*)::int AS n FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = '${type}';`,
+  );
+  return (res.rows[0] as { n: number }).n;
+}
+
+beforeAll(async () => {
+  try {
+    ({ dbWrite } = await import("../../../db/client"));
+    ({ creditsService } = await import("../credits"));
+
+    // organizations carries the full column set that the real reconcile path
+    // reads: the core debit/refund SQL only touches credit_balance, but the
+    // fire-and-forget hooks (invalidateOrganizationCache, checkAndTriggerAutoTopUp,
+    // queueLowCreditsEmail) run `organizationsRepository.findById`, which SELECTs
+    // every column. A minimal 3-column table makes those background queries throw
+    // `column "name" does not exist`, which the real code surfaces. So we mirror
+    // the columns findById needs (with defaults, so seeds still set only id +
+    // credit_balance). credit_transactions DDL is verbatim from
+    // container-billing-idempotency.test.ts.
+    const ddl = [
+      `CREATE TABLE IF NOT EXISTS organizations (
+        id uuid PRIMARY KEY,
+        name text NOT NULL DEFAULT 'test-org',
+        slug text NOT NULL DEFAULT 'test-org',
+        credit_balance numeric(20,6) NOT NULL DEFAULT '0',
+        settings jsonb DEFAULT '{}',
+        stripe_customer_id text,
+        billing_email text,
+        stripe_payment_method_id text,
+        stripe_default_payment_method text,
+        auto_top_up_enabled boolean DEFAULT false,
+        auto_top_up_threshold numeric(12,6),
+        auto_top_up_amount numeric(12,6),
+        pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true,
+        steward_tenant_id text,
+        steward_tenant_api_key text,
+        is_active boolean NOT NULL DEFAULT true,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )`,
+      `CREATE TABLE IF NOT EXISTS credit_transactions (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id uuid NOT NULL,
+        user_id uuid,
+        amount numeric(12,6) NOT NULL,
+        type text NOT NULL,
+        description text,
+        metadata jsonb NOT NULL DEFAULT '{}',
+        stripe_payment_intent_id text,
+        created_at timestamp NOT NULL DEFAULT now()
+      )`,
+      // applyCreditIncrease (the refund path) uses
+      // `ON CONFLICT (stripe_payment_intent_id) DO NOTHING`, which requires this
+      // unique index to exist (migration 0000). Multiple NULLs are distinct in a
+      // standard unique index, so non-stripe refund/reservation rows don't collide.
+      `CREATE UNIQUE INDEX IF NOT EXISTS credit_transactions_stripe_payment_intent_idx
+        ON credit_transactions (stripe_payment_intent_id)`,
+    ];
+    for (const stmt of ddl) {
+      await dbWrite.execute(stmt);
+    }
+  } catch (error) {
+    pgliteReady = false;
+    console.warn("[credits-reconcile] PGlite unavailable, skipping DB cases:", error);
+  }
+}, PGLITE_TIMEOUT);
+
+describe("CreditsService.reconcile", () => {
+  beforeEach(async () => {
+    if (!pgliteReady) return;
+    // Fresh org per test so balances/transactions never bleed across cases.
+    await seedOrg("10");
+  });
+
+  test(
+    "refund branch: reserved > actual increases balance by the difference",
+    async () => {
+      if (!pgliteReady) return;
+
+      const result = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0.4,
+        description: "reconcile refund case",
+        metadata: { user_id: USER_ID },
+      });
+
+      expect(result.adjustmentType).toBe("refund");
+      expect(result.settlementTransactionIds.length).toBe(1);
+
+      // 10.0 + (1.0 - 0.4) = 10.60, read back from the DB.
+      expect(await getBalance()).toBeCloseTo(10.6, 6);
+
+      // Exactly one refund row, whose id is the returned settlement id.
+      expect(await countByType("refund")).toBe(1);
+      expect(await countTransactions()).toBe(1);
+      const refundRow = await dbWrite.execute(
+        `SELECT id, amount FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'refund';`,
+      );
+      expect(Number((refundRow.rows[0] as { amount: string }).amount)).toBeCloseTo(0.6, 6);
+      expect((refundRow.rows[0] as { id: string }).id).toBe(result.settlementTransactionIds[0]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "overage branch (collectable): actual > reserved decreases balance by the overage",
+    async () => {
+      if (!pgliteReady) return;
+
+      const result = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 0.4,
+        actualCost: 1.0,
+        description: "reconcile overage case",
+        metadata: { user_id: USER_ID },
+      });
+
+      expect(result.adjustmentType).toBe("overage");
+      expect(result.settlementTransactionIds.length).toBe(1);
+
+      // 10.0 - (1.0 - 0.4) = 9.40, read back from the DB.
+      expect(await getBalance()).toBeCloseTo(9.4, 6);
+
+      // A debit row of -0.6 was written; its id is the returned settlement id.
+      expect(await countByType("debit")).toBe(1);
+      expect(await countTransactions()).toBe(1);
+      const debitRow = await dbWrite.execute(
+        `SELECT id, amount FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'debit';`,
+      );
+      expect(Number((debitRow.rows[0] as { amount: string }).amount)).toBeCloseTo(-0.6, 6);
+      expect((debitRow.rows[0] as { id: string }).id).toBe(result.settlementTransactionIds[0]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "epsilon/none branch: exact match is a no-op",
+    async () => {
+      if (!pgliteReady) return;
+
+      const before = await getBalance();
+      const result = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 1.0,
+        description: "reconcile none case",
+        metadata: { user_id: USER_ID },
+      });
+
+      expect(result.adjustmentType).toBe("none");
+      expect(result.settlementTransactionIds).toEqual([]);
+
+      // No DB change at all: balance unchanged and no transaction written.
+      expect(await getBalance()).toBeCloseTo(before, 6);
+      expect(await countTransactions()).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "epsilon/none branch: a nonzero sub-EPSILON difference is a no-op (PINS the EPSILON tolerance band)",
+    async () => {
+      if (!pgliteReady) return;
+
+      // A real (tiny) difference that is below EPSILON (1e-7): diff = -5e-8.
+      // This is the discriminating case for the EPSILON guard — with the guard
+      // intact it returns "none" and writes nothing. If the EPSILON check is
+      // broken so this difference is NOT absorbed, reconcile instead falls to the
+      // overage branch and (because the overage is a positive amount the org can
+      // pay) actually charges a debit — flipping adjustmentType to "overage" and
+      // writing a transaction. So this case GOES RED if the EPSILON band is broken,
+      // unlike the exact-match case above (which the retry-fallback masks).
+      const before = await getBalance();
+      const result = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 1.00000005,
+        description: "reconcile sub-epsilon case",
+        metadata: { user_id: USER_ID },
+      });
+
+      expect(result.adjustmentType).toBe("none");
+      expect(result.settlementTransactionIds).toEqual([]);
+      expect(await getBalance()).toBeCloseTo(before, 6);
+      expect(await countTransactions()).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "overage uncollectable: balance below overage is served but not charged (PINS finding-#1 leak)",
+    async () => {
+      if (!pgliteReady) return;
+
+      // Balance ($0.10) is BELOW the overage ($1.00). The atomic deduct refuses
+      // to drive the balance negative and returns success:false WITHOUT throwing.
+      await seedOrg("0.10");
+
+      const result = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 0.0,
+        actualCost: 1.0,
+        description: "reconcile uncollectable overage case",
+        metadata: { user_id: USER_ID },
+      });
+
+      // finding-#1 leak: reconcile still reports "overage", but nothing settled.
+      // This PINS today's silent-leak behavior (overage served-but-not-charged)
+      // so a future policy fix flips it DELIBERATELY. Not asserted to be correct.
+      expect(result.adjustmentType).toBe("overage");
+      expect(result.settlementTransactionIds).toEqual([]);
+
+      // The balance is NOT driven negative; no debit row was written.
+      const balance = await getBalance();
+      expect(balance).toBeGreaterThanOrEqual(0);
+      expect(balance).toBeCloseTo(0.1, 6);
+      expect(await countByType("debit")).toBe(0);
+      expect(await countTransactions()).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
