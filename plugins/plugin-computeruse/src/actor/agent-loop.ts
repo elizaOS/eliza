@@ -28,7 +28,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { DisplayCapture } from "../platform/capture.js";
 import type { Scene } from "../scene/scene-types.js";
 import { type Actor, OcrCoordinateGroundingActor } from "./actor.js";
-import { Brain } from "./brain.js";
+import { Brain, resolveBrainImagePolicy } from "./brain.js";
 import { Cascade, getRegisteredActor } from "./cascade.js";
 import type { CascadeResult, GroundingResult } from "./types.js";
 
@@ -118,7 +118,11 @@ export class LocalGrounderLoop implements AgentLoop {
   private readonly brain: Brain;
 
   constructor(deps: AgentLoopDeps) {
-    const brain = deps.brain ?? new Brain(deps.runtime);
+    const brain =
+      deps.brain ??
+      new Brain(deps.runtime, {
+        imagePolicy: resolveBrainImagePolicy(deps.runtime),
+      });
     this.brain = brain;
     const actor =
       deps.actor ??

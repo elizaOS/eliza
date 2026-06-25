@@ -97,7 +97,7 @@ export function wrapMobileFsPath<T extends AnyFn>(
 			if (mode === "write") guardMobileFsWritePath(resolved, pathStr);
 			a[0] = resolved;
 		}
-		return (fn as T).apply(this, a) as ReturnType<T>;
+		return (fn as T).apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 
@@ -117,7 +117,7 @@ export function wrapMobileFsOpen<T extends AnyFn>(
 			if (mode === "write") guardMobileFsWritePath(resolved, pathStr);
 			a[0] = resolved;
 		}
-		return (fn as T).apply(this, a) as ReturnType<T>;
+		return (fn as T).apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 
@@ -145,6 +145,6 @@ export function wrapMobileFsTwoPaths<T extends AnyFn>(
 			if (dstMode === "write") guardMobileFsWritePath(resolved, dst);
 			a[1] = resolved;
 		}
-		return (fn as T).apply(this, a) as ReturnType<T>;
+		return (fn as T).apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }

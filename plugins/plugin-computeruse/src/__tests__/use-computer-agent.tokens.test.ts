@@ -73,7 +73,10 @@ async function captureAll(): Promise<DisplayCapture[]> {
 }
 
 function finishBrain(): Brain {
+  // Explicitly opt into the imageless policy under test — the production
+  // default is "always" until a real-model trajectory validates on-escalation.
   return new Brain(null, {
+    imagePolicy: "on-escalation",
     invokeModel: async () =>
       JSON.stringify({
         scene_summary: "done",
@@ -95,7 +98,7 @@ describe("runComputerUseAgentLoop — model-call telemetry (#9105)", () => {
 
     expect(report.reason).toBe("finish");
     // First (and only) model call cannot be a cache hit. `finish` needs no
-    // coordinate, so the default "on-escalation" policy plans imageless and
+    // coordinate, so the opted-in "on-escalation" policy plans imageless and
     // counts the saved image tokens (frame header is not a real IHDR → the
     // estimate uses the BRAIN_MAX_PIXELS ceiling).
     expect(report.modelStats).toEqual({
@@ -114,6 +117,7 @@ describe("runComputerUseAgentLoop — model-call telemetry (#9105)", () => {
       {
         // Always `wait` → never finishes → runs the full maxSteps budget.
         brain: new Brain(null, {
+          imagePolicy: "on-escalation",
           invokeModel: async () =>
             JSON.stringify({
               scene_summary: "thinking",
@@ -130,7 +134,7 @@ describe("runComputerUseAgentLoop — model-call telemetry (#9105)", () => {
     expect(report.steps.length).toBe(3);
     // One invocation per step; the synthetic frame is not a decodable PNG so
     // the dHash cache never engages. `wait` needs no coordinate, so every step
-    // plans imageless under the default "on-escalation" policy.
+    // plans imageless under the opted-in "on-escalation" policy.
     expect(report.modelStats?.invocations).toBe(3);
     expect(report.modelStats?.cacheHits).toBe(0);
     expect(report.modelStats?.imagelessCalls).toBe(3);
