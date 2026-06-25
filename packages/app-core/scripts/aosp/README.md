@@ -65,6 +65,15 @@ Each script accepts `--app-config <PATH>` to override
 ## Hardware requirements
 
 - AOSP build: Linux x86_64, KVM, ≥30 GB RAM, ≥ 600 GB free disk.
-- libllama compile: zig 0.13+ on PATH, cmake.
+- libllama compile: zig **0.13.x** on PATH (pinned series), cmake. The
+  `aarch64-linux-musl` / `x86_64-linux-musl` cross-link is pinned to the 0.13
+  series because zig 0.16's bundled `lld` SIGSEGVs that link and aborts the
+  fused/Android build with no actionable diagnostic. `compile-libllama.mjs` and
+  `compile-shim.mjs` fail loudly (via `assertZigPinForTargets`) if the detected
+  zig is outside 0.13.x; download the 0.13.x tarball from
+  <https://ziglang.org/download/> (the package-manager `zig` is frequently
+  0.16). Override only after independently verifying your lld links
+  aarch64-linux-musl: `ELIZA_ALLOW_UNPINNED_ZIG=1`. (The riscv64 RVV build path
+  is exempt — it needs zig 0.14+, gated by `MIN_ZIG_RVV_VERSION`.)
 - Cuttlefish runtime: cuttlefish host package (`cvd`), `/dev/kvm`.
 - Boot validation: `adb` on PATH or under `$ANDROID_HOME/platform-tools/`.
