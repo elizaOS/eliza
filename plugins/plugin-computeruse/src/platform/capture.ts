@@ -38,6 +38,7 @@ import {
   createPermissionDeniedError,
   isPermissionDeniedError,
 } from "./permissions.js";
+import { psHostAvailable, runPsHost } from "./ps-host.js";
 import {
   canUseWaylandScreenshotPortal,
   captureWaylandPortalScreenshot,
@@ -85,7 +86,7 @@ export async function captureDisplay(
   try {
     if (os === "darwin") captureDisplayDarwin(tmpFile, display);
     else if (os === "linux") captureDisplayLinux(tmpFile, display);
-    else if (os === "win32") captureDisplayWindows(tmpFile, display);
+    else if (os === "win32") await captureDisplayWindows(tmpFile, display);
 
     const data = readFileSync(tmpFile);
     if (os === "darwin" && data.length === 0) {
@@ -140,7 +141,7 @@ export async function captureDisplayRegion(
   try {
     if (os === "darwin") captureRegionDarwin(tmpFile, globalRegion);
     else if (os === "linux") captureRegionLinux(tmpFile, globalRegion);
-    else if (os === "win32") captureRegionWindows(tmpFile, globalRegion);
+    else if (os === "win32") await captureRegionWindows(tmpFile, globalRegion);
     const data = readFileSync(tmpFile);
     return { display, frame: data };
   } finally {
@@ -296,12 +297,18 @@ export function normalizeCaptureRegion(region: ScreenRegion): ScreenRegion {
   };
 }
 
-function captureDisplayWindows(tmpFile: string, display: DisplayInfo): void {
+async function captureDisplayWindows(
+  tmpFile: string,
+  display: DisplayInfo,
+): Promise<void> {
   const [x, y, w, h] = display.bounds;
-  captureRegionWindows(tmpFile, { x, y, width: w, height: h });
+  await captureRegionWindows(tmpFile, { x, y, width: w, height: h });
 }
 
-function captureRegionWindows(tmpFile: string, region: ScreenRegion): void {
+async function captureRegionWindows(
+  tmpFile: string,
+  region: ScreenRegion,
+): Promise<void> {
   const safe = normalizeCaptureRegion(region);
   const escapedPath = tmpFile.replace(/\//g, "\\");
   const psCmd = [
@@ -315,6 +322,19 @@ function captureRegionWindows(tmpFile: string, region: ScreenRegion): void {
     "$graphics.Dispose()",
     "$bitmap.Dispose()",
   ].join("; ");
+  // Prefer the warm PowerShell host — a cold `powershell.exe` spawn is ~10-16s
+  // on Defender-heavy hosts, and capture runs every turn (full frame + each
+  // dirty region). The host runs the SAME script in an already-warm process
+  // (sub-second). Any host failure falls through to the one-shot spawn so
+  // behavior is unchanged, only faster.
+  if (psHostAvailable()) {
+    try {
+      await runPsHost(psCmd, 15000);
+      return;
+    } catch {
+      /* warm host unavailable/errored — fall back to one-shot spawn */
+    }
+  }
   execSync(`powershell -NoProfile -Command "${psCmd}"`, {
     timeout: 15000,
     stdio: ["ignore", "pipe", "pipe"],

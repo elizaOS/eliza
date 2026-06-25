@@ -12,7 +12,7 @@ export function registerTypedTool<TArgs extends Record<string, unknown>>(
   inputSchema: Record<string, unknown>,
   handler: (args: TArgs) => Promise<TextToolResult>,
 ): void {
-  const tool = server.tool as unknown as (
+  const tool = server.tool as (
     toolName: string,
     toolDescription: string,
     toolInputSchema: Record<string, unknown>,

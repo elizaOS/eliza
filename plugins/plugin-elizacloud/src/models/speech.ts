@@ -23,7 +23,7 @@ export interface CloudTtsClient {
 type CloudTtsClientFactory = (runtime: IAgentRuntime) => CloudTtsClient;
 
 let cloudTtsClientFactory: CloudTtsClientFactory = (runtime) =>
-  createElizaCloudClient(runtime) as unknown as CloudTtsClient;
+  createElizaCloudClient(runtime) as CloudTtsClient;
 
 /**
  * Test seam: substitute the SDK client factory used by `handleTextToSpeech`.
@@ -35,7 +35,7 @@ export function setCloudTtsClientFactoryForTesting(
 ): void {
   if (factory === null) {
     cloudTtsClientFactory = (runtime) =>
-      createElizaCloudClient(runtime) as unknown as CloudTtsClient;
+      createElizaCloudClient(runtime) as CloudTtsClient;
   } else {
     cloudTtsClientFactory = factory;
   }

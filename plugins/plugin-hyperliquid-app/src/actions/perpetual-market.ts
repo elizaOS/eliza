@@ -33,7 +33,7 @@ const HYPERLIQUID_READ_COMPAT_NAME = "HYPERLIQUID_READ";
 const HYPERLIQUID_PLACE_ORDER_COMPAT_NAME = "HYPERLIQUID_PLACE_ORDER";
 
 function toCallbackData(data: ProviderDataRecord): Content["data"] {
-  return data as unknown as Content["data"];
+  return data as Content["data"];
 }
 const HYPERLIQUID_READ_KEYWORDS = [
   "hyperliquid",

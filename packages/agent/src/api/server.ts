@@ -3496,9 +3496,9 @@ async function handleRequest(
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
       hostContext: {
-        config: state.config as unknown as Record<string, unknown>,
+        config: state.config as Record<string, unknown>,
         saveConfig: (nextConfig) => {
-          state.config = nextConfig as unknown as ElizaConfig;
+          state.config = nextConfig as ElizaConfig;
           saveElizaConfig(state.config);
         },
         restartRuntime,

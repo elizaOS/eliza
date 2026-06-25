@@ -387,7 +387,7 @@ export async function runFirstTimeSetup(
     // @clack/prompts than plugin-elizacloud uses). The runtime object is
     // identical — only TS sees them as distinct module instances.
     const observer = new ClackObserver(
-      clack as unknown as ConstructorParameters<typeof ClackObserver>[0],
+      clack as ConstructorParameters<typeof ClackObserver>[0],
     );
     cloudFirstRunResult = await runCloudSetup(observer, name, chosenTemplate);
 

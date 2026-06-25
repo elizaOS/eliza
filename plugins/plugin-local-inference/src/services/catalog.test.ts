@@ -177,13 +177,15 @@ describe("local inference catalog", () => {
 		for (const id of ELIZA_1_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
-			expect(model?.quantization?.variants.map((v) => v.id)).toEqual([
-				"q3_k_m",
-				"q4_k_m",
-				"q5_k_m",
-				"q6_k",
-				"q8_0",
-			]);
+			const variantIds = model?.quantization?.variants.map((v) => v.id);
+			const expected = ["q3_k_m", "q4_0", "q4_k_m", "q5_k_m", "q6_k", "q8_0"];
+			if (id === "eliza-1-2b" || id === "eliza-1-4b") {
+				expected.push("wna8o8");
+			}
+			expect(variantIds).toEqual(expected);
+			expect(
+				model?.quantization?.variants.find((v) => v.id === "q4_0")?.status,
+			).toBe("planned");
 		}
 
 		// Mobile-class tiers (2b/4b) ship Kokoro only — it is smaller +

@@ -64,7 +64,7 @@ export class ValidationError extends FeedError {
     const context: Record<string, JsonValue> = {};
     if (fields !== undefined) context.fields = fields as JsonValue;
     if (violations !== undefined)
-      context.violations = violations as unknown as JsonValue;
+      context.violations = violations as JsonValue;
     super(message, "VALIDATION_ERROR", 400, true, context);
   }
 }

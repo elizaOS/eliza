@@ -17,6 +17,7 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { commandExists, currentPlatform } from "./helpers.js";
+import { psHostAvailable, runPsHost } from "./ps-host.js";
 
 // 15s to match the capture/screenshot spawn budgets. On Defender-heavy Windows
 // hosts a cold `powershell.exe` 5.1 spawn (Set-Clipboard/Get-Clipboard) can take
@@ -105,6 +106,15 @@ function pickPlan(): ClipboardPlan {
 }
 
 export async function readClipboard(): Promise<string> {
+  // Windows: prefer the warm PowerShell host (a cold spawn is ~10-16s under
+  // Defender). Same `Get-Clipboard -Raw` command; falls back to one-shot spawn.
+  if (psHostAvailable()) {
+    try {
+      return await runPsHost("Get-Clipboard -Raw", CLIPBOARD_TIMEOUT_MS);
+    } catch {
+      /* warm host unavailable/errored — fall back to one-shot spawn */
+    }
+  }
   const plan = pickPlan();
   // encoding: "utf-8" forces the typed return to string.
   const out = execFileSync(plan.read.command, [...plan.read.args], {
@@ -124,6 +134,21 @@ export async function writeClipboard(text: string): Promise<void> {
     throw new RangeError(
       `writeClipboard: payload exceeds ${CLIPBOARD_MAX_BYTES} bytes`,
     );
+  }
+  // Windows: prefer the warm PowerShell host. The value is base64-encoded into
+  // the command (no stdin pipe needed), then decoded host-side, so it round-trips
+  // any UTF-8 text safely. Falls back to the one-shot stdin-piped spawn.
+  if (psHostAvailable()) {
+    try {
+      const b64 = Buffer.from(text, "utf-8").toString("base64");
+      await runPsHost(
+        `Set-Clipboard -Value ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64}')))`,
+        CLIPBOARD_TIMEOUT_MS,
+      );
+      return;
+    } catch {
+      /* warm host unavailable/errored — fall back to one-shot spawn */
+    }
   }
   const plan = pickPlan();
   const result = spawnSync(plan.write.command, [...plan.write.args], {

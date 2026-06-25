@@ -94,7 +94,7 @@ async function getPool(): Promise<PoolFacade> {
       // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
       const mod = (await import(
         /* @vite-ignore */ "@elizaos/app-core/account-pool"
-      )) as unknown as {
+      )) as {
         getDefaultAccountPool: () => PoolFacade;
       };
       return mod.getDefaultAccountPool();

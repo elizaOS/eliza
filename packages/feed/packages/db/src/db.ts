@@ -806,7 +806,7 @@ function createModeAwareDbProxy(): DrizzleClient {
 
             return tableRepo;
           },
-        }) as unknown as DrizzleClient[keyof DrizzleClient];
+        }) as DrizzleClient[keyof DrizzleClient];
 
         if (tableProxyCache.size >= TABLE_PROXY_CACHE_MAX) {
           const firstKey = tableProxyCache.keys().next().value;
@@ -937,7 +937,7 @@ function createReplicaDbProxy(): DrizzleClient {
               "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
             );
           },
-        }) as unknown as DrizzleClient[keyof DrizzleClient];
+        }) as DrizzleClient[keyof DrizzleClient];
       }
 
       const replicaClient = getReadReplicaDbClient();

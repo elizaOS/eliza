@@ -4775,7 +4775,9 @@ export async function startEliza(
   // requested). The runtime is reported ready as soon as this resolves.
   const initializeRuntimeServices = async (): Promise<void> => {
     await runStewardEvmPreBoot();
+    bootTimer.lap("svc:steward-evm");
     await registerConnectorSetupService();
+    bootTimer.lap("svc:connector-setup");
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");
 
@@ -5022,6 +5024,12 @@ export async function startEliza(
   };
 
   try {
+    // Time from the register-sql lap up to entering service init (roles
+    // capability registration + any blocking pre-init work). Split out so a
+    // device boot can attribute the dominant cost instead of lumping it into
+    // svc:pre-init (issue #9565): on a bundled mobile runtime the three hooks
+    // below are each fast/no-op, yet svc:pre-init was ~15s of a 16s cold boot.
+    bootTimer.lap("svc:boot-prep");
     await initializeRuntimeServices();
   } catch (err) {
     const pgliteDataDir = resolveActivePgliteDataDir(config);

@@ -165,7 +165,7 @@ class HostNodeBridge implements JsRuntimeBridge {
 
   private async loadVm(): Promise<HostNodeVm> {
     if (!this.vmModule) {
-      const mod = (await import("node:vm")) as unknown as HostNodeVm;
+      const mod = (await import("node:vm")) as HostNodeVm;
       this.vmModule = mod;
     }
     return this.vmModule;

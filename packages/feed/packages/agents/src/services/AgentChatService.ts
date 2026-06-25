@@ -519,7 +519,7 @@ export async function dispatchAgentChat(
       ...state.data,
       // Cast: Feed ActionTraceResult is a superset of elizaos ActionResult
       actionResults:
-        traceActionResults as unknown as typeof state.data.actionResults,
+        traceActionResults as typeof state.data.actionResults,
     };
     state.values = {
       ...state.values,
@@ -605,7 +605,7 @@ export async function dispatchAgentChat(
     // composeState() preserves them (it re-composes from cache, discarding
     // any local state.data modifications).
     const stateCache = (
-      runtime as unknown as {
+      runtime as {
         stateCache?: Map<
           string,
           {
@@ -719,7 +719,7 @@ export async function dispatchAgentChat(
       // Fallback: check stateCache if callback didn't fire
       if (!actionResult) {
         const cachedState = (
-          runtime as unknown as { stateCache?: Map<string, unknown> }
+          runtime as { stateCache?: Map<string, unknown> }
         ).stateCache?.get(`${elizaMessage.id}_action_results`) as
           | {
               values?: {
@@ -813,7 +813,7 @@ export async function dispatchAgentChat(
       ...summaryState.data,
       // Cast: Feed ActionTraceResult is a superset of elizaos ActionResult
       actionResults:
-        traceActionResults as unknown as typeof summaryState.data.actionResults,
+        traceActionResults as typeof summaryState.data.actionResults,
     };
 
     const summaryPrompt = composePromptFromState({

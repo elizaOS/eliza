@@ -34,7 +34,7 @@ export const xrViewHostRoute: Route = {
 
     // Resolve the agent origin so the page can load the bundle
     const agentPort =
-      (ctx.runtime as unknown as { port?: number }).port ?? 31337;
+      (ctx.runtime as { port?: number }).port ?? 31337;
     const agentOrigin =
       process.env.XR_AGENT_URL ?? `http://localhost:${agentPort}`;
     const bundleUrl = `${agentOrigin}/api/views/${viewId}/bundle.js`;

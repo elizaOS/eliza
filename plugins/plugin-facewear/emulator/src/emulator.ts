@@ -157,14 +157,14 @@ const api: XREmulatorAPI = {
     // The app exposes the socket via __xrTestHooks
     if (window.__xrTestHooks) {
       (
-        window as unknown as { __xrForceDisconnect?: () => void }
+        window as { __xrForceDisconnect?: () => void }
       ).__xrForceDisconnect?.();
     }
   },
 
   simulateReconnect() {
     (
-      window as unknown as { __xrForceReconnect?: () => void }
+      window as { __xrForceReconnect?: () => void }
     ).__xrForceReconnect?.();
   },
 };

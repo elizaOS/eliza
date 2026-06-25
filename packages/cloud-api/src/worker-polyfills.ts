@@ -47,7 +47,7 @@ const root: typeof globalThis & {
 // occupied by Web IDL builtins. The polyfills are structurally compatible
 // enough for the transitive dependencies that reference them during init.
 if (root.MessagePort === undefined) {
-  root.MessagePort = MessagePortPolyfill as unknown as typeof MessagePort;
+  root.MessagePort = MessagePortPolyfill as typeof MessagePort;
 }
 if (root.MessageChannel === undefined) {
   root.MessageChannel =

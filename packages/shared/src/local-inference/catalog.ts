@@ -590,14 +590,14 @@ function textQuantizationMatrix(args: {
   const variants: CatalogQuantizationVariant[] = [
     mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
     // Gemma-4 QAT Q4_0: same ~4-bit footprint as q4_k_m but the official
-    // quantization-aware-trained checkpoint — ~2x faster on the mobile NPU
-    // and 40-50% lighter on memory, so it is the on-device-preferred quant.
+    // quantization-aware-trained checkpoint. Keep this planned until the
+    // tier-specific `*-Q4_0.gguf` artifacts are present in the hosted bundle.
     mk(
       "q4_0",
       "4-bit",
       0.94,
       0.95,
-      "published",
+      "planned",
       args.onDevice ? { mobilePreferred: true } : undefined,
     ),
     mk("q4_k_m", "4-bit", 1, 1, "published"),

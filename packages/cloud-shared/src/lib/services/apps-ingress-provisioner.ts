@@ -37,7 +37,7 @@ const DEFAULT_TIMEOUT_MS = 5000;
 
 function resolveFetch(f?: IngressFetch): IngressFetch {
   if (f) return f;
-  return globalThis.fetch as unknown as IngressFetch;
+  return globalThis.fetch as IngressFetch;
 }
 
 async function safeText(res: IngressResponse): Promise<string> {

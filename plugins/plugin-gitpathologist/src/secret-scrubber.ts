@@ -36,14 +36,14 @@ export function scrubSecrets(input: string): string {
 }
 
 export function scrubSecretsDeep<T>(value: T): T {
-  if (typeof value === "string") return scrubSecrets(value) as unknown as T;
-  if (Array.isArray(value)) return value.map(scrubSecretsDeep) as unknown as T;
+  if (typeof value === "string") return scrubSecrets(value) as T;
+  if (Array.isArray(value)) return value.map(scrubSecretsDeep) as T;
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       out[k] = scrubSecretsDeep(v);
     }
-    return out as unknown as T;
+    return out as T;
   }
   return value;
 }

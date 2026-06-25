@@ -324,7 +324,7 @@ export class SteerLiquidityService extends Service {
 
       const steerClientConfig = {
         client: viemClient,
-      } as unknown as SteerClientCtor[0];
+      } as SteerClientCtor[0];
       new SteerClient(steerClientConfig);
       logger.log("Steer SDK client initialized successfully");
     } catch (error) {
@@ -399,7 +399,7 @@ export class SteerLiquidityService extends Service {
         // Initialize vault client for this chain
         const vaultClient = new VaultClient(
           publicClient as unknown as VaultClientCtor[0],
-          walletClient as unknown as VaultClientCtor[1],
+          walletClient as VaultClientCtor[1],
           "production",
         );
         this.vaultClients.set(chainId, vaultClient);

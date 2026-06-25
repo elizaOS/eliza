@@ -321,7 +321,7 @@ export class MultiStepExecutor {
     let enabledFeatures: string[] = [];
     if (isNpc) {
       // Read per-character autonomy flags from PackActor feed metadata
-      const autonomy = (runtime.character as unknown as Record<string, unknown>)
+      const autonomy = (runtime.character as Record<string, unknown>)
         ?.feed
         ? (
             (runtime.character as Record<string, unknown>).feed as {
@@ -475,10 +475,10 @@ export class MultiStepExecutor {
 
       // Extract character voice/style for prompt injection
       const characterStyle = (
-        runtime.character as unknown as Record<string, unknown>
+        runtime.character as Record<string, unknown>
       )?.style as { post?: string[] } | undefined;
       const characterPostExamples = (
-        runtime.character as unknown as Record<string, unknown>
+        runtime.character as Record<string, unknown>
       )?.postExamples as string[] | undefined;
 
       const { prompt, tokenBreakdown } = buildMultiStepDecisionPrompt({
@@ -1220,7 +1220,7 @@ export class MultiStepExecutor {
           attempt > 1
             ? 0.2
             : ((
-                (runtime.character as unknown as Record<string, unknown>)
+                (runtime.character as Record<string, unknown>)
                   ?.settings as { temperature?: number } | undefined
               )?.temperature ?? 0.7),
         maxTokens: 1000,
@@ -1699,7 +1699,7 @@ export class MultiStepExecutor {
           // setCounterpartyContext may not exist on all logger implementations
           if ("setCounterpartyContext" in activeStep.logger) {
             (
-              activeStep.logger as unknown as {
+              activeStep.logger as {
                 setCounterpartyContext: (...args: unknown[]) => void;
               }
             ).setCounterpartyContext(

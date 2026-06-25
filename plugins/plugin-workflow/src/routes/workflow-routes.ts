@@ -73,10 +73,13 @@ function getWorkflowService(ctx: WorkflowRouteContext): WorkflowService | null {
   return (ctx.runtime?.getService?.(WORKFLOW_SERVICE_TYPE) as WorkflowService | null) ?? null;
 }
 
+function isCatalogLike(value: unknown): value is CatalogLike {
+  return isRecord(value) && typeof value.listGroups === 'function';
+}
+
 function getConnectorTargetCatalog(ctx: WorkflowRouteContext): CatalogLike | null {
   const raw = ctx.runtime?.getService?.('connector_target_catalog');
-  const candidate = raw as unknown as CatalogLike | undefined;
-  return candidate && typeof candidate.listGroups === 'function' ? candidate : null;
+  return isCatalogLike(raw) ? raw : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

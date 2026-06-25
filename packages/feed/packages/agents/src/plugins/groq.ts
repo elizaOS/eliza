@@ -405,5 +405,5 @@ export const groqPlugin: Plugin = {
         JsonValue
       >;
     },
-  } as unknown as Plugin["models"],
+  } as Plugin["models"],
 };

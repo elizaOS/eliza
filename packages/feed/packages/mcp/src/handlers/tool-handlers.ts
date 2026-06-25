@@ -3118,7 +3118,7 @@ export async function executeCreateEscrowPayment(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as CreateEscrowPaymentResult;
+  return response.result as CreateEscrowPaymentResult;
 }
 
 /**
@@ -3147,7 +3147,7 @@ export async function executeVerifyEscrowPayment(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as VerifyEscrowPaymentResult;
+  return response.result as VerifyEscrowPaymentResult;
 }
 
 /**
@@ -3174,7 +3174,7 @@ export async function executeRefundEscrowPayment(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as RefundEscrowPaymentResult;
+  return response.result as RefundEscrowPaymentResult;
 }
 
 /**
@@ -3203,7 +3203,7 @@ export async function executeListEscrowPayments(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as ListEscrowPaymentsResult;
+  return response.result as ListEscrowPaymentsResult;
 }
 
 // ============================================================================
@@ -3295,7 +3295,7 @@ export async function executeAppealBanWithEscrow(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as AppealBanWithEscrowResult;
+  return response.result as AppealBanWithEscrowResult;
 }
 
 // ============================================================================
