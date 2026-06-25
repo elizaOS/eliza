@@ -63,7 +63,7 @@ export interface ProxyStats {
   credsSource?: string;
   credsPath?: string;
   subscriptionType?: string;
-  tokenExpiresInHours?: number | null;
+  tokenExpiresInHours: number | null;
   layers: {
     stringReplacements: number;
     toolNameRenames: number;
