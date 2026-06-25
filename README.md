@@ -200,6 +200,7 @@ The runbook for orchestrator-driven benchmark runs is [`packages/benchmarks/ORCH
 
 ```bash
 bun install            # workspace install
+bun run install:light  # skip the large artifact download when disk or time is tight
 bun run dev            # API + Vite UI for apps/app
 bun run build          # turbo build across the workspace
 bun run lint           # turbo lint across the workspace

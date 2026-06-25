@@ -34,6 +34,7 @@ say **Eliza agents**. Exception: the **Eliza Classic** plugin keeps `Eliza`
 
 ```bash
 bun install            # workspace install (runs postinstall: submodules, patches)
+bun run install:light  # install without downloading the large artifact bundle
 bun run dev            # boot the API + dashboard UI (packages/app-core dev-ui)
 bun run build          # turbo build across the workspace
 bun run verify         # typecheck + lint (alias: bun run check) — run before "done"
