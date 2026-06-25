@@ -20,11 +20,14 @@
  * inference budget twice.
  *
  * Image policy (#9105): the compact scene already carries OCR text + AX boxes,
- * which usually suffice to pick the next target, so the default
- * `"on-escalation"` policy plans from that text-only context with NO image and
+ * which can suffice to pick the next target, so the `"on-escalation"` policy
+ * plans from that text-only context with NO image — routed through a TEXT model,
+ * since every IMAGE_DESCRIPTION provider rejects an empty imageUrl — and
  * attaches the ~1.3 MP frame only when the planned target cannot be grounded
- * against the OCR/AX boxes (or a strict-retry fires). `"always"` keeps the
- * legacy behaviour (image on every call); `"never"` never attaches pixels.
+ * against the OCR/AX boxes. The DEFAULT is `"always"` (legacy: image on every
+ * call) until a real-model CUA trajectory validates imageless planning accuracy;
+ * operators opt into `"on-escalation"` via the `COMPUTERUSE_BRAIN_IMAGE_POLICY`
+ * setting. `"never"` never attaches pixels.
  *
  * Parse strictness:
  *   - We try to parse the response as JSON (either the literal string or
@@ -37,6 +40,7 @@
 import {
   type IAgentRuntime,
   type ImageDescriptionResult,
+  logger,
   ModelType,
 } from "@elizaos/core";
 import type { DisplayCapture } from "../platform/capture.js";
@@ -59,16 +63,39 @@ export const BRAIN_PIXELS_PER_IMAGE_TOKEN = 750;
 
 /**
  * When to attach the raw screenshot to the planning model (#9105):
- *   - `"always"`     — attach the pixels on every call (legacy behaviour).
+ *   - `"always"`     — attach the pixels on every call (legacy behaviour). Default.
  *   - `"on-escalation"` — plan from the compact OCR/AX scene with no image
- *                         first; attach pixels only when the planned target
- *                         cannot be grounded against the OCR/AX boxes or a
- *                         strict-retry fires. Default.
+ *                         first (routed through a TEXT model); attach pixels
+ *                         only when the planned target cannot be grounded
+ *                         against the OCR/AX boxes or a strict-retry fires.
  *   - `"never"`      — never attach the screenshot; plan from the scene alone.
  */
 export type BrainImagePolicy = "always" | "on-escalation" | "never";
 
-export const DEFAULT_BRAIN_IMAGE_POLICY: BrainImagePolicy = "on-escalation";
+/**
+ * Default is `"always"` (proven legacy behaviour). `"on-escalation"` cuts the
+ * dominant per-frame image-token cost but plans the first pass blind to the
+ * pixels, so it stays opt-in (via the `COMPUTERUSE_BRAIN_IMAGE_POLICY` runtime
+ * setting / env var) until a real-model CUA trajectory validates its accuracy.
+ */
+export const DEFAULT_BRAIN_IMAGE_POLICY: BrainImagePolicy = "always";
+
+/**
+ * Resolve the Brain image policy from the `COMPUTERUSE_BRAIN_IMAGE_POLICY`
+ * runtime setting / env var, falling back to {@link DEFAULT_BRAIN_IMAGE_POLICY}.
+ * The operator escape hatch to enable imageless planning without a code change
+ * once it is validated against a real model.
+ */
+export function resolveBrainImagePolicy(
+  runtime: IAgentRuntime | null,
+): BrainImagePolicy {
+  const raw = runtime?.getSetting?.("COMPUTERUSE_BRAIN_IMAGE_POLICY");
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : undefined;
+  if (value === "always" || value === "on-escalation" || value === "never") {
+    return value;
+  }
+  return DEFAULT_BRAIN_IMAGE_POLICY;
+}
 
 /** Token-accounting snapshot for a Brain instance (#9105 M3). */
 export interface BrainStats {
@@ -117,8 +144,8 @@ export interface BrainDeps {
   }) => Promise<string | ImageDescriptionResult>;
   /**
    * When to attach the raw screenshot to the planning model (#9105). Defaults
-   * to `"on-escalation"` — plan from the compact OCR/AX scene first and only
-   * attach the ~1.3 MP frame when the planned target cannot be grounded.
+   * to `"always"` (legacy); see {@link resolveBrainImagePolicy} for the
+   * operator opt-in to `"on-escalation"`.
    */
   imagePolicy?: BrainImagePolicy;
 }
@@ -239,42 +266,57 @@ export class Brain {
     // carries the OCR text + AX boxes the planner needs to pick a target.
     if (this.imagePolicy !== "always") {
       this.invocations += 1;
-      const imageless = await this.invoke({
-        imageUrl: "",
-        prompt: lightPrompt,
-        displayId,
-      });
-      const parsedImageless = tryParse(extractText(imageless));
-      if (parsedImageless) {
-        const capped = enforceCaps(parsedImageless);
-        // Keep the imageless plan when its target is grounded against the
-        // OCR/AX boxes (or it needs no coordinate at all), OR when the policy
-        // forbids ever attaching pixels. Otherwise fall through to escalation.
-        if (
-          this.imagePolicy === "never" ||
-          this.resolvesWithoutImage(input.scene, capped)
-        ) {
-          this.recordImageless(targetCapture.frame);
-          return this.rememberOutput(key, capped);
-        }
-      } else if (this.imagePolicy === "never") {
-        // No pixels available to escalate to — strict-retry imageless once.
-        this.invocations += 1;
-        const strictImageless = await this.invoke({
+      let imageless: string | ImageDescriptionResult | null = null;
+      try {
+        imageless = await this.invoke({
           imageUrl: "",
-          prompt: strictPrompt,
+          prompt: lightPrompt,
           displayId,
         });
-        const rawStrict = extractText(strictImageless);
-        const parsedStrict = tryParse(rawStrict);
-        if (parsedStrict) {
-          this.recordImageless(targetCapture.frame);
-          return this.rememberOutput(key, enforceCaps(parsedStrict));
-        }
-        throw new BrainParseError(
-          "Brain output is not valid JSON conforming to BrainOutput after retry",
-          rawStrict,
+      } catch (err) {
+        // "never" has no pixels to fall back to — surface the failure.
+        if (this.imagePolicy === "never") throw err;
+        // Otherwise degrade to the escalation (pixels) path rather than crash
+        // the whole CUA loop if the text model is unavailable.
+        logger.debug(
+          `[computeruse/brain] imageless planning pass failed (${
+            err instanceof Error ? err.message : String(err)
+          }); escalating to pixels`,
         );
+      }
+      if (imageless !== null) {
+        const parsedImageless = tryParse(extractText(imageless));
+        if (parsedImageless) {
+          const capped = enforceCaps(parsedImageless);
+          // Keep the imageless plan when its target is grounded against the
+          // OCR/AX boxes (or it needs no coordinate at all), OR when the policy
+          // forbids ever attaching pixels. Otherwise fall through to escalation.
+          if (
+            this.imagePolicy === "never" ||
+            this.resolvesWithoutImage(input.scene, capped)
+          ) {
+            this.recordImageless(targetCapture.frame);
+            return this.rememberOutput(key, capped);
+          }
+        } else if (this.imagePolicy === "never") {
+          // No pixels available to escalate to — strict-retry imageless once.
+          this.invocations += 1;
+          const strictImageless = await this.invoke({
+            imageUrl: "",
+            prompt: strictPrompt,
+            displayId,
+          });
+          const rawStrict = extractText(strictImageless);
+          const parsedStrict = tryParse(rawStrict);
+          if (parsedStrict) {
+            this.recordImageless(targetCapture.frame);
+            return this.rememberOutput(key, enforceCaps(parsedStrict));
+          }
+          throw new BrainParseError(
+            "Brain output is not valid JSON conforming to BrainOutput after retry",
+            rawStrict,
+          );
+        }
       }
     }
 
@@ -341,8 +383,18 @@ export class Brain {
     }
     if (!this.runtime) {
       throw new Error(
-        "[computeruse/brain] no runtime + no invokeModel override; cannot call IMAGE_DESCRIPTION",
+        "[computeruse/brain] no runtime + no invokeModel override; cannot call the planning model",
       );
+    }
+    // Imageless planning (#9105): with no pixels to describe, route the
+    // text-only plan through a TEXT model. The compact OCR/AX scene is already
+    // in the prompt, and every IMAGE_DESCRIPTION provider (local-inference,
+    // anthropic, …) hard-rejects an empty imageUrl, so an empty frame must NOT
+    // be sent there.
+    if (args.imageUrl.length === 0) {
+      return this.runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: args.prompt,
+      });
     }
     return this.runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
       imageUrl: args.imageUrl,
