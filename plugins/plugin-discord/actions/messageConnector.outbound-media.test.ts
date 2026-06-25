@@ -1,9 +1,15 @@
-import type { Content, IAgentRuntime, Media } from "@elizaos/core";
+import {
+	ContentType,
+	type Content,
+	type IAgentRuntime,
+	type Media,
+} from "@elizaos/core";
 import { AttachmentBuilder } from "discord.js";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DiscordAccountClientPool } from "../account-client-pool";
 import { DEFAULT_ACCOUNT_ID } from "../accounts";
 import { DiscordService } from "../service";
+import { buildOutboundDiscordAttachment } from "../utils";
 
 // Outbound media coverage for the Discord connector (#8876): when the agent
 // generates/sends a message that carries `Media` attachments, the connector
@@ -96,6 +102,10 @@ function media(over: Partial<Media>): Media {
 }
 
 describe("Discord connector outbound media", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	it("maps a Media attachment to a Discord AttachmentBuilder on send (with text)", async () => {
 		const { runtime, service, send } = setup();
 		const content: Content = {
@@ -173,5 +183,55 @@ describe("Discord connector outbound media", () => {
 		expect(opts.content).toBe("no file here");
 		// No sendable media → files omitted (undefined), not an empty array push.
 		expect(opts.files).toBeUndefined();
+	});
+
+	it("uploads generated video bytes through the guarded media fetch path", async () => {
+		const runtime = createRuntime();
+		const fetchMock = vi.fn(async () => {
+			return new Response(Buffer.from("video-bytes"), {
+				status: 200,
+				headers: { "content-type": "video/mp4" },
+			});
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const file = await buildOutboundDiscordAttachment(
+			media({
+				id: "generated-video",
+				url: "https://cdn.example.com/v1/videos/abc/content",
+				contentType: ContentType.VIDEO,
+				source: "media-generation",
+				title: "clip.mp4",
+			}),
+			runtime,
+		);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(file).toBeInstanceOf(AttachmentBuilder);
+		expect(Buffer.isBuffer(file.attachment)).toBe(true);
+		expect((file.attachment as Buffer).toString()).toBe("video-bytes");
+		expect(file.name).toBe("clip.mp4");
+	});
+
+	it("does not fetch private non-generated media URLs server-side", async () => {
+		const runtime = createRuntime();
+		const fetchMock = vi.fn(async () => {
+			throw new Error("must not fetch");
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const privateUrl = "http://192.168.255.164:8080/private/clip.mp4";
+		const file = await buildOutboundDiscordAttachment(
+			media({
+				id: "user-video",
+				url: privateUrl,
+				contentType: ContentType.VIDEO,
+				title: "clip.mp4",
+			}),
+			runtime,
+		);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(file.attachment).toBe(privateUrl);
 	});
 });
