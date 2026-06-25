@@ -1,4 +1,4 @@
-import type { Content, HandlerCallback, IAgentRuntime } from "@elizaos/core";
+import { type Content, EventType, type HandlerCallback, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 // The vitest @elizaos/core shim (packages/test/vitest/shims) is a curated subset
@@ -297,6 +297,15 @@ describe("Matrix service hardening", () => {
     );
     expect(runtime.messageService.handleMessage).not.toHaveBeenCalled();
     expect(state.client.sendMessage).not.toHaveBeenCalled();
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      EventType.MESSAGE_RECEIVED,
+      expect.objectContaining({
+        source: "matrix",
+        message: expect.objectContaining({
+          content: expect.objectContaining({ text: "hello bot", source: "matrix" }),
+        }),
+      })
+    );
   });
 
   it("runs the agent and round-trips the reply when auto-reply is on and passive mode is off", async () => {
