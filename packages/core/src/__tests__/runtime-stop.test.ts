@@ -116,7 +116,7 @@ describe("AgentRuntime.stop", () => {
 
 		expect(stopResult).toBe("stopped");
 		expect(stopCalls).toBe(1);
-		expect(process.env.ELIZA_FAST_SHUTDOWN).toBeUndefined();
+		expect(process.env.ELIZA_FAST_SHUTDOWN).toBe(previousFastShutdown);
 	});
 
 	it("continues when a service stop throws synchronously", async () => {

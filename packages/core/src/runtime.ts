@@ -1948,7 +1948,7 @@ export class AgentRuntime implements IAgentRuntime {
 			process.env.ELIZA_FAST_SHUTDOWN = "1";
 		}
 		try {
-			await this._stopServices({ fast });
+			await this._stopServices(fast);
 		} finally {
 			if (fast) {
 				if (previousFastShutdown === undefined) {
@@ -1960,7 +1960,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	private async _stopServices({ fast }: { fast: boolean }): Promise<void> {
+	private async _stopServices(fast: boolean): Promise<void> {
 		this.stopped = true;
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, fast },
@@ -1999,6 +1999,7 @@ export class AgentRuntime implements IAgentRuntime {
 						},
 						"Waiting for in-flight service starts before stopping",
 					);
+					const waitStartedAt = Date.now();
 					const result = await Promise.race([
 						Promise.allSettled(inFlight).then(() => "settled" as const),
 						timeoutAfter(timeoutMs),
@@ -2010,6 +2011,7 @@ export class AgentRuntime implements IAgentRuntime {
 								agentId: this.agentId,
 								serviceTypes,
 								timeoutMs,
+								elapsedMs: Date.now() - waitStartedAt,
 							},
 							"Timed out waiting for in-flight service starts; proceeding with shutdown",
 						);
