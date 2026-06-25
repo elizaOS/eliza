@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract istft-verify two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke android-vulkan-graph-smoke metal metal-verify metal-verify-shipped metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-dispatch-smoke cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented mmproj-verify force clean
+.PHONY: all reference-test kernel-contract istft-verify two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke android-vulkan-graph-smoke metal metal-verify metal-verify-shipped metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-dispatch-smoke cpu-qjl-polar-attn-smoke cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented mmproj-verify force clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -420,6 +420,26 @@ cpu-dispatch-smoke: $(CPU_DISPATCH_SMOKE_BIN)
 	DYLD_LIBRARY_PATH=$(ELIZA_MTP_CPU_BIN_DIR):$${DYLD_LIBRARY_PATH:-} \
 	LD_LIBRARY_PATH=$(ELIZA_MTP_CPU_BIN_DIR):$${LD_LIBRARY_PATH:-} \
 	./$(CPU_DISPATCH_SMOKE_BIN)
+
+# QJL1_256-K / Q4_POLAR-V flash_attn_ext dispatch smoke. Builds the post-cast
+# (F16 K/V) attention graph through ggml_flash_attn_ext and asserts finite,
+# non-zero output — guards the dequant-hop path in src/llama-graph.cpp from
+# regressing back to a NULL-vec_dot call on the K-cache-only quant types.
+# Needs a built ggml CPU lib (set ELIZA_MTP_CPU_BIN_DIR + GGML_INC_DIR; e.g.
+# a stock llama.cpp build: ELIZA_MTP_CPU_BIN_DIR=<build>/bin
+# GGML_INC_DIR=<src>/ggml/include).
+CPU_QJL_POLAR_ATTN_SMOKE_BIN ?= cpu_qjl_polar_attn_smoke.$(HOST_MTP_TARGET)
+
+$(CPU_QJL_POLAR_ATTN_SMOKE_BIN): cpu_qjl_polar_attn_smoke.c
+	@test -n "$(ELIZA_MTP_CPU_BIN_DIR)" || { echo "cpu-qjl-polar-attn-smoke needs a built llama.cpp CPU-compatible binary dir (set ELIZA_MTP_CPU_BIN_DIR)."; exit 1; }
+	$(CC) $(CFLAGS) -I$(GGML_INC_DIR) cpu_qjl_polar_attn_smoke.c \
+		-L$(ELIZA_MTP_CPU_BIN_DIR) -lggml -lggml-base -lggml-cpu \
+		-Wl,-rpath,$(ELIZA_MTP_CPU_BIN_DIR) -lm -o $(CPU_QJL_POLAR_ATTN_SMOKE_BIN)
+
+cpu-qjl-polar-attn-smoke: $(CPU_QJL_POLAR_ATTN_SMOKE_BIN)
+	DYLD_LIBRARY_PATH=$(ELIZA_MTP_CPU_BIN_DIR):$${DYLD_LIBRARY_PATH:-} \
+	LD_LIBRARY_PATH=$(ELIZA_MTP_CPU_BIN_DIR):$${LD_LIBRARY_PATH:-} \
+	./$(CPU_QJL_POLAR_ATTN_SMOKE_BIN)
 
 cpu-bench: cpu_bench
 cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)

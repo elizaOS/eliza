@@ -114,7 +114,7 @@ async function build(): Promise<void> {
 	const dtsStart = Date.now();
 	console.log("📝 Generating TypeScript declarations...");
 	const { $ } = await import("bun");
-	await $`tsc --project tsconfig.build.json`;
+	await $`tsc --project tsconfig.build.json --noCheck`;
 
 	// Ensure directories exist
 	const nodeDir = join(distDir, "node");

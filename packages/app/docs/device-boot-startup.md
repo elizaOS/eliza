@@ -175,17 +175,20 @@ shares a single id end to end:
   same value into the local agent as `ELIZA_STARTUP_TRACE_ID`, so renderer marks,
   restart events, and `<stateDir>/telemetry/boot/latest.json` can be correlated
   on Android device boots.
+- iOS's Capacitor host now uses an `ElizaBridgeViewController` document-start
+  `WKUserScript` to inject `window.__ELIZA_STARTUP_TRACE_ID__` before renderer
+  module evaluation. The iOS full-Bun local runtime passes that same id into the
+  agent env as `ELIZA_STARTUP_TRACE_ID`, so renderer marks and
+  `<stateDir>/telemetry/boot/latest.json` can be correlated on iOS local boots.
 - The renderer reads it (`initStartupTrace()` →
   `STARTUP_TRACE_ID_WINDOW_KEY`, then Android's bridge fallback); absent an
   injected/native id it derives a
   renderer-local id and still records `timeOrigin` (epoch ms), so traces can be
   aligned by wall-clock even before the id seam is wired.
 
-> Wiring status: renderer adoption and Electrobun injection now ship together.
-> Android also shares the id through the synchronous native bridge + agent env.
-> The remaining host-specific follow-up is the iOS Capacitor/native injection
-> path, so iOS local runtime traces can adopt the same id before renderer module
-> evaluation.
+> Wiring status: renderer adoption, Electrobun injection, Android bridge/env
+> propagation, and iOS document-start injection/full-Bun env propagation now
+> ship together.
 
 ---
 

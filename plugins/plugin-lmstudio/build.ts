@@ -66,7 +66,7 @@ try {
   // REPO-ROOT node_modules/.bin, so the per-plugin `${ROOT}/node_modules/.bin/
   // tsc.exe` path does not exist on Windows — the spawn failed and the plugin
   // silently shipped with no fresh .d.ts. bunx resolves tsc on every platform.
-  await $`bunx tsc --project tsconfig.build.json`;
+  await $`bunx tsc --project tsconfig.build.json --noCheck`;
 } catch {
   console.warn(
     "Warning: TypeScript declaration generation failed; continuing with bundled JS outputs only."

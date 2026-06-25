@@ -53,10 +53,14 @@ interface LoginModalProps {
 }
 
 function getStewardApiUrl(): string {
-  if (typeof window === "undefined") {
-    return process.env.NEXT_PUBLIC_STEWARD_API_URL ?? "http://localhost:3200";
+  const envUrl = process.env.NEXT_PUBLIC_STEWARD_API_URL;
+  if (envUrl) return envUrl;
+  // No build-time env: use the canonical Steward host in production,
+  // the local docker Steward (:3200) during development.
+  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
+    return "https://eliza.steward.fi";
   }
-  return process.env.NEXT_PUBLIC_STEWARD_API_URL ?? "http://localhost:3200";
+  return "http://localhost:3200";
 }
 
 const STEWARD_TENANT_ID = process.env.NEXT_PUBLIC_STEWARD_TENANT_ID ?? "feed";

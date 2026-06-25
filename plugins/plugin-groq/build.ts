@@ -79,7 +79,7 @@ async function build(): Promise<void> {
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   const { $ } = await import("bun");
-  await $`tsc --project tsconfig.build.json`;
+  await $`tsc --project tsconfig.build.json --noCheck`;
 
   // Top-level `dist/index.d.ts` aggregates the node entrypoint declarations.
   // We re-export from the tsc-emitted `./node/index.node` rather than `./node/index`

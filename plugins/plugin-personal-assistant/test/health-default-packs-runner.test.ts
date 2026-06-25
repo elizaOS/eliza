@@ -70,6 +70,11 @@ function makeRunner(gates: TaskGateRegistry): ScheduledTaskRunnerHandle {
     timezone: "UTC",
     morningWindow: { start: "07:00", end: "10:00" },
     eveningWindow: { start: "21:00", end: "23:30" },
+    // sleep-recap's `personal_baseline_sufficient` gate (minSamples: 5) denies
+    // with "sample count unavailable" unless the owner has a projected baseline;
+    // give the modelled owner a sufficient sample window so the pack reaches a
+    // real fire decision instead of skipping on missing baseline.
+    personalBaseline: { sampleCount: 14, windowDays: 30 },
   };
   const globalPause: GlobalPauseView = {
     current: async () => ({ active: false }),

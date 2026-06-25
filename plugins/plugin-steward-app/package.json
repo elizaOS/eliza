@@ -62,6 +62,7 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.real.e2e.test.ts test/*.live.e2e.test.ts"
   },
   "files": [

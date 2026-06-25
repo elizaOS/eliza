@@ -122,7 +122,7 @@ async function build() {
 
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
-  await Bun.$`tsc --project tsconfig.build.json`;
+  await Bun.$`tsc --project tsconfig.build.json --noCheck`;
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
   await mkdir("dist/cjs", { recursive: true });

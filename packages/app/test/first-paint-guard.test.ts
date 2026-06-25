@@ -36,6 +36,9 @@ const MUST_BE_DEFERRED = [
   "importAppTraining",
 ];
 
+const BLOCKING_PLUGIN_PACKAGE_IMPORT_PATTERN =
+  /import\(\s*(["'`])(@elizaos\/plugin-[^"'`]+)\1\s*\)/g;
+
 function initializeAppModulesSource(): string {
   const start = mainSrc.indexOf("function initializeAppModules(");
   expect(start).toBeGreaterThan(-1);
@@ -61,11 +64,21 @@ describe("first-paint critical path", () => {
       m[0].replace("()", ""),
     );
 
-    expect(importers.length).toBeGreaterThan(0);
+    expect(importers).toEqual([...ALLOWED_BLOCKING_IMPORTERS]);
     const disallowed = importers.filter(
       (name) => !ALLOWED_BLOCKING_IMPORTERS.has(name),
     );
     expect(disallowed).toEqual([]);
+  });
+
+  it("rejects direct dynamic plugin imports on the blocking initializer path", () => {
+    const blockingPluginImports = [
+      ...initializeAppModulesSource().matchAll(
+        BLOCKING_PLUGIN_PACKAGE_IMPORT_PATTERN,
+      ),
+    ].map((match) => match[2]);
+
+    expect(blockingPluginImports).toEqual([]);
   });
 
   it("keeps the heavy plugin imports on the deferred idle path", () => {
