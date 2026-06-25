@@ -54,6 +54,11 @@ export {
 	NlmsEchoCanceller,
 	type NlmsEchoCancellerConfig,
 } from "./echo-canceller";
+export {
+	type EchoDelayEstimate,
+	type EchoDelayOptions,
+	estimateEchoDelaySamples,
+} from "./echo-delay";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
