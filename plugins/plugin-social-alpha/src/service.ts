@@ -172,18 +172,24 @@ export type TradingEvent =
  * (ratchet-neutral); this replaces the scattered `as unknown as Transaction`
  * reads with one validated path.
  */
-function asTransaction(value: unknown): Transaction | null {
+function asContentObject<T>(
+	value: unknown,
+	requiredStringKeys: readonly string[],
+): T | null {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		return null;
 	}
 	const record = value as Record<string, unknown>;
-	if (
-		typeof record.positionId !== "string" ||
-		typeof record.tokenAddress !== "string"
-	) {
-		return null;
+	for (const key of requiredStringKeys) {
+		if (typeof record[key] !== "string") {
+			return null;
+		}
 	}
-	return value as Transaction;
+	return value as T;
+}
+
+function asTransaction(value: unknown): Transaction | null {
+	return asContentObject<Transaction>(value, ["positionId", "tokenAddress"]);
 }
 
 /**
@@ -1802,9 +1808,11 @@ export class CommunityInvestorService
 				limit: 1,
 			});
 
-			if (memories.length > 0 && memories[0].content.position) {
-				const position = memories[0].content.position as unknown as Position;
-
+			const position = asContentObject<Position>(
+				memories[0]?.content.position,
+				["id", "entityId", "tokenAddress"],
+			);
+			if (position) {
 				// Cache the position
 				await this.runtime.setCache<Position>(cacheKey, position); // Cache for 5 minutes
 
@@ -2237,10 +2245,11 @@ export class CommunityInvestorService
 				limit: 1,
 			});
 
-			if (memories.length > 0 && memories[0].content.metrics) {
-				const metrics = memories[0].content
-					.metrics as unknown as RecommenderMetrics;
-
+			const metrics = asContentObject<RecommenderMetrics>(
+				memories[0]?.content.metrics,
+				["entityId", "platform"],
+			);
+			if (metrics) {
 				// Cache the metrics
 				await this.runtime.setCache<RecommenderMetrics>(cacheKey, metrics); // Cache for 5 minutes
 
@@ -2288,14 +2297,12 @@ export class CommunityInvestorService
 			const historyEntries: RecommenderMetricsHistory[] = [];
 
 			for (const memory of memories) {
-				if (
-					memory.content.history &&
-					(memory.content.history as unknown as RecommenderMetricsHistory)
-						.entityId === entityId
-				) {
-					historyEntries.push(
-						memory.content.history as unknown as RecommenderMetricsHistory,
-					);
+				const history = asContentObject<RecommenderMetricsHistory>(
+					memory.content.history,
+					["entityId"],
+				);
+				if (history && history.entityId === entityId) {
+					historyEntries.push(history);
 				}
 			}
 
@@ -2441,9 +2448,12 @@ export class CommunityInvestorService
 			const positions: PositionWithBalance[] = [];
 
 			for (const memory of memories) {
-				if (memory.content.position) {
-					const position = memory.content.position as unknown as Position;
-
+				const position = asContentObject<Position>(memory.content.position, [
+					"id",
+					"entityId",
+					"tokenAddress",
+				]);
+				if (position) {
 					// Check if position is open
 					if (position.status === "OPEN") {
 						// Convert to PositionWithBalance
