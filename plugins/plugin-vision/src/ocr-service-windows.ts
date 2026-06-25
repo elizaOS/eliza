@@ -16,10 +16,11 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
+import { ocrHostAvailable, runOcrHost } from "./ocr-host-windows.js";
 import {
   computeSemanticPosition,
   type OcrWithCoordsBlock,
@@ -232,8 +233,18 @@ export class WindowsMediaOcrService implements OcrWithCoordsService {
     const imgPath = join(dir, "frame.png");
     writeFileSync(imgPath, Buffer.from(input.pngBytes));
     try {
-      const scriptPath = ensureScriptOnDisk();
-      const stdout = await runPowerShell(scriptPath, imgPath);
+      // Prefer the warm OCR host (no per-call cold `powershell.exe` spawn nor
+      // WinRT type-load); fall back to the one-shot `-File` spawn on any failure.
+      let stdout: string;
+      if (ocrHostAvailable()) {
+        try {
+          stdout = await runOcrHost(imgPath);
+        } catch {
+          stdout = await runPowerShell(ensureScriptOnDisk(), imgPath);
+        }
+      } else {
+        stdout = await runPowerShell(ensureScriptOnDisk(), imgPath);
+      }
       const raw = JSON.parse(
         stdout.trim() || '{"width":0,"height":0,"lines":[]}',
       ) as WinOcrRaw;
@@ -243,6 +254,16 @@ export class WindowsMediaOcrService implements OcrWithCoordsService {
         `[WindowsMediaOcr] OCR failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       return { blocks: [] };
+    } finally {
+      // Clean up the per-call temp image. The warm host disposes its file
+      // handle each iteration and the one-shot process has exited, so the file
+      // is unlocked — important now that frequent OCR through the host would
+      // otherwise accumulate temp dirs.
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* best effort */
+      }
     }
   }
 }
