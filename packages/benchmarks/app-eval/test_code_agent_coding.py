@@ -6,12 +6,22 @@ import subprocess
 import sys
 from pathlib import Path
 
-from benchmarks.app_eval.code_agent_coding import (
+# `code_agent_coding` imports `benchmarks.*`, so put both the app-eval dir (for
+# the module itself) and `packages/` (for the `benchmarks` package) on the path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from code_agent_coding import (  # noqa: E402
     agent_command_template,
     evaluate_workspace,
     load_tasks,
     run_agent_app_eval_coding,
 )
+
+# The real coding module, invoked by file path (the app-eval dir is hyphenated
+# and therefore not importable via `python -m benchmarks.app_eval...`; the
+# underscore import shim was removed in #9475).
+_CODE_AGENT_CODING = str(Path(__file__).resolve().parent / "code_agent_coding.py")
 
 
 def test_builtin_agent_command_template_points_at_helper(monkeypatch) -> None:
@@ -119,8 +129,7 @@ def test_cli_mock_outputs_matrix_summary(tmp_path: Path) -> None:
     completed = subprocess.run(
         [
             sys.executable,
-            "-m",
-            "benchmarks.app_eval.code_agent_coding",
+            _CODE_AGENT_CODING,
             "--task-agent",
             "opencode",
             "--output",
@@ -151,8 +160,7 @@ def test_cli_expanded_count_and_validate(tmp_path: Path) -> None:
     completed = subprocess.run(
         [
             sys.executable,
-            "-m",
-            "benchmarks.app_eval.code_agent_coding",
+            _CODE_AGENT_CODING,
             "--output",
             str(tmp_path / "out"),
             "--max-tasks",
