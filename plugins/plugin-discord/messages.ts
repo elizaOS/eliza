@@ -66,9 +66,9 @@ import {
 } from "./types";
 import { createTypingController } from "./typing";
 import {
+	buildOutboundDiscordAttachment,
 	canSendMessage,
 	extractUrls,
-	getAttachmentFileName,
 	getMessageService,
 	getMessagingAPI,
 	normalizeDiscordMessageText,
@@ -982,9 +982,8 @@ export class MessageManager {
 					if (content.attachments && content.attachments.length > 0) {
 						for (const media of content.attachments) {
 							if (media.url) {
-								const fileName = getAttachmentFileName(media);
 								files.push(
-									new AttachmentBuilder(media.url, { name: fileName }),
+									await buildOutboundDiscordAttachment(media, this.runtime),
 								);
 							}
 						}

@@ -1,4 +1,7 @@
 import {
+	ContentType,
+	fetchRemoteMedia,
+	MediaFetchError,
 	type IAgentRuntime,
 	type IMessageService,
 	logger,
@@ -9,7 +12,7 @@ import {
 } from "@elizaos/core";
 import {
 	ActionRowBuilder,
-	type AttachmentBuilder,
+	AttachmentBuilder,
 	ButtonBuilder,
 	ChannelType,
 	type Message as DiscordMessage,
@@ -309,6 +312,82 @@ export function getAttachmentFileName(media: Media): string {
 	const hasExtension = /\.\w{1,5}$/i.test(baseName);
 
 	return hasExtension ? baseName : `${baseName}${extension}`;
+}
+
+const DEFAULT_OUTBOUND_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_OUTBOUND_ATTACHMENT_TIMEOUT_MS = 120_000;
+
+function positiveIntEnv(name: string, fallback: number): number {
+	const parsed = Number(process.env[name]);
+	return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function shouldFetchGeneratedMediaBytes(media: Media): boolean {
+	return (
+		media.source === "media-generation" &&
+		(media.contentType === ContentType.VIDEO ||
+			media.contentType === ContentType.AUDIO)
+	);
+}
+
+function summarizeAttachmentUrl(url: string): { host?: string; path?: string } {
+	try {
+		const parsed = new URL(url);
+		return {
+			host: parsed.host,
+			path: parsed.pathname.split("/").slice(0, 4).join("/"),
+		};
+	} catch {
+		return {};
+	}
+}
+
+/** Build a Discord attachment. Generated audio/video URLs are fetched through the core SSRF guard. */
+export async function buildOutboundDiscordAttachment(
+	media: Media,
+	runtime?: Pick<IAgentRuntime, "logger">,
+): Promise<AttachmentBuilder> {
+	const fileName = getAttachmentFileName(media);
+	const url = media.url?.trim();
+	if (!url) {
+		return new AttachmentBuilder(Buffer.alloc(0), { name: fileName });
+	}
+
+	if (!shouldFetchGeneratedMediaBytes(media)) {
+		return new AttachmentBuilder(url, { name: fileName });
+	}
+
+	try {
+		const fetched = await fetchRemoteMedia({
+			url,
+			filePathHint: fileName,
+			maxBytes: positiveIntEnv(
+				"DISCORD_ATTACHMENT_FETCH_MAX_BYTES",
+				DEFAULT_OUTBOUND_ATTACHMENT_MAX_BYTES,
+			),
+			timeoutMs: positiveIntEnv(
+				"DISCORD_ATTACHMENT_FETCH_TIMEOUT_MS",
+				DEFAULT_OUTBOUND_ATTACHMENT_TIMEOUT_MS,
+			),
+		});
+		return new AttachmentBuilder(fetched.buffer, { name: fileName });
+	} catch (error) {
+		runtime?.logger.warn(
+			{
+				src: "plugin:discord:attachment",
+				...summarizeAttachmentUrl(url),
+				contentType: media.contentType,
+				error:
+					error instanceof MediaFetchError
+						? error.code
+						: error instanceof Error
+							? error.name
+							: String(error),
+			},
+			"Generated media fetch failed; refusing to send raw URL attachment",
+		);
+		throw error;
+	}
 }
 
 export async function generateSummary(

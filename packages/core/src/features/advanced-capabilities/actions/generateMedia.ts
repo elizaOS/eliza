@@ -444,6 +444,7 @@ export const generateMediaAction = {
 			thought: `Generated ${label} based on: "${request.prompt}"`,
 			actions: ["GENERATE_MEDIA"],
 			text: responseText,
+			source: "media-generation",
 		};
 
 		if (callback) {
