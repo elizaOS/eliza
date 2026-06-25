@@ -18,6 +18,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { createMockRuntime } from "../../testing/mock-runtime";
 import type { JsonSchema } from "../../actions/validate-tool-args";
 import type { ModelHandler } from "../../types/model";
 import { ModelType } from "../../types/model";
@@ -74,12 +75,12 @@ function makeRuntime(opts: {
 		}
 		return responses.shift();
 	});
-	const runtime = {
+	const runtime = createMockRuntime({
 		useModel,
 		models,
 		getSetting: (key: string) =>
 			key === "VALIDATION_LEVEL" ? opts.validationLevel : undefined,
-	} as unknown as IAgentRuntime;
+	});
 	return { runtime, useModel };
 }
 

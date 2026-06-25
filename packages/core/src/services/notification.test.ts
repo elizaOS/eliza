@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createMockRuntime } from "../testing/mock-runtime";
 import type { AgentNotification } from "../types/notification.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { ServiceType } from "../types/service.ts";
@@ -23,7 +24,7 @@ function createRuntime(): {
 			emitted.push(event);
 		},
 	};
-	const runtime = {
+	const runtime = createMockRuntime({
 		agentId: "00000000-0000-0000-0000-0000000000aa",
 		getCache: async <T>(key: string): Promise<T | undefined> =>
 			cache.get(key) as T | undefined,
@@ -34,7 +35,7 @@ function createRuntime(): {
 		deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
 		getService: (type: string) =>
 			type === ServiceType.AGENT_EVENT ? bus : null,
-	} as unknown as IAgentRuntime;
+	});
 	return { runtime, cache, emitted };
 }
 

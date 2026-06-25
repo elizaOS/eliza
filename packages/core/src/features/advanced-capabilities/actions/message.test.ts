@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createMockRuntime } from "../../../testing/mock-runtime";
 import type {
 	ActionResult,
 	IAgentRuntime,
@@ -249,7 +250,7 @@ describe("MESSAGE op=send owner-binding gate", () => {
 			});
 		}
 		const sent = { called: false };
-		const runtime = {
+		const runtime = createMockRuntime({
 			agentId: "00000000-0000-0000-0000-000000000001",
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 			getService: (type: string) =>
@@ -283,7 +284,7 @@ describe("MESSAGE op=send owner-binding gate", () => {
 				return { id: "00000000-0000-0000-0000-0000000000ff" } as Memory;
 			},
 			createMemory: async () => undefined,
-		} as unknown as IAgentRuntime;
+		});
 		return { runtime, sent };
 	}
 

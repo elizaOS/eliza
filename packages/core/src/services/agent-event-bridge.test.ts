@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createMockRuntime } from "../testing/mock-runtime";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
 import type {
 	ActionEventPayload,
@@ -29,10 +30,10 @@ async function createCtx(opts: { withService?: boolean } = {}): Promise<{
 	const withService = opts.withService ?? true;
 	const events: AgentEventPayload[] = [];
 
-	const runtimeBase = {
+	const runtimeBase = createMockRuntime({
 		agentId: "00000000-0000-0000-0000-0000000000aa",
 		getCurrentRunId: () => RUN_ID,
-	} as unknown as IAgentRuntime;
+	});
 
 	let service: AgentEventService | null = null;
 	if (withService) {
@@ -40,11 +41,11 @@ async function createCtx(opts: { withService?: boolean } = {}): Promise<{
 		service.subscribe((event) => events.push(event));
 	}
 
-	const runtime = {
+	const runtime = createMockRuntime({
 		...runtimeBase,
 		getService: (type: string) =>
 			type === ServiceType.AGENT_EVENT ? service : null,
-	} as unknown as IAgentRuntime;
+	});
 
 	return { runtime, events };
 }

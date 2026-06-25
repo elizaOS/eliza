@@ -21,6 +21,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { createMockRuntime } from "../testing/mock-runtime";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -156,7 +157,7 @@ function makeTracingRuntime(): {
 		},
 	};
 
-	const runtime = {
+	const runtime = createMockRuntime({
 		agentId: AGENT,
 		character: {
 			name: "Test Agent",
@@ -199,7 +200,7 @@ function makeTracingRuntime(): {
 			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 		],
 		responseHandlerEvaluators: [probe],
-	} as unknown as IAgentRuntime;
+	});
 
 	return { runtime, trace };
 }

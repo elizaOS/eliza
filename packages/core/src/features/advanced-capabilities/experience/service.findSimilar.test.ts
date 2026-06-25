@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { createMockRuntime } from "../../../testing/mock-runtime";
 import type { Memory } from "../../../types/memory.ts";
 import type { UUID } from "../../../types/primitives.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
@@ -59,7 +60,7 @@ function makeRuntime(): {
 	useModel: ReturnType<typeof vi.fn>;
 } {
 	const useModel = vi.fn(async () => [0.1, 0.2, 0.3]);
-	const runtime = {
+	const runtime = createMockRuntime({
 		agentId: AGENT_ID,
 		getCurrentRunId: () => "33333333-3333-3333-3333-333333333333",
 		getMemories: vi.fn(async () => [
@@ -67,7 +68,7 @@ function makeRuntime(): {
 			experienceMemory(EXP_NEW, 2_000),
 		]),
 		useModel,
-	} as unknown as IAgentRuntime;
+	});
 	return { runtime, useModel };
 }
 
