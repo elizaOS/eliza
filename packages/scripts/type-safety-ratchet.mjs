@@ -117,7 +117,6 @@ function sourceFileKind(relPath) {
 const STRICT_FALSE_ALLOWLIST = new Set([
   "packages/agent/tsconfig.bundle.json", // emit-only bundle config
   "plugins/tsconfig.build.shared.json", // emit-only (emitDeclarationOnly)
-  "packages/examples/smartglasses/tsconfig.json", // open burndown (#9474)
 ]);
 
 function strictFalseTsconfigs() {

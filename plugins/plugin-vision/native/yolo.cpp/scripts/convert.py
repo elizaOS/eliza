@@ -111,6 +111,9 @@ def main() -> int:
 
     weights = args.weights or f"{args.variant}.pt"
     print(f"[convert] loading {weights}", file=sys.stderr)
+    # Prefer ultralytics; fall back to loading the DetectionModel straight from
+    # the checkpoint only when the operator explicitly trusts the file. PyTorch
+    # full-checkpoint unpickling can execute code.
     try:
         from ultralytics import YOLO
     except Exception as exc:  # noqa: BLE001 - torchvision registration can fail here
