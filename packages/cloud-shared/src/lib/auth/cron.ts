@@ -10,6 +10,21 @@ interface CronSecretEnv {
 }
 
 /**
+ * Constant-time comparison of a provided secret against the expected secret.
+ * Returns false on any length mismatch. Always use this (never `===`/`!==`)
+ * when checking a secret/token so response timing can't leak the value
+ * byte-by-byte.
+ */
+export function timingSafeEqualSecret(provided: string, expected: string): boolean {
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const providedBuffer = Buffer.from(provided, "utf8");
+  return (
+    expectedBuffer.length === providedBuffer.length &&
+    timingSafeEqual(expectedBuffer, providedBuffer)
+  );
+}
+
+/**
  * Verify the CRON_SECRET from the request Authorization header.
  *
  * @returns null if auth succeeds, Response error otherwise.
@@ -33,12 +48,7 @@ export function verifyCronSecret(
   const providedSecret =
     authHeader?.replace(/^Bearer\s+/i, "") || request.headers.get("x-cron-secret") || "";
 
-  const expectedBuffer = Buffer.from(cronSecret, "utf8");
-  const providedBuffer = Buffer.from(providedSecret, "utf8");
-
-  const isValid =
-    expectedBuffer.length === providedBuffer.length &&
-    timingSafeEqual(expectedBuffer, providedBuffer);
+  const isValid = timingSafeEqualSecret(providedSecret, cronSecret);
 
   if (!isValid) {
     logger.warn(`${logPrefix} Unauthorized cron request`, {

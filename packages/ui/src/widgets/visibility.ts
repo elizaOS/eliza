@@ -13,9 +13,8 @@ import type { WidgetSlot } from "./types";
  * `declaration.defaultEnabled`, so default flips don't reset users who never
  * touched the toggle.
  *
- * Home and other mounted widget slots use the same path once their plugin
- * registers them: they appear with `defaultEnabled` and the user can hide them
- * via the same panel.
+ * Active widget slots use the same path once their plugin registers them: they
+ * appear with `defaultEnabled` and the user can hide them via the same panel.
  */
 
 const CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY = "eliza:chat-sidebar:visibility";

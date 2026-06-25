@@ -18,7 +18,7 @@ function toDataParts(
   parts: readonly MessagePart[] | null | undefined,
 ): DataPart[] {
   if (!parts) return [];
-  return Array.from(parts) as unknown as DataPart[];
+  return Array.from(parts) as DataPart[];
 }
 
 export function useJsonRenderMessage(

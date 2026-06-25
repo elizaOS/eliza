@@ -108,6 +108,7 @@ export type SdCppSpawnLike = (
 	stdout: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
 	stderr: AsyncIterable<Buffer> | NodeJS.ReadableStream | null;
 	on(event: "exit", listener: (code: number | null) => void): unknown;
+	on(event: "close", listener: (code: number | null) => void): unknown;
 	on(event: "error", listener: (err: Error) => void): unknown;
 	kill?(signal?: NodeJS.Signals): void;
 };
@@ -389,14 +390,7 @@ function runCollect(
 		proc.on("error", (err: Error) => reject(err));
 		if (typeof (proc as { on?: unknown }).on === "function") {
 			try {
-				(
-					proc as unknown as {
-						on(
-							event: "close",
-							listener: (code: number | null) => void,
-						): unknown;
-					}
-				).on("close", finish);
+				proc.on("close", finish);
 			} catch {
 				// Test doubles may only implement the narrower SdCppSpawnLike
 				// exit/error event set. The exit listener below still resolves.
@@ -714,5 +708,8 @@ export function assertPngOutput(
 export function defaultSpawn(
 	spawnImpl: SdCppSpawnLike | undefined,
 ): SdCppSpawnLike {
-	return spawnImpl ?? (spawn as unknown as SdCppSpawnLike);
+	if (spawnImpl) return spawnImpl;
+	const nodeSpawn: SdCppSpawnLike = (command, args, options) =>
+		spawn(command, [...args], options);
+	return nodeSpawn;
 }

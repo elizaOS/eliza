@@ -193,21 +193,20 @@ export function registerMobileCameraSource(source: MobileCameraSource): void {
       "Invalid MobileCameraSource: capabilities must be a function when present",
     );
   }
-  (globalThis as unknown as RegistryHost)[REGISTRY_KEY] = source;
+  (globalThis as RegistryHost)[REGISTRY_KEY] = source;
   logger.info(
     `[MobileCameraSource] registered (${source.constructor?.name ?? "anonymous"})`,
   );
 }
 
 export function getMobileCameraSource(): MobileCameraSource | null {
-  const registered = (globalThis as unknown as RegistryHost)[REGISTRY_KEY];
+  const registered = (globalThis as RegistryHost)[REGISTRY_KEY];
   if (registered) return registered;
 
-  const plugin = (globalThis as unknown as CapacitorHost).Capacitor?.Plugins
-    ?.ElizaVision;
+  const plugin = (globalThis as CapacitorHost).Capacitor?.Plugins?.ElizaVision;
   return plugin ? new CapacitorCameraSource(plugin) : null;
 }
 
 export function clearMobileCameraSource(): void {
-  delete (globalThis as unknown as RegistryHost)[REGISTRY_KEY];
+  delete (globalThis as RegistryHost)[REGISTRY_KEY];
 }

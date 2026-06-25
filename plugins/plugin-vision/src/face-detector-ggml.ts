@@ -17,6 +17,7 @@
 // See `packages/native/plugins/face-cpp/AGENTS.md` for the port plan.
 
 import { promises as fs } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
@@ -82,7 +83,7 @@ function defaultLibraryPath(): string {
 function defaultModelDir(): string {
   const stateDir =
     process.env.ELIZA_STATE_DIR ??
-    path.join(process.env.HOME ?? "/tmp", ".eliza");
+    path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "models", "face-cpp");
 }
 

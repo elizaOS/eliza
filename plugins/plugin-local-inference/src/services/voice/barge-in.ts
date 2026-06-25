@@ -87,9 +87,8 @@ function tripToken(
 	token: BargeInCancelToken,
 	reason: BargeInCancelToken["reason"],
 ): void {
-	const trip = (
-		token as unknown as { __trip?: (r: BargeInCancelToken["reason"]) => void }
-	).__trip;
+	const trip = (token as { __trip?: (r: BargeInCancelToken["reason"]) => void })
+		.__trip;
 	if (trip) trip(reason);
 }
 

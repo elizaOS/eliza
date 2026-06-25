@@ -287,7 +287,7 @@ export class AudioCaptureService {
           const { stdout } = await execAsync(
             "ffmpeg -list_devices true -f dshow -i dummy 2>&1",
           );
-          const lines = stdout.split("\n");
+          const lines = stdout.split(/\r?\n/u);
           let isAudioSection = false;
 
           for (const line of lines) {

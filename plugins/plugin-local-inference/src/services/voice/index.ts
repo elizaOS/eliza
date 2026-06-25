@@ -122,6 +122,11 @@ export {
 	type LiveKitGgmlTurnDetectorOptions,
 	turnDetectorGgufForTier,
 } from "./eot-classifier-ggml";
+export {
+	computeErle,
+	NlmsEchoCanceller,
+	type NlmsEchoCancellerConfig,
+} from "./echo-canceller";
 export { VoiceStartupError } from "./errors";
 export * from "./ffi-bindings";
 export {

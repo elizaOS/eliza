@@ -3784,3 +3784,50 @@ def test_app_eval_score_normalizes_ten_point_summary(tmp_path: Path) -> None:
     assert score.score == 0.75
     assert score.unit == "ratio"
     assert score.metrics["overall_score"] == 7.5
+
+
+# Benchmarks with no keyless (no-API-key) smoke route, with the reason they
+# cannot run in the always-on no-key CI lane. Each MUST be deliberately listed
+# here, so a newly added benchmark either is keyless-smoke-runnable or is an
+# explicit, justified manual-only entry — the de-larp guard for #9475.
+MANUAL_ONLY_BENCHMARKS = frozenset(
+    {
+        # Requires extra.traj_set: a directory of pre-recorded trajectory JSON
+        # files to replay; there is no synthetic keyless input, so it cannot run
+        # in the no-key smoke lane.
+        "trajectory_replay",
+    }
+)
+
+
+def test_every_registered_benchmark_has_smoke_lane_or_manual_only_marker(
+    tmp_path: Path,
+) -> None:
+    """Every registered benchmark must build a keyless (mock) smoke command, or
+    be an explicit, justified MANUAL_ONLY_BENCHMARKS entry. This keeps the suite
+    self-policing: a new benchmark can't silently inflate the registry without a
+    no-key smoke route or a deliberate manual-only marker (#9475)."""
+    registry = get_benchmark_registry(_workspace_root())
+    registry_ids = {entry.id for entry in registry}
+
+    # No stale markers: every manual-only id must still exist in the registry.
+    assert MANUAL_ONLY_BENCHMARKS <= registry_ids, (
+        "stale MANUAL_ONLY_BENCHMARKS entries: "
+        f"{sorted(MANUAL_ONLY_BENCHMARKS - registry_ids)}"
+    )
+
+    mock_model = ModelSpec(provider="mock", model="mock")
+    smoke_extra = {"mock": True, "max_tasks": 1, "iterations": 1}
+
+    for entry in registry:
+        if entry.id in MANUAL_ONLY_BENCHMARKS:
+            # Confirm it genuinely has no keyless smoke route (else drop the marker).
+            with pytest.raises(Exception):
+                entry.build_command(tmp_path / entry.id, mock_model, smoke_extra)
+            continue
+        command = entry.build_command(tmp_path / entry.id, mock_model, smoke_extra)
+        assert isinstance(command, list) and command, (
+            f"benchmark {entry.id!r} produced no keyless smoke command; "
+            "give it a no-key smoke route or add it to MANUAL_ONLY_BENCHMARKS"
+        )
+        assert isinstance(command[0], str)

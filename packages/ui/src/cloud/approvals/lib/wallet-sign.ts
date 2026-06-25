@@ -23,7 +23,7 @@ interface Eip1193Provider {
 
 function getInjectedProvider(): Eip1193Provider | null {
   if (typeof window === "undefined") return null;
-  const candidate = (window as unknown as { ethereum?: unknown }).ethereum;
+  const candidate = (window as { ethereum?: unknown }).ethereum;
   if (
     candidate &&
     typeof (candidate as Eip1193Provider).request === "function"

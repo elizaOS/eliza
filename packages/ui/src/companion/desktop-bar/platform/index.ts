@@ -5,15 +5,17 @@ import {
 } from "./electrobun-tray";
 import { registerTrayIcon as webRegister } from "./web-fallback";
 
-interface WindowWithElectrobun {
-  electrobun?: unknown;
+declare global {
+  interface Window {
+    electrobun?: unknown;
+  }
 }
 
 function hasElectrobunRuntime(): boolean {
   if (typeof window === "undefined") {
     return false;
   }
-  return Boolean((window as unknown as WindowWithElectrobun).electrobun);
+  return Boolean(window.electrobun);
 }
 
 export function registerTrayIcon(

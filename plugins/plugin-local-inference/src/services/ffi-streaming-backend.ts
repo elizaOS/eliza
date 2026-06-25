@@ -374,7 +374,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		// The runtime adapter has visionSupported() + describeImage(args).
 		// We re-shape `bytes` → `imageBytes` and merge in the resolved
 		// mmprojPath; the rest of args pass through unchanged.
-		const runtime = this.runtime as unknown as {
+		const runtime = this.runtime as FfiBackendRuntime & {
 			describeImage?: (args: {
 				imageBytes: Uint8Array;
 				mmprojPath: string;

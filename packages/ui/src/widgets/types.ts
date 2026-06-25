@@ -5,13 +5,14 @@ import type { UiSpec } from "../config/ui-spec";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 
 /** Named injection points where plugin widgets can render. */
-export type WidgetSlot =
-  | "chat-sidebar"
-  | "character"
-  | "nav-page"
-  // Frontpage / Springboard home surface (#9143). Plugins opt a widget into the
-  // home screen by declaring this slot; the Home/Springboard surface mounts it.
-  | "home";
+export const WIDGET_SLOTS = [
+  "chat-sidebar",
+  "character",
+  "nav-page",
+  "home",
+] as const;
+
+export type WidgetSlot = (typeof WIDGET_SLOTS)[number];
 
 /**
  * Serializable widget metadata declared by a plugin.

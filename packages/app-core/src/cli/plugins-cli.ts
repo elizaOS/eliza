@@ -1170,6 +1170,11 @@ export function registerPluginsCli(program: Command): void {
         try {
           const result = spawnSync(editorCmd, [...editorArgs, targetDir], {
             stdio: "inherit",
+            // Editors are usually `.cmd`/`.bat` shims on Windows (e.g. `code`),
+            // which Node cannot spawn without a shell (ENOENT) — the editor would
+            // silently never open. Route through the shell on win32 so EDITOR
+            // actually launches. EDITOR is local, user-controlled config.
+            shell: process.platform === "win32",
           });
           if (result.error) throw result.error;
         } catch {

@@ -407,11 +407,7 @@ export class MemoryArbiter {
 		}
 		this.capabilities.set(
 			registration.capability,
-			registration as unknown as CapabilityRegistration<
-				unknown,
-				unknown,
-				unknown
-			>,
+			registration as CapabilityRegistration<unknown, unknown, unknown>,
 		);
 	}
 

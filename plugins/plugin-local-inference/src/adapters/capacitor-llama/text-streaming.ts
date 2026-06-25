@@ -126,7 +126,7 @@ export function streamCapacitorPrompt(
 			const resolver = pendingResolve;
 			pendingResolve = null;
 			pendingReject = null;
-			resolver({ value: undefined as unknown as string, done: true });
+			resolver({ value: undefined, done: true });
 		}
 	};
 
@@ -181,7 +181,7 @@ export function streamCapacitorPrompt(
 					}
 					if (promptDone) {
 						return Promise.resolve({
-							value: undefined as unknown as string,
+							value: undefined,
 							done: true,
 						});
 					}

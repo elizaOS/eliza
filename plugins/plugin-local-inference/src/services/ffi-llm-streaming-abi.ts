@@ -406,11 +406,14 @@ export function detectMobileCapabilities(
 	// ttsStreamSupported(). Cast to unknown to peek at the full binding if
 	// it happens to be the fused omnivoice build — but don't fail if it
 	// isn't; omnivoiceStreaming gracefully defaults to false.
-	const anyFfi = ffi as unknown as Record<string, unknown>;
+	const anyFfi = ffi as FfiLlmStreamingAbi & {
+		llmStreamSupported?: () => boolean;
+		ttsStreamSupported?: () => boolean;
+	};
 
 	const streamingLlm =
 		typeof anyFfi.llmStreamSupported === "function"
-			? (anyFfi.llmStreamSupported as () => boolean)()
+			? anyFfi.llmStreamSupported()
 			: // If the binding doesn't expose a supported() query but was handed
 				// to us at all, assume yes — the caller already verified the symbols
 				// exist via `llmStreamOpen !== undefined` elsewhere.
@@ -418,7 +421,7 @@ export function detectMobileCapabilities(
 
 	const omnivoiceStreaming =
 		typeof anyFfi.ttsStreamSupported === "function"
-			? (anyFfi.ttsStreamSupported as () => boolean)()
+			? anyFfi.ttsStreamSupported()
 			: false;
 
 	// mtpSupported requires a drafter bundle probe that is not part of

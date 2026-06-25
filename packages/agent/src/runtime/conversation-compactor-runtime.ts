@@ -1216,7 +1216,7 @@ function rewriteStateRecentMessages(args: {
     ...args.state.values,
     recentMessages: rendered,
     recentPosts: rendered,
-    messageHistoryCompaction: args.telemetry as unknown as JsonValue,
+    messageHistoryCompaction: args.telemetry,
   };
   const previousText = typeof provider.text === "string" ? provider.text : "";
   const nextText =
@@ -1229,7 +1229,7 @@ function rewriteStateRecentMessages(args: {
     data: {
       ...args.state.data,
       providers,
-      messageHistoryCompaction: args.telemetry as unknown as JsonValue,
+      messageHistoryCompaction: args.telemetry,
     },
     text: nextText,
   };
