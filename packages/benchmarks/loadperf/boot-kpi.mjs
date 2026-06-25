@@ -158,6 +158,43 @@ async function measureAttached() {
   return { readyMs, peakRssBytes: null, health, mode: "attach" };
 }
 
+// Resolve the agent's state dir the same way @elizaos/core does, so we can read
+// the per-phase boot telemetry the runtime writes on every completed boot
+// (<stateDir>/telemetry/boot/latest.json). Surfacing the lap breakdown turns a
+// single readyMs number into a per-phase profile — you can see WHICH phase
+// regressed, not just that total boot moved.
+function resolveStateDirForKpi() {
+  const explicit = process.env.ELIZA_STATE_DIR;
+  if (explicit) return explicit;
+  const ns = process.env.ELIZA_NAMESPACE || "eliza";
+  const xdg =
+    process.env.XDG_STATE_HOME || join(os.homedir(), ".local", "state");
+  return join(xdg, ns);
+}
+
+function readBootPhases() {
+  try {
+    const file = join(
+      resolveStateDirForKpi(),
+      "telemetry",
+      "boot",
+      "latest.json",
+    );
+    if (!existsSync(file)) return null;
+    const data = JSON.parse(readFileSync(file, "utf8"));
+    if (!Array.isArray(data.laps)) return null;
+    return {
+      totalMs: data.totalMs,
+      // slowest-first — what you read to find the boot bottleneck
+      laps: [...data.laps]
+        .sort((a, b) => b.ms - a.ms)
+        .map((l) => ({ name: l.name, ms: l.ms })),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function measureSpawned() {
   if (!USE_DEV && !existsSync(join(REPO_ROOT, PROD_ENTRY))) {
     throw new Error(
@@ -340,6 +377,9 @@ async function main() {
       healthReady,
       readySanityFloorMs: READY_SANITY_FLOOR_MS,
       contention,
+      // Per-phase agent-boot breakdown from the runtime's boot telemetry (the
+      // last completed boot). null when telemetry is disabled/unavailable.
+      bootPhases: readBootPhases(),
     },
     checks,
     pass: checks.every((c) => c.pass),
@@ -371,6 +411,14 @@ async function main() {
     console.log(
       `health.ready:${healthReady === true ? " true" : ` ${healthReady}`}`,
     );
+    if (s.bootPhases?.laps?.length) {
+      console.log(
+        `\n-- agent boot phases (total ${ms(s.bootPhases.totalMs)}, slowest first) --`,
+      );
+      for (const lap of s.bootPhases.laps) {
+        console.log(`  ${String(lap.ms).padStart(7)} ms  ${lap.name}`);
+      }
+    }
     console.log("\n-- budget checks --");
     for (const c of checks) {
       let v;
