@@ -47,7 +47,7 @@ function createMockRuntime(
         },
       },
     },
-  } as IAgentRuntime;
+  } as unknown as IAgentRuntime;
 }
 
 function createLiveRuntime(

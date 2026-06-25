@@ -56,7 +56,7 @@ function createRpcRuntime(): IAgentRuntime {
         },
       },
     },
-  } as IAgentRuntime;
+  } as unknown as IAgentRuntime;
 }
 
 async function createLiveChainSetup(): Promise<{
@@ -85,7 +85,7 @@ async function createLiveChainSetup(): Promise<{
 
 describe("Transfer Action", () => {
   let wp: WalletProvider;
-  let runtime: IAgentRuntime;
+  let runtime: Awaited<ReturnType<typeof createTestRuntime>>;
 
   beforeEach(async () => {
     runtime = await createTestRuntime();
