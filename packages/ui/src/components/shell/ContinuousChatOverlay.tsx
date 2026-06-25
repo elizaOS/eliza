@@ -917,8 +917,8 @@ const ThreadLine = React.memo(function ThreadLine({
             ? cn(
                 "border",
                 isUser
-                  ? "border-white/15 bg-black/55 text-white"
-                  : "border-white/10 bg-black/45 text-white/90",
+                  ? "border-white/15 bg-black/30 text-white"
+                  : "border-white/10 bg-black/30 text-white",
                 FLOAT_SHADOW,
               )
             : isUser
@@ -3030,10 +3030,11 @@ export function ContinuousChatOverlay({
             aria-hidden="true"
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
-              fullBleed ? "border-0" : "border border-white/[0.16]",
-              // A solid dark fill so white text stays legible over any view
-              // behind (a bright view, a dark view, or the warm ambient field).
-              "bg-black/45",
+              // Border-only chat: no dark card — just a hairline border and a
+              // backdrop blur that frosts whatever's behind (the ambient orange
+              // field or any view) so white text stays legible without a fill.
+              fullBleed ? "border-0" : "border border-white/22",
+              "bg-transparent backdrop-blur-xl",
             )}
             style={{
               opacity: glassOpacity,

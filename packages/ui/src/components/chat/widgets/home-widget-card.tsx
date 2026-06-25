@@ -104,14 +104,16 @@ export function HomeWidgetCard({
       title={label}
       onClick={onActivate}
       className={cn(
-        // Dark neutral glass keeps white text and orange status values legible.
-        "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/55 px-3 py-2.5 text-left",
-        "transition-colors hover:bg-black/55",
+        // Naked tile: no card — white text + a soft shadow sit directly on the
+        // ambient orange field (background removed per the home redesign). The
+        // only resting affordance is a faint neutral wash on hover/press.
+        "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
+        "transition-colors hover:bg-white/8",
       )}
     >
       <span
         className={cn(
-          "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/85 [&>svg]:h-4 [&>svg]:w-4",
+          "relative inline-flex h-8 w-8 shrink-0 items-center justify-center text-white [&>svg]:h-[22px] [&>svg]:w-[22px]",
           tone === "danger" && "text-danger",
           tone === "warn" && "text-warn",
         )}

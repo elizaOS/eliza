@@ -195,17 +195,23 @@ export function HomeScreen({
           </div>
         ) : null}
 
-        {/* The prioritized home widgets (#9143). Data-driven widgets self-hide
-            when empty; when none have content, the WidgetHost renders the
-            always-on default widgets (clock / date / calendar) instead, so the
-            dashboard is never just the floating chat. */}
+        {/* The always-on base: a naked sized grid with the time + weather as
+            2×2 neighbours and the week strip — no card, white text on the
+            ambient field. */}
         <div className={enterClass} style={{ animationDelay: "70ms" }}>
+          <DefaultHomeWidgets />
+        </div>
+
+        {/* The prioritized data widgets (#9143) flow in below the base. Each
+            self-hides when empty, so the host renders nothing until a widget has
+            something to show — the base above keeps the dashboard from ever
+            being just the floating chat. */}
+        <div className={enterClass} style={{ animationDelay: "110ms" }}>
           <WidgetHost
             slot="home"
             layout="grid"
             events={events}
             clearEvents={clearEvents}
-            fallback={<DefaultHomeWidgets />}
           />
         </div>
 
