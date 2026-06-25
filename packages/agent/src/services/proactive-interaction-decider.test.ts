@@ -1,3 +1,4 @@
+import { createMockRuntime } from "@elizaos/core/testing";
 import type {
   IAgentRuntime,
   ShortcutFiredPayload,
@@ -298,7 +299,7 @@ describe("decideProactiveComment — new interaction types", () => {
 describe("registerProactiveInteractionDecider delivery routing", () => {
   it("suppresses comments while a foreground chat turn is active", async () => {
     const handlers = new Map<EventType, (payload: unknown) => Promise<void>>();
-    const runtime = {
+    const runtime = createMockRuntime({
       getSetting: () => "chatty",
       registerEvent: vi.fn((event: EventType, handler) => {
         handlers.set(event, handler as (payload: unknown) => Promise<void>);
@@ -309,7 +310,7 @@ describe("registerProactiveInteractionDecider delivery routing", () => {
           delivery: "chat",
         }),
       ),
-    } as unknown as IAgentRuntime;
+    });
     const route = vi.fn();
 
     registerProactiveInteractionDecider(runtime, {
@@ -328,7 +329,7 @@ describe("registerProactiveInteractionDecider delivery routing", () => {
     vi.useFakeTimers();
     let now = 0;
     const handlers = new Map<EventType, (payload: unknown) => Promise<void>>();
-    const runtime = {
+    const runtime = createMockRuntime({
       getSetting: () => "chatty",
       registerEvent: vi.fn((event: EventType, handler) => {
         handlers.set(event, handler as (payload: unknown) => Promise<void>);
@@ -340,7 +341,7 @@ describe("registerProactiveInteractionDecider delivery routing", () => {
           title: "View suggestion",
         }),
       ),
-    } as unknown as IAgentRuntime;
+    });
     const route = vi.fn();
     const notify = vi.fn();
 
