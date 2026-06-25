@@ -448,6 +448,8 @@ export const __loadAppRoutePluginFromSpecifierForTest =
 
 const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
 const WALLET_ROUTE_PLUGIN_ID = "@elizaos/plugin-wallet:routes";
+const AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID =
+  "@elizaos/plugin-agent-orchestrator:routes";
 
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
@@ -558,6 +560,20 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
         loadAppRoutePluginFromSpecifier(
           "@elizaos/plugin-wallet/routes/plugin",
           "walletRoutePlugin",
+        ),
+    });
+  }
+  // plugin-agent-orchestrator has the same load-order hazard for its
+  // `/api/coding-agents/*` and `/api/orchestrator/*` rawPath routes. The main
+  // plugin can be present while its route-loader side effect has not populated
+  // the registry snapshot yet, leaving the desktop widgets with 404 probes.
+  if (!byId.has(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID)) {
+    byId.set(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID, {
+      id: AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID,
+      load: () =>
+        loadAppRoutePluginFromSpecifier(
+          "@elizaos/plugin-agent-orchestrator/setup-routes",
+          "codingAgentRoutePlugin",
         ),
     });
   }
@@ -1192,6 +1208,17 @@ async function warmupEmbeddingModelImpl(
   }
 }
 
+function isExplicitDesktopCloudOnlyRuntime(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const runtimeMode = env.ELIZA_DESKTOP_RUNTIME_MODE?.trim().toLowerCase();
+  return (
+    runtimeMode === "cloud" ||
+    runtimeMode === "elizacloud" ||
+    isTruthyEnvValue(env.ELIZA_DESKTOP_CLOUD_ONLY)
+  );
+}
+
 /**
  * Warm local voice models (Whisper STT + Kokoro TTS) in the background AFTER
  * the runtime is ready, by firing one tiny useModel request at each. Voice
@@ -1205,6 +1232,7 @@ async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
     !shouldWarmupVoice({
       mobile: isMobilePlatform(),
       skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
+      cloudOnly: isExplicitDesktopCloudOnlyRuntime(),
       hotReload: isTruthyEnvValue(process.env.ELIZA_DEV_IS_HOT_RELOAD),
     })
   ) {

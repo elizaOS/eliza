@@ -33,9 +33,15 @@ const HIDDEN_SPRINGBOARD_VIEW_IDS = new Set([
   "character",
   "character-select",
   "voice",
+  "background",
 ]);
 
-const HIDDEN_SPRINGBOARD_PATHS = new Set(["/chat", "/views", "/apps"]);
+const HIDDEN_SPRINGBOARD_PATHS = new Set([
+  "/chat",
+  "/views",
+  "/apps",
+  "/background",
+]);
 
 const SPRINGBOARD_SYSTEM_ENTRY_IDS = new Set([
   "settings",
@@ -55,7 +61,6 @@ const SPRINGBOARD_SYSTEM_ENTRY_IDS = new Set([
   "runtime",
   "database",
   "logs",
-  "background",
   "stream",
   "desktop",
 ]);

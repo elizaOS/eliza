@@ -4,12 +4,98 @@
 // controls: the pull-up chat (open on send / collapse on Escape / collapse on
 // click-out) and the attach picker. Keyless against the stub.
 
+import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+
+const SCROLL_CONVERSATION_ID = "chat-overlay-scroll-conversation";
+
+async function installScrollableConversationRoutes(page: Page): Promise<void> {
+  const conversation = {
+    id: SCROLL_CONVERSATION_ID,
+    roomId: "chat-overlay-scroll-room",
+    title: "Scroll regression",
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const messages = Array.from({ length: 34 }, (_, index) => {
+    const turn = index + 1;
+    const role = index % 2 === 0 ? "user" : "assistant";
+    return {
+      id: `scroll-message-${turn}`,
+      role,
+      text:
+        `scroll fixture message ${String(turn).padStart(2, "0")} ` +
+        "with enough text to make the transcript overflow inside the sheet.",
+      timestamp: Date.now() - (34 - index) * 1000,
+    };
+  });
+
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ conversations: [conversation] }),
+      });
+      return;
+    }
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ conversation }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(
+    `**/api/conversations/${SCROLL_CONVERSATION_ID}`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ conversation }),
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.route(
+    `**/api/conversations/${SCROLL_CONVERSATION_ID}/messages`,
+    async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ messages }),
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.route(
+    `**/api/conversations/${SCROLL_CONVERSATION_ID}/greeting**`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: null }),
+      });
+    },
+  );
+}
 
 test.beforeEach(async ({ page }) => {
   // Opt out of the once-ever first-run tour so its spotlight doesn't pop over
@@ -108,4 +194,46 @@ test("chat overlay: transcript text is selectable and the old transcribe toggle 
     return selection?.toString() ?? "";
   });
   expect(selectedText.trim().length).toBeGreaterThan(0);
+});
+
+test("chat overlay: long transcript scrolls inside the conversation log", async ({
+  page,
+}) => {
+  await installScrollableConversationRoutes(page);
+  await openAppPath(page, "/chat");
+  const overlay = page.getByTestId("continuous-chat-overlay");
+  await expect(overlay).toBeVisible({ timeout: 60_000 });
+
+  await page.getByTestId("chat-composer-textarea").focus();
+  await expect(overlay).toHaveAttribute("data-open", "true", {
+    timeout: 15_000,
+  });
+
+  const thread = page.locator("#continuous-thread");
+  await expect(thread).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("scroll fixture message 34")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  const metrics = await thread.evaluate((node) => ({
+    clientHeight: node.clientHeight,
+    scrollHeight: node.scrollHeight,
+    scrollTop: node.scrollTop,
+  }));
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight + 120);
+
+  await thread.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  await expect(page.getByText("scroll fixture message 01")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  await thread.hover();
+  await page.mouse.wheel(0, 700);
+  await expect
+    .poll(() => thread.evaluate((node) => node.scrollTop), {
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(0);
 });

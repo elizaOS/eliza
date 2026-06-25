@@ -28,4 +28,10 @@ describe("CORE_PLUGINS", () => {
       "@elizaos/plugin-personal-assistant",
     );
   });
+
+  it("keeps the developer simple-views QA plugin optional", () => {
+    expect(CORE_PLUGINS).not.toContain("@elizaos/plugin-simple-views");
+    expect(DEFERRED_CORE_PLUGINS).not.toContain("@elizaos/plugin-simple-views");
+    expect(OPTIONAL_CORE_PLUGINS).toContain("@elizaos/plugin-simple-views");
+  });
 });

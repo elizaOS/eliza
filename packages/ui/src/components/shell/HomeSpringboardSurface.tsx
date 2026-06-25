@@ -17,7 +17,10 @@ const RAIL_FLICK_ANGLE_RATIO = 1.25;
 interface FlickState {
   startX: number;
   startY: number;
+  pointerId: number;
   tracking: boolean;
+  captured: boolean;
+  axis: "pending" | "horizontal" | "vertical";
 }
 
 export interface HomeSpringboardSurfaceProps {
@@ -55,13 +58,23 @@ export function HomeSpringboardSurface({
   const homeFlick = React.useRef<FlickState>({
     startX: 0,
     startY: 0,
+    pointerId: -1,
     tracking: false,
+    captured: false,
+    axis: "pending",
   });
   const springboardFlick = React.useRef<FlickState>({
     startX: 0,
     startY: 0,
+    pointerId: -1,
     tracking: false,
+    captured: false,
+    axis: "pending",
   });
+  const surfaceRef = React.useRef<HTMLElement | null>(null);
+  const [railDragOffset, setRailDragOffset] = React.useState<number | null>(
+    null,
+  );
   // A committed flick must swallow the click that the browser synthesizes from
   // the same press, so the flick doesn't also tap-launch the tile underneath.
   const suppressHomeClickRef = React.useRef(false);
@@ -76,38 +89,88 @@ export function HomeSpringboardSurface({
     suppress: React.RefObject<boolean>,
     direction: "left" | "right",
     onCommit: () => void,
+    canStart: () => boolean,
   ) => {
     const committed = (dx: number, dy: number) =>
       Math.abs(dx) > Math.abs(dy) * RAIL_FLICK_ANGLE_RATIO &&
       (direction === "left"
         ? dx < -RAIL_FLICK_THRESHOLD
         : dx > RAIL_FLICK_THRESHOLD);
+    const clampOffset = (dx: number) => {
+      const width =
+        surfaceRef.current?.clientWidth ||
+        (typeof window !== "undefined" ? window.innerWidth : 1);
+      const max = Math.max(1, width);
+      return direction === "left"
+        ? Math.max(-max, Math.min(0, dx))
+        : Math.min(max, Math.max(0, dx));
+    };
+    const stopTracking = () => {
+      flick.current.tracking = false;
+      flick.current.captured = false;
+      flick.current.axis = "pending";
+      flick.current.pointerId = -1;
+      setRailDragOffset(null);
+    };
     return {
       onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
-        if (!event.isPrimary) return;
+        if (event.isPrimary === false || !canStart()) return;
         flick.current = {
           startX: event.clientX,
           startY: event.clientY,
+          pointerId: event.pointerId,
           tracking: true,
+          captured: false,
+          axis: "pending",
         };
+      },
+      onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
+        const state = flick.current;
+        if (!state.tracking || state.pointerId !== event.pointerId) return;
+
+        const dx = event.clientX - state.startX;
+        const dy = event.clientY - state.startY;
+        if (state.axis === "pending") {
+          const travel = Math.hypot(dx, dy);
+          if (travel < 6) return;
+          state.axis =
+            Math.abs(dx) > Math.abs(dy) * RAIL_FLICK_ANGLE_RATIO
+              ? "horizontal"
+              : "vertical";
+        }
+        if (state.axis !== "horizontal") return;
+        const offset = clampOffset(dx);
+        if (offset === 0) return;
+        if (!state.captured) {
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          state.captured = true;
+        }
+        setRailDragOffset(offset);
       },
       onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => {
         const state = flick.current;
-        if (!state.tracking) return;
-        state.tracking = false;
-        if (
-          !committed(event.clientX - state.startX, event.clientY - state.startY)
-        ) {
-          return;
+        if (!state.tracking || state.pointerId !== event.pointerId) return;
+        if (state.captured) {
+          event.currentTarget.releasePointerCapture?.(event.pointerId);
         }
-        suppress.current = true;
-        onCommit();
-        window.setTimeout(() => {
-          suppress.current = false;
-        }, 0);
+        if (
+          committed(event.clientX - state.startX, event.clientY - state.startY)
+        ) {
+          suppress.current = true;
+          onCommit();
+          window.setTimeout(() => {
+            suppress.current = false;
+          }, 0);
+        }
+        stopTracking();
       },
-      onPointerCancel: () => {
-        flick.current.tracking = false;
+      onPointerCancel: (event: React.PointerEvent<HTMLDivElement>) => {
+        if (flick.current.pointerId === event.pointerId) {
+          if (flick.current.captured) {
+            event.currentTarget.releasePointerCapture?.(event.pointerId);
+          }
+          stopTracking();
+        }
       },
       onClickCapture: (event: React.MouseEvent<HTMLDivElement>) => {
         if (!suppress.current) return;
@@ -123,6 +186,7 @@ export function HomeSpringboardSurface({
     suppressHomeClickRef,
     "left",
     goSpringboard,
+    () => page === "home",
   );
   const springboardHandlers = makeFlickHandlers(
     springboardFlick,
@@ -135,14 +199,20 @@ export function HomeSpringboardSurface({
       // hatch out of jiggle mode (the inner pager is disabled then).
       if (springboardPage === 0 || springboardEditing) goHome();
     },
+    () =>
+      page === "springboard" && (springboardPage === 0 || springboardEditing),
   );
 
   const railStyle = React.useMemo<React.CSSProperties>(
     () => ({
       transform:
-        page === "springboard" ? "translate3d(-50%,0,0)" : "translate3d(0,0,0)",
+        railDragOffset == null
+          ? page === "springboard"
+            ? "translate3d(-50%,0,0)"
+            : "translate3d(0,0,0)"
+          : `translate3d(calc(${page === "springboard" ? "-50%" : "0%"} + ${railDragOffset}px),0,0)`,
     }),
-    [page],
+    [page, railDragOffset],
   );
 
   // ONE indicator for the whole launcher: a home dot followed by one dot per
@@ -162,6 +232,7 @@ export function HomeSpringboardSurface({
 
   return (
     <section
+      ref={surfaceRef}
       data-testid="home-springboard-surface"
       data-page={page}
       // `select-none`: this is a swipeable launcher (home ↔ springboard), so a
@@ -176,8 +247,10 @@ export function HomeSpringboardSurface({
       <div
         data-testid="home-springboard-rail"
         className={cn(
-          "absolute inset-0 flex w-[200%]",
-          "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+          "absolute inset-0 flex w-[200%] will-change-transform",
+          railDragOffset == null
+            ? "transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"
+            : "transition-none",
         )}
         style={railStyle}
       >
@@ -191,6 +264,7 @@ export function HomeSpringboardSurface({
           // instead of `pointerup` — the flick silently never commits.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"
           onPointerDown={homeHandlers.onPointerDown}
+          onPointerMove={homeHandlers.onPointerMove}
           onPointerUp={homeHandlers.onPointerUp}
           onPointerCancel={homeHandlers.onPointerCancel}
           onClickCapture={homeHandlers.onClickCapture}
@@ -204,6 +278,7 @@ export function HomeSpringboardSurface({
           // the browser, horizontal flicks (right → back home) are ours.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"
           onPointerDown={springboardHandlers.onPointerDown}
+          onPointerMove={springboardHandlers.onPointerMove}
           onPointerUp={springboardHandlers.onPointerUp}
           onPointerCancel={springboardHandlers.onPointerCancel}
           onClickCapture={springboardHandlers.onClickCapture}

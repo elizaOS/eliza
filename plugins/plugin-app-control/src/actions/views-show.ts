@@ -48,6 +48,10 @@ const FILLER_WORDS = new Set([
 	"an",
 ]);
 
+const DOCUMENT_SURFACE_WORDS =
+	/\b(?:documents?|docs?|files?|knowledge|uploads?|retrieval|papers?)\b/i;
+const NOTES_SURFACE_WORD = /\bnotes?\b/i;
+
 // Match a show-verb on WORD BOUNDARIES at the earliest position in the text.
 // Anchoring with \b stops the bare verb "view" from firing inside words like
 // "overview"/"preview"/"review"/"interview" (which an unanchored indexOf scan
@@ -60,6 +64,10 @@ const SHOW_VERB_PATTERN = new RegExp(
 		.join("|")})\\b`,
 	"i",
 );
+
+export function isStandaloneNotesSurfaceRequest(text: string): boolean {
+	return NOTES_SURFACE_WORD.test(text) && !DOCUMENT_SURFACE_WORDS.test(text);
+}
 
 function extractViewTarget(
 	message: Memory | undefined,
@@ -166,7 +174,7 @@ const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 		viewId: "todos",
 	},
 	{
-		re: /\b(my (documents?|files?|notes?|papers?)|my docs|pull up (the |my )?(documents?|files?|notes?))\b/i,
+		re: /\b(my (documents?|files?|papers?)|my docs|pull up (the |my )?(documents?|files?))\b/i,
 		viewId: "documents",
 	},
 	{
@@ -292,6 +300,17 @@ function resolveView(
 	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
 }
 
+function resolveRegisteredNotesView(
+	views: readonly ViewSummary[],
+):
+	| { kind: "match"; view: ViewSummary }
+	| { kind: "ambiguous"; candidates: ViewSummary[] }
+	| { kind: "none" } {
+	const resolution = resolveView("notes", views);
+	if (resolution.kind !== "match") return resolution;
+	return resolution.view.id === "documents" ? { kind: "none" } : resolution;
+}
+
 interface NavigateResult {
 	ok: boolean;
 	text: string;
@@ -376,6 +395,14 @@ export async function runViewsShow({
 
 	const views = await client.listViews({ viewType });
 	let resolution = resolveView(target, views);
+	if (
+		isStandaloneNotesSurfaceRequest(messageText) &&
+		resolution.kind === "match" &&
+		resolution.view.id === "documents"
+	) {
+		target = "notes";
+		resolution = resolveRegisteredNotesView(views);
+	}
 
 	// The user's own words are authoritative: when the message names a known
 	// domain surface, prefer that deterministic intent view over a (possibly

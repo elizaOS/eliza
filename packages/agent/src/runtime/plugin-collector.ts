@@ -288,6 +288,17 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   // Enable via ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   streaming: "@elizaos/plugin-streaming",
   form: "@elizaos/plugin-form",
+  // Developer QA Notes + Simple Calendar views. Keep the production
+  // @elizaos/plugin-calendar mapping separate; this fixture owns /notes and
+  // /simple-calendar only.
+  notes: "@elizaos/plugin-simple-views",
+  "simple-calendar": "@elizaos/plugin-simple-views",
+  simpleCalendar: "@elizaos/plugin-simple-views",
+  "simple-views": "@elizaos/plugin-simple-views",
+  simpleViews: "@elizaos/plugin-simple-views",
+  simple_views: "@elizaos/plugin-simple-views",
+  "sticky-notes": "@elizaos/plugin-simple-views",
+  stickyNotes: "@elizaos/plugin-simple-views",
   // Steward wallet plugin — short ID used by auto-enable
   "stwd-eliza-plugin": "@stwd/eliza-plugin",
 };

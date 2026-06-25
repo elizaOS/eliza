@@ -13,7 +13,19 @@ const groundedActionReply = path.join(
   "grounded-action-reply.ts",
 );
 const pluginGoogleSrc = path.join(elizaRoot, "plugins", "plugin-google", "src");
+const pluginSqlSrc = path.join(elizaRoot, "plugins", "plugin-sql", "src");
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
+const coreSrc = path.join(elizaRoot, "packages", "core", "src");
+const loggerSrc = path.join(elizaRoot, "packages", "logger", "src");
+const tuiSrc = path.join(elizaRoot, "packages", "tui", "src");
+const appCoreNativeLibraryPolicy = path.join(
+  elizaRoot,
+  "packages",
+  "app-core",
+  "src",
+  "platform",
+  "native-library-policy.ts",
+);
 
 /**
  * Unit-test config. UI / service suites that need inlined core/agent/ui or
@@ -32,6 +44,7 @@ export default defineConfig({
       "dist/**",
       "**/*.e2e.test.{ts,tsx}",
       "**/*.real.test.{ts,tsx}",
+      "**/*.real-*.test.{ts,tsx}",
       "**/*.live.test.{ts,tsx}",
       // Integration specs load @elizaos/agent, which (dynamically) pulls the full
       // connector plugin graph. Those connector packages aren't built in the unit
@@ -61,8 +74,20 @@ export default defineConfig({
         replacement: path.join(pluginGoogleSrc, "$1"),
       },
       {
+        find: /^@elizaos\/plugin-sql$/,
+        replacement: path.join(pluginSqlSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-sql\/(.+)$/,
+        replacement: path.join(pluginSqlSrc, "$1"),
+      },
+      {
         find: /^@elizaos\/agent$/,
         replacement: groundedActionReply,
+      },
+      {
+        find: /^@elizaos\/app-core\/platform\/native-library-policy$/,
+        replacement: appCoreNativeLibraryPolicy,
       },
       {
         find: /^@elizaos\/ui$/,
@@ -71,6 +96,30 @@ export default defineConfig({
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.join(coreSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/node$/,
+        replacement: path.join(coreSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/(.+)$/,
+        replacement: path.join(coreSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/logger$/,
+        replacement: path.join(loggerSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: path.join(tuiSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui\/(.+)$/,
+        replacement: path.join(tuiSrc, "$1"),
       },
     ],
   },

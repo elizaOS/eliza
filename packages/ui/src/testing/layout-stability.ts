@@ -5,7 +5,8 @@
  *  1. Layout shift — content jumps/reflows after paint (the ranked widget list
  *     reordering, a card popping in and pushing others down). Quantified the
  *     same way Chrome computes CLS: the sum of `layout-shift` PerformanceEntry
- *     values that were NOT caused by recent user input.
+ *     values that were NOT caused by recent user input or an explicitly marked
+ *     transient motion surface.
  *  2. Opacity flash — an element fades out and back (or in then out), e.g. an
  *     animation that re-triggers on re-render. Detected from a time series of
  *     sampled opacity.
@@ -22,18 +23,30 @@ export interface LayoutShiftSample {
   value: number;
   /** True if a user interaction happened just before — excluded from CLS. */
   hadRecentInput: boolean;
+  /**
+   * True when every attributed source belongs to an explicitly marked transient
+   * motion surface. These are controlled overlay/sheet animations rather than
+   * page reflow.
+   */
+  intentional?: boolean;
 }
 
 /**
  * Cumulative Layout Shift: the sum of shift values not attributable to recent
- * user input (matching the Web Vitals CLS definition). 0 = perfectly stable.
+ * user input or an explicitly marked transient motion surface. 0 = perfectly
+ * stable.
  */
 export function cumulativeLayoutShift(
   samples: readonly LayoutShiftSample[],
 ): number {
   let cls = 0;
   for (const s of samples) {
-    if (!s.hadRecentInput && Number.isFinite(s.value) && s.value > 0) {
+    if (
+      !s.hadRecentInput &&
+      !s.intentional &&
+      Number.isFinite(s.value) &&
+      s.value > 0
+    ) {
       cls += s.value;
     }
   }
@@ -109,7 +122,7 @@ export function summarizeStability(
 ): StabilitySummary {
   const cls = cumulativeLayoutShift(shifts);
   const shiftCount = shifts.filter(
-    (s) => !s.hadRecentInput && s.value > 0,
+    (s) => !s.hadRecentInput && !s.intentional && s.value > 0,
   ).length;
   const flashed = detectOpacityFlash(opacity, budget.flashMinDelta ?? 0.2);
   return {
@@ -138,6 +151,26 @@ export const LAYOUT_SHIFT_OBSERVER_INIT = `
         w.__ELIZA_LAYOUT_SHIFTS__.push({
           value: entry.value,
           hadRecentInput: entry.hadRecentInput === true,
+          intentional: (() => {
+            const sources = Array.isArray(entry.sources) ? entry.sources : [];
+            let sawIntentional = false;
+            for (const source of sources) {
+              const node = source?.node;
+              const element =
+                node instanceof Element ? node : (node?.parentElement ?? null);
+              if (!element) continue;
+              if (
+                element.closest(
+                  '[data-eliza-layout-shift-intent="transient"]',
+                )
+              ) {
+                sawIntentional = true;
+                continue;
+              }
+              return false;
+            }
+            return sawIntentional;
+          })(),
         });
       }
     });

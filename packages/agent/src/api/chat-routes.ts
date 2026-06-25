@@ -756,6 +756,53 @@ function normalizeActionCallbackText(text: string): string {
   return text.trim();
 }
 
+function isInternalStructuredStreamPayload(value: unknown): boolean {
+  const record = asRecord(value);
+  if (!record) return false;
+
+  const type = typeof record.type === "string" ? record.type : "";
+  if (
+    type === "tool_call" ||
+    type === "tool_result" ||
+    type === "tool_error"
+  ) {
+    return true;
+  }
+
+  if (type === "evaluation" && asRecord(record.evaluation)) {
+    return true;
+  }
+
+  if (asRecord(record.toolCall) || asRecord(record.toolResult)) {
+    return true;
+  }
+
+  const contextEvent = asRecord(record.contextEvent);
+  if (contextEvent) {
+    const contextType =
+      typeof contextEvent.type === "string" ? contextEvent.type : "";
+    if (
+      contextType === "tool" ||
+      contextType === "tool_result" ||
+      contextType === "tool_error"
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isInternalStructuredStreamText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return false;
+  try {
+    return isInternalStructuredStreamPayload(JSON.parse(trimmed));
+  } catch {
+    return false;
+  }
+}
+
 function getLatestVisibleResponseMessageText(
   responseMessages:
     | Array<{
@@ -2429,13 +2476,16 @@ export async function generateChatResponse(
                 }
 
                 const chunk = extractCompatTextContent(content);
+                const visibleChunk = isInternalStructuredStreamText(chunk)
+                  ? ""
+                  : chunk;
                 recordActionCallback(
                   extractCallbackActionTag(content),
-                  Boolean(chunk),
+                  Boolean(visibleChunk),
                 );
-                if (!chunk) return [];
+                if (!visibleChunk) return [];
                 if (!claimStreamSource("callback")) return [];
-                applyCallbackTextUpdate(content, chunk);
+                applyCallbackTextUpdate(content, visibleChunk);
                 return [];
               },
               {
@@ -2449,7 +2499,8 @@ export async function generateChatResponse(
                           generationTimeoutMs,
                         );
                       }
-                      if (!chunk) return;
+                      if (!chunk || isInternalStructuredStreamText(chunk))
+                        return;
                       if (!claimStreamSource("onStreamChunk")) return;
                       appendIncomingText(chunk);
                     }

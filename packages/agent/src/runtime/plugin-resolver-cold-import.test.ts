@@ -108,6 +108,51 @@ async function createFixture(
 }
 
 describe("importPluginModuleFromPath cold-import-in-place fast-path (F4)", () => {
+  it("prefers eliza-source exports over stale dist on workspace packages", async () => {
+    const name = "cold-eliza-source-fixture";
+    const installPath = path.join(tmpDir, sanitize(name));
+    await fsp.mkdir(path.join(installPath, "src"), { recursive: true });
+    await fsp.mkdir(path.join(installPath, "dist"), { recursive: true });
+    await fsp.writeFile(
+      path.join(installPath, "package.json"),
+      JSON.stringify(
+        {
+          name,
+          type: "module",
+          exports: {
+            "./plugin": {
+              "eliza-source": {
+                import: "./src/plugin.ts",
+                default: "./src/plugin.ts",
+              },
+              import: "./dist/plugin.mjs",
+              default: "./dist/plugin.mjs",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    await fsp.writeFile(
+      path.join(installPath, "src", "plugin.ts"),
+      "export const marker = 'source-plugin';\n",
+    );
+    await fsp.writeFile(
+      path.join(installPath, "dist", "plugin.mjs"),
+      "export const marker = 'stale-dist-plugin';\n",
+    );
+
+    const mod = (await importPluginModuleFromPath(
+      installPath,
+      name,
+      "./plugin",
+    )) as { marker: string };
+
+    expect(mod.marker).toBe("source-plugin");
+    expect(await stagingHappened(name)).toBe(false);
+  });
+
   it("cold fast-path: dist + first import loads in place WITHOUT staging", async () => {
     const name = "cold-fastpath-fixture-a";
     const installPath = await createFixture(name, "cold-a", true);

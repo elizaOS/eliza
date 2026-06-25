@@ -34,6 +34,9 @@ import {
 
 /** Web Vitals "good" CLS budget: above this, a window of shifts is flagged. */
 export const DEFAULT_CLS_BUDGET = 0.1;
+export const LAYOUT_SHIFT_INTENT_ATTR = "data-eliza-layout-shift-intent";
+export const LAYOUT_SHIFT_INTENT_TRANSIENT = "transient";
+const LAYOUT_SHIFT_INTENT_SELECTOR = `[${LAYOUT_SHIFT_INTENT_ATTR}="${LAYOUT_SHIFT_INTENT_TRANSIENT}"]`;
 
 /** Telemetry payload emitted on the shared RENDER_TELEMETRY_EVENT channel. */
 export interface LayoutShiftTelemetryEvent {
@@ -68,6 +71,7 @@ export interface LayoutShiftMonitorOptions {
 type LayoutShiftEntry = PerformanceEntry & {
   value: number;
   hadRecentInput: boolean;
+  sources?: Array<{ node?: Node | null }>;
 };
 
 type RenderTelemetryGlobal = typeof globalThis & {
@@ -90,6 +94,26 @@ function emitLayoutShift(event: LayoutShiftTelemetryEvent): void {
   } else {
     console.info(message, event);
   }
+}
+
+function hasTransientLayoutShiftIntent(entry: LayoutShiftEntry): boolean {
+  const sources = Array.isArray(entry.sources) ? entry.sources : [];
+  let sawIntentionalSource = false;
+  for (const source of sources) {
+    const node = source.node;
+    const element =
+      node instanceof Element ? node : (node?.parentElement ?? null);
+    // Browser pseudo-element sources can omit a DOM parent. Do not let an
+    // unattributed pseudo-source disqualify a shift whose concrete sources are
+    // all inside an intentional-motion surface.
+    if (!element) continue;
+    if (element.closest(LAYOUT_SHIFT_INTENT_SELECTOR)) {
+      sawIntentionalSource = true;
+      continue;
+    }
+    return false;
+  }
+  return sawIntentionalSource;
 }
 
 /**
@@ -150,6 +174,7 @@ export function startLayoutShiftMonitor(
         pending.push({
           value: entry.value,
           hadRecentInput: entry.hadRecentInput === true,
+          intentional: hasTransientLayoutShiftIntent(entry),
         });
         if (!entry.hadRecentInput && entry.value > largest) {
           largest = entry.value;

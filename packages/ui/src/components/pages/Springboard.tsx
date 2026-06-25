@@ -13,7 +13,7 @@
  */
 
 import { Pencil, Trash2 } from "lucide-react";
-import { motion, Reorder } from "motion/react";
+import { Reorder } from "motion/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
@@ -81,6 +81,17 @@ const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_SLOP = 10;
 /** Horizontal drag distance (px) needed to flip to the adjacent page. */
 const SWIPE_THRESHOLD = 60;
+/** Horizontal travel must clearly beat vertical travel before paging starts. */
+const SWIPE_ANGLE_RATIO = 1.2;
+
+interface PageDragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  tracking: boolean;
+  captured: boolean;
+  axis: "pending" | "horizontal" | "vertical";
+}
 
 // Memoized so a layout reconcile (install/uninstall/sort) re-renders only the
 // tiles whose props actually changed, not all ~20 on a page.
@@ -144,12 +155,9 @@ const IconTile = memo(function IconTile({
           // ghost-fires edit mode after the user finishes scrolling.
           onPointerCancel={clear}
           className={cn(
-            // ViewTileImage handles image-vs-glyph internally, so the button is
-            // one constant surface. The hero image (object-cover) covers the
-            // tile when it loads; this dark neutral fill + white glyph is the
-            // fallback so a tile reads as a real app icon (not a bare glyph
-            // floating on the background) even before/without the image. Filter
-            // effects (#9281) and focus rings (#9292) were removed on develop.
+            // ViewTileImage renders this surface as an app icon, not as a
+            // cropped catalog preview. The button stays one constant hit target
+            // and owns hover/focus chrome; the inner visual owns color/glyph.
             "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
             editing && "animate-pulse",
           )}
@@ -375,6 +383,16 @@ export function Springboard({
   );
   // O(1) dock-membership check inside the tile map instead of Array.includes.
   const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
+  const pagerRef = useRef<HTMLDivElement | null>(null);
+  const pageDrag = useRef<PageDragState>({
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    tracking: false,
+    captured: false,
+    axis: "pending",
+  });
+  const [pageDragOffset, setPageDragOffset] = useState<number | null>(null);
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
@@ -418,6 +436,86 @@ export function Springboard({
     ],
   );
 
+  const resetPageDrag = useCallback(() => {
+    pageDrag.current.tracking = false;
+    pageDrag.current.captured = false;
+    pageDrag.current.axis = "pending";
+    pageDrag.current.pointerId = -1;
+    setPageDragOffset(null);
+  }, []);
+
+  const getPageWidth = useCallback(
+    () =>
+      pagerRef.current?.clientWidth ||
+      (typeof window !== "undefined" ? window.innerWidth : 1),
+    [],
+  );
+
+  const clampPageDragOffset = useCallback(
+    (dx: number) => {
+      const width = Math.max(1, getPageWidth());
+      if (dx < 0 && clampedPage < pages.length - 1) {
+        return Math.max(-width, dx);
+      }
+      if (
+        dx > 0 &&
+        (clampedPage > 0 || (showPageDots && onEdgeSwipeRight != null))
+      ) {
+        return Math.min(width, dx);
+      }
+      return 0;
+    },
+    [clampedPage, getPageWidth, onEdgeSwipeRight, pages.length, showPageDots],
+  );
+
+  const commitPageDrag = useCallback(
+    (dx: number, dy: number) => {
+      if (
+        Math.abs(dx) <= Math.abs(dy) * SWIPE_ANGLE_RATIO ||
+        Math.abs(dx) <= SWIPE_THRESHOLD
+      ) {
+        return;
+      }
+
+      if (dx < 0 && clampedPage < pages.length - 1) {
+        const nextPage = clampedPage + 1;
+        setActivePage(nextPage);
+        emitViewInteraction({
+          source: "springboard",
+          action: "page-swipe",
+          count: nextPage,
+        });
+        return;
+      }
+
+      if (dx > 0 && clampedPage > 0) {
+        const nextPage = clampedPage - 1;
+        setActivePage(nextPage);
+        emitViewInteraction({
+          source: "springboard",
+          action: "page-swipe",
+          count: nextPage,
+        });
+        return;
+      }
+
+      if (dx > 0 && showPageDots) {
+        onEdgeSwipeRight?.();
+      }
+    },
+    [clampedPage, onEdgeSwipeRight, pages.length, setActivePage, showPageDots],
+  );
+
+  const pageRailStyle = useMemo<React.CSSProperties>(() => {
+    const base = -clampedPage * 100;
+    return {
+      transform:
+        pageDragOffset == null
+          ? `translate3d(${base}%,0,0)`
+          : `translate3d(calc(${base}% + ${pageDragOffset}px),0,0)`,
+    };
+  }, [clampedPage, pageDragOffset]);
+
   return (
     <div
       className={cn("flex min-h-0 flex-1 flex-col", className)}
@@ -438,82 +536,154 @@ export function Springboard({
       ) : null}
 
       {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
-          never fights the in-tile drag-to-reorder gesture. */}
+          never fights the in-tile drag-to-reorder gesture. A real rail is
+          rendered so adjacent pages move with the finger, instead of swapping
+          page contents after release. */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        <motion.div
-          // A stable identity (NOT `key={clampedPage}`): keying on the page
-          // index forced a full unmount/remount of the page — Reorder.Group and
-          // every tile — on each swipe, which janks the paging. The page content
-          // already swaps via `pages[clampedPage]`, and `dragSnapToOrigin`
-          // animates the drag back to origin, so the swap is smooth without a
-          // remount (#9304).
-          key="springboard-page"
-          drag={editing ? false : "x"}
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.2}
-          dragSnapToOrigin
-          onDragEnd={(_event, info) => {
-            if (editing) return;
-            if (
-              info.offset.x < -SWIPE_THRESHOLD &&
-              clampedPage < pages.length - 1
-            ) {
-              setActivePage(clampedPage + 1);
-              emitViewInteraction({
-                source: "springboard",
-                action: "page-swipe",
-                count: clampedPage + 1,
-              });
-            } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
-              setActivePage(clampedPage - 1);
-              emitViewInteraction({
-                source: "springboard",
-                action: "page-swipe",
-                count: clampedPage - 1,
-              });
-            } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage === 0) {
-              onEdgeSwipeRight?.();
+        <div
+          ref={pagerRef}
+          data-testid="springboard-page-window"
+          className="relative flex min-h-0 flex-1 overflow-hidden touch-pan-y"
+          onPointerDown={(event) => {
+            if (editing || pages.length < 2 || event.isPrimary === false) {
+              return;
             }
+            pageDrag.current = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startY: event.clientY,
+              tracking: true,
+              captured: false,
+              axis: "pending",
+            };
           }}
-          className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pt-2 pb-8"
+          onPointerMove={(event) => {
+            const state = pageDrag.current;
+            if (!state.tracking || state.pointerId !== event.pointerId) return;
+
+            const dx = event.clientX - state.startX;
+            const dy = event.clientY - state.startY;
+            if (state.axis === "pending") {
+              const travel = Math.hypot(dx, dy);
+              if (travel < 6) return;
+              state.axis =
+                Math.abs(dx) > Math.abs(dy) * SWIPE_ANGLE_RATIO
+                  ? "horizontal"
+                  : "vertical";
+            }
+            if (state.axis !== "horizontal") return;
+
+            const offset = clampPageDragOffset(dx);
+            if (offset === 0) return;
+            if (!state.captured) {
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              state.captured = true;
+            }
+            setPageDragOffset(offset);
+          }}
+          onPointerUp={(event) => {
+            const state = pageDrag.current;
+            if (!state.tracking || state.pointerId !== event.pointerId) return;
+            if (state.captured) {
+              event.currentTarget.releasePointerCapture?.(event.pointerId);
+            }
+            commitPageDrag(
+              event.clientX - state.startX,
+              event.clientY - state.startY,
+            );
+            resetPageDrag();
+          }}
+          onPointerCancel={(event) => {
+            if (pageDrag.current.pointerId !== event.pointerId) return;
+            if (pageDrag.current.captured) {
+              event.currentTarget.releasePointerCapture?.(event.pointerId);
+            }
+            resetPageDrag();
+          }}
         >
-          {loading && entries.length === 0 ? (
-            <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
-              {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
-                <div
-                  key={id}
-                  className="flex flex-col items-center gap-1.5 opacity-60"
-                >
-                  <div className="h-16 w-16 rounded-2xl bg-bg-accent/50" />
-                  <div className="h-2.5 w-12 rounded-full bg-bg-accent/50" />
+          <div
+            data-testid="springboard-page-rail"
+            className={cn(
+              "flex h-full min-h-0 w-full will-change-transform",
+              pageDragOffset == null
+                ? "transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"
+                : "transition-none",
+            )}
+            style={pageRailStyle}
+          >
+            {loading && entries.length === 0 ? (
+              <div className="flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
+                <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
+                  {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
+                    <div
+                      key={id}
+                      className="flex flex-col items-center gap-1.5 opacity-60"
+                    >
+                      <div className="h-16 w-16 rounded-2xl bg-bg-accent/50" />
+                      <div className="h-2.5 w-12 rounded-full bg-bg-accent/50" />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <Reorder.Group
-              axis="y"
-              values={pages[clampedPage] ?? []}
-              onReorder={(next) => handleReorder(clampedPage, next as string[])}
-              className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5"
-            >
-              {(pages[clampedPage] ?? []).map((id) => {
-                const entry = byId.get(id);
-                if (!entry) return null;
+              </div>
+            ) : (
+              pages.map((pageIds, pageIndex) => {
+                const active = pageIndex === clampedPage;
                 return (
-                  <Reorder.Item
-                    key={id}
-                    value={id}
-                    drag={editing}
-                    dragListener={editing}
-                    className="flex justify-center"
+                  <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: page index is the persisted page identity.
+                    key={`springboard-page-${pageIndex}`}
+                    data-testid={`springboard-page-${pageIndex}`}
+                    aria-hidden={!active}
+                    inert={!active || undefined}
+                    className={cn(
+                      "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
+                      !active && "pointer-events-none",
+                    )}
                   >
-                    {renderTile(entry, favoriteSet.has(id))}
-                  </Reorder.Item>
+                    {active ? (
+                      <Reorder.Group
+                        axis="y"
+                        values={pageIds}
+                        onReorder={(next) =>
+                          handleReorder(pageIndex, next as string[])
+                        }
+                        className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5"
+                      >
+                        {pageIds.map((id) => {
+                          const entry = byId.get(id);
+                          if (!entry) return null;
+                          return (
+                            <Reorder.Item
+                              key={id}
+                              value={id}
+                              drag={editing}
+                              dragListener={editing}
+                              className="flex justify-center"
+                            >
+                              {renderTile(entry, favoriteSet.has(id))}
+                            </Reorder.Item>
+                          );
+                        })}
+                      </Reorder.Group>
+                    ) : (
+                      <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
+                        {pageIds.map((id) => {
+                          const entry = byId.get(id);
+                          if (!entry) return null;
+                          return (
+                            <div key={id} className="flex justify-center">
+                              {renderTile(entry, favoriteSet.has(id))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
-              })}
-            </Reorder.Group>
-          )}
-        </motion.div>
+              })
+            )}
+          </div>
+        </div>
 
         {/* Page dots — rendered only for STANDALONE usage. When nested in the
             home/springboard rail, `showPageDots` is false and the rail owns the

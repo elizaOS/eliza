@@ -18,6 +18,15 @@ describe("layout-stability tooling — proves the flicker math is real", () => {
       ).toBeCloseTo(0.17);
     });
 
+    it("excludes explicitly intentional transient motion", () => {
+      expect(
+        cumulativeLayoutShift([
+          { value: 0.08, hadRecentInput: false, intentional: true },
+          { value: 0.03, hadRecentInput: false },
+        ]),
+      ).toBeCloseTo(0.03);
+    });
+
     it("is 0 for a perfectly stable view", () => {
       expect(cumulativeLayoutShift([])).toBe(0);
     });
@@ -103,6 +112,20 @@ describe("layout-stability tooling — proves the flicker math is real", () => {
         ],
         { maxCls: 0.1 },
       );
+      expect(v.flagged).toBe(false);
+    });
+
+    it("does not count intentional transient motion as a shift", () => {
+      const v = summarizeStability(
+        [
+          { value: 0.2, hadRecentInput: false, intentional: true },
+          { value: 0.02, hadRecentInput: false },
+        ],
+        [],
+        { maxCls: 0.1 },
+      );
+      expect(v.cls).toBeCloseTo(0.02);
+      expect(v.shiftCount).toBe(1);
       expect(v.flagged).toBe(false);
     });
   });

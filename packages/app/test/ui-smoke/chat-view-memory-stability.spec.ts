@@ -180,7 +180,7 @@ test("chat and routed views keep heap, DOM, and listeners bounded", async ({
   const before = await collectRuntimeMetrics(page);
 
   const prompts = [
-    "show my notes",
+    "show my documents",
     "what's on my calendar",
     "I want to add a new feature to my app",
   ];

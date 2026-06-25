@@ -199,7 +199,8 @@ export function createNavigateViewHandler({
         recordRecentViewId(entry.id);
         openDesktopTab(entry, { pinned: false });
       }
-      const primaryViewId = viewIds[0] ?? detail.viewId ?? null;
+      const primaryViewId =
+        resolvedViewIds[0] ?? viewIds[0] ?? detail.viewId ?? null;
       if (primaryViewId) setActiveDesktopTabId(primaryViewId);
       setViewLayout?.({
         mode: detail.action === "split-view" ? "split" : "tile",

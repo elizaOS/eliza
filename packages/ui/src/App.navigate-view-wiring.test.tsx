@@ -93,13 +93,13 @@ const notesView = {
   viewType: "gui" as const,
 };
 
-const calendarView = {
-  id: "calendar",
-  label: "Calendar",
+const simpleCalendarView = {
+  id: "simple-calendar",
+  label: "Simple Calendar",
   available: true,
   pluginName: "@elizaos/plugin-simple-views",
-  path: "/calendar",
-  bundleUrl: "/api/views/calendar/bundle.js",
+  path: "/simple-calendar",
+  bundleUrl: "/api/views/simple-calendar/bundle.js",
   viewType: "gui" as const,
 };
 
@@ -129,7 +129,7 @@ const mockAvailableViews = [
   viewsManagerView,
   viewsManagerTuiView,
   notesView,
-  calendarView,
+  simpleCalendarView,
   sharedCanvasView,
   documentsView,
 ];
@@ -541,7 +541,7 @@ describe("App navigate-view event wiring", () => {
     navigateView({
       action: "split-view",
       viewId: "notes",
-      views: ["notes", "calendar"],
+      views: ["notes", "simple-calendar"],
       layout: "horizontal",
       placement: "right",
     });
@@ -550,15 +550,15 @@ describe("App navigate-view event wiring", () => {
       expect(getByTestId("view-layout-surface")).toBeTruthy();
     });
     expect(getByTestId("view-layout-pane-notes")).toBeTruthy();
-    expect(getByTestId("view-layout-pane-calendar")).toBeTruthy();
+    expect(getByTestId("view-layout-pane-simple-calendar")).toBeTruthy();
     const loaders = getAllByTestId("dynamic-view-loader");
     expect(
       loaders.map((loader) => loader.getAttribute("data-view-id")),
-    ).toEqual(["notes", "calendar"]);
+    ).toEqual(["notes", "simple-calendar"]);
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(notesView, {
       pinned: false,
     });
-    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(simpleCalendarView, {
       pinned: false,
     });
   });
@@ -572,7 +572,7 @@ describe("App navigate-view event wiring", () => {
     navigateView({
       action: "split-view",
       viewId: "documents",
-      views: ["documents", "calendar"],
+      views: ["documents", "simple-calendar"],
       layout: "horizontal",
     });
 
@@ -584,11 +584,11 @@ describe("App navigate-view event wiring", () => {
       getAllByTestId("dynamic-view-loader").map((loader) =>
         loader.getAttribute("data-view-id"),
       ),
-    ).toEqual(["documents", "calendar"]);
+    ).toEqual(["documents", "simple-calendar"]);
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(documentsView, {
       pinned: false,
     });
-    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(simpleCalendarView, {
       pinned: false,
     });
   });
