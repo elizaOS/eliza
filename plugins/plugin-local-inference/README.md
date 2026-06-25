@@ -154,4 +154,52 @@ benches, and the single-turn headful self-test (`voice-selftest`). Those remain
 runnable, but **new** voice coverage should be authored as a `VoiceScenario` +
 corpus and scored through `e2e-harness.ts`, not as a new bespoke harness.
 
+## Real-weight Kokoro smoke (#9588 loader↔GGUF drift gate)
+
+`scripts/kokoro-real-smoke.ts` loads the fused `libelizainference`, loads the
+**real** published Kokoro GGUF, synthesizes a phrase, and asserts non-empty
+24 kHz PCM whose amplitude envelope looks like speech (envelope-cv ≫ 0.4) rather
+than the flat noise the #9588 dtype/tensor-name bug produced. With an ASR bundle
+staged (`ELIZA_ASR_BUNDLE`) it additionally gates intelligibility by WER.
+
+It exits `0` on pass, `1` on a real failure, and `2` when the lib/model aren't
+staged (so a dev box without them is skipped). Set **`KOKORO_SMOKE_REQUIRE=1`**
+to turn every skip into a hard failure (exit `1`) — that is how the CI gate makes
+a lane that is *supposed* to have staged the assets go RED instead of passing
+silently.
+
+Stage + run locally:
+
+```bash
+# 0. From a fresh checkout, install workspace dependencies first.
+bun install
+bun run --cwd packages/core prebuild
+
+# 1. Build + stage the fused lib with Kokoro folded in.
+node packages/app-core/scripts/stage-desktop-fused-lib.mjs --variant cpu --out /tmp/fused-lib
+
+# 2. Stage the published Kokoro GGUF + a voice pack (af_bella is the fallback voice).
+DIR=/tmp/kokoro-model; mkdir -p "$DIR/voices"
+base="https://huggingface.co/elizaos/eliza-1/resolve/main"
+curl -fSL -o "$DIR/kokoro-82m-v1_0-Q4_K_M.gguf" "$base/bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf?download=true"
+curl -fSL -o "$DIR/voices/af_bella.bin" "$base/bundles/2b/tts/kokoro/voices/af_bella.bin?download=true"
+
+# 3. Run the gate.
+ELIZA_INFERENCE_LIB_DIR=/tmp/fused-lib LD_LIBRARY_PATH=/tmp/fused-lib \
+  ELIZA_KOKORO_MODEL_DIR="$DIR" KOKORO_SMOKE_REQUIRE=1 \
+  bun plugins/plugin-local-inference/scripts/kokoro-real-smoke.ts
+```
+
+CI runs exactly this on Linux via `.github/workflows/kokoro-real-smoke.yml`
+(opt-in: `workflow_dispatch` or a `kokoro-smoke-*` tag).
+
+> **Expected RED until the GGUF is republished.** The published bundle GGUF is
+> still the pre-#9588 all-F32 artifact that loads but synthesizes noise. The
+> converter/loader fix is on `develop` (#9684), but regenerating + republishing
+> the F16 GGUF is a pending ops step (#9588). So this gate fails against the
+> currently-published assets — which is why it is wired to manual/tag dispatch
+> only, not the path-based push auto-trigger. Once the fixed GGUF is republished
+> and a `kokoro-smoke-*` tag run goes green, re-enable the path-scoped `push`
+> trigger (commented in the workflow) to gate future loader↔GGUF drift.
+
 For agent-facing documentation see `CLAUDE.md` / `AGENTS.md` in this directory.
