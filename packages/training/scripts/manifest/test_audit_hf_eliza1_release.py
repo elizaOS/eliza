@@ -362,7 +362,6 @@ def _passing_imagegen_runtime() -> str:
                 "available": True,
                 "supportedModels": [
                     "imagegen-sd-1_5-q5_0",
-                    "imagegen-z-image-turbo-q4_k_m",
                 ],
                 "accelerators": ["cpu", "cuda", "vulkan", "metal"],
             },
@@ -383,10 +382,6 @@ def _passing_imagegen_runtime() -> str:
                     "2b/sd-1.5-Q5_0.gguf": {
                         "status": "pass",
                         "report": "evidence/imagegen/sd15-2b-metal-smoke.json",
-                    },
-                    "9b/z-image-turbo-Q4_K_M.gguf": {
-                        "status": "pass",
-                        "report": "evidence/imagegen/zimage-9b-metal-smoke.json",
                     },
                 },
             },
@@ -765,6 +760,13 @@ def _passing_release_evidence(tier: str) -> str:
 
 
 def _passing_model_manifest(tier: str) -> str:
+    text_base_by_tier = {
+        "2b": "google/gemma-4-E2B",
+        "4b": "google/gemma-4-E4B",
+        "9b": "google/gemma-4-12B",
+        "27b": "google/gemma-4-31B",
+        "27b-256k": "google/gemma-4-31B",
+    }
     files_by_dir: dict[str, list[dict[str, object]]] = {}
     for rel in build_plan()[tier].required_files:
         root = rel.split("/", 1)[0]
@@ -778,19 +780,15 @@ def _passing_model_manifest(tier: str) -> str:
         {
             "tier": tier,
             "lineage": {
-                "text": {"base": f"Qwen/{tier}", "license": "apache-2.0"},
-                "voice": {"base": "Qwen/Qwen3-TTS", "license": "apache-2.0"},
-                "asr": {"base": "ggml-org/Qwen3-ASR-0.6B-GGUF", "license": "apache-2.0"},
+                "text": {"base": text_base_by_tier[tier], "license": "apache-2.0"},
+                "voice": {"base": "Serveurperso/OmniVoice-GGUF", "license": "cc-by-nc-sa-4.0"},
+                "asr": {"base": "elizaos/eliza-1-asr", "license": "apache-2.0"},
                 "vad": {"base": "voice/vad/silero-vad-v5.gguf", "license": "mit"},
                 "imagegen": {
-                    "base": (
-                        "second-state/stable-diffusion-v1-5-GGUF"
-                        if tier in {"2b", "4b"}
-                        else "city96/z-image-turbo-gguf"
-                    ),
+                    "base": "second-state/stable-diffusion-v1-5-GGUF",
                     "license": "model license",
                 },
-                "vision": {"base": "Qwen/Qwen3-VL", "license": "apache-2.0"},
+                "vision": {"base": "elizaos/eliza-1-vision-mmproj", "license": "apache-2.0"},
                 "drafter": {"base": f"eliza-1-{tier}-drafter", "license": "apache-2.0"},
             },
             "files": files_by_dir,
@@ -1048,7 +1046,7 @@ def test_hf_release_audit_blocks_required_file_missing_from_manifest_files() -> 
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "9b manifest files cover required runtime artifacts"
-        and "imagegen/z-image-turbo-Q4_K_M.gguf" in check["detail"]
+        and "imagegen/sd-1.5-Q5_0.gguf" in check["detail"]
         for check in failed
     )
 
@@ -1157,7 +1155,7 @@ def test_hf_release_audit_requires_release_upload_evidence() -> None:
 
 def test_hf_release_audit_requires_imagegen_release_payload_weight() -> None:
     bad_evidence = __import__("json").loads(_passing_release_evidence("9b"))
-    bad_evidence["weights"].remove("imagegen/z-image-turbo-Q4_K_M.gguf")
+    bad_evidence["weights"].remove("imagegen/sd-1.5-Q5_0.gguf")
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
@@ -1168,30 +1166,7 @@ def test_hf_release_audit_requires_imagegen_release_payload_weight() -> None:
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "9b release evidence is publishable"
-        and "weights.imagegen/z-image-turbo-Q4_K_M.gguf: missing" in check["detail"]
-        for check in failed
-    )
-
-
-def test_hf_release_audit_requires_zimage_companion_release_payload_weights() -> None:
-    bad_evidence = __import__("json").loads(_passing_release_evidence("9b"))
-    bad_evidence["weights"].remove("imagegen/vae/ae.safetensors")
-    bad_evidence["weights"].remove(
-        "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-    )
-
-    report = audit_hf_release(
-        fetch_json=_fetcher(),
-        fetch_text=_text_fetcher(release_evidence={"9b": __import__("json").dumps(bad_evidence)}),
-    )
-
-    assert not report.ok
-    failed = [check for check in report.checks if not check["ok"]]
-    assert any(
-        check["name"] == "9b release evidence is publishable"
-        and "weights.imagegen/vae/ae.safetensors: missing" in check["detail"]
-        and "weights.imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf: missing"
-        in check["detail"]
+        and "weights.imagegen/sd-1.5-Q5_0.gguf: missing" in check["detail"]
         for check in failed
     )
 
@@ -1393,18 +1368,18 @@ def test_hf_release_audit_blocks_incomplete_imagegen_runtime_evidence() -> None:
         and "runtime.upstreamCommit: missing" in check["detail"]
         and "runtime.binaryVersion: missing" in check["detail"]
         and "probe.available: False" in check["detail"]
-        and "probe.supportedModels.imagegen-z-image-turbo-q4_k_m: missing" in check["detail"]
+        and "memory.maxVramAuto: False" in check["detail"]
         for check in failed
     )
 
 
 def test_hf_release_audit_blocks_failed_required_imagegen_model_smoke() -> None:
     bad = __import__("json").loads(_passing_imagegen_runtime())
-    bad["smoke"]["models"]["9b/z-image-turbo-Q4_K_M.gguf"] = {
+    bad["smoke"]["models"]["2b/sd-1.5-Q5_0.gguf"] = {
         "status": "fail",
-        "report": "evidence/imagegen/zimage-9b-cpu-smoke.json",
+        "report": "evidence/imagegen/sd15-2b-cpu-smoke.json",
         "error": "get sd version from file failed",
-        "architecture": "lumina2",
+        "architecture": "sd1.5",
     }
 
     report = audit_hf_release(
@@ -1416,7 +1391,7 @@ def test_hf_release_audit_blocks_failed_required_imagegen_model_smoke() -> None:
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "imagegen runtime evidence passed"
-        and "smoke.models.imagegen-z-image-turbo-q4_k_m.status: 'fail'" in check["detail"]
+        and "smoke.models.imagegen-sd-1_5-q5_0.status: 'fail'" in check["detail"]
         and "get sd version from file failed" in check["detail"]
         for check in failed
     )

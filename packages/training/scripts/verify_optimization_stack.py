@@ -13,11 +13,10 @@ Asserts on a staged/published Eliza-1 bundle dir (or the raw
   * The stage sidecar files exist and the recorded SHA matches the
     safetensors blob.
   * ``qjl_config.json`` + ``turboquant.json`` shape against the model arch
-    (``num_hidden_layers``, ``n_full_attention_layers`` — for Qwen3.5 that's
-    6 of 24, NOT 24 of 24).
-  * For hybrid linear-attn models, ``turboquant.linear_attention_layers_skipped``
-    is the complement of ``turboquant.full_attention_layers`` and the union
-    covers every decoder index.
+    (``num_hidden_layers`` plus full/global-attention metadata when present).
+  * For hybrid/windowed-attention models, skipped/local layers and full/global
+    layers are disjoint and cover every decoder index when the sidecar records
+    both lists.
 
 Run on a staged bundle:
     uv run python scripts/verify_optimization_stack.py \\

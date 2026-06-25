@@ -76,16 +76,12 @@ VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.gguf",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
-Z_IMAGE_COMPANION_ARTIFACTS: Final[tuple[str, ...]] = (
-    "imagegen/vae/ae.safetensors",
-    "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-)
 IMAGEGEN_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "2b": ("imagegen/sd-1.5-Q5_0.gguf",),
     "4b": ("imagegen/sd-1.5-Q5_0.gguf",),
-    "9b": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
-    "27b": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
-    "27b-256k": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
+    "9b": ("imagegen/sd-1.5-Q5_0.gguf",),
+    "27b": ("imagegen/sd-1.5-Q5_0.gguf",),
+    "27b-256k": ("imagegen/sd-1.5-Q5_0.gguf",),
 }
 VISION_TIERS: Final[frozenset[str]] = ELIZA_1_VISION_TIERS
 MTP_TIERS: Final[frozenset[str]] = ELIZA_1_MTP_TIERS

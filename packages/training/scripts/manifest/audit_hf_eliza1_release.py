@@ -159,12 +159,10 @@ FINETUNE_REQUIRED_METRICS = frozenset(
 IMAGEGEN_REQUIRED_MODELS = frozenset(
     {
         "imagegen-sd-1_5-q5_0",
-        "imagegen-z-image-turbo-q4_k_m",
     }
 )
 IMAGEGEN_REQUIRED_MODEL_SMOKES = {
     "imagegen-sd-1_5-q5_0": "2b/sd-1.5-Q5_0.gguf",
-    "imagegen-z-image-turbo-q4_k_m": "9b/z-image-turbo-Q4_K_M.gguf",
 }
 IMAGEGEN_REQUIRED_ACCELERATORS = frozenset({"cpu", "cuda", "vulkan", "metal"})
 IMAGEGEN_REQUIRED_MEMORY_FEATURES = frozenset({"mmap", "maxVramAuto", "segmentedOffload"})

@@ -168,12 +168,10 @@ describe("resolveDefaultImageGenModel", () => {
 		});
 	});
 
-	it("resolves a large tier to the split Z-Image diffusion bundle", () => {
-		expect(resolveDefaultImageGenModel("eliza-1-9b")).toMatchObject({
-			modelId: "imagegen-z-image-turbo-q4_k_m",
-			file: "imagegen/z-image-turbo-Q4_K_M.gguf",
-			splitDiffusionModel: true,
-			vae: "imagegen/vae/ae.safetensors",
+	it("resolves a large tier to the SD-1.5 file while split encoders are not default-eligible", () => {
+		expect(resolveDefaultImageGenModel("eliza-1-9b")).toEqual({
+			modelId: "imagegen-sd-1_5-q5_0",
+			file: "imagegen/sd-1.5-Q5_0.gguf",
 		});
 	});
 

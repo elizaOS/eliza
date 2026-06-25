@@ -29,12 +29,10 @@
 #   REGISTRY_KEY=gemma4-e4b   → eliza-1-4b     (single H200)
 #   REGISTRY_KEY=gemma4-12b   → eliza-1-9b     (single H200, ~80 GB peak)
 #   REGISTRY_KEY=gemma4-31b  → eliza-1-27b    (8× H200 fallback; prefer Vast)
-#   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — kept addressable for
-#   compatibility but the eliza-1 fused-kernel stack only validates Gemma 4.)
 #
 # Required env:
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
-#   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access + pushing results
+#   HUGGING_FACE_HUB_TOKEN     # for gated Gemma access + pushing results
 # Optional env:
 #   REGISTRY_KEY               # default: gemma4-e2b
 #   RUN_NAME                   # default: <registry-key>-apollo-<unix-ts>

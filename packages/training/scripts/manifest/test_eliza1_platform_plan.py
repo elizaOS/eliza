@@ -77,17 +77,10 @@ def test_text_contexts_ship_half_and_native_contexts() -> None:
 
 def test_imagegen_required_files_match_tier_defaults() -> None:
     plan = build_plan()
-    for tier in ("2b", "4b"):
+    for tier in ("2b", "4b", "9b", "27b", "27b-256k"):
         assert "imagegen/sd-1.5-Q5_0.gguf" in plan[tier].required_files
         assert "imagegen/z-image-turbo-Q4_K_M.gguf" not in plan[tier].required_files
-    for tier in ("9b", "27b", "27b-256k"):
-        assert "imagegen/z-image-turbo-Q4_K_M.gguf" in plan[tier].required_files
-        assert "imagegen/vae/ae.safetensors" in plan[tier].required_files
-        assert (
-            "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-            in plan[tier].required_files
-        )
-        assert "imagegen/sd-1.5-Q5_0.gguf" not in plan[tier].required_files
+        assert "imagegen/vae/ae.safetensors" not in plan[tier].required_files
 
 
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:

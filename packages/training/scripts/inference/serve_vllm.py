@@ -87,7 +87,7 @@ GPU_TARGETS: dict[str, dict] = {
         "tp": 2,
         "gpu_memory_utilization": 0.92,
         "default_weight_quant": "fp8",  # block-wise FP8 W8A8 on Hopper
-        # turboquant_4bit_nc, not 3bit. Per PR #38479 numbers (Qwen3-4B):
+        # turboquant_4bit_nc, not 3bit. Per PR #38479 4B stress-test numbers:
         # 3bit_nc costs ~20pp absolute on GSM8K and +20.59% PPL; 4bit_nc costs
         # only +2.71% PPL. 4bit also matches our vendored fused_turboquant V
         # bit-width (4-bit RHT+Lloyd-Max), so served-vs-local-debug parity is
