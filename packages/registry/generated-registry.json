@@ -373,6 +373,53 @@
       "registryKind": "plugin",
       "directory": "packages/eliza-rollout-plugin"
     },
+    "@xynqai/plugin-eliza": {
+      "git": {
+        "repo": "visionsXBT/xynq",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@xynqai/plugin-eliza",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "XYNQ decentralized inference for ElizaOS — OpenAI-compatible models, live GPU mesh status, USDC worker earnings, and Solana credit top-ups.",
+      "homepage": "https://github.com/visionsXBT/xynq/tree/main/plugin-eliza",
+      "topics": [
+        "llm",
+        "inference",
+        "decentralized",
+        "solana",
+        "gpu",
+        "crypto",
+        "usdc"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugin-eliza"
+    },
     "blackwall-eliza-guardrail": {
       "git": {
         "repo": "bluetieroperations-create/blackwall-eliza-guardrail",
