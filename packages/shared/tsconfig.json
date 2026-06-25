@@ -9,7 +9,7 @@
     "allowSyntheticDefaultImports": true,
     "strict": false,
     "strictNullChecks": true,
-    "useUnknownInCatchVariables": false,
+    "useUnknownInCatchVariables": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
