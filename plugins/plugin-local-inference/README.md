@@ -181,7 +181,7 @@ node packages/app-core/scripts/stage-desktop-fused-lib.mjs --variant cpu --out /
 # 2. Stage the published Kokoro GGUF + a voice pack (af_bella is the fallback voice).
 DIR=/tmp/kokoro-model; mkdir -p "$DIR/voices"
 base="https://huggingface.co/elizaos/eliza-1/resolve/main"
-curl -fSL -o "$DIR/kokoro-82m-v1_0-Q4_K_M.gguf" "$base/bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf?download=true"
+curl -fSL -o "$DIR/kokoro-82m-v1_0.gguf" "$base/bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
 curl -fSL -o "$DIR/voices/af_bella.bin" "$base/bundles/2b/tts/kokoro/voices/af_bella.bin?download=true"
 
 # 3. Run the gate.
@@ -191,15 +191,6 @@ ELIZA_INFERENCE_LIB_DIR=/tmp/fused-lib LD_LIBRARY_PATH=/tmp/fused-lib \
 ```
 
 CI runs exactly this on Linux via `.github/workflows/kokoro-real-smoke.yml`
-(opt-in: `workflow_dispatch` or a `kokoro-smoke-*` tag).
-
-> **Expected RED until the GGUF is republished.** The published bundle GGUF is
-> still the pre-#9588 all-F32 artifact that loads but synthesizes noise. The
-> converter/loader fix is on `develop` (#9684), but regenerating + republishing
-> the F16 GGUF is a pending ops step (#9588). So this gate fails against the
-> currently-published assets — which is why it is wired to manual/tag dispatch
-> only, not the path-based push auto-trigger. Once the fixed GGUF is republished
-> and a `kokoro-smoke-*` tag run goes green, re-enable the path-scoped `push`
-> trigger (commented in the workflow) to gate future loader↔GGUF drift.
+(opt-in: `workflow_dispatch`, a `kokoro-smoke-*` tag, or a loader/converter/smoke/submodule change).
 
 For agent-facing documentation see `CLAUDE.md` / `AGENTS.md` in this directory.
