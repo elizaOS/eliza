@@ -409,7 +409,9 @@ export function withTravel<TBase extends Constructor<LifeOpsServiceBase>>(
         refreshedOrder = await this.getTravelOrder(order.id);
       }
 
-      let calendarEvent = null;
+      let calendarEvent: Awaited<
+        ReturnType<LifeOpsCalendarService["createCalendarEvent"]>
+      > | null = null;
       const calendarSync = args.calendarSync ?? null;
       if (calendarSync?.enabled !== false) {
         calendarEvent = await this.createCalendarEvent(requestUrl, {

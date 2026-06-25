@@ -3012,6 +3012,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         ? `Owner replied: ${args.responseText}`
         : args.reason;
       if (args.resolution === "snoozed") {
+        if (!args.snoozeRequest) {
+          // Unreachable: the resolution-validation block above early-returns
+          // when a snoozed resolution lacks a snoozeRequest. Re-assert so the
+          // type system narrows it to non-null for snoozeOccurrence.
+          throw new Error(
+            "snoozeRequest is required to snooze a reminder occurrence",
+          );
+        }
         await this.snoozeOccurrence(
           args.ownerId,
           args.snoozeRequest,

@@ -314,8 +314,23 @@ function withMobileBuildNodeOptions(env = process.env) {
 }
 
 function run(command, args, { cwd, env = process.env } = {}) {
+  // Windows: gradlew is gradlew.bat, and Node cannot spawn `./gradlew` (ENOENT)
+  // nor a .bat/.cmd directly (EINVAL since CVE-2024-27980). Translate
+  // ./gradlew -> the sibling gradlew.bat (resolved against cwd) and run any
+  // .bat/.cmd through cmd.exe with args as separate argv (no shell:true).
+  let spawnCmd = command;
+  let spawnArgs = args;
+  if (process.platform === "win32") {
+    if (command === "./gradlew" || command === "gradlew") {
+      spawnCmd = path.join(cwd || process.cwd(), "gradlew.bat");
+    }
+    if (/.(?:bat|cmd)$/i.test(spawnCmd)) {
+      spawnArgs = ["/d", "/s", "/c", spawnCmd, ...args];
+      spawnCmd = process.env.ComSpec || "cmd.exe";
+    }
+  }
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env, stdio: "inherit" });
+    const child = spawn(spawnCmd, spawnArgs, { cwd, env, stdio: "inherit" });
     child.on("exit", (code, signal) => {
       if (signal) return reject(new Error(`${command} killed by ${signal}`));
       if ((code ?? 1) !== 0)
@@ -409,6 +424,11 @@ function resolveAndroidSdkRoot() {
     process.env.ANDROID_HOME,
     path.join(os.homedir(), "Library", "Android", "sdk"),
     path.join(os.homedir(), "Android", "Sdk"),
+    path.join(
+      process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+      "Android",
+      "Sdk",
+    ),
   ]);
 }
 
@@ -469,6 +489,17 @@ function resolveJavaHome() {
     for (const name of fs.readdirSync(jvmRoot)) {
       const full = path.join(jvmRoot, name);
       if ((javaMajorVersion(full) ?? 0) >= 21) return full;
+    }
+  }
+  if (process.platform === "win32") {
+    const programFiles = process.env.ProgramFiles || "C:\Program Files";
+    for (const vendor of ["Eclipse Adoptium", "Microsoft", "Java", "Zulu"]) {
+      const vendorRoot = path.join(programFiles, vendor);
+      if (!fs.existsSync(vendorRoot)) continue;
+      for (const name of fs.readdirSync(vendorRoot)) {
+        const full = path.join(vendorRoot, name);
+        if ((javaMajorVersion(full) ?? 0) >= 21) return full;
+      }
     }
   }
   // Nothing >= 21 found — return the first path that exists so the caller's
