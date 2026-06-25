@@ -94,7 +94,10 @@ function validateBuild(v: unknown): AospBuild {
   if (!isString(v.id)) throw new Error("build.id must be a string");
   if (!isString(v.label)) throw new Error("build.label must be a string");
   if (!isString(v.version)) throw new Error("build.version must be a string");
-  if (!isString(v.channel) || !["stable", "beta", "nightly"].includes(v.channel))
+  if (
+    !isString(v.channel) ||
+    !["stable", "beta", "nightly"].includes(v.channel)
+  )
     throw new Error("build.channel must be one of stable|beta|nightly");
   if (!isString(v.targetDevice))
     throw new Error("build.targetDevice must be a string");
@@ -102,7 +105,9 @@ function validateBuild(v: unknown): AospBuild {
     !isString(v.architecture) ||
     !["arm64-v8a", "x86_64", "riscv64"].includes(v.architecture)
   )
-    throw new Error("build.architecture must be one of arm64-v8a|x86_64|riscv64");
+    throw new Error(
+      "build.architecture must be one of arm64-v8a|x86_64|riscv64",
+    );
   if (!isString(v.publishedAt))
     throw new Error("build.publishedAt must be a string");
   if (!isString(v.manifestUrl))
