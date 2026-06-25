@@ -451,7 +451,7 @@ function wrapFsPath<T extends AnyFn>(
 			a[0] = resolved;
 		}
 
-		return original.apply(this, a) as ReturnType<T>;
+		return original.apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 
@@ -471,7 +471,7 @@ function wrapFsOpenPath<T extends AnyFn>(original: T): T {
 			a[0] = resolved;
 		}
 
-		return original.apply(this, a) as ReturnType<T>;
+		return original.apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 
@@ -506,7 +506,7 @@ function wrapFsTwoPaths<T extends AnyFn>(
 			a[1] = resolved;
 		}
 
-		return original.apply(this, a) as ReturnType<T>;
+		return original.apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 
@@ -532,7 +532,7 @@ function wrapFsWriteGuard<T extends AnyFn>(original: T): T {
 			a[0] = resolved;
 		}
 
-		return original.apply(this, a) as ReturnType<T>;
+		return original.apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 
