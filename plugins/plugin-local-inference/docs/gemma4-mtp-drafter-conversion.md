@@ -215,3 +215,37 @@ port is done, so the amaranus GGUF can become `mtp/drafter-2b.gguf` under the
 is required for the release-shaped path; H200 work would be for a better
 all-tier optimization, not for first functionality.
 Evidence: `native/verify/evidence/platform/amaranus-draft-mtp-metal.log`.
+
+## 2026-06-24 correction — the fast-tier "regression" was a draft-window mistuning, not a head problem
+
+The "regresses on fast / Q4 targets" caveat above (and the implied "needs an
+H200-trained better head to win on the fast tiers") is **superseded**. A draft-
+window sweep on Apple M-series Metal (fork @ `0864259de`, llama-cli, eliza-1-2b
+Q8 target, the converted `drafter-2b.gguf`, greedy, 3 prompts —
+`native/verify/evidence/platform/gemma4-mtp-draft-metal-repro-2026-06-24.log`):
+
+| draft window | result vs baseline |
+|---|---|
+| `n_max=1` | **1.37–1.66× WIN** |
+| `n_max=2` | ~0.90× |
+| `n_max=3` | 0.80× |
+| `n_max=4` | 0.61× |
+| `n_max=6` | 0.37× |
+
+The gemma4-assistant NextN head reliably predicts **one** token; past that its
+multi-token acceptance collapses, so every extra draft slot burns a rejected
+forward. The bionic/desktop FFI MTP engine uses a **fixed** window equal to
+`cfg.draft_max` (`eliza-inference-ffi.cpp`: `sp.draft.n_max = e->draft_max` — no
+adaptive schedule), and the catalog had declared `draftMax: 4`, so the live
+window was 4 → the regression. **Fix: catalog `draftMax` 4 → 1**
+(`packages/shared/src/local-inference/catalog.ts`, `runtimeForTier`). At
+`draftMax=1`, draft-MTP is a clean win on the fast 2B and never regresses.
+
+**Implication for "train a better head?":** not needed for the fast tiers — the
+win is free (config, not training). A higher-acceptance head (EAGLE3-class) would
+only help if you wanted *larger* productive windows, but on fast Metal the fixed
+per-step overhead caps multi-token gains regardless (upstream `ggml-org/llama.cpp`
+issue #23752: MTP on Metal regresses ~11% **even at 100% acceptance**), and the
+fork's `draft-eagle3` path is an inert stub (`common/speculative.cpp:1315`). So
+H200 distillation stays a *large/slow-tier* optimization at best, not a fast-tier
+unlock. Ship `draftMax=1`.
