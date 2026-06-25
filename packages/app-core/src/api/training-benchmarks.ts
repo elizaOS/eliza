@@ -276,15 +276,11 @@ export function openBenchmarkResultsReader(
   return {
     ready: true,
     getHistory({ modelId, benchmark, limit }): BenchmarkRunDTO[] {
-      const rows = historyStmt.all(
-        modelId,
-        benchmark,
-        limit,
-      ) as DbRunRow[];
+      const rows = historyStmt.all(modelId, benchmark, limit).map(readDbRunRow);
       return rows.map(rowToDto);
     },
     getLatest({ modelId, benchmark }): BenchmarkRunDTO | null {
-      const rows = latestStmt.all(modelId, benchmark) as DbRunRow[];
+      const rows = latestStmt.all(modelId, benchmark).map(readDbRunRow);
       if (rows.length === 0) return null;
       return rowToDto(rows[0]);
     },
@@ -292,6 +288,40 @@ export function openBenchmarkResultsReader(
       db.close();
     },
   };
+}
+
+function readDbRunRow(row: Record<string, unknown>): DbRunRow {
+  return {
+    id: readIntegerLike(row.id, "id"),
+    model_id: readString(row.model_id, "model_id"),
+    benchmark: readString(row.benchmark, "benchmark"),
+    score: readFiniteNumber(row.score, "score"),
+    ts: readIntegerLike(row.ts, "ts"),
+    dataset_version: readString(row.dataset_version, "dataset_version"),
+    code_commit: readString(row.code_commit, "code_commit"),
+  };
+}
+
+function readIntegerLike(value: unknown, field: string): number | bigint {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "bigint") return value;
+  throw new Error(
+    `[TrainingBenchmarks] Invalid benchmark row: ${field} must be an integer`,
+  );
+}
+
+function readFiniteNumber(value: unknown, field: string): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  throw new Error(
+    `[TrainingBenchmarks] Invalid benchmark row: ${field} must be a finite number`,
+  );
+}
+
+function readString(value: unknown, field: string): string {
+  if (typeof value === "string") return value;
+  throw new Error(
+    `[TrainingBenchmarks] Invalid benchmark row: ${field} must be a string`,
+  );
 }
 
 function rowToDto(row: DbRunRow): BenchmarkRunDTO {

@@ -126,9 +126,20 @@ function toGmailOperation(op: ManageOperation): {
 
 function getGoogleService(runtime: IAgentRuntime): IGoogleGmailService | null {
   const service = runtime.getService("google");
-  return service && typeof service === "object"
-    ? (service as IGoogleGmailService)
-    : null;
+  return isGoogleGmailService(service) ? service : null;
+}
+
+function isGoogleGmailService(service: unknown): service is IGoogleGmailService {
+  if (service === null || typeof service !== "object") {
+    return false;
+  }
+  return [
+    "createGmailFilterForSender",
+    "listGmailTriageMessages",
+    "modifyGmailMessages",
+    "searchGmailMessages",
+    "sendGmailReply",
+  ].every((method) => typeof Reflect.get(service, method) === "function");
 }
 
 function messageAccountId(message: MessageRef | null | undefined): string {

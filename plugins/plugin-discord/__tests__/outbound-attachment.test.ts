@@ -6,8 +6,8 @@
  * to a plain URL attachment, and non-video/audio media is never fetched.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { ContentType, type Media } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOutboundDiscordAttachment } from "../utils.ts";
 
 function media(overrides: Partial<Media>): Media {
@@ -40,9 +40,11 @@ describe("buildOutboundDiscordAttachment", () => {
 	});
 
 	it("falls back to a URL attachment when the fetch is not ok", async () => {
-		const fetchMock = vi
-			.fn()
-			.mockResolvedValue({ ok: false, status: 502, arrayBuffer: async () => new ArrayBuffer(0) });
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: false,
+			status: 502,
+			arrayBuffer: async () => new ArrayBuffer(0),
+		});
 		vi.stubGlobal("fetch", fetchMock);
 
 		const url = "http://127.0.0.1:8080/v1/media/x/content";

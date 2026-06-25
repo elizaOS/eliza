@@ -1,7 +1,7 @@
 import type http from "node:http";
-import { createMockRuntime } from "@elizaos/core/testing";
-import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
+import type { Task, UUID } from "@elizaos/core";
 import { ApprovalService, ServiceType } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approvalTaskToPendingAction,

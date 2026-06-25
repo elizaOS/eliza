@@ -22,7 +22,9 @@
       // dist/index lets each tool append its own extension: tsc resolves .d.ts
       // (strict-clean), bun resolves .js (no "facewearPlugin is not defined").
       // Do NOT pin to .d.ts (breaks the test) or .js (tsc 6.0.3 → 58 implicit-any).
-      "@elizaos/plugin-facewear": ["../../../plugins/plugin-facewear/dist/index"]
+      "@elizaos/plugin-facewear": [
+        "../../../plugins/plugin-facewear/dist/index"
+      ]
     }
   },
   "include": [

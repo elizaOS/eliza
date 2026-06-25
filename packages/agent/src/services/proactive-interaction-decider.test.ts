@@ -1,4 +1,3 @@
-import { createMockRuntime } from "@elizaos/core/testing";
 import type {
   IAgentRuntime,
   ShortcutFiredPayload,
@@ -6,6 +5,7 @@ import type {
   ViewSwitchedPayload,
 } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildProactiveJudgePrompt,

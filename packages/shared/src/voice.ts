@@ -318,8 +318,8 @@ export const VOICE_PROVIDERS: Array<{
  * ASR (automatic speech recognition) provider catalogue. Mirrors
  * `VOICE_PROVIDERS` so the settings UI can render a provider picker for
  * speech-to-text. The legacy whisper.cpp pipeline has been retired —
- * on-device transcription now runs through the local-inference Qwen3-ASR
- * bundle instead.
+ * on-device transcription now runs through the local-inference ASR bundle.
+ * Release catalog checks gate the bundle lineage before it can be selected.
  */
 export const ASR_PROVIDERS: Array<{
   id: "local-inference" | "eliza-cloud" | "openai";
@@ -333,7 +333,7 @@ export const ASR_PROVIDERS: Array<{
     id: "local-inference",
     label: "Local inference",
     labelKey: "asr.provider.localInference",
-    hint: "On-device Qwen3-ASR",
+    hint: "On-device local ASR",
     hintKey: "asr.provider.localInference.hint",
     needsKey: false,
   },

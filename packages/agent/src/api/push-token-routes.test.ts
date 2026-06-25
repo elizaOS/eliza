@@ -1,6 +1,5 @@
 import type http from "node:http";
 import { createMockRuntime } from "@elizaos/core/testing";
-import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import type { PushTokenRegistry } from "../services/push/push-token-registry.ts";

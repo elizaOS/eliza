@@ -139,8 +139,7 @@ async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
     case "anthropic":
       return [
         ...base,
-        (await import("@elizaos/plugin-anthropic"))
-          .default as Plugin,
+        (await import("@elizaos/plugin-anthropic")).default as Plugin,
       ];
     case "xai":
       return [
@@ -150,8 +149,7 @@ async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
     case "gemini":
       return [
         ...base,
-        (await import("@elizaos/plugin-google-genai"))
-          .default as Plugin,
+        (await import("@elizaos/plugin-google-genai")).default as Plugin,
       ];
     case "groq":
       return [
@@ -161,8 +159,7 @@ async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
     case "openrouter":
       return [
         ...base,
-        (await import("@elizaos/plugin-openrouter"))
-          .default as Plugin,
+        (await import("@elizaos/plugin-openrouter")).default as Plugin,
       ];
     case "ollama":
       return [

@@ -125,9 +125,7 @@ async function generateTextWithModel(
     ...(typeof resolved.maxTokens === "number" ? { maxTokens: resolved.maxTokens } : {}),
   };
 
-  const { text, usage } = await generateText(
-    generateParams as Parameters<typeof generateText>[0]
-  );
+  const { text, usage } = await generateText(generateParams as Parameters<typeof generateText>[0]);
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, usage);
