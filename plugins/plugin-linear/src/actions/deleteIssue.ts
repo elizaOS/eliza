@@ -159,7 +159,7 @@ export const deleteIssueAction: Action = {
             throw new Error("Issue ID not found in parsed response");
           }
         } catch (parseError) {
-          logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError);
+          logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError instanceof Error ? parseError.message : String(parseError));
 
           const issueMatch = content.match(/(\w+-\d+)/);
           if (!issueMatch) {
@@ -231,7 +231,7 @@ export const deleteIssueAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to delete issue:", error);
+      logger.error("Failed to delete issue:", error instanceof Error ? error.message : String(error));
       const errorMessage = `❌ Failed to delete issue: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

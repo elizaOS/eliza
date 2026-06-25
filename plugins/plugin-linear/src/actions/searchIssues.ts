@@ -225,7 +225,7 @@ export const searchIssuesAction: Action = {
               }
             });
           } catch (parseError) {
-            logger.error("Failed to parse search filters:", parseError);
+            logger.error("Failed to parse search filters:", parseError instanceof Error ? parseError.message : String(parseError));
             // Fallback to simple search
             filters = { query: content };
           }
@@ -322,7 +322,7 @@ export const searchIssuesAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to search issues:", error);
+      logger.error("Failed to search issues:", error instanceof Error ? error.message : String(error));
       const errorMessage = `❌ Failed to search issues: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

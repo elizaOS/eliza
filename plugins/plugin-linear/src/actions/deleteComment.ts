@@ -87,7 +87,7 @@ export const deleteCommentAction: Action = {
         data: { commentId, accountId },
       };
     } catch (error) {
-      logger.error("Failed to delete comment:", error);
+      logger.error("Failed to delete comment:", error instanceof Error ? error.message : String(error));
       const errorMessage = `Failed to delete comment: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({ text: errorMessage, source: message.content.source });
       return { text: errorMessage, success: false };

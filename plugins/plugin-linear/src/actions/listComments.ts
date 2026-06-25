@@ -97,7 +97,7 @@ export const listCommentsAction: Action = {
       const comments = await linearService.listComments(issueId, limit, accountId);
       return formatCommentResult(issueId, comments, message, callback);
     } catch (error) {
-      logger.error("Failed to list comments:", error);
+      logger.error("Failed to list comments:", error instanceof Error ? error.message : String(error));
       const errorMessage = `Failed to list comments: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({ text: errorMessage, source: message.content.source });
       return { text: errorMessage, success: false };

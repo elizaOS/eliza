@@ -230,7 +230,7 @@ export const createCommentAction: Action = {
               commentBody = `[${commentType.toUpperCase()}] ${commentBody}`;
             }
           } catch (parseError) {
-            logger.warn("Failed to parse LLM response, falling back to regex:", parseError);
+            logger.warn("Failed to parse LLM response, falling back to regex:", parseError instanceof Error ? parseError.message : String(parseError));
             const issueMatch = content.match(
               /(?:comment on|add.*comment.*to|reply to|tell)\s+(\w+-\d+):?\s*(.*)/i
             );
@@ -296,7 +296,7 @@ export const createCommentAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to create comment:", error);
+      logger.error("Failed to create comment:", error instanceof Error ? error.message : String(error));
       const errorMessage = `❌ Failed to create comment: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

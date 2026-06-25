@@ -216,7 +216,7 @@ export const createIssueAction: Action = {
             }
           }
         } catch (parseError) {
-          logger.error("Failed to parse LLM response:", parseError);
+          logger.error("Failed to parse LLM response:", parseError instanceof Error ? parseError.message : String(parseError));
           issueData = {
             title: content.length > 100 ? `${content.substring(0, 100)}...` : content,
             description: content,
@@ -290,7 +290,7 @@ export const createIssueAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to create issue:", error);
+      logger.error("Failed to create issue:", error instanceof Error ? error.message : String(error));
       const errorMessage = `❌ Failed to create issue: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

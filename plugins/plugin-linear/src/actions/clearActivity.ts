@@ -127,7 +127,7 @@ export const clearActivityAction: Action = {
         success: true,
       };
     } catch (error) {
-      logger.error("Failed to clear Linear activity:", error);
+      logger.error("Failed to clear Linear activity:", error instanceof Error ? error.message : String(error));
       const errorMessage = `❌ Failed to clear Linear activity: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

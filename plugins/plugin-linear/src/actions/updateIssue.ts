@@ -177,7 +177,7 @@ export async function handleUpdateIssue(
         updates.labelIds = labelIds;
       }
     } catch (parseError) {
-      logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError);
+      logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError instanceof Error ? parseError.message : String(parseError));
 
       const issueMatch = content.match(/(\w+-\d+)/);
       if (!issueMatch) {
@@ -264,7 +264,7 @@ export async function handleUpdateIssue(
       },
     };
   } catch (error) {
-    logger.error("Failed to update issue:", error);
+    logger.error("Failed to update issue:", error instanceof Error ? error.message : String(error));
     const errorMessage = `❌ Failed to update issue: ${error instanceof Error ? error.message : "Unknown error"}`;
     await callback?.({
       text: errorMessage,

@@ -274,7 +274,7 @@ export const getIssueAction: Action = {
           };
         }
       } catch (parseError) {
-        logger.warn("Failed to parse LLM response, falling back to regex:", parseError);
+        logger.warn("Failed to parse LLM response, falling back to regex:", parseError instanceof Error ? parseError.message : String(parseError));
         const issueMatch = content.match(/(\w+-\d+)/);
         if (issueMatch) {
           const issue = await linearService.getIssue(issueMatch[1], accountId);
@@ -293,7 +293,7 @@ export const getIssueAction: Action = {
         success: false,
       };
     } catch (error) {
-      logger.error("Failed to get issue:", error);
+      logger.error("Failed to get issue:", error instanceof Error ? error.message : String(error));
       const errorMessage = `❌ Failed to get issue: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,

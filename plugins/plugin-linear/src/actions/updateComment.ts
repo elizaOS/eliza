@@ -45,7 +45,7 @@ export async function handleUpdateComment(
       data: { commentId: comment.id, accountId },
     };
   } catch (error) {
-    logger.error("Failed to update comment:", error);
+    logger.error("Failed to update comment:", error instanceof Error ? error.message : String(error));
     const errorMessage = `Failed to update comment: ${error instanceof Error ? error.message : "Unknown error"}`;
     await callback?.({ text: errorMessage, source: message.content.source });
     return { text: errorMessage, success: false };

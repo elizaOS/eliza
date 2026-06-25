@@ -219,7 +219,7 @@ export const getActivityAction: Action = {
 
             limit = getNumberValue(parsed.limit) || 10;
           } catch (parseError) {
-            logger.warn("Failed to parse activity filters:", parseError);
+            logger.warn("Failed to parse activity filters:", parseError instanceof Error ? parseError.message : String(parseError));
           }
         }
       }
@@ -315,7 +315,7 @@ export const getActivityAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to get activity:", error);
+      logger.error("Failed to get activity:", error instanceof Error ? error.message : String(error));
       const errorMessage = `❌ Failed to get activity: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,
