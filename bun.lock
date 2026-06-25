@@ -5103,6 +5103,7 @@
         "@elizaos/agent": "workspace:*",
         "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-personal-assistant": "workspace:*",
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@noble/curves": "2.2.0",
