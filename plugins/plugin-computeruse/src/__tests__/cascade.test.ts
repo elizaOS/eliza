@@ -109,7 +109,12 @@ function captures(seed = 1): Map<number, DisplayCapture> {
 }
 
 function fakeBrain(out: unknown): Brain {
-  return new Brain(null, { invokeModel: async () => JSON.stringify(out) });
+  // These memory-arbiter tests content-hash the attached image payload, so they
+  // require the always-attach path (the new default plans imageless-first).
+  return new Brain(null, {
+    imagePolicy: "always",
+    invokeModel: async () => JSON.stringify(out),
+  });
 }
 
 describe("Cascade — non-coordinate actions short-circuit grounding", () => {
@@ -431,6 +436,9 @@ describe("Cascade — memory-arbiter pass-through", () => {
     // The cascade asks the Brain to call the model; we inspect the args.
     const seenImageUrls: string[] = [];
     const brain = new Brain(null, {
+      // This asserts the attached PNG payload is stable across identical
+      // frames, so it requires the always-attach path.
+      imagePolicy: "always",
       invokeModel: async (args) => {
         seenImageUrls.push(args.imageUrl);
         return JSON.stringify({
