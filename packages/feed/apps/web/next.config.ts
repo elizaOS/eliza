@@ -70,8 +70,12 @@ const nextConfig: NextConfig = {
     webpackMemoryOptimizations: true,
     // Run webpack in a worker to lower main process memory (can help with 14GB+ builds)
     webpackBuildWorker: true,
-    // Cap parallelism to avoid dozens of jest-worker children and load average 200+
-    cpus: 4,
+    // Cap parallelism to 1 worker for page-data collection / static generation.
+    // The Railway build container is memory-constrained: 4 parallel workers each
+    // loading this large app's module graph OOM/thrash-stall "Collecting page data"
+    // (build hangs indefinitely after webpack compile). Serializing keeps peak
+    // memory low; the app is almost entirely dynamic routes so static-gen is cheap.
+    cpus: 1,
     // Disable parallel worker threads so we don't spawn 50+ jest-worker processes (slower build, sane load)
     workerThreads: false,
   },
