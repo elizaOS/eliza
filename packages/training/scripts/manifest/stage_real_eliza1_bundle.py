@@ -103,7 +103,6 @@ RETIRED_QWEN_EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
 RETIRED_QWEN_EMBEDDING_FILE: Final[str] = "Qwen3-Embedding-0.6B-Q8_0.gguf"
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (2500, 3700),
     "2b": (4000, 5500),
     "4b": (6000, 8000),
     "9b": (10000, 14000),
@@ -249,7 +248,7 @@ def _remove_stale_text_variants(
     """Remove stale text variants from an existing bundle restage.
 
     Restaging a bundle in place can leave older release-label files such as
-    ``eliza-1-0_8b-32k.gguf`` next to the newly staged 128k file. The manifest
+    ``eliza-1-27b-64k.gguf`` next to the newly staged 128k file. The manifest
     collector must only see the current tier matrix files, otherwise publish
     validation fails closed on the stale filename even when the GGUF metadata
     advertises a larger native context.
