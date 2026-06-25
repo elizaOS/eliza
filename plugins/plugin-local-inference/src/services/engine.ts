@@ -1376,7 +1376,7 @@ export class LocalInferenceEngine {
 		// Voice Wave 2 (2026-05-14): tier-aware turn-detector revision selection.
 		// `2b` (the entry tier) ships the ~66 MB EN-only SmolLM2-135M distill
 		// (`v1.2.2-en`); `4b`+ ship the ~396 MB multilingual pruned
-		// Qwen2.5-0.5B (`v0.4.1-intl`). The on-disk layout is per-tier so the
+		// semantic detector (`v0.4.1-intl`). The on-disk layout is per-tier so the
 		// bundle dir already contains the matching ONNX — `revision` here is a
 		// telemetry label (the upstream tag the bundle was staged from). When no
 		// active bundle is resolvable we omit the hint and the resolver falls

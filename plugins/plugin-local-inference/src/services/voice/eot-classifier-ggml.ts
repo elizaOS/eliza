@@ -18,9 +18,9 @@
  * (`.swarm/impl/I1-single-runtime.md` §B), the turn-detector was the
  * cheapest of the four remaining ONNX surfaces to retire — the GGUF
  * artifact was already published by H4 (see commit history), and the
- * detector's architecture (Qwen2-style small decoder + classification
- * head on the `<end_of_turn>` logit) is exactly what `LLM_ARCH_QWEN2`
- * already implements in the fork. The work is wiring, not porting.
+ * detector's architecture (a small decoder + classification head on the
+ * `<end_of_turn>` logit) is already implemented in the fork. The work is
+ * wiring, not porting.
  *
  * No silent fallback (AGENTS.md §3): when `capacitor-llama` is
  * unavailable, the GGUF is missing, or the model load fails, this
@@ -277,8 +277,8 @@ export interface LiveKitGgmlTurnDetectorOptions {
 
 /**
  * Local GGUF-backed LiveKit turn-detector. Uses a `capacitor-llama`
- * evaluation of the Qwen2-style decoder, reading `P(<end_of_turn>)` from the
- * next-token distribution after the truncated user-template prefix.
+ * evaluation of the decoder, reading `P(<end_of_turn>)` from the next-token
+ * distribution after the truncated user-template prefix.
  *
  * One detector instance owns one `LlamaModel` + one `LlamaContext` +
  * one `LlamaSequence`. `score()` resets the sequence between calls —

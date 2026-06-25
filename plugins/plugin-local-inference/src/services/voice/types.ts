@@ -682,7 +682,7 @@ export type VoiceSchedulerTelemetryListener = (
 // ---------------------------------------------------------------------------
 
 /** Minimal VAD model contract consumed by the fused `GgmlSileroVad` and the
- *  optional injected qwen-toolkit adapter. */
+ *  optional injected external adapter. */
 export interface VadLike {
 	readonly windowSamples: number;
 	readonly sampleRate: number;

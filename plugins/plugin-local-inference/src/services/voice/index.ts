@@ -360,9 +360,9 @@ export * from "./types";
 export {
 	createSileroVadDetector,
 	createVadDetector,
+	type ExternalVadAdapter,
 	GgmlSileroVad,
 	NativeSileroVad,
-	type QwenToolkitVadAdapter,
 	type ResolvedVadProvider,
 	RmsEnergyGate,
 	type RmsEnergyGateConfig,

@@ -237,11 +237,11 @@ export interface VoiceEnsembleBudget {
  * the largest co-resident knob is the LM itself.
  */
 export type VoiceTierSlot =
-	| "mobile-2b" // mobile profile: kokoro-q8 + turnsense + ASR-0.6B + LM-2B (entry tier), no dedicated embedding
+	| "mobile-2b" // mobile profile: kokoro-q8 + turnsense + entry ASR + LM-2B (entry tier), no dedicated embedding
 	| "desktop-2b" // 2b LM (entry tier) + full voice stack + embedding
 	| "desktop-4b" // 4b LM + full voice stack + embedding
-	| "workstation-9b" // 9b LM + omnivoice-Q8 + ASR-0.6B + embedding
-	| "workstation-27b"; // 27b LM + omnivoice-Q8 + ASR-1.7B + embedding
+	| "workstation-9b" // 9b LM + omnivoice-Q8 + entry ASR + embedding
+	| "workstation-27b"; // 27b LM + omnivoice-Q8 + large ASR + embedding
 
 const _MB = 1; // alias for readability inside the table
 const _GB = 1024;
@@ -256,7 +256,7 @@ export const VOICE_ENSEMBLE_BUDGETS: Readonly<
 		lmKvMb: 0.075 * _GB,
 		drafterMb: 0.5 * _GB,
 		ttsMb: 0.08 * _GB, // kokoro-q8 ONNX
-		asrMb: 0.4 * _GB, // qwen3-asr-0.6B documented Q4-equiv
+		asrMb: 0.4 * _GB, // entry Gemma-compatible ASR placeholder budget
 		asrMmprojMb: 0.2 * _GB,
 		embeddingMb: 0, // pools from the text backbone on the 2b entry tier
 		vadMb: 2 * _MB, // silero-vad documented baseline
@@ -293,7 +293,7 @@ export const VOICE_ENSEMBLE_BUDGETS: Readonly<
 		embeddingMb: 0.4 * _GB,
 		vadMb: 2 * _MB,
 		wakeWordMb: 4 * _MB,
-		turnDetectorMb: 400 * _MB, // livekit/turn-detector v0.4.1-intl Qwen2.5-0.5B
+		turnDetectorMb: 400 * _MB, // livekit/turn-detector v0.4.1-intl semantic model
 		emotionMb: 40 * _MB,
 		speakerEncoderMb: 10 * _MB,
 		transientTtsBufferMb: 1.17 * _GB,
@@ -320,7 +320,7 @@ export const VOICE_ENSEMBLE_BUDGETS: Readonly<
 		lmKvMb: 2.75 * _GB,
 		drafterMb: 2.6 * _GB,
 		ttsMb: 1.28 * _GB,
-		asrMb: 1.1 * _GB, // qwen3-asr-1.7B on the 27B tier
+		asrMb: 1.1 * _GB, // large Gemma-compatible ASR placeholder budget
 		asrMmprojMb: 0.3 * _GB,
 		embeddingMb: 0.4 * _GB,
 		vadMb: 2 * _MB,

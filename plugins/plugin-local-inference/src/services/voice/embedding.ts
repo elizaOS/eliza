@@ -110,9 +110,8 @@ export type LocalEmbeddingSource =
 			/**
 			 * The dedicated model already ships a contrastive `last`-token
 			 * pooling head — `--pooling last` is still passed so llama-server
-			 * doesn't fall back to the GGUF's metadata default (which for a raw
-			 * Qwen3 base is `mean`). The model's own pooling layer dominates;
-			 * this just pins the read.
+			 * doesn't fall back to the GGUF's metadata default. The model's own
+			 * pooling layer dominates; this just pins the read.
 			 */
 			readonly poolingType: "last";
 	  };

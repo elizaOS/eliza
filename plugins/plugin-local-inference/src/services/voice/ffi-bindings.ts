@@ -242,7 +242,7 @@ export interface LlmStreamConfig {
 	 * path. `null`/empty disables grammar constraint.
 	 */
 	gbnfGrammar?: string | null;
-	/** Qwen3-style thinking-tag suppression passthrough (v1 no-op). */
+	/** Thinking-tag suppression passthrough (v1 no-op). */
 	disableThinking?: boolean;
 	/**
 	 * Per-load GPU offload (ABI v8). Number of model layers to place on GPU.
