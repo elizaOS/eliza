@@ -437,9 +437,9 @@ const PROVIDER_DEFAULT_MODELS: Record<
   },
   nearai: {
     smallKey: "NEARAI_SMALL_MODEL",
-    smallVal: "Qwen/Qwen3.6-35B-A3B-FP8",
+    smallVal: "google/gemma-4-31B-it",
     largeKey: "NEARAI_LARGE_MODEL",
-    largeVal: "zai-org/GLM-5.1-FP8",
+    largeVal: "google/gemma-4-31B-it",
   },
 };
 

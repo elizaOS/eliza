@@ -28,20 +28,20 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "Qwen/Qwen3.6-35B-A3B-FP8",
+      "default": "google/gemma-4-31B-it",
       "label": "Small Model",
       "help": "Override the default NEAR AI small text model identifier.",
-      "placeholder": "e.g., Qwen/Qwen3.6-35B-A3B-FP8",
+      "placeholder": "e.g., google/gemma-4-31B-it",
       "advanced": false
     },
     "NEARAI_LARGE_MODEL": {
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "zai-org/GLM-5.1-FP8",
+      "default": "google/gemma-4-31B-it",
       "label": "Large Model",
       "help": "Override the default NEAR AI large text model identifier.",
-      "placeholder": "e.g., zai-org/GLM-5.1-FP8",
+      "placeholder": "e.g., google/gemma-4-31B-it",
       "advanced": false
     },
     "NEARAI_EXPERIMENTAL_TELEMETRY": {

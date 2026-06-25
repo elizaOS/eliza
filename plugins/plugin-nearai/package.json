@@ -103,14 +103,14 @@
         "type": "string",
         "description": "Override the default NEAR AI small model identifier.",
         "required": false,
-        "default": "Qwen/Qwen3.6-35B-A3B-FP8",
+        "default": "google/gemma-4-31B-it",
         "sensitive": false
       },
       "NEARAI_LARGE_MODEL": {
         "type": "string",
         "description": "Override the default NEAR AI large model identifier.",
         "required": false,
-        "default": "zai-org/GLM-5.1-FP8",
+        "default": "google/gemma-4-31B-it",
         "sensitive": false
       },
       "NEARAI_EXPERIMENTAL_TELEMETRY": {

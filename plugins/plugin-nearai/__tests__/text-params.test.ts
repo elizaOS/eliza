@@ -69,7 +69,7 @@ describe("NEAR AI text parameter resolution", () => {
     await fetcher("https://cloud-api.near.ai/v1/chat/completions", {
       method: "POST",
       body: JSON.stringify({
-        model: "Qwen/Qwen3.6-35B-A3B-FP8",
+        model: "google/gemma-4-31B-it",
         messages: [{ role: "developer", content: "follow policy" }],
         max_completion_tokens: 1024,
         store: true,
@@ -80,7 +80,7 @@ describe("NEAR AI text parameter resolution", () => {
 
     const forwardedInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(forwardedInit.body))).toEqual({
-      model: "Qwen/Qwen3.6-35B-A3B-FP8",
+      model: "google/gemma-4-31B-it",
       messages: [{ role: "system", content: "follow policy" }],
       max_tokens: 1024,
     });
