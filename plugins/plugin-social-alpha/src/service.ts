@@ -164,6 +164,28 @@ export type TradingEvent =
 /**
  * Trading Service that centralizes all trading operations
  */
+
+/**
+ * Narrow a memory's loosely-typed `content.transaction` field to a Transaction.
+ * Returns null when the field is not a transaction-shaped object. The input is a
+ * widened `ContentValue` union, so the internal casts are plain `as`
+ * (ratchet-neutral); this replaces the scattered `as unknown as Transaction`
+ * reads with one validated path.
+ */
+function asTransaction(value: unknown): Transaction | null {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	if (
+		typeof record.positionId !== "string" ||
+		typeof record.tokenAddress !== "string"
+	) {
+		return null;
+	}
+	return value as Transaction;
+}
+
 /**
  * CommunityInvestorService class representing a service for trading on the Solana blockchain.
  * @extends Service
@@ -1703,14 +1725,9 @@ export class CommunityInvestorService
 			const transactions: Transaction[] = [];
 
 			for (const memory of memories) {
-				if (
-					memory.content.transaction &&
-					(memory.content.transaction as unknown as Transaction).positionId ===
-						positionId
-				) {
-					transactions.push(
-						memory.content.transaction as unknown as Transaction,
-					);
+				const transaction = asTransaction(memory.content.transaction);
+				if (transaction && transaction.positionId === positionId) {
+					transactions.push(transaction);
 				}
 			}
 
@@ -1744,14 +1761,9 @@ export class CommunityInvestorService
 			const transactions: Transaction[] = [];
 
 			for (const memory of memories) {
-				if (
-					memory.content.transaction &&
-					(memory.content.transaction as unknown as Transaction)
-						.tokenAddress === tokenAddress
-				) {
-					transactions.push(
-						memory.content.transaction as unknown as Transaction,
-					);
+				const transaction = asTransaction(memory.content.transaction);
+				if (transaction && transaction.tokenAddress === tokenAddress) {
+					transactions.push(transaction);
 				}
 			}
 
