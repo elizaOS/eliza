@@ -51,15 +51,16 @@ export class SharedRuntimeHistoryRepository {
       .values({
         agent_id: agentId,
         channel_id: channelId,
-        // Bind JSONB explicitly as a JSON string + cast (Neon serverless driver
-        // can mis-bind raw JS arrays/objects as query params).
-        messages: jsonbParam(messages) as unknown as SharedRuntimeHistoryMessage[],
+        // Bind JSONB explicitly as a JSON string (Neon serverless driver can
+        // mis-bind raw JS arrays/objects as query params). The insert value
+        // type accepts a raw `SQL` expression per column, so no cast is needed.
+        messages: jsonbParam(messages),
         updated_at: now,
       })
       .onConflictDoUpdate({
         target: [sharedRuntimeHistory.agent_id, sharedRuntimeHistory.channel_id],
         set: {
-          messages: jsonbParam(messages) as unknown as SharedRuntimeHistoryMessage[],
+          messages: jsonbParam(messages),
           updated_at: now,
         },
       });
