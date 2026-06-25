@@ -962,7 +962,7 @@ const connectorMessageReceivedEvents = Object.fromEntries(
 			},
 		],
 	]),
-) as unknown as PluginEvents;
+) as PluginEvents;
 
 const events: PluginEvents = {
 	...connectorMessageReceivedEvents,
