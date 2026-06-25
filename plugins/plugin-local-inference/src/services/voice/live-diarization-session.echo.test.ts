@@ -23,7 +23,10 @@ function fakeRuntime(): RuntimeEventSink {
 }
 
 /** Build a well-formed playback frame from Float32 [-1,1] samples. */
-function playbackFrame(samples: Float32Array, frameIndex: number): AudioFrameEvent {
+function playbackFrame(
+	samples: Float32Array,
+	frameIndex: number,
+): AudioFrameEvent {
 	const buf = Buffer.alloc(samples.length * 2);
 	for (let i = 0; i < samples.length; i += 1) {
 		const clamped = Math.max(-1, Math.min(1, samples[i] ?? 0));
@@ -43,7 +46,7 @@ function playbackFrame(samples: Float32Array, frameIndex: number): AudioFrameEve
 /** A deterministic ramp in [-0.5, 0.5]. */
 function ramp(n: number): Float32Array {
 	const out = new Float32Array(n);
-	for (let i = 0; i < n; i += 1) out[i] = (i / n) - 0.5;
+	for (let i = 0; i < n; i += 1) out[i] = i / n - 0.5;
 	return out;
 }
 
