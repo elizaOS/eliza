@@ -727,7 +727,7 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     assert validate_manifest(manifest) == ()
 
 
-def test_base_v1_27b_provenance_requires_qwen36_text_source():
+def test_base_v1_27b_provenance_requires_gemma4_text_source():
     kwargs = base_kwargs("27b")
     prov = _base_v1_provenance()
     prov["sourceModels"]["text"] = {"repo": "google/gemma-4-31B"}

@@ -56,8 +56,8 @@ def test_mtp_required_files_match_bundle_layout() -> None:
     assert "mtp/validation-real.json" in tier_plan.required_files
     assert "mtp/runtime-smoke-native.json" in tier_plan.required_files
     assert "mtp/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
-    small_plan = build_plan()["0_8b"]
-    assert "mtp/drafter-0_8b.gguf" in small_plan.required_files
+    small_plan = build_plan()["2b"]
+    assert "mtp/drafter-2b.gguf" in small_plan.required_files
     assert "mtp/target-meta.json" in small_plan.required_files
     assert "mtp/validation-real.json" in small_plan.required_files
     assert "mtp/runtime-smoke-native.json" in small_plan.required_files
@@ -66,7 +66,7 @@ def test_mtp_required_files_match_bundle_layout() -> None:
 
 def test_text_contexts_ship_half_and_native_contexts() -> None:
     plan = build_plan()
-    for tier in ("0_8b", "2b", "4b", "9b", "27b"):
+    for tier in ("2b", "4b", "9b", "27b"):
         assert plan[tier].contexts == ("128k", "256k")
         assert f"text/eliza-1-{tier}-128k.gguf" in plan[tier].required_files
         assert f"text/eliza-1-{tier}-256k.gguf" in plan[tier].required_files
@@ -77,7 +77,7 @@ def test_text_contexts_ship_half_and_native_contexts() -> None:
 
 def test_imagegen_required_files_match_tier_defaults() -> None:
     plan = build_plan()
-    for tier in ("0_8b", "2b", "4b"):
+    for tier in ("2b", "4b"):
         assert "imagegen/sd-1.5-Q5_0.gguf" in plan[tier].required_files
         assert "imagegen/z-image-turbo-Q4_K_M.gguf" not in plan[tier].required_files
     for tier in ("9b", "27b", "27b-256k"):
@@ -93,8 +93,6 @@ def test_imagegen_required_files_match_tier_defaults() -> None:
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
     plan = build_plan()
     kokoro_gguf = "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf"
-    assert kokoro_gguf in plan["0_8b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["0_8b"].required_files
     assert kokoro_gguf in plan["2b"].required_files
     assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["2b"].required_files
     assert kokoro_gguf in plan["4b"].required_files
@@ -141,8 +139,8 @@ def test_release_status_blockers_detect_missing_canonical_bundle(
     tmp_path: Path,
 ) -> None:
     blockers = release_status_blockers(tmp_path / "bundles", build_plan())
-    assert any("missing canonical local bundle" in item for item in blockers["0_8b"])
-    assert any("release.json" in item and "missing" in item for item in blockers["0_8b"])
+    assert any("missing canonical local bundle" in item for item in blockers["2b"])
+    assert any("release.json" in item and "missing" in item for item in blockers["2b"])
 
 
 def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -> None:

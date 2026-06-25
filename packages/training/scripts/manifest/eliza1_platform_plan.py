@@ -25,7 +25,7 @@ try:
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
-        canonical_qwen_source_repo_error,
+        canonical_source_repo_error,
         required_voice_artifacts_for_tier,
     )
 except ImportError:  # pragma: no cover - script execution path
@@ -39,12 +39,11 @@ except ImportError:  # pragma: no cover - script execution path
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
-        canonical_qwen_source_repo_error,
+        canonical_source_repo_error,
         required_voice_artifacts_for_tier,
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_8b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
@@ -61,7 +60,6 @@ TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = (
 )
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("128k", "256k"),
     "2b": ("128k", "256k"),
     "4b": ("128k", "256k"),
     "9b": ("128k", "256k"),
@@ -83,7 +81,6 @@ Z_IMAGE_COMPANION_ARTIFACTS: Final[tuple[str, ...]] = (
     "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
 )
 IMAGEGEN_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("imagegen/sd-1.5-Q5_0.gguf",),
     "2b": ("imagegen/sd-1.5-Q5_0.gguf",),
     "4b": ("imagegen/sd-1.5-Q5_0.gguf",),
     "9b": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
@@ -110,18 +107,6 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-        "windows-x64-vulkan",
-        "windows-arm64-cpu",
-        "windows-arm64-vulkan",
-    ),
     "2b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
@@ -426,7 +411,7 @@ def release_status_blockers(
                                 else None
                             )
                             if isinstance(repo, str):
-                                repo_error = canonical_qwen_source_repo_error(
+                                repo_error = canonical_source_repo_error(
                                     slot, repo, tier=tier
                                 )
                                 if repo_error is not None:
