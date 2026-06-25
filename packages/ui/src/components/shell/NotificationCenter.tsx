@@ -25,6 +25,7 @@ import {
 } from "react";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
+import { navigateDeepLink } from "../../state/notifications/navigate-deep-link";
 import {
   clearNotifications,
   initNotifications,
@@ -80,23 +81,6 @@ const CATEGORY_ORDER: NotificationCategory[] = [
 ];
 
 type CategoryFilter = NotificationCategory | "all";
-
-/** Best-effort navigation for a notification deep link. */
-function navigateDeepLink(deepLink: string): void {
-  if (typeof window === "undefined") return;
-  if (/^https?:\/\//i.test(deepLink)) {
-    window.open(deepLink, "_blank", "noopener,noreferrer");
-    return;
-  }
-  if (deepLink.startsWith("/")) {
-    const viewId = deepLink.slice(1).split("/")[0] || undefined;
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", {
-        detail: { viewId, viewPath: deepLink },
-      }),
-    );
-  }
-}
 
 function NotificationRow({
   notification,
