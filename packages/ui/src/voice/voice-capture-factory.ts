@@ -146,7 +146,7 @@ export interface VoiceCaptureHandle {
  * True on a native mobile platform whose `TalkMode` plugin is present. On
  * Android/iOS the OS speech recognizer (exposed by TalkMode) is the real STT
  * engine — it transcribes on-device with live INTERIM results — and the
- * local-inference whisper assets are not staged on mobile, so that path 502s.
+ * local-inference ASR assets are not staged on mobile, so that path 502s.
  * `getNativePlugin` returns `{}` when the plugin is absent, hence the method
  * feature-check.
  */
@@ -169,14 +169,14 @@ async function resolveBackendKind(
   // Native mobile: the platform speech recognizer (TalkMode) is the working STT
   // path and the only one that streams interim transcripts. Prefer it ahead of
   // the local-inference probe — on mobile that probe can report ready while the
-  // whisper assets are missing, then 502 at stop() with no recoverable fallback.
+  // local ASR assets are missing, then 502 at stop() with no recoverable fallback.
   if (isNativeTalkModeCaptureAvailable()) {
     return "talkmode";
   }
   // local-inference is the default elsewhere, but it needs BOTH the client
   // mic-capture primitives AND a server that can actually transcribe. Probe the
   // server's readiness (GET /api/asr/local-inference/status) so an unconfigured
-  // box (no whisper model / native adapter) degrades to browser SpeechRecognition
+  // box (no local ASR assets / native adapter) degrades to browser SpeechRecognition
   // instead of capturing audio it can only 502 on at stop().
   if (
     (preferred === "local-inference" || preferred === undefined) &&

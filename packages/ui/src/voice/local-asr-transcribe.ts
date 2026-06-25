@@ -54,8 +54,8 @@ function parseWords(
  * `GET /api/asr/local-inference/status` (`{ ready, provider }`).
  *
  * Capture surfaces use this to choose a backend that can actually transcribe:
- * routing audio to `/api/asr/local-inference` when the server has no whisper
- * model / native adapter 502s at `stop()` with no recoverable fallback, so an
+ * routing audio to `/api/asr/local-inference` when the server has no local ASR
+ * assets / native adapter 502s at `stop()` with no recoverable fallback, so an
  * unready (or unreachable) server must degrade to browser ASR instead. A
  * failed probe deliberately resolves `false` — "unknown readiness" is treated
  * as "not ready" so we never capture audio we can't transcribe.
