@@ -111,14 +111,27 @@ operator-gated. To activate the `loop` job for the showcase account:
 2. **Seed CI secrets** in the `ci-hetzner-e2e` GitHub environment: `HCLOUD_TOKEN_CI`
    (CI-scoped Hetzner project) and `CLOUD_E2E_API_KEY` (the showcase account's
    long-lived bearer token). Optionally set `MONETIZED_LOOP_BASE_URL`.
-3. **Pin the EDAD image operator-side.** Set
-   `APP_DEFAULT_IMAGE=ghcr.io/elizaos/example-edad:showcase` (the GHCR image
-   #9384 builds) on the staging Worker. `metadata.imageTag` is NOT settable via
-   REST, so this is how the real driver stays pure-HTTP: `resolveImageRef`
-   (`app-deploy-runner.ts`) falls back to `APP_DEFAULT_IMAGE` when no resolver /
-   metadata image is present, so the deploy picks up the EDAD image without the
-   driver writing any metadata or holding a staging `DATABASE_URL` secret. Also
-   put the showcase org in `APPS_DEPLOY_ALLOWED_ORG_IDS` with `APPS_DEPLOY_ENABLED=1`.
+3. **Pin the showcase images operator-side.** `metadata.imageTag` is NOT settable
+   via REST, so images are resolved operator-side and the real drivers stay
+   pure-HTTP. Two mechanisms:
+   - **Single app:** `APP_DEFAULT_IMAGE=ghcr.io/elizaos/example-edad:showcase`
+     (the GHCR image `build-example-app-images.yml` builds). `resolveImageRef`
+     (`app-deploy-runner.ts`) falls back to it when no resolver/metadata image is
+     present.
+   - **Both apps (a single `APP_DEFAULT_IMAGE` can only point at ONE image):** set
+     `APP_PREBUILT_IMAGES` — a JSON map of app-name PREFIX → image ref — on the
+     **provisioning daemon** (it arms `makePrebuiltImageMapResolver`, see
+     `app-image-resolver.ts`), e.g.
+     ```json
+     {"eDad Showcase":"ghcr.io/elizaos/example-edad:showcase",
+      "Clone Your Crush Showcase":"ghcr.io/elizaos/example-clone-ur-crush:showcase"}
+     ```
+     The real drivers register their apps with those name prefixes (plus a run
+     timestamp), so each deploys its OWN image without the driver writing metadata
+     or holding a staging `DATABASE_URL`. Unset → behaviour is unchanged
+     (`APP_DEFAULT_IMAGE` only).
+
+   Also put the showcase org in `APPS_DEPLOY_ALLOWED_ORG_IDS` with `APPS_DEPLOY_ENABLED=1`.
 4. **The real-mode driver (slice 1 — landed).**
    [`tests/example-edad-real-deploy.spec.ts`](../tests/example-edad-real-deploy.spec.ts)
    is the pure-HTTP deploy-and-serve driver. It honest-skips at the describe level

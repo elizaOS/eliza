@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="ogTitle ogDesc">
+  <title id="ogTitle">Clone Your Crush social card</title>
+  <desc id="ogDesc">A soft pink-and-purple social card for Clone Your Crush with a gradient wordmark, a tagline, and a powered-by-eliza-cloud footer.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff1f7"/>
+      <stop offset="0.5" stop-color="#fbeeff"/>
+      <stop offset="1" stop-color="#f6ecff"/>
+    </linearGradient>
+    <radialGradient id="glowPink" cx="20%" cy="20%" r="60%">
+      <stop offset="0" stop-color="#ff4081" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#ff4081" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowPurple" cx="86%" cy="84%" r="58%">
+      <stop offset="0" stop-color="#9c27b0" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#9c27b0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wordmark" x1="120" y1="250" x2="980" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff4081"/>
+      <stop offset="1" stop-color="#9c27b0"/>
+    </linearGradient>
+    <linearGradient id="heart" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff4081"/>
+      <stop offset="1" stop-color="#9c27b0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glowPink)"/>
+  <rect width="1200" height="630" fill="url(#glowPurple)"/>
+
+  <!-- glass card -->
+  <rect x="64" y="64" width="1072" height="502" rx="36"
+        fill="#ffffff" fill-opacity="0.62" stroke="#ffffff" stroke-opacity="0.8" stroke-width="2"/>
+
+  <!-- vector heart motif (no emoji) -->
+  <g transform="translate(948 150)">
+    <path d="M70 132 C 8 86, 8 30, 48 22 C 70 18, 70 44, 70 44 C 70 44, 70 18, 92 22 C 132 30, 132 86, 70 132 Z"
+          fill="url(#heart)" fill-opacity="0.92"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="120" y="312" font-family="'Helvetica Neue', Arial, sans-serif" font-size="104" font-weight="800"
+        fill="url(#wordmark)" letter-spacing="-2">Clone Your Crush</text>
+
+  <!-- tagline -->
+  <text x="124" y="382" font-family="'Helvetica Neue', Arial, sans-serif" font-size="40" font-weight="500"
+        fill="#6b2f63">Create your AI companion and exchange texts.</text>
+
+  <!-- footer -->
+  <text x="124" y="498" font-family="'Helvetica Neue', Arial, sans-serif" font-size="30" font-weight="600"
+        fill="#9c27b0" letter-spacing="0.5">powered by eliza cloud</text>
+</svg>

@@ -1,0 +1,9 @@
+=== mirror CI: clean build + baked-dir static copy (Wed Jun 24 21:18:05 PDT 2026) ===
+next build exit: 0
+baked distDir: .next-build-54435
+=== docker build + run (mirror CI smoke) ===
+docker build exit: 0
+PASS: serves UI
+probe asset: /_next/static/css/53557bc91bd7331d.css
+GET /_next/static/css/53557bc91bd7331d.css -> 200 (expect 200)
+GET /og-image.png -> 200 (expect 200)

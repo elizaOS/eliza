@@ -97,11 +97,22 @@ branded domain and bills their own org credits from the first message.
 
 Self-hosting closes the loop: app earnings refill the org's credit balance via the earnings auto-fund service, container daily-billing keeps debiting that balance, and the app keeps itself alive as long as it earns enough.
 
+<!-- The plain ./Dockerfile cannot be built standalone: server.ts imports the
+     `@elizaos/cloud-sdk` workspace dep, which only resolves inside the monorepo.
+     Bundle the SDK in first (what CI does), then ship the tiny bundle context
+     with Dockerfile.bundle. The reproducible showcase image is built+smoke-tested
+     by .github/workflows/build-example-app-images.yml and published as
+     ghcr.io/elizaos/example-edad:showcase — see
+     packages/test/cloud-e2e/docs/showcase-apps-coverage.md for the full runbook. -->
+
 ```bash
-# 1. build + push to your ECR (or any registry the cloud can pull from)
-docker build -t edad-chat:latest -f packages/examples/cloud/edad/Dockerfile packages/examples/cloud/edad
-docker tag edad-chat:latest <account>.dkr.ecr.<region>.amazonaws.com/edad-chat:latest
-docker push <account>.dkr.ecr.<region>.amazonaws.com/edad-chat:latest
+# 1. bundle the server (inlines the workspace SDK), then build + push the image
+cd packages/examples/cloud/edad
+bun build server.ts --outdir=dist --target=bun --format=esm && cp -r public dist/public
+docker build -t edad-chat:latest -f Dockerfile.bundle dist
+# push to any registry the cloud can pull from (GHCR is what the showcase uses)
+docker tag edad-chat:latest ghcr.io/<owner>/edad-chat:latest
+docker push ghcr.io/<owner>/edad-chat:latest
 
 # 2. POST /api/v1/containers (use any cloud API key with deploy scope)
 curl -X POST https://www.elizacloud.ai/api/v1/containers \

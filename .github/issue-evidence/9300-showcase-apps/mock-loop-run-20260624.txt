@@ -1,0 +1,80 @@
+$ bun run --cwd packages/test/cloud-e2e test example-apps-showcase.spec.ts monetized-full-loop.spec.ts showcase-brand-lint.spec.ts remote-app-deploy.spec.ts
+$ bun --conditions=eliza-source --bun playwright test example-apps-showcase.spec.ts monetized-full-loop.spec.ts showcase-brand-lint.spec.ts remote-app-deploy.spec.ts
+
+Running 7 tests using 1 worker
+
+[Cache] DEL failed {
+  key: "org:917ffe9e-30d9-4bd6-bbb5-71174b1ab6bb:credits:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] DEL failed {
+  key: "org:917ffe9e-30d9-4bd6-bbb5-71174b1ab6bb:data:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] DEL failed {
+  key: "org:917ffe9e-30d9-4bd6-bbb5-71174b1ab6bb:dashboard:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] DEL failed {
+  key: "eliza:org:917ffe9e-30d9-4bd6-bbb5-71174b1ab6bb:balance:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] Circuit breaker OPENED - degrading to cache-miss {
+  failureCount: 5,
+  cooldownMs: 60000,
+}
+[Cache] DEL failed {
+  key: "org:v1:917ffe9e-30d9-4bd6-bbb5-71174b1ab6bb",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+  ✓  1 [chromium] › tests/example-apps-showcase.spec.ts:192:2 › example apps showcase (EDAD + Clone Ur Crush) › showcase account deploys + monetizes both apps end to end (2.4s)
+[Cache] DEL failed {
+  key: "org:v1:9be83e3e-f4ea-4ef0-a004-d33d39aba5f8",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] DEL failed {
+  key: "org:9be83e3e-f4ea-4ef0-a004-d33d39aba5f8:credits:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] DEL failed {
+  key: "org:9be83e3e-f4ea-4ef0-a004-d33d39aba5f8:data:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] DEL failed {
+  key: "org:9be83e3e-f4ea-4ef0-a004-d33d39aba5f8:dashboard:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] Circuit breaker OPENED - degrading to cache-miss {
+  failureCount: 5,
+  cooldownMs: 60000,
+}
+[Cache] DEL failed {
+  key: "eliza:org:9be83e3e-f4ea-4ef0-a004-d33d39aba5f8:balance:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[EmailService] No email configuration found
+[EmailService] Not initialized, skipping email send
+  ✓  2 [chromium] › tests/monetized-full-loop.spec.ts:108:2 › monetized full loop › seed → create → deploy → domain → monetize → charge → autoscale → payout-ready (2.3s)
+  ✓  3 [chromium] › tests/monetized-full-loop.spec.ts:379:2 › monetized full loop › creator withdraws earnings via Stripe Connect fiat payout (#8922) (358ms)
+[Cache] DEL failed {
+  key: "app:87dda5f1-5f98-44c5-88b7-2fab60e1b5a7:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] DEL failed {
+  key: "app:cost-markup:87dda5f1-5f98-44c5-88b7-2fab60e1b5a7:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] DEL failed {
+  key: "app:apikey:0b17713b-eee8-46e8-b38c-4213c82fd1d3:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+[Cache] DEL failed {
+  key: "app:slug:remote-deploy-mqt09i2u:v1",
+  error: "res.map is not a function. (In 'res.map(({ error, result }, i) => {\n      return {\n        error,\n        result: this.commands[i].deserialize(result)\n      };\n    })', 'res.map' is undefined)",
+}
+  ✓  4 [chromium] › tests/remote-app-deploy.spec.ts:50:2 › remote app deploy › dashboard deploy endpoint reaches READY with a reachable production_url and preserved local definition (3.6s)
+  ✓  5 [chromium] › tests/showcase-brand-lint.spec.ts:93:4 › showcase apps — brand lint (no blue) › edad has zero blue in live source (18ms)
+  ✓  6 [chromium] › tests/showcase-brand-lint.spec.ts:93:4 › showcase apps — brand lint (no blue) › clone-ur-crush has zero blue in live source (6ms)
+  ✓  7 [chromium] › tests/showcase-brand-lint.spec.ts:107:2 › showcase apps — brand lint (no blue) › both apps reference only existing OG/social assets (0ms)
+
+  7 passed (1.3m)

@@ -14,6 +14,9 @@ on:
       - "packages/cloud-sdk/**"
       - "packages/test/cloud-mocks/**"
       - "packages/test/cloud-e2e/**"
+      # The showcase loop (#9300) deploys + validates these example apps, so an
+      # edit to either app must trigger the showcase e2e + brand-lint lane.
+      - "packages/examples/cloud/**"
       - ".github/workflows/cloud-e2e.yml"
   workflow_dispatch:
 

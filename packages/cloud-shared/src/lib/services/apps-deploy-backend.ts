@@ -27,13 +27,12 @@ import { logger } from "../utils/logger";
 import { setAppDbDeprovisioner } from "./app-db-deprovision-job-service";
 import { setAppDeployRunner } from "./app-deploy-job-service";
 import {
-  type AppDeployRunnerDeps,
   type DefaultAppDeployRunner,
   makeDirectAppDeployRunner,
   makeNodeAppDeployRunner,
 } from "./app-deploy-runner";
 import { AppImageBuilder, type BuildExec } from "./app-image-builder";
-import { makeBuildFromRepoResolver } from "./app-image-resolver";
+import { type AppImageResolver, makeBuildFromRepoResolver } from "./app-image-resolver";
 import { buildContainerExecutorDeps, makeNodeBuilderExec } from "./container-executor-deps";
 import { setContainerExecutorDeps } from "./container-job-service";
 import { containerJobsWriter } from "./container-jobs-writer";
@@ -65,24 +64,24 @@ export interface AppsDeployBackendConfig {
  */
 export function configureAppsDeployBackend(config: AppsDeployBackendConfig): void {
   // BUILD-FROM-REPO ("Vercel-like": the platform builds the user's repo, no
-  // manual image push) is armed when a registry is configured. The builder exec
-  // is the explicit one if passed, else the app node's own SSH (it already has
-  // Docker + buildx) — so the common case needs only `APPS_IMAGE_REGISTRY` set on
-  // the daemon. With no registry, resolveImage stays undefined and the runner
-  // falls back to app.metadata.imageTag / APP_DEFAULT_IMAGE (the prebuilt path) —
-  // unchanged behavior.
+  // manual image push) is armed when a registry is configured and the builder
+  // host gate returns an exec (see container-executor-deps/app-builder-host).
+  // With no armed builder, resolveImage stays undefined and the runner falls
+  // back to app.metadata.imageTag / APP_DEFAULT_IMAGE (the legacy prebuilt path)
+  // — unchanged behavior.
   const registry = config.registry ?? process.env.APPS_IMAGE_REGISTRY;
   const dockerfile = config.dockerfile ?? process.env.APPS_BUILD_DOCKERFILE;
   const buildExec = config.buildExec ?? (registry ? makeNodeBuilderExec() : null);
 
-  let resolveImage: AppDeployRunnerDeps["resolveImage"] | undefined;
+  let buildResolver: AppImageResolver | undefined;
   if (buildExec) {
     if (!registry) {
       throw new Error("[apps-deploy-backend] registry is required when buildExec is set");
     }
     const builder = new AppImageBuilder({ exec: buildExec });
-    resolveImage = makeBuildFromRepoResolver({ builder, registry, dockerfile });
+    buildResolver = makeBuildFromRepoResolver({ builder, registry, dockerfile });
   }
+  const resolveImage = buildResolver;
 
   // ENCRYPTION-FREE path (env-sourced cluster admin DSN): when
   // APPS_TENANT_ADMIN_DSN is set, the daemon needs no SECRETS_MASTER_KEY — the

@@ -248,8 +248,16 @@ jobs:
       - name: Build clone-ur-crush (Next.js standalone bundle)
         # next.config sets output:"standalone"; with outputFileTracingRoot at the
         # monorepo root the server lands at the repo-relative path inside the
-        # bundle. Next does NOT copy .next/static or public into standalone, so
-        # place them next to server.js where the standalone runtime serves them.
+        # bundle. Next does NOT copy static/public into standalone, so we place
+        # them next to server.js where the standalone runtime serves them.
+        #
+        # CRITICAL (#9300): build.mjs builds under a temp distDir
+        # (.next-build-<pid>) then renames it to .next, but the standalone server
+        # BAKES that original distDir name into required-server-files.json and
+        # serves /_next/static from <bakedDistDir>/static. Copying static to the
+        # literal .next/static (the renamed dir) puts it at a path the runtime
+        # never reads, so every CSS/JS chunk 404s. Copy static to the BAKED dist
+        # dir instead.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
@@ -259,8 +267,13 @@ jobs:
           bun run build
           app=.next/standalone/packages/examples/cloud/clone-ur-crush
           test -f "$app/server.js"
-          mkdir -p "$app/.next"
-          cp -r .next/static "$app/.next/static"
+          # The standalone's baked distDir = the dir holding required-server-files.json.
+          rsf="$(find "$app" -maxdepth 2 -name required-server-files.json | head -1)"
+          test -n "$rsf"
+          baked="$(basename "$(dirname "$rsf")")"
+          echo "standalone baked distDir: $baked"
+          mkdir -p "$app/$baked/static"
+          cp -r .next/static/. "$app/$baked/static/"
           cp -r public "$app/public"
 
       - name: Smoke-test the image (gate the GHCR push on a working container)
@@ -286,11 +299,23 @@ jobs:
             docker logs cuc-smoke || true
             exit 1
           fi
-          curl -fsS http://127.0.0.1:3000/ | grep -q "Clone Your Crush" \
+          home="$(curl -fsS http://127.0.0.1:3000/)"
+          echo "$home" | grep -q "Clone Your Crush" \
             || { echo "::error::Clone Ur Crush did not serve its UI" >&2; docker logs cuc-smoke || true; exit 1; }
+          # Assert a real /_next/static chunk serves 200 — this is what catches the
+          # distDir/static path mismatch (a broken bundle serves HTML but 404s
+          # every CSS/JS asset). Pull a static URL out of the rendered HTML.
+          asset="$(printf '%s' "$home" | grep -oE '/_next/static/[^"]+\.(js|css)' | head -1)"
+          test -n "$asset" || { echo "::error::no /_next/static asset referenced in HTML" >&2; exit 1; }
+          code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000${asset}")"
+          test "$code" = "200" \
+            || { echo "::error::static asset ${asset} returned ${code} (expected 200) — broken /_next/static path" >&2; docker logs cuc-smoke || true; exit 1; }
+          # OG card must exist (was a 404 before #9300 fix).
+          og="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/og-image.png)"
+          test "$og" = "200" || { echo "::error::og-image.png returned ${og} (expected 200)" >&2; exit 1; }
           docker rm -f cuc-smoke >/dev/null 2>&1 || true
           trap - EXIT
-          echo "Clone Ur Crush image smoke test passed: container serves its UI."
+          echo "Clone Ur Crush image smoke test passed: serves UI + /_next/static (${asset}) + og-image.png."
 
       - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
         with:
