@@ -132,14 +132,18 @@ Backbones (do not change without explicit human approval):
   (`kokoro|omnivoice|auto`), voice-cloning requirements, and measured
   RTF / TTFB.
 
-- **ASR:** Qwen3-ASR via the fused FFI on every tier. Source artifacts:
-  `ggml-org/Qwen3-ASR-0.6B-GGUF` for lite/mobile/desktop tiers,
-  `ggml-org/Qwen3-ASR-1.7B-GGUF` for pro/server. Bundled as
-  `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` (mmproj
-  sidecar is REQUIRED — Qwen3-ASR is a multimodal audio-in / text-out
-  model). Activated through `libelizainference`'s
-  `eliza_pick_asr_files()`. OmniVoice has no ASR head — do not route
-  ASR through it. The standalone `plugin-omnivoice`'s
+- **ASR:** Local ASR is fused-FFI only and artifact-gated. A
+  default-eligible Gemma 4 release must record real Gemma ASR lineage
+  in the manifest and must not ship Qwen ASR provenance; the runtime and
+  manifest validator reject strict/defaultEligible Qwen ASR stand-ins.
+  Bundled files remain `asr/eliza-1-asr.gguf` +
+  `asr/eliza-1-asr-mmproj.gguf` (mmproj sidecar is REQUIRED for the
+  audio-in / text-out path). Activated through `libelizainference`'s
+  `eliza_pick_asr_files()`. The public Qwen3-ASR artifacts and the
+  `qwen3a` mtmd backport are compatibility/scaffolding only until
+  verified Gemma ASR artifacts are staged; do not expose them as
+  default/recommended. OmniVoice has no ASR head — do not route ASR
+  through it. The standalone `plugin-omnivoice`'s
   `ModelType.TRANSCRIPTION` handler throws
   `OmnivoiceTranscriptionNotSupported` to make that explicit.
 
@@ -250,8 +254,8 @@ elizaos/eliza-1/
       omnivoice-base-<quant>.gguf
       omnivoice-tokenizer-<quant>.gguf
     asr/
-      eliza-1-asr.gguf             # Qwen3-ASR text head, every tier
-      eliza-1-asr-mmproj.gguf      # mmproj audio projector sidecar, every tier
+      eliza-1-asr.gguf             # eligible local ASR text head
+      eliza-1-asr-mmproj.gguf      # local ASR audio projector sidecar
     vad/
       silero-vad-v5.gguf           # native silero-vad-cpp, every tier
     vision/
@@ -722,7 +726,7 @@ deprecated and will be removed from the runtime path once all native ports land.
 | OmniVoice TTS | fork FFI `libelizainference` (`tools/omnivoice/`) | DONE (W3-3) |
 | Silero VAD | standalone `silero-vad-cpp` FFI `libsilero_vad` + `vad/silero-vad-v5.gguf` | DONE (I1/K7 verified) — vad.ts imports zero onnxruntime-node |
 | hey-eliza wakeword | fork FFI `eliza_inference_wakeword_*` | DONE (I1/K7 verified) — wake-word.ts imports zero onnxruntime-node |
-| ASR (Qwen3-ASR) | fork FFI `eliza_pick_asr_files()` | DONE (T-asr) |
+| ASR (eligible local ASR) | fork FFI `eliza_pick_asr_files()` | DONE (runtime) / GATED (Gemma artifacts) |
 | MTP speculative decoding | fork `llama-server` `--spec-type mtp` | DONE |
 | Text EOT (Eliza1EotClassifier) | fork `node-llama-cpp` P(`<|im_end|>`) | DONE (preferred path when text model loaded) |
 | LiveKit EOT (GGUF) | `eot-classifier-ggml.ts::LiveKitGgmlTurnDetector` | DONE (J1.d) — preferred over ONNX when GGUF on disk |

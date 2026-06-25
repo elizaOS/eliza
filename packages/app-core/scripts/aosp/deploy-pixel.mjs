@@ -326,7 +326,7 @@ async function main(argv = process.argv.slice(2)) {
     if (args.voice) {
       console.log(
         "[deploy-pixel] (dry-run) would run the on-device voice round-trip check " +
-          "(mic→VAD→Qwen3-ASR→MTP text→OmniVoice TTS) via the local-inference voice endpoint, " +
+          "(mic→VAD→local ASR→MTP text→OmniVoice TTS) via the local-inference voice endpoint, " +
           "reporting TTFT-from-utterance-end.",
       );
     }

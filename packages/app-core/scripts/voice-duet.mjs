@@ -789,7 +789,7 @@ async function main() {
     let perceived = null;
     if (perceivedRaw) {
       perceived = asrEmotionToTag(perceivedRaw) ?? null;
-      emotionPerceiver = "qwen3-asr-emotion";
+      emotionPerceiver = "local-asr-emotion";
     } else {
       emotionPerceiver = "fallback-classifier:unavailable";
     }
@@ -1039,7 +1039,7 @@ async function main() {
         },
         notes:
           accuracy == null
-            ? "emotionFidelity.accuracy is null — the GGUF-converted Qwen3-ASR did not surface an emotion label in this run and no fallback emotion-from-audio classifier was available; recorded as null per the honesty contract, not fabricated. structured-decode token-savings % is null when the running llama-server's /metrics did not expose the guided-decode counter."
+            ? "emotionFidelity.accuracy is null — the GGUF-converted local ASR did not surface an emotion label in this run and no fallback emotion-from-audio classifier was available; recorded as null per the honesty contract, not fabricated. structured-decode token-savings % is null when the running llama-server's /metrics did not expose the guided-decode counter."
             : `emotionFidelity perceiver: ${emotionPerceiver}.`,
         turns: turnLog,
       };
@@ -1098,7 +1098,7 @@ async function main() {
 }
 
 // ---------------------------------------------------------------------------
-// Best-effort transcript emotion extraction (Qwen3-ASR `<emotion>…</emotion>`
+// Best-effort transcript emotion extraction (local ASR `<emotion>…</emotion>`
 // or a `[emotion:happy]`-style tag, if the GGUF-ASR surfaces one). Returns the
 // raw label or null. Honest: if the transcript has no emotion marker, null —
 // the fidelity metric records "perceiver: fallback-classifier (unavailable)".

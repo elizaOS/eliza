@@ -2,7 +2,7 @@
  * Unit coverage for the ASR-emotion → expressive-tag helpers (#9147 voice).
  *
  * normalizeAsrEmotionLabel / asrEmotionToTag / expressiveTagPromptClause are
- * pure mappers between the Qwen3 ASR emotion labels and the TTS expressive-tag
+ * pure mappers between local ASR emotion labels and the TTS expressive-tag
  * vocabulary; they were untested (the parse/strip helpers in the same file are
  * covered separately). No GGUF / audio.
  */

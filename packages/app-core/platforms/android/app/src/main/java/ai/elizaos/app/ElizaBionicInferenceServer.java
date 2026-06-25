@@ -613,7 +613,7 @@ final class ElizaBionicInferenceServer {
 
     /**
      * On-device STT: decode the base64 little-endian fp32 PCM, run the fused
-     * Qwen3-ASR batch transcribe on the resident context (it mmap-acquires the
+     * local ASR batch transcribe on the resident context (it mmap-acquires the
      * {@code asr/} weights on first use), and return {ok, text}. The agent's
      * TRANSCRIPTION delegate routes here over UDS (op="asr"); the musl agent
      * can't reach the fused lib itself. Reuses the ONE resident context like

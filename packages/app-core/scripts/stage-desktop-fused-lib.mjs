@@ -280,7 +280,7 @@ const jobs =
 // (so the GPU backend can load the system driver at runtime) and matches the
 // dlopen()-able sibling set the runtime resolves. LLAMA_BUILD_OMNIVOICE +
 // LLAMA_BUILD_MTMD + LLAMA_BUILD_KOKORO are required for the fused
-// `elizainference` SHARED target (TTS + Qwen3-ASR + Kokoro). GGML_NATIVE=ON tunes
+// `elizainference` SHARED target (TTS + local ASR + Kokoro). GGML_NATIVE=ON tunes
 // the CPU backend to the build host — correct for a local/dev build; a
 // redistributable build should pin explicit CPU features instead.
 run("cmake", [

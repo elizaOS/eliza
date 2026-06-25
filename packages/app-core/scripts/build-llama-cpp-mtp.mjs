@@ -63,7 +63,13 @@ const DEPLOYMENT_TARGET =
 //    ios-deps tree is the historical fallback. Both carry the eliza kernels.
 const FORK_SRC_CANDIDATES = [
   process.env.ELIZA_MTP_LLAMA_CPP_SRC?.trim(),
-  path.join(repoRoot, "plugins", "plugin-local-inference", "native", "llama.cpp"),
+  path.join(
+    repoRoot,
+    "plugins",
+    "plugin-local-inference",
+    "native",
+    "llama.cpp",
+  ),
   path.join(repoRoot, "packages", "native", "ios-deps", "llama.cpp", "src"),
 ].filter(Boolean);
 
@@ -75,7 +81,7 @@ const SUPPORTED_TARGETS = [
 ];
 
 /** Per-target recipe. The iOS device + simulator slices differ only by SDK.
- *  The `-fused` variants additionally build the OmniVoice TTS + Qwen3-ASR FFI
+ *  The `-fused` variants additionally build the OmniVoice TTS + local ASR FFI
  *  (the eliza_inference_* voice ABI = libelizainference) and libmtmd into the
  *  slice, so the iOS XCFramework carries the real voice runtime instead of the
  *  fail-closed runtime-symbol shim. */
@@ -105,7 +111,7 @@ const REQUIRED_KERNELS = [
   { id: "turbo4", pattern: /turbo4/i },
 ];
 
-// ── Fused-only: the OmniVoice TTS + Qwen3-ASR FFI symbol set that distinguishes
+// ── Fused-only: the OmniVoice TTS + local ASR FFI symbol set that distinguishes
 //    a real libelizainference (ABI v4) from the fail-closed runtime shim. These
 //    mirror the eliza_inference_* half of ios-xcframework/build-xcframework.mjs
 //    REQUIRED_IOS_KERNEL_SYMBOLS plus an mtmd presence probe (the ASR path wraps
@@ -219,7 +225,7 @@ function collectArchives(buildDir, outDir) {
     .map((s) => s.trim())
     .filter(Boolean)
     .filter((p) =>
-      // Fused slices also stage libmtmd*.a (Qwen3-ASR projector),
+      // Fused slices also stage libmtmd*.a (local ASR projector),
       // libkokoro_lib*.a (Kokoro-82M TTS, ABI v10), and libelizainference*.a
       // (the eliza_inference_* voice ABI). NOT libomnivoice*.a —
       // elizainference_static already compiles the omnivoice CORE sources, so
@@ -276,12 +282,7 @@ function buildTarget(target) {
   log(`target=${target} sdk=${t.sdk} fork=${revision}`);
   log(`source: ${srcDir}`);
 
-  const buildDir = path.join(
-    STATE_DIR,
-    "local-inference",
-    "mtp-build",
-    target,
-  );
+  const buildDir = path.join(STATE_DIR, "local-inference", "mtp-build", target);
   if (process.env.ELIZA_MTP_FORCE_REBUILD === "1") {
     fs.rmSync(buildDir, { recursive: true, force: true });
   }
@@ -319,7 +320,7 @@ function buildTarget(target) {
     "-DLLAMA_BUILD_TESTS=OFF",
     "-DLLAMA_BUILD_SERVER=OFF",
     "-DLLAMA_CURL=OFF",
-    // Fused voice slice: build the standalone libmtmd (the Qwen3-ASR audio
+    // Fused voice slice: build the standalone libmtmd (the local ASR audio
     // projector the eliza_inference ASR path wraps). The omnivoice subtree is
     // already configured (LLAMA_BUILD_OMNIVOICE defaults ON); we only need the
     // elizainference_static + mtmd targets, built by name below.
@@ -341,7 +342,7 @@ function buildTarget(target) {
   // library targets carry the full kernel set and need no signing.
   const buildTargets = ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"];
   if (t.fused) {
-    // mtmd (Qwen3-ASR projector) + kokoro_lib (Kokoro-82M TTS, ABI v10) + the
+    // mtmd (local ASR projector) + kokoro_lib (Kokoro-82M TTS, ABI v10) + the
     // STATIC eliza_inference_* FFI archive. kokoro_lib must build before
     // elizainference_static links so the `if(TARGET kokoro_lib)` fold resolves.
     // NOT omnivoice-tts / omnivoice-codec: those CLIs include audio-io.h
@@ -352,7 +353,7 @@ function buildTarget(target) {
   }
   log(
     `cmake build (static libraries only) — compiles the Metal kernel set${
-      t.fused ? " + OmniVoice/Qwen3-ASR voice FFI" : ""
+      t.fused ? " + OmniVoice/local-ASR voice FFI" : ""
     }`,
   );
   run("cmake", [
@@ -381,7 +382,7 @@ function buildTarget(target) {
     );
   }
 
-  // Fused-only: prove the REAL OmniVoice TTS + Qwen3-ASR FFI (the eliza_inference_*
+  // Fused-only: prove the REAL OmniVoice TTS + local ASR FFI (the eliza_inference_*
   // voice ABI v4) and the mtmd projector are present in the staged archives, so
   // the xcframework assembler's real-vs-fail-closed-shim decision (keyed off
   // CAPABILITIES.omnivoice != null) is backed by actual symbols. The fork at
@@ -414,7 +415,7 @@ function buildTarget(target) {
     archives: archives.map((a) => path.basename(a)),
     // The xcframework assembler reads `omnivoice == null` as "use the
     // fail-closed runtime symbol shim". Fused slices carry the real
-    // libelizainference (OmniVoice TTS + Qwen3-ASR FFI), so they advertise a
+    // libelizainference (OmniVoice TTS + local ASR FFI), so they advertise a
     // non-null capability object → the assembler compiles the shim with
     // -DELIZA_IOS_REAL_ELIZAINFERENCE=1 (dropping the stub voice bodies) and the
     // real symbols resolve from the staged archive.
@@ -434,7 +435,7 @@ function buildTarget(target) {
               : 4,
           library: "libelizainference",
           tts: "omnivoice",
-          asr: "qwen3-asr",
+          asr: "local-asr",
           vad: "silero",
           kokoro: /(?:^|\s)_?eliza_inference_kokoro_synthesize\b/m.test(
             symbolsText,

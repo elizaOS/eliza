@@ -63,7 +63,7 @@ profile, and it's verified:
 | Model | Cadence | Backend | Right call |
 |---|---|---|---|
 | LLM (Gemma) decode | per-token, dynamic KV | **Metal** | ANE can't do dynamic decode |
-| Vision mmproj / Qwen3-ASR | bursty | **Metal** | GPU-sized bursty work |
+| Vision mmproj / local ASR | bursty | **Metal** | GPU-sized bursty work |
 | Kokoro TTS | per-utterance | **CoreML** (`kokoro_5s.mlmodelc`) | larger fixed-graph → ANE helps |
 | **Silero VAD** | always-on | **native CPU** | tiny LSTM → CPU fastest+lowest-power (measured; ANE 3.5× slower) |
 | **openWakeWord** | always-on | **native CPU** | same |
