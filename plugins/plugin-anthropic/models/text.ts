@@ -444,7 +444,9 @@ function buildSegmentedUserContentFromSegments(
 function buildSegmentedUserContentForMessages(
   params: GenerateTextParamsWithProviderOptions
 ): UserContent | undefined {
-  const dynamicSegments = (params.promptSegments ?? []).filter((segment: PromptSegment) => !segment.stable);
+  const dynamicSegments = (params.promptSegments ?? []).filter(
+    (segment: PromptSegment) => !segment.stable
+  );
   if (dynamicSegments.length === 0 && (params.attachments?.length ?? 0) === 0) {
     return undefined;
   }
