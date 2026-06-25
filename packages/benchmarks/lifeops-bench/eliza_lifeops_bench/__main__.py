@@ -252,8 +252,17 @@ def _list_scenarios() -> None:
         print(
             f"  {s.id:<40} {s.domain.value:<10} {s.mode.value:<7} {s.name}"
         )
-    print(f"\nTotal: {len(ALL_SCENARIOS)} scenarios\n")
-    print("By domain:")
+    counts = count_lifeops_scenarios()
+    print(
+        f"\n{counts['base']} base scenarios; "
+        f"{counts['variantsPerBase']}x prompt-prefix robustness variants "
+        f"= {counts['totalRuns']} runs total\n"
+    )
+    print(
+        "  (an edge variant re-frames a base scenario's prompt only; "
+        "ground-truth actions, required outputs and world seed are identical)\n"
+    )
+    print("By domain (run counts, including edge variants):")
     for domain, scenarios in sorted(SCENARIOS_BY_DOMAIN.items(), key=lambda kv: kv[0].value):
         print(f"  {domain.value:<12} {len(scenarios)} scenarios")
     print()
