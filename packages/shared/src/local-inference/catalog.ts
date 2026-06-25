@@ -225,11 +225,10 @@ interface TierSpec {
   hasVision?: boolean;
   /**
    * WS3: whether this tier ships a default image-gen model in the bundle
-   * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). Mobile-class
-   * tiers (2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
-   * tiers (9b/27b) default to Z-Image-Turbo Q4_K_M
-   * (~3.4 GB). The diffusion weights are runtime-downloaded — they are
-   * NOT part of the base-v1 bundle.
+   * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). All active
+   * tiers default to SD 1.5 Q5_0 until a legacy-free split-diffusion text
+   * encoder is available. The diffusion weights are runtime-downloaded —
+   * they are NOT part of the base-v1 bundle.
    */
   hasImageGen?: boolean;
 }
@@ -250,8 +249,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     // 361,518,784 bytes, published 2026-05-14); the arbiter owns the
     // swap with the text weights under pressure.
     hasVision: true,
-    // WS3: image-gen on the standard small-phone default uses SD 1.5
-    // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
+    // WS3: image-gen on the standard small-phone default uses SD 1.5 Q5_0.
     hasImageGen: true,
   },
   "eliza-1-4b": {
@@ -271,8 +269,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     textFile: "text/eliza-1-4b-128k.gguf",
     hasEmbedding: true,
     hasVision: true,
-    // WS3: 4B is the last tier that defaults to SD 1.5; flagship-phone
-    // optional path can upgrade to SDXL-Turbo Q4_0.
+    // WS3: 4B uses the same monolithic SD 1.5 default as the rest of the
+    // Gemma cutover catalog.
     hasImageGen: true,
   },
   "eliza-1-9b": {
@@ -287,9 +285,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     gpuProfile: "rtx-3090",
     hasEmbedding: true,
     hasVision: true,
-    // WS3: 9B is the boundary tier where Z-Image-Turbo Q4_K_M (~3.4 GB)
-    // becomes the default. FLUX.1 schnell remains opt-in for >=24 GB
-    // shared RAM / >=12 GB VRAM.
+    // WS3: keep 9B on the monolithic SD 1.5 default until a legacy-free
+    // split-diffusion text encoder is available.
     hasImageGen: true,
   },
   "eliza-1-27b": {

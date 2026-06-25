@@ -1030,9 +1030,9 @@ function resolveImageGenModelKeyFromRuntime(runtime: IAgentRuntime): string {
 const TIER_TO_DEFAULT_IMAGE_MODEL_KEY: Readonly<Record<string, string>> = {
 	"eliza-1-2b": "imagegen-sd-1_5-q5_0",
 	"eliza-1-4b": "imagegen-sd-1_5-q5_0",
-	"eliza-1-9b": "imagegen-z-image-turbo-q4_k_m",
-	"eliza-1-27b": "imagegen-z-image-turbo-q4_k_m",
-	"eliza-1-27b-256k": "imagegen-z-image-turbo-q4_k_m",
+	"eliza-1-9b": "imagegen-sd-1_5-q5_0",
+	"eliza-1-27b": "imagegen-sd-1_5-q5_0",
+	"eliza-1-27b-256k": "imagegen-sd-1_5-q5_0",
 };
 
 export function createLocalInferenceModelHandlers(): NonNullable<

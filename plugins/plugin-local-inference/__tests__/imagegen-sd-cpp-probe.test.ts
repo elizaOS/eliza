@@ -478,7 +478,7 @@ describe("WS3 sd-cpp backend — CLI argument contract", () => {
 			modelPath: "/models/imagegen/z-image-turbo-Q4_K_M.gguf",
 			splitDiffusionModel: true,
 			vae: "/models/imagegen/vae/ae.safetensors",
-			llm: "/models/imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+			llm: "/models/imagegen/text-encoders/split-llm-text-encoder-Q4_K_M.gguf",
 		});
 		expect(args.slice(0, 2)).toEqual([
 			"--diffusion-model",
@@ -488,7 +488,7 @@ describe("WS3 sd-cpp backend — CLI argument contract", () => {
 		expect(args).toContain("/models/imagegen/vae/ae.safetensors");
 		expect(args).toContain("--llm");
 		expect(args).toContain(
-			"/models/imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+			"/models/imagegen/text-encoders/split-llm-text-encoder-Q4_K_M.gguf",
 		);
 		expect(args).not.toContain("--model");
 	});
