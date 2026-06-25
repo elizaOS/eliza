@@ -14,7 +14,10 @@ import { apps } from "../../../db/schemas/apps";
 import { JOB_TYPES } from "../provisioning-job-types";
 import { ProvisioningJobService } from "../provisioning-jobs";
 
-const APP_ID = "11111111-2222-3333-4444-555555555555";
+// A real v4 UUID (version "4", variant "8") so it passes isValidUUID — the
+// guard the writeback uses to tell an app container's project_name (the app id)
+// from a plain /v1/containers slug.
+const APP_ID = "11111111-2222-4333-8444-555555555555";
 const CONTAINER_ID = "cccccccc-dddd-eeee-ffff-000000000000";
 
 // Minimal DbTransaction stand-in: serves one container row for the select chain
