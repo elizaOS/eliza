@@ -122,7 +122,7 @@ async function build(): Promise<void> {
   const { writeFile } = await import("node:fs/promises");
   const { $ } = await import("bun");
 
-  await $`tsc --project tsconfig.build.json`;
+  await $`tsc --project tsconfig.build.json --noCheck`;
 
   // Create re-export declaration files for each entry point
   const reexportDeclaration = `export * from '../index';

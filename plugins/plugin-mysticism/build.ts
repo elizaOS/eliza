@@ -33,7 +33,8 @@ async function build() {
   console.log("Generating TypeScript declarations...");
   const { $ } = await import("bun");
   try {
-    if (existsSync("tsconfig.build.json")) await $`tsc --project tsconfig.build.json`.quiet();
+    if (existsSync("tsconfig.build.json"))
+      await $`tsc --project tsconfig.build.json --noCheck`.quiet();
     console.log(`Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
   } catch (_error) {
     console.warn(

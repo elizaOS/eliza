@@ -81,7 +81,7 @@ async function build() {
   console.log("Generating TypeScript declarations...");
   const { $ } = await import("bun");
   try {
-    await $`tsc --project tsconfig.build.json`;
+    await $`tsc --project tsconfig.build.json --noCheck`;
   } catch (_e) {
     console.warn("TypeScript declaration generation had errors");
   }

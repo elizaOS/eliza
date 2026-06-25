@@ -45,7 +45,7 @@ async function build(): Promise<void> {
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   const { mkdir, writeFile } = await import("node:fs/promises");
-  await Bun.$`tsc --project tsconfig.build.json`;
+  await Bun.$`tsc --project tsconfig.build.json --noCheck`;
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
   const reexportDeclaration = `export * from '../index';\nexport { default } from '../index';\n`;

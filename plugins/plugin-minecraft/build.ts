@@ -41,7 +41,7 @@ async function build(): Promise<void> {
   }
 
   try {
-    await $`tsc --project tsconfig.build.json`;
+    await $`tsc --project tsconfig.build.json --noCheck`;
   } catch {
     // declaration generation is best-effort
   }

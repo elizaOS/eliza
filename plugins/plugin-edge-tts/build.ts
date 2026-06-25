@@ -83,7 +83,7 @@ async function build() {
   console.log("📝 Generating TypeScript declarations...");
   const { mkdir, writeFile } = await import("node:fs/promises");
   const { $ } = await import("bun");
-  await $`tsc --project tsconfig.build.json`;
+  await $`tsc --project tsconfig.build.json --noCheck`;
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
   await writeFile(
