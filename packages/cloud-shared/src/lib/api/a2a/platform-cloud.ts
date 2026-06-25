@@ -19,6 +19,8 @@ import {
   type Task,
   type TaskState,
 } from "../../types/a2a";
+import { logger } from "../../utils/logger";
+import { safeUnknownErrorMessage } from "../cloud-worker-errors";
 
 type JsonRpcId = string | number | null;
 
@@ -286,7 +288,12 @@ export async function handlePlatformA2aJsonRpc(
         return jsonRpcError(-32601, `Unsupported A2A method: ${request.method}`, id);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return jsonRpcError(-32000, message, id);
+    // Redact infra/DB/5xx faults (raw SQL/SQLSTATE/driver internals); deliberate
+    // 4xx errors keep their message. Full error logged server-side.
+    logger.error("[A2A Platform] JSON-RPC dispatch failed", {
+      method: request.method,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return jsonRpcError(-32000, safeUnknownErrorMessage(error), id);
   }
 }

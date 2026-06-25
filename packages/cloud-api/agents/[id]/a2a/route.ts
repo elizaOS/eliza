@@ -15,6 +15,7 @@ import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { UserCharacter } from "@/db/repositories/characters";
+import { safeUnknownErrorMessage } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
 import {
@@ -416,7 +417,9 @@ async function handleChat(
       jsonrpc: "2.0",
       error: {
         code: -32000,
-        message: error instanceof Error ? error.message : "Internal error",
+        // Redact infra/DB/5xx internals from the A2A caller (full error is
+        // logged above); deliberate 4xx messages still pass through.
+        message: safeUnknownErrorMessage(error),
       },
       id: rpcId,
     });

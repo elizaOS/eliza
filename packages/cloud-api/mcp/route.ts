@@ -8,11 +8,13 @@
 
 import { Hono } from "hono";
 
+import { safeUnknownErrorMessage } from "@/lib/api/cloud-worker-errors";
 import { forwardMcpUpstreamRequest } from "@/lib/mcp/mcp-upstream-forward";
 import {
   callPlatformCloudMcpTool,
   listPlatformCloudMcpTools,
 } from "@/lib/mcp/platform-cloud-tools";
+import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const PLATFORM_UPSTREAM_ENV = "ELIZA_CLOUD_PLATFORM_MCP_UPSTREAM_URL";
@@ -78,8 +80,15 @@ async function handleJsonRpc(c: AppContext, message: unknown) {
         );
         return jsonRpcResult(request.id, result);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return jsonRpcError(request.id, -32000, message);
+        // Redact: deliberate 4xx errors (auth/validation/not-found) keep their
+        // message; infra/DB/5xx faults collapse to a generic string so raw SQL /
+        // SQLSTATE / driver internals never reach the MCP caller. Full error is
+        // logged server-side.
+        logger.error("[MCP] tools/call failed", {
+          tool: toolName,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return jsonRpcError(request.id, -32000, safeUnknownErrorMessage(error));
       }
     }
     default:
