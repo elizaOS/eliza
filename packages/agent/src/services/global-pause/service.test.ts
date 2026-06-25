@@ -7,6 +7,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it } from "vitest";
 import {
   GLOBAL_PAUSE_SERVICE,
@@ -65,9 +66,9 @@ describe("GlobalPauseService", () => {
   });
 
   it("resolveGlobalPauseService returns null when unregistered", () => {
-    const runtime = {
+    const runtime = createMockRuntime({
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    });
     expect(resolveGlobalPauseService(runtime)).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import type http from "node:http";
+import { createMockRuntime } from "@elizaos/core/testing";
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import { ApprovalService, ServiceType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,7 +19,7 @@ async function makeRuntimeWithService(tasks: Task[]): Promise<{
   runtime: { getService: (t: string) => unknown };
   service: ApprovalService;
 }> {
-  const baseRuntime = {
+  const baseRuntime = createMockRuntime({
     agentId: AGENT_ID,
     getTasks: vi.fn(
       async (params: {
@@ -32,7 +33,7 @@ async function makeRuntimeWithService(tasks: Task[]): Promise<{
         );
       },
     ),
-  } as unknown as IAgentRuntime;
+  });
   const service = (await ApprovalService.start(baseRuntime)) as ApprovalService;
   const runtime = {
     getService: (t: string) => (t === ServiceType.APPROVAL ? service : null),

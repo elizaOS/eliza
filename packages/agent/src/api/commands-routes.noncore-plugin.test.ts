@@ -17,6 +17,7 @@
  */
 
 import type { Action, Content, IAgentRuntime, Memory } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { initForRuntime } from "@elizaos/plugin-commands";
 import taskCoordinatorPlugin, {
   ORCHESTRATOR_STATUS_COMMAND_ACTION,
@@ -102,7 +103,7 @@ describe("@elizaos/plugin-task-coordinator command contract", () => {
 
   it("dispatches the matching slash message to the plugin's handler", async () => {
     const action: Action = orchestratorStatusCommandAction;
-    const runtime = { agentId: AGENT_ID } as unknown as IAgentRuntime;
+    const runtime = createMockRuntime({ agentId: AGENT_ID });
     const message = {
       entityId: "user-1",
       roomId: "room-1",
@@ -129,7 +130,7 @@ describe("@elizaos/plugin-task-coordinator command contract", () => {
 
   it("does not intercept conversational text", async () => {
     const action: Action = orchestratorStatusCommandAction;
-    const runtime = { agentId: AGENT_ID } as unknown as IAgentRuntime;
+    const runtime = createMockRuntime({ agentId: AGENT_ID });
     const message = {
       entityId: "user-1",
       roomId: "room-1",

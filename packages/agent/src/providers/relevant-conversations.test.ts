@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The provider closes over `embedRecallQuery` from @elizaos/core at import time.
@@ -37,11 +38,11 @@ function makeRuntime(overrides: Partial<IAgentRuntime> = {}): {
       createdAt: 1,
     } as unknown as Memory,
   ]);
-  const runtime = {
+  const runtime = createMockRuntime({
     getRoom: vi.fn(async () => ({ id: ROOM_ID }) as unknown as Room),
     searchMemories,
     ...overrides,
-  } as unknown as IAgentRuntime;
+  });
   return { runtime, searchMemories };
 }
 
