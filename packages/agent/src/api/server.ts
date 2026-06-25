@@ -23,7 +23,6 @@ function tokenMatches(expected: string, provided: string): boolean {
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import path from "node:path";
-import { handleCloudPairRoute } from "@elizaos/app-core/api/cloud-pair-route";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -2021,9 +2020,18 @@ async function handleRequest(
   // and wedging the dashboard at "Connecting to backend…". The route is a
   // cloud-SSO handoff that a local on-device agent never legitimately serves,
   // so skipping it when unavailable is safe.
+  // Dynamic import (matching the account-pool / vault-mirror seams in this
+  // package) so agent never *statically* imports @elizaos/app-core: the static
+  // import was what produced the circular re-export init-order `undefined`
+  // above, and it is the build-time edge that puts @elizaos/app-core <->
+  // @elizaos/agent in a Turbo dependency cycle (#9626). `.catch(() => null)`
+  // keeps the on-device path graceful when app-core isn't present at all.
+  const cloudPairMod = await import(
+    /* @vite-ignore */ "@elizaos/app-core/api/cloud-pair-route"
+  ).catch(() => null);
   if (
-    typeof handleCloudPairRoute === "function" &&
-    (await handleCloudPairRoute(req, res))
+    typeof cloudPairMod?.handleCloudPairRoute === "function" &&
+    (await cloudPairMod.handleCloudPairRoute(req, res))
   ) {
     return;
   }

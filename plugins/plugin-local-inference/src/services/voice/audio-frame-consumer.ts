@@ -180,6 +180,13 @@ export interface AttributionPipelineLike {
  */
 export interface RuntimeEventSink {
 	emitEvent(type: unknown, payload: Record<string, unknown>): Promise<void>;
+	/**
+	 * Optional host-supplied far-end (agent TTS playback) reference for the live
+	 * AEC path (#9583). When a host wires this, the live diarization route threads
+	 * it into the session's NLMS echo canceller instead of relying on the
+	 * playback-frames ingest route. Absent on headless/core runtimes.
+	 */
+	voiceEchoReferenceProvider?: EchoReferenceProvider;
 }
 
 /**

@@ -72,9 +72,14 @@ function getSession(state: CompatRuntimeState): LiveDiarizationSession | null {
 	const runtime = state.current as RuntimeEventSink | null;
 	if (!runtime || typeof runtime.emitEvent !== "function") return null;
 	if (!session) {
-		session = new LiveDiarizationSession(runtime, {
-			echoReference: resolveRuntimeEchoReference(runtime),
-		});
+		// Thread a host-supplied echo reference (if any) into the live AEC path
+		// so the NLMS canceller has a far-end signal without the playback-frames
+		// ingest route (#9583).
+		const echoReference = resolveRuntimeEchoReference(runtime);
+		session = new LiveDiarizationSession(
+			runtime,
+			echoReference ? { echoReference } : {},
+		);
 	}
 	return session;
 }

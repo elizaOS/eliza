@@ -19,7 +19,7 @@ import {
   relaunchDiscordDesktopForCdp,
   searchDiscordMessages,
   sendDiscordViaDesktopCdp,
-} from "@elizaos/plugin-discord";
+} from "@elizaos/plugin-discord/user-account-scraper";
 import type {
   LifeOpsBrowserSession,
   LifeOpsConnectorDegradation,
