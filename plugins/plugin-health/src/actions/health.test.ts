@@ -151,6 +151,136 @@ describe("health action runner", () => {
     });
   });
 
+  it("denies access → PERMISSION_DENIED before touching the service (#8795)", async () => {
+    const service = {
+      getHealthConnectorStatus: vi.fn(),
+      getHealthSummary: vi.fn(),
+      getHealthTrend: vi.fn(),
+      getHealthDataPoints: vi.fn(),
+      getHealthDailySummary: vi.fn(),
+    } satisfies HealthActionService;
+    const runner = createHealthActionRunner({
+      hasAccess: async () => false,
+      createService: () => service,
+      messageText: (m) =>
+        typeof m.content.text === "string" ? m.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      recentConversationTexts: async () => [],
+      runJsonModel: async () => null,
+    });
+
+    const result = await runner(
+      runtime,
+      message,
+      undefined,
+      { parameters: { subaction: "today" } },
+      undefined,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toEqual({ error: "PERMISSION_DENIED" });
+    expect(result.text).toContain("Health data is restricted to the owner");
+    // No service work should run once access is denied.
+    expect(service.getHealthConnectorStatus).not.toHaveBeenCalled();
+  });
+
+  it("planner shouldAct:false → planner_clarification carrying the clarifying text (#8795)", async () => {
+    const service = {
+      getHealthConnectorStatus: vi.fn(),
+      getHealthSummary: vi.fn(),
+      getHealthTrend: vi.fn(),
+      getHealthDataPoints: vi.fn(),
+      getHealthDailySummary: vi.fn(),
+    } satisfies HealthActionService;
+    const runJsonModel = vi.fn(
+      async (): Promise<{ parsed: Record<string, unknown> }> => ({
+        parsed: {
+          subaction: null,
+          metric: null,
+          days: null,
+          shouldAct: false,
+          response: "Which metric — steps, sleep, or heart rate?",
+        },
+      }),
+    );
+    const runner = createHealthActionRunner({
+      hasAccess: async () => true,
+      createService: () => service,
+      messageText: (m) =>
+        typeof m.content.text === "string" ? m.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      recentConversationTexts: async () => [],
+      runJsonModel,
+    });
+
+    // resolveHealthPlanWithLlm only fires when runtime.useModel exists.
+    const plannerRuntime = {
+      logger: { warn: vi.fn() },
+      useModel: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    // No explicit subaction → the planner runs and returns shouldAct:false.
+    const result = await runner(
+      plannerRuntime,
+      { content: { text: "tell me about my health" } } as Memory,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(false);
+    // renderReply echoes the fallback, which is the planner's clarifying text.
+    expect(result.text).toBe("Which metric — steps, sleep, or heart rate?");
+    expect(result.values).toMatchObject({
+      success: false,
+      error: "PLANNER_SHOULDACT_FALSE",
+      skipped: true,
+    });
+    expect(result.data).toMatchObject({
+      skipped: true,
+      error: "PLANNER_SHOULDACT_FALSE",
+    });
+    // Clarification short-circuits before any health data is fetched.
+    expect(service.getHealthConnectorStatus).not.toHaveBeenCalled();
+  });
+
+  it("by_metric with no metric → MISSING_METRIC (#8795)", async () => {
+    const service = {
+      getHealthConnectorStatus: vi.fn(async () => ({
+        available: true,
+        backend: "healthkit" as const,
+      })),
+      getHealthSummary: vi.fn(async () => ({
+        providers: [],
+        summaries: [],
+        samples: [],
+        workouts: [],
+        sleepEpisodes: [],
+        syncedAt: "2026-05-30T12:00:00.000Z",
+      })),
+      getHealthTrend: vi.fn(),
+      getHealthDataPoints: vi.fn(),
+      getHealthDailySummary: vi.fn(),
+    } satisfies HealthActionService;
+    const runner = makeRunner(service);
+
+    // Explicit by_metric subaction, but no metric param → MISSING_METRIC.
+    const result = await runner(
+      runtime,
+      { content: { text: "how much of that metric" } } as Memory,
+      undefined,
+      { parameters: { subaction: "by_metric" } },
+      undefined,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toEqual({ error: "MISSING_METRIC" });
+    expect(result.text).toContain("Specify a metric");
+    // Reached the metric guard, so no data points were ever requested.
+    expect(service.getHealthDataPoints).not.toHaveBeenCalled();
+  });
+
   it("runs status through injected service and renderer adapters", async () => {
     const service = {
       getHealthConnectorStatus: vi.fn(async () => ({

@@ -5,8 +5,39 @@ import { CONNECT_EVENT } from "../events";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
 import { applyLaunchConnection } from "../platform";
+import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import { useAppSelectorShallow } from "./app-store";
 import type { StartupErrorReason, StartupErrorState } from "./types";
+
+/**
+ * A loopback gateway is the local-agent-on-this-machine case — the common,
+ * benign target a `connect` deep link points at. Anything else (LAN, Tailscale,
+ * .local, a public host) repoints the app at a different server and must be
+ * user-confirmed (see the CONNECT_EVENT handler).
+ */
+export function isLoopbackGatewayHost(gatewayUrl: string): boolean {
+  try {
+    const host = new URL(gatewayUrl).hostname
+      .toLowerCase()
+      .replace(/^\[|\]$/g, "");
+    return (
+      host === "localhost" ||
+      host === "::1" ||
+      host === "0.0.0.0" ||
+      host.startsWith("127.")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function gatewayHostForDisplay(gatewayUrl: string): string {
+  try {
+    return new URL(gatewayUrl).host || gatewayUrl;
+  } catch {
+    return gatewayUrl;
+  }
+}
 
 function phaseToStatusKey(phase: string): string {
   switch (phase) {
@@ -74,7 +105,7 @@ export function useStartupShellController(): StartupShellController {
   coordinatorStateRef.current = startupCoordinator.state;
 
   useEffect(() => {
-    const handleConnect = (event: Event): void => {
+    const handleConnect = async (event: Event): Promise<void> => {
       const detail = (event as CustomEvent<unknown>).detail;
       const payload =
         detail && typeof detail === "object" && !Array.isArray(detail)
@@ -82,6 +113,27 @@ export function useStartupShellController(): StartupShellController {
           : null;
       if (typeof payload?.gatewayUrl !== "string") {
         return;
+      }
+
+      // CONNECT_EVENT is only ever dispatched from an OS-delivered `connect`
+      // deep link (attacker-reachable). Repointing the agent API base to a
+      // non-loopback host is security-sensitive, so require explicit user
+      // confirmation for any remote target; the local-agent (loopback) connect
+      // stays frictionless.
+      if (!isLoopbackGatewayHost(payload.gatewayUrl)) {
+        const approved = await confirmDesktopAction({
+          type: "warning",
+          title: "Connect to this server?",
+          message: `Point this app at "${gatewayHostForDisplay(payload.gatewayUrl)}"?`,
+          detail:
+            "A link asked to connect this app to a different agent server. Only continue if you trust it — that server will handle your messages and data.",
+          confirmLabel: "Connect",
+          cancelLabel: "Cancel",
+        });
+        if (!approved) {
+          setActionNotice("Connection request cancelled.", "info", 4200);
+          return;
+        }
       }
 
       try {

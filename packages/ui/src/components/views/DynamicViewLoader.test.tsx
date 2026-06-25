@@ -11,7 +11,26 @@ import { APP_PAUSE_EVENT } from "../../events";
 import {
   __resetDynamicViewLoaderCacheForTests,
   DynamicViewLoader,
+  isSameOriginBundleUrl,
 } from "./DynamicViewLoader";
+
+describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
+  it("accepts same-origin and root-relative /api/views bundle URLs", () => {
+    expect(isSameOriginBundleUrl("/api/views/x/bundle.js")).toBe(true);
+    expect(
+      isSameOriginBundleUrl(`${window.location.origin}/api/views/x/bundle.js`),
+    ).toBe(true);
+  });
+
+  it("rejects cross-origin bundle URLs (the RCE vector)", () => {
+    expect(
+      isSameOriginBundleUrl("https://capability.example.test/assets/x.js"),
+    ).toBe(false);
+    expect(isSameOriginBundleUrl("http://evil.example/x.js")).toBe(false);
+    // A protocol-relative URL resolves to a different origin → rejected.
+    expect(isSameOriginBundleUrl("//evil.example/x.js")).toBe(false);
+  });
+});
 
 const { sendWsMessage } = vi.hoisted(() => ({
   sendWsMessage: vi.fn(),

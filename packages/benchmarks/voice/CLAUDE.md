@@ -8,9 +8,12 @@ in the suite orchestrator — run scripts directly with Bun.
 ## Run
 
 ```bash
-# End-to-end: 3 real voices (2 human + agent), full pipeline with real models
-ELIZA_VOICE_CLASSIFIER_LIB=<repo-root>/build-darwin/libvoice_classifier.dylib \
-  bun packages/benchmarks/voice/three-voice-e2e-real.mjs
+# Local real-acoustic eval: real pyannote diarizer + WeSpeaker encoder on real
+# audio (Apple Silicon Metal, no GPU runner / no ElevenLabs)
+ELIZA_INFERENCE_LIBRARY=<repo-root>/libelizainference.dylib ELIZA_BUNDLE_DIR=<bundle> \
+ELIZA_PYANNOTE_GGUF=<pyannote.gguf> ELIZA_WESPEAKER_GGUF=<wespeaker.gguf> \
+ELIZA_SPK_A_WAV=<a.wav> ELIZA_SPK_B_WAV=<b.wav> \
+  bun packages/benchmarks/voice/local-acoustic-eval.mjs
 
 # Provisioned CI real matrix: fused lib + GGUFs + generated speech.
 # Fails instead of skipping when any real dependency is absent.
@@ -71,7 +74,7 @@ count and exits 1 on any failure.
 
 | Path | Role |
 | --- | --- |
-| `three-voice-e2e-real.mjs` | Full E2E: OmniVoice TTS, Kokoro agent voice, pyannote diarizer, WeSpeaker encoder, eliza-1 ASR, should-respond |
+| `local-acoustic-eval.mjs` | Local real-acoustic eval: real pyannote diarizer + WeSpeaker encoder on real audio (Apple Silicon Metal, no GPU runner / no ElevenLabs) — diarizer counts, DER proxy, WeSpeaker cosine |
 | `voice-real-ci-matrix.mjs` | Provisioned CI real matrix: ElevenLabs owner/impostor speech + fused on-device agent TTS/ASR/diarizer/speaker encoder, producing DER/WER/echo-rejection/owner-security metrics |
 | `three-voice-scenario.mjs` | Same scenario with synthetic-fixture PCM (no real TTS) |
 | `owner-voice-first-run.mjs` | Owner enrollment, recognition, rejection, injection-attack defense (pure-JS, self-contained) |

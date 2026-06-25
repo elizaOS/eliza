@@ -492,6 +492,27 @@ if (typeof window !== "undefined" && !window.__ELIZA_DYNAMIC_VIEW_IMPORT__) {
 /** Dev-mode polling interval in ms. Not used in production builds. */
 const DEV_POLL_INTERVAL_MS = 2000;
 
+/**
+ * A view bundle is executed as an ES module in the host realm (it receives the
+ * host React singleton, the API client, and the native bridges via the
+ * host-external map), so it runs with full app privilege. Only ever import a
+ * bundle served by THIS origin: a cross-origin `bundleUrl` (which an untrusted
+ * remote-plugin descriptor can announce) would be arbitrary attacker code
+ * executing against the user's authenticated session. Every shipped view is
+ * same-origin (`/api/views/<id>/bundle.js`); a future remote/CDN bundle must add
+ * Subresource-Integrity before this gate can be relaxed.
+ */
+export function isSameOriginBundleUrl(bundleUrl: string): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return (
+      new URL(bundleUrl, window.location.href).origin === window.location.origin
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function importViewBundle(
   bundleUrl: string,
 ): Promise<Record<string, unknown>> {
@@ -500,6 +521,12 @@ async function importViewBundle(
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__
   ) {
     return window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__(bundleUrl);
+  }
+
+  if (!isSameOriginBundleUrl(bundleUrl)) {
+    throw new Error(
+      `DynamicViewLoader: refusing to import a cross-origin view bundle (${bundleUrl}). View bundles must be served same-origin from /api/views/.`,
+    );
   }
 
   const hostExternalUrl = buildHostExternalBundleUrl(bundleUrl);

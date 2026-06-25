@@ -27,16 +27,17 @@ Verification scripts (run with `ELIZA_VOICE_CLASSIFIER_LIB` pointing at the buil
 - `packages/benchmarks/voice/verify-real-diarization.mjs` — real 2-speaker diarization in one window
 - `packages/benchmarks/voice/owner-voice-first-run.mjs` — OWNER enroll/recognize/reject/attack
 - `packages/benchmarks/voice/three-voice-scenario.mjs` — 7-turn scene, synthetic audio (superseded)
-- `packages/benchmarks/voice/three-voice-e2e-real.mjs` — **integrated real-audio scenario** (see §0.6)
+- `packages/benchmarks/voice/local-acoustic-eval.mjs` — **real-audio diarizer + WeSpeaker eval** (Apple Silicon, no GPU runner; supersedes the removed `three-voice-e2e-real.mjs`, see §0.6 for that run's historical numbers)
 - `packages/benchmarks/voice/verify-enrollment-attribution.mjs` — enrollment-based speaker attribution (3/3 humans)
 - `packages/benchmarks/voice/verify-kokoro-agent-voice.mjs` — **Kokoro agent voice** (ONNX) + ASR round-trip
 
 ### 0.6 Integrated three-voice scenario (real audio, real models)
 
-`three-voice-e2e-real.mjs` runs the full loop end-to-end with no fallbacks:
+`three-voice-e2e-real.mjs` (since removed — superseded by `local-acoustic-eval.mjs`
+for local acoustic numbers) ran the full loop end-to-end with no fallbacks:
 2 human OmniVoice voices (Alice female, Bob male) + agent voice, merged into
 one 14.8s stream, through real pyannote diarizer + real WeSpeaker encoder +
-real eliza-1 ASR. Report: `reports/three-voice-e2e-real-report.md`.
+real eliza-1 ASR. The numbers below are retained as that run's historical record.
 
 - **ASR transcripts recorded:** mean WER 0.171 (5/7 turns WER 0; 2 truncated on long clauses).
 - **Should-respond: 5/5 correct** on the *real ASR text* — agent replies on "Eliza" turns (1,4,6), silent on ambient (2,5).
