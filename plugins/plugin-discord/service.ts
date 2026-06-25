@@ -478,7 +478,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public accountId: string = DEFAULT_ACCOUNT_ID;
 	private defaultAccountId = DEFAULT_ACCOUNT_ID;
 	private readonly accountPool = new DiscordAccountClientPool();
-	client: DiscordJsClient | null;
+	client: DiscordJsClient | null = null;
 	character: Character;
 	discordSettings: DiscordSettings;
 	messageManager?: MessageManager;

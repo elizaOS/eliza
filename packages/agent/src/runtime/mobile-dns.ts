@@ -1,4 +1,4 @@
-import dns from "node:dns";
+import dns, { type LookupAddress } from "node:dns";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
@@ -118,7 +118,12 @@ export function configureMobileDnsIfNeeded(): void {
           family?: number,
         ) => {
           if (err) reject(err);
-          else resolve(options?.all ? address : { address, family });
+          else
+            resolve(
+              (options?.all ? address : { address, family }) as
+                | LookupAddress[]
+                | LookupAddress,
+            );
         },
       );
     })) as typeof dns.promises.lookup;

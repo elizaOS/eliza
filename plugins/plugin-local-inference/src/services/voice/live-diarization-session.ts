@@ -34,11 +34,13 @@ import {
 	type AudioFrameConsumerConfig,
 	type AudioFrameConsumerDeps,
 	type AudioFrameEvent,
+	decodeAudioFramePcm,
 	type EchoReferenceProvider,
 	type RuntimeEventSink,
 	type TurnTranscriber,
 	type VadSegmenter,
 } from "./audio-frame-consumer.js";
+import { EchoReferenceBuffer } from "./echo-reference-buffer.js";
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
@@ -134,8 +136,8 @@ const MAX_RECENT_TURNS = 20;
 export interface LiveDiarizationSessionOptions {
 	/**
 	 * Agent-playback PCM provider for AEC. The caller owns playback capture and
-	 * delay calibration; this session only forwards the provider into
-	 * AudioFrameConsumer so cancellation happens before VAD/attribution.
+	 * delay calibration when supplied. Without an external provider, the session
+	 * uses its built-in playback buffer fed by /api/voice/playback-frames.
 	 */
 	echoReference?: EchoReferenceProvider | null;
 }
@@ -164,6 +166,21 @@ export function buildLiveDiarizationConsumerDeps({
 	};
 }
 
+const AUDIO_FRAME_SAMPLE_RATE = 16_000;
+
+/**
+ * Playback→mic transport delay used to time-align the far-end echo reference,
+ * in samples @ 16 kHz. Device-tunable via `ELIZA_VOICE_ECHO_DELAY_MS`; the
+ * on-device calibration (`estimateEchoDelaySamples`, #9586) is the device-side
+ * follow-up. Default 0 — the canceller aligns to the most-recently-rendered
+ * playback and the NLMS filter adapts the residual.
+ */
+function resolveEchoDelaySamples(): number {
+	const ms = Number(process.env.ELIZA_VOICE_ECHO_DELAY_MS);
+	if (!Number.isFinite(ms) || ms <= 0) return 0;
+	return Math.round((ms / 1000) * AUDIO_FRAME_SAMPLE_RATE);
+}
+
 /**
  * Owns the single live diarization consumer for the agent process. Built
  * lazily on first frame batch so it does not load voice models at boot.
@@ -183,6 +200,15 @@ export class LiveDiarizationSession {
 	private buildError: string | null = null;
 	/** True once the fused ASR region is mmap-acquired for per-turn transcribe. */
 	private asrRegionAcquired = false;
+	/**
+	 * Far-end (agent TTS playback) alignment buffer for echo cancellation
+	 * (#9583/#9455). Fed by {@link pushPlayback}; read per mic frame via the
+	 * consumer's `echoReference` seam. Inert (zero far-end ⇒ NLMS passthrough)
+	 * until the device streams playback, so wiring it never regresses the
+	 * no-playback case.
+	 */
+	private readonly echoBuffer = new EchoReferenceBuffer();
+	private readonly echoDelaySamples = resolveEchoDelaySamples();
 
 	constructor(
 		private readonly runtime: RuntimeEventSink,
@@ -269,7 +295,13 @@ export class LiveDiarizationSession {
 				pipeline,
 				runtime: this.runtime,
 				transcribe,
-				echoReference: this.options.echoReference ?? null,
+				// Cancel the agent's own TTS playback before VAD/attribution so the
+				// live path never transcribes its echo (#9455/#9583). Hosts may
+				// provide their own live reference; otherwise the session uses the
+				// built-in playback buffer fed by pushPlayback.
+				echoReference:
+					this.options.echoReference ??
+					((_timestampMs, samples) => this.echoReferenceFrame(samples)),
 			}),
 			config,
 		);
@@ -323,6 +355,36 @@ export class LiveDiarizationSession {
 		if (this.recentTurns.length > MAX_RECENT_TURNS) this.recentTurns.shift();
 	}
 
+	/**
+	 * The far-end (agent TTS playback) reference aligned to a mic frame of
+	 * `samples` samples — the consumer's `echoReference` seam (#9455/#9583).
+	 * Reads the alignment buffer at the configured playback→mic delay; the slice
+	 * is zero-filled (⇒ NLMS passthrough) until the device streams playback.
+	 * Public so the wiring is unit-testable without the fused FFI.
+	 */
+	echoReferenceFrame(samples: number): Float32Array {
+		return this.echoBuffer.referenceFor(samples, this.echoDelaySamples);
+	}
+
+	/**
+	 * Feed a batch of agent-playback (far-end) frames for echo cancellation. The
+	 * device captures the agent's TTS output in the SAME base64 LE-s16 16 kHz
+	 * mono wire format as the mic and POSTs it in real time as it renders; we
+	 * decode + append to the alignment buffer. The device MUST also call
+	 * {@link resetPlayback} when playback stops (or on barge-in) so the canceller
+	 * never aligns a later mic frame to stale, no-longer-playing audio.
+	 */
+	pushPlayback(frames: AudioFrameEvent[]): void {
+		for (const frame of frames) {
+			this.echoBuffer.push(decodeAudioFramePcm(frame));
+		}
+	}
+
+	/** Drop buffered far-end playback (playback stopped / barge-in). */
+	resetPlayback(): void {
+		this.echoBuffer.reset();
+	}
+
 	/** Feed a batch of WebView-captured frames; resolves once VAD has processed them. */
 	async ingest(frames: AudioFrameEvent[]): Promise<void> {
 		await this.ensureBuilt();
@@ -352,7 +414,10 @@ export class LiveDiarizationSession {
 			framesReceived: this.framesReceived,
 			framesDropped: this.consumer?.droppedFrames ?? 0,
 			turnsObserved: this.turnsObserved,
-			aec: { echoReferenceWired: this.options.echoReference != null },
+			aec: {
+				echoReferenceWired:
+					this.consumer != null || this.options.echoReference != null,
+			},
 			recentTurns: [...this.recentTurns],
 			...(this.buildError ? { error: this.buildError } : {}),
 		};

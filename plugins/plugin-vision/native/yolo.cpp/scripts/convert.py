@@ -90,11 +90,6 @@ def main() -> int:
         print(f"missing dependency: {exc}. pip install torch numpy", file=sys.stderr)
         return 2
     try:
-        from ultralytics import YOLO
-    except ImportError:
-        print("ultralytics not installed. pip install ultralytics", file=sys.stderr)
-        return 2
-    try:
         import gguf
     except ImportError:
         print("gguf not installed. pip install gguf", file=sys.stderr)
@@ -110,7 +105,32 @@ def main() -> int:
 
     weights = args.weights or f"{args.variant}.pt"
     print(f"[convert] loading {weights}", file=sys.stderr)
-    model = YOLO(weights).model  # DetectionModel (nn.Module)
+    try:
+        from ultralytics import YOLO
+    except Exception as exc:  # noqa: BLE001 - torchvision registration can fail here
+        print(
+            f"[convert] ultralytics unavailable ({exc}); "
+            "loading DetectionModel directly from checkpoint",
+            file=sys.stderr,
+        )
+        try:
+            checkpoint = torch.load(weights, map_location="cpu", weights_only=False)
+        except FileNotFoundError:
+            print(
+                f"checkpoint not found: {weights}. Install ultralytics to auto-download "
+                "default weights, or pass --weights with a local .pt file.",
+                file=sys.stderr,
+            )
+            return 2
+        except Exception as load_exc:
+            print(f"torch.load failed for {weights}: {load_exc}", file=sys.stderr)
+            return 2
+        model = checkpoint.get("model") if isinstance(checkpoint, dict) else None
+        if model is None:
+            print(f"checkpoint {weights} does not contain a 'model' entry", file=sys.stderr)
+            return 2
+    else:
+        model = YOLO(weights).model  # DetectionModel (nn.Module)
     model.eval().float()
 
     out_dir = os.path.dirname(os.path.abspath(args.out))

@@ -300,7 +300,7 @@ export function SmartglassesView() {
       group: "wifi",
       description: "SSID of the Wi-Fi network to configure on the glasses",
       getValue: () => wifiSsid,
-      onFill: (value) => setWifiSsid(value),
+      onFill: (value: string) => setWifiSsid(value),
     });
   const { ref: wifiPasswordRef, agentProps: wifiPasswordAgentProps } =
     useAgentElement<HTMLInputElement>({
@@ -310,7 +310,7 @@ export function SmartglassesView() {
       group: "wifi",
       description: "Password for the Wi-Fi network to configure on the glasses",
       getValue: () => wifiPassword,
-      onFill: (value) => setWifiPassword(value),
+      onFill: (value: string) => setWifiPassword(value),
     });
 
   function appendEvent(type: string, detail: string): void {

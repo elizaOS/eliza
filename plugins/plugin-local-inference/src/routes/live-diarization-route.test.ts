@@ -262,4 +262,70 @@ describe("handleLiveDiarizationRoute", () => {
 		expect(handled).toBe(true);
 		expect(res.statusCode).toBe(503);
 	});
+
+	it("accepts agent-playback (far-end) frames for echo cancellation", async () => {
+		// Unlike the mic path, pushing playback needs no model build — it only
+		// decodes + appends to the alignment buffer — so this exercises the full
+		// route end-to-end on a host with no on-device GGUFs.
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: [silentFrame(0), silentFrame(1)] },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toMatchObject({ ok: true, framesPushed: 2 });
+	});
+
+	it("accepts a reset-only playback request (barge-in / playback stop)", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { reset: true },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toMatchObject({ ok: true, framesPushed: 0 });
+	});
+
+	it("rejects malformed playback frames with 400", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: [{ pcm16: "AA==" /* missing fields */ }] },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(400);
+		expect((res.json() as { error: string }).error).toMatch(/Malformed/);
+	});
+
+	it("rejects a non-array playback frames field with 400", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { frames: "nope" },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(400);
+	});
 });

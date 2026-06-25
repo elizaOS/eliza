@@ -1,4 +1,4 @@
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import type { VoiceConnection } from "@discordjs/voice";
 import {
 	type IAgentRuntime,
@@ -268,7 +268,10 @@ export class DiscordTestSuite implements TestSuite {
 				throw new Error("TTS response stream is null or undefined.");
 			}
 
-			await this.playAudioStream(responseStream, connection);
+			await this.playAudioStream(
+				Readable.from(Buffer.from(responseStream as ArrayBuffer)),
+				connection,
+			);
 		} catch (error) {
 			throw new Error(`Error in TTS playback test: ${error}`);
 		}

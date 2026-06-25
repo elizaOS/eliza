@@ -218,7 +218,7 @@ describe("GET /api/views", () => {
     expect(json).toHaveBeenCalledOnce();
     const [, payload] = json.mock.calls[0] as [unknown, { views: unknown[] }];
     expect(Array.isArray(payload.views)).toBe(true);
-    const ids = payload.views.map((v: { id: string }) => v.id);
+    const ids = (payload.views as { id: string }[]).map((v) => v.id);
     expect(ids).toContain("wallet.inventory");
   });
 

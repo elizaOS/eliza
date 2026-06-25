@@ -28,8 +28,8 @@ export const xrQueryVisionAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State,
-    _options: unknown,
+    _state?: State,
+    _options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const svc = runtime.getService<XRSessionService>(XR_SERVICE_TYPE);
