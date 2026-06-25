@@ -44,7 +44,7 @@ import {
   ModelType,
 } from "@elizaos/core";
 import type { DisplayCapture } from "../platform/capture.js";
-import { frameDhash, pngDimensions } from "../scene/dhash.js";
+import { frameDhash, hamming, pngDimensions } from "../scene/dhash.js";
 import type { Scene } from "../scene/scene-types.js";
 import { serializeSceneForPrompt } from "../scene/serialize.js";
 import { resolveReference } from "./actor.js";
@@ -54,6 +54,16 @@ export const BRAIN_MAX_PIXELS = 1_310_720; // 1280 * 32 * 32 ≈ 1.3 MP cap
 export const BRAIN_MAX_ROIS = 2;
 /** Bound on the per-Brain dHash→BrainOutput cache (LRU-ish, oldest evicted). */
 export const BRAIN_DHASH_CACHE_MAX = 16;
+/**
+ * Max dHash Hamming distance for a cached plan to be reused for a new frame
+ * (#9581 continuous-understanding tuning). Exact-equality (distance 0) re-burned
+ * the IMAGE_DESCRIPTION model on cosmetically-identical frames — cursor jitter,
+ * a blinking caret, anti-aliasing, a 1-px scroll all flip a few dHash bits.
+ * Matches `SCREEN_STATE_HAMMING_THRESHOLD` (the same 64-bit dHash drives
+ * ScreenStateStore's change detection), so "the screen didn't meaningfully
+ * change" means the same thing to the cache and to the change detector.
+ */
+export const BRAIN_DHASH_HAMMING_THRESHOLD = 5;
 /**
  * Image-token estimate per source pixel for a vision model with the Qwen3-VL /
  * OS-Atlas `max_pixels` convention: one visual token ≈ a 28×28 (≈750 px) patch.
@@ -173,7 +183,11 @@ export class Brain {
    * skips the model entirely when the same frame is observed for the same goal,
    * cutting the dominant CUA-loop token cost regardless of backend (#9105 M3).
    */
-  private readonly dhashCache = new Map<string, BrainOutput>();
+  private readonly dhashCache: Array<{
+    dh: bigint;
+    goal: string;
+    output: BrainOutput;
+  }> = [];
   private readonly imagePolicy: BrainImagePolicy;
   private invocations = 0;
   private cacheHits = 0;
@@ -197,19 +211,45 @@ export class Brain {
     };
   }
 
-  private cacheKey(frame: Buffer, goal: string): string | null {
+  private cacheKey(
+    frame: Buffer,
+    goal: string,
+  ): { dh: bigint; goal: string } | null {
     const dh = frameDhash(frame);
-    return dh === null ? null : `${dh.toString()}::${goal}`;
+    return dh === null ? null : { dh, goal };
   }
 
-  private rememberOutput(key: string | null, output: BrainOutput): BrainOutput {
+  /**
+   * Return a cached plan for the same goal whose frame is within
+   * `BRAIN_DHASH_HAMMING_THRESHOLD` bits of `dh` — a near-identical screen, not
+   * just a byte-identical one. On a hit the entry is moved to the end (LRU), so
+   * a steadily-evolving screen keeps its most-recent close match warm.
+   */
+  private findCached(dh: bigint, goal: string): BrainOutput | null {
+    for (let i = this.dhashCache.length - 1; i >= 0; i--) {
+      const entry = this.dhashCache[i]!;
+      if (
+        entry.goal === goal &&
+        hamming(entry.dh, dh) <= BRAIN_DHASH_HAMMING_THRESHOLD
+      ) {
+        this.dhashCache.splice(i, 1);
+        this.dhashCache.push(entry);
+        return entry.output;
+      }
+    }
+    return null;
+  }
+
+  private rememberOutput(
+    key: { dh: bigint; goal: string } | null,
+    output: BrainOutput,
+  ): BrainOutput {
     if (key) {
       // Evict oldest to bound memory.
-      if (this.dhashCache.size >= BRAIN_DHASH_CACHE_MAX) {
-        const oldest = this.dhashCache.keys().next().value;
-        if (oldest !== undefined) this.dhashCache.delete(oldest);
+      if (this.dhashCache.length >= BRAIN_DHASH_CACHE_MAX) {
+        this.dhashCache.shift();
       }
-      this.dhashCache.set(key, output);
+      this.dhashCache.push({ dh: key.dh, goal: key.goal, output });
     }
     return output;
   }
@@ -231,11 +271,12 @@ export class Brain {
       throw new Error("[computeruse/brain] could not pick a target capture");
     }
 
-    // Frame-dHash cache: identical screen + goal → reuse the prior plan, skip
-    // the (possibly remote) IMAGE_DESCRIPTION call.
+    // Frame-dHash cache: a near-identical screen + same goal → reuse the prior
+    // plan, skip the (possibly remote) IMAGE_DESCRIPTION call. Tolerant to a few
+    // dHash bits so cosmetic churn (cursor, caret, anti-aliasing) still hits.
     const key = this.cacheKey(targetCapture.frame, input.goal);
     if (key) {
-      const cached = this.dhashCache.get(key);
+      const cached = this.findCached(key.dh, key.goal);
       if (cached) {
         this.cacheHits += 1;
         return cached;
