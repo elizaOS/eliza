@@ -1,4 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
+import { type ReactElement, useEffect, useRef } from "react";
 import {
   type MockAppOptions,
   MockAppProvider,
@@ -26,19 +27,47 @@ const mockAppValue = {
   },
 } satisfies MockAppOptions;
 
-const withCustomActionsApi: Decorator = (Story) => {
-  const original = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("/api/custom-actions")) {
-      return new Response(JSON.stringify({ actions: [] }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    return original(input, init);
-  }) as typeof fetch;
+function CustomActionsApiStub({ Story }: { Story: () => ReactElement }) {
+  const restoreFetchRef = useRef<(() => void) | null>(null);
+
+  if (!restoreFetchRef.current) {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.includes("/api/custom-actions")) {
+        return new Response(JSON.stringify({ actions: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return original(input, init);
+    }) as typeof fetch;
+    restoreFetchRef.current = () => {
+      globalThis.fetch = original;
+    };
+  }
+
+  useEffect(
+    () => () => {
+      restoreFetchRef.current?.();
+      restoreFetchRef.current = null;
+    },
+    [],
+  );
+
   return <Story />;
+}
+
+const withCustomActionsApi: Decorator = (Story) => {
+  return <CustomActionsApiStub Story={Story} />;
 };
 
 const meta = {
