@@ -1,8 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { AppImageBuilder, type BuildExec } from "../app-image-builder";
-import { makeBuildFromRepoResolver } from "../app-image-resolver";
+import {
+  type AppImageResolver,
+  composeImageResolvers,
+  makeBuildFromRepoResolver,
+  makePrebuiltImageMapResolver,
+} from "../app-image-resolver";
 
 const APP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const EDAD_IMAGE = "ghcr.io/elizaos/example-edad:showcase";
+const CUC_IMAGE = "ghcr.io/elizaos/example-clone-ur-crush:showcase";
+const PREBUILT_MAP = JSON.stringify({
+  "eDad Showcase": EDAD_IMAGE,
+  "Clone Your Crush Showcase": CUC_IMAGE,
+});
+
+const app = (name: string) => ({ id: APP, name, metadata: {} as Record<string, unknown> });
 
 function recordingBuilder(): { builder: AppImageBuilder; cmds: string[] } {
   const cmds: string[] = [];
@@ -69,5 +82,49 @@ describe("makeBuildFromRepoResolver", () => {
     const resolve = makeBuildFromRepoResolver({ builder, registry: "r" });
     expect(await resolve({ id: APP, name: "demo", metadata: {} })).toBeUndefined();
     expect(cmds).toHaveLength(0);
+  });
+});
+
+describe("makePrebuiltImageMapResolver", () => {
+  test("returns undefined when APP_PREBUILT_IMAGES is unset or invalid", () => {
+    expect(makePrebuiltImageMapResolver({})).toBeUndefined();
+    expect(makePrebuiltImageMapResolver({ APP_PREBUILT_IMAGES: "" })).toBeUndefined();
+    expect(makePrebuiltImageMapResolver({ APP_PREBUILT_IMAGES: "{not json" })).toBeUndefined();
+    expect(makePrebuiltImageMapResolver({ APP_PREBUILT_IMAGES: "[]" })).toBeUndefined();
+    expect(makePrebuiltImageMapResolver({ APP_PREBUILT_IMAGES: "{}" })).toBeUndefined();
+  });
+
+  test("maps repo-less showcase apps to prebuilt images by longest name prefix", async () => {
+    const resolve = makePrebuiltImageMapResolver({
+      APP_PREBUILT_IMAGES: JSON.stringify({
+        eDad: "ghcr.io/short:1",
+        "eDad Showcase": EDAD_IMAGE,
+        "Clone Your Crush Showcase": CUC_IMAGE,
+      }),
+    }) as AppImageResolver;
+
+    expect(await resolve(app("eDad Showcase 1a2b3c"))).toBe(EDAD_IMAGE);
+    expect(await resolve(app("Clone Your Crush Showcase 9z8y7x"))).toBe(CUC_IMAGE);
+    expect(await resolve(app("eDad Lite 42"))).toBe("ghcr.io/short:1");
+    expect(await resolve(app("Some Other App"))).toBeUndefined();
+  });
+});
+
+describe("composeImageResolvers", () => {
+  test("returns undefined when no resolvers are active", () => {
+    expect(composeImageResolvers(undefined, undefined)).toBeUndefined();
+  });
+
+  test("uses the first resolver that returns an image", async () => {
+    const build: AppImageResolver = async (candidate) =>
+      candidate.name === "Built" ? "img-build" : undefined;
+    const prebuilt = makePrebuiltImageMapResolver({
+      APP_PREBUILT_IMAGES: PREBUILT_MAP,
+    }) as AppImageResolver;
+    const composed = composeImageResolvers(build, prebuilt) as AppImageResolver;
+
+    expect(await composed(app("Built"))).toBe("img-build");
+    expect(await composed(app("eDad Showcase 42"))).toBe(EDAD_IMAGE);
+    expect(await composed(app("Other"))).toBeUndefined();
   });
 });

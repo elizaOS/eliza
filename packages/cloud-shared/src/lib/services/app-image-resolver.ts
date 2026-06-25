@@ -44,6 +44,68 @@ function buildContextFor(repo: string, sourceRef?: string): string {
   return `${repo}#${sourceRef}`;
 }
 
+export type AppImageResolverEnv = Pick<NodeJS.ProcessEnv, "APP_PREBUILT_IMAGES">;
+
+function parsePrebuiltImageMap(raw: string | undefined): Array<[prefix: string, image: string]> {
+  const trimmed = raw?.trim();
+  if (!trimmed) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return [];
+  }
+
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") return [];
+
+  return Object.entries(parsed)
+    .filter(
+      (entry): entry is [string, string] =>
+        entry[0].trim().length > 0 && typeof entry[1] === "string" && entry[1].trim().length > 0,
+    )
+    .map(([prefix, image]) => [prefix.trim(), image.trim()])
+    .sort(([a], [b]) => b.length - a.length);
+}
+
+/**
+ * Operator escape hatch for repo-less showcase apps: map app name prefixes to
+ * prebuilt images through APP_PREBUILT_IMAGES. Invalid config intentionally
+ * disables this resolver instead of throwing at daemon boot, because imageTag /
+ * APP_DEFAULT_IMAGE fallback remains the safer deploy path when the map is bad.
+ */
+export function makePrebuiltImageMapResolver(
+  env: AppImageResolverEnv = process.env,
+): AppImageResolver | undefined {
+  const entries = parsePrebuiltImageMap(env.APP_PREBUILT_IMAGES);
+  if (entries.length === 0) return undefined;
+
+  return (app) => {
+    const match = entries.find(([prefix]) => app.name.startsWith(prefix));
+    return match?.[1];
+  };
+}
+
+/**
+ * Compose optional image resolvers in priority order. Returning undefined when
+ * nothing is active preserves the runner's built-in metadata.imageTag /
+ * APP_DEFAULT_IMAGE fallback semantics.
+ */
+export function composeImageResolvers(
+  ...resolvers: Array<AppImageResolver | undefined>
+): AppImageResolver | undefined {
+  const active = resolvers.filter((resolver): resolver is AppImageResolver => Boolean(resolver));
+  if (active.length === 0) return undefined;
+
+  return async (app) => {
+    for (const resolver of active) {
+      const image = await resolver(app);
+      if (image) return image;
+    }
+    return undefined;
+  };
+}
+
 /** A `resolveImage` that builds + pushes the app image from its repo. */
 export function makeBuildFromRepoResolver(deps: BuildFromRepoResolverDeps): AppImageResolver {
   return async (app) => {
