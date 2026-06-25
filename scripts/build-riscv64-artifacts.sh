@@ -14,7 +14,7 @@
 #   - zig 0.14+        (Zig toolchain; provides riscv64-linux-musl — every
 #                       cross-build here is zig/musl, so no Android NDK is needed)
 #   - cmake 3.21+      (drives every package's cross-build)
-#   - node 20+         (drives compile-libllama.mjs / build-omnivoice.mjs / build-whisper.mjs)
+#   - node 20+         (drives compile-libllama.mjs / build-omnivoice.mjs)
 #
 # Usage:
 #   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh
@@ -237,29 +237,9 @@ else
     fi
 fi
 
-# ── libwhisper (Task 25) ─────────────────────────────────────────────
-echo
-echo "── Step 4: libwhisper + libwhisper_eliza_adapter ──"
-BUILD_WHISPER="$repo_root/plugins/plugin-local-inference/native/build-whisper.mjs"
-if [ ! -f "$BUILD_WHISPER" ]; then
-    echo "  ✗ build-whisper.mjs missing at $BUILD_WHISPER"
-    FAIL_N=$((FAIL_N+1))
-else
-    wh_sentinel="$repo_root/plugins/plugin-local-inference/native/build-whisper-linux-riscv64-cpu/libwhisper_eliza_adapter.so"
-    if should_build "$wh_sentinel"; then
-        echo "→ Building libwhisper (linux-riscv64-cpu) …"
-        if WHISPER_TARGET=linux-riscv64-cpu "$NODE_BIN" "$BUILD_WHISPER" >"$repo_root/build/libwhisper-linux-riscv64.log" 2>&1; then
-            echo "  ✓ libwhisper linux-riscv64-cpu"
-        else
-            echo "  ✗ libwhisper linux-riscv64-cpu (see build/libwhisper-linux-riscv64.log)"
-            FAIL_N=$((FAIL_N+1))
-        fi
-    fi
-fi
-
 # ── sigsys-handler-riscv64 ───────────────────────────────────────────
 echo
-echo "── Step 5: libsigsys-handler-riscv64 (Bun seccomp shim) ──"
+echo "── Step 4: libsigsys-handler-riscv64 (Bun seccomp shim) ──"
 COMPILE_SHIM="$repo_root/packages/app-core/scripts/aosp/compile-shim.mjs"
 if [ ! -f "$COMPILE_SHIM" ]; then
     echo "  ✗ compile-shim.mjs missing at $COMPILE_SHIM"

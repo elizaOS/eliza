@@ -3,8 +3,8 @@
 # native artifact this repo cross-compiles.
 #
 # One-shot harness: walks the known cross-build outputs (native plugins
-# + libllama / libggml family + libomnivoice + libwhisper_eliza_adapter
-# + libsigsys-handler-riscv64), confirms each is an ELF UCB RISC-V
+# + libllama / libggml family + libomnivoice + libsigsys-handler-riscv64),
+# confirms each is an ELF UCB RISC-V
 # 64-bit double-float-ABI object, and exercises every executable smoke
 # under qemu-riscv64-static. Shared libraries are dlopen-verified via a
 # tiny C harness (also run under QEMU).
@@ -144,7 +144,7 @@ echo "[check-riscv64-artifacts] qemu_bin=${QEMU_BIN:-<elf-tag only>}  timeout=${
 is_riscv64_elf() {
     local f="$1"
     local info
-    # `-L` dereferences symlinks (libwhisper.so → libwhisper.so.1, etc.).
+    # `-L` dereferences symlinks (libfoo.so → libfoo.so.1, etc.).
     info="$(file -L -b "$f" 2>/dev/null || true)"
     case "$info" in
         *"UCB RISC-V"*"double-float ABI"*) return 0;;
@@ -391,13 +391,6 @@ OMNIVOICE_SEARCH=(
     "plugins/plugin-local-inference/native/build-omnivoice-android-riscv64-cpu/libomnivoice.so"
 )
 
-WHISPER_SEARCH=(
-    "plugins/plugin-local-inference/native/build-whisper-linux-riscv64-cpu/libwhisper_eliza_adapter.so"
-    "plugins/plugin-local-inference/native/build-whisper-linux-riscv64-cpu/whisper-cpp-build/src/libwhisper.so"
-    "plugins/plugin-local-inference/native/build-whisper-android-riscv64-cpu/libwhisper_eliza_adapter.so"
-    "plugins/plugin-local-inference/native/build-whisper-android-riscv64-cpu/whisper-cpp-build/src/libwhisper.so"
-)
-
 SIGSYS_SEARCH=(
     "${HOME}/.cache/eliza-android-agent/seccomp-shim/riscv64/libsigsys-handler.so"
 )
@@ -441,17 +434,6 @@ if [ -n "$o_found" ]; then
 else
     emit_record "$repo_root/${OMNIVOICE_SEARCH[0]}" "shared-library" "SKIP" \
         "not built; run \`OMNIVOICE_TARGET=linux-riscv64-cpu node plugins/plugin-local-inference/native/build-omnivoice.mjs\`" "0"
-fi
-
-echo
-echo "── libwhisper + libwhisper_eliza_adapter ──"
-w_found=""
-for p in "${WHISPER_SEARCH[@]}"; do
-    if [ -e "$repo_root/$p" ]; then w_found="$repo_root/$p"; verify_artifact "$w_found"; fi
-done
-if [ -z "$w_found" ]; then
-    emit_record "$repo_root/${WHISPER_SEARCH[0]}" "shared-library" "SKIP" \
-        "not built; run \`WHISPER_TARGET=linux-riscv64-cpu node plugins/plugin-local-inference/native/build-whisper.mjs\`" "0"
 fi
 
 echo
