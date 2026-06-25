@@ -7,7 +7,7 @@ tuple. Stack composition assembled from:
     - vLLM optimization guide     (docs.vllm.ai/en/stable/configuration/optimization/)
     - vLLM Speculative Decoding   (docs.vllm.ai/en/v0.10.1/features/spec_decode.html)
     - vLLM PR #38479              (turboquant_*_nc kv-cache-dtype family)
-    - z-lab MTP                (arXiv:2602.06036) — opt-in drafter, AEON-7 fork
+    - z-lab MTP                   (arXiv:2602.06036) — opt-in drafter, AEON-7 fork
     - Speculators v0.3.0          (blog.vllm.ai/2025/12/13/speculators-v030.html)
 
 What this DOES NOT do:
@@ -42,9 +42,8 @@ Usage:
     uv run --extra serve python scripts/inference/serve_vllm.py \\
         --registry-key gemma4-e4b --dry-run
 
-Gemma 4 is dense, so MTP speculative decoding uses an official SEPARATE
-drafter GGUF (`--mtp`); there is no MoE expert-parallel or implicit
-qwen3_next_mtp path.
+Gemma 4 MTP speculative decoding uses an official SEPARATE drafter
+(`--mtp`); the launcher never assumes a same-file NextN drafter path.
 """
 
 from __future__ import annotations
@@ -70,6 +69,11 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = logging.getLogger("serve_vllm")
+
+DEFAULT_GEMMA4_CHAT_TEMPLATE = os.environ.get(
+    "ELIZA_VLLM_GEMMA4_CHAT_TEMPLATE",
+    "examples/tool_chat_template_gemma4.jinja",
+)
 
 
 # Per-GPU target: (vLLM tensor_parallel_size, gpu_memory_utilization,
@@ -292,7 +296,9 @@ def build_command(args, *, entry) -> list[str]:
     if spec_cfg is not None:
         cmd += ["--speculative-config", json.dumps(spec_cfg, separators=(",", ":"))]
 
-    # Reasoning + tool-call parsers for Qwen3 chat-template streams.
+    # Reasoning + tool-call parsers for Gemma 4 chat-template streams. The
+    # Gemma 4 vLLM recipe recommends the gemma4 reasoning parser, gemma4 tool
+    # parser, and tool chat template together for thinking + function calling.
     if args.reasoning_parser:
         cmd += ["--reasoning-parser", args.reasoning_parser]
     if args.enable_tool_choice:
@@ -301,6 +307,8 @@ def build_command(args, *, entry) -> list[str]:
             "--tool-call-parser",
             args.tool_call_parser,
         ]
+    if args.chat_template:
+        cmd += ["--chat-template", args.chat_template]
 
     # Attention backend override (mostly for AEON-7 vllm-mtp which exposes
     # FUSED_TURBOQUANT as our vendored package's plugin).
@@ -449,12 +457,19 @@ def main() -> int:
         "branch; spec-decode acceptance collapses). Hard error if combined.",
     )
 
-    # Tool / reasoning parsers — Qwen3-canonical.
-    ap.add_argument("--reasoning-parser", default="qwen3")
+    # Tool / reasoning parsers — Gemma 4 canonical.
+    ap.add_argument("--reasoning-parser", default="gemma4")
     ap.add_argument(
         "--enable-tool-choice", action=argparse.BooleanOptionalAction, default=True
     )
-    ap.add_argument("--tool-call-parser", default="qwen3_coder")
+    ap.add_argument("--tool-call-parser", default="gemma4")
+    ap.add_argument(
+        "--chat-template",
+        default=DEFAULT_GEMMA4_CHAT_TEMPLATE,
+        help="Gemma 4 tool/reasoning chat template. vLLM's official container "
+        "ships examples/tool_chat_template_gemma4.jinja; set to an empty "
+        "string to use the model's baked-in template.",
+    )
 
     ap.add_argument(
         "--extra",

@@ -1,4 +1,4 @@
-"""Local long-context inference helper for fine-tuned + quantized Qwen models.
+"""Local long-context inference helper for fine-tuned + quantized Gemma 4 models.
 
 Loads the chosen model with PolarQuant weights (if available) and TurboQuant
 KV cache (if available), then serves a single OpenAI-compatible chat
