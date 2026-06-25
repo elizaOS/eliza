@@ -12,11 +12,12 @@ function getLocalResponseId(agentId: string, roomId: string): string | undefined
 }
 
 function setLocalResponseId(agentId: string, roomId: string, responseId: string): void {
-  if (!localLatestResponseIds.has(agentId)) {
-    localLatestResponseIds.set(agentId, new Map<string, string>());
+  let inner = localLatestResponseIds.get(agentId);
+  if (!inner) {
+    inner = new Map<string, string>();
+    localLatestResponseIds.set(agentId, inner);
   }
-
-  localLatestResponseIds.get(agentId)!.set(roomId, responseId);
+  inner.set(roomId, responseId);
 }
 
 function clearLocalResponseId(agentId: string, roomId: string): void {

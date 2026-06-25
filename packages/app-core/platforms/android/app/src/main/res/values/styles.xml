@@ -30,9 +30,9 @@
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
         <item name="android:windowSplashScreenBackground">@color/splash_background</item>
-        <!-- Launch status bar tracks the launch-splash (home-background) color so
-             it does not flash the brand accent before the home background paints
-             (#9565). @color/splash_background is the home orange #ef5a1f. -->
+        <!-- Launch status bar matches the splash + home background (#ef5a1f),
+             not the brand accent, so there is no orange→orange flash before the
+             ambient home renders (issue #9565). -->
         <item name="android:statusBarColor">@color/splash_background</item>
         <!-- After the launch splash, swap to the no-action-bar app theme so the
              Capacitor WebView fills the window. Without this (paired with the

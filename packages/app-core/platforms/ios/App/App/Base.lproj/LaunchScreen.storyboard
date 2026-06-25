@@ -15,10 +15,7 @@
                     <view key="view" contentMode="scaleToFill" id="snD-IY-ifK">
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask"/>
-                        <!-- Home-background orange (#ef5a1f, DEFAULT_BACKGROUND_COLOR): the launch
-                             backdrop tracks the home background so iOS does not flash a different
-                             orange before the home background paints (#9565). 0.937/0.353/0.122 is
-                             #ef5a1f in sRGB to 3 decimals. -->
+                        <!-- #ef5a1f (default home-background orange) in sRGB to 3 decimals: matches the React home so the launch screen does not flash a different orange (issue #9565). -->
                         <color key="backgroundColor" red="0.937" green="0.353" blue="0.122" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                     </view>
                 </viewController>
