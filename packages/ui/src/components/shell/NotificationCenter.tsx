@@ -16,7 +16,13 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import {
@@ -44,8 +50,38 @@ const CATEGORY_ICON: Record<NotificationCategory, ReactNode> = {
   general: <CircleAlert className="h-4 w-4" />,
 };
 
+const CATEGORY_LABEL: Record<NotificationCategory, string> = {
+  reminder: "Reminders",
+  task: "Tasks",
+  workflow: "Workflows",
+  agent: "Agents",
+  approval: "Approvals",
+  message: "Messages",
+  health: "Health",
+  system: "System",
+  general: "General",
+};
+
+const CATEGORY_ORDER: readonly NotificationCategory[] = [
+  "approval",
+  "reminder",
+  "task",
+  "workflow",
+  "message",
+  "health",
+  "agent",
+  "system",
+  "general",
+];
+
+type NotificationCategoryFilter = NotificationCategory | "all";
+
 function categoryIcon(category: NotificationCategory): ReactNode {
   return CATEGORY_ICON[category] ?? CATEGORY_ICON.general;
+}
+
+function categoryLabel(category: NotificationCategory): string {
+  return CATEGORY_LABEL[category] ?? CATEGORY_LABEL.general;
 }
 
 /** Best-effort navigation for a notification deep link. */
@@ -162,6 +198,8 @@ export function NotificationCenter({
 }): ReactNode {
   const { notifications, unreadCount } = useNotifications();
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const [categoryFilter, setCategoryFilter] =
+    useState<NotificationCategoryFilter>("all");
 
   // Boot the notification store (hydrate + subscribe to the live stream) and
   // route its interrupt toasts through the shell's ActionNotice. Idempotent —
@@ -180,6 +218,42 @@ export function NotificationCenter({
   }, []);
 
   const hasUnread = unreadCount > 0;
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<NotificationCategory, number>();
+    for (const notification of notifications) {
+      counts.set(
+        notification.category,
+        (counts.get(notification.category) ?? 0) + 1,
+      );
+    }
+    return counts;
+  }, [notifications]);
+  const categoryOptions = useMemo(
+    () => CATEGORY_ORDER.filter((category) => categoryCounts.has(category)),
+    [categoryCounts],
+  );
+  const filteredNotifications = useMemo(
+    () =>
+      categoryFilter === "all"
+        ? notifications
+        : notifications.filter(
+            (notification) => notification.category === categoryFilter,
+          ),
+    [categoryFilter, notifications],
+  );
+  const emptyFilterLabel =
+    categoryFilter === "all" ? "matching" : categoryLabel(categoryFilter);
+
+  useEffect(() => {
+    if (
+      categoryFilter !== "all" &&
+      !notifications.some(
+        (notification) => notification.category === categoryFilter,
+      )
+    ) {
+      setCategoryFilter("all");
+    }
+  }, [categoryFilter, notifications]);
 
   // Hidden for now: keep the store + toast routing live (the effect above) but
   // render no bell. Drop the `headless` prop to bring the button back.
@@ -250,17 +324,71 @@ export function NotificationCenter({
             <span className="text-sm text-muted">You're all caught up</span>
           </div>
         ) : (
-          <ul className="max-h-[min(440px,60vh)] overflow-y-auto p-1.5">
-            {notifications.map((notification) => (
-              <NotificationRow
-                key={notification.id}
-                notification={notification}
-                onClose={() => {
-                  /* popover closes on navigation via deep-link below */
-                }}
-              />
-            ))}
-          </ul>
+          <>
+            <div
+              aria-label="Notification category"
+              className="flex gap-1 overflow-x-auto border-b border-border px-2 py-2"
+              role="tablist"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={categoryFilter === "all"}
+                onClick={() => setCategoryFilter("all")}
+                className={cn(
+                  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium transition-colors",
+                  categoryFilter === "all"
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-strong hover:bg-surface hover:text-txt",
+                )}
+              >
+                All
+                <span className="text-[11px] opacity-75">
+                  {notifications.length}
+                </span>
+              </button>
+              {categoryOptions.map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  role="tab"
+                  aria-selected={categoryFilter === category}
+                  onClick={() => setCategoryFilter(category)}
+                  className={cn(
+                    "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium transition-colors",
+                    categoryFilter === category
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-strong hover:bg-surface hover:text-txt",
+                  )}
+                >
+                  {categoryLabel(category)}
+                  <span className="text-[11px] opacity-75">
+                    {categoryCounts.get(category)}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {filteredNotifications.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+                <Inbox className="h-7 w-7 text-muted/70" />
+                <span className="text-sm text-muted">
+                  No {emptyFilterLabel} notifications
+                </span>
+              </div>
+            ) : (
+              <ul className="max-h-[min(440px,60vh)] overflow-y-auto p-1.5">
+                {filteredNotifications.map((notification) => (
+                  <NotificationRow
+                    key={notification.id}
+                    notification={notification}
+                    onClose={() => {
+                      /* popover closes on navigation via deep-link below */
+                    }}
+                  />
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </PopoverContent>
     </Popover>
