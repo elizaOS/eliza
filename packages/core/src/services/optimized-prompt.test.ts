@@ -11,7 +11,13 @@
  *     scan when no symlink is present (legacy stores).
  */
 
-import { existsSync, mkdirSync, readlinkSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readlinkSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -325,5 +331,62 @@ describe("OptimizedPromptService — HMAC integrity (SOC2 CC6.8)", () => {
 		);
 		await service.refresh();
 		expect(service.getPrompt("action_planner")).toBeNull();
+	});
+});
+
+describe("OptimizedPromptService — per-task error isolation (#8795)", () => {
+	let storeRoot: string;
+	let service: OptimizedPromptService;
+
+	beforeEach(async () => {
+		storeRoot = await mkdtemp(join(tmpdir(), "optimized-prompt-isolation-"));
+		service = new OptimizedPromptService();
+		service.setStoreRoot(storeRoot);
+	});
+
+	afterEach(async () => {
+		await rm(storeRoot, { recursive: true, force: true });
+	});
+
+	it("isolates a self-referential `current` symlink (ELOOP) — other tasks still load", async () => {
+		// One healthy task writes a real artifact via setPrompt.
+		await service.setPrompt("action_planner", makeArtifact(1));
+
+		// A second task's `current` symlink loops onto itself: reading it via
+		// readFile throws ELOOP. Before the fix this rethrew out of refresh()
+		// and disabled optimized prompts for ALL tasks.
+		const loopingDir = join(storeRoot, "should_respond");
+		mkdirSync(loopingDir, { recursive: true });
+		symlinkSync(
+			OPTIMIZED_PROMPT_CURRENT_LINK,
+			join(loopingDir, OPTIMIZED_PROMPT_CURRENT_LINK),
+		);
+
+		// refresh() must RESOLVE, not reject.
+		await expect(service.refresh()).resolves.toBeUndefined();
+
+		// The healthy task is cached; the looping task falls back to null.
+		expect(service.getPrompt("action_planner")?.prompt).toBe(
+			"optimized prompt v1",
+		);
+		expect(service.getPrompt("should_respond")).toBeNull();
+	});
+
+	it("isolates a directory named `X.json` (EISDIR) during the legacy scan — other tasks still load", async () => {
+		// Healthy task.
+		await service.setPrompt("action_planner", makeArtifact(1));
+
+		// Legacy-style task dir (no `current` symlink) where a directory is
+		// named like an artifact file. The fallback scan calls readFile on it,
+		// which throws EISDIR. Before the fix this rethrew out of refresh().
+		const brokenDir = join(storeRoot, "response");
+		mkdirSync(join(brokenDir, "v1.json"), { recursive: true });
+
+		await expect(service.refresh()).resolves.toBeUndefined();
+
+		expect(service.getPrompt("action_planner")?.prompt).toBe(
+			"optimized prompt v1",
+		);
+		expect(service.getPrompt("response")).toBeNull();
 	});
 });

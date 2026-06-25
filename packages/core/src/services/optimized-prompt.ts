@@ -617,41 +617,72 @@ export class OptimizedPromptService extends Service {
 	async refresh(): Promise<void> {
 		const next: Partial<Record<OptimizedPromptTask, CachedEntry>> = {};
 		for (const task of OPTIMIZED_PROMPT_TASKS) {
-			const dir = join(this.storeRoot, task);
-			if (!existsSync(dir)) continue;
-
-			// Preferred path: read via the `current` symlink. This is the
-			// declared live version after a `setPrompt` or `rollback` call.
-			const currentLink = join(dir, OPTIMIZED_PROMPT_CURRENT_LINK);
-			const fromCurrent = await loadArtifactFromPath(currentLink, task);
-			if (fromCurrent) {
-				next[task] = { artifact: fromCurrent, loadedAt: Date.now() };
-				continue;
-			}
-
-			// Fallback: directory may pre-date the symlink layout (legacy
-			// timestamp-named files), or `current` may have been deleted.
-			// Walk the directory and pick the artifact with the most recent
-			// `generatedAt`.
-			const entries = readdirSync(dir);
-			let bestArtifact: OptimizedPromptArtifact | null = null;
-			let bestStamp = -Infinity;
-			for (const name of entries) {
-				if (!name.endsWith(".json")) continue;
-				const path = join(dir, name);
-				const artifact = await loadArtifactFromPath(path, task);
-				if (!artifact) continue;
-				const stamp = Date.parse(artifact.generatedAt);
-				if (Number.isFinite(stamp) && stamp > bestStamp) {
-					bestStamp = stamp;
-					bestArtifact = artifact;
-				}
-			}
-			if (bestArtifact) {
-				next[task] = { artifact: bestArtifact, loadedAt: Date.now() };
+			// A corrupt / looping / permission-denied artifact for ONE task
+			// (ELOOP, EACCES, EISDIR, etc.) must not poison the other tasks or
+			// fail service start: an absent or unreadable artifact is a no-op,
+			// the task simply falls back to its baseline prompt. Isolate each
+			// task's disk reads so one bad directory leaves the rest cached.
+			try {
+				const entry = await this.loadTaskEntry(task);
+				if (entry) next[task] = entry;
+			} catch (err) {
+				const code = (err as NodeJS.ErrnoException).code;
+				logger.warn(
+					{
+						src: "service:optimized_prompt",
+						task,
+						code,
+						err,
+					},
+					"[OptimizedPromptService] Skipping task: artifact store unreadable — falling back to baseline",
+				);
 			}
 		}
 		this.cache = next;
+	}
+
+	/**
+	 * Load the live cache entry for a single task by reading its on-disk store.
+	 * Returns null when the task has no usable artifact. Throws only on
+	 * unexpected filesystem errors (e.g. ELOOP/EACCES/EISDIR), which
+	 * {@link refresh} isolates per task.
+	 */
+	private async loadTaskEntry(
+		task: OptimizedPromptTask,
+	): Promise<CachedEntry | null> {
+		const dir = join(this.storeRoot, task);
+		if (!existsSync(dir)) return null;
+
+		// Preferred path: read via the `current` symlink. This is the
+		// declared live version after a `setPrompt` or `rollback` call.
+		const currentLink = join(dir, OPTIMIZED_PROMPT_CURRENT_LINK);
+		const fromCurrent = await loadArtifactFromPath(currentLink, task);
+		if (fromCurrent) {
+			return { artifact: fromCurrent, loadedAt: Date.now() };
+		}
+
+		// Fallback: directory may pre-date the symlink layout (legacy
+		// timestamp-named files), or `current` may have been deleted.
+		// Walk the directory and pick the artifact with the most recent
+		// `generatedAt`.
+		const entries = readdirSync(dir);
+		let bestArtifact: OptimizedPromptArtifact | null = null;
+		let bestStamp = -Infinity;
+		for (const name of entries) {
+			if (!name.endsWith(".json")) continue;
+			const path = join(dir, name);
+			const artifact = await loadArtifactFromPath(path, task);
+			if (!artifact) continue;
+			const stamp = Date.parse(artifact.generatedAt);
+			if (Number.isFinite(stamp) && stamp > bestStamp) {
+				bestStamp = stamp;
+				bestArtifact = artifact;
+			}
+		}
+		if (bestArtifact) {
+			return { artifact: bestArtifact, loadedAt: Date.now() };
+		}
+		return null;
 	}
 }
 
