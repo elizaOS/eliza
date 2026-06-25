@@ -258,7 +258,7 @@ export default function StewardAuthRuntimeProvider({
       new StewardClient({
         baseUrl: apiUrl,
         ...(tenantId && !isPlaceholderValue(tenantId) ? { tenantId } : {}),
-      }) as unknown as StewardReactClient,
+      }) as StewardReactClient,
     [apiUrl, tenantId],
   );
   const authConfig = useMemo(() => ({ baseUrl: apiUrl }), [apiUrl]);

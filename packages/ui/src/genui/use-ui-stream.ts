@@ -21,7 +21,7 @@ export function officialSpecToEliza(
       ...(children ? { children } : {}),
       ...(props ? props : {}),
     };
-  }) as unknown as ElizaGenUiSpec["components"];
+  }) as ElizaGenUiSpec["components"];
   return {
     version: "0.1",
     root: root ?? "",

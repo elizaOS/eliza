@@ -48,7 +48,7 @@ export function useJsonRenderMessage(
         ...(children ? { children } : {}),
         ...(props ? (props as Record<string, unknown>) : {}),
       };
-    }) as unknown as ElizaGenUiSpec["components"];
+    }) as ElizaGenUiSpec["components"];
 
     const spec: ElizaGenUiSpec = {
       version: "0.1",
