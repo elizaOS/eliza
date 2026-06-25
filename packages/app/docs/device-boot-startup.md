@@ -204,10 +204,30 @@ trace those paths.
 
 | Path | Capturable here | Notes |
 |---|---|---|
-| Web / PWA (remote) | ✅ harness | repeatable in CI behind a dev server |
-| Desktop Electrobun renderer | ✅ harness (`--url`) | same renderer trace inside the WebView |
+| Web / PWA (remote) | ✅ harness | repeatable in CI behind a dev server; M4 Max Vite-dev baseline captured in `.github/issue-evidence/9565-startup-readiness/desktop-web-renderer-trace-m4max.json` |
+| Desktop Electrobun renderer | ✅ harness (`--url`) | same renderer trace inside the WebView; use `--url` against the Electrobun renderer |
 | Android / iOS local | device-only | renderer trace identical; needs a real device/sim + the `--url` device tunnel |
 | iOS cloud | device-only | remote target; stops at `coordinator:ready` with no local boot |
+
+### Checked-in baseline: M4 Max desktop web renderer
+
+Evidence lives in
+`.github/issue-evidence/9565-startup-readiness/desktop-web-renderer-trace-m4max.json`
+with a short index at
+`.github/issue-evidence/9565-startup-readiness/README.md`.
+
+Captured on 2026-06-24 local / 2026-06-25 UTC from `bun run --cwd packages/app
+trace:startup -- --runs 2` against Vite dev on `http://localhost:2138`.
+
+| Run | Kind | `app-modules` | `react-mount:end` | `startup-shell:first-paint` | Last coordinator mark |
+|---|---:|---:|---:|---:|---|
+| 0 | cold | 109 ms | 117 ms | 16021 ms | `coordinator:restoring-session` |
+| 1 | warm | 381 ms | 382 ms | 1402 ms | `coordinator:first-run-required` |
+
+Interpretation: the first-paint import reduction is visible in the small
+`app-modules` span. The remaining cold Vite-dev delay is after React dispatch,
+so the next local optimization target is renderer/UI paint and dev module
+evaluation rather than the boot-config import batch.
 
 On-device baseline already recorded on the issue (physical Pixel 9a):
 `/api/health ready` shortly after launch; warm generation ~0.6–1.0 tok/s
