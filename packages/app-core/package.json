@@ -34,6 +34,7 @@
 		"test:local-provisioning": "node scripts/run-node-tsx.mjs scripts/check-real-local-provisioning.ts",
 		"test:local-chat": "node scripts/run-node-tsx.mjs scripts/check-real-local-chat.ts",
 		"test:local-reset": "node scripts/run-node-tsx.mjs scripts/check-real-local-reset.ts",
+		"serve:local-agent:e2e": "node scripts/run-node-tsx.mjs scripts/serve-real-local-agent.ts",
 		"lint": "bunx @biomejs/biome check src",
 		"lint:fix": "bunx @biomejs/biome check --write src",
 		"format": "bunx @biomejs/biome format src",
