@@ -86,4 +86,13 @@ describe("buildPermanentFailureWriteback: CONTAINER_PROVISION", () => {
     await cb!(tx, job);
     expect(updates).toHaveLength(0);
   });
+
+  test("36-char non-UUID project_name (e.g. all dashes) -> no app update", async () => {
+    // isValidUUID rejects a 36-char hex/dash string that is not a real UUID, so
+    // a coding container whose slug merely looks UUID-shaped is a clean no-op.
+    const { job, cb } = containerProvisionWriteback();
+    const { tx, updates } = mockTx({ projectName: "-".repeat(36) });
+    await cb!(tx, job);
+    expect(updates).toHaveLength(0);
+  });
 });
