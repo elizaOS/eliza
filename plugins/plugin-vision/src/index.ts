@@ -16,6 +16,12 @@ import { ScreenCaptureBridgeService } from "./screen-capture-bridge";
 import { VisionService } from "./service";
 import { wireComputerUseSetOfMarksBridge } from "./set-of-marks-provider";
 
+type LocalInferenceServicesModule = {
+  registerVisionContextAugmenter?: (augmenter: unknown) => void;
+};
+
+const dynamicImport = (specifier: string) => import(specifier);
+
 export const visionPlugin: Plugin = {
   name: "vision",
   description:
@@ -78,9 +84,9 @@ export const visionPlugin: Plugin = {
     // wire into it via a best-effort dynamic import (no hard dep — skipped
     // cleanly when local-inference is not installed), same as the OCR bridge.
     try {
-      const li = (await import("@elizaos/plugin-local-inference/services")) as {
-        registerVisionContextAugmenter?: (augmenter: unknown) => void;
-      };
+      const li = (await dynamicImport(
+        "@elizaos/plugin-local-inference/services",
+      )) as LocalInferenceServicesModule;
       if (typeof li.registerVisionContextAugmenter === "function") {
         const { createDefaultVisionAugmenter } = await import(
           "./vision-context-augmenter.js"
