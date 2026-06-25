@@ -67,18 +67,14 @@ TEXT_CTX_BY_TIER = {
     tier: M.parse_ctx_string(ctx)
     for tier, ctx in TEXT_CONTEXT_BY_TIER.items()
 }
-# The only local 2b drafter is the Gemma-4 E4B MTP drafter extracted from
-# LiteRT (`shadowlilac/gemma-4-e4b-mtp-extraction-effort`). It shares the
-# 262144-token Gemma-4 tokenizer with the E2B text target so speculative
-# decoding is correct, but it is the E4B head (external_hidden_size 2560),
-# not an E2B-matched drafter — a tokenizer-compatible *smoke* drafter only.
-# That tier mismatch makes the bundle candidate-only (defaultEligible=False);
-# the orchestrator's `drafter.matchesTargetCheckpoint` gate is FALSE here.
+# Official Gemma 4 assistant source repos. These publish safetensors sources;
+# a runtime bundle still needs a converted `mtp-draft` GGUF plus acceptance
+# against the exact Eliza-1 text checkpoint before it can be defaultEligible.
 DRAFTER_SOURCE_BY_TIER = {
-    "2b": "shadowlilac/gemma-4-e4b-mtp-extraction-effort",
-    "4b": "z-lab/gemma-4-E4B-MTP",
-    "9b": "z-lab/gemma-4-12B-MTP",
-    "27b": "spiritbuun/gemma-4-31B-MTP-GGUF",
+    "2b": "google/gemma-4-E2B-it-qat-q4_0-unquantized-assistant",
+    "4b": "google/gemma-4-E4B-it-qat-q4_0-unquantized-assistant",
+    "9b": "google/gemma-4-12B-it-qat-q4_0-unquantized-assistant",
+    "27b": "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
 }
 
 # Frozen tier-agnostic voice/ASR/VAD/cache bytes live in the canonical model repo.
@@ -164,7 +160,16 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Upstream HF repo the drafter GGUF was converted from (provenance). "
             "Defaults to the tier's known MTP source when one exists; required "
-            "for 0_8b/2b until a license-reviewed upstream source is wired."
+            "when staging a nonstandard or locally trained drafter."
+        ),
+    )
+    ap.add_argument(
+        "--drafter-matches-target",
+        action="store_true",
+        help=(
+            "Set only when the supplied drafter was trained/distilled against "
+            "the exact text checkpoint being staged. Defaults false for "
+            "official upstream assistant sources."
         ),
     )
     ap.add_argument("--out", required=True, type=Path)
@@ -183,6 +188,11 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(
             f"--drafter-source is required for tier {tier}; no license-reviewed "
             "upstream MTP source is wired for this tier yet."
+        )
+    if args.drafter_matches_target and not args.drafter_source:
+        raise SystemExit(
+            "--drafter-matches-target requires --drafter-source naming the "
+            "matched Eliza-1 drafter run, not just the default upstream source."
         )
     out = args.out.resolve()
     text_rel = PP.text_artifact_name(tier, TEXT_CONTEXT_BY_TIER[tier])
@@ -229,29 +239,24 @@ def main(argv: list[str] | None = None) -> int:
     drafter_dest = out / "mtp" / f"drafter-{tier}.gguf"
     shutil.copy2(args.drafter_gguf, drafter_dest)
     drafter_sha = sha256_file(drafter_dest)
-    # The only local 2b drafter is the E4B-extracted MTP head, staged on the
-    # E2B text target: a tokenizer-compatible *smoke* drafter, not an
-    # E2B-matched one. Record the tier mismatch so the orchestrator's
-    # `matchesTargetCheckpoint` gate stays FALSE (candidate-only).
-    drafter_is_smoke = tier == "2b"
+    drafter_matches_target = bool(args.drafter_matches_target)
     drafter_note = (
         f"MTP drafter for the {tier} Gemma 4 text target. "
         "It must share the 262144-token Gemma 4 tokenizer with the target "
         "so speculative decoding is correct. "
     )
-    if drafter_is_smoke:
+    if drafter_matches_target:
         drafter_note += (
-            "This is the E4B-extracted MTP drafter "
-            f"({drafter_source}, external_hidden_size 2560) staged on the E2B "
-            "text target as a tokenizer-compatible SMOKE drafter — a tier "
-            "mismatch, NOT an E2B-matched release drafter. The bundle is "
-            "candidate-only (defaultEligible=false); a real release needs an "
-            "E2B-matched drafter."
+            "The caller attests this drafter was trained/distilled against "
+            "the exact text checkpoint being staged; publish gates still must "
+            "verify MTP acceptance before default eligibility."
         )
     else:
         drafter_note += (
-            "See the drafter source repo for whether this candidate is distilled "
-            "or a tokenizer-compatible smoke artifact."
+            "This is an upstream/base assistant-derived candidate or otherwise "
+            "unmatched drafter. The bundle is candidate-only "
+            "(defaultEligible=false); a real release needs an Eliza-1-matched "
+            "drafter plus acceptance evidence."
         )
     (out / "mtp" / "target-meta.json").write_text(json.dumps({
         "schemaVersion": 2,
@@ -268,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
             "path": f"mtp/drafter-{tier}.gguf",
             "sha256": drafter_sha,
             "source": drafter_source,
-            "matchesTargetCheckpoint": not drafter_is_smoke,
+            "matchesTargetCheckpoint": drafter_matches_target,
             "tokenizerVocabSize": 262144,
             "note": drafter_note,
         },
@@ -407,8 +412,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "voice": M.LineageEntry(base=voice_source_note(tier), license="apache-2.0"),
         "drafter": M.LineageEntry(
-            base=f"{drafter_source} (upstream MTP source; used as self/cross-drafter — not distilled)",
-            license="mit",
+            base=(
+                f"{drafter_source} (upstream MTP source; used as "
+                "self/cross-drafter — not distilled)"
+            ),
+            license="gemma; verify converted derivative license before release",
         ),
         "vision": M.LineageEntry(
             base=f"{TEXT_BASE_BY_TIER[tier]} vision projector",
@@ -616,12 +624,13 @@ release bar (every supported backend kernel-verified, every eval green) is met.
 
 {text_para}
 - **Voice / ASR / VAD / cache**: frozen upstream assets —
-  {", ".join(M.VOICE_BACKENDS_BY_TIER[tier])} TTS, Qwen3-ASR, native
-  Silero-VAD v5.1.2, and the default speaker preset. Not fine-tuned.
+  {", ".join(M.VOICE_BACKENDS_BY_TIER[tier])} TTS, local ASR placeholder
+  assets, native Silero-VAD v5.1.2, and the default speaker preset. Not
+  fine-tuned.
   Licenses in `licenses/`.
 - **MTP drafter** (`mtp/drafter-{tier}.gguf`): the **upstream
   `{drafter_source}` artifact** — it must share the Gemma 4 tokenizer with the
-  text target so speculative decoding is correct. The exact distilled-vs-standin
+  text target so speculative decoding is correct. Its target-checkpoint match
   status is recorded in `mtp/target-meta.json` and
   `provenance.sourceModels.drafter`.
 
