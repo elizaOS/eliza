@@ -40,6 +40,15 @@ export const STARTUP_TRACE_WINDOW_KEY = "__ELIZA_STARTUP_TRACE__";
 /** Window key a native host (Electrobun/Capacitor) may inject to share its id. */
 export const STARTUP_TRACE_ID_WINDOW_KEY = "__ELIZA_STARTUP_TRACE_ID__";
 
+declare global {
+  interface Window {
+    /** Renderer startup trace mirrored for out-of-band harness capture. */
+    [STARTUP_TRACE_WINDOW_KEY]?: StartupTrace;
+    /** Native-host-injected trace id, shared across host ↔ renderer. */
+    [STARTUP_TRACE_ID_WINDOW_KEY]?: string;
+  }
+}
+
 // One boot == one module evaluation, so module-level state is the trace.
 let traceId = "";
 const marks: StartupMark[] = [];
@@ -61,15 +70,13 @@ function originMs(): number {
 
 function readInjectedTraceId(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  const value = (window as unknown as Record<string, unknown>)[
-    STARTUP_TRACE_ID_WINDOW_KEY
-  ];
+  const value = window[STARTUP_TRACE_ID_WINDOW_KEY];
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function mirrorToWindow(): void {
   if (typeof window === "undefined") return;
-  (window as unknown as Record<string, unknown>)[STARTUP_TRACE_WINDOW_KEY] = {
+  window[STARTUP_TRACE_WINDOW_KEY] = {
     traceId,
     timeOrigin: originMs(),
     marks,
@@ -170,11 +177,7 @@ export function __resetStartupTraceForTests(): void {
   marks.length = 0;
   recorded.clear();
   if (typeof window !== "undefined") {
-    delete (window as unknown as Record<string, unknown>)[
-      STARTUP_TRACE_WINDOW_KEY
-    ];
-    delete (window as unknown as Record<string, unknown>)[
-      STARTUP_TRACE_ID_WINDOW_KEY
-    ];
+    delete window[STARTUP_TRACE_WINDOW_KEY];
+    delete window[STARTUP_TRACE_ID_WINDOW_KEY];
   }
 }

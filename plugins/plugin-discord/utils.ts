@@ -363,7 +363,10 @@ function isPrivateOrInternalUrl(url: string): boolean {
 	}
 }
 
-/** Build a Discord attachment. Generated audio/video URLs are fetched through the core SSRF guard. */
+/**
+ * Build a Discord attachment. Generated audio/video URLs are fetched through
+ * the core SSRF guard.
+ */
 export async function buildOutboundDiscordAttachment(
 	media: Media,
 	runtime?: Pick<IAgentRuntime, "logger">,
