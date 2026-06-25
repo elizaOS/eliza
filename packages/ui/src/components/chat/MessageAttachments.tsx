@@ -557,8 +557,7 @@ function Model3dTile({
 
     let disposed = false;
     let frame = 0;
-    // biome-ignore lint/suspicious/noExplicitAny: three is loaded dynamically.
-    let renderer: any = null;
+    let renderer: import("three").WebGLRenderer | null = null;
 
     (async () => {
       try {
@@ -578,10 +577,16 @@ function Model3dTile({
           0.1,
           1000,
         );
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(width, height);
-        renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
-        host.appendChild(renderer.domElement);
+        const activeRenderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: true,
+        });
+        renderer = activeRenderer;
+        activeRenderer.setSize(width, height);
+        activeRenderer.setPixelRatio(
+          Math.min(globalThis.devicePixelRatio || 1, 2),
+        );
+        host.appendChild(activeRenderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.9));
         const key = new THREE.DirectionalLight(0xffffff, 1.1);
@@ -590,7 +595,7 @@ function Model3dTile({
 
         const gltf = await new GLTFLoader().loadAsync(src);
         if (disposed) {
-          renderer.dispose?.();
+          activeRenderer.dispose?.();
           return;
         }
         const model = gltf.scene;
@@ -609,7 +614,7 @@ function Model3dTile({
         const animate = () => {
           if (disposed) return;
           model.rotation.y += 0.01;
-          renderer.render(scene, camera);
+          activeRenderer.render(scene, camera);
           frame = requestAnimationFrame(animate);
         };
         setStatus("ready");
