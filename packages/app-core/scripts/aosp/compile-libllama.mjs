@@ -374,11 +374,23 @@ export function resolveAndroidVulkanCmakeFlags({
     );
   }
   const ndk = path.join(ndkRoot, ndks[ndks.length - 1]);
-  const sysroot = path.join(
-    ndk,
-    "toolchains/llvm/prebuilt/linux-x86_64/sysroot",
-  );
-  const glslc = path.join(ndk, "shader-tools/linux-x86_64/glslc");
+  // Resolve the NDK host-prebuilt dir from the actual host, not a hardcoded
+  // `linux-x86_64` — the same NDK ships `darwin-x86_64` on macOS hosts, so
+  // hardcoding linux made the Android Vulkan build Linux-only (#9508).
+  const prebuiltRoot = path.join(ndk, "toolchains/llvm/prebuilt");
+  const hostDir = fs.existsSync(prebuiltRoot)
+    ? (fs
+        .readdirSync(prebuiltRoot)
+        .find((d) => /-(x86_64|aarch64|arm64)$/.test(d)) ?? null)
+    : null;
+  if (!hostDir) {
+    throw new Error(
+      `[compile-libllama] No NDK host toolchain under ${prebuiltRoot} ` +
+        `(need a linux-x86_64 / darwin-x86_64 prebuilt).`,
+    );
+  }
+  const sysroot = path.join(prebuiltRoot, hostDir, "sysroot");
+  const glslc = path.join(ndk, "shader-tools", hostDir, "glslc");
   const libBase = path.join(sysroot, "usr/lib/aarch64-linux-android");
   const apis = fs.existsSync(libBase)
     ? fs
@@ -407,6 +419,10 @@ export function resolveAndroidVulkanCmakeFlags({
     process.env.VULKAN_SDK && path.join(process.env.VULKAN_SDK, "include"),
     "/usr/include",
     "/usr/local/include",
+    // macOS homebrew prefixes (vulkan-headers) — the Vulkan-Hpp headers are
+    // arch-independent, so the host set is fine for the arm64 cross-compile.
+    "/opt/homebrew/include",
+    "/usr/local/Cellar",
   ].filter(Boolean);
   const hostVulkanDir = headerCandidates
     .map((d) => path.join(d, "vulkan"))
@@ -448,6 +464,10 @@ export function resolveAndroidVulkanCmakeFlags({
     process.env.VULKAN_SDK && path.join(process.env.VULKAN_SDK, "include"),
     "/usr/include",
     "/usr/local/include",
+    // macOS homebrew prefixes (vulkan-headers) — the Vulkan-Hpp headers are
+    // arch-independent, so the host set is fine for the arm64 cross-compile.
+    "/opt/homebrew/include",
+    "/usr/local/Cellar",
   ].filter(Boolean);
   const hostSpirvRoot = spirvCandidates.find((d) =>
     fs.existsSync(path.join(d, "spirv/unified1/spirv.hpp")),
