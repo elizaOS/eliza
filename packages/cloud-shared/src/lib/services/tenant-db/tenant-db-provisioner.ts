@@ -93,16 +93,42 @@ export function deriveTenantIdent(appId: string): TenantDbIdent {
  * Admin-connection DDL: create the role, create its database, and lock down
  * connect privileges so ONLY this role can open the database. Statement order
  * is load-bearing — the role must exist before the database can be owned by it.
+ *
+ * IDEMPOTENT so a deploy RETRY does not fail loud on "already exists" (#8434).
+ * Postgres `CREATE ROLE`/`CREATE DATABASE` have no `IF NOT EXISTS`, so:
+ *   - the role create is wrapped in a DO block that swallows `duplicate_object`,
+ *     then `ALTER ROLE ... WITH LOGIN PASSWORD` ALWAYS runs so the DSN we return
+ *     carries the freshly-minted password whether the role is new or pre-existing
+ *     (per-app role — rotating its password on retry is safe, the caller gets the
+ *     new DSN). `ALTER ROLE` also self-heals a role that lost LOGIN somehow.
+ *   - `CREATE DATABASE` is only emitted when the caller says the DB is absent
+ *     (`databaseExists: false`); it cannot run in a DO block / transaction, and
+ *     re-issuing it on an existing DB would throw.
+ *   - `REVOKE`/`GRANT CONNECT` always run — re-applying them is a no-op.
  */
-export function buildAdminDdl(ident: TenantDbIdent, password: string): string[] {
+export function buildIdempotentAdminDdl(
+  ident: TenantDbIdent,
+  password: string,
+  opts: { databaseExists: boolean },
+): string[] {
   const role = quoteIdent(ident.roleName);
   const db = quoteIdent(ident.dbName);
-  return [
-    `CREATE ROLE ${role} LOGIN PASSWORD ${quoteLiteral(password)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`,
-    `CREATE DATABASE ${db} OWNER ${role}`,
+  const statements: string[] = [
+    // CREATE ROLE has no IF NOT EXISTS; the DO block swallows the duplicate so a
+    // retry is a no-op for an already-created role.
+    `DO $$ BEGIN CREATE ROLE ${role} LOGIN PASSWORD ${quoteLiteral(password)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    // ALWAYS set the password so the returned DSN is the working credential,
+    // whether the role was just created or already existed.
+    `ALTER ROLE ${role} WITH LOGIN PASSWORD ${quoteLiteral(password)}`,
+  ];
+  if (!opts.databaseExists) {
+    statements.push(`CREATE DATABASE ${db} OWNER ${role}`);
+  }
+  statements.push(
     `REVOKE CONNECT ON DATABASE ${db} FROM PUBLIC`,
     `GRANT CONNECT ON DATABASE ${db} TO ${role}`,
-  ];
+  );
+  return statements;
 }
 
 /**
@@ -142,6 +168,13 @@ export function buildDsn(params: {
  * mint a password, run admin DDL (role+db+connect lockdown), then in-database
  * DDL (schema lockdown), and return the role-scoped DSN. Pure of any real DB
  * driver — the executor is the only IO seam.
+ *
+ * IDEMPOTENT: a deploy RETRY re-runs `provision()` and must succeed, returning a
+ * WORKING DSN, even if the role and/or database already exist from a prior
+ * (possibly partial) attempt. The admin DDL swallows the duplicate role and
+ * skips `CREATE DATABASE` when the DB is already present (gated on
+ * `databaseExists`), while always (re)setting the role password and re-applying
+ * the connect lockdown. (#8434)
  */
 export class SqlTenantDbProvisioner {
   private readonly cluster: TenantDbCluster;
@@ -157,7 +190,11 @@ export class SqlTenantDbProvisioner {
   async provision(appId: string): Promise<ProvisionedTenantDb> {
     const ident = deriveTenantIdent(appId);
     const password = this.genPassword();
-    await this.executor.execAdmin(buildAdminDdl(ident, password));
+    // Pre-check on the admin connection: CREATE DATABASE has no IF NOT EXISTS and
+    // cannot run in a DO block, so a retry would throw on an existing DB. Gate it.
+    const databaseExists = await this.executor.databaseExists(ident.dbName);
+    await this.executor.execAdmin(buildIdempotentAdminDdl(ident, password, { databaseExists }));
+    // In-database schema lockdown is pure REVOKE/GRANT — safe to re-apply on retry.
     await this.executor.execInDatabase(ident.dbName, buildTenantDdl(ident));
     return {
       ...ident,
