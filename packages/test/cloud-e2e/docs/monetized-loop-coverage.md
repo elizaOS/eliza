@@ -38,7 +38,7 @@ honest scaffold (green-but-skipped), never mock assertions masquerading as real.
 | c | Deploy / provision a node | **covered (mock)** | scaffold (skipped) | control-plane provision job → Hetzner mock server `initializing → running`; pool +1 running node. The live driver (follow-up) would stand up an actual Hetzner server. |
 | d | `domains.check` + `domains.buy` | **covered** | scaffold (skipped) | CF registrar dev-stub debits exactly $14.95 (1099¢ + 396¢ margin); buy `success && verified`. The live driver (follow-up) would use the real registrar. |
 | e | `apps.monetization.update` | **covered** | scaffold (skipped) | `PUT …/monetization` enables markup + purchase share; `GET …/monetization` reads back `monetizationEnabled: true`. |
-| f | Charge (paid inference billing) | **covered** | scaffold (skipped) | deterministic ledger effects through the real per-app billing service: `appCreditsService.deductCredits` computes markup from the app monetization config, debits base+markup from the org ledger, records app-scoped earnings, and raises the creator redeemable balance by exactly the computed markup. A REAL-LLM charge (end-user org debit + creator markup via Cerebras) is covered by [`creator-monetization-journey.spec.ts`](../tests/creator-monetization-journey.spec.ts) behind `CEREBRAS_API_KEY`. |
+| f | Charge (paid inference billing) | **covered** | scaffold (skipped) | deterministic ledger effects through the real per-app billing service: `appCreditsService.deductCredits` computes markup from the app monetization config, debits base+markup from the org ledger, records app-scoped earnings, and raises the creator redeemable balance by exactly the computed markup. The full `POST /api/v1/messages` + `x-app-id` HTTP seam (route → `calculateCostWithMarkup` → `generateText` → `billUsage` → `reconcileCredits`) runs **always-on, no paid key** in [`monetized-mock-llm-journey.spec.ts`](../tests/monetized-mock-llm-journey.spec.ts) via an in-process OpenAI mock (`stackOptions.mockLlm`, asserting the mock served the request so the charge is from real usage); the same seam against a REAL LLM (Cerebras) is in [`creator-monetization-journey.spec.ts`](../tests/creator-monetization-journey.spec.ts) behind `CEREBRAS_API_KEY`. |
 | g | Autoscale (daemon-driven) | **covered** | scaffold (skipped) | `node-autoscale` cron tick is observable, and the `agent-hot-pool` daemon cron tick **alone** replenishes the warm pool to its target (`replenishWarmPool`) — no test-enqueued provision job. The real Hetzner node `initializing → running` transition is asserted in step (c). |
 | h | Payout (fiat) | **covered** | scaffold (skipped) | the redeemable balance is the payout-readiness proxy, and a dedicated test exercises the full Stripe Connect fiat withdrawal: onboarding → account.updated webhook → ledger debit → transfer → **balance draws down by exactly the payout**, plus the compensating refund on a simulated Stripe failure and the `payout.paid` webhook. Runs against the live PGlite DB + real ledger/repo/service; only the Stripe SDK boundary is mocked (the injectable client). See #8922 below. |
 
@@ -97,6 +97,9 @@ bun run cloud:e2e
 
 # just the full loop (the registrar dev-stub is on by default via the env fixture)
 bun run cloud:e2e -- monetized-full-loop.spec.ts
+
+# the always-on real-HTTP-seam charge test (boots an in-process OpenAI mock; no key)
+bun run cloud:e2e -- monetized-mock-llm-journey.spec.ts
 ```
 
 Relevant env (defaulted by `src/fixtures/env.ts`, override to tune): `MOCK_HETZNER_ACTION_MS`
