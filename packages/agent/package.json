@@ -275,7 +275,6 @@
     "@ai-sdk/openai": "^3.0.58",
     "@clack/prompts": "^1.0.0",
     "@elizaos/plugin-contacts": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/plugin-phone": "workspace:*",
     "@elizaos/plugin-wifi": "workspace:*",
     "@elizaos/core": "workspace:*",
@@ -362,5 +361,13 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
     "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "@elizaos/app-core": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@elizaos/app-core": {
+      "optional": true
+    }
   }
 }
