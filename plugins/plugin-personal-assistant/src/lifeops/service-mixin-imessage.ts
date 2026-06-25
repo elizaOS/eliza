@@ -502,3 +502,9 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
 
   return LifeOpsIMessageServiceMixin;
 }
+
+/** Public surface added by {@link withIMessage}; listed on the LifeOpsService
+ * declaration-merge (mixin composition exceeds TS inference depth). Type-only. */
+export interface LifeOpsIMessageService {
+  listIMessageChats(): Promise<IMessageChat[]>;
+}

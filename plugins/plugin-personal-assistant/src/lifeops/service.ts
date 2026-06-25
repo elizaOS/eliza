@@ -38,9 +38,11 @@ import type { LifeOpsGoogleService } from "./service-mixin-google.js";
 import { withGoogle } from "./service-mixin-google.js";
 import type { LifeOpsHealthServicePublic } from "./service-mixin-health.js";
 import { withHealth } from "./service-mixin-health.js";
+import type { LifeOpsIMessageService } from "./service-mixin-imessage.js";
 import { withIMessage } from "./service-mixin-imessage.js";
 import type { LifeOpsInboxService } from "./service-mixin-inbox.js";
 import { withInbox } from "./service-mixin-inbox.js";
+import type { LifeOpsRelationshipService } from "./service-mixin-relationships.js";
 import { withRelationships } from "./service-mixin-relationships.js";
 import type { LifeOpsReminderService } from "./service-mixin-reminders.js";
 import { withReminders } from "./service-mixin-reminders.js";
@@ -48,6 +50,7 @@ import type { LifeOpsSchedulingService } from "./service-mixin-scheduling.js";
 import { withScheduling } from "./service-mixin-scheduling.js";
 import type { LifeOpsScreenTimeServicePublic } from "./service-mixin-screentime.js";
 import { withScreenTime } from "./service-mixin-screentime.js";
+import type { LifeOpsSignalService } from "./service-mixin-signal.js";
 import { withSignal } from "./service-mixin-signal.js";
 import { withSleep } from "./service-mixin-sleep.js";
 import type { LifeOpsStatusService } from "./service-mixin-status.js";
@@ -123,6 +126,9 @@ export class LifeOpsService extends LifeOpsServiceComposed {}
 // biome-ignore lint/suspicious/noUnsafeDeclarationMerging: intentional class+interface merge to surface mixin methods past TS inference depth
 export interface LifeOpsService
   extends BrowserBridgeService,
+    LifeOpsIMessageService,
+    LifeOpsRelationshipService,
+    LifeOpsSignalService,
     LifeOpsWhatsAppService,
     LifeOpsCalendarService,
     // `getHealthConnectorStatus` is also declared (with a different return
