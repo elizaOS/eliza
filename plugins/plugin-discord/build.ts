@@ -48,4 +48,20 @@ if (proc.exitCode !== 0) {
 	process.exit(proc.exitCode ?? 1);
 }
 
+// Rewrite bare relative specifiers in the emitted .d.ts files to explicit
+// NodeNext-resolvable paths (`./x` -> `./x.js`, `./dir` -> `./dir/index.js`).
+// The single-entrypoint bundle emits one dist/index.js but per-file .d.ts
+// declarations, whose re-exports otherwise stay bare and fail to resolve for
+// NodeNext consumers (e.g. plugin-personal-assistant importing the CDP helpers).
+const rewrite = Bun.spawn(
+	["node", "../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"],
+	{ stdio: ["inherit", "inherit", "inherit"] },
+);
+
+await rewrite.exited;
+
+if (rewrite.exitCode !== 0) {
+	process.exit(rewrite.exitCode ?? 1);
+}
+
 console.log("Build complete!");
