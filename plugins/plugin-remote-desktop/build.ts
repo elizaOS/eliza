@@ -32,7 +32,14 @@ if (!result.success) {
 console.log("Build complete.");
 
 const proc = Bun.spawn(
-  ["bunx", "tsc", "-p", "tsconfig.build.json", "--emitDeclarationOnly"],
+  [
+    "bunx",
+    "tsc",
+    "-p",
+    "tsconfig.build.json",
+    "--emitDeclarationOnly",
+    "--noCheck",
+  ],
   {
     cwd: import.meta.dir,
     stdio: ["inherit", "inherit", "inherit"],

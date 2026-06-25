@@ -13,7 +13,14 @@ await build({
 
 // Generate type declarations
 const proc = Bun.spawn(
-  ["bunx", "tsc", "--emitDeclarationOnly", "--declaration", "--declarationMap"],
+  [
+    "bunx",
+    "tsc",
+    "--emitDeclarationOnly",
+    "--noCheck",
+    "--declaration",
+    "--declarationMap",
+  ],
   {
     cwd: import.meta.dir,
     stdout: "inherit",

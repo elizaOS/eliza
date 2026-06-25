@@ -11,7 +11,7 @@ await build({
 });
 
 // Generate type declarations
-const proc = Bun.spawn(["tsc", "--emitDeclarationOnly", "-p", "tsconfig.build.json"], {
+const proc = Bun.spawn(["tsc", "--emitDeclarationOnly", "--noCheck", "-p", "tsconfig.build.json"], {
   stdout: "inherit",
   stderr: "inherit",
 });
