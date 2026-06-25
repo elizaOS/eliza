@@ -141,10 +141,11 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.sourceModel?.components.mtp?.file).toBe(
         `bundles/${slug}/mtp/drafter-${slug}.gguf`,
       );
-      // Conservative default draft window; the runtime widens it under the
-      // acceptance schedule.
+      // Fixed single-token draft window: the gemma4-assistant NextN head only
+      // reliably predicts one token, so wider fixed windows burn rejected draft
+      // forwards and regressed local Metal validation.
       expect(entry?.runtime?.mtp?.draftMin).toBe(1);
-      expect(entry?.runtime?.mtp?.draftMax).toBe(4);
+      expect(entry?.runtime?.mtp?.draftMax).toBe(1);
     }
   });
 

@@ -477,14 +477,25 @@ function runtimeForTier(
   if (mtpSupportedForTier(id)) {
     // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
     // GGUF, loaded via `-md mtp/drafter-<tier>.gguf --spec-type draft-mtp`.
-    // Google reports up to ~3x decode with no quality loss; we keep a
-    // conservative default draft window and let the runtime widen it under
-    // a `heuristic` acceptance schedule.
+    //
+    // Draft window = 1 (single speculative token). The bionic/desktop FFI
+    // MTP engine uses a FIXED window equal to `draftMax` (no adaptive
+    // acceptance schedule — `eliza-inference-ffi.cpp` sets
+    // `sp.draft.n_max = draft_max`), so the catalog value is the live window.
+    // The gemma4-assistant NextN head reliably predicts exactly one token;
+    // its multi-token acceptance collapses past the first, so a larger window
+    // burns draft forwards that get rejected and REGRESSES decode. Measured on
+    // Apple M-series Metal against the eliza-1-2b (Q8) target, greedy, across
+    // 3 prompts:
+    //   draftMax=1 => 1.37-1.66x win | =2 => ~0.90x | =4 => 0.61x | =6 => 0.37x
+    // draftMax=1 is the measured-optimal, never-regress window for this drafter
+    // on every tier; widening it is a per-tier/per-device tuning question that
+    // needs on-hardware measurement before it can beat 1.
     runtime.mtp = {
       specType: "draft-mtp",
       drafterFile: `mtp/drafter-${tierSlug(id)}.gguf`,
       draftMin: 1,
-      draftMax: 4,
+      draftMax: 1,
       gpuLayers: "auto",
     };
   }

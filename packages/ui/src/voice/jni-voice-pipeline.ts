@@ -182,7 +182,7 @@ function concatFramesToBase64(frames: TalkModeAudioFrameEvent[]): string {
   for (let i = 0; i < merged.length; i += CHUNK) {
     out += String.fromCharCode.apply(
       null,
-      merged.subarray(i, i + CHUNK) as unknown as number[],
+      Array.from(merged.subarray(i, i + CHUNK)),
     );
   }
   return btoa(out);

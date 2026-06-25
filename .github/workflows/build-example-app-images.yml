@@ -265,7 +265,7 @@ jobs:
 
       - name: Smoke-test the image (gate the GHCR push on a working container)
         # Build + run the exact standalone image and assert it actually serves its
-        # UI before we publish it — so the showcase deploy never pulls a broken
+        # UI before we publish it, so the showcase deploy never pulls a broken
         # :showcase tag. Mirrors the EDAD job's gate above (DoD: failures surface
         # loudly; the showcase deploy can never pull a broken tag).
         run: |

@@ -158,7 +158,7 @@ describe("WS2 mmproj routing", () => {
 			pathJoin(bundle.bundleRoot, "mtp", `drafter-${tier}.gguf`),
 		);
 		expect(resolved.draftMin).toBe(1);
-		expect(resolved.draftMax).toBe(4);
+		expect(resolved.draftMax).toBe(1);
 		expect(resolved.useGpu).toBe(true);
 	});
 
