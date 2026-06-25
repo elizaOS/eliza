@@ -20,6 +20,10 @@
  *     <stateDir>/local-inference/lib default from `build:fused-desktop`).
  *   ELIZA_KOKORO_MODEL_DIR — a dir with kokoro-82m-v1_0*.gguf + voices/<v>.bin
  *     (else <stateDir>/local-inference/models/kokoro).
+ *   KOKORO_SMOKE_REQUIRE — when truthy (1/true/yes), turn every skip (missing
+ *     bun runtime / fused lib / model / ABI) into a hard failure (exit 1) instead
+ *     of a skip (exit 2), so a CI lane that is supposed to have staged the assets
+ *     goes RED when they are absent rather than passing silently (#9588 gate).
  */
 
 import { resolveFusedLibraryPath } from "../src/services/desktop-fused-ffi-backend-runtime";
@@ -32,7 +36,17 @@ import { KOKORO_MOBILE_TTFA_BUDGET_MS } from "../src/services/voice/kokoro/kokor
 import { resolveKokoroEngineConfig } from "../src/services/voice/kokoro/kokoro-engine-discovery";
 import type { Phrase } from "../src/services/voice/types";
 
+const kokoroSmokeRequireStaged = (() => {
+	const v = process.env.KOKORO_SMOKE_REQUIRE?.trim().toLowerCase();
+	return v === "1" || v === "true" || v === "yes";
+})();
 function skip(msg: string): never {
+	if (kokoroSmokeRequireStaged) {
+		console.error(
+			`[kokoro-real-smoke] FAIL (KOKORO_SMOKE_REQUIRE set): ${msg}`,
+		);
+		process.exit(1);
+	}
 	console.log(`[kokoro-real-smoke] SKIP: ${msg}`);
 	process.exit(2);
 }
