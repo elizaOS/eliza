@@ -632,7 +632,8 @@ async function detectProtonPass(): Promise<BackendStatus> {
       available: false,
       signedIn: false,
       authMode: null,
-      detail: "`pass-cli` not installed. https://protonpass.github.io/pass-cli/",
+      detail:
+        "`pass-cli` not installed. https://protonpass.github.io/pass-cli/",
     };
   }
 
@@ -650,7 +651,9 @@ async function detectProtonPass(): Promise<BackendStatus> {
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/not signed in|not authenticated|not logged in|login required/i.test(msg)) {
+    if (
+      /not signed in|not authenticated|not logged in|login required/i.test(msg)
+    ) {
       return {
         id: "protonpass",
         label: "Proton Pass",
@@ -689,6 +692,10 @@ async function detectBitwarden(vault: Vault): Promise<BackendStatus> {
       timeout: 3000,
       encoding: "utf8",
       env,
+      // bw is an npm `.cmd` shim on Windows (install.ts steers Windows users to
+      // `npm i -g @bitwarden/cli`); execFile can't launch it without a shell, so
+      // `where` finds it but `bw status` throws ENOENT. Args are static.
+      shell: process.platform === "win32",
     });
     const status = JSON.parse(stdout.trim()) as { status?: string };
     if (status.status === "unlocked") {
