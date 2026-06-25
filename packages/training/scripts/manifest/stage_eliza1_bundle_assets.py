@@ -9,7 +9,8 @@ publish orchestrator can hash and validate the final bundle.
 
 Default sources:
   - TTS: Serveurperso/OmniVoice-GGUF, Apache-2.0 GGUF artifacts.
-  - ASR: ggml-org/Qwen3-ASR-0.6B-GGUF / Qwen3-ASR-1.7B-GGUF, GGUF artifacts.
+  - ASR: no default. Qwen3-ASR is retired for the Gemma cutover; pass an
+    explicit verified Gemma ASR-capable repo/file pair once artifacts exist.
   - VAD: the Eliza-1 release repo's voice/vad/silero-vad-v5.gguf, native
     silero-vad-cpp Silero VAD v5 model.
     The legacy onnx-community/silero-vad int8 ONNX fallback can still be
@@ -62,13 +63,18 @@ except ImportError:  # pragma: no cover - script execution path
 VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
 VAD_NATIVE_REPO: Final[str] = ELIZA_1_HF_REPO
 VAD_ONNX_REPO: Final[str] = "onnx-community/silero-vad"
-ASR_REPO_BY_TIER: Final[dict[str, str]] = {
+RETIRED_QWEN_ASR_REPO_BY_TIER: Final[dict[str, str]] = {
     "0_8b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "2b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "4b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "9b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
     "27b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
 }
+GEMMA_ASR_REQUIRED_MESSAGE: Final[str] = (
+    "Gemma ASR artifacts are not configured for Eliza-1 staging. "
+    "Qwen3-ASR defaults were retired; pass --asr-repo, --asr-file, and "
+    "--asr-mmproj-file for a verified Gemma ASR-capable bundle once hosted."
+)
 
 # Voice Wave 2 (2026-05-14): semantic end-of-turn detector — `livekit/turn-detector`
 # is the default ship target; `latishab/turnsense` is the Apache-2.0 fallback
@@ -100,13 +106,7 @@ GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
     "Q5_K_M",
     "Q8_0",
 )
-ASR_REQUANTIZE_BY_TIER: Final[dict[str, str]] = {
-    # The upstream Qwen3-ASR-0.6B GGUF repo publishes Q8_0/BF16 only.
-    # The 0.8B voice-loop memory gate needs the exact 752M ASR model
-    # requantized to Q4_K_M to keep ASR + mmproj + text + MTP + Kokoro
-    # resident under the 3.7 GB small-tier budget.
-    "0_8b": "Q4_K_M",
-}
+ASR_REQUANTIZE_BY_TIER: Final[dict[str, str]] = {}
 
 VAD_NATIVE_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("voice/vad/silero-vad-v5.gguf", "vad/silero-vad-v5.gguf"),
@@ -786,9 +786,10 @@ def write_license_notes(
     licenses = {
         "LICENSE.voice": voice_note,
         "LICENSE.asr": (
-            "ASR GGUF assets staged from ggml-org/Qwen3-ASR-0.6B-GGUF "
-            "or ggml-org/Qwen3-ASR-1.7B-GGUF.\n"
-            "Review upstream Apache-2.0 license and model card before release.\n"
+            "ASR GGUF assets must be staged from a verified Gemma ASR-capable "
+            "source repo. The previous ggml-org/Qwen3-ASR assets are retired "
+            "for active Eliza-1 Gemma bundles and may only be used for explicit "
+            "legacy reproduction.\n"
         ),
         "LICENSE.vad": (
             "VAD assets staged from the Eliza-1 release repo as native silero-vad-cpp "
@@ -844,11 +845,34 @@ def resolve_revisions(api: Any, repos: tuple[str, ...]) -> dict[str, str]:
     return out
 
 
+def _repo_is_retired_qwen_asr(repo: str) -> bool:
+    lowered = repo.lower()
+    return "qwen" in lowered and "asr" in lowered
+
+
+def resolve_asr_repo(args: argparse.Namespace, tier: str) -> str:
+    """Return an explicit ASR repo, failing closed on retired Qwen defaults."""
+
+    explicit = getattr(args, "asr_repo", None)
+    allow_retired = bool(getattr(args, "allow_retired_qwen_asr", False))
+    if explicit:
+        if _repo_is_retired_qwen_asr(explicit) and not allow_retired:
+            raise SystemExit(
+                f"{explicit} is a retired Qwen ASR source; Gemma cutover staging "
+                "requires a verified Gemma ASR-capable repo. Re-run with "
+                "--allow-retired-qwen-asr only for legacy bundle reproduction."
+            )
+        return explicit
+    if allow_retired:
+        return RETIRED_QWEN_ASR_REPO_BY_TIER[tier]
+    raise SystemExit(GEMMA_ASR_REQUIRED_MESSAGE)
+
+
 def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     tier = args.tier
     quant = VOICE_QUANT_BY_TIER[tier]
     bundle_dir = args.bundle_dir.resolve()
-    asr_repo = args.asr_repo or ASR_REPO_BY_TIER[tier]
+    asr_repo = resolve_asr_repo(args, tier)
     HfApi, _ = require_hf_hub()
     api = HfApi()
     voice_backends = VOICE_BACKENDS_BY_TIER[tier]
@@ -1201,7 +1225,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument(
         "--asr-repo",
         default=None,
-        help="Override ASR GGUF model repo. Defaults by tier.",
+        help=(
+            "ASR GGUF model repo. Required for active Gemma staging because "
+            "Qwen3-ASR defaults are retired."
+        ),
+    )
+    ap.add_argument(
+        "--allow-retired-qwen-asr",
+        action="store_true",
+        help=(
+            "Allow retired Qwen3-ASR repos for explicit legacy bundle reproduction. "
+            "Do not use for active Gemma Eliza-1 releases."
+        ),
     )
     ap.add_argument(
         "--asr-file",
@@ -1221,7 +1256,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "Requantize the staged canonical ASR GGUF to this llama.cpp quant "
-            "type. Defaults to Q4_K_M for 0_8b; pass 'none' to disable."
+            "type. No active Gemma tier has a default; pass 'none' to disable."
         ),
     )
     ap.add_argument(

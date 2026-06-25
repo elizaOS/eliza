@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
@@ -47,6 +49,7 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
         asr_repo=None,
         asr_file=None,
         asr_mmproj_file=None,
+        allow_retired_qwen_asr=False,
         asr_requantize=None,
         llama_quantize_bin=None,
         include_vad_onnx_fallback=False,
@@ -64,12 +67,27 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
     )
 
 
-def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
+def _legacy_qwen_args(tmp_path: Path, tier: str) -> argparse.Namespace:
+    args = _args(tmp_path, tier)
+    args.allow_retired_qwen_asr = True
+    return args
+
+
+def test_stage_dry_run_requires_explicit_gemma_asr_source_by_default(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    report = stage.stage_assets(_args(tmp_path, "4b"))
+    with pytest.raises(SystemExit, match="Gemma ASR artifacts are not configured"):
+        stage.stage_assets(_args(tmp_path, "4b"))
+
+
+def test_legacy_stage_dry_run_uses_qwen_asr_only_with_opt_in(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+    report = stage.stage_assets(_legacy_qwen_args(tmp_path, "4b"))
 
     staged = {
         (f["repo"], f["remotePath"], Path(f["path"]).as_posix())
@@ -119,12 +137,13 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
         assert ww[dst].startswith(stage.WAKEWORD_RELEASE)
 
 
-def test_stage_0_8b_dry_run_records_asr_q4_requantize_plan(
+def test_stage_dry_run_records_explicit_asr_q4_requantize_plan(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    args = _args(tmp_path, "0_8b")
+    args = _legacy_qwen_args(tmp_path, "2b")
+    args.asr_requantize = "Q4_K_M"
     report = stage.stage_assets(args)
 
     req = report["asrRequantize"]
@@ -133,7 +152,7 @@ def test_stage_0_8b_dry_run_records_asr_q4_requantize_plan(
     assert req["allowRequantize"] is True
     assert req["sourceRepo"] == "ggml-org/Qwen3-ASR-0.6B-GGUF"
     assert req["sourceRemotePath"] == "Qwen3-ASR-0.6B-Q8_0.gguf"
-    assert req["path"] == (tmp_path / "0_8b" / "asr" / "eliza-1-asr.gguf").as_posix()
+    assert req["path"] == (tmp_path / "2b" / "asr" / "eliza-1-asr.gguf").as_posix()
 
 
 def test_stage_asr_requantize_can_be_disabled(
@@ -141,14 +160,14 @@ def test_stage_asr_requantize_can_be_disabled(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    args = _args(tmp_path, "0_8b")
+    args = _legacy_qwen_args(tmp_path, "2b")
     args.asr_requantize = "none"
     report = stage.stage_assets(args)
 
     assert report["asrRequantize"] is None
 
 
-def test_real_stage_requantizes_0_8b_asr_when_quantizer_is_supplied(
+def test_real_stage_requantizes_asr_when_quantizer_is_supplied(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -198,17 +217,18 @@ def test_real_stage_requantizes_0_8b_asr_when_quantizer_is_supplied(
     monkeypatch.setattr(stage, "requantize_gguf_file", fake_requantize_gguf_file)
     monkeypatch.setattr(stage, "validate_manifest", lambda *args, **kwargs: ())
 
-    args = _args(tmp_path, "0_8b")
+    args = _legacy_qwen_args(tmp_path, "2b")
     args.dry_run = False
     args.llama_quantize_bin = tmp_path / "llama-quantize"
-    bundle = tmp_path / "0_8b"
+    args.asr_requantize = "Q4_K_M"
+    bundle = tmp_path / "2b"
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "eliza-1.manifest.json").write_text(
-        json.dumps({"id": "eliza-1-0_8b", "tier": "0_8b", "files": {}}) + "\n",
+        json.dumps({"id": "eliza-1-2b", "tier": "2b", "files": {}}) + "\n",
         encoding="utf-8",
     )
     (bundle / "evidence" / "release.json").write_text(
-        json.dumps({"schemaVersion": 1, "tier": "0_8b", "weights": []}) + "\n",
+        json.dumps({"schemaVersion": 1, "tier": "2b", "weights": []}) + "\n",
         encoding="utf-8",
     )
 
@@ -226,7 +246,7 @@ def test_real_stage_requantizes_0_8b_asr_when_quantizer_is_supplied(
 
 def test_skip_wakeword_omits_wake_graphs(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    args = _args(tmp_path, "4b")
+    args = _legacy_qwen_args(tmp_path, "4b")
     args.skip_wakeword = True
     report = stage.stage_assets(args)
     assert not any("url" in f for f in report["files"])
@@ -237,7 +257,7 @@ def test_stage_dry_run_can_include_legacy_onnx_vad_fallback(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    args = _args(tmp_path, "4b")
+    args = _legacy_qwen_args(tmp_path, "4b")
     args.include_vad_onnx_fallback = True
     report = stage.stage_assets(args)
     staged = {
@@ -254,14 +274,14 @@ def test_stage_dry_run_can_include_legacy_onnx_vad_fallback(
     assert report["vad"]["onnxFallbackRepo"] == "onnx-community/silero-vad"
 
 
-def test_stage_dry_run_accepts_lite_active_tier(
+def test_legacy_stage_dry_run_accepts_active_tier(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    report = stage.stage_assets(_args(tmp_path, "0_8b"))
+    report = stage.stage_assets(_legacy_qwen_args(tmp_path, "2b"))
 
-    assert report["tier"] == "0_8b"
+    assert report["tier"] == "2b"
     assert report["asrRepo"] == "ggml-org/Qwen3-ASR-0.6B-GGUF"
 
 
@@ -272,7 +292,9 @@ def test_non_dry_run_writes_asr_vad_and_wakeword_license_notes(
     assert (tmp_path / "licenses" / "LICENSE.asr").is_file()
     assert (tmp_path / "licenses" / "LICENSE.vad").is_file()
     assert (tmp_path / "licenses" / "LICENSE.wakeword").is_file()
-    assert "Qwen3-ASR" in (tmp_path / "licenses" / "LICENSE.asr").read_text()
+    assert "Qwen3-ASR assets are retired" in (
+        tmp_path / "licenses" / "LICENSE.asr"
+    ).read_text()
     vad = (tmp_path / "licenses" / "LICENSE.vad").read_text()
     assert "GGUF" in vad
     assert "vad/silero-vad-v5.gguf" in vad
@@ -324,16 +346,16 @@ def test_real_stage_writes_evidence_report_without_downloading(
     monkeypatch.setattr(stage, "copy_hf_file", fake_copy_hf_file)
     monkeypatch.setattr(stage, "download_url_file", fake_download_url_file)
     monkeypatch.setattr(stage, "validate_manifest", lambda *args, **kwargs: ())
-    args = _args(tmp_path, "0_8b")
+    args = _legacy_qwen_args(tmp_path, "2b")
     args.dry_run = False
     args.asr_requantize = "none"
-    bundle = tmp_path / "0_8b"
+    bundle = tmp_path / "2b"
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "eliza-1.manifest.json").write_text(
         json.dumps(
             {
-                "id": "eliza-1-0_8b",
-                "tier": "0_8b",
+                    "id": "eliza-1-2b",
+                    "tier": "2b",
                 "files": {
                     "voice": [],
                     "asr": [],
@@ -350,7 +372,7 @@ def test_real_stage_writes_evidence_report_without_downloading(
         json.dumps(
             {
                 "schemaVersion": 1,
-                "tier": "0_8b",
+                    "tier": "2b",
                 "repoId": "old/repo",
                 "weights": [],
                 "hf": {"repoId": "old/repo"},
@@ -364,7 +386,7 @@ def test_real_stage_writes_evidence_report_without_downloading(
 
     assert report["dryRun"] is False
     assert copied
-    assert (tmp_path / "0_8b" / "wake" / "hey-eliza.onnx").is_file()
+    assert (tmp_path / "2b" / "wake" / "hey-eliza.onnx").is_file()
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     voice_paths = {entry["path"] for entry in manifest["files"]["voice"]}
     assert "tts/omnivoice-base-Q4_K_M.gguf" in voice_paths
@@ -379,6 +401,6 @@ def test_real_stage_writes_evidence_report_without_downloading(
     assert report["releaseEvidenceUpdate"]["weights"]
     assert report["checksumManifest"]["entryCount"] > 0
     evidence = json.loads(
-        (tmp_path / "0_8b" / "evidence" / "bundle-assets.json").read_text()
+        (tmp_path / "2b" / "evidence" / "bundle-assets.json").read_text()
     )
     assert evidence["asrRepo"] == "ggml-org/Qwen3-ASR-0.6B-GGUF"
