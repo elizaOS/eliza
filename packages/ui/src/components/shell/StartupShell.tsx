@@ -8,11 +8,13 @@ import type { StartupShellProps } from "./startup-shell-types";
 
 const FONT = "'Poppins', Arial, system-ui, sans-serif";
 
-// Brand surface for the startup splash: the active theme's accent (the
-// elizaOS accent by default) with its readable foreground. Whitelabel seam —
-// no hardcoded brand color.
-const BRAND_SURFACE =
-  "bg-[var(--accent,#FF5800)] text-[var(--accent-foreground,#fff)]";
+// Launch surface for the startup splash + loading: the background tracks the
+// HOME background (--bg, default #ef5a1f) — NOT the brand accent — so boot/launch
+// does not flash a different orange before the home background paints (#9565).
+// The brand mark and foreground stay the brand color. Whitelabel seam: both --bg
+// and --accent-foreground are themeable, no hardcoded brand color.
+const LAUNCH_SURFACE =
+  "bg-[var(--bg,#ef5a1f)] text-[var(--accent-foreground,#fff)]";
 
 function brandName(): string {
   return getBootConfig().branding?.appName ?? "elizaOS";
@@ -56,7 +58,7 @@ function StartupFirstRunBackground({ children }: { children: ReactNode }) {
   return (
     <div
       data-testid="startup-first-run-background"
-      className={`fixed inset-0 overflow-hidden ${BRAND_SURFACE}`}
+      className={`fixed inset-0 overflow-hidden ${LAUNCH_SURFACE}`}
       style={{ fontFamily: FONT }}
     >
       {children}
@@ -72,7 +74,7 @@ function StartupLoading(props: { phase: string; status: string }) {
       role="status"
       aria-live="polite"
       aria-busy="true"
-      className={`fixed inset-0 flex items-center justify-center overflow-hidden ${BRAND_SURFACE}`}
+      className={`fixed inset-0 flex items-center justify-center overflow-hidden ${LAUNCH_SURFACE}`}
       style={{ fontFamily: FONT }}
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
