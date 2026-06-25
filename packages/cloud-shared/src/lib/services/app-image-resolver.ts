@@ -70,10 +70,7 @@ export function makePrebuiltImageMapResolver(
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     entries = Object.entries(parsed).filter(
       (e): e is [string, string] =>
-        typeof e[0] === "string" &&
-        e[0].length > 0 &&
-        typeof e[1] === "string" &&
-        e[1].length > 0,
+        typeof e[0] === "string" && e[0].length > 0 && typeof e[1] === "string" && e[1].length > 0,
     );
   } catch {
     logger.warn(
@@ -115,9 +112,7 @@ export function composeImageResolvers(
 }
 
 /** A `resolveImage` that builds + pushes the app image from its repo. */
-export function makeBuildFromRepoResolver(
-  deps: BuildFromRepoResolverDeps,
-): AppImageResolver {
+export function makeBuildFromRepoResolver(deps: BuildFromRepoResolverDeps): AppImageResolver {
   return async (app) => {
     const metaRepo = typeof app.metadata?.repoUrl === "string" ? app.metadata.repoUrl : undefined;
     const repo = app.repoUrl ?? metaRepo;
