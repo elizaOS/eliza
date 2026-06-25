@@ -131,7 +131,6 @@ export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types (type-only, safe for browser)
 export * from "./types";
-export { PENDING_USER_ACTION_WEIGHT } from "./types/pending-user-action";
 export {
 	ConnectorAccountHealth,
 	ConnectorAccountPurpose,
@@ -139,6 +138,7 @@ export {
 	ConnectorAuthMethod,
 } from "./types";
 export * from "./types/message-service";
+export { PENDING_USER_ACTION_WEIGHT } from "./types/pending-user-action";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 export type {
 	EnabledViewKinds,
