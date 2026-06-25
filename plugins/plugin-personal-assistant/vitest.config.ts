@@ -349,8 +349,21 @@ export default defineConfig({
           "index.ts",
         ),
       },
-      // Further lifeops carves p-a imports as bare barrels (data-layer plugins not
-      // in build:core, no eliza-source condition) — anchor each to source too.
+      // Further lifeops carves p-a imports as bare barrels AND deep subpaths
+      // (data-layer plugins not in build:core, no eliza-source condition) — the
+      // package `exports` map only sends subpaths to ./src under the eliza-source
+      // condition, so without dist they resolve to missing ./dist/*.js. Anchor
+      // both the barrel and every subpath to source, same as plugin-blocker.
+      {
+        find: /^@elizaos\/plugin-finances\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-finances",
+          "src",
+          "$1.ts",
+        ),
+      },
       {
         find: /^@elizaos\/plugin-finances$/,
         replacement: path.join(
@@ -359,6 +372,16 @@ export default defineConfig({
           "plugin-finances",
           "src",
           "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-goals\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-goals",
+          "src",
+          "$1.ts",
         ),
       },
       {
@@ -508,6 +531,15 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-elizacloud$/,
         replacement: path.join(lifeopsTestStubsRoot, "plugin-elizacloud.ts"),
+      },
+      {
+        // service-mixin-discord imports the browser-scraper helpers from the
+        // `/user-account-scraper` subpath; discord isn't in build:core so there
+        // is no dist, and the bare alias below only catches the barrel. Point the
+        // subpath at the same stub (it exports probeDiscordTab et al.) so the
+        // suite never pulls the real browser-automation module.
+        find: /^@elizaos\/plugin-discord\/user-account-scraper$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-discord.ts"),
       },
       {
         find: /^@elizaos\/plugin-discord$/,
