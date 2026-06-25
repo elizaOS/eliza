@@ -510,7 +510,72 @@ function usesBroadSourceDirectoryWalk(command: string): boolean {
   );
 }
 
-function boundedSourceListCommand(root: string): string {
+function pwshSingleQuote(token: string): string {
+  // PowerShell single-quoted string: only the single quote needs escaping
+  // (doubled). No variable/subexpression expansion happens inside.
+  return `'${token.replace(/'/g, "''")}'`;
+}
+
+const SOURCE_EXCLUDE_DIRS = [
+  ".git",
+  "node_modules",
+  "dist",
+  ".turbo",
+  ".cache",
+  "coverage",
+  ".next",
+] as const;
+
+// PowerShell `-notmatch` regex (emitted inside a single-quoted string, so the
+// backslashes stay literal): match any excluded directory as a `\`- or `/`-
+// delimited path segment.
+function pwshSourceExcludeRegex(): string {
+  const alt = SOURCE_EXCLUDE_DIRS.map((dir) => dir.replace(/\./g, "\\.")).join(
+    "|",
+  );
+  return `'[\\\\/](${alt})[\\\\/]'`;
+}
+
+// --- Windows (PowerShell) source list/search. The SHELL action dispatches to
+// PowerShell on Windows (resolveHostShell), where the POSIX `find` / `if … fi`
+// / `command -v` forms below do not run. `git`/`rg` are the same cross-platform
+// binaries; only the control flow and the find/grep fallback are reshaped. The
+// output keeps the `path:line:match` shape the agent already reads. ---
+function boundedSourceListCommandPwsh(root: string): string {
+  return [
+    `$root = ${pwshSingleQuote(root)}`,
+    "if (-not (Test-Path -LiteralPath $root)) { $root = '.' }",
+    `Get-ChildItem -LiteralPath $root -Recurse -Depth 4 -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch ${pwshSourceExcludeRegex()} } | Select-Object -First 120 -ExpandProperty FullName`,
+  ].join("\n");
+}
+
+function boundedSourceSearchCommandPwsh(pattern: string, root: string): string {
+  const quotedPattern = pwshSingleQuote(pattern);
+  const gitExcludes = SOURCE_SEARCH_EXCLUDES.map((glob) =>
+    pwshSingleQuote(`:(exclude)${glob.slice(1)}`),
+  ).join(" ");
+  const rgGlobs = SOURCE_SEARCH_EXCLUDES.map(
+    (glob) => `--glob ${pwshSingleQuote(glob)}`,
+  ).join(" ");
+  return [
+    `$root = ${pwshSingleQuote(root)}`,
+    "if (-not (Test-Path -LiteralPath $root)) { $root = '.' }",
+    "git rev-parse --show-toplevel 2>$null | Out-Null",
+    "if ($LASTEXITCODE -eq 0) {",
+    `  git grep -n --recurse-submodules -- ${quotedPattern} -- $root ${gitExcludes}`,
+    "} elseif (Get-Command rg -ErrorAction SilentlyContinue) {",
+    `  rg -n --hidden ${rgGlobs} -- ${quotedPattern} $root`,
+    "} else {",
+    `  Get-ChildItem -LiteralPath $root -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch ${pwshSourceExcludeRegex()} } | Select-String -Pattern ${quotedPattern} -List -ErrorAction SilentlyContinue | Select-Object -First 200 | ForEach-Object { "$($_.Path):$($_.LineNumber):$($_.Line)" }`,
+    "}",
+  ].join("\n");
+}
+
+function boundedSourceListCommand(
+  root: string,
+  platform: CommandPlatform,
+): string {
+  if (platform === "windows") return boundedSourceListCommandPwsh(root);
   const quotedRoot = shellSingleQuote(root);
   const findPrunes = [
     "*/.git/*",
@@ -530,7 +595,14 @@ function boundedSourceListCommand(root: string): string {
   ].join(" ");
 }
 
-function boundedSourceSearchCommand(pattern: string, root: string): string {
+function boundedSourceSearchCommand(
+  pattern: string,
+  root: string,
+  platform: CommandPlatform,
+): string {
+  if (platform === "windows") {
+    return boundedSourceSearchCommandPwsh(pattern, root);
+  }
   const quotedPattern = shellSingleQuote(pattern);
   const quotedRoot = shellSingleQuote(root);
   const gitExcludes = SOURCE_SEARCH_EXCLUDES.map((glob) =>
@@ -566,10 +638,12 @@ function boundedSourceSearchCommand(pattern: string, root: string): string {
 export function resolveSourceInspectionCommand(args: {
   command: string;
   messageText: string;
+  platform?: CommandPlatform;
 }): SourceInspectionCommandResolution {
   if (!asksForLocalSourceInspection(args.messageText)) {
     return { command: args.command, rewritten: false };
   }
+  const platform = args.platform ?? resolveCommandPlatform();
   const root = sourceInspectionRoot(args.messageText);
   const pattern = broadRecursiveGrepPattern(args.command);
   if (!pattern) {
@@ -577,12 +651,12 @@ export function resolveSourceInspectionCommand(args: {
       return { command: args.command, rewritten: false };
     }
     return {
-      command: boundedSourceListCommand(root),
+      command: boundedSourceListCommand(root, platform),
       rewritten: true,
     };
   }
   return {
-    command: boundedSourceSearchCommand(pattern, root),
+    command: boundedSourceSearchCommand(pattern, root, platform),
     rewritten: true,
   };
 }
