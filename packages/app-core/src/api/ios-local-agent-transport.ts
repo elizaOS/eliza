@@ -105,6 +105,8 @@ const IOS_FULL_BUN_ENV: Record<string, string> = {
   ELIZA_IOS_BRIDGE_TRANSPORT: "bun-host-ipc",
   LOG_LEVEL: "error",
 };
+const STARTUP_TRACE_ID_WINDOW_KEY = "__ELIZA_STARTUP_TRACE_ID__";
+const STARTUP_TRACE_WINDOW_KEY = "__ELIZA_STARTUP_TRACE__";
 
 type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
@@ -112,6 +114,7 @@ declare global {
   interface Window {
     __ELIZA_API_BASE__?: string;
     __ELIZAOS_API_BASE__?: string;
+    [STARTUP_TRACE_ID_WINDOW_KEY]?: string;
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
@@ -443,6 +446,32 @@ function normalizeNativeResult(
   };
 }
 
+function normalizeStartupTraceId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readStartupTraceId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const startupTrace = (
+    window as Window & {
+      [STARTUP_TRACE_WINDOW_KEY]?: { traceId?: unknown };
+    }
+  )[STARTUP_TRACE_WINDOW_KEY];
+  return (
+    normalizeStartupTraceId(window[STARTUP_TRACE_ID_WINDOW_KEY]) ??
+    normalizeStartupTraceId(startupTrace?.traceId)
+  );
+}
+
+function iosFullBunEnv(): Record<string, string> {
+  const startupTraceId = readStartupTraceId();
+  return startupTraceId
+    ? { ...IOS_FULL_BUN_ENV, ELIZA_STARTUP_TRACE_ID: startupTraceId }
+    : IOS_FULL_BUN_ENV;
+}
+
 async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   const strict = shouldRequireFullBunRuntime();
   if (!isNativeIos() && !strict) return null;
@@ -469,7 +498,7 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       const started = await runtime.start({
         engine: "bun",
         argv: IOS_FULL_BUN_ARGV,
-        env: IOS_FULL_BUN_ENV,
+        env: iosFullBunEnv(),
       });
       if (!started.ok) {
         throw new Error(started.error ?? "runtime start returned ok=false");
