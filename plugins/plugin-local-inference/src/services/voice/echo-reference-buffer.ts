@@ -37,10 +37,7 @@ export class EchoReferenceBuffer {
 
 	constructor(options: EchoReferenceBufferOptions = {}) {
 		this.capacity = Math.max(1, Math.floor(options.capacitySamples ?? 24000));
-		this.sampleRateHz = Math.max(
-			1,
-			Math.floor(options.sampleRateHz ?? 16_000),
-		);
+		this.sampleRateHz = Math.max(1, Math.floor(options.sampleRateHz ?? 16_000));
 		this.buffer = new Float32Array(this.capacity);
 		this.valid = new Uint8Array(this.capacity);
 	}
@@ -119,7 +116,9 @@ export class EchoReferenceBuffer {
 
 	private sampleIndexFor(timestampMs: number): number {
 		if (this.originMs === null) return 0;
-		return Math.round(((timestampMs - this.originMs) / 1000) * this.sampleRateHz);
+		return Math.round(
+			((timestampMs - this.originMs) / 1000) * this.sampleRateHz,
+		);
 	}
 
 	private writeAt(start: number, playback: Float32Array): void {
