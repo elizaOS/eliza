@@ -30,8 +30,32 @@ import {
 	CandidateModelActivationError,
 } from "./services/active-model.js";
 import { classifyDeviceTier } from "./services/device-tier.js";
-import { localInferenceService } from "./services/service.js";
-import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
+
+// Lazy service handle. Importing `./services/service.js` eagerly evaluates the
+// full engine/voice/catalog/downloader graph (~800ms) — far too heavy for the
+// boot-blocking plugin import, which re-exports this module but only needs the
+// plugin object (provider.ts), never the service. Load it on first route use
+// instead, off the boot critical path (issue #9565). The singleton constructor
+// is lightweight (no model load), so this only defers the import/eval cost.
+let _serviceModule: typeof import("./services/service.js") | null = null;
+async function localInferenceServiceLazy() {
+	if (!_serviceModule) {
+		_serviceModule = await import("./services/service.js");
+	}
+	return _serviceModule.localInferenceService;
+}
+// Synchronous accessor for the one sync call site: returns null until the
+// service has been loaded by a prior async route. Behaviour-equivalent for
+// "active model id" — before any model loads, getActive() is idle either way.
+function localInferenceServiceIfLoaded() {
+	return _serviceModule?.localInferenceService ?? null;
+}
+async function prewarmLocalVoiceStackLazy(modelId: string): Promise<void> {
+	const { prewarmLocalVoiceStackForModel } = await import(
+		"./services/voice-prewarm.js"
+	);
+	await prewarmLocalVoiceStackForModel(modelId);
+}
 
 type ModelRole = "chat" | "embedding";
 type DownloadState =
@@ -203,8 +227,8 @@ let activeModelState: {
 } = { modelId: null, loadedAt: null, status: "idle" };
 
 export function getLocalInferenceActiveModelId(): string | undefined {
-	const serviceActive = localInferenceService.getActive();
-	if (serviceActive.status === "ready" && serviceActive.modelId?.trim()) {
+	const serviceActive = localInferenceServiceIfLoaded()?.getActive();
+	if (serviceActive?.status === "ready" && serviceActive.modelId?.trim()) {
 		return serviceActive.modelId.trim();
 	}
 	return activeModelState.status === "ready" && activeModelState.modelId?.trim()
@@ -705,7 +729,7 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 	loadedCacheTypeV?: string | null;
 	loadedGpuLayers?: number | null;
 }> {
-	const serviceActive = localInferenceService.getActive();
+	const serviceActive = (await localInferenceServiceLazy()).getActive();
 	if (serviceActive.status === "ready" && serviceActive.modelId) {
 		return serviceActive;
 	}
@@ -1057,7 +1081,7 @@ export async function getLocalInferenceChatStatus(
 
 	if (active.status === "ready" && active.modelId) {
 		const provider =
-			localInferenceService.getActive().status === "ready"
+			(await localInferenceServiceLazy()).getActive().status === "ready"
 				? LOCAL_INFERENCE_PROVIDER_ID
 				: "capacitor-llama";
 		return buildLocalInferenceChatResult({
@@ -1303,7 +1327,9 @@ export async function handleLocalInferenceRoutes(
 	// also gets the authoritative assessment instead of the coarse client estimate.
 	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
 		sendJson(res, {
-			tier: classifyDeviceTier(await localInferenceService.getHardware()),
+			tier: classifyDeviceTier(
+				await (await localInferenceServiceLazy()).getHardware(),
+			),
 		});
 		return true;
 	}
@@ -1534,7 +1560,7 @@ export async function handleLocalInferenceRoutes(
 					loadArgs: buildAospLoadModelArgs("chat", installed.path),
 				});
 				sendJson(res, activeModelState);
-				void prewarmLocalVoiceStackForModel(installed.id);
+				void prewarmLocalVoiceStackLazy(installed.id);
 				return true;
 			}
 			const { loadMobileDeviceBridgeModel } = await getMobileDeviceBridgeApi();
@@ -1545,7 +1571,7 @@ export async function handleLocalInferenceRoutes(
 				status: "ready",
 			};
 			sendJson(res, activeModelState);
-			void prewarmLocalVoiceStackForModel(installed.id);
+			void prewarmLocalVoiceStackLazy(installed.id);
 		} catch (error) {
 			activeModelState = {
 				modelId: installed.id,
