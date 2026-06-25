@@ -22,7 +22,7 @@
 #       (no args → prints would-be commands, exits non-zero)
 #
 #   HF_TOKEN=hf_xxx bash packages/training/scripts/publish/eliza1-hf-push.sh \
-#       --yes-i-will-pay [--bundles-root DIR] [--tier 0_8b ...]
+#       --yes-i-will-pay [--bundles-root DIR] [--tier 2b ...]
 #
 # Other flags (passed through to publish_eliza1_model_repo):
 #   --bundles-root DIR      Default: ~/.eliza/local-inference/models

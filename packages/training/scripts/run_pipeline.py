@@ -216,8 +216,9 @@ def _format_ok_rate(summary: dict | None) -> float | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
-                    help="One of: gemma4-e2b, gemma4-e4b, "
-                         "eliza-1-0_8b, eliza-1-2b, eliza-1-4b. "
+                    help="One of: gemma4-e2b, gemma4-e4b, gemma4-12b, "
+                         "gemma4-31b, eliza-1-2b, eliza-1-4b, eliza-1-9b, "
+                         "eliza-1-27b. "
                          "Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
