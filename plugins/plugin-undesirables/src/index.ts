@@ -127,6 +127,7 @@ interface SoulMeta {
   archetype?: string;
   strategy?: string;
   token_id?: string;
+  adjectives?: string[];
   [key: string]: unknown;
 }
 
@@ -190,6 +191,15 @@ async function loadWorkspace(workspacePath: string): Promise<SoulWorkspace> {
         if (parsed && typeof parsed === "object") {
           for (const key of Object.keys(parsed)) {
             if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+            if (key === "adjectives") {
+              const adjectives = parsed[key];
+              if (Array.isArray(adjectives)) {
+                workspace.meta.adjectives = adjectives.filter(
+                  (adjective): adjective is string => typeof adjective === "string"
+                );
+              }
+              continue;
+            }
             workspace.meta[key] = parsed[key];
           }
         }
