@@ -156,7 +156,7 @@ to push without a real token — no half-pushed states.
 3. Add a CHANGELOG entry at `models/voice/CHANGELOG.md` per the
    convention there.
 4. Commit + push the catalog + CHANGELOG changes.
-5. Trigger a fresh local boot: the runtime detects the placeholder
-   preset (`cache/voice-preset-default.bin` if you bundled one), runs
-   `ensureSamanthaPresetReady`, and from then on `af_same` is the
-   default voice with real bytes behind it.
+5. Trigger a fresh local boot: the runtime loads the precomputed
+   published preset directly. If it still falls back from `af_same`,
+   rerun the publish/catalog handoff; the runtime no longer regenerates
+   the Samantha preset from raw audio at startup.
