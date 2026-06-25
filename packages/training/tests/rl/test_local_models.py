@@ -26,17 +26,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.training.local_models import default_local_model_for_backend
 
 
-def test_default_local_model_for_backend_uses_qwen35_defaults(monkeypatch) -> None:
+def test_default_local_model_for_backend_uses_gemma4_defaults(monkeypatch) -> None:
     monkeypatch.delenv("FEED_LOCAL_MLX_MODEL", raising=False)
     monkeypatch.delenv("FEED_LOCAL_CUDA_MODEL", raising=False)
     monkeypatch.delenv("FEED_LOCAL_CPU_MODEL", raising=False)
 
-    assert default_local_model_for_backend("mlx") == "mlx-community/Qwen3.5-4B-MLX-4bit"
-    assert default_local_model_for_backend("cuda") == "Qwen/Qwen3.5-4B"
-    assert default_local_model_for_backend("cpu") == "Qwen/Qwen3.5-4B"
+    assert default_local_model_for_backend("mlx") == "mlx-community/gemma-4-e4b-it-4bit-MAD"
+    assert default_local_model_for_backend("cuda") == "google/gemma-4-E2B"
+    assert default_local_model_for_backend("cpu") == "google/gemma-4-E2B"
 
 
 def test_default_local_model_for_backend_honors_env_override(monkeypatch) -> None:
-    monkeypatch.setenv("FEED_LOCAL_MLX_MODEL", "mlx-community/custom-qwen")
+    monkeypatch.setenv("FEED_LOCAL_MLX_MODEL", "mlx-community/custom-gemma")
 
-    assert default_local_model_for_backend("mlx") == "mlx-community/custom-qwen"
+    assert default_local_model_for_backend("mlx") == "mlx-community/custom-gemma"

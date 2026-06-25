@@ -11,7 +11,7 @@ quantizing, and publishing the five Eliza-1 model tiers.
 Step 1: Data preparation   → data/final/{train,val,test}.jsonl
 Step 2: Fine-tune (SFT)    → checkpoints/<run>/final/
 Step 3: Eval               → checkpoints/<run>/evals/aggregate.json
-Step 4: Quantize           → checkpoints/<run>/final-{turboquant,polarquant,qjl}/
+Step 4: Quantize           → checkpoints/<run>/final-{gguf-q4,gguf-q6,gguf-q8}/ + MTP metadata
 Step 5: Publish            → elizaos/eliza-1/bundles/<tier>/
 ```
 
@@ -48,7 +48,7 @@ Build the training corpus from scratch (downloads + normalizes + packs):
 
 ```bash
 uv run python scripts/run_pipeline.py \
-    --registry-key qwen3.5-2b \
+    --registry-key gemma4-e2b \
     --from-scratch \
     --skip-base-bench --skip-finetune --skip-quantize --skip-bench
 ```
@@ -73,7 +73,7 @@ uv run --extra train python scripts/validate_corpus.py \
 
 ```bash
 uv run --extra train python scripts/run_pipeline.py \
-    --registry-key qwen3.5-2b \
+    --registry-key gemma4-e2b \
     --epochs 3 --lr 1e-5 \
     --run-name eliza-1-2b-v1 \
     --skip-base-bench --skip-quantize
@@ -98,7 +98,7 @@ uv run python scripts/finetune_all_tiers.py \
 
 ```bash
 uv run --extra train python scripts/finetune_all_tiers.py \
-    --tiers qwen3.5-0.8b,qwen3.5-2b \
+    --tiers gemma4-e2b,gemma4-e4b \
     --data-path data/final
 ```
 
@@ -106,7 +106,7 @@ uv run --extra train python scripts/finetune_all_tiers.py \
 
 ```bash
 uv run --extra train python scripts/finetune_all_tiers.py \
-    --tiers qwen3.5-0.8b \
+    --tiers gemma4-e2b \
     --data-path data/final \
     --skip-quant
 ```
@@ -118,7 +118,7 @@ Evaluate a checkpoint:
 ```bash
 uv run --extra train python scripts/eval_checkpoint.py \
     --checkpoint checkpoints/eliza-1-2b-v1/final \
-    --registry-key qwen3.5-2b \
+    --registry-key gemma4-e2b \
     --val-jsonl data/final/val.jsonl \
     --out reports/eval-2b.json
 ```
@@ -128,7 +128,7 @@ Run the full benchmark suite vs Cerebras:
 ```bash
 export CEREBRAS_API_KEY=...
 uv run --extra train python scripts/benchmark_vs_cerebras.py \
-    --tiers qwen3.5-2b,qwen3.5-4b \
+    --tiers gemma4-e2b,gemma4-e4b \
     --benchmark all \
     --max-samples 500 \
     --output-dir reports/cerebras-comparison
@@ -137,32 +137,11 @@ uv run --extra train python scripts/benchmark_vs_cerebras.py \
 ### Step 4: Quantize
 
 The quantization pipeline runs automatically inside `run_pipeline.py` and
-`finetune_all_tiers.py`. To run it manually on an existing checkpoint:
+`finetune_all_tiers.py`. The active Gemma release path emits GGUF q3/q4/q5/q6/q8
+variants plus MTP metadata. Run the gated publish orchestrator for production
+bundles; use the legacy sidecar recipes only for non-Gemma experiments.
 
-```bash
-# TurboQuant
-uv run --extra train python scripts/quantization/turboquant_apply.py \
-    --model checkpoints/<run>/final \
-    --output checkpoints/<run>/final-turboquant \
-    --calibration data/final/val.jsonl \
-    --calibration-samples 128
-
-# PolarQuant
-uv run --extra train python scripts/quantization/polarquant_apply.py \
-    --model checkpoints/<run>/final \
-    --output checkpoints/<run>/final-polarquant \
-    --calibration data/final/val.jsonl \
-    --calibration-samples 128
-
-# QJL
-uv run --extra train python scripts/quantization/qjl_apply.py \
-    --model checkpoints/<run>/final \
-    --output checkpoints/<run>/final-qjl \
-    --calibration data/final/val.jsonl \
-    --calibration-samples 128
-```
-
-For the full Eliza-1 GGUF bundle (PolarQuant + QJL + TurboQuant sidecars):
+For a local legacy sidecar experiment:
 
 ```bash
 uv run --extra train python scripts/optimize_for_eliza1.py \
@@ -188,7 +167,7 @@ uv run python scripts/publish_all_finetuned.py --what all --dry-run
 export HF_TOKEN=hf_xxxx
 uv run python scripts/publish_all_finetuned.py \
     --what models \
-    --tiers qwen3.5-0.8b,qwen3.5-2b
+    --tiers gemma4-e2b,gemma4-e4b
 ```
 
 **Publish datasets:**
@@ -225,22 +204,22 @@ second moment. For the 2B tier this drops optimizer peak memory from ~28 GB to
 ~15.5 GB — the difference between needing a 40 GB A100 and fitting on a 16 GB
 consumer GPU.
 
-**Memory savings vs AdamW:**
+**Active Gemma APOLLO budgets:**
 
-| Tier       | AdamW peak | APOLLO peak | Savings |
-|------------|-----------|-------------|---------|
-| qwen3.5-0.8b | ~18 GB  | ~12 GB      | ~33%    |
-| qwen3.5-2b   | ~26 GB  | ~15.5 GB    | ~40%    |
-| qwen3.5-4b   | ~44 GB  | ~28 GB      | ~36%    |
-| qwen3.5-9b   | ~120 GB | ~80 GB      | ~33%    |
-| qwen3.6-27b  | ~280 GB | ~190 GB     | ~32%    |
+| registry key | eliza tier  | base                | APOLLO peak budget | optimizer     |
+|--------------|-------------|---------------------|--------------------|---------------|
+| gemma4-e2b   | eliza-1-2b  | google/gemma-4-E2B  | ~15.5 GB           | apollo_mini   |
+| gemma4-e4b   | eliza-1-4b  | google/gemma-4-E4B  | ~28 GB             | apollo_mini   |
+| gemma4-12b   | eliza-1-9b  | google/gemma-4-12B  | ~80 GB             | apollo        |
+| gemma4-31b   | eliza-1-27b | google/gemma-4-31B  | ~210 GB            | apollo_mini   |
 
 **APOLLO variants:**
 
-- `apollo_mini` (rank 1): Used for 0.8B, 2B, 4B, 27B tiers. Rank-1
+- `apollo_mini` (rank 1): Used for E2B and E4B. Rank-1
   projection — minimum optimizer state, good for tight GPU budgets.
-- `apollo` (rank 512): Used for the 9B tier. Higher rank = more accurate
-  gradient approximation at the cost of more optimizer memory.
+- High-rank APOLLO (rank 512): Used for 12B (`apollo`) and 31B
+  (`apollo_mini`). Higher rank = more accurate gradient approximation at the
+  cost of more optimizer memory.
 
 **Training always uses APOLLO.** The AGENTS.md contract is explicit: do not
 swap to AdamW/Muon or any other optimizer without operator approval. The
@@ -252,72 +231,55 @@ release flow expects APOLLO-trained checkpoints.
 
 | Tier         | GPU Memory | Seq Len | Est. Train Time (1 epoch) | Tier Type    |
 |--------------|-----------|---------|--------------------------|--------------|
-| qwen3.5-0.8b | 12 GB     | 4096    | ~1–2h (consumer GPU)     | local        |
-| qwen3.5-2b   | 15.5 GB   | 8192    | ~3–4h (16 GB GPU)        | local        |
-| qwen3.5-4b   | 28 GB     | 8192    | ~4–6h (24–28 GB GPU)     | local        |
-| qwen3.5-9b   | 80 GB     | 16384   | ~12–18h (H100 SXM)       | workstation  |
-| qwen3.6-27b  | 190 GB    | 65536   | ~24–48h (2× H200)        | cloud        |
+| gemma4-e2b   | 15.5 GB   | 8192    | ~3–4h (16 GB GPU)        | local        |
+| gemma4-e4b   | 28 GB     | 8192    | ~4–6h (24–28 GB GPU)     | local        |
+| gemma4-12b   | 80 GB     | 16384   | ~12–18h (H100 SXM)       | workstation  |
+| gemma4-31b   | 210 GB    | 65536   | ~24–48h (2× H200/B200)   | cloud        |
 
 Notes:
 - Training time estimates assume full-corpus SFT, Liger fused CE, `--epochs 1`.
-- The 27B tier requires FSDP across 2× H200 or 8× H100 — use `train_nebius.sh`
+- The 27B tier uses the Gemma 4 31B base and requires FSDP across 2× H200/B200
+  or 8× H100 — use `train_nebius.sh`
   or `train_vast.sh`. Set `ELIZA_FORCE_LOCAL_TRAIN=1` only on hardware that
-  actually fits the 190 GB budget.
+  actually fits the 210 GB budget.
 - Cap training with `--max-steps` when wall-clock matters:
   `--max-steps 1500` fits a 12h H200 budget at ~25 s/iter.
 - Validate VRAM before running: `python scripts/training/memory_calc.py --shape <tier>`.
 
 ---
 
-## Quantization: TurboQuant + PolarQuant + QJL
+## Quantization: Gemma GGUF + MTP
 
-Three complementary quantization methods are applied post-training. All three
-are mandatory per AGENTS.md §3.
+Gemma 4 changes the release quantization shape. The active Eliza-1 tiers use
+Gemma's MQA + windowed-SWA + shared-KV layout, so the old Qwen-era KV
+compression stack is not a required release gate for Gemma. The publish path
+still emits shippable GGUF flavors and MTP metadata for the fused runtime.
 
-### TurboQuant / fused_turboquant
+### Required for Gemma release bundles
 
-**What it does:** 4-bit quantization of the value-cache (V in KV-attention) at
-inference time. The fused variant bakes the quantization into the model weights
-so no separate V-cache sidecar is needed at runtime.
+- GGUF weight variants from the trained checkpoint: `gguf-q3_k_m`,
+  `gguf-q4_k_m`, `gguf-q5_k_m`, `gguf-q6_k`, and `gguf-q8_0` as applicable
+  for the target tier.
+- MTP drafter metadata paired to the exact text checkpoint hash. Gemma 4 uses
+  official separate draft models for speculative decoding; do not bundle a
+  drafter whose target checkpoint hash does not match the shipped text GGUF.
+- Kernel/eval manifests from the publish orchestrator. A bundle is not
+  default-eligible until the manifest records passing text, voice, ASR, MTP,
+  memory, and platform verification gates for the tier.
 
-**When applied:** After SFT, on the bf16/fp16 checkpoint. Run before PolarQuant
-because it operates on the same weight layout. The `fused_turboquant` pass is
-the preferred runtime variant; plain `turboquant` produces a sidecar JSON for
-the non-fused inference path.
+### Legacy / experimental recipes
 
-### PolarQuant
+`turboquant_apply.py`, `fused_turboquant_apply.py`, `polarquant_apply.py`, and
+`qjl_apply.py` remain in the tree for legacy experiments and non-Gemma research.
+They are not mandatory for Gemma 4 KV because Gemma's KV cache is already small
+relative to the retired Qwen line. If you run them, their sidecar tests still
+must pass before any artifact can be considered valid.
 
-**What it does:** 4-bit quantization of model weights using polar codebooks +
-sign vectors. Reduces the on-disk and in-memory weight footprint by ~4× vs
-bf16 while preserving quality better than naive int4 (sign vectors capture the
-asymmetric structure of transformer weights).
+Verify registry KV metadata with a Gemma key:
 
-**When applied:** After TurboQuant, on the unmodified bf16 checkpoint (not the
-TurboQuant output). Each recipe operates on the base checkpoint independently.
-
-### QJL (Quantized JL Transform)
-
-**What it does:** 1-bit (measured ~7.5× compression from per-token norm
-overhead) quantization of the key-cache (K in KV-attention) via a Johnson-
-Lindenstrauss random projection. Reduces peak KV-cache memory for long-context
-inference without losing the asymptotic 128k+ context capability.
-
-**When applied:** Last in the pipeline, after TurboQuant and PolarQuant.
-Requires the `kv_layers` count from `model_registry.py` to be correct — verify
-with `python -c "from training.model_registry import get; e=get('qwen3.5-2b'); print(e.infer_kv_layers)"`.
-
-**Pipeline order (binding, per AGENTS.md §3):**
-
+```bash
+python -c "from training.model_registry import get; e=get('gemma4-e2b'); print(e.infer_kv_layers)"
 ```
-bf16 checkpoint
-  │
-  ├── turboquant_apply.py / fused_turboquant_apply.py
-  ├── polarquant_apply.py
-  └── qjl_apply.py
-```
-
-Each recipe must emit a quantization manifest sidecar. Each recipe runs its own
-`test_*.py` before exit. Failing tests are publish-blocking.
 
 ---
 
@@ -343,7 +305,6 @@ refuses to publish if any `required: true` gate fails.
 
 | Tier    | text_eval threshold |
 |---------|---------------------|
-| 0_8b    | 0.55                |
 | 2b      | 0.60                |
 | 4b      | 0.62                |
 | 9b      | 0.64                |
@@ -375,11 +336,11 @@ export HUGGING_FACE_HUB_TOKEN=hf_xxxx
 ### Submit a training run
 
 ```bash
-# Single tier (0.8B through 9B — single H200)
-REGISTRY_KEY=qwen3.5-2b bash scripts/train_nebius.sh full
+# Single local tier fallback on Nebius
+REGISTRY_KEY=gemma4-e2b bash scripts/train_nebius.sh full
 
 # With a step cap (fits 12h H200 budget)
-REGISTRY_KEY=qwen3.5-9b MAX_STEPS=1500 bash scripts/train_nebius.sh full
+REGISTRY_KEY=gemma4-12b MAX_STEPS=1500 bash scripts/train_nebius.sh full
 ```
 
 For the 27B tier, Nebius only offers 1-GPU or 8-GPU presets. The 8-GPU preset
@@ -387,7 +348,7 @@ is expensive (~$240+/h). Prefer Vast for 27B:
 
 ```bash
 # 27B on Nebius (confirm cost before running)
-REGISTRY_KEY=qwen3.6-27b NEBIUS_VM_PRESET=gpu-h200x2 \
+REGISTRY_KEY=gemma4-31b NEBIUS_VM_PRESET=gpu-h200x2 \
     FSDP_WORLD_SIZE=8 bash scripts/train_nebius.sh full
 ```
 
@@ -396,7 +357,7 @@ Generate Nebius manifests without submitting (for review):
 ```bash
 uv run python scripts/finetune_all_tiers.py \
     --nebius \
-    --tiers qwen3.5-2b,qwen3.5-9b \
+    --tiers gemma4-e2b,gemma4-12b \
     --data-path data/final \
     --output-dir checkpoints
 ```
@@ -446,7 +407,7 @@ uv pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
 
 Use `memory_calc.py` to predict peak memory before running:
 ```bash
-uv run python scripts/training/memory_calc.py --shape qwen3.5-9b
+uv run python scripts/training/memory_calc.py --shape gemma4-12b
 ```
 
 Reduce seq_len via `--max-seq-len`. The 10% tolerance before OOM abort is
