@@ -1,8 +1,14 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { writeVoicePresetFileV2 } from "../../voice-preset-format";
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
@@ -78,6 +84,54 @@ function makeInputs(
 	};
 }
 
+function u32(value: number): Buffer {
+	const out = Buffer.alloc(4);
+	out.writeUInt32LE(value, 0);
+	return out;
+}
+
+function u64(value: number): Buffer {
+	const out = Buffer.alloc(8);
+	out.writeBigUInt64LE(BigInt(value), 0);
+	return out;
+}
+
+function ggufString(value: string): Buffer {
+	const bytes = Buffer.from(value, "utf8");
+	return Buffer.concat([u64(bytes.byteLength), bytes]);
+}
+
+function ggufKvString(key: string, value: string): Buffer {
+	return Buffer.concat([ggufString(key), u32(8), ggufString(value)]);
+}
+
+function ggufKvU32(key: string, value: number): Buffer {
+	return Buffer.concat([ggufString(key), u32(4), u32(value)]);
+}
+
+function makeGgufVoicePack(raw: Float32Array, styleDim = 256): Buffer {
+	const rawBytes = Buffer.from(
+		new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength),
+	);
+	const header = Buffer.concat([
+		Buffer.from("GGUF", "ascii"),
+		u32(3), // version
+		u64(1), // tensor_count
+		u64(2), // metadata_kv_count
+		ggufKvString("general.architecture", "kokoro-voice"),
+		ggufKvU32("kokoro_voice.style_dim", styleDim),
+		ggufString("voice.pack"),
+		u32(3), // n_dims
+		u64(styleDim),
+		u64(1),
+		u64(raw.length / styleDim),
+		u32(0), // GGML_TYPE_F32
+		u64(0), // tensor offset from aligned data start
+	]);
+	const padding = Buffer.alloc((32 - (header.byteLength % 32)) % 32);
+	return Buffer.concat([header, padding, rawBytes]);
+}
+
 describe("KokoroFfiRuntime", () => {
 	let root: string;
 	let calls: FakeFfiCalls;
@@ -139,6 +193,83 @@ describe("KokoroFfiRuntime", () => {
 		expect(chunks.filter((c) => !c.isFinal)).toHaveLength(1);
 		expect(chunks.at(-1)?.isFinal).toBe(true);
 		expect(chunks[0]?.len).toBe(4);
+	});
+
+	it("materializes packaged voice presets before calling the native loader", async () => {
+		const embedding = Float32Array.from({ length: 256 }, (_, i) => i);
+		const packagedPath = path.join(root, "voices", "af_bella.bin");
+		writeFileSync(
+			packagedPath,
+			Buffer.from(
+				writeVoicePresetFileV2({
+					embedding,
+					phrases: [],
+					metadata: { voiceId: "af_bella" },
+				}),
+			),
+		);
+
+		const ffi = fakeKokoroFfi({ calls });
+		const rt = new KokoroFfiRuntime({
+			layout: makeLayout(root),
+			ffi,
+			ctx: 7n as ElizaInferenceContextHandle,
+		});
+
+		await rt.synthesize(
+			makeInputs(voice("af_bella", "af_bella.bin"), () => undefined),
+		);
+
+		const materialized = calls.loads[0]?.voiceBinPath;
+		expect(materialized).toBeDefined();
+		if (!materialized) throw new Error("missing materialized voice path");
+		expect(materialized).not.toBe(packagedPath);
+		expect(path.basename(materialized)).toMatch(
+			/^af_bella-256-[a-f0-9]+\.bin$/,
+		);
+
+		const rawBytes = readFileSync(materialized);
+		expect(rawBytes.byteLength).toBe(1024);
+		const aligned = new Uint8Array(rawBytes.byteLength);
+		aligned.set(rawBytes);
+		const raw = new Float32Array(aligned.buffer);
+		expect(raw[0]).toBe(0);
+		expect(raw[42]).toBe(42);
+		expect(raw[255]).toBe(255);
+	});
+
+	it("materializes GGUF voice packs before calling the native loader", async () => {
+		const voicePack = Float32Array.from({ length: 512 }, (_, i) => i);
+		const packagedPath = path.join(root, "voices", "af_bella.bin");
+		writeFileSync(packagedPath, makeGgufVoicePack(voicePack));
+
+		const ffi = fakeKokoroFfi({ calls });
+		const rt = new KokoroFfiRuntime({
+			layout: makeLayout(root),
+			ffi,
+			ctx: 7n as ElizaInferenceContextHandle,
+		});
+
+		await rt.synthesize(
+			makeInputs(voice("af_bella", "af_bella.bin"), () => undefined),
+		);
+
+		const materialized = calls.loads[0]?.voiceBinPath;
+		expect(materialized).toBeDefined();
+		if (!materialized) throw new Error("missing materialized voice path");
+		expect(materialized).not.toBe(packagedPath);
+		expect(path.basename(materialized)).toMatch(
+			/^af_bella-256-[a-f0-9]+\.bin$/,
+		);
+
+		const rawBytes = readFileSync(materialized);
+		expect(rawBytes.byteLength).toBe(2048);
+		const aligned = new Uint8Array(rawBytes.byteLength);
+		aligned.set(rawBytes);
+		const raw = new Float32Array(aligned.buffer);
+		expect(raw[0]).toBe(0);
+		expect(raw[255]).toBe(255);
+		expect(raw[511]).toBe(511);
 	});
 
 	it("does not reload the voice across synthesize calls for the same voice", async () => {
