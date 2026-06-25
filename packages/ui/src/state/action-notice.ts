@@ -44,6 +44,8 @@ export const TOAST_TTL_MS = {
  * This is the one place priority→tone is decided so the inbox, the toast, and
  * any future surface agree.
  */
-export function toastToneForPriority(priority: NotificationPriority): ActionTone {
+export function toastToneForPriority(
+  priority: NotificationPriority,
+): ActionTone {
   return priority === "urgent" ? "error" : "info";
 }
