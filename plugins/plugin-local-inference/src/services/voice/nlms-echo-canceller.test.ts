@@ -128,6 +128,43 @@ describe("NlmsEchoCanceller", () => {
 		for (let i = from; i < to; i++) expect(Number.isFinite(out[i])).toBe(true);
 	});
 
+	it("does not diverge when the far-end has quiet passages (real-TTS pauses)", () => {
+		// Regression for the divergence found measuring real Kokoro/`say` TTS echo
+		// on-device (#9455): real TTS has inter-word/sentence pauses where the
+		// far-end energy collapses toward — but never reaches — zero (DAC dither,
+		// room floor). Meanwhile the mic always carries a small noise floor. Before
+		// the far-end-activity gate, ‖x‖²→ε during those pauses inflated the NLMS
+		// step so the filter learned the MIC NOISE and blew up (‖w‖→100s, residual
+		// RMS ≫ input). A purely-zero gap does NOT reproduce it (x[k]=0 → no update),
+		// which is why the synthetic echo test missed it — the floor is essential.
+		const N = SR * 6;
+		const speech = signal(N, 1);
+		const far = new Float32Array(N);
+		for (let i = 0; i < N; i++) {
+			const t = i / SR;
+			const active = t % 0.6 < 0.4 ? 1 : 0; // 0.4 s on / 0.2 s pause, TTS-like
+			// Quiet passage keeps a tiny non-zero floor (≈ −60 dBFS), as real audio does.
+			far[i] = active ? speech[i] : speech[i] * 3e-4;
+		}
+		const echo = echoOf(far);
+		const near = new Float32Array(N);
+		let s = 4242 >>> 0;
+		for (let i = 0; i < N; i++) {
+			s = (s * 1103515245 + 12345) & 0x7fffffff;
+			near[i] = echo[i] + (s / 0x3fffffff - 1) * 6e-3; // continuous mic noise floor
+		}
+		const out = runBlocks(new NlmsEchoCanceller(), near, far); // shipped defaults
+		const from = SR * 2;
+		const to = N - (N % BLOCK);
+		for (let i = from; i < to; i++) expect(Number.isFinite(out[i])).toBe(true);
+		// Stable: the cleaned signal stays at/below the mic level — it must never
+		// amplify the input (divergence injected ~200× energy before the fix).
+		expect(power(out, from, to)).toBeLessThan(power(near, from, to) * 1.5);
+		let peak = 0;
+		for (let i = from; i < to; i++) peak = Math.max(peak, Math.abs(out[i]));
+		expect(peak).toBeLessThan(1); // pre-fix peaks reached >20
+	});
+
 	it("reset() clears adaptation (first post-reset sample is exact passthrough)", () => {
 		const far = signal(SR, 1);
 		const echo = echoOf(far);

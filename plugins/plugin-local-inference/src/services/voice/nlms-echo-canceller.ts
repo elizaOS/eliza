@@ -74,6 +74,7 @@ export class NlmsEchoCanceller {
 	/** Pending far-end samples not yet aligned to a near-end sample (delay line). */
 	private readonly delayLine: number[] = [];
 	private xEnergy = 0; // running ‖x‖² over the active window (incremental)
+	private peakXEnergy = 0; // slowly-decaying envelope of ‖x‖² (far-end scale)
 	private pNear = 0; // smoothed near-end power (DTD)
 	private pFar = 0; // smoothed far-end reference power (DTD)
 	private hangover = 0; // samples to stay frozen after a double-talk trigger
@@ -82,6 +83,17 @@ export class NlmsEchoCanceller {
 	/** Stay frozen ~30 ms after the last double-talk trigger so the filter is not
 	 * corrupted by the bursty onset/offset of the near-end talker. */
 	private static readonly HANGOVER_SAMPLES = 480;
+	/** Per-sample decay of the far-end energy envelope (~1 s time constant) so a
+	 * short TTS pause keeps the far-end-active gate closed through the gap. */
+	private static readonly PEAK_DECAY = 0.99994;
+	/** Far-end is "active" only when the instantaneous ‖x‖² is within this
+	 * fraction (−20 dB) of the recent envelope. Below it there is no echo to
+	 * learn, so adaptation freezes (see process()). */
+	private static readonly FAR_ACTIVITY_FRAC = 0.01;
+	/** NLMS regularization as a fraction of the far-end envelope. Keeps the step
+	 * bounded when ‖x‖² momentarily underflows, so a quiet far-end passage can't
+	 * make the normaliser collapse to the absolute `eps` and blow the filter up. */
+	private static readonly REG_FRAC = 0.01;
 	private lastResidualPow = 0;
 
 	constructor(opts: NlmsEchoCancellerOptions = {}) {
@@ -121,6 +133,12 @@ export class NlmsEchoCanceller {
 					? (this.delayLine.shift() as number)
 					: 0;
 			this.pushRef(ref);
+			// Track the far-end energy envelope (instant rise, slow decay) so the
+			// activity gate and the regulariser scale with the playback level.
+			this.peakXEnergy = Math.max(
+				this.peakXEnergy * NlmsEchoCanceller.PEAK_DECAY,
+				this.xEnergy,
+			);
 
 			// Estimate echo ŷ = wᵀ·x and the error e = d − ŷ (the cleaned sample).
 			let yhat = 0;
@@ -149,9 +167,26 @@ export class NlmsEchoCanceller {
 			const doubleTalk = this.hangover > 0;
 			if (this.hangover > 0) this.hangover--;
 
-			// NLMS weight update: w += μ·e·x / (‖x‖² + ε), frozen during double-talk.
-			if (!doubleTalk) {
-				const norm = this.xEnergy + this.eps;
+			// Far-end activity gate: only adapt while the far-end is actually
+			// driving an echo. During a quiet TTS passage ‖x‖² collapses toward
+			// zero but is not exactly zero (DAC dither / room floor), so without
+			// this gate the NLMS step μ·e/(‖x‖²+ε) explodes and the filter learns
+			// the near-end MIC NOISE instead of an echo — diverging and corrupting
+			// the signal handed to ASR/VAD. There is no echo to learn when the
+			// far-end is silent, so freezing is both correct and stabilising.
+			const farActive =
+				this.xEnergy >
+				NlmsEchoCanceller.FAR_ACTIVITY_FRAC * this.peakXEnergy;
+
+			// NLMS weight update: w += μ·e·x / (‖x‖² + δ), frozen during
+			// double-talk or far-end silence. δ scales with the far-end envelope so
+			// the normaliser can never collapse to the tiny absolute `eps`.
+			if (!doubleTalk && farActive) {
+				const reg = Math.max(
+					this.eps,
+					NlmsEchoCanceller.REG_FRAC * this.peakXEnergy,
+				);
+				const norm = this.xEnergy + reg;
 				const step = (this.mu * e) / norm;
 				if (Number.isFinite(step)) {
 					for (let k = 0; k < this.taps; k++) this.w[k] += step * this.x[k];
@@ -181,6 +216,7 @@ export class NlmsEchoCanceller {
 		this.x.fill(0);
 		this.delayLine.length = 0;
 		this.xEnergy = 0;
+		this.peakXEnergy = 0;
 		this.pNear = 0;
 		this.pFar = 0;
 		this.hangover = 0;
