@@ -1,6 +1,5 @@
 <div align="center">
   <img src="packages/shared/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
-  <p><strong>elizaOS - Agentic Operating System</strong></p>
 </div>
 
 ## ✨ What is Eliza?
@@ -226,9 +225,3 @@ Contributions welcome. Open an issue before sending a non-trivial PR.
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-## Contributors
-
-<a href="https://github.com/elizaos/eliza/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=elizaos/eliza" alt="Eliza project contributors" />
-</a>
