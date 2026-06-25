@@ -25,11 +25,14 @@
  */
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -114,13 +117,19 @@ function lddClosure(binPath) {
 }
 let bundledExtra = 0;
 for (const soPath of lddClosure(join(dest, "bin", "tesseract"))) {
-  const base = soPath.split("/").pop();
-  if (GLIBC_PROVIDED.test(base)) continue;
+  // ldd can resolve a path with a trailing slash (e.g. a symlink dir entry);
+  // strip it so the SONAME basename is never empty (an empty basename made the
+  // target the lib/ dir itself → cpSync EISDIR).
+  const cleanSrc = soPath.replace(/\/+$/, "");
+  const base = cleanSrc.split("/").pop();
+  if (!base || GLIBC_PROVIDED.test(base)) continue;
   const target = join(dest, "lib", base);
   if (existsSync(target)) continue; // already staged (libtesseract/liblept)
-  // dereference: write the SONAME-named file with the real lib bytes, so the
-  // dynamic loader finds it by the name the binary asks for.
-  cpSync(soPath, target, { dereference: true });
+  // dereference the symlink to the real .so file and copy its bytes under the
+  // SONAME the binary asks for, so the dynamic loader finds it by that name.
+  const realSrc = realpathSync(cleanSrc);
+  if (!statSync(realSrc).isFile()) continue;
+  copyFileSync(realSrc, target);
   bundledExtra++;
 }
 console.log(
