@@ -74,6 +74,38 @@ describe("BRIEF narrative — OptimizedPromptService routing", () => {
     expect(prompt).toContain("composing the owner's morning briefing");
     expect(prompt).toContain("Data:");
   });
+
+  it("swaps in the optimized meeting_prep artifact for meeting prep briefs", () => {
+    const runtime = runtimeWithOptimizedPrompt({
+      meeting_prep: "OPTIMIZED: surface agenda gaps and decision owners first.",
+    });
+    const prompt = buildNarrativePrompt({
+      kind: "morning",
+      period: "tomorrow",
+      sections: {
+        calendar: [
+          {
+            id: "evt-board",
+            title: "Board meeting",
+            startAt: "2026-06-25T16:00:00.000Z",
+            endAt: "2026-06-25T17:00:00.000Z",
+          },
+        ],
+        inbox: [],
+        life: [],
+        money: [],
+      },
+      runtime,
+      optimizationTask: "meeting_prep",
+    });
+
+    expect(prompt).toContain(
+      "OPTIMIZED: surface agenda gaps and decision owners first.",
+    );
+    expect(prompt).not.toContain("Prepare the next working block");
+    expect(prompt).toContain("composing the owner's morning briefing");
+    expect(prompt).toContain("Board meeting");
+  });
 });
 
 describe("LifeOps action prompts — OptimizedPromptService routing", () => {
