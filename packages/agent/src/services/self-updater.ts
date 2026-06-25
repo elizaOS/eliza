@@ -269,8 +269,13 @@ function runCommand(
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       stdio: ["inherit", "inherit", "pipe"],
-      // shell:true removed — all update commands are safe to run directly.
-      // The apt case uses sh -c explicitly, so no shell wrapper is needed.
+      // The global launcher is a `.cmd` shim on Windows (npm.cmd / bun.cmd),
+      // which Node cannot spawn without a shell (ENOENT) — every npm-global
+      // auto-update would fail. Route through the shell on win32 so the shim
+      // resolves. Update args are static/internal (e.g. `install -g <spec>`),
+      // so there is no injection surface; the Linux apt case uses an explicit
+      // `sh -c` and is unaffected.
+      shell: process.platform === "win32",
     });
 
     let stderr = "";
