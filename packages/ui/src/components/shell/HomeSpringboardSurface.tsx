@@ -215,7 +215,10 @@ export function HomeSpringboardSurface({
       </div>
       <div
         data-testid="home-springboard-indicator"
-        className="pointer-events-auto absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+5.9rem)] z-[2] flex justify-center gap-1.5"
+        // Sit ABOVE the floating chat composer (its clearance), with a gap, so
+        // the dots never overlap the "Ask Eliza" input (was a fixed 5.9rem that
+        // collided with the composer on tall devices).
+        className="pointer-events-auto absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)] z-[2] flex justify-center gap-1.5"
       >
         {Array.from({ length: totalDots }, (_, index) => (
           <button

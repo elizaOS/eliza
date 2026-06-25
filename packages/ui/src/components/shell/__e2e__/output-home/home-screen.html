@@ -27839,7 +27839,7 @@
 
   // packages/ui/src/state/springboard-layout.ts
   var SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
-  var SPRINGBOARD_PAGE_SIZE = 16;
+  var SPRINGBOARD_PAGE_SIZE = 20;
   var SPRINGBOARD_DOCK_LIMIT = 4;
   var DEFAULT_SPRINGBOARD_FAVORITES = [
     "settings",
@@ -44980,11 +44980,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                   onToggleFavorite(entry.id);
                 },
                 className: cn(
-                  // A solid contrasting chip with a ring + shadow so the toggle
-                  // lifts off ANY hero-image hue or dark tile and never reads as a
-                  // stray glyph. Pinned = filled orange disc with a white star;
-                  // unpinned = white disc with a dark plus — state is legible by
-                  // COLOR/FILL, not just glyph shape.
+                  // Filled chips stay legible across image and dark tile backgrounds.
                   "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold shadow-md ring-1",
                   favorited ? "bg-accent text-white ring-black/20" : "bg-white text-neutral-900 ring-black/15"
                 ),
@@ -45396,7 +45392,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       },
       [getCatalogEntry]
     );
-    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "absolute inset-0 flex min-h-0 flex-col px-0 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "absolute inset-0 flex min-h-0 flex-col px-0 pt-2 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
       Springboard,
       {
         entries: entries2,
@@ -45560,7 +45556,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
             "div",
             {
               "data-testid": "home-springboard-indicator",
-              className: "pointer-events-auto absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+5.9rem)] z-[2] flex justify-center gap-1.5",
+              className: "pointer-events-auto absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)] z-[2] flex justify-center gap-1.5",
               children: Array.from({ length: totalDots }, (_, index2) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
                 "button",
                 {
@@ -45569,9 +45565,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                   "aria-current": index2 === activeDot,
                   onClick: () => jumpToDot(index2),
                   className: cn(
-                    // Higher inactive contrast so the pager affordance is discoverable
-                    // on the bright orange wallpaper (was barely visible at /25); a
-                    // soft shadow keeps both states readable on any background.
+                    // Keep inactive dots discoverable on the orange wallpaper.
                     "h-1.5 w-1.5 rounded-full shadow-sm transition-colors",
                     index2 === activeDot ? "bg-white/90" : "bg-white/45"
                   )
@@ -73536,15 +73530,7 @@ Assistant:`;
         title: label,
         onClick: onActivate,
         className: cn(
-          // Dark translucent glass on the orange home wallpaper (theme-independent,
-          // matching the OS tiles / springboard icons) so white text reads and the
-          // card lifts off the orange field with real figure/ground. Neutral
-          // resting → neutral-with-opacity hover (never orange→black), per the
-          // hover system.
-          // A clearly DARK neutral glass (not a light orange-tint) is required so
-          // BOTH white default values AND the brand-orange danger/warn values
-          // (--danger/--warn are brand orange) read with contrast — orange text
-          // only pops on a dark, mostly-neutral surface, not on an orange wash.
+          // Dark neutral glass keeps white text and orange status values legible.
           "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/45 px-3 py-2.5 text-left backdrop-blur-md",
           "transition-colors hover:bg-black/55"
         ),
@@ -73564,9 +73550,7 @@ Assistant:`;
                   {
                     "aria-hidden": true,
                     className: cn(
-                      // A clearly FILLED status dot (a thin ring just separates it from
-                      // the icon). The old h-2 + border-2 left the border dominating the
-                      // dot so it read as a hollow ring / artifact on every toned card.
+                      // Use a filled dot; the ring only separates it from the icon.
                       "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-black/40",
                       TONE_DOT_CLASS[tone]
                     )
@@ -76377,8 +76361,11 @@ Assistant:`;
         "data-testid": "home-screen",
         className: cn(
           "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
-          // Sit right under the status bar — no empty band above the content.
-          "px-4 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]",
+          // The shell root already reserves the status-bar safe area (its
+          // paddingTop: var(--safe-area-top)); adding it again here double-padded
+          // the content and left a large empty band above the dashboard. Just a
+          // small gutter — the notch is already cleared by the root.
+          "px-4 pt-2",
           // Clear the floating chat composer at the bottom.
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]"
         ),

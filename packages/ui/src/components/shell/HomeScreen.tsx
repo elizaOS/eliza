@@ -177,8 +177,11 @@ export function HomeScreen({
       data-testid="home-screen"
       className={cn(
         "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
-        // Sit right under the status bar — no empty band above the content.
-        "px-4 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]",
+        // The shell root already reserves the status-bar safe area (its
+        // paddingTop: var(--safe-area-top)); adding it again here double-padded
+        // the content and left a large empty band above the dashboard. Just a
+        // small gutter — the notch is already cleared by the root.
+        "px-4 pt-2",
         // Clear the floating chat composer at the bottom.
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
       )}

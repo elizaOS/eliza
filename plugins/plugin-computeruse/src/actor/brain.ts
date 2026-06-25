@@ -44,7 +44,7 @@ import {
   ModelType,
 } from "@elizaos/core";
 import type { DisplayCapture } from "../platform/capture.js";
-import { frameDhash, pngDimensions } from "../scene/dhash.js";
+import { frameDhash, hamming, pngDimensions } from "../scene/dhash.js";
 import type { Scene } from "../scene/scene-types.js";
 import { serializeSceneForPrompt } from "../scene/serialize.js";
 import { resolveReference } from "./actor.js";
@@ -54,6 +54,16 @@ export const BRAIN_MAX_PIXELS = 1_310_720; // 1280 * 32 * 32 ≈ 1.3 MP cap
 export const BRAIN_MAX_ROIS = 2;
 /** Bound on the per-Brain dHash→BrainOutput cache (LRU-ish, oldest evicted). */
 export const BRAIN_DHASH_CACHE_MAX = 16;
+/**
+ * dHash Hamming threshold for cached-plan reuse (#9581 continuous-understanding
+ * tuning). Exact-equality (distance 0) re-burned the IMAGE_DESCRIPTION model on
+ * cosmetically-identical frames — cursor jitter, a blinking caret, anti-aliasing,
+ * and tiny scroll noise all flip a few dHash bits.
+ *
+ * This mirrors `SCREEN_STATE_HAMMING_THRESHOLD`: distances below the threshold
+ * are unchanged; distances at or above it are changed and must re-plan.
+ */
+export const BRAIN_DHASH_HAMMING_THRESHOLD = 5;
 /**
  * Image-token estimate per source pixel for a vision model with the Qwen3-VL /
  * OS-Atlas `max_pixels` convention: one visual token ≈ a 28×28 (≈750 px) patch.
@@ -125,6 +135,46 @@ export interface BrainStats {
 const COORDINATE_ACTION_KINDS: ReadonlySet<BrainProposedAction["kind"]> =
   new Set(["click", "double_click", "right_click", "scroll", "drag"]);
 
+function sceneCacheSignature(scene: Scene): string {
+  return JSON.stringify({
+    displays: scene.displays.map((display) => ({
+      id: display.id,
+      name: display.name,
+      bounds: display.bounds,
+      primary: display.primary,
+      scaleFactor: display.scaleFactor,
+    })),
+    focused_window: scene.focused_window,
+    apps: scene.apps.map((app) => ({
+      name: app.name,
+      pid: app.pid,
+      windows: app.windows.map((window) => ({
+        id: window.id,
+        title: window.title,
+        bounds: window.bounds,
+        displayId: window.displayId,
+      })),
+    })),
+    ocr: scene.ocr.map((box) => ({
+      id: box.id,
+      text: box.text,
+      bbox: box.bbox,
+      conf: Number(box.conf.toFixed(3)),
+      displayId: box.displayId,
+    })),
+    ax: scene.ax.map((node) => ({
+      id: node.id,
+      role: node.role,
+      label: node.label,
+      bbox: node.bbox,
+      actions: node.actions,
+      displayId: node.displayId,
+    })),
+    vlm_scene: scene.vlm_scene,
+    vlm_elements: scene.vlm_elements,
+  });
+}
+
 export class BrainParseError extends Error {
   constructor(
     message: string,
@@ -173,7 +223,12 @@ export class Brain {
    * skips the model entirely when the same frame is observed for the same goal,
    * cutting the dominant CUA-loop token cost regardless of backend (#9105 M3).
    */
-  private readonly dhashCache = new Map<string, BrainOutput>();
+  private readonly dhashCache: Array<{
+    dh: bigint;
+    goal: string;
+    sceneSignature: string;
+    output: BrainOutput;
+  }> = [];
   private readonly imagePolicy: BrainImagePolicy;
   private invocations = 0;
   private cacheHits = 0;
@@ -197,19 +252,56 @@ export class Brain {
     };
   }
 
-  private cacheKey(frame: Buffer, goal: string): string | null {
+  private cacheKey(
+    frame: Buffer,
+    goal: string,
+    sceneSignature: string,
+  ): { dh: bigint; goal: string; sceneSignature: string } | null {
     const dh = frameDhash(frame);
-    return dh === null ? null : `${dh.toString()}::${goal}`;
+    return dh === null ? null : { dh, goal, sceneSignature };
   }
 
-  private rememberOutput(key: string | null, output: BrainOutput): BrainOutput {
+  /**
+   * Return a cached plan for the same goal whose frame is within
+   * `BRAIN_DHASH_HAMMING_THRESHOLD` bits of `dh` — a near-identical screen, not
+   * just a byte-identical one. On a hit the entry is moved to the end (LRU), so
+   * a steadily-evolving screen keeps its most-recent close match warm.
+   */
+  private findCached(
+    dh: bigint,
+    goal: string,
+    sceneSignature: string,
+  ): BrainOutput | null {
+    for (let i = this.dhashCache.length - 1; i >= 0; i--) {
+      const entry = this.dhashCache[i]!;
+      if (
+        entry.goal === goal &&
+        entry.sceneSignature === sceneSignature &&
+        hamming(entry.dh, dh) < BRAIN_DHASH_HAMMING_THRESHOLD
+      ) {
+        this.dhashCache.splice(i, 1);
+        this.dhashCache.push(entry);
+        return entry.output;
+      }
+    }
+    return null;
+  }
+
+  private rememberOutput(
+    key: { dh: bigint; goal: string; sceneSignature: string } | null,
+    output: BrainOutput,
+  ): BrainOutput {
     if (key) {
       // Evict oldest to bound memory.
-      if (this.dhashCache.size >= BRAIN_DHASH_CACHE_MAX) {
-        const oldest = this.dhashCache.keys().next().value;
-        if (oldest !== undefined) this.dhashCache.delete(oldest);
+      if (this.dhashCache.length >= BRAIN_DHASH_CACHE_MAX) {
+        this.dhashCache.shift();
       }
-      this.dhashCache.set(key, output);
+      this.dhashCache.push({
+        dh: key.dh,
+        goal: key.goal,
+        sceneSignature: key.sceneSignature,
+        output,
+      });
     }
     return output;
   }
@@ -231,11 +323,17 @@ export class Brain {
       throw new Error("[computeruse/brain] could not pick a target capture");
     }
 
-    // Frame-dHash cache: identical screen + goal → reuse the prior plan, skip
-    // the (possibly remote) IMAGE_DESCRIPTION call.
-    const key = this.cacheKey(targetCapture.frame, input.goal);
+    // Frame-dHash cache: a near-identical screen + same goal → reuse the prior
+    // plan, skip the (possibly remote) IMAGE_DESCRIPTION call. Tolerant to a few
+    // dHash bits so cosmetic churn (cursor, caret, anti-aliasing) still hits.
+    const sceneSignature = sceneCacheSignature(input.scene);
+    const key = this.cacheKey(
+      targetCapture.frame,
+      input.goal,
+      sceneSignature,
+    );
     if (key) {
-      const cached = this.dhashCache.get(key);
+      const cached = this.findCached(key.dh, key.goal, key.sceneSignature);
       if (cached) {
         this.cacheHits += 1;
         return cached;

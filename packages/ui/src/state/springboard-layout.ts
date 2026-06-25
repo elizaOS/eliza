@@ -14,12 +14,12 @@
 export const SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
 
 /**
- * Icons per springboard page (4 columns × 4 rows, iOS-like). Sized so a full
- * page fits within a short phone viewport (≈360×640) without the bottom rows
- * being cut off below the fold / hidden behind the page indicator — overflow
- * spills onto the next swipeable page instead of clipping.
+ * Icons per springboard page (4 columns × 5 rows, iOS-like). Now that the top
+ * double safe-area gap is gone and the page indicator clears the chat composer,
+ * a full 5-row page fits a normal phone; smaller phones scroll the grid. The
+ * grid is `overflow-y-auto`, so overflow scrolls rather than clipping.
  */
-export const SPRINGBOARD_PAGE_SIZE = 16;
+export const SPRINGBOARD_PAGE_SIZE = 20;
 /** Maximum icons pinned to the dock (favorites). */
 export const SPRINGBOARD_DOCK_LIMIT = 4;
 

@@ -25261,7 +25261,7 @@
 
   // packages/ui/src/state/springboard-layout.ts
   var SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
-  var SPRINGBOARD_PAGE_SIZE = 16;
+  var SPRINGBOARD_PAGE_SIZE = 20;
   var SPRINGBOARD_DOCK_LIMIT = 4;
   var DEFAULT_SPRINGBOARD_FAVORITES = [
     "settings",
@@ -25721,8 +25721,9 @@
                   onToggleFavorite(entry.id);
                 },
                 className: cn(
-                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold",
-                  favorited ? "bg-accent text-accent-foreground" : "bg-border text-foreground"
+                  // Filled chips stay legible across image and dark tile backgrounds.
+                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold shadow-md ring-1",
+                  favorited ? "bg-accent text-white ring-black/20" : "bg-white text-neutral-900 ring-black/15"
                 ),
                 children: favorited ? "\u2605" : "+"
               }
