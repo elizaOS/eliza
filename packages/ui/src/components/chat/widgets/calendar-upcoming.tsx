@@ -126,7 +126,13 @@ export function CalendarUpcomingWidget({
   const probeConnection = useCallback(async () => {
     try {
       const res = await client.listConnectorAccounts(GOOGLE_PROVIDER);
-      const linked = res.accounts.some((account) => account.status !== "error");
+      // Linked ONLY when an account is actually connected — a "needs-reauth" /
+      // "pending" account is NOT usable, and treating it as linked left the tile
+      // stuck on "Loading…" forever (the feed never returns), instead of showing
+      // the "Connect calendar" affordance (matching the connectors strip).
+      const linked = res.accounts.some(
+        (account) => account.status === "connected",
+      );
       setConnection(linked ? "connected" : "disconnected");
       return linked;
     } catch {
