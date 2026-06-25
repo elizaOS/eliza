@@ -1,4 +1,10 @@
 import { textFromChatMessageContent } from "../runtime/system-prompt";
+
+export {
+	type TrajectoryPlaintextOptions,
+	trajectoryToPlaintext,
+} from "../activity-plaintext";
+
 import type {
 	ElizaNativeModelBoundary,
 	ElizaNativeModelRequestRecord,

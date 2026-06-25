@@ -5,6 +5,7 @@ import {
 	serializeTrajectoryExport,
 	summarizeTrajectoryCache,
 	summarizeTrajectoryUsage,
+	trajectoryToPlaintext,
 } from "./trajectory-export";
 import type { TrajectoryDetailRecord } from "./trajectory-types";
 import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
@@ -90,6 +91,16 @@ describe("trajectory-export", () => {
 			cacheWriteCallCount: 1,
 			tokenUsageEstimatedCallCount: 1,
 		});
+	});
+
+	it("exports markdown-friendly plaintext from the trajectory export module", () => {
+		expect(trajectoryToPlaintext(sampleTrajectory)).toContain(
+			"Trajectory traj-1",
+		);
+		expect(trajectoryToPlaintext(sampleTrajectory)).toContain(
+			"LLM call call-1",
+		);
+		expect(trajectoryToPlaintext(sampleTrajectory)).toContain("Hello there");
 	});
 
 	it("exports native JSON and JSONL rows by default", () => {
