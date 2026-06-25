@@ -44,18 +44,25 @@ interface InjectedConfig {
   metadata?: unknown;
 }
 
+declare global {
+  interface Window {
+    __WAIFU_IMAGEGEN__?: unknown;
+  }
+}
+
 const DEFAULT_WAIFU_API_BASE = "https://waifu.fun";
 
 function readInjectedGlobal(): InjectedConfig | null {
   if (typeof window === "undefined") return null;
-  const raw = (window as unknown as Record<string, unknown>).__WAIFU_IMAGEGEN__;
+  const raw = window.__WAIFU_IMAGEGEN__;
   if (!raw || typeof raw !== "object") return null;
   return raw as InjectedConfig;
 }
 
 function readEnv(key: string): string | null {
   // import.meta.env is baked at bundle build; guard for non-Vite hosts.
-  const env = (import.meta as unknown as { env?: Record<string, unknown> }).env;
+  const env = (import.meta as ImportMeta & { env?: Record<string, unknown> })
+    .env;
   const value = env?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }

@@ -24,6 +24,13 @@
 import type { Address, SwapToken } from "./swap-contracts";
 import { PANCAKE_V3_WBNB } from "./swap-contracts";
 
+declare global {
+  interface Window {
+    /** Host-injected per-agent swap config. Shape validated at read time. */
+    __WAIFU_SWAP__?: unknown;
+  }
+}
+
 export interface WaifuSwapRuntimeConfig {
   /** Base URL of the waifu API, e.g. "https://waifu.fun". No trailing slash. */
   apiBase: string;
@@ -70,7 +77,7 @@ export const NATIVE_BNB_TOKEN: SwapToken = {
 
 function readInjectedGlobal(): InjectedConfig | null {
   if (typeof window === "undefined") return null;
-  const raw = (window as unknown as Record<string, unknown>).__WAIFU_SWAP__;
+  const raw = window.__WAIFU_SWAP__;
   if (!raw || typeof raw !== "object") return null;
   return raw as InjectedConfig;
 }
