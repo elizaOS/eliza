@@ -388,6 +388,8 @@ export interface UseChatCallbacksDeps {
   loadConversationMessages: (
     convId: string,
   ) => Promise<LoadConversationMessagesResult>;
+  /** Warm the message cache for adjacent conversations (smooth swipe nav). */
+  prefetchConversationMessages: (ids: readonly string[]) => void;
   loadPlugins: () => Promise<unknown>;
 
   // Cloud state
@@ -501,6 +503,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     resetBackendConnection,
     loadConversations,
     loadConversationMessages,
+    prefetchConversationMessages,
     loadPlugins,
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -1055,6 +1058,20 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         next.delete(id);
         return next;
       });
+      // Warm the neighbors in both swipe directions so the next horizontal swipe
+      // paints instantly from cache (the list is most-recent-first). Best-effort
+      // and fire-and-forget; the active load below still fetches `id` itself.
+      const order = conversationsRef.current;
+      const idx = order.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        const neighbors = [
+          order[idx - 2]?.id,
+          order[idx - 1]?.id,
+          order[idx + 1]?.id,
+          order[idx + 2]?.id,
+        ].filter((n): n is string => typeof n === "string");
+        if (neighbors.length > 0) prefetchConversationMessages(neighbors);
+      }
       const loaded = await loadConversationMessages(id);
       if (loaded.ok === true) return;
       const loadedMessage = loaded.message;
@@ -1116,11 +1133,13 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     },
     [
       loadConversationMessages,
+      prefetchConversationMessages,
       loadConversations,
       setActionNotice,
       activeConversationIdRef,
       conversationHydrationEpochRef,
       conversationMessagesRef,
+      conversationsRef,
       send.interruptActiveChatPipeline,
       setActiveConversationId,
       setConversationMessages,

@@ -153,6 +153,11 @@ export interface ShellController {
   stop: () => void;
   /** Horizontal-swipe navigation between conversations (sheet-open only). */
   conversationNav: ConversationNav;
+  /** True while a conversation switch or clear is fetching messages that aren't
+   *  yet cached — drives the chat's in-thread loading spinner so an empty thread
+   *  reads as "loading," not "broken." Cache-hit swipes paint instantly and
+   *  never trip this. */
+  conversationLoading: boolean;
 }
 
 /** Adjacent-conversation navigation for the overlay's horizontal swipe. */
@@ -275,6 +280,28 @@ export function useShellController(): ShellController {
     dispatchHomeSpringboardNavigation("springboard");
   }, [setTab]);
 
+  // True while a clear or a (non-cached) swipe is fetching the next thread, so
+  // the overlay can show an in-thread spinner instead of an empty sheet. A
+  // cache-hit swipe paints synchronously inside handleSelectConversation, so the
+  // thread is non-empty before this even matters — the spinner only shows on a
+  // genuine network wait (clear's greeting, or a swipe past the prefetch window).
+  const [conversationLoading, setConversationLoading] = React.useState(false);
+  const conversationLoadingSeqRef = React.useRef(0);
+
+  const runWithConversationLoading = React.useCallback(
+    (task: () => Promise<unknown>) => {
+      const seq = conversationLoadingSeqRef.current + 1;
+      conversationLoadingSeqRef.current = seq;
+      setConversationLoading(true);
+      void task().finally(() => {
+        if (conversationLoadingSeqRef.current === seq) {
+          setConversationLoading(false);
+        }
+      });
+    },
+    [],
+  );
+
   // Clear the chat: drop the current conversation and start a fresh, greeted one
   // (handleNewConversation resets draft state + creates a new conversation with a
   // bootstrap greeting; an empty draft we just left is pruned, a non-empty
@@ -284,18 +311,29 @@ export function useShellController(): ShellController {
     // clear the voice flag so the greeting isn't spoken aloud after a prior
     // voice session.
     setLastTurnVoice(false);
-    void handleNewConversation();
-  }, [handleNewConversation]);
+    runWithConversationLoading(handleNewConversation);
+  }, [handleNewConversation, runWithConversationLoading]);
+
+  // Switch conversations behind a loading flag so an uncached swipe shows the
+  // spinner; a cached one resolves within the same tick (thread already painted).
+  const selectConversation = React.useCallback(
+    (id: string) => {
+      runWithConversationLoading(() => handleSelectConversation(id));
+    },
+    [handleSelectConversation, runWithConversationLoading],
+  );
 
   // Horizontal-swipe navigation between conversations (#8929). Computed by the
   // pure `buildConversationNav` helper (unit-tested) so the index-walk and
   // boundary logic stay verifiable independent of this AppContext-bound hook.
   const conversationNav = React.useMemo<ConversationNav>(
     () =>
-      buildConversationNav(conversations, activeConversationId, (id) => {
-        void handleSelectConversation(id);
-      }),
-    [conversations, activeConversationId, handleSelectConversation],
+      buildConversationNav(
+        conversations,
+        activeConversationId,
+        selectConversation,
+      ),
+    [conversations, activeConversationId, selectConversation],
   );
 
   // "Ready" here means the agent's FIRST-TURN CAPABILITY is online (it can
@@ -1077,5 +1115,6 @@ export function useShellController(): ShellController {
     currentTab: tab,
     stop: stopTurn,
     conversationNav,
+    conversationLoading,
   };
 }
