@@ -25,7 +25,7 @@
  * silently coerced to false.
  */
 
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -41,6 +41,22 @@ export const ELIZA_ONE_RELEASE_STATES = [
 ] as const;
 export type ElizaOneReleaseState = (typeof ELIZA_ONE_RELEASE_STATES)[number];
 
+/**
+ * The text runtime a bundle's primary weights are served by. `llama-cpp`
+ * (the `.gguf`) is the default; `litert-lm` is the LiteRT-LM `.litertlm`
+ * single-file on-device runtime (Android NPU / GPU delegate).
+ */
+export const ELIZA_ONE_TEXT_RUNTIME_CLASSES = [
+  "llama-cpp",
+  "litert-lm",
+] as const;
+export type ElizaOneTextRuntimeClass =
+  (typeof ELIZA_ONE_TEXT_RUNTIME_CLASSES)[number];
+
+/** Bundle-relative subdir + extension the LiteRT artifact lives under. */
+export const LITERT_BUNDLE_TEXT_SUBDIR = "text";
+export const LITERT_ARTIFACT_EXT = ".litertlm";
+
 export interface ElizaOneBundleManifest {
   bundleId: string;
   modelSize: ElizaOneModelSize;
@@ -49,6 +65,14 @@ export interface ElizaOneBundleManifest {
   final: { weights: boolean };
   /** Absolute filesystem path to the .gguf inside the bundle. */
   weightsPath: string;
+  /**
+   * Absolute filesystem path to the LiteRT-LM `.litertlm` text artifact when
+   * the bundle stages one under `text/`, parallel to the GGUF `weightsPath`.
+   * Absent ⇒ this bundle is GGUF-only (the default). The C-side
+   * `llm_backend_select` probes `<bundleRoot>/text/*.litertlm` and routes to
+   * the LiteRT-LM backend; this surfaces the staged path to harness consumers.
+   */
+  litertPath?: string;
   /** Absolute filesystem path to the MTP drafter, if present. */
   draftersPath?: string;
   sha256: string;
@@ -189,6 +213,29 @@ export async function readElizaOneBundle(
     draftersPath = resolved;
   }
 
+  // Optional LiteRT-LM `.litertlm` text artifact, staged under `text/` parallel
+  // to the GGUF weights. Resolution mirrors the C-side `find_litertlm_artifact`
+  // (litert-backend.cpp): an explicit `litertPath` manifest field wins; absent
+  // that, probe `<bundleRoot>/text/*.litertlm`. GGUF-only bundles leave this
+  // unset. An explicit field that points at a missing file is a hard error
+  // (no silent fallback to GGUF) — the bundle declared a LiteRT artifact that
+  // is not on disk.
+  let litertPath: string | undefined;
+  const litertRaw = obj.litertPath;
+  if (typeof litertRaw === "string" && litertRaw.length > 0) {
+    const resolved = path.isAbsolute(litertRaw)
+      ? litertRaw
+      : path.join(resolvedBundlePath, litertRaw);
+    if (!existsSync(resolved)) {
+      throw new Error(
+        `eliza-1 bundle LiteRT artifact does not exist: ${resolved} (referenced by ${manifestPath})`,
+      );
+    }
+    litertPath = resolved;
+  } else {
+    litertPath = probeLitertArtifact(resolvedBundlePath);
+  }
+
   const sha256 = obj.sha256;
   if (typeof sha256 !== "string" || sha256.length === 0) {
     throw new Error(
@@ -203,9 +250,43 @@ export async function readElizaOneBundle(
     publishEligible,
     final: { weights: finalObj.weights },
     weightsPath,
+    litertPath,
     draftersPath,
     sha256,
   };
+}
+
+/**
+ * Probe `<bundleRoot>/text/` for a single `.litertlm` artifact. Returns its
+ * absolute path or `undefined` when none is staged. Mirrors the C-side
+ * `find_litertlm_artifact` directory walk in
+ * `tools/omnivoice/src/backends/litert-backend.cpp` so the harness and the
+ * native backend agree on which file the runtime will pick.
+ */
+function probeLitertArtifact(bundleRoot: string): string | undefined {
+  const textDir = path.join(bundleRoot, LITERT_BUNDLE_TEXT_SUBDIR);
+  if (!existsSync(textDir) || !statSync(textDir).isDirectory()) {
+    return undefined;
+  }
+  for (const name of readdirSync(textDir)) {
+    if (name.endsWith(LITERT_ARTIFACT_EXT)) {
+      const candidate = path.join(textDir, name);
+      if (statSync(candidate).isFile()) return candidate;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The text runtime the runtime selector will route this bundle to. A staged
+ * `.litertlm` (`litertPath`) selects the LiteRT-LM backend; otherwise the
+ * default GGUF llama.cpp path. The `.gguf` weights stay present and loadable
+ * either way — `litert-lm` only changes which backend serves text generation.
+ */
+export function bundleTextRuntimeClass(
+  manifest: ElizaOneBundleManifest,
+): ElizaOneTextRuntimeClass {
+  return manifest.litertPath ? "litert-lm" : "llama-cpp";
 }
 
 /**
