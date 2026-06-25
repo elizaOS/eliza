@@ -54,7 +54,7 @@ const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 
 // Gemma 4 MTP uses a separate assistant/drafter GGUF. The current shared
 // catalog declares `mtp/drafter-<tier>.gguf` with a measured one-token draft
-// window; omitting a drafter path would select the retired Qwen same-file path.
+// window; omitting a drafter path would select the retired same-file path.
 const GEMMA_MTP_DRAFT = { draftMin: 1, draftMax: 1 } as const;
 
 const ELIZA_1_LOAD_METADATA: Record<
