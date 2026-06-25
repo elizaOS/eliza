@@ -27,6 +27,7 @@ export * from "./model";
 export * from "./notification";
 export * from "./pairing";
 export * from "./payment";
+export * from "./pending-user-action";
 export * from "./pipeline-hooks";
 export * from "./plugin";
 export * from "./plugin-store";
