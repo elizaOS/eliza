@@ -14,12 +14,16 @@ import { apps } from "../../../db/schemas/apps";
 import { JOB_TYPES } from "../provisioning-job-types";
 import { ProvisioningJobService } from "../provisioning-jobs";
 
-const APP_ID = "11111111-2222-3333-4444-555555555555";
-const CONTAINER_ID = "cccccccc-dddd-eeee-ffff-000000000000";
+// Structurally-valid UUIDs (isValidUUID enforces the version/variant nibbles,
+// like apps.id which is uuid().defaultRandom()).
+const APP_ID = "11111111-2222-4333-8444-555555555555";
+const ORG_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
+const CONTAINER_ID = "cccccccc-dddd-4eee-8fff-000000000000";
 
 // Minimal DbTransaction stand-in: serves one container row for the select chain
-// and records every update(table).set(values) the writeback issues.
-function mockTx(containerRow: { projectName: string } | null) {
+// (project_name + organization_id, since the writeback org-scopes the flip) and
+// records every update(table).set(values) the writeback issues.
+function mockTx(containerRow: { projectName: string; organizationId: string } | null) {
   const updates: Array<{ table: unknown; values: Record<string, unknown> }> = [];
   const tx = {
     select: () => ({
@@ -65,7 +69,7 @@ describe("buildPermanentFailureWriteback: CONTAINER_PROVISION", () => {
   test("app container (UUID project_name) -> apps.deployment_status flipped to failed", async () => {
     const { job, cb } = containerProvisionWriteback();
     expect(cb).toBeDefined();
-    const { tx, updates } = mockTx({ projectName: APP_ID });
+    const { tx, updates } = mockTx({ projectName: APP_ID, organizationId: ORG_ID });
     await cb!(tx, job);
     expect(updates).toHaveLength(1);
     expect(updates[0].table).toBe(apps);
@@ -75,7 +79,7 @@ describe("buildPermanentFailureWriteback: CONTAINER_PROVISION", () => {
 
   test("plain container (non-UUID project_name) -> no app update", async () => {
     const { job, cb } = containerProvisionWriteback();
-    const { tx, updates } = mockTx({ projectName: "my-plain-container" });
+    const { tx, updates } = mockTx({ projectName: "my-plain-container", organizationId: ORG_ID });
     await cb!(tx, job);
     expect(updates).toHaveLength(0);
   });
@@ -91,7 +95,7 @@ describe("buildPermanentFailureWriteback: CONTAINER_PROVISION", () => {
     // isValidUUID rejects a 36-char hex/dash string that is not a real UUID, so
     // a coding container whose slug merely looks UUID-shaped is a clean no-op.
     const { job, cb } = containerProvisionWriteback();
-    const { tx, updates } = mockTx({ projectName: "-".repeat(36) });
+    const { tx, updates } = mockTx({ projectName: "-".repeat(36), organizationId: ORG_ID });
     await cb!(tx, job);
     expect(updates).toHaveLength(0);
   });
