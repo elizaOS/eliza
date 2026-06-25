@@ -16,9 +16,12 @@ import * as provisioningJobsActual from "@/lib/services/provisioning-jobs";
 import * as loggerActual from "@/lib/utils/logger";
 
 const mockCreateAgent = mock(async () => ({
-  id: "agent-test-1",
-  status: "pending",
-  bridge_url: null,
+  agent: {
+    id: "agent-test-1",
+    status: "pending",
+    bridge_url: null,
+  },
+  idempotent: false,
 }));
 
 const mockEnqueueAgentProvision = mock(async () => ({}));
@@ -93,9 +96,12 @@ describe("provisioning-agent DEFAULT_DOCKER_IMAGE", () => {
   test("POST handler passes the canonical ghcr.io image to createAgent", async () => {
     mockListByOrganization.mockResolvedValue([]);
     mockCreateAgent.mockResolvedValue({
-      id: "agent-test-1",
-      status: "pending",
-      bridge_url: null,
+      agent: {
+        id: "agent-test-1",
+        status: "pending",
+        bridge_url: null,
+      },
+      idempotent: false,
     });
 
     // The Hono app's route handlers are at "/" — the router mounts the app
@@ -118,9 +124,12 @@ describe("provisioning-agent DEFAULT_DOCKER_IMAGE", () => {
   test("rejects the legacy bare image name (no ghcr.io prefix)", async () => {
     mockListByOrganization.mockResolvedValue([]);
     mockCreateAgent.mockResolvedValue({
-      id: "agent-test-1",
-      status: "pending",
-      bridge_url: null,
+      agent: {
+        id: "agent-test-1",
+        status: "pending",
+        bridge_url: null,
+      },
+      idempotent: false,
     });
 
     const req = new Request("http://localhost/", {
@@ -139,9 +148,12 @@ describe("provisioning-agent DEFAULT_DOCKER_IMAGE", () => {
   test("image starts with ghcr.io/ (the correct registry)", async () => {
     mockListByOrganization.mockResolvedValue([]);
     mockCreateAgent.mockResolvedValue({
-      id: "agent-test-1",
-      status: "pending",
-      bridge_url: null,
+      agent: {
+        id: "agent-test-1",
+        status: "pending",
+        bridge_url: null,
+      },
+      idempotent: false,
     });
 
     const req = new Request("http://localhost/", {
