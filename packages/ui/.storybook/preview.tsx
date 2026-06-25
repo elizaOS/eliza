@@ -1,4 +1,5 @@
 import { TooltipProvider } from "@elizaos/ui/components/ui/tooltip";
+import { TranslationProvider } from "@elizaos/ui/state";
 import { withThemeByClassName } from "@storybook/addon-themes";
 import type { Preview } from "@storybook/react";
 import type { ReactNode } from "react";
@@ -81,13 +82,20 @@ const preview: Preview = {
   },
   decorators: [
     (Story, context) => (
-      <TooltipProvider delayDuration={200} skipDelayDuration={100}>
-        <StorybookThemeSurface
-          theme={resolveStorybookTheme(context.globals.theme)}
-        >
-          <Story />
-        </StorybookThemeSurface>
-      </TooltipProvider>
+      // TranslationProvider so stories whose components call useTranslation()
+      // (e.g. MessageAttachments' PdfDownloadFallback) render in the browser
+      // Story Gate. useTranslation only returns a test fallback under
+      // NODE_ENV=test (the jsdom story-smoke), and THROWS "must be used within
+      // TranslationProvider" in the real browser — which crashed those stories.
+      <TranslationProvider>
+        <TooltipProvider delayDuration={200} skipDelayDuration={100}>
+          <StorybookThemeSurface
+            theme={resolveStorybookTheme(context.globals.theme)}
+          >
+            <Story />
+          </StorybookThemeSurface>
+        </TooltipProvider>
+      </TranslationProvider>
     ),
     // Light/dark by toggling the `dark` class on the preview root — matches how
     // the app themes (the design tokens key off it).
