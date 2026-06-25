@@ -260,7 +260,7 @@ import if idle work has not run), so no surface is missed. The `app-modules`
 | Guard | What it pins |
 |---|---|
 | `packages/app/test/first-paint-guard.test.ts` | `initializeAppModules()` blocks only on the 3 allow-listed companion importers; the 7 heavy plugins stay deferred; React mounts after app modules |
-| `packages/app/test/brand-surface.test.ts` | every boot/loading/launch surface = `#ef5a1f` (= `DEFAULT_BACKGROUND_COLOR`); brand accent stays `#FF5800` |
+| `packages/app/test/brand-surface.test.ts` | every boot/loading/launch surface = `#ef5a1f` (= `DEFAULT_BACKGROUND_COLOR`), including native Android splash bitmap corners and the solid iOS launch view; brand accent stays `#FF5800` |
 | `packages/ui/src/state/startup-telemetry.test.ts` | trace recording, dedup, host-id adoption, window mirror |
 
 ## Boot/launch orange
@@ -270,5 +270,8 @@ All boot/loading/launch surfaces use `#ef5a1f` (the default home
 StartupShell → home transition is one seamless orange with no flash. The brand
 accent (logos, brand surfaces) stays `#FF5800`. Surfaces: `index.html` FOUC,
 React `StartupShell` (`--launch-bg`), `capacitor.config.ts`, `app.config.ts` web
-colors + PWA manifest, Android `colors.xml`/`styles.xml` launch resources, iOS
-`LaunchScreen.storyboard`.
+colors + PWA manifest, Android `colors.xml`/`styles.xml` launch resources plus
+the tracked `splash.png` density bitmaps, and the iOS solid-color
+`LaunchScreen.storyboard` view. iOS intentionally does not put a full-screen
+image above the launch backdrop; otherwise the configured launch orange is
+hidden and the first visible frame can diverge from home.

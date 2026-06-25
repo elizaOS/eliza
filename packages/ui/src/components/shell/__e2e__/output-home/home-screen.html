@@ -44980,8 +44980,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                   onToggleFavorite(entry.id);
                 },
                 className: cn(
-                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold",
-                  favorited ? "bg-accent text-accent-foreground" : "bg-border text-foreground"
+                  // A solid contrasting chip with a ring + shadow so the toggle
+                  // lifts off ANY hero-image hue or dark tile and never reads as a
+                  // stray glyph. Pinned = filled orange disc with a white star;
+                  // unpinned = white disc with a dark plus — state is legible by
+                  // COLOR/FILL, not just glyph shape.
+                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold shadow-md ring-1",
+                  favorited ? "bg-accent text-white ring-black/20" : "bg-white text-neutral-900 ring-black/15"
                 ),
                 children: favorited ? "\u2605" : "+"
               }
@@ -45564,8 +45569,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                   "aria-current": index2 === activeDot,
                   onClick: () => jumpToDot(index2),
                   className: cn(
-                    "h-1.5 w-1.5 rounded-full transition-colors",
-                    index2 === activeDot ? "bg-white/70" : "bg-white/25"
+                    // Higher inactive contrast so the pager affordance is discoverable
+                    // on the bright orange wallpaper (was barely visible at /25); a
+                    // soft shadow keeps both states readable on any background.
+                    "h-1.5 w-1.5 rounded-full shadow-sm transition-colors",
+                    index2 === activeDot ? "bg-white/90" : "bg-white/45"
                   )
                 },
                 `shell-dot-${index2}`
@@ -73499,7 +73507,7 @@ Assistant:`;
     );
   }
   var TONE_VALUE_CLASS = {
-    default: "text-txt",
+    default: "text-white",
     danger: "text-danger",
     warn: "text-warn"
   };
@@ -73528,15 +73536,24 @@ Assistant:`;
         title: label,
         onClick: onActivate,
         className: cn(
-          "group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-card/75 px-3 py-2.5 text-left",
-          "transition-colors hover:bg-card"
+          // Dark translucent glass on the orange home wallpaper (theme-independent,
+          // matching the OS tiles / springboard icons) so white text reads and the
+          // card lifts off the orange field with real figure/ground. Neutral
+          // resting → neutral-with-opacity hover (never orange→black), per the
+          // hover system.
+          // A clearly DARK neutral glass (not a light orange-tint) is required so
+          // BOTH white default values AND the brand-orange danger/warn values
+          // (--danger/--warn are brand orange) read with contrast — orange text
+          // only pops on a dark, mostly-neutral surface, not on an orange wash.
+          "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/45 px-3 py-2.5 text-left backdrop-blur-md",
+          "transition-colors hover:bg-black/55"
         ),
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime42.jsxs)(
             "span",
             {
               className: cn(
-                "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg/60 text-muted [&>svg]:h-4 [&>svg]:w-4",
+                "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/85 [&>svg]:h-4 [&>svg]:w-4",
                 tone === "danger" && "text-danger",
                 tone === "warn" && "text-warn"
               ),
@@ -73547,7 +73564,10 @@ Assistant:`;
                   {
                     "aria-hidden": true,
                     className: cn(
-                      "absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-card",
+                      // A clearly FILLED status dot (a thin ring just separates it from
+                      // the icon). The old h-2 + border-2 left the border dominating the
+                      // dot so it read as a hollow ring / artifact on every toned card.
+                      "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-black/40",
                       TONE_DOT_CLASS[tone]
                     )
                   }
@@ -73565,7 +73585,7 @@ Assistant:`;
               children: value
             }
           ) : null }),
-          meta3 != null ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("span", { className: "shrink-0 text-2xs tabular-nums text-muted", children: meta3 }) : null,
+          meta3 != null ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)("span", { className: "shrink-0 text-2xs tabular-nums text-white/60", children: meta3 }) : null,
           badge != null ? /* @__PURE__ */ (0, import_jsx_runtime42.jsx)(
             "span",
             {

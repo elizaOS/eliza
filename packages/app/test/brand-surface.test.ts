@@ -18,6 +18,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
 const here = import.meta.dirname;
@@ -26,6 +27,20 @@ const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 
 const BRAND_ORANGE = "#FF5800";
 const LAUNCH_ORANGE = "#ef5a1f";
+const LAUNCH_ORANGE_RGB = [239, 90, 31];
+const ANDROID_SPLASH_TEMPLATE_FILES = [
+  "android/app/src/main/res/drawable/splash.png",
+  "android/app/src/main/res/drawable-land-hdpi/splash.png",
+  "android/app/src/main/res/drawable-land-mdpi/splash.png",
+  "android/app/src/main/res/drawable-land-xhdpi/splash.png",
+  "android/app/src/main/res/drawable-land-xxhdpi/splash.png",
+  "android/app/src/main/res/drawable-land-xxxhdpi/splash.png",
+  "android/app/src/main/res/drawable-port-hdpi/splash.png",
+  "android/app/src/main/res/drawable-port-mdpi/splash.png",
+  "android/app/src/main/res/drawable-port-xhdpi/splash.png",
+  "android/app/src/main/res/drawable-port-xxhdpi/splash.png",
+  "android/app/src/main/res/drawable-port-xxxhdpi/splash.png",
+];
 
 function read(rel: string): string {
   return readFileSync(join(root, rel), "utf8");
@@ -40,6 +55,20 @@ function readGeneratedOrTemplate(rel: string): string {
     join(appCorePlatformsRoot, platform, ...segments),
     "utf8",
   );
+}
+
+function platformTemplatePath(rel: string): string {
+  const [platform, ...segments] = rel.split("/");
+  return join(appCorePlatformsRoot, platform, ...segments);
+}
+
+async function readPngRgb(path: string, x = 0, y = 0): Promise<number[]> {
+  const { data } = await sharp(path)
+    .ensureAlpha()
+    .extract({ left: x, top: y, width: 1, height: 1 })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  return Array.from(data.subarray(0, 3));
 }
 
 describe("brand surfaces", () => {
@@ -83,7 +112,7 @@ describe("brand surfaces", () => {
     );
   });
 
-  it("Android launch + status bar use the launch orange; brand orange stays brand", () => {
+  it("Android launch + status bar use the launch orange; brand orange stays brand", async () => {
     const colors = readGeneratedOrTemplate(
       "android/app/src/main/res/values/colors.xml",
     );
@@ -101,15 +130,23 @@ describe("brand surfaces", () => {
     // The launch status bar follows the splash/home, not the brand accent.
     expect(styles).toMatch(/statusBarColor[^<]*@color\/splash_background/);
     expect(styles).not.toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
+
+    for (const rel of ANDROID_SPLASH_TEMPLATE_FILES) {
+      expect(await readPngRgb(platformTemplatePath(rel)), rel).toEqual(
+        LAUNCH_ORANGE_RGB,
+      );
+    }
   });
 
-  it("iOS LaunchScreen.storyboard backdrop is the launch orange", () => {
+  it("iOS LaunchScreen.storyboard is a solid launch-orange view", () => {
     const xml = readGeneratedOrTemplate(
       "ios/App/App/Base.lproj/LaunchScreen.storyboard",
     );
     // 0.937 / 0.353 / 0.122 is #ef5a1f in sRGB to 3 decimals.
     expect(xml).toMatch(/red="0\.937"\s+green="0\.353"\s+blue="0\.122"/);
     expect(xml).not.toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);
+    expect(xml).not.toContain("<imageView");
+    expect(xml).not.toContain('image name="Splash"');
   });
 
   it("index.html FOUC fallback uses the launch orange, not a foreign color", () => {

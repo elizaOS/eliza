@@ -226,9 +226,7 @@ export function HomeSpringboardSurface({
             aria-current={index === activeDot}
             onClick={() => jumpToDot(index)}
             className={cn(
-              // Higher inactive contrast so the pager affordance is discoverable
-              // on the bright orange wallpaper (was barely visible at /25); a
-              // soft shadow keeps both states readable on any background.
+              // Keep inactive dots discoverable on the orange wallpaper.
               "h-1.5 w-1.5 rounded-full shadow-sm transition-colors",
               index === activeDot ? "bg-white/90" : "bg-white/45",
             )}

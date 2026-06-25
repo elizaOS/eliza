@@ -52,10 +52,7 @@ export function useWidgetNavigation(): {
 
 export type HomeWidgetTone = "default" | "danger" | "warn";
 
-// White by default: the card sits on the bright orange home wallpaper, so the
-// datum must be near-white for legibility (theme `text-txt` washed out to a
-// low-contrast dark on orange — a WCAG-AA failure). Danger/warn keep their
-// semantic hues, which read clearly on the dark-glass tile.
+// Default values sit on the orange home wallpaper; keep them high contrast.
 const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
   default: "text-white",
   danger: "text-danger",
@@ -107,15 +104,7 @@ export function HomeWidgetCard({
       title={label}
       onClick={onActivate}
       className={cn(
-        // Dark translucent glass on the orange home wallpaper (theme-independent,
-        // matching the OS tiles / springboard icons) so white text reads and the
-        // card lifts off the orange field with real figure/ground. Neutral
-        // resting → neutral-with-opacity hover (never orange→black), per the
-        // hover system.
-        // A clearly DARK neutral glass (not a light orange-tint) is required so
-        // BOTH white default values AND the brand-orange danger/warn values
-        // (--danger/--warn are brand orange) read with contrast — orange text
-        // only pops on a dark, mostly-neutral surface, not on an orange wash.
+        // Dark neutral glass keeps white text and orange status values legible.
         "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/45 px-3 py-2.5 text-left backdrop-blur-md",
         "transition-colors hover:bg-black/55",
       )}
@@ -132,9 +121,7 @@ export function HomeWidgetCard({
           <span
             aria-hidden
             className={cn(
-              // A clearly FILLED status dot (a thin ring just separates it from
-              // the icon). The old h-2 + border-2 left the border dominating the
-              // dot so it read as a hollow ring / artifact on every toned card.
+              // Use a filled dot; the ring only separates it from the icon.
               "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-black/40",
               TONE_DOT_CLASS[tone],
             )}
