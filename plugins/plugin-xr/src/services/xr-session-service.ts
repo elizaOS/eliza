@@ -375,7 +375,7 @@ export class XRSessionService extends Service {
         name: `XR session (${conn.deviceType} ${conn.id.slice(0, 8)})`,
         source: "xr",
         type: ChannelType.GROUP,
-        worldId: undefined as unknown as UUID,
+        worldId: undefined,
         channelId: undefined,
         messageServerId: undefined,
       });

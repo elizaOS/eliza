@@ -34,8 +34,7 @@ export type PolymarketClient = ElizaClient & {
   polymarketPositions(user?: string): Promise<PolymarketPositionsResponse>;
 };
 
-const elizaClientPrototype =
-  ElizaClient.prototype as unknown as PolymarketClient;
+const elizaClientPrototype = ElizaClient.prototype as PolymarketClient;
 
 elizaClientPrototype.polymarketStatus = async function () {
   return this.fetch("/api/polymarket/status");
