@@ -221,10 +221,19 @@ function concatFloat32(chunks: Float32Array[]): Float32Array {
 function resolveEchoDelaySamples(): number {
 	const raw = process.env.ELIZA_VOICE_ECHO_DELAY_MS;
 	if (raw && raw.trim().toLowerCase() === "auto") {
-		return platformPlaybackDelaySamples(
-			process.platform,
-			AUDIO_FRAME_SAMPLE_RATE,
-		);
+		// Resolve the platform id the way the rest of this plugin does
+		// (service.ts / backend-selector.ts): the mobile shells report
+		// `ELIZA_PLATFORM=ios|android`, where `process.platform` is `darwin`/
+		// `linux`. Using the resolved id makes the iOS (25 ms) / AOSP-Android
+		// (45 ms) seeds in the #9653 table reachable on device instead of
+		// collapsing to the host's darwin (20 ms) / linux (30 ms) seed.
+		const platformId =
+			process.env.ELIZA_PLATFORM === "ios"
+				? "ios"
+				: process.env.ELIZA_PLATFORM === "android"
+					? "android"
+					: process.platform;
+		return platformPlaybackDelaySamples(platformId, AUDIO_FRAME_SAMPLE_RATE);
 	}
 	const ms = Number(raw);
 	if (!Number.isFinite(ms) || ms <= 0) return 0;

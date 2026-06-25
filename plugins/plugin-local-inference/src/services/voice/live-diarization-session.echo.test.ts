@@ -172,6 +172,52 @@ describe("LiveDiarizationSession echo reference", () => {
 		}
 	});
 
+	it("resolves the ELIZA_PLATFORM id (ios) for the auto seed, not the host's darwin seed (#9583)", () => {
+		const prevDelay = process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+		const prevPlatform = process.env.ELIZA_PLATFORM;
+		process.env.ELIZA_VOICE_ECHO_DELAY_MS = "auto";
+		process.env.ELIZA_PLATFORM = "ios";
+		try {
+			const session = new LiveDiarizationSession(fakeRuntime());
+			// The mobile shell reports ELIZA_PLATFORM=ios even though the host's
+			// process.platform is darwin. The auto seed must follow the device id
+			// (#9653 ios table = 400 samples @16kHz), NOT the darwin host seed
+			// (320 samples) — otherwise the deliberate per-platform seeds are
+			// unreachable on device.
+			expect(session.aecDelayState().delaySamples).toBe(
+				platformPlaybackDelaySamples("ios", SAMPLE_RATE),
+			);
+			expect(session.aecDelayState().delaySamples).toBe(400);
+			expect(session.aecDelayState().delaySamples).not.toBe(
+				platformPlaybackDelaySamples("darwin", SAMPLE_RATE),
+			);
+		} finally {
+			if (prevDelay === undefined) delete process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+			else process.env.ELIZA_VOICE_ECHO_DELAY_MS = prevDelay;
+			if (prevPlatform === undefined) delete process.env.ELIZA_PLATFORM;
+			else process.env.ELIZA_PLATFORM = prevPlatform;
+		}
+	});
+
+	it("resolves the ELIZA_PLATFORM id (android) for the auto seed (#9583)", () => {
+		const prevDelay = process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+		const prevPlatform = process.env.ELIZA_PLATFORM;
+		process.env.ELIZA_VOICE_ECHO_DELAY_MS = "auto";
+		process.env.ELIZA_PLATFORM = "android";
+		try {
+			const session = new LiveDiarizationSession(fakeRuntime());
+			expect(session.aecDelayState().delaySamples).toBe(
+				platformPlaybackDelaySamples("android", SAMPLE_RATE),
+			);
+			expect(session.aecDelayState().delaySamples).toBe(720);
+		} finally {
+			if (prevDelay === undefined) delete process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+			else process.env.ELIZA_VOICE_ECHO_DELAY_MS = prevDelay;
+			if (prevPlatform === undefined) delete process.env.ELIZA_PLATFORM;
+			else process.env.ELIZA_PLATFORM = prevPlatform;
+		}
+	});
+
 	it("defaults the echo delay seed to 0 when no override is set", () => {
 		const prev = process.env.ELIZA_VOICE_ECHO_DELAY_MS;
 		delete process.env.ELIZA_VOICE_ECHO_DELAY_MS;
