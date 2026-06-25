@@ -114,6 +114,111 @@ describe("scoreActionSet", () => {
   });
 });
 
+describe("scoreStructuredFields — edge cases & discriminative guarantees (#8795)", () => {
+  it("scores two empty objects as 1.0 (both correctly produced nothing)", () => {
+    expect(scoreStructuredFields("{}", "{}")).toBe(1);
+  });
+
+  it("scores an empty expected against a non-empty actual as 0", () => {
+    expect(scoreStructuredFields(JSON.stringify({ a: 1 }), "{}")).toBe(0);
+  });
+
+  it("matches a number against its string form (model may emit either)", () => {
+    expect(
+      scoreStructuredFields(
+        JSON.stringify({ minSamples: 5 }),
+        JSON.stringify({ minSamples: "5" }),
+      ),
+    ).toBe(1);
+  });
+
+  it("treats a null-expected field the actual omits as matched (both absent)", () => {
+    // Characterization: normalizeScalar(null) === normalizeScalar(undefined) === "".
+    expect(
+      scoreStructuredFields(
+        JSON.stringify({ title: "Lunch" }),
+        JSON.stringify({ title: "Lunch", recurrence: null }),
+      ),
+    ).toBe(1);
+  });
+
+  it("does NOT credit a present value against a null expectation", () => {
+    expect(
+      scoreStructuredFields(
+        JSON.stringify({ recurrence: "FREQ=DAILY" }),
+        JSON.stringify({ recurrence: null }),
+      ),
+    ).toBe(0);
+  });
+
+  it("is discriminative: a fully-wrong extraction scores strictly below a correct one", () => {
+    const expected = JSON.stringify({
+      title: "Dentist",
+      start: "9am",
+      end: "10am",
+    });
+    const wrong = JSON.stringify({ title: "Lunch", start: "noon", end: "1pm" });
+    expect(scoreStructuredFields(expected, expected)).toBe(1);
+    expect(scoreStructuredFields(wrong, expected)).toBeLessThan(
+      scoreStructuredFields(expected, expected),
+    );
+    expect(scoreStructuredFields(wrong, expected)).toBe(0);
+  });
+
+  it("a degenerate empty actual cannot pass a non-empty expectation", () => {
+    const expected = JSON.stringify({ title: "X", start: "y" });
+    expect(scoreStructuredFields("", expected)).toBe(0);
+    expect(scoreStructuredFields("{}", expected)).toBe(0);
+  });
+
+  it("nested-object equality is structural and key-order-sensitive (characterization)", () => {
+    // Documents a real weakness: semantically-equal nested objects with a
+    // different key order score 0 (JSON.stringify is order-sensitive).
+    const a = JSON.stringify({ attendees: { lead: "amy", note: "x" } });
+    const b = JSON.stringify({ attendees: { note: "x", lead: "amy" } });
+    expect(scoreStructuredFields(a, b)).toBe(0);
+    expect(scoreStructuredFields(a, a)).toBe(1);
+  });
+
+  it("array values are order-sensitive (characterization)", () => {
+    const a = JSON.stringify({ attendees: ["amy", "bob"] });
+    const b = JSON.stringify({ attendees: ["bob", "amy"] });
+    expect(scoreStructuredFields(a, b)).toBe(0);
+  });
+});
+
+describe("scoreActionSet — edge cases & discriminative guarantees (#8795)", () => {
+  it("scores two empty/none outputs as 1.0", () => {
+    expect(scoreActionSet("", "")).toBe(1);
+    expect(scoreActionSet("{}", "{}")).toBe(1);
+  });
+
+  it("a do-nothing actual cannot pass a real expected action set", () => {
+    const expected = JSON.stringify({ action: "ARCHIVE" });
+    expect(scoreActionSet("", expected)).toBe(0);
+    expect(scoreActionSet("{}", expected)).toBe(0);
+  });
+
+  it("extracts action/category fields from JSON for set overlap", () => {
+    // {archive, promo} vs {archive, billing} -> intersection 1, union 3 -> 1/3.
+    expect(
+      scoreActionSet(
+        JSON.stringify({ action: "archive", category: "promo" }),
+        JSON.stringify({ action: "archive", category: "billing" }),
+      ),
+    ).toBeCloseTo(1 / 3, 5);
+  });
+
+  it("is discriminative: a wrong action set scores below the right one", () => {
+    const expected = JSON.stringify({ action: "REPLY", priority: "high" });
+    const wrong = JSON.stringify({ action: "DELETE", priority: "low" });
+    expect(scoreActionSet(expected, expected)).toBe(1);
+    expect(scoreActionSet(wrong, expected)).toBeLessThan(
+      scoreActionSet(expected, expected),
+    );
+  });
+});
+
 describe("scoreLifeOpsTask", () => {
   it("registers every LifeOps trajectory task for per-capability scoring", () => {
     expect([...LIFEOPS_SCORER_TASKS].sort()).toEqual(
