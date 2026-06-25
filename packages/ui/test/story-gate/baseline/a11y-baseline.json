@@ -26,6 +26,15 @@
   "apps-surfaces-gameoperatorshell--empty": [
     "color-contrast"
   ],
+  "apps-surfaces-gameoperatorshell--error-tone": [
+    "color-contrast"
+  ],
+  "apps-surfaces-gameoperatorshell--live-variant": [
+    "color-contrast"
+  ],
+  "chat-accountrequiredcard--default": [
+    "color-contrast"
+  ],
   "chat-accountrequiredcard--reauth-needed": [
     "color-contrast"
   ],
@@ -74,6 +83,9 @@
   "chat-widgets-formrequest--select-and-checkbox-only": [
     "color-contrast"
   ],
+  "chat-widgets-formrequest--title-only": [
+    "color-contrast"
+  ],
   "chat-widgets-musicplayerwidget--idle": [
     "color-contrast"
   ],
@@ -99,6 +111,9 @@
     "color-contrast"
   ],
   "chat-widgets-orchestratoraccounts--with-assignments": [
+    "color-contrast"
+  ],
+  "chat-widgets-orchestratoraccounts--with-room-roster": [
     "color-contrast"
   ],
   "chat-widgets-shared-widgetsection--empty-state": [
@@ -348,6 +363,9 @@
   "cloudui-layout-dashboardsidebarsection--collapsed": [
     "link-name"
   ],
+  "cloudui-layout-pageheadercontext--empty": [
+    "color-contrast"
+  ],
   "cloudui-layout-pageheadercontext--imperative-setter": [
     "color-contrast"
   ],
@@ -446,10 +464,19 @@
   "cloudui-promotion-socialconnectionhint--discord-only": [
     "color-contrast"
   ],
+  "cloudui-promotion-socialconnectionhint--telegram-only": [
+    "color-contrast"
+  ],
   "cloudui-resizable--constrained-sizes": [
     "color-contrast"
   ],
   "cloudui-resizable--horizontal-split": [
+    "color-contrast"
+  ],
+  "cloudui-resizable--vertical-split": [
+    "color-contrast"
+  ],
+  "cloudui-resizable--with-visible-handle": [
     "color-contrast"
   ],
   "cloudui-voice-voiceaudioplayer--compact": [
@@ -577,6 +604,9 @@
   "composites-trajectories-trajectorycachestats--no-meta": [
     "color-contrast"
   ],
+  "composites-trajectories-trajectorycachestats--single-metric": [
+    "color-contrast"
+  ],
   "composites-trajectories-trajectorycodeblock--truncated": [
     "scrollable-region-focusable"
   ],
@@ -605,6 +635,9 @@
     "color-contrast"
   ],
   "composites-trajectories-trajectoryeventtimeline--single-info-event": [
+    "color-contrast"
+  ],
+  "composites-trajectories-trajectoryeventtimeline--with-failure": [
     "color-contrast"
   ],
   "composites-trajectories-trajectoryllmcallcard--default": [
@@ -1272,6 +1305,12 @@
     "color-contrast"
   ],
   "shell-connectionfailedbanner--reconnecting-late": [
+    "color-contrast"
+  ],
+  "shell-home-dashboard--empty": [
+    "color-contrast"
+  ],
+  "shell-home-dashboard--home-with-widgets": [
     "color-contrast"
   ],
   "shell-home-dashboard--springboard-page": [

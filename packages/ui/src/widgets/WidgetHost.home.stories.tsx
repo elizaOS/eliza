@@ -103,12 +103,25 @@ function HomeWidgetsHarness() {
     for (const n of NOTIFICATIONS) __ingestNotificationForTests(n);
     // No backend in storybook: the API-polled cards (apps, lifeops) get an empty
     // payload so they self-hide cleanly instead of showing a fetch error.
+    // GET /api/approvals is shaped `{ pending: PendingUserAction[] }` (the
+    // needs-attention widget destructures `.pending`), so it gets the object
+    // form — a bare `[]` makes `.pending` undefined and the widget throws
+    // `Cannot read properties of undefined (reading 'length')`.
     const realFetch = globalThis.fetch;
-    globalThis.fetch = async () =>
-      new Response("[]", {
+    const requestUrl = (input: RequestInfo | URL): string => {
+      if (typeof input === "string") return input;
+      if (input instanceof URL) return input.href;
+      return input.url;
+    };
+    globalThis.fetch = async (input) => {
+      const body = requestUrl(input).includes("/api/approvals")
+        ? JSON.stringify({ pending: [] })
+        : "[]";
+      return new Response(body, {
         status: 200,
         headers: { "content-type": "application/json" },
       });
+    };
     setReady(true);
     return () => {
       globalThis.fetch = realFetch;

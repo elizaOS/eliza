@@ -20,6 +20,10 @@
   "chat-widgets-musicplayerwidget--unicode-title": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
+  "cloud-flaminaguide--checklist-empty": [
+    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at o (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
+    "Error rendering story 'cloud-flaminaguide--checklist-empty':"
+  ],
   "cloudui-brand-elizalogo--default": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
@@ -34,6 +38,14 @@
   ],
   "cloudui-brand-elizalogo--small": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "configui-configfield--readonly": [
+    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at o (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
+    "Error rendering story 'configui-configfield--readonly':"
+  ],
+  "configui-configfield--required-empty": [
+    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at o (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
+    "Error rendering story 'configui-configfield--required-empty':"
   ],
   "connectors-connectoraccountcard--busy-states": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
@@ -52,6 +64,10 @@
   ],
   "connectors-connectoraccountcard--selectable": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "connectors-connectormodeselector--whats-app": [
+    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at o (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
+    "Error rendering story 'connectors-connectormodeselector--whats-app':"
   ],
   "conversations-conversationssidebar--default": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
@@ -177,7 +193,25 @@
   "pages-elizaclouddashboard--overview": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
+  "pages-elizaosappsview--contacts": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "pages-elizaosappsview--messages": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "pages-elizaosappsview--phone": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
   "pages-filesview--populated": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "pages-logsview--default": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "pages-logsview--empty": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "pages-logsview--load-error": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
   "pages-mediagalleryview--default": [
@@ -270,6 +304,10 @@
   "settings-policycontrolsview--running-agent": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
+  "shared-confirmdeletecontrol--disabled": [
+    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at o (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
+    "Error rendering story 'shared-confirmdeletecontrol--disabled':"
+  ],
   "shell-commandpalette--agent-running": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
@@ -282,9 +320,13 @@
   "shell-commandpalette--no-results": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
+  "shell-home-dashboard--empty": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
   "views-dynamicviewloader--failed-to-load": [
     "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
-    "DynamicViewLoader failed to load view \"broken.view\" from <url> TypeError: Failed to fetch dynamically imported module: <url>"
+    "DynamicViewLoader failed to load view \"broken.view\" from <url> TypeError: Failed to fetch dynamically imported module: <url>",
+    "DynamicViewLoader failed to load view \"broken.view\" from <url> Error: DynamicViewLoader: refusing to import a cross-origin view bundle (<url>). View bundles must be served same-origin from /api/views/.\n    at tt"
   ],
   "views-dynamicviewloader--loading": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)",
