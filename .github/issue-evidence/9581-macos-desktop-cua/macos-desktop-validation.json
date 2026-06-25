@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "platform": "macos-desktop",
-  "status": "failed",
+  "status": "requires_device_evidence",
   "target": {
     "minimumMacos": "macOS 13 or newer",
     "requiredPermissions": [
@@ -60,25 +60,25 @@
     {
       "id": "accessibilityPermission",
       "method": "Accessibility/TCC gate",
-      "status": "failed",
+      "status": "requires_device_evidence",
       "requiredEvidence": [
-        "Accessibility-gated input/window proof failed: could not read TextEdit bounds: Desktop automation requires macOS Accessibility permission. Grant access in System Settings > Privacy & Security > Accessibility, then retry."
+        "Accessibility-gated input/window proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
       ]
     },
     {
       "id": "mouseKeyboardInput",
       "method": "ComputerUseService desktop actions",
-      "status": "failed",
+      "status": "requires_device_evidence",
       "requiredEvidence": [
-        "controlled TextEdit input proof failed: could not read TextEdit bounds: Desktop automation requires macOS Accessibility permission. Grant access in System Settings > Privacy & Security > Accessibility, then retry."
+        "Controlled TextEdit input proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
       ]
     },
     {
       "id": "windowListFocus",
       "method": "listWindows/focusWindow",
-      "status": "failed",
+      "status": "requires_device_evidence",
       "requiredEvidence": [
-        "windowListFocus failed: list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry"
+        "windowListFocus requires rerun with macOS Accessibility permission granted: list_windows returned only placeholder window metadata."
       ]
     },
     {
