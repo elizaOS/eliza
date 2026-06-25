@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { type ChildProcessByStdio, spawn } from "node:child_process";
+import type { Readable } from "node:stream";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
@@ -29,13 +30,13 @@ type ConsoleResponse = {
   total?: number;
 };
 
-const children: ChildProcessWithoutNullStreams[] = [];
+const children: ChildProcessByStdio<null, Readable, Readable>[] = [];
 
 function startProcess(
   label: string,
   command: string,
   args: string[],
-): ChildProcessWithoutNullStreams {
+): ChildProcessByStdio<null, Readable, Readable> {
   const child = spawn(command, args, {
     cwd: scriptDir,
     detached: true,
@@ -245,7 +246,7 @@ async function cleanup(): Promise<void> {
 }
 
 function killProcessTree(
-  child: ChildProcessWithoutNullStreams,
+  child: ChildProcessByStdio<null, Readable, Readable>,
   signal: NodeJS.Signals,
 ): void {
   if (!child.pid) return;

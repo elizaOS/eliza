@@ -7,7 +7,7 @@
     "incremental": false,
     "noEmit": true,
     "rootDir": ".",
-    "strict": false,
+    "strict": true,
     "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
@@ -16,7 +16,7 @@
       "@elizaos/ui": ["../../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../../../packages/ui/dist/*"],
       "@elizaos/plugin-facewear": [
-        "../../../plugins/plugin-facewear/dist/index.js"
+        "../../../plugins/plugin-facewear/dist/index.d.ts"
       ],
       "@elizaos/plugin-facewear/*": ["../../../plugins/plugin-facewear/dist/*"]
     }

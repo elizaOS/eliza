@@ -273,11 +273,11 @@ try {
       "Runtime smoke did not return control action failure details",
     );
   }
-  if (!provider.text.includes("Smartglasses: connected=true"))
+  if (!(provider.text ?? "").includes("Smartglasses: connected=true"))
     throw new Error("Runtime smoke provider did not report connection state");
-  if (!provider.text.includes("wifi=available"))
+  if (!(provider.text ?? "").includes("wifi=available"))
     throw new Error("Runtime smoke provider did not report Wi-Fi capability");
-  if (!provider.text.includes("wifiStatus=mock Wi-Fi setup requested"))
+  if (!(provider.text ?? "").includes("wifiStatus=mock Wi-Fi setup requested"))
     throw new Error("Runtime smoke provider did not report Wi-Fi status");
 
   console.log(
@@ -302,7 +302,7 @@ try {
   );
 } finally {
   setSmartglassesTransportForRuntime(null);
-  await runtime.stop();
+  await runtime.stop?.();
 }
 
 async function waitForSmartglassesService(
