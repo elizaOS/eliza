@@ -206,6 +206,8 @@ const STAGING_VERSION_TOKENS: ReadonlySet<string> = new Set([
 	"local",
 ]);
 
+const QWEN_PROVENANCE_RE = /\bqwen/i;
+
 function isStagingManifestVersion(version: string): boolean {
 	const prerelease = version.match(
 		/^[0-9]+\.[0-9]+\.[0-9]+-([^+]+)(?:\+.*)?$/,
@@ -237,9 +239,24 @@ function collectContractErrors(
 	// pre-cutover bundles shipped. Block a stand-in from defining the default.
 	if (strictRelease) {
 		const textBase = m.lineage.text.base;
-		if (/^local-standin:/i.test(textBase) || /\bqwen/i.test(textBase)) {
+		if (
+			/^local-standin:/i.test(textBase) ||
+			QWEN_PROVENANCE_RE.test(textBase)
+		) {
 			errors.push(
 				`lineage.text.base: a strict/defaultEligible release must ship the real Gemma-4 base, not a stand-in (${textBase})`,
+			);
+		}
+		const asrBase = m.lineage.asr?.base;
+		if (asrBase && QWEN_PROVENANCE_RE.test(asrBase)) {
+			errors.push(
+				`lineage.asr.base: a strict/defaultEligible Gemma-4 release must not ship Qwen ASR provenance (${asrBase})`,
+			);
+		}
+		const asrRepo = m.provenance?.sourceModels?.asr?.repo;
+		if (asrRepo && QWEN_PROVENANCE_RE.test(asrRepo)) {
+			errors.push(
+				`provenance.sourceModels.asr.repo: a strict/defaultEligible Gemma-4 release must not source ASR from Qwen (${asrRepo})`,
 			);
 		}
 	}

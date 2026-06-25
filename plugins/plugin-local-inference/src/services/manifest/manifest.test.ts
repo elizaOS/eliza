@@ -489,6 +489,39 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
+	it("rejects strict/defaultEligible Qwen ASR provenance", () => {
+		const m = baseManifest();
+		m.lineage.asr = {
+			base: "ggml-org/Qwen3-ASR-0.6B",
+			license: "apache-2.0",
+		};
+		m.provenance = {
+			releaseState: "base-v1",
+			finetuned: false,
+			sourceModels: {
+				text: { repo: "google/gemma-4-12B-base" },
+				voice: { repo: "Serveurperso/OmniVoice-GGUF" },
+				drafter: { repo: "elizaos/eliza-1" },
+				asr: { repo: "ggml-org/Qwen3-ASR-GGUF" },
+				embedding: { repo: "google/gemma-4-12B-base" },
+				imagegen: { repo: "elizaos/eliza-1-imagegen" },
+				vad: { repo: "onnx-community/silero-vad" },
+				vision: { repo: "unsloth/gemma-4-12B-GGUF" },
+			},
+		};
+
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.errors).toEqual(
+				expect.arrayContaining([
+					expect.stringContaining("lineage.asr.base"),
+					expect.stringContaining("provenance.sourceModels.asr.repo"),
+				]),
+			);
+		}
+	});
+
 	it("rejects expressive voice capabilities without expressive eval", () => {
 		const m = baseManifest();
 		m.voice = {
