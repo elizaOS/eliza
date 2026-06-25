@@ -1,7 +1,8 @@
 /**
  * TaskGateRegistry. Built-in kinds: `weekend_skip`, `weekend_only`,
  * `weekday_only`, `late_evening_skip`, `quiet_hours`, `during_travel`,
- * `circadian_state_in`, `no_recent_user_message_in`.
+ * `circadian_state_in`, `no_recent_user_message_in`,
+ * `personal_baseline_sufficient`.
  *
  * The runner uses these gates in `shouldFire.gates`; composition is
  * the responsibility of the runner (`compose: "all" | "any" | "first_deny"`).
@@ -268,6 +269,18 @@ const noRecentUserMessageInGate = makeWarnOnceFallthroughGate(
   "Register a message-activity-aware contribution via TaskGateRegistry.register, or remove this gate from default packs.",
 );
 
+// `personal_baseline_sufficient` is referenced by plugin-health's
+// `sleep-recap` default pack (minSamples: 5) but the concrete data reader —
+// the sealed sleep-episode / baseline sample count exposed through the
+// circadian/sleep contract seam (`CircadianInsightContract`) — is not yet
+// wired into the runner. Until a caller registers a real contribution
+// (overwriting this), the gate falls through to `allow` and warns once so the
+// pack stops being permanently skipped as an UNKNOWN gate kind. Loud > silent.
+const personalBaselineSufficientGate = makeWarnOnceFallthroughGate(
+  "personal_baseline_sufficient",
+  "Register a baseline-sample-count-aware contribution (sleep-sample-count via the circadian/sleep contract seam) via TaskGateRegistry.register before plugin-health default packs load, or remove this gate from those packs.",
+);
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -313,4 +326,5 @@ export function registerBuiltInGates(reg: TaskGateRegistry): void {
   reg.register(duringTravelGate);
   reg.register(circadianStateInGate);
   reg.register(noRecentUserMessageInGate);
+  reg.register(personalBaselineSufficientGate);
 }
