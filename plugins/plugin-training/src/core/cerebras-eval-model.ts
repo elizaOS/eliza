@@ -154,6 +154,53 @@ function resolveConfig(role: "eval" | "training"): ResolvedClientConfig {
   );
 }
 
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const MAX_CHAT_ATTEMPTS = 5;
+
+/**
+ * POST the chat-completions request, retrying transient failures (429 + 5xx +
+ * network errors) with exponential backoff. A single optimizer run fans out
+ * into dozens of provider calls, so one transient 500 (common on serverless
+ * gpt-oss-120b relays) would otherwise abort the whole generation. A
+ * non-retryable status is returned to the caller unchanged for its own
+ * error-body handling.
+ */
+async function fetchChatWithRetry(
+  config: ResolvedClientConfig,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_CHAT_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (response.ok || !RETRYABLE_STATUS.has(response.status)) {
+        return response;
+      }
+      lastError = new Error(
+        `[${config.role}-model] cerebras transient ${response.status}`,
+      );
+      // Drain the body so the socket can be reused before we retry.
+      await response.text().catch(() => undefined);
+    } catch (err) {
+      lastError = err;
+    }
+    if (attempt < MAX_CHAT_ATTEMPTS) {
+      const backoffMs = Math.min(8000, 400 * 2 ** (attempt - 1));
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`[${config.role}-model] chat request failed`);
+}
+
 async function callCerebras(
   config: ResolvedClientConfig,
   req: CerebrasChatRequest,
@@ -170,18 +217,13 @@ async function callCerebras(
     temperature: req.temperature ?? 0,
     max_tokens: req.maxTokens ?? 1024,
   };
-  if (config.model.startsWith("gpt-oss")) {
+  // gpt-oss exposes a `reasoning_effort` knob; match it on the bare id and on
+  // the `<vendor>/gpt-oss-*` form used by OpenAI-compatible relays.
+  if (/(^|\/)gpt-oss/.test(config.model)) {
     body.reasoning_effort = req.reasoningEffort ?? "low";
   }
 
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const response = await fetchChatWithRetry(config, body);
   if (!response.ok) {
     const errBody = await response.text();
     throw new Error(
