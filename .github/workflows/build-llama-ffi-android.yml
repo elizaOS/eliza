@@ -90,10 +90,13 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
     steps:
-      - name: Checkout
+      - name: Checkout (with the llama.cpp fork submodule — the canonical source)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          submodules: false
+          # The repo pins the fork via the submodule gitlink; build from that,
+          # not compile-libllama's LLAMA_CPP_COMMIT default (which can diverge
+          # from the gitlink and may not be a fetchable remote ref).
+          submodules: recursive
           show-progress: false
 
       - name: Setup Node.js
