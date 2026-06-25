@@ -231,7 +231,7 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/electrobun#build": {
-      "dependsOn": ["@elizaos/app#build", "^build"],
+      "dependsOn": ["^build"],
       "outputs": ["build/**"]
     },
     "@elizaos/plugin-cli#build": {
