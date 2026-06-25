@@ -1,17 +1,21 @@
 /**
  * Approval / pending-user-action routes.
  *
- * `GET /api/approvals` is the compatibility read surface requested by #9449:
- * it exposes persisted owner approval requests plus the canonical
- * `PendingUserAction` view that UI/provider/home-attention surfaces can render
- * without knowing which approval implementation produced the item.
+ * `GET /api/approvals` is the canonical read surface for work that is blocked
+ * on the user. It aggregates legacy owner approval rows, task-based approval
+ * records, and pending planner prompts into the shared `PendingUserAction`
+ * contract so clients render one list without knowing producer internals.
  */
 
 import type http from "node:http";
 import {
   type PendingUserAction,
+  type PendingUserActionOption,
+  PENDING_USER_ACTION_WEIGHT,
   type RouteHelpers,
   ServiceType,
+  type Task,
+  type UUID,
 } from "@elizaos/core";
 import { APPROVAL_SERVICE } from "../services/approval/service.ts";
 import type {
@@ -40,6 +44,10 @@ interface PendingUserActionServiceLike {
   listPendingUserActions: () =>
     | PendingUserAction[]
     | Promise<PendingUserAction[]>;
+}
+
+interface ApprovalTaskServiceLike {
+  getAllPendingApprovals: () => Task[] | Promise<Task[]>;
 }
 
 export interface ApprovalRequestDto {
@@ -89,6 +97,17 @@ function isPendingUserActionService(
   );
 }
 
+function isApprovalTaskService(
+  value: unknown,
+): value is ApprovalTaskServiceLike {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as ApprovalTaskServiceLike).getAllPendingApprovals ===
+      "function"
+  );
+}
+
 function parseLimit(raw: string | null): number {
   if (!raw) return 50;
   const parsed = Number.parseInt(raw, 10);
@@ -119,6 +138,17 @@ async function listServicePendingUserActions(
   const service = state.runtime?.getService(serviceType);
   if (!isPendingUserActionService(service)) return [];
   return await service.listPendingUserActions();
+}
+
+async function listApprovalTaskActions(
+  state: ApprovalRouteState,
+): Promise<PendingUserAction[]> {
+  const service = state.runtime?.getService(ServiceType.APPROVAL);
+  if (!isApprovalTaskService(service)) return [];
+  const tasks = await service.getAllPendingApprovals();
+  return tasks
+    .map(approvalTaskToPendingAction)
+    .filter((action): action is PendingUserAction => action !== null);
 }
 
 function toIso(value: Date | null): string | null {
@@ -162,7 +192,7 @@ function approvalToPendingUserAction(
       { id: "reject", label: "Reject", isCancel: true },
     ],
     expectedReplyKind: "approval",
-    weight: 9,
+    weight: PENDING_USER_ACTION_WEIGHT.approval,
     resolution: {
       target: "approval_service",
       requestId: approval.id,
@@ -177,6 +207,71 @@ function approvalToPendingUserAction(
     createdAt: approval.createdAt.getTime(),
     expiresAt: approval.expiresAt.getTime(),
   };
+}
+
+function parseTaskOptions(task: Task): PendingUserActionOption[] | undefined {
+  const raw = task.metadata?.options;
+  if (!Array.isArray(raw)) return undefined;
+  const options: PendingUserActionOption[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const record = entry as Record<string, unknown>;
+    if (typeof record.name !== "string" || record.name.length === 0) continue;
+    options.push({
+      id: record.name,
+      label:
+        typeof record.description === "string" && record.description.length > 0
+          ? record.description
+          : record.name,
+      ...(record.isDefault === true ? { isDefault: true } : {}),
+      ...(record.isCancel === true ? { isCancel: true } : {}),
+    });
+  }
+  return options.length > 0 ? options : undefined;
+}
+
+function resolveTaskCreatedAt(task: Task): number {
+  const approvalRequest = task.metadata?.approvalRequest;
+  if (approvalRequest && typeof approvalRequest === "object") {
+    const createdAt = (approvalRequest as Record<string, unknown>).createdAt;
+    if (typeof createdAt === "number" && Number.isFinite(createdAt)) {
+      return createdAt;
+    }
+  }
+  return typeof task.createdAt === "number" ? task.createdAt : Date.now();
+}
+
+export function approvalTaskToPendingAction(
+  task: Task,
+): PendingUserAction | null {
+  if (!task.id || !task.roomId) return null;
+  return {
+    id: task.id as UUID,
+    kind: "task_approval",
+    source: "approval-service",
+    title: task.description?.trim() || task.name,
+    roomId: task.roomId as UUID,
+    options: parseTaskOptions(task),
+    weight: PENDING_USER_ACTION_WEIGHT.task_approval,
+    resolution: {
+      target: "approval_service",
+      requestId: task.id,
+    },
+    createdAt: resolveTaskCreatedAt(task),
+  };
+}
+
+function dedupeAndSortPendingActions(
+  actions: PendingUserAction[],
+): PendingUserAction[] {
+  const seen = new Set<string>();
+  const deduped: PendingUserAction[] = [];
+  for (const action of actions) {
+    if (seen.has(action.id)) continue;
+    seen.add(action.id);
+    deduped.push(action);
+  }
+  return deduped.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export async function handleApprovalRoute(
@@ -204,21 +299,24 @@ export async function handleApprovalRoute(
 
   const queue = getAgentApprovalQueue(state);
   const approvals = queue ? await queue.list(filter) : [];
-  const [taskApprovalActions, pendingPromptActions] = await Promise.all([
+  const [serviceActions, taskActions, promptActions] = await Promise.all([
     listServicePendingUserActions(state, ServiceType.APPROVAL),
+    listApprovalTaskActions(state),
     listServicePendingUserActions(state, PENDING_PROMPTS_SERVICE),
   ]);
-  const pendingUserActions = [
+  const pending = dedupeAndSortPendingActions([
     ...approvals
       .filter((approval) => approval.state === "pending")
       .map(approvalToPendingUserAction),
-    ...taskApprovalActions,
-    ...pendingPromptActions,
-  ];
+    ...serviceActions,
+    ...taskActions,
+    ...promptActions,
+  ]);
 
   helpers.json(res, {
     approvals: approvals.map(approvalToDto),
-    pendingUserActions,
+    pending,
+    pendingUserActions: pending,
   });
   return true;
 }

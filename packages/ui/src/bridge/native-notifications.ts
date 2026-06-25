@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { navigateDeepLink } from "../state/notifications/navigate-deep-link";
 import { getNativePlugin } from "./native-plugins";
 
 /**
@@ -171,10 +172,14 @@ function tryWebNotification(req: NativeNotificationRequest): boolean {
       tag: req.id,
     });
     if (req.deepLink) {
+      const deepLink = req.deepLink;
       notification.onclick = () => {
         try {
           window.focus();
-          window.location.assign(req.deepLink as string);
+          // Scheme-checked: a producer-supplied deepLink must never reach a raw
+          // top-window navigation (javascript: → XSS, arbitrary https → open
+          // redirect). navigateDeepLink drops anything but app routes / http(s).
+          navigateDeepLink(deepLink);
         } catch {
           /* ignore navigation failure */
         }

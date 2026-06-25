@@ -534,3 +534,49 @@ export function bridgeEvaluatorCompletedToStreams(
 		);
 	}
 }
+
+/**
+ * Bridge `MESSAGE_RECEIVED` → AgentEventService `message` stream (#9449).
+ *
+ * Every connector's inbound path emits `MESSAGE_RECEIVED` (via the shared
+ * message pipeline), but nothing translated it into the user-facing activity
+ * stream — so the home activity rail only ever saw orchestrator tasks, never
+ * the agent fielding a message from Discord/Telegram/etc. One central bridge
+ * here covers all connectors at once (no per-connector boilerplate). The
+ * `message` stream is already in `AGENT_EVENT_ALLOWED_STREAMS`, so the client
+ * `useActivityEvents` rail renders it via `activityEventToPlaintext`.
+ *
+ * `MESSAGE_RECEIVED` fires before a run id exists, so we correlate by the
+ * current run when present and fall back to the message id otherwise.
+ */
+export function bridgeMessageReceivedToStreams(payload: MessagePayload): void {
+	const runtime = payload.runtime;
+	const service = resolveAgentEventService(runtime);
+	if (!service) {
+		return;
+	}
+	const message = payload.message;
+	const runId = resolveRunId(runtime) ?? message?.id;
+	if (!runId) {
+		return;
+	}
+	const text = message?.content?.text;
+	const attachments = message?.content?.attachments;
+	try {
+		service.emitMessageReceived(runId, {
+			messageId: message?.id,
+			roomId: message?.roomId,
+			userId: message?.entityId,
+			content: typeof text === "string" ? text : undefined,
+			hasAttachments: Array.isArray(attachments) && attachments.length > 0,
+		});
+	} catch (err) {
+		logger.debug(
+			{
+				src: "agent-event-bridge",
+				err: err instanceof Error ? err.message : String(err),
+			},
+			"Failed to bridge MESSAGE_RECEIVED to AgentEventService",
+		);
+	}
+}

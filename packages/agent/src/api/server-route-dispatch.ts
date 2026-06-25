@@ -134,6 +134,17 @@ export async function handleInboxAndCloudRelayRouteGroup({
     );
   }
 
+  if (pathname === "/api/approvals") {
+    return handleApprovalRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { runtime: state.runtime ?? null },
+      { json, error, readJsonBody },
+    );
+  }
+
   if (pathname !== "/api/cloud/relay-status") {
     return false;
   }

@@ -149,6 +149,41 @@ describe("agent-event-bridge", () => {
 		expect(action?.data).toMatchObject({ type: "complete", success: false });
 	});
 
+	it("populates the message stream on MESSAGE_RECEIVED (connector inbound)", async () => {
+		const { runtime, events } = await createCtx();
+		bridgeMessageReceivedToStreams({
+			runtime,
+			message: {
+				id: "44444444-4444-4444-4444-444444444444",
+				roomId: ROOM_ID,
+				entityId: "55555555-5555-5555-5555-555555555555",
+				content: { text: "hello from discord", attachments: [] },
+			},
+		} as unknown as MessagePayload);
+
+		const message = events.find((e) => e.stream === "message");
+		expect(message).toBeDefined();
+		expect(message?.runId).toBe(RUN_ID);
+		expect(message?.data).toMatchObject({
+			type: "received",
+			content: "hello from discord",
+			roomId: ROOM_ID,
+			hasAttachments: false,
+		});
+	});
+
+	it("no-ops MESSAGE_RECEIVED when the AgentEventService is absent", async () => {
+		const { runtime, events } = await createCtx({ withService: false });
+		bridgeMessageReceivedToStreams({
+			runtime,
+			message: {
+				id: "44444444-4444-4444-4444-444444444444",
+				content: { text: "x" },
+			},
+		} as unknown as MessagePayload);
+		expect(events).toHaveLength(0);
+	});
+
 	it("populates the lifecycle stream on RUN_STARTED / RUN_ENDED", async () => {
 		const { runtime, events } = await createCtx();
 		bridgeRunStartedToStreams({

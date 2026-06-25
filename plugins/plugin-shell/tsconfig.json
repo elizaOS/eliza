@@ -8,7 +8,7 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": ".",
-    "strict": false,
+    "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
     "esModuleInterop": true,

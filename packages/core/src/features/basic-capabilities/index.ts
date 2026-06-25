@@ -951,6 +951,14 @@ const controlMessageHandler = async ({
 // ============================================================================
 
 const events: PluginEvents = {
+	// Bridge every connector's inbound message onto the AgentEventService
+	// `message` stream so the home activity rail shows the agent fielding
+	// messages (Discord/Telegram/etc.), not just orchestrator tasks (#9449).
+	[EventType.MESSAGE_RECEIVED]: [
+		async (payload: MessagePayload) => {
+			bridgeMessageReceivedToStreams(payload);
+		},
+	],
 	[EventType.REACTION_RECEIVED]: [
 		async (payload: MessagePayload) => {
 			await reactionReceivedHandler(payload);

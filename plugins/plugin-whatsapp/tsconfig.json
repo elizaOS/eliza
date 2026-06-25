@@ -8,7 +8,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "composite": true,
     "emitDeclarationOnly": true,
