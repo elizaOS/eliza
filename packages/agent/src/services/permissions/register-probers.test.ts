@@ -14,7 +14,7 @@ describe("registerAllProbers", () => {
 
     expect(registerProber).toHaveBeenCalledTimes(ALL_PROBERS.length);
     expect(
-      registerProber.mock.calls.map(([prober]: [Prober]) => prober.id),
+      registerProber.mock.calls.map((args) => (args[0] as Prober).id),
     ).toEqual(ALL_PROBERS.map((prober) => prober.id));
   });
 });

@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun", "react", "react-dom"],
@@ -64,9 +64,7 @@
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
-      "@elizaos/plugin-registry/*": [
-        "../../plugins/plugin-registry/src/*"
-      ],
+      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/plugin-remote-manifest": [
         "../plugin-remote-manifest/src/index.ts"
       ],

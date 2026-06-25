@@ -23,6 +23,7 @@ import {
   type RemotePluginModuleManifest,
   type Service,
   type UUID,
+  type EventPayload,
 } from "@elizaos/core";
 import { build as esbuild } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -4949,7 +4950,10 @@ function makeLifecycleRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
   runtime.registerEvaluator = (evaluator) => {
     runtime.evaluators.push(evaluator);
   };
-  runtime.registerEvent = (event, handler) => {
+  runtime.registerEvent = (
+    event: string,
+    handler: (payload: EventPayload) => Promise<void>,
+  ) => {
     const handlers = runtime.events[event] ?? [];
     handlers.push(handler);
     runtime.events[event] = handlers;
