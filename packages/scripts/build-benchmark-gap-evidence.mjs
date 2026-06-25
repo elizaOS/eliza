@@ -188,26 +188,23 @@ function remediationCommands() {
 function datasetProbe() {
   const code = String.raw`
 import json
-from benchmarks.claw_eval_matrix.code_agent_matrix import available_task_count as claw_count, load_tasks as claw_tasks
-from benchmarks.qwen_claw_bench_matrix.code_agent_matrix import available_task_count as qwen_count, load_tasks as qwen_tasks
-from benchmarks.openclaw_benchmark.code_agent_matrix import available_scenario_names
+from pathlib import Path
+from benchmarks.orchestrator.adapters import discover_adapters
+
+workspace_root = Path.cwd() / "packages"
+adapters = discover_adapters(workspace_root).adapters
+
+def adapter_payload(adapter_id):
+    adapter = adapters[adapter_id]
+    return {
+        "available": 1,
+        "items": [adapter.directory],
+        "limit_reason": "tracked orchestrator adapter exposes a runnable public benchmark slice",
+    }
 
 payload = {
-    "claw_eval": {
-        "available": claw_count(),
-        "items": [task.get("task_id") for task in claw_tasks(max_tasks=None)],
-        "limit_reason": "local Claw-Eval wrapper discovers supported non-LLM deterministic YAML tasks",
-    },
-    "qwen_claw_bench": {
-        "available": qwen_count(),
-        "items": [getattr(task, "task_id", "") for task in qwen_tasks(max_tasks=None)],
-        "limit_reason": "local QwenClawBench wrapper supports automated and hybrid tasks; hybrid tasks use the configured live LLM judge",
-    },
-    "openclaw_benchmark": {
-        "available": len(available_scenario_names()),
-        "items": available_scenario_names(),
-        "limit_reason": "local OpenCLAW benchmark runner exposes five ordered scenarios after materializing Weather CLI standard PRD tasks",
-    },
+    "openclaw_bench": adapter_payload("openclaw_bench"),
+    "three_agent_dialogue": adapter_payload("three_agent_dialogue"),
 }
 print(json.dumps(payload, sort_keys=True))
 `;

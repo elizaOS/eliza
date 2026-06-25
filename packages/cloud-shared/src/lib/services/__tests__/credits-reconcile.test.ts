@@ -3,21 +3,15 @@
  *
  * `reconcile()` is the money-settlement seam that runs after every metered
  * request: it compares the reserved estimate against the actual cost and either
- * refunds the excess, charges the overage, or no-ops within EPSILON. It had
- * ZERO real-method coverage. These cases run the REAL method against an
- * in-process PGlite DB so the real refundCredits / deductCredits SQL (the
- * FOR UPDATE row-lock, the atomic credit_balance movement, and the
- * credit_transactions insert) actually executes; balances are read back from
- * the DB and asserted to the cent. They self-skip if PGlite is unavailable.
- *
- * Case 4 PINS today's finding-#1 silent-leak behavior: an overage larger than
- * the live balance is served but NOT charged (deductCredits refuses to drive
- * the balance negative and returns success:false WITHOUT throwing, yet reconcile
- * still reports adjustmentType "overage" with an empty settlement list). This is
- * pinned, not endorsed — a future policy fix should change it deliberately.
+ * refunds the excess, charges the overage, reports an uncollected overage, or
+ * no-ops within EPSILON. These cases run the REAL method against an in-process
+ * PGlite DB so the real refundCredits / deductCredits SQL (the FOR UPDATE
+ * row-lock, the atomic credit_balance movement, and the credit_transactions
+ * insert) actually executes; balances are read back from the DB and asserted to
+ * the cent. They self-skip if PGlite is unavailable.
  */
 
-import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -28,6 +22,7 @@ const ORG_ID = "00000000-0000-0000-0000-0000000000d4";
 const USER_ID = "00000000-0000-0000-0000-0000000000e5";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
+let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let creditsService: typeof import("../credits").creditsService;
 let pgliteReady = true;
 
@@ -62,7 +57,7 @@ async function countByType(type: string): Promise<number> {
 
 beforeAll(async () => {
   try {
-    ({ dbWrite } = await import("../../../db/client"));
+    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ creditsService } = await import("../credits"));
 
     // organizations carries the full column set that the real reconcile path
@@ -121,6 +116,10 @@ beforeAll(async () => {
     console.warn("[credits-reconcile] PGlite unavailable, skipping DB cases:", error);
   }
 }, PGLITE_TIMEOUT);
+
+afterAll(async () => {
+  if (closeDb) await closeDb();
+});
 
 describe("CreditsService.reconcile", () => {
   beforeEach(async () => {
@@ -246,7 +245,7 @@ describe("CreditsService.reconcile", () => {
   );
 
   test(
-    "overage uncollectable: balance below overage is served but not charged (PINS finding-#1 leak)",
+    "overage uncollectable: balance below overage is reported explicitly and not charged",
     async () => {
       if (!pgliteReady) return;
 
@@ -262,10 +261,9 @@ describe("CreditsService.reconcile", () => {
         metadata: { user_id: USER_ID },
       });
 
-      // finding-#1 leak: reconcile still reports "overage", but nothing settled.
-      // This PINS today's silent-leak behavior (overage served-but-not-charged)
-      // so a future policy fix flips it DELIBERATELY. Not asserted to be correct.
-      expect(result.adjustmentType).toBe("overage");
+      // Reconcile must not report a charged overage unless a debit transaction
+      // was actually written.
+      expect(result.adjustmentType).toBe("uncollected_overage");
       expect(result.settlementTransactionIds).toEqual([]);
 
       // The balance is NOT driven negative; no debit row was written.

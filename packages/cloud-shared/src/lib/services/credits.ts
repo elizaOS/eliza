@@ -69,7 +69,7 @@ export interface CreditReconciliationResult {
   actualCost: number;
   reservationTransactionId?: string | null;
   settlementTransactionIds: string[];
-  adjustmentType: "none" | "refund" | "overage";
+  adjustmentType: "none" | "refund" | "overage" | "uncollected_overage";
 }
 
 export interface ReserveCreditsParams {
@@ -378,6 +378,7 @@ export class CreditsService {
     success: boolean;
     newBalance: number;
     transaction: CreditTransaction | null;
+    reason?: "insufficient_balance" | "below_minimum" | "org_not_found";
   }> {
     // Delegate to reserveAndDeduct with no minimum balance requirement
     return this.reserveAndDeductCredits(params);
@@ -804,6 +805,26 @@ export class CreditsService {
           description: `${description} (overage)`,
           metadata: { ...baseMetadata, type: "reconciliation_overage" },
         });
+        if (!overageResult.success || !overageResult.transaction) {
+          logger.warn("[Credits] Reconciled - overage uncollected", {
+            organizationId,
+            reserved: reservedAmount,
+            actual: actualCost,
+            overage,
+            balance: overageResult.newBalance,
+            reason: overageResult.reason ?? "missing_transaction",
+          });
+          return {
+            reservedAmount,
+            actualCost,
+            reservationTransactionId:
+              typeof metadata?.reservation_transaction_id === "string"
+                ? metadata.reservation_transaction_id
+                : null,
+            settlementTransactionIds: [],
+            adjustmentType: "uncollected_overage",
+          };
+        }
         logger.warn("[Credits] Reconciled - charged overage", {
           organizationId,
           reserved: reservedAmount,
@@ -838,7 +859,7 @@ export class CreditsService {
                 ? metadata.reservation_transaction_id
                 : null,
             settlementTransactionIds: [],
-            adjustmentType: "none",
+            adjustmentType: difference < 0 ? "uncollected_overage" : "none",
           };
         }
         logger.warn("[Credits] Reconciliation retry", {

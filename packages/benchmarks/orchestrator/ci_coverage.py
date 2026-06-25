@@ -1,12 +1,12 @@
-"""CI-lane coverage classification for every registered benchmark (#9475).
+"""CI-lane coverage classification for every public benchmark (#9475).
 
 The de-larp audit found that 42/43 registered benchmarks had zero scheduled
 real-model runs — the orchestrator was invoked by exactly one workflow. To keep
-the suite honest going forward, every registered benchmark (the canonical set
-from ``registry/commands.py``) is explicitly classified into a CI lane here, and
-``tests/test_ci_coverage.py`` asserts the classification stays complete: adding a
-benchmark to the registry without giving it a lane (or an explicit manual-only
-marker) fails CI.
+the suite honest going forward, every registered benchmark and every public
+orchestrator adapter is explicitly classified into a CI lane here, and
+``tests/test_ci_coverage.py`` asserts the classification stays complete: adding
+a benchmark to the registry or exposing a new adapter without giving it a lane
+(or an explicit manual-only marker) fails CI.
 
 Lanes
 -----
@@ -35,8 +35,9 @@ SCHEDULED_ORCHESTRATOR_SUBSET: frozenset[str] = frozenset(
     {"bfcl", "action-calling", "agentbench", "tau_bench", "mint", "context_bench"}
 )
 
-# Benchmark id -> CI lane. MUST stay in 1:1 sync with the registry ids
-# (enforced by tests/test_ci_coverage.py).
+# Benchmark id -> CI lane. MUST stay in 1:1 sync with the public benchmark ids
+# (registry ids plus public orchestrator adapter ids; enforced by
+# tests/test_ci_coverage.py).
 CI_LANE_BY_BENCHMARK: dict[str, str] = {
     # ── scheduled real-model lanes ───────────────────────────────────────────
     # Core orchestrator subset (benchmark-orchestrator-scheduled.yml).
@@ -70,6 +71,16 @@ CI_LANE_BY_BENCHMARK: dict[str, str] = {
     "trajectory_replay": "smoke",
     "social_alpha": "smoke",
     "trust": "smoke",
+    # Public orchestrator adapters that are not registry entries.
+    "adhdbench": "smoke",
+    "app-eval": "smoke",
+    "eliza_1": "smoke",
+    "eliza_replay": "smoke",
+    "experience": "smoke",
+    "framework": "smoke",
+    "interrupt_bench": "smoke",
+    "personality_bench": "smoke",
+    "three_agent_dialogue": "smoke",
     # ── manual-only (live-gated / hardware / Docker / sandbox / audio) ────────
     "osworld": "manual",  # Docker desktop backend
     "solana": "manual",  # surfpool backend
@@ -108,3 +119,11 @@ def registry_benchmark_ids(workspace_root: Path) -> frozenset[str]:
     from benchmarks.registry import get_benchmark_registry
 
     return frozenset(entry.id for entry in get_benchmark_registry(workspace_root))
+
+
+def public_benchmark_ids(workspace_root: Path) -> frozenset[str]:
+    """Registered ids plus public orchestrator adapter ids."""
+    from benchmarks.orchestrator.adapters import discover_adapters
+
+    adapter_ids = frozenset(discover_adapters(workspace_root).adapters)
+    return registry_benchmark_ids(workspace_root) | adapter_ids

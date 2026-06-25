@@ -1,11 +1,11 @@
-"""Every registered benchmark must declare a CI lane (#9475).
+"""Every public benchmark must declare a CI lane (#9475).
 
 This is the de-larp guard: the suite advertised "40+ benchmarks" while 42/43 had
 zero scheduled real-model runs. This test makes the CI-coverage classification
-in ``orchestrator/ci_coverage.py`` stay 1:1 with the registry, so a new
-benchmark cannot be added without an explicit CI lane (``scheduled`` / ``smoke``)
-or an explicit ``manual``-only marker — no benchmark silently gets zero CI
-coverage.
+in ``orchestrator/ci_coverage.py`` stay 1:1 with registered benchmarks plus
+public orchestrator adapters, so a new benchmark cannot be added or exposed
+without an explicit CI lane (``scheduled`` / ``smoke``) or an explicit
+``manual``-only marker — no benchmark silently gets zero CI coverage.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from benchmarks.orchestrator.ci_coverage import (  # noqa: E402
     SCHEDULED_ORCHESTRATOR_SUBSET,
     ci_lane_for,
     classified_benchmark_ids,
+    public_benchmark_ids,
     registry_benchmark_ids,
 )
 
@@ -31,19 +32,19 @@ def _workspace_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def test_every_registered_benchmark_has_a_ci_lane_or_manual_marker() -> None:
-    registry_ids = registry_benchmark_ids(_workspace_root())
+def test_every_public_benchmark_has_a_ci_lane_or_manual_marker() -> None:
+    public_ids = public_benchmark_ids(_workspace_root())
     classified = classified_benchmark_ids()
 
-    missing = registry_ids - classified
+    missing = public_ids - classified
     assert missing == frozenset(), (
-        "registered benchmarks with NO CI lane (add to CI_LANE_BY_BENCHMARK in "
+        "public benchmarks with NO CI lane (add to CI_LANE_BY_BENCHMARK in "
         f"orchestrator/ci_coverage.py): {sorted(missing)}"
     )
 
-    stale = classified - registry_ids
+    stale = classified - public_ids
     assert stale == frozenset(), (
-        "CI_LANE_BY_BENCHMARK lists benchmarks that are no longer registered "
+        "CI_LANE_BY_BENCHMARK lists benchmarks that are no longer public "
         f"(remove them): {sorted(stale)}"
     )
 

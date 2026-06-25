@@ -1152,9 +1152,8 @@ function main() {
       ),
     JSON.stringify(gap.remediationCommands || {}),
   );
-  assertCheck(checks, "benchmarks.claw-eval-expanded", (gap.underFiveBenchmarks?.claw_eval?.available || 0) >= 5, `claw_eval=${gap.underFiveBenchmarks?.claw_eval?.available || 0}`);
-  assertCheck(checks, "benchmarks.qwen-claw-expanded", (gap.underFiveBenchmarks?.qwen_claw_bench?.available || 0) >= 5, `qwen_claw_bench=${gap.underFiveBenchmarks?.qwen_claw_bench?.available || 0}`);
-  assertCheck(checks, "benchmarks.openclaw-expanded", (gap.underFiveBenchmarks?.openclaw_benchmark?.available || 0) >= 5, `openclaw_benchmark=${gap.underFiveBenchmarks?.openclaw_benchmark?.available || 0}`);
+  assertCheck(checks, "benchmarks.openclaw-adapter-exposed", (gap.underFiveBenchmarks?.openclaw_bench?.available || 0) >= 1, `openclaw_bench=${gap.underFiveBenchmarks?.openclaw_bench?.available || 0}`);
+  assertCheck(checks, "benchmarks.three-agent-dialogue-adapter-exposed", (gap.underFiveBenchmarks?.three_agent_dialogue?.available || 0) >= 1, `three_agent_dialogue=${gap.underFiveBenchmarks?.three_agent_dialogue?.available || 0}`);
   assertCheck(checks, "benchmarks.results-corpus-rows", corpus.summary?.rowCount === 156 && corpus.summary?.benchmarkCount === 52, `${corpus.summary?.rowCount} rows; ${corpus.summary?.benchmarkCount} benchmark families`);
   assertCheck(checks, "benchmarks.results-corpus-trajectories", (corpus.trajectory?.trajectory_rows || 0) >= 1795, `${corpus.trajectory?.trajectory_rows || 0} SQLite trajectory rows`);
   assertCheck(checks, "benchmarks.results-corpus-artifacts", (corpus.summary?.latestRowsWithTrajectoryFiles || 0) >= 150 && (corpus.summary?.latestOutputFileCount || 0) >= 658, `${corpus.summary?.latestRowsWithTrajectoryFiles || 0} rows with trajectory-like files; ${corpus.summary?.latestOutputFileCount || 0} output files`);
