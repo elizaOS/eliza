@@ -153,8 +153,10 @@ describe("createAospStreamingLlmBinding", () => {
     });
     binding.llmStreamOpen({ ctx: 1n, config: { ...DEFAULT_CONFIG } });
 
-    expect(capturedStruct).toBeDefined();
-    const struct = capturedStruct!;
+    const struct = capturedStruct;
+    if (!struct) {
+      throw new Error("expected stream config struct to be captured");
+    }
     expect(struct.byteLength).toBe(88);
     // off 60 = n_gpu_layers
     expect(struct.readInt32LE(60)).toBe(99);
@@ -193,10 +195,13 @@ describe("createAospStreamingLlmBinding", () => {
     });
     binding.llmStreamOpen({ ctx: 1n, config: { ...DEFAULT_CONFIG } });
 
-    expect(struct!.readInt32LE(60)).toBe(-1);
-    expect(struct!.readBigUInt64LE(64)).toBe(0n);
-    expect(struct!.readBigUInt64LE(72)).toBe(0n);
-    expect(struct!.readInt32LE(80)).toBe(4096);
+    if (!struct) {
+      throw new Error("expected stream config struct to be captured");
+    }
+    expect(struct.readInt32LE(60)).toBe(-1);
+    expect(struct.readBigUInt64LE(64)).toBe(0n);
+    expect(struct.readBigUInt64LE(72)).toBe(0n);
+    expect(struct.readInt32LE(80)).toBe(4096);
   });
 
   it("drives open→prefill→next→close through streamGenerate", async () => {
@@ -229,7 +234,10 @@ describe("createAospStreamingLlmBinding", () => {
         _err: bigint,
       ) => {
         calls.push("next");
-        const step = steps[stepIdx++]!;
+        const step = steps[stepIdx++];
+        if (!step) {
+          throw new Error("mock stream exhausted unexpectedly");
+        }
         // Write the step's text into the textOut view + token count.
         const textView = textRegistry.get(textOut);
         if (textView) {
