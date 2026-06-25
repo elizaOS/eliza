@@ -30,9 +30,12 @@ export {
 // -- Bundled widget component imports ----------------------------------------
 
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
+import { AgentActivityWidget } from "../components/chat/widgets/agent-activity";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
+import { ConnectorsStatusWidget } from "../components/chat/widgets/connectors-status";
+import { DiscordRecentWidget } from "../components/chat/widgets/discord-recent";
 import { FINANCES_HOME_WIDGET } from "../components/chat/widgets/finances-alerts";
 import { GOALS_HOME_WIDGET } from "../components/chat/widgets/goals-attention";
 import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
@@ -43,6 +46,7 @@ import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-at
 import { NotificationsWidget } from "../components/chat/widgets/notifications";
 import { RELATIONSHIPS_HOME_WIDGET } from "../components/chat/widgets/relationships-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
+import { WalletBalanceWidget } from "../components/chat/widgets/wallet-balance";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
@@ -66,6 +70,18 @@ registerWidgetComponent(
 );
 // Messages (recent conversations) is likewise a core surface — always-visible.
 registerWidgetComponent("messages", "messages.recent", MessagesWidget);
+// Curated home-grid widgets backed by core API surfaces (conversations, agent
+// activity, connector status, discord, wallet). Each renders populated data, a
+// connected-but-empty state, or a connect affordance — always-visible so the
+// home grid is populated even before the runtime plugin snapshot arrives.
+registerWidgetComponent("feed", "feed.agent-activity", AgentActivityWidget);
+registerWidgetComponent(
+  "connectors",
+  "connectors.status",
+  ConnectorsStatusWidget,
+);
+registerWidgetComponent("discord", "discord.recent", DiscordRecentWidget);
+registerWidgetComponent("wallet", "wallet.balance", WalletBalanceWidget);
 
 // Per-plugin frontpage widgets (#9143): each surfaces a compact, attention-
 // ranked slice of its plugin's own state on the home grid (a step up from the
@@ -128,13 +144,8 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       defaultWidget: "activity",
       signalKinds: ["workflow", "activity"],
     },
-    {
-      pluginId: "feed",
-      label: "Feed",
-      icon: "Rss",
-      defaultWidget: "messages",
-      signalKinds: ["message", "activity"],
-    },
+    // The `feed` plugin owns the real `feed.agent-activity` home tile (declared
+    // below), so it no longer opts into the shared messages sink here.
     {
       pluginId: "form",
       label: "Forms",
@@ -314,21 +325,9 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     // Boosted by any notification; urgent ones map to escalation-level weight.
     signalKinds: ["notification", "approval", "escalation"],
   },
-  // NOTE: the "messages.recent" home widget was removed (#9304) — it duplicated
-  // the always-present floating chat overlay (recent conversations are already
-  // one tap away in chat), and being ALWAYS_VISIBLE it was the only card on a
-  // fresh home. The MessagesWidget component stays registered for the
-  // `defaultWidget: "messages"` sink; it just no longer occupies the home slot.
-  {
-    id: "messages.default-home",
-    pluginId: "messages",
-    slot: "home",
-    label: "Messages",
-    icon: "MessageSquare",
-    order: 55,
-    defaultWidget: "messages",
-    signalKinds: ["message"],
-  },
+  // Recent conversations occupy the home slot as a naked 2x1 tile (declared in
+  // the curated home-grid block below). The `messages.default-home` sink was
+  // dropped — it rendered the same MessagesWidget and would duplicate that tile.
   // Agent Orchestrator — app runs
   {
     id: "agent-orchestrator.apps",
@@ -427,6 +426,7 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: RELATIONSHIPS_HOME_WIDGET.order,
     defaultEnabled: true,
     signalKinds: RELATIONSHIPS_HOME_WIDGET.signalKinds,
+    size: { cols: 2, rows: 1 },
   },
   {
     id: CALENDAR_HOME_WIDGET.id,
@@ -437,6 +437,67 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: CALENDAR_HOME_WIDGET.order,
     defaultEnabled: true,
     signalKinds: CALENDAR_HOME_WIDGET.signalKinds,
+    size: { cols: 2, rows: 1 },
+  },
+  // -- Curated home-grid widgets (4-col grid `size`) -------------------------
+  // Recent conversations, agent activity, discord, wallet, and the full-width
+  // connectors status strip. Each is backed by a core API surface and renders
+  // populated data, a connected-but-empty state, or a connect affordance.
+  {
+    id: "messages.recent",
+    pluginId: "messages",
+    slot: "home",
+    label: "Recent conversations",
+    icon: "MessageSquare",
+    order: 60,
+    defaultEnabled: true,
+    signalKinds: ["message"],
+    size: { cols: 2, rows: 1 },
+  },
+  {
+    id: "feed.agent-activity",
+    pluginId: "feed",
+    slot: "home",
+    label: "Agent activity",
+    icon: "Activity",
+    order: 65,
+    defaultEnabled: true,
+    signalKinds: ["workflow", "activity"],
+    size: { cols: 2, rows: 1 },
+  },
+  {
+    id: "discord.recent",
+    pluginId: "discord",
+    slot: "home",
+    label: "Discord",
+    icon: "MessageCircle",
+    order: 130,
+    defaultEnabled: true,
+    signalKinds: ["message"],
+    size: { cols: 2, rows: 1 },
+  },
+  {
+    id: "wallet.balance",
+    pluginId: "wallet",
+    slot: "home",
+    label: "Wallet",
+    icon: "Wallet",
+    order: 140,
+    defaultEnabled: true,
+    signalKinds: ["activity"],
+    size: { cols: 2, rows: 1 },
+  },
+  // Full-width connector status strip — ordered last on the home grid.
+  {
+    id: "connectors.status",
+    pluginId: "connectors",
+    slot: "home",
+    label: "Connectors",
+    icon: "Cable",
+    order: 200,
+    defaultEnabled: true,
+    signalKinds: ["activity"],
+    size: { cols: 4, rows: 1 },
   },
   {
     id: GOALS_HOME_WIDGET.id,
@@ -539,6 +600,17 @@ const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   // plugin), so its frontpage widget must render regardless of the plugin
   // snapshot — it self-hides when no decisions are pending (#9449).
   "needs-attention",
+  // Curated home-grid widgets backed by core API surfaces, not loadable
+  // plugins. They must render regardless of the plugin snapshot so the home
+  // grid is populated on first paint; each shows populated data, a
+  // connected-but-empty state, or a connect affordance.
+  "messages",
+  "feed",
+  "discord",
+  "wallet",
+  "connectors",
+  "calendar",
+  "relationships",
 ]);
 
 export interface ResolvedWidget {

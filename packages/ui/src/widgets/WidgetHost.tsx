@@ -123,6 +123,23 @@ function isWidgetSlot(value: string): value is WidgetSlot {
   return WIDGET_SLOTS.has(value);
 }
 
+/**
+ * Map a home widget's declared `size` to STATIC Tailwind grid-span classes.
+ * The classes are spelled out as literals (never interpolated) so Tailwind's
+ * content scanner keeps them. Default footprint is 2x1.
+ */
+function spanClassForSize(size: PluginWidgetDeclaration["size"]): string {
+  if (!size) return "col-span-2 row-span-1";
+  const cols =
+    size.cols === 1
+      ? "col-span-1"
+      : size.cols === 4
+        ? "col-span-4"
+        : "col-span-2";
+  const rows = size.rows === 2 ? "row-span-2" : "row-span-1";
+  return `${cols} ${rows}`;
+}
+
 export interface WidgetHostProps {
   /** Which slot to render widgets for. */
   slot: WidgetSlot;
@@ -291,10 +308,15 @@ export function WidgetHost({
       displayed
         .map(({ declaration, Component }) => {
           const widgetKey = `${declaration.pluginId}/${declaration.id}`;
+          // Span classes only apply on the home 4-col grid; other slots leave
+          // `spanClassName` undefined so their widgets stay full-width.
+          const spanClassName =
+            slot === "home" ? spanClassForSize(declaration.size) : undefined;
           const widgetProps: WidgetProps = {
             ...widgetPropsBase,
             pluginId: declaration.pluginId,
             pluginState: pluginById.get(declaration.pluginId),
+            spanClassName,
           };
 
           if (Component) {
@@ -309,7 +331,7 @@ export function WidgetHost({
             return (
               <WidgetErrorBoundary key={widgetKey} widgetId={widgetKey}>
                 <div
-                  className="min-w-0"
+                  className={`min-w-0 ${spanClassName ?? ""}`}
                   data-testid={`widget-uispec-${declaration.id}`}
                 >
                   <UiRenderer
@@ -326,7 +348,7 @@ export function WidgetHost({
           return null;
         })
         .filter((node): node is React.JSX.Element => node !== null),
-    [displayed, widgetPropsBase, pluginById],
+    [displayed, widgetPropsBase, pluginById, slot],
   );
 
   // Whether the resolved widgets actually rendered any visible DOM. `children`
@@ -349,10 +371,15 @@ export function WidgetHost({
     return fallback ?? null;
   }
 
+  // The home slot uses a fixed 4-column grid so each widget's static col-span
+  // class places it; other grid surfaces keep the responsive 1→2 column grid,
+  // and non-grid layouts stay a vertical stack.
   const layoutClass =
-    layout === "grid"
-      ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
-      : "flex flex-col gap-3";
+    slot === "home"
+      ? "grid grid-cols-4 gap-2.5"
+      : layout === "grid"
+        ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+        : "flex flex-col gap-3";
 
   const showFallback = fallback != null && renderedEmpty;
 

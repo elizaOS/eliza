@@ -17,6 +17,10 @@ import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const RELATIONSHIPS_WIDGET_KEY = "relationships/relationships.attention";
 
+// This widget owns a 2-wide footprint on the home grid; default to it when the
+// host doesn't supply a span (e.g. off the home slot / direct mounts).
+const DEFAULT_SPAN_CLASS = "col-span-2 row-span-1";
+
 // Relationships data changes slowly (merge candidates, last-interaction
 // recency); the full-page view loads on demand without polling, so a calm
 // 30s refresh is plenty for the glanceable home card.
@@ -118,37 +122,51 @@ function relationshipsEqual(
  * to. Reads the same relationships routes the full view uses
  * (client.getRelationshipsPeople / getRelationshipsCandidates), polling quietly
  * while the document is visible. Tapping the card opens the Relationships view.
+ *
+ * NAKED per the home redesign: white text on the ambient orange field, no card
+ * background/border (HomeWidgetCard supplies the soft text-shadow + faint white
+ * hover wash). The host-supplied `spanClassName` places the 2-wide grid item.
  */
-export function RelationshipsAttentionWidget({ slot }: Partial<WidgetProps>) {
+export function RelationshipsAttentionWidget({
+  slot,
+  spanClassName,
+}: Partial<WidgetProps>) {
   const [data, setData] = useState<RelationshipsAttentionData>(EMPTY_DATA);
+  const [loaded, setLoaded] = useState(false);
   const nav = useWidgetNavigation();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal: { cancelled: boolean }) => {
     try {
       const [peopleResult, candidates] = await Promise.all([
         client.getRelationshipsPeople(),
         client.getRelationshipsCandidates(),
       ]);
+      if (signal.cancelled) return;
       const next: RelationshipsAttentionData = {
         pendingCandidates: pendingCandidatesFrom(candidates),
         staleContacts: staleContactsFrom(peopleResult.people),
       };
       // Skip the state update (and the re-render) when the poll is unchanged.
       setData((prev) => (relationshipsEqual(prev, next) ? prev : next));
+      setLoaded(true);
     } catch {
       // Network/agent failure — keep the last good data (or empty); never
       // surface a broken card. Matches todo.tsx's silent-fallback catch.
+      if (!signal.cancelled) setLoaded(true);
     }
   }, []);
 
   useEffect(() => {
-    void load();
+    const token = { cancelled: false };
+    void load(token);
+    return () => {
+      token.cancelled = true;
+    };
   }, [load]);
   // Pause the silent poll while the document is backgrounded.
-  useIntervalWhenDocumentVisible(
-    () => void load(),
-    RELATIONSHIPS_REFRESH_INTERVAL_MS,
-  );
+  useIntervalWhenDocumentVisible(() => {
+    void load({ cancelled: false });
+  }, RELATIONSHIPS_REFRESH_INTERVAL_MS);
 
   const pendingCount = data.pendingCandidates.length;
   const hasPendingMerge = pendingCount > 0;
@@ -163,38 +181,45 @@ export function RelationshipsAttentionWidget({ slot }: Partial<WidgetProps>) {
     onHome && hasPendingMerge ? HOME_SIGNAL_WEIGHTS.approval : null,
   );
 
-  // Render nothing when there are no pending merges AND no contacts to surface.
-  // `data` starts empty, so this also covers the very first load while it's
-  // still pending and nothing is cached — the home surface must not show empty
-  // placeholders (#9143).
-  if (!hasPendingMerge && !hasContacts) return null;
+  // Loading and connected-but-empty both render `null`: this widget is
+  // zero-setup, so there is no connect affordance to show — until there is a
+  // pending merge or a contact to surface, the home must not paint a placeholder
+  // (#9143). `loaded` keeps us from flashing anything on the very first frame.
+  if (!loaded || (!hasPendingMerge && !hasContacts)) return null;
+
+  const span = spanClassName ?? DEFAULT_SPAN_CLASS;
 
   // One high-priority datum, icon-first: a pending merge (approval) wins;
   // otherwise the stalest contact to reach out to. Tapping opens Relationships.
+  // The span class lands on this single root grid-item element.
   if (hasPendingMerge) {
     return (
-      <HomeWidgetCard
-        icon={<Users />}
-        label="People"
-        value="Confirm merge?"
-        badge={pendingCount}
-        tone="warn"
-        testId="chat-widget-relationships"
-        ariaLabel={`People: ${pendingCount} merge ${pendingCount === 1 ? "candidate" : "candidates"} to confirm. Open Relationships.`}
-        onActivate={() => nav.openView("/relationships", "relationships")}
-      />
+      <div className={span}>
+        <HomeWidgetCard
+          icon={<Users />}
+          label="People"
+          value="Confirm merge?"
+          badge={pendingCount}
+          tone="warn"
+          testId="chat-widget-relationships"
+          ariaLabel={`People: ${pendingCount} merge ${pendingCount === 1 ? "candidate" : "candidates"} to confirm. Open Relationships.`}
+          onActivate={() => nav.openView("/relationships", "relationships")}
+        />
+      </div>
     );
   }
   return (
-    <HomeWidgetCard
-      icon={<Users />}
-      label="Reach out"
-      value={stalest.displayName}
-      tone="default"
-      testId="chat-widget-relationships"
-      ariaLabel={`Reach out: you haven't talked to ${stalest.displayName} in a while. Open Relationships.`}
-      onActivate={() => nav.openView("/relationships", "relationships")}
-    />
+    <div className={span}>
+      <HomeWidgetCard
+        icon={<Users />}
+        label="Reach out"
+        value={stalest.displayName}
+        tone="default"
+        testId="chat-widget-relationships"
+        ariaLabel={`Reach out: you haven't talked to ${stalest.displayName} in a while. Open Relationships.`}
+        onActivate={() => nav.openView("/relationships", "relationships")}
+      />
+    </div>
   );
 }
 

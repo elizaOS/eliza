@@ -9,11 +9,18 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 
-const { publishMock } = vi.hoisted(() => ({ publishMock: vi.fn() }));
+const { publishMock, listConnectorAccountsMock } = vi.hoisted(() => ({
+  publishMock: vi.fn(),
+  listConnectorAccountsMock: vi.fn(),
+}));
 
-// Mock the client so getBaseUrl resolves without booting the real ElizaClient.
+// Mock the client: getBaseUrl resolves without booting the real ElizaClient,
+// and listConnectorAccounts is the connection probe driven per-test.
 vi.mock("../../../api", () => ({
-  client: { getBaseUrl: () => "http://localhost" },
+  client: {
+    getBaseUrl: () => "http://localhost",
+    listConnectorAccounts: listConnectorAccountsMock,
+  },
 }));
 
 // Spy on the self-signal hook to assert the urgent weight is published.
@@ -22,7 +29,7 @@ vi.mock("../../../widgets/home-attention-store", () => ({
 }));
 
 // useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
-// stub it so the click test isolates the navigation rail (the CustomEvent).
+// stub it so the click tests isolate the navigation rail (the CustomEvent).
 vi.mock("../../../chat/useSlashCommandController", () => ({
   reportUserViewSwitch: vi.fn(),
 }));
@@ -63,7 +70,36 @@ function mockFeed(events: ReturnType<typeof event>[]) {
   );
 }
 
-const fetchProps: Partial<WidgetProps> = { slot: "home" };
+/** A linked Google account makes the connection probe resolve "connected". */
+function connectedGoogle() {
+  listConnectorAccountsMock.mockResolvedValue({
+    provider: "google",
+    connectorId: "google",
+    accounts: [
+      {
+        id: "g1",
+        provider: "google",
+        connectorId: "google",
+        label: "Work",
+        status: "connected",
+      },
+    ],
+  });
+}
+
+/** No accounts → the probe resolves "disconnected" (connect affordance). */
+function disconnectedGoogle() {
+  listConnectorAccountsMock.mockResolvedValue({
+    provider: "google",
+    connectorId: "google",
+    accounts: [],
+  });
+}
+
+const homeProps: Partial<WidgetProps> = {
+  slot: "home",
+  spanClassName: "col-span-2 row-span-1",
+};
 
 afterEach(() => {
   cleanup();
@@ -72,10 +108,52 @@ afterEach(() => {
 
 beforeEach(() => {
   publishMock.mockReset();
+  listConnectorAccountsMock.mockReset();
 });
 
-describe("CalendarUpcomingWidget (#9143)", () => {
-  it("shows ONE high-priority datum — the next upcoming event — minimal, icon-first", async () => {
+describe("CalendarUpcomingWidget", () => {
+  it("renders a connect affordance (not null) when no Google account is linked", async () => {
+    disconnectedGoogle();
+    mockFeed([]);
+    render(<CalendarUpcomingWidget {...homeProps} />);
+
+    const connect = await screen.findByTestId(
+      "chat-widget-calendar-upcoming-connect",
+    );
+    expect(connect.textContent).toContain("Connect calendar");
+    expect(connect.getAttribute("aria-label")).toMatch(/Connect a Google/);
+
+    const navEvents: string[] = [];
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent<{ viewPath?: string }>).detail;
+      if (detail?.viewPath) navEvents.push(detail.viewPath);
+    };
+    window.addEventListener("eliza:navigate:view", onNav);
+    fireEvent.click(connect);
+    window.removeEventListener("eliza:navigate:view", onNav);
+    expect(navEvents).toContain("/settings/connectors");
+  });
+
+  it("shows the connected-but-empty state when there are no upcoming events", async () => {
+    connectedGoogle();
+    // A past event only — filtered out (startAt < now).
+    mockFeed([
+      event({
+        id: "past",
+        startAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+      }),
+    ]);
+    render(<CalendarUpcomingWidget {...homeProps} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("chat-widget-calendar-upcoming").textContent,
+      ).toContain("No events today");
+    });
+  });
+
+  it("shows ONE high-priority datum — the soonest event — with a +N more badge", async () => {
+    connectedGoogle();
     mockFeed([
       event({
         id: "a",
@@ -88,25 +166,30 @@ describe("CalendarUpcomingWidget (#9143)", () => {
         startAt: new Date(Date.now() + 7 * 60 * 60_000).toISOString(),
       }),
     ]);
-    render(<CalendarUpcomingWidget {...fetchProps} />);
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-widget-calendar-upcoming")).toBeTruthy();
-    });
+    render(<CalendarUpcomingWidget {...homeProps} />);
 
-    const widget = screen.getByTestId("chat-widget-calendar-upcoming");
-    // The card is a button (whole-card clickable) and minimal: only the soonest
-    // event is shown; later events are NOT (just a count badge).
+    const widget = await screen.findByTestId("chat-widget-calendar-upcoming");
     expect(widget.tagName).toBe("BUTTON");
+    // Only the soonest event renders; later events do not (just a count badge).
     expect(widget.textContent).toContain("Standup");
     expect(widget.textContent).not.toContain("Lunch");
-    // The further-upcoming count rides as a badge.
     expect(widget.textContent).toContain("+1");
-    // The full meaning lives in the aria-label since visible text is minimal.
     expect(widget.getAttribute("aria-label")).toMatch(/Standup/);
     expect(widget.getAttribute("aria-label")).toMatch(/Open Calendar/);
   });
 
+  it("applies the grid span to its single root element", async () => {
+    connectedGoogle();
+    mockFeed([event({ id: "a", title: "Standup" })]);
+    const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
+    await screen.findByTestId("chat-widget-calendar-upcoming");
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain("col-span-2");
+    expect(root.className).toContain("row-span-1");
+  });
+
   it("publishes the reminder weight when the next event starts within 2 hours (home slot)", async () => {
+    connectedGoogle();
     mockFeed([
       event({
         id: "imminent",
@@ -114,17 +197,16 @@ describe("CalendarUpcomingWidget (#9143)", () => {
         startAt: new Date(Date.now() + 30 * 60_000).toISOString(),
       }),
     ]);
-    render(<CalendarUpcomingWidget {...fetchProps} />);
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-widget-calendar-upcoming")).toBeTruthy();
-    });
+    render(<CalendarUpcomingWidget {...homeProps} />);
+    await screen.findByTestId("chat-widget-calendar-upcoming");
     expect(publishMock).toHaveBeenLastCalledWith(
       "calendar/calendar.upcoming",
       HOME_SIGNAL_WEIGHTS.reminder,
     );
   });
 
-  it("navigates to the Calendar view when the card is clicked", async () => {
+  it("navigates to the Calendar view when the populated card is clicked", async () => {
+    connectedGoogle();
     mockFeed([event({ id: "a", title: "Standup" })]);
     const navEvents: string[] = [];
     const onNav = (e: Event) => {
@@ -133,31 +215,10 @@ describe("CalendarUpcomingWidget (#9143)", () => {
     };
     window.addEventListener("eliza:navigate:view", onNav);
 
-    render(<CalendarUpcomingWidget {...fetchProps} />);
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-widget-calendar-upcoming")).toBeTruthy();
-    });
-    fireEvent.click(screen.getByTestId("chat-widget-calendar-upcoming"));
+    render(<CalendarUpcomingWidget {...homeProps} />);
+    fireEvent.click(await screen.findByTestId("chat-widget-calendar-upcoming"));
     window.removeEventListener("eliza:navigate:view", onNav);
 
     expect(navEvents).toContain("/calendar");
-  });
-
-  it("renders null when there are no upcoming events", async () => {
-    mockFeed([
-      // A past event — filtered out (startAt < now).
-      event({
-        id: "past",
-        startAt: new Date(Date.now() - 60 * 60_000).toISOString(),
-      }),
-    ]);
-    const { container } = render(<CalendarUpcomingWidget {...fetchProps} />);
-    await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalled();
-    });
-    await Promise.resolve();
-
-    expect(screen.queryByTestId("chat-widget-calendar-upcoming")).toBeNull();
-    expect(container.firstChild).toBeNull();
   });
 });

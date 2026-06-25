@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../../../api/client-types-chat";
 import { __setAppValueForTests } from "../../../state/app-store";
 import { MessagesWidget } from "./messages";
@@ -11,9 +17,25 @@ vi.mock("../../../chat/useSlashCommandController", () => ({
   reportUserViewSwitch: vi.fn(),
 }));
 
+// The cold-home seed calls client.listConversations(); mock it so the empty +
+// seed branches are deterministic (default: no conversations to seed).
+const listConversations = vi.fn<
+  () => Promise<{ conversations: Conversation[] }>
+>(async () => ({ conversations: [] }));
+vi.mock("../../../api/client", () => ({
+  client: {
+    listConversations: () => listConversations(),
+  },
+}));
+
+beforeEach(() => {
+  listConversations.mockResolvedValue({ conversations: [] });
+});
+
 afterEach(() => {
   cleanup();
   __setAppValueForTests(null);
+  listConversations.mockReset();
 });
 
 function conversation(overrides: Partial<Conversation>): Conversation {
@@ -95,5 +117,63 @@ describe("MessagesWidget (#9143)", () => {
     expect(widget.tagName).not.toBe("BUTTON");
     expect(widget.textContent).toContain("Alpha");
     expect(widget.textContent).toContain("Beta");
+  });
+
+  it("home slot: applies the host-provided grid span to its single root element", () => {
+    seedConversations([conversation({ id: "x", title: "Hello" })]);
+
+    const { container } = render(
+      <MessagesWidget
+        pluginId="messages"
+        slot="home"
+        spanClassName="col-span-4 row-span-1"
+      />,
+    );
+
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toContain("col-span-4");
+    expect(root.className).toContain("row-span-1");
+    // The card button lives inside that single grid-item root.
+    expect(
+      root.querySelector('[data-testid="widget-messages"]'),
+    ).not.toBeNull();
+  });
+
+  it("home slot: defaults to col-span-2 when no spanClassName is provided", () => {
+    seedConversations([conversation({ id: "x", title: "Hello" })]);
+
+    const { container } = render(
+      <MessagesWidget pluginId="messages" slot="home" />,
+    );
+
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toContain("col-span-2");
+  });
+
+  it("cold home: seeds from client.listConversations() when the store is empty", async () => {
+    // Store empty → the widget fetches once and populates from the result.
+    listConversations.mockResolvedValue({
+      conversations: [conversation({ id: "seed", title: "Seeded chat" })],
+    });
+
+    render(<MessagesWidget pluginId="messages" slot="home" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("widget-messages").textContent).toContain(
+        "Seeded chat",
+      );
+    });
+    expect(listConversations).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not seed from the client when the store already has conversations", () => {
+    seedConversations([conversation({ id: "x", title: "Hello" })]);
+
+    render(<MessagesWidget pluginId="messages" slot="home" />);
+
+    expect(screen.getByTestId("widget-messages").textContent).toContain(
+      "Hello",
+    );
+    expect(listConversations).not.toHaveBeenCalled();
   });
 });

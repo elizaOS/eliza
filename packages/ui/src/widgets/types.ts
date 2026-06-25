@@ -40,6 +40,12 @@ export interface WidgetProps {
    * placeholders; #9143).
    */
   slot?: WidgetSlot;
+  /**
+   * Static Tailwind grid-span classes for the home 4-col grid, derived from the
+   * declaration's `size` by the host (e.g. "col-span-2 row-span-1"). The widget
+   * applies this to its single root grid-item element. Absent off the home slot.
+   */
+  spanClassName?: string;
 }
 
 /**
