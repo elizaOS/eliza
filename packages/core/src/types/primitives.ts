@@ -39,6 +39,7 @@ export const ChannelType = {
 	THREAD: "THREAD",
 	WORLD: "WORLD",
 	FORUM: "FORUM",
+	AUTONOMOUS: "AUTONOMOUS",
 	API: "API",
 } as const;
 
