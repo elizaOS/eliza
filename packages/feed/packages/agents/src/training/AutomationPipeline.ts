@@ -36,6 +36,7 @@ import { benchmarkService } from "./BenchmarkService";
 import { MarketOutcomesTracker } from "./MarketOutcomesTracker";
 import { modelSelectionService } from "./ModelSelectionService";
 import { rewardBackpropagationService } from "./RewardBackpropagationService";
+import { FEED_DEFAULT_BASE_MODEL } from "./RLModelConfig";
 import { rulerScoringService } from "./RulerScoringService";
 import type {
   AutomationConfig,
@@ -78,7 +79,7 @@ export class AutomationPipeline {
       dataQualityThreshold: config.dataQualityThreshold ?? 0.95,
       autoTriggerTraining: config.autoTriggerTraining !== false,
       trainingInterval: config.trainingInterval || 24, // Daily by default
-      baseModel: config.baseModel || "unsloth/Qwen3-4B-128K", // 4B params, 128K context - ideal for fine-tuning
+      baseModel: config.baseModel || FEED_DEFAULT_BASE_MODEL,
       modelNamePrefix: config.modelNamePrefix || "feed-agent",
       modelStoragePath:
         config.modelStoragePath ||
@@ -403,7 +404,10 @@ export class AutomationPipeline {
       })
       .returning();
 
-    const batch = batchResult[0]!;
+    const batch = batchResult[0];
+    if (!batch) {
+      throw new Error(`Failed to create training batch ${batchId}`);
+    }
 
     // Determine training mode: 'tinker' for cloud-based or 'atropos' for local vLLM
     const trainingMode = process.env.TRAINING_MODE || "atropos";
@@ -590,11 +594,11 @@ export class AutomationPipeline {
     }
 
     // Increment patch version
-    const [major, minor, patch] = latestModel.version
+    const [major = 1, minor = 0, patch = 0] = latestModel.version
       .substring(1)
       .split(".")
       .map(Number);
-    return `v${major}.${minor}.${patch! + 1}`;
+    return `v${major}.${minor}.${patch + 1}`;
   }
 
   /**

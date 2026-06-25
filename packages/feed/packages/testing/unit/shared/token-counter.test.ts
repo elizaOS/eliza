@@ -9,7 +9,7 @@ import {
   getSafeContextLimit,
   MODEL_TOKEN_LIMITS,
   truncateToTokenLimitSync,
-} from "@feed/api";
+} from "../../../api/src/utils/token-counter";
 
 describe("Token Counter Utilities", () => {
   describe("countTokensSync", () => {
@@ -189,6 +189,13 @@ describe("Token Counter Utilities", () => {
     it("should have Groq models", () => {
       expect(MODEL_TOKEN_LIMITS["llama-3.3-70b-versatile"]).toBeDefined();
       expect(MODEL_TOKEN_LIMITS["mixtral-8x7b-32768"]).toBeDefined();
+    });
+
+    it("should have Gemma 4 Feed strategy models", () => {
+      expect(MODEL_TOKEN_LIMITS["google/gemma-4-E2B-it"]).toBe(131072);
+      expect(MODEL_TOKEN_LIMITS["google/gemma-4-E4B-it"]).toBe(131072);
+      expect(MODEL_TOKEN_LIMITS["google/gemma-4-12B-it"]).toBe(262144);
+      expect(MODEL_TOKEN_LIMITS["google/gemma-4-31B-it"]).toBe(262144);
     });
   });
 });

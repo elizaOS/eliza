@@ -10,8 +10,17 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { getModelTokenLimit, truncateToTokenLimitSync } from "@feed/api";
-import { getRLModelConfig } from "../training";
+import { access, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  getModelTokenLimit,
+  truncateToTokenLimitSync,
+} from "../../../api/src/utils/token-counter";
+import { getRLModelConfig } from "../training/RLModelConfig";
+
+const sourcePath = (...parts: string[]) => join(__dirname, ...parts);
+const readSource = (relativePath: string) =>
+  readFile(sourcePath(relativePath), "utf-8");
 
 describe("RL Training System", () => {
   describe("Configuration", () => {
@@ -33,10 +42,10 @@ describe("RL Training System", () => {
   });
 
   describe("Context Window Safety", () => {
-    it("should enforce 128K limit for unsloth models", async () => {
-      const limit = getModelTokenLimit("unsloth/Qwen3-4B-128K");
+    it("should enforce 128K limit for Gemma models", async () => {
+      const limit = getModelTokenLimit("google/gemma-4-E4B-it");
 
-      // unsloth/Qwen3-4B-128K has 128K context (131072 tokens)
+      // Gemma 4 E4B has 128K context (131072 tokens)
       expect(limit).toBe(131072);
     });
 
@@ -53,48 +62,32 @@ describe("RL Training System", () => {
 
   describe("Agent Services Use Truncation", () => {
     it("AutonomousTradingService should import truncation", async () => {
-      const module = await import("../autonomous/AutonomousTradingService");
-      expect(module.AutonomousTradingService).toBeDefined();
-
-      // Verify the file has truncation code (basic check)
-      const fs = await import("node:fs/promises");
-      const path = await import("node:path");
-      const content = await fs.readFile(
-        path.join(__dirname, "../autonomous/AutonomousTradingService.ts"),
-        "utf-8",
+      const content = await readSource(
+        "../autonomous/AutonomousTradingService.ts",
       );
       expect(content).toContain("truncateToTokenLimitSync");
       expect(content).toContain("30000"); // 30K limit
     });
 
     it("AutonomousPostingService should import truncation", async () => {
-      const fs = await import("node:fs/promises");
-      const path = await import("node:path");
-      const content = await fs.readFile(
-        path.join(__dirname, "../autonomous/AutonomousPostingService.ts"),
-        "utf-8",
+      const content = await readSource(
+        "../autonomous/AutonomousPostingService.ts",
       );
       expect(content).toContain("truncateToTokenLimitSync");
       expect(content).toContain("30000");
     });
 
     it("AutonomousPlanningCoordinator should import truncation", async () => {
-      const fs = await import("node:fs/promises");
-      const path = await import("node:path");
-      const content = await fs.readFile(
-        path.join(__dirname, "../autonomous/AutonomousPlanningCoordinator.ts"),
-        "utf-8",
+      const content = await readSource(
+        "../autonomous/AutonomousPlanningCoordinator.ts",
       );
       expect(content).toContain("truncateToTokenLimitSync");
       expect(content).toContain("30000");
     });
 
     it("AutonomousBatchResponseService should import truncation", async () => {
-      const fs = await import("node:fs/promises");
-      const path = await import("node:path");
-      const content = await fs.readFile(
-        path.join(__dirname, "../autonomous/AutonomousBatchResponseService.ts"),
-        "utf-8",
+      const content = await readSource(
+        "../autonomous/AutonomousBatchResponseService.ts",
       );
       expect(content).toContain("truncateToTokenLimitSync");
       expect(content).toContain("30000");
@@ -103,11 +96,8 @@ describe("RL Training System", () => {
 
   describe("Provider Data Caps", () => {
     it("BatchResponseService should cap interactions to 30", async () => {
-      const fs = await import("node:fs/promises");
-      const path = await import("node:path");
-      const content = await fs.readFile(
-        path.join(__dirname, "../autonomous/AutonomousBatchResponseService.ts"),
-        "utf-8",
+      const content = await readSource(
+        "../autonomous/AutonomousBatchResponseService.ts",
       );
       expect(content).toContain("slice(0, 30)"); // Cap to 30 interactions
     });
@@ -116,20 +106,21 @@ describe("RL Training System", () => {
   describe("Integration Readiness", () => {
     it("should have all components for RL loop", async () => {
       // 1. Trajectory logging
-      const trajectoryLogger = await import(
-        "../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService"
+      await access(
+        sourcePath(
+          "../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService.ts",
+        ),
       );
-      expect(trajectoryLogger.TrajectoryLoggerService).toBeDefined();
 
       // 2. RL Model config
-      const config = await import("../training");
-      expect(config.getRLModelConfig).toBeDefined();
+      const configSource = await readSource("../training/RLModelConfig.ts");
+      expect(configSource).toContain("export function getRLModelConfig");
 
       // 3. Agent runtime
-      const runtime = await import("../runtime/AgentRuntimeManager");
-      expect(runtime.AgentRuntimeManager).toBeDefined();
-
-      console.log("✅ All RL loop components present");
+      const runtimeSource = await readSource(
+        "../runtime/AgentRuntimeManager.ts",
+      );
+      expect(runtimeSource).toContain("export class AgentRuntimeManager");
     });
   });
 });

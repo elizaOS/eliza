@@ -31,7 +31,7 @@ export interface PromptSection {
  */
 export function buildSafePrompt(
   sections: PromptSection[],
-  model = "unsloth/Qwen3-4B-128K",
+  model = "google/gemma-4-E4B-it",
   safetyMargin = 2000,
 ): {
   prompt: string;
@@ -125,7 +125,7 @@ export function buildSafePrompt(
 export function buildPrompt(
   systemPrompt: string,
   userPrompt: string,
-  model = "unsloth/Qwen3-4B-128K",
+  model = "google/gemma-4-E4B-it",
 ): string {
   const result = buildSafePrompt(
     [
@@ -149,7 +149,7 @@ export function buildPrompt(
  */
 export function willPromptFit(
   prompt: string,
-  model = "unsloth/Qwen3-4B-128K",
+  model = "google/gemma-4-E4B-it",
   safetyMargin = 2000,
 ): { fits: boolean; tokens: number; limit: number } {
   const tokens = countTokensSync(prompt);

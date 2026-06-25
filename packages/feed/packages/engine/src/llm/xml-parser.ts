@@ -100,7 +100,7 @@ export function extractThinkingContent(content: string): string {
 }
 
 /**
- * Remove LLM thinking blocks (e.g., <think>...</think> from DeepSeek, Qwen)
+ * Remove LLM thinking blocks (e.g., <think>...</think> from reasoning models)
  * These blocks contain internal reasoning that shouldn't be parsed as content.
  *
  * NOTE: We do NOT strip <reasoning> tags - those are valid fields inside <decision> elements
@@ -109,7 +109,7 @@ export function extractThinkingContent(content: string): string {
 export function stripThinkingBlocks(content: string): string {
   const originalLength = content.length;
 
-  // Remove <think>...</think> blocks (DeepSeek, Qwen reasoning)
+  // Remove <think>...</think> blocks emitted by reasoning models.
   // Use non-greedy matching to handle multiple blocks
   let cleaned = content.replace(/<think>[\s\S]*?<\/think>/gi, "");
 

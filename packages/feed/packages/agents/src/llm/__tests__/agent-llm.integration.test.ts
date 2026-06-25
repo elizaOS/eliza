@@ -103,7 +103,9 @@ describe("Agent LLM Provider", () => {
         expect(options.method).toBe("POST");
 
         const body = JSON.parse(options.body as string);
-        expect(body.model).toBe("qwen2.5:7b-instruct");
+        expect(body.model).toBe(
+          "hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
+        );
         expect(body.stream).toBe(false);
         expect(body.messages).toHaveLength(2);
         expect(body.messages[0].role).toBe("system");
@@ -172,7 +174,10 @@ describe("Agent LLM Provider", () => {
             JSON.stringify({
               models: [
                 { name: "feed-trader:latest", size: 1000000 },
-                { name: "qwen2.5:7b-instruct", size: 2000000 },
+                {
+                  name: "hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
+                  size: 2000000,
+                },
               ],
             }),
             { status: 200 },
@@ -212,7 +217,12 @@ describe("Agent LLM Provider", () => {
           // Return only base model (no archetype-specific model)
           return new Response(
             JSON.stringify({
-              models: [{ name: "qwen2.5:7b-instruct", size: 2000000 }],
+              models: [
+                {
+                  name: "hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
+                  size: 2000000,
+                },
+              ],
             }),
             { status: 200 },
           );
@@ -221,7 +231,9 @@ describe("Agent LLM Provider", () => {
         if (url.includes("/api/chat")) {
           const body = JSON.parse(options.body as string);
           // Should fall back to base model
-          expect(body.model).toBe("qwen2.5:7b-instruct");
+          expect(body.model).toBe(
+            "hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
+          );
           return new Response(
             JSON.stringify({
               message: { content: "Fallback response" },
@@ -470,7 +482,7 @@ describe("Agent LLM Provider", () => {
       expect(mockLogger.logLLMCall).toHaveBeenCalledWith(
         "step-123",
         expect.objectContaining({
-          model: "qwen2.5:7b-instruct",
+          model: "hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
           systemPrompt: "Test system",
           userPrompt: "Test prompt",
           response: "Response",
