@@ -175,8 +175,7 @@ export class NlmsEchoCanceller {
 			// the signal handed to ASR/VAD. There is no echo to learn when the
 			// far-end is silent, so freezing is both correct and stabilising.
 			const farActive =
-				this.xEnergy >
-				NlmsEchoCanceller.FAR_ACTIVITY_FRAC * this.peakXEnergy;
+				this.xEnergy > NlmsEchoCanceller.FAR_ACTIVITY_FRAC * this.peakXEnergy;
 
 			// NLMS weight update: w += μ·e·x / (‖x‖² + δ), frozen during
 			// double-talk or far-end silence. δ scales with the far-end envelope so
