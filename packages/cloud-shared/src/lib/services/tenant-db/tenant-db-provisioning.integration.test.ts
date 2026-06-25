@@ -89,7 +89,11 @@ function localize(dsn: string): string {
 
 function parseDsn(dsn: string): { role: string; pw: string; db: string } {
   const u = new URL(dsn);
-  return { role: u.username, pw: u.password, db: u.pathname.replace(/^\//, "") };
+  return {
+    role: u.username,
+    pw: u.password,
+    db: u.pathname.replace(/^\//, ""),
+  };
 }
 
 async function resetClusters(): Promise<void> {
@@ -202,5 +206,38 @@ d("tenant-db provisioning over real Postgres", () => {
 
     // The allocator recorded both placements on the cluster.
     expect(r1.clusterId).toBe(r2.clusterId);
+  });
+
+  test("provision() is idempotent against REAL Postgres: re-provisioning the same app does not throw and the rotated DSN still connects", async () => {
+    // This is the load-bearing retry case the mocks CANNOT prove: against a live
+    // PG, the second provision hits an EXISTING role + database, so it must rely
+    // on the DO-block swallowing `duplicate_object` (CREATE ROLE) and the
+    // `databaseExists` gate skipping CREATE DATABASE — re-running the real DDL
+    // with no IF NOT EXISTS would otherwise throw 42710 / 42P04.
+    await tenantDbClustersRepository.create({
+      provider: "direct_pg",
+      host: HOST,
+      admin_dsn_encrypted: ADMIN_DSN!,
+      max_databases: 100,
+      database_count: 0,
+      is_active: true,
+    });
+    const provisioning = makeTenantDbProvisioning({ decrypt: async (x) => x });
+
+    const app = randomUUID();
+    const first = await provisioning.provisionForApp(app);
+    const second = await provisioning.provisionForApp(app); // the deploy RETRY — same app, DB already there
+
+    const t = parseDsn(second.dsn);
+    created.push({ role: t.role, db: t.db });
+
+    // Same identifiers both times (derivation is stable), but the password rotated.
+    expect(parseDsn(second.dsn).db).toBe(parseDsn(first.dsn).db);
+    expect(parseDsn(second.dsn).pw).not.toBe(parseDsn(first.dsn).pw);
+
+    // The credential the retry handed back is the live one: the ALTER ROLE on the
+    // second pass rotated the password, so ONLY the second DSN connects.
+    expect(await connectAndPing(localize(second.dsn))).toBe(1);
+    await expect(connectAndPing(localize(first.dsn))).rejects.toThrow();
   });
 });

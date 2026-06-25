@@ -175,6 +175,13 @@ export function buildDsn(params: {
  * skips `CREATE DATABASE` when the DB is already present (gated on
  * `databaseExists`), while always (re)setting the role password and re-applying
  * the connect lockdown. (#8434)
+ *
+ * NOTE: this idempotency is for a SEQUENTIAL retry. The `databaseExists` pre-check
+ * is not atomic with the `CREATE DATABASE` that follows it (and `CREATE DATABASE`
+ * cannot run in a DO block / txn to guard itself), so two CONCURRENT provisions of
+ * the SAME app could both read `false` and race — the loser throwing duplicate_database.
+ * What serializes same-app provisions is the cluster pool's atomic slot claim
+ * (`UPDATE ... WHERE database_count < max RETURNING`) upstream, not this builder.
  */
 export class SqlTenantDbProvisioner {
   private readonly cluster: TenantDbCluster;

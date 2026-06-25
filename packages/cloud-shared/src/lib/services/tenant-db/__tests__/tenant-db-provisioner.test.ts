@@ -155,7 +155,7 @@ describe("SqlTenantDbProvisioner", () => {
         existsCheckedFor = dbName;
         if (seq) {
           // Once drained, the DB stays in its last observed state.
-          return seq.length > 1 ? (seq.shift() as boolean) : (seq[0] ?? false);
+          return seq.length > 1 ? (seq.shift() ?? false) : (seq[0] ?? false);
         }
         return opts.exists ?? false;
       },
