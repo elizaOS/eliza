@@ -9,9 +9,9 @@ passes base-vs-finetuned evals and bundle gates.
 
 | family | fine-tune target | base artifact | publish target |
 | --- | --- | --- | --- |
-| text | `eliza-1-2b` | `Qwen/Qwen3.5-2B-Base` | `bundles/2b/text/` |
+| text | `eliza-1-2b` | `google/gemma-4-E2B` via `gemma4-e2b` | `bundles/2b/text/` |
 | drafter | `drafter-2b` | 2B text target features | `bundles/2b/mtp/` |
-| ASR | `eliza-1-asr` | `ggml-org/Qwen3-ASR-0.6B-GGUF` | `bundles/2b/asr/` |
+| ASR | frozen until verified Gemma ASR artifacts exist | no active base configured | `bundles/2b/asr/` |
 | TTS voice | default Kokoro/voice adapter | `hexgrad/Kokoro-82M` / default voice corpus | `bundles/2b/tts/` |
 | turn detector | smallest turn detector head | active turn detector base config | `bundles/2b/turn/` |
 | image generation | SD 1.5 adapter only | `imagegen/sd-1.5-Q5_0.gguf` lineage | `bundles/2b/imagegen/` |
@@ -35,7 +35,7 @@ hf download elizaos/eliza-1-training \
   --local-dir /tmp/eliza-1-training
 
 uv run --extra train python scripts/run_pipeline.py \
-  --registry-key qwen3.5-2b \
+  --registry-key gemma4-e2b \
   --train-file /tmp/eliza-1-training/sft/2b/train.jsonl \
   --val-file /tmp/eliza-1-training/sft/2b/val.jsonl \
   --test-file /tmp/eliza-1-training/sft/2b/test.jsonl \
@@ -76,12 +76,17 @@ validation targets the native 256k text artifact.
 
 ## ASR
 
-Use the smallest Qwen3 ASR lineage and a real-recorded labelled corpus:
+ASR is frozen for the active Gemma cutover. Do not launch real ASR
+fine-tuning until a verified Gemma-compatible ASR checkpoint and matching
+projector are hosted and wired into the bundle staging scripts. The legacy
+ASR scaffold remains available for synthetic CI shape checks only; real
+train/eval fails closed when no active Gemma-compatible `base_model` is
+configured.
 
 ```bash
 uv run --extra train python scripts/asr/finetune_asr.py \
   --config scripts/asr/configs/base.yaml \
-  --model ggml-org/Qwen3-ASR-0.6B-GGUF
+  --synthetic-smoke
 ```
 
 The publish WER must come from explicit real-recorded provenance, not a TTS

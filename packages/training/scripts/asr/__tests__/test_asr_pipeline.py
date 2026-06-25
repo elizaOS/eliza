@@ -1,4 +1,4 @@
-"""Tests for the Qwen3-ASR fine-tune scaffold.
+"""Tests for the eliza-1 ASR fine-tune scaffold.
 
 Three suites:
 1. Synthetic-smoke pipeline shape (no torch, no GPU).
@@ -20,6 +20,7 @@ sys.path.insert(0, str(ASR_DIR))
 
 import finetune_asr  # noqa: E402
 import eval_asr  # noqa: E402
+import push_asr_gguf_to_hf  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +130,7 @@ def test_eval_synthetic_smoke_writes_eval_json(tmp_path: Path) -> None:
 def test_config_defaults() -> None:
     """Load config with no file — should return default dict."""
     cfg = finetune_asr._load_config("")
+    assert cfg["base_model"] == ""
     assert cfg["optimizer"] == "apollo_mini"
     assert cfg["sample_rate"] == 16000
     assert cfg["mel_bins"] == 80
@@ -231,3 +233,33 @@ def test_cli_smoke_default_no_real_train(tmp_path: Path) -> None:
     rc = finetune_asr.main(["--run-dir", str(run_dir)])
     assert rc == 0
     assert (run_dir / "checkpoints" / "train_manifest.json").exists()
+
+
+def test_real_train_requires_active_gemma_asr_source(tmp_path: Path) -> None:
+    """Real training fails closed until a verified Gemma-compatible ASR base exists."""
+    with pytest.raises(SystemExit, match="Gemma-compatible ASR"):
+        finetune_asr.main(["--run-dir", str(tmp_path / "run"), "--real-train"])
+
+
+def test_real_eval_rejects_retired_qwen_asr_source(tmp_path: Path) -> None:
+    """Real eval refuses retired ASR source configs before importing model deps."""
+    cfg_path = tmp_path / "qwen-retired.yaml"
+    cfg_path.write_text('base_model: "Qwen/Qwen3-ASR-0.6B"\n')
+    with pytest.raises(SystemExit, match="retired"):
+        eval_asr.main(
+            [
+                "--run-dir",
+                str(tmp_path / "eval"),
+                "--config",
+                str(cfg_path),
+                "--data-dir",
+                str(tmp_path / "data"),
+            ]
+        )
+
+
+def test_push_helper_rejects_retired_asr_sidecar(tmp_path: Path) -> None:
+    """HF publish helper blocks sidecars that still point at retired ASR sources."""
+    sidecar = tmp_path / "gguf_asr.json"
+    sidecar.write_text(json.dumps({"sourceModel": "Qwen/Qwen3-ASR-0.6B"}))
+    assert push_asr_gguf_to_hf._contains_retired_asr_source(sidecar) is True

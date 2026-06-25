@@ -457,10 +457,9 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     vad: bundleComponent(id, "vad/silero-vad-v5.gguf"),
   };
 
-  // Gemma ASR artifacts are not hosted yet. The public `asr/eliza-1-asr.gguf`
-  // files currently staged under the tier bundles are Qwen3-ASR stand-ins, so
-  // do not advertise them as active tier components. Runtime ASR remains gated
-  // by bundle manifest provenance until Gemma ASR files are published.
+  // Gemma ASR artifacts are not hosted yet. Do not advertise retired pre-Gemma
+  // ASR files as active tier components. Runtime ASR remains gated by bundle
+  // manifest provenance until Gemma ASR files are published.
 
   // LiteRT-LM single-file bundle for the on-device runtime: text + vision +
   // audio + MTP packed into one QAT (.litertlm) artifact, parallel to the
