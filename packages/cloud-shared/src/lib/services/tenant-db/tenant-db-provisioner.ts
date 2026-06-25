@@ -182,16 +182,12 @@ export function buildDsn(params: {
  * swallows the duplicate role, gates `CREATE DATABASE` on `databaseExists`, and
  * always (re)sets the role password + re-applies the connect lockdown.
  *
- * SCOPE — this does NOT make the high-level deploy retry path idempotent. The
- * cluster-allocation layer above (`SqlTenantDbProvisioning.provisionForApp` →
- * `ClusterPool.allocate` → `tryClaimSlot`) claims a NEW cluster slot on every
- * call, so retrying a deploy for the same app re-runs this (now safe) DDL but
- * still increments `tenant_db_clusters.database_count` again for the same
- * physical database. No app→cluster placement is persisted today, so the
- * provisioner cannot recover the prior slot — that cluster-slot-leak-on-retry is
- * tracked separately in #9686. (Same-app concurrent provisions are serialized
- * upstream by `trySetProvisioning`'s `ON CONFLICT (app_id)` status gate in
- * `user-database.ts`, not by this builder.)
+ * SCOPE — this layer is only the DDL executor for one fixed cluster. High-level
+ * deploy retry idempotency lives in `SqlTenantDbProvisioning.provisionForApp`,
+ * which persists/reuses the app's tenant-cluster placement before invoking this
+ * provisioner. Same-app concurrent provisions are still serialized upstream by
+ * `trySetProvisioning`'s `ON CONFLICT (app_id)` status gate in
+ * `user-database.ts`, not by this builder.
  */
 export class SqlTenantDbProvisioner {
   private readonly cluster: TenantDbCluster;

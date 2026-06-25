@@ -1,6 +1,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { apps, userDatabaseStatusEnum } from "./apps";
+import { tenantDbClusters } from "./tenant-db-clusters";
 
 /**
  * App databases table schema.
@@ -34,6 +35,15 @@ export const appDatabases = pgTable(
     /** Error message if provisioning failed. */
     user_database_error: text("user_database_error"),
 
+    /**
+     * Tenant DB cluster that owns this app's isolated database.
+     * Claimed before tenant DDL runs so deploy retries re-enter the same cluster
+     * without consuming another finite cluster slot.
+     */
+    tenant_db_cluster_id: uuid("tenant_db_cluster_id").references(() => tenantDbClusters.id, {
+      onDelete: "set null",
+    }),
+
     // Lifecycle
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
@@ -41,6 +51,9 @@ export const appDatabases = pgTable(
   (table) => ({
     app_idx: index("app_databases_app_idx").on(table.app_id),
     status_idx: index("app_databases_status_idx").on(table.user_database_status),
+    tenant_db_cluster_idx: index("app_databases_tenant_db_cluster_idx").on(
+      table.tenant_db_cluster_id,
+    ),
   }),
 );
 

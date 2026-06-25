@@ -17,6 +17,7 @@ import { organizationConfig } from "./organization-config";
 import { organizationEncryptionKeys } from "./organization-encryption-keys";
 import { organizationInvites } from "./organization-invites";
 import { organizations } from "./organizations";
+import { tenantDbClusters } from "./tenant-db-clusters";
 import { redemptionLimits, tokenRedemptions } from "./token-redemptions";
 import { userCharacters } from "./user-characters";
 import { userIdentities } from "./user-identities";
@@ -199,6 +200,10 @@ export const appDatabasesRelations = relations(appDatabases, ({ one }) => ({
   app: one(apps, {
     fields: [appDatabases.app_id],
     references: [apps.id],
+  }),
+  tenantDbCluster: one(tenantDbClusters, {
+    fields: [appDatabases.tenant_db_cluster_id],
+    references: [tenantDbClusters.id],
   }),
 }));
 

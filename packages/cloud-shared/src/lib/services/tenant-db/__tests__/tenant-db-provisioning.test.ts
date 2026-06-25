@@ -59,6 +59,30 @@ describe("SqlTenantDbProvisioning", () => {
     expect(d.seen.provisionedApp).toBe("app-1");
   });
 
+  test("reuses a durable app placement instead of allocating another cluster slot", async () => {
+    let allocateCalls = 0;
+    const d = deps({
+      pool: {
+        async allocate() {
+          allocateCalls++;
+          throw new Error("pool allocation should be skipped when placement exists");
+        },
+      },
+      async claimPlacement(appId) {
+        d.seen.claimedApp = appId;
+        return ALLOCATED;
+      },
+    });
+
+    const result = await new SqlTenantDbProvisioning(d).provisionForApp("app-1");
+
+    expect(result).toEqual({ dsn: PROVISIONED_DSN, clusterId: "cluster-1" });
+    expect(allocateCalls).toBe(0);
+    expect(d.seen.claimedApp).toBe("app-1");
+    expect(d.seen.decryptedArg).toBe("enc:v1:admin-dsn");
+    expect(d.seen.provisionedApp).toBe("app-1");
+  });
+
   test("the returned DSN is the per-tenant one, never the shared env DATABASE_URL", async () => {
     process.env.DATABASE_URL = "postgresql://SHARED@shared/agentdb";
     const result = await new SqlTenantDbProvisioning(deps()).provisionForApp("app-1");
@@ -96,6 +120,28 @@ describe("SqlTenantDbProvisioning", () => {
     expect(d.seen.resolvedHost).toBe("apps-cluster-1"); // host parsed from the stored DSN
     expect(d.seen.deprovisionedApp).toBe("app-1"); // the DROP ran on that cluster
     expect(released).toEqual(["cluster-1"]); // the slot was released
+  });
+
+  test("deprovisionForApp clears the recorded placement after teardown", async () => {
+    const released: string[] = [];
+    const cleared: Array<{ appId: string; clusterId: string }> = [];
+    const d = deps({
+      async resolveClusterByHost() {
+        return { id: "cluster-1", adminDsnEncrypted: "enc:v1:admin-dsn" };
+      },
+      async releaseSlot(clusterId) {
+        released.push(clusterId);
+      },
+      async clearPlacement(appId, clusterId) {
+        cleared.push({ appId, clusterId });
+      },
+    });
+
+    const result = await new SqlTenantDbProvisioning(d).deprovisionForApp("app-1", PROVISIONED_DSN);
+
+    expect(result).toEqual({ deprovisioned: true });
+    expect(released).toEqual(["cluster-1"]);
+    expect(cleared).toEqual([{ appId: "app-1", clusterId: "cluster-1" }]);
   });
 
   test("deprovisionForApp does NOT release the slot when the DB was already gone (idempotent re-run)", async () => {

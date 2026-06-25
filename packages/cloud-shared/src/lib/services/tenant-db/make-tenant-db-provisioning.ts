@@ -21,9 +21,10 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { appDatabasesRepository } from "../../../db/repositories/app-databases";
 import { tenantDbClustersRepository } from "../../../db/repositories/tenant-db-clusters";
 import { fieldEncryption } from "../field-encryption";
-import { ClusterPool, type ClusterPoolStore } from "./cluster-pool";
+import { type AllocatedCluster, ClusterPool, type ClusterPoolStore } from "./cluster-pool";
 import { DirectPgExecutor } from "./direct-pg-executor";
 import { SqlTenantDbProvisioner } from "./tenant-db-provisioner";
 import { SqlTenantDbProvisioning } from "./tenant-db-provisioning";
@@ -44,6 +45,10 @@ export interface MakeTenantDbProvisioningOpts {
   decrypt?: (encrypted: string) => Promise<string>;
   /** Override the role-password generator (deterministic tests). */
   genPassword?: () => string;
+  /** Override durable app->cluster placement claiming (tests). Defaults to app_databases. */
+  claimPlacement?: (appId: string) => Promise<AllocatedCluster>;
+  /** Override durable placement clearing on teardown (tests). Defaults to app_databases. */
+  clearPlacement?: (appId: string, clusterId: string) => Promise<void>;
   /** Override the host->cluster resolver (teardown). Defaults to the repository. */
   resolveClusterByHost?: (
     host: string,
@@ -69,10 +74,19 @@ export function makeTenantDbProvisioning(
     opts.resolveClusterByHost ?? ((host: string) => tenantDbClustersRepository.findByHost(host));
   const releaseSlot =
     opts.releaseSlot ?? ((clusterId: string) => tenantDbClustersRepository.releaseSlot(clusterId));
+  const claimPlacement =
+    opts.claimPlacement ??
+    ((appId: string) => appDatabasesRepository.claimTenantDbPlacementForApp(appId));
+  const clearPlacement =
+    opts.clearPlacement ??
+    ((appId: string, clusterId: string) =>
+      appDatabasesRepository.clearTenantDbPlacementForApp(appId, clusterId));
 
   return new SqlTenantDbProvisioning({
     pool,
     decrypt,
+    claimPlacement,
+    clearPlacement,
     makeProvisioner: (cluster, adminDsn) =>
       new SqlTenantDbProvisioner({
         cluster,
