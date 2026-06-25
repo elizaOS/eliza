@@ -255,17 +255,22 @@
     //   3. system prefers-color-scheme
     (() => {
       try {
-        var mode = localStorage.getItem('eliza:ui-theme-mode');
+        let mode = localStorage.getItem('eliza:ui-theme-mode');
         if (!mode) {
-          var legacy = localStorage.getItem('eliza:ui-theme') || localStorage.getItem('elizaos:ui-theme');
+          const legacy =
+            localStorage.getItem('eliza:ui-theme') ||
+            localStorage.getItem('elizaos:ui-theme');
           mode = (legacy === 'light' || legacy === 'dark') ? legacy : 'system';
         }
-        var dark = mode === 'dark' || (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        var root = document.documentElement;
+        const dark =
+          mode === 'dark' ||
+          (mode !== 'light' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches);
+        const root = document.documentElement;
         root.classList.toggle('dark', dark);
         root.style.colorScheme = dark ? 'dark' : 'light';
         root.setAttribute('data-theme', dark ? 'dark' : 'light');
-      } catch (e) {}
+      } catch {}
     })();
   </script>
   <style>
