@@ -206,7 +206,10 @@ function resolveInstallVersion(
 export async function detectPackageManager(): Promise<"bun" | "npm"> {
   for (const cmd of ["bun", "npm"] as const) {
     try {
-      await execFileAsync(cmd, ["--version"]);
+      await execFileAsync(cmd, ["--version"], {
+        // npm is a `.cmd` shim on Windows; Node can't spawn it without a shell.
+        shell: process.platform === "win32",
+      });
       return cmd;
     } catch (err) {
       logger.debug(
@@ -580,13 +583,13 @@ async function runInstallSpec(
       });
       break;
     default:
-      await execFileAsync("npm", [
-        "install",
-        "--ignore-scripts",
-        spec,
-        "--prefix",
-        targetDir,
-      ]);
+      await execFileAsync(
+        "npm",
+        ["install", "--ignore-scripts", spec, "--prefix", targetDir],
+        // npm is a `.cmd` shim on Windows; Node can't spawn it without a shell.
+        // `spec` is validated by assertValidPackageName/assertValidVersion.
+        { shell: process.platform === "win32" },
+      );
   }
 }
 
@@ -747,12 +750,19 @@ async function gitCloneInstall(
     });
 
     const pm = await detectPackageManager();
-    await execFileAsync(pm, ["install", "--ignore-scripts"], { cwd: tempDir });
+    await execFileAsync(pm, ["install", "--ignore-scripts"], {
+      cwd: tempDir,
+      // `pm` is npm.cmd on Windows when bun is absent; needs a shell to resolve.
+      shell: process.platform === "win32",
+    });
 
     const registrySourceDir = resolveRegistrySourceDir(tempDir, info.directory);
     if (registrySourceDir !== tempDir) {
       try {
-        await execFileAsync(pm, ["run", "build"], { cwd: registrySourceDir });
+        await execFileAsync(pm, ["run", "build"], {
+          cwd: registrySourceDir,
+          shell: process.platform === "win32",
+        });
       } catch (buildErr) {
         logger.warn(
           `[plugin-installer] build step failed for ${info.name}: ${buildErr instanceof Error ? buildErr.message : String(buildErr)}`,
@@ -777,7 +787,10 @@ async function gitCloneInstall(
     }
     let buildFailed = false;
     try {
-      await execFileAsync(pm, ["run", "build"], { cwd: tsDir });
+      await execFileAsync(pm, ["run", "build"], {
+        cwd: tsDir,
+        shell: process.platform === "win32",
+      });
     } catch (buildErr) {
       buildFailed = true;
       logger.warn(
