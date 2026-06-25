@@ -89,15 +89,15 @@ def test_eliza_1_umbrella_is_cc_by_nc_sa() -> None:
     assert "Attribution-NonCommercial-ShareAlike 4.0 International" in rendered
 
 
-def test_qwen3_asr_and_embedding_remain_upstream_exceptions() -> None:
+def test_qwen3_asr_and_embedding_are_retired_sources() -> None:
     asr = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.asr")
     embedding = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.embedding")
 
-    assert "Qwen3-ASR-0.6B-GGUF" in asr.upstream_repo
-    assert "Qwen3-ASR-1.7B-GGUF" in asr.upstream_repo
-    assert "Qwen3 upstream exception" in asr.render()
+    assert "Qwen3-ASR is retired" in asr.upstream_repo
+    assert "Qwen3-ASR GGUF artifacts are retired" in asr.render()
     assert "Qwen3.5-ASR" not in asr.render()
-    assert "Qwen3-Embedding-0.6B-GGUF" in embedding.upstream_repo
+    assert "Qwen3-Embedding is retired" in embedding.upstream_repo
+    assert "Qwen3-Embedding weights" in embedding.render()
     assert "Qwen3.5-Embedding" not in embedding.render()
 
 

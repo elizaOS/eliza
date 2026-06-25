@@ -521,11 +521,12 @@ def render_readiness(
         "readiness path.",
         "- Canonical active text tiers are Gemma 4 E2B (`2b`), "
         "Gemma 4 E4B (`4b`), Gemma 4 12B (`9b`), "
-        "and Gemma 4 31B (`27b`). ASR and embedding are real Qwen3 upstream "
-        "exceptions: use the published Qwen3-ASR "
-        "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
-        "repos; do not invent gemma-4-ASR, gemma-4-Embedding, "
-        "Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.",
+        "and Gemma 4 31B (`27b`). Qwen3-ASR and Qwen3-Embedding are retired "
+        "for active Gemma bundles. Base-v1 release readiness remains blocked "
+        "until verified Gemma-compatible ASR GGUF/model-projector artifacts "
+        "and any dedicated embedding artifacts are configured, hosted, and "
+        "recorded in `sourceModels`; base-v1-candidate bundles may record "
+        "explicit experimental sources without becoming default-eligible.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
         "Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "
