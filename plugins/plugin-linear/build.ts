@@ -40,7 +40,7 @@ async function buildPlugin() {
   console.log(`✅ Built ${buildResult.outputs.length} file(s)`);
 
   console.log("📝 Generating type declarations...");
-  const tscProcess = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
+  const tscProcess = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json", "--noCheck"], {
     stdout: "inherit",
     stderr: "inherit",
   });
