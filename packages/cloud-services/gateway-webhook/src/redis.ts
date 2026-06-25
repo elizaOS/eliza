@@ -5,6 +5,19 @@ import { logger } from "./logger";
 
 const requireCJS = createRequire(import.meta.url);
 
+type RedisMockConstructor<T> = new () => T;
+type RedisMockModule<T> =
+  | RedisMockConstructor<T>
+  | { default?: RedisMockConstructor<T> };
+
+function resolveRedisMockConstructor<T>(
+  mod: RedisMockModule<T>,
+): RedisMockConstructor<T> {
+  if (typeof mod === "function") return mod;
+  if (mod.default) return mod.default;
+  throw new TypeError("ioredis-mock did not export a Redis constructor");
+}
+
 interface SetOptions {
   ex?: number;
   nx?: boolean;
@@ -73,10 +86,9 @@ class MemoryRedisAdapter implements GatewayRedis {
   constructor() {
     // ioredis-mock implements the same surface as ioredis with an in-memory
     // backend. We type it as IORedis to reuse the native adapter shape.
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic ESM/CJS interop with ioredis-mock
-    const mod = requireCJS("ioredis-mock") as any;
-    const RedisMockCtor = mod?.default ?? mod;
-    this.client = new RedisMockCtor() as IORedis;
+    const mod = requireCJS("ioredis-mock") as RedisMockModule<IORedis>;
+    const RedisMockCtor = resolveRedisMockConstructor(mod);
+    this.client = new RedisMockCtor();
   }
 
   async get<T = unknown>(key: string): Promise<T | null> {

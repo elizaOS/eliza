@@ -5,12 +5,24 @@ import { logger } from "./logger";
 
 let client: Redis | null = null;
 
+type RedisMockConstructor<T> = new () => T;
+type RedisMockModule<T> =
+  | RedisMockConstructor<T>
+  | { default?: RedisMockConstructor<T> };
+
+function resolveRedisMockConstructor<T>(
+  mod: RedisMockModule<T>,
+): RedisMockConstructor<T> {
+  if (typeof mod === "function") return mod;
+  if (mod.default) return mod.default;
+  throw new TypeError("ioredis-mock did not export a Redis constructor");
+}
+
 function createMockRedis(): Redis {
   const requireCJS = createRequire(import.meta.url);
-  // biome-ignore lint/suspicious/noExplicitAny: ESM/CJS interop with ioredis-mock
-  const mod = requireCJS("ioredis-mock") as any;
-  const Ctor = mod?.default ?? mod;
-  return new Ctor() as Redis;
+  const mod = requireCJS("ioredis-mock") as RedisMockModule<Redis>;
+  const Ctor = resolveRedisMockConstructor(mod);
+  return new Ctor();
 }
 
 /**

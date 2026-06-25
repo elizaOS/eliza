@@ -41,11 +41,23 @@ interface IoRedisLike {
   quit(): Promise<string>;
 }
 
+type RedisMockConstructor<T> = new () => T;
+type RedisMockModule<T> =
+  | RedisMockConstructor<T>
+  | { default?: RedisMockConstructor<T> };
+
+function resolveRedisMockConstructor<T>(
+  mod: RedisMockModule<T>,
+): RedisMockConstructor<T> {
+  if (typeof mod === "function") return mod;
+  if (mod.default) return mod.default;
+  throw new TypeError("ioredis-mock did not export a Redis constructor");
+}
+
 function createIoRedisMock(): IoRedisLike {
-  // biome-ignore lint/suspicious/noExplicitAny: ESM/CJS interop with ioredis-mock
-  const mod = getRequireCJS()("ioredis-mock") as any;
-  const Ctor = mod?.default ?? mod;
-  return new Ctor() as IoRedisLike;
+  const mod = getRequireCJS()("ioredis-mock") as RedisMockModule<IoRedisLike>;
+  const Ctor = resolveRedisMockConstructor(mod);
+  return new Ctor();
 }
 
 interface SetOptions {
