@@ -26,4 +26,4 @@ COPY --from=builder /app /app
 EXPOSE 3000
 
 # Run the agent specifically from the monorepo
-CMD ["bun", "run", "--filter", "@elizaos/agent", "start"]
+CMD ["sh", "-c", "pwd && ls -la && ls -la /app && ls -la /app/packages && ls -la /app/packages/agent && bun run start"]
