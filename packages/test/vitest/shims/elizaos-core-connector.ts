@@ -117,3 +117,27 @@ export async function withStandaloneTrajectory<T>(
 ): Promise<T> {
   return await fn();
 }
+
+export function runWithTrajectoryContext<T>(
+  _context: unknown,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return fn();
+}
+
+export function resolveOptimizedPromptForRuntime(
+  runtime: {
+    getService?: (name: string) => {
+      getPrompt?: (task: string) => { prompt?: string } | null;
+    } | null;
+  },
+  task: string,
+  baseline: string,
+): string {
+  return (
+    runtime
+      .getService?.("optimized_prompt")
+      ?.getPrompt?.(task)
+      ?.prompt?.trim() || baseline
+  );
+}
