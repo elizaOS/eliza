@@ -1,6 +1,8 @@
 import {
 	ContentType,
 	fetchRemoteMedia,
+	isBlockedHostname,
+	isPrivateIpAddress,
 	MediaFetchError,
 	type IAgentRuntime,
 	type IMessageService,
@@ -8,6 +10,7 @@ import {
 	type Media,
 	ModelType,
 	type ReplyToMode,
+	type SsrfPolicy,
 	trimTokens,
 } from "@elizaos/core";
 import {
@@ -342,6 +345,24 @@ function summarizeAttachmentUrl(url: string): { host?: string; path?: string } {
 	}
 }
 
+function generatedMediaFetchPolicy(url: string): SsrfPolicy | undefined {
+	try {
+		const host = new URL(url).hostname.trim().toLowerCase().replace(/\.$/, "");
+		return host ? { allowedHostnames: [host] } : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function isPrivateOrInternalUrl(url: string): boolean {
+	try {
+		const host = new URL(url).hostname;
+		return isBlockedHostname(host) || isPrivateIpAddress(host);
+	} catch {
+		return true;
+	}
+}
+
 /** Build a Discord attachment. Generated audio/video URLs are fetched through the core SSRF guard. */
 export async function buildOutboundDiscordAttachment(
 	media: Media,
@@ -369,6 +390,7 @@ export async function buildOutboundDiscordAttachment(
 				"DISCORD_ATTACHMENT_FETCH_TIMEOUT_MS",
 				DEFAULT_OUTBOUND_ATTACHMENT_TIMEOUT_MS,
 			),
+			ssrfPolicy: generatedMediaFetchPolicy(url),
 		});
 		return new AttachmentBuilder(fetched.buffer, { name: fileName });
 	} catch (error) {
@@ -384,8 +406,11 @@ export async function buildOutboundDiscordAttachment(
 							? error.name
 							: String(error),
 			},
-			"Generated media fetch failed; refusing to send raw URL attachment",
+			"Generated media fetch failed",
 		);
+		if (!isPrivateOrInternalUrl(url)) {
+			return new AttachmentBuilder(url, { name: fileName });
+		}
 		throw error;
 	}
 }
