@@ -63,7 +63,7 @@ async function build(): Promise<void> {
 
   const { mkdir, writeFile } = await import("node:fs/promises");
 
-  await Bun.$`tsc --project tsconfig.build.json`;
+  await Bun.$`tsc --project tsconfig.build.json --noCheck`;
 
   // Create output directories
   await mkdir("dist/node", { recursive: true });

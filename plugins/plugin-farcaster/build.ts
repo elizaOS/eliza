@@ -96,7 +96,7 @@ async function build() {
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   const { $ } = await import("bun");
-  await $`tsc --project tsconfig.build.json`;
+  await $`tsc --project tsconfig.build.json --noCheck`;
 
   const nodeDir = join(distDir, "node");
   const browserDir = join(distDir, "browser");

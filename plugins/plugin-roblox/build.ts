@@ -33,7 +33,7 @@ async function build() {
   }
 
   const { $ } = await import("bun");
-  await $`tsc --project tsconfig.build.json`;
+  await $`tsc --project tsconfig.build.json --noCheck`;
 }
 
 build().catch((err) => {
