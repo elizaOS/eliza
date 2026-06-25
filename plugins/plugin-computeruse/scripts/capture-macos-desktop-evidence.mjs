@@ -1,13 +1,7 @@
 #!/usr/bin/env bun
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import {
-  copyFile,
-  mkdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -152,10 +146,12 @@ function describePng(buffer, label) {
   }
   if (issues.length > 0) {
     throw new Error(
-      `${label}: screenshot quality failed: ${issues.join("; ")}; metrics=${JSON.stringify({
-        byteLength: buffer.length,
-        ...quality,
-      })}`,
+      `${label}: screenshot quality failed: ${issues.join("; ")}; metrics=${JSON.stringify(
+        {
+          byteLength: buffer.length,
+          ...quality,
+        },
+      )}`,
     );
   }
   return {
@@ -169,7 +165,27 @@ function displayForPoint(displays, x, y) {
     displays.find((display) => {
       const [dx, dy, width, height] = display.bounds;
       return x >= dx && x < dx + width && y >= dy && y < dy + height;
-    }) ?? displays.find((display) => display.primary) ?? displays[0]
+    }) ??
+    displays.find((display) => display.primary) ??
+    displays[0]
+  );
+}
+
+function usableWindow(windowInfo) {
+  const app = String(windowInfo?.app ?? "").trim();
+  const title = String(windowInfo?.title ?? "").trim();
+  const id = String(windowInfo?.id ?? "").trim();
+  const meaningfulApp = app.length > 0 && app.toLowerCase() !== "unknown";
+  const meaningfulTitle = title.length > 0 && title.toLowerCase() !== "unknown";
+  return id.length > 0 && (meaningfulApp || meaningfulTitle);
+}
+
+function focusableWindow(windowInfo) {
+  const app = String(windowInfo?.app ?? "").trim();
+  return (
+    usableWindow(windowInfo) &&
+    app.length > 0 &&
+    app.toLowerCase() !== "unknown"
   );
 }
 
@@ -243,7 +259,10 @@ async function runCheck(checks, details, id, fn) {
         `${id} failed: ${error instanceof Error ? error.message : String(error)}`,
       ],
       {
-        error: error instanceof Error ? error.stack ?? error.message : String(error),
+        error:
+          error instanceof Error
+            ? (error.stack ?? error.message)
+            : String(error),
       },
     );
   }
@@ -262,16 +281,20 @@ async function runTextEditInputCheck(service, displays) {
       previousWindow = activeBefore.window;
     }
 
-    runText("osascript", [
-      "-e",
-      'tell application "TextEdit"',
-      "-e",
-      "activate",
-      "-e",
-      'make new document with properties {text:""}',
-      "-e",
-      "end tell",
-    ]);
+    runText(
+      "osascript",
+      [
+        "-e",
+        'tell application "TextEdit"',
+        "-e",
+        "activate",
+        "-e",
+        'make new document with properties {text:""}',
+        "-e",
+        "end tell",
+      ],
+      { timeout: 30_000 },
+    );
     createdDocument = true;
     await new Promise((resolve) => setTimeout(resolve, 700));
 
@@ -279,7 +302,9 @@ async function runTextEditInputCheck(service, displays) {
       action: "get_current_window_id",
     });
     if (!active.success || !active.window) {
-      throw new Error(`could not identify active TextEdit window: ${active.error ?? "unknown"}`);
+      throw new Error(
+        `could not identify active TextEdit window: ${active.error ?? "unknown"}`,
+      );
     }
 
     const boundsResult = await service.executeWindowAction({
@@ -287,14 +312,19 @@ async function runTextEditInputCheck(service, displays) {
       windowId: active.window.id,
     });
     if (!boundsResult.success || !boundsResult.bounds) {
-      throw new Error(`could not read TextEdit bounds: ${boundsResult.error ?? "unknown"}`);
+      const rawReason = boundsResult.error ?? "unknown";
+      const reason = String(rawReason).includes("Window not found")
+        ? `${rawReason}; listWindows could not resolve the TextEdit window. Grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry.`
+        : rawReason;
+      throw new Error(`could not read TextEdit bounds: ${reason}`);
     }
 
     const bounds = boundsResult.bounds;
     const globalX = Math.round(bounds.x + bounds.width / 2);
     const globalY = Math.round(bounds.y + Math.max(90, bounds.height / 2));
     const display = displayForPoint(displays, globalX, globalY);
-    if (!display) throw new Error("no display available for TextEdit input target");
+    if (!display)
+      throw new Error("no display available for TextEdit input target");
 
     const [displayX, displayY] = display.bounds;
     const coordinate = [globalX - displayX, globalY - displayY];
@@ -388,16 +418,25 @@ async function runBrowserCheck(service, outDir, artifacts) {
     throw new Error(`browser_open failed: ${open.error ?? "unknown"}`);
   }
   const dom = await service.executeCommand("browser_get_dom");
-  if (!dom.success || !String(dom.content ?? "").includes("macOS CUA Evidence")) {
-    throw new Error(`browser_get_dom did not return the evidence page: ${dom.error ?? "unknown"}`);
+  if (
+    !dom.success ||
+    !String(dom.content ?? "").includes("macOS CUA Evidence")
+  ) {
+    throw new Error(
+      `browser_get_dom did not return the evidence page: ${dom.error ?? "unknown"}`,
+    );
   }
   const clickables = await service.executeCommand("browser_get_clickables");
   if (!clickables.success) {
-    throw new Error(`browser_get_clickables failed: ${clickables.error ?? "unknown"}`);
+    throw new Error(
+      `browser_get_clickables failed: ${clickables.error ?? "unknown"}`,
+    );
   }
   const screenshot = await service.executeCommand("browser_screenshot");
   if (!screenshot.success) {
-    throw new Error(`browser_screenshot failed: ${screenshot.error ?? "unknown"}`);
+    throw new Error(
+      `browser_screenshot failed: ${screenshot.error ?? "unknown"}`,
+    );
   }
 
   const browserPng = pngBufferFromBase64(screenshot.screenshot);
@@ -430,7 +469,7 @@ async function runBrowserCheck(service, outDir, artifacts) {
   };
 }
 
-async function runApprovalCheck(outDir) {
+async function runApprovalCheck(outDir, artifacts) {
   const approvalPath = path.join(outDir, "approval-full-control.txt");
 
   const smartService = await ComputerUseService.start(
@@ -451,8 +490,16 @@ async function runApprovalCheck(outDir) {
     manager.setMode("off");
     const offDenied = manager.isDenyAll();
 
-    if (!smartReadOnly || smartWrite || !fullControl || approveAll || !offDenied) {
-      throw new Error("approval manager mode predicates did not match expected policy");
+    if (
+      !smartReadOnly ||
+      smartWrite ||
+      !fullControl ||
+      approveAll ||
+      !offDenied
+    ) {
+      throw new Error(
+        "approval manager mode predicates did not match expected policy",
+      );
     }
 
     const pending = smartService.executeCommand("file_write", {
@@ -460,10 +507,16 @@ async function runApprovalCheck(outDir) {
       content: "should not be written without approval",
     });
     const approvalId = await waitForPendingApproval(smartService);
-    smartService.resolveApproval(approvalId, false, "macOS evidence denial check");
+    smartService.resolveApproval(
+      approvalId,
+      false,
+      "macOS evidence denial check",
+    );
     const denied = await pending;
     if (denied.success) {
-      throw new Error("smart_approve destructive action unexpectedly succeeded without approval");
+      throw new Error(
+        "smart_approve destructive action unexpectedly succeeded without approval",
+      );
     }
 
     smartService.setApprovalMode("full_control");
@@ -472,8 +525,11 @@ async function runApprovalCheck(outDir) {
       content: "full_control approval evidence",
     });
     if (!fullWrite.success) {
-      throw new Error(`full_control file_write failed: ${fullWrite.error ?? "unknown"}`);
+      throw new Error(
+        `full_control file_write failed: ${fullWrite.error ?? "unknown"}`,
+      );
     }
+    artifacts.push(relativeToRepo(approvalPath));
 
     smartService.setApprovalMode("off");
     const offResult = await smartService.executeCommand("screenshot");
@@ -548,7 +604,10 @@ async function main() {
         "clipboard",
       ];
       for (const key of expectedKeys) {
-        if (!capabilities[key] || typeof capabilities[key].available !== "boolean") {
+        if (
+          !capabilities[key] ||
+          typeof capabilities[key].available !== "boolean"
+        ) {
           throw new Error(`missing capability ${key}`);
         }
       }
@@ -557,7 +616,10 @@ async function main() {
         requiredEvidence: [
           "platform is darwin",
           `reported capabilities: ${expectedKeys
-            .map((key) => `${key}=${capabilities[key].available ? "available" : "unavailable"}:${capabilities[key].tool}`)
+            .map(
+              (key) =>
+                `${key}=${capabilities[key].available ? "available" : "unavailable"}:${capabilities[key].tool}`,
+            )
             .join("; ")}`,
           `service capabilities match darwin probe for screenshot=${serviceCapabilities.screenshot.available}, windowList=${serviceCapabilities.windowList.available}`,
         ],
@@ -578,18 +640,25 @@ async function main() {
         throw new Error(screenshotResult.error ?? "screenshot failed");
       }
       const screenshotPng = pngBufferFromBase64(screenshotResult.screenshot);
-      screenshotQuality = describePng(screenshotPng, "primary display screenshot");
+      screenshotQuality = describePng(
+        screenshotPng,
+        "primary display screenshot",
+      );
       screenshotArtifact = path.join(options.outDir, "screenshot-primary.png");
       await writeFile(screenshotArtifact, screenshotPng);
       artifacts.push(relativeToRepo(screenshotArtifact));
 
       const display =
-        displays.find((candidate) => candidate.id === screenshotResult.displayId) ??
+        displays.find(
+          (candidate) => candidate.id === screenshotResult.displayId,
+        ) ??
         displays.find((candidate) => candidate.primary) ??
         displays[0];
       if (!display) throw new Error("no display metadata returned");
       const expectedWidth = Math.round(display.bounds[2] * display.scaleFactor);
-      const expectedHeight = Math.round(display.bounds[3] * display.scaleFactor);
+      const expectedHeight = Math.round(
+        display.bounds[3] * display.scaleFactor,
+      );
       if (
         screenshotQuality.width !== expectedWidth ||
         screenshotQuality.height !== expectedHeight
@@ -639,10 +708,32 @@ async function main() {
       if (!list.success || !Array.isArray(list.windows)) {
         throw new Error(`list_windows failed: ${list.error ?? "unknown"}`);
       }
+      const usableWindows = list.windows.filter(usableWindow);
+      if (list.windows.length === 0) {
+        throw new Error(
+          "list_windows returned no visible windows; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
+        );
+      }
+      if (usableWindows.length === 0) {
+        throw new Error(
+          "list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
+        );
+      }
+      const focusableWindows = usableWindows.filter(focusableWindow);
+      if (focusableWindows.length === 0) {
+        throw new Error(
+          "list_windows returned windows without focusable application names; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
+        );
+      }
       const active = await service.executeWindowAction({
         action: "get_current_window_id",
       });
-      const target = active?.window ?? list.windows[0];
+      const target =
+        active?.window && focusableWindow(active.window)
+          ? (focusableWindows.find(
+              (windowInfo) => windowInfo.id === active.window.id,
+            ) ?? focusableWindows[0])
+          : focusableWindows[0];
       if (!target) throw new Error("no visible window available to focus");
       const focus = await service.executeCommand("switch_to_window", {
         windowId: target.id,
@@ -680,31 +771,41 @@ async function main() {
         ["Accessibility proof skipped by --skip-input"],
       );
     } else {
-      const inputResult = await runTextEditInputCheck(service, displays);
-      setCheck(
-        checks,
-        details,
-        "mouseKeyboardInput",
-        inputResult.status,
-        inputResult.requiredEvidence,
-        { details: inputResult.details },
-      );
-      setCheck(
-        checks,
-        details,
-        "accessibilityPermission",
-        "passed",
-        [
-          "granted Accessibility permission allowed TextEdit focus, window bounds, click, key_combo, and type operations",
-          "missing Accessibility permission is classified by desktop service errors when TCC blocks input or System Events access",
-        ],
-        {
-          details: {
-            activeWindow: inputResult.details.activeWindow,
-            bounds: inputResult.details.bounds,
+      try {
+        const inputResult = await runTextEditInputCheck(service, displays);
+        setCheck(
+          checks,
+          details,
+          "mouseKeyboardInput",
+          inputResult.status,
+          inputResult.requiredEvidence,
+          { details: inputResult.details },
+        );
+        setCheck(
+          checks,
+          details,
+          "accessibilityPermission",
+          "passed",
+          [
+            "granted Accessibility permission allowed TextEdit focus, window bounds, click, key_combo, and type operations",
+            "missing Accessibility permission is classified by desktop service errors when TCC blocks input or System Events access",
+          ],
+          {
+            details: {
+              activeWindow: inputResult.details.activeWindow,
+              bounds: inputResult.details.bounds,
+            },
           },
-        },
-      );
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setCheck(checks, details, "mouseKeyboardInput", "failed", [
+          `controlled TextEdit input proof failed: ${message}`,
+        ]);
+        setCheck(checks, details, "accessibilityPermission", "failed", [
+          `Accessibility-gated input/window proof failed: ${message}`,
+        ]);
+      }
     }
 
     if (options.skipBrowser) {
@@ -756,21 +857,44 @@ async function main() {
     });
 
     await runCheck(checks, details, "approvalMode", () =>
-      runApprovalCheck(options.outDir),
+      runApprovalCheck(options.outDir, artifacts),
     );
   } finally {
     await service.stop();
   }
 
-  const manifestChecks = CHECK_ORDER.map((id) => checks.get(id) ?? newCheck(id));
+  const manifestChecks = CHECK_ORDER.map(
+    (id) => checks.get(id) ?? newCheck(id),
+  );
   const complete = manifestChecks.every((check) =>
     ["passed", "blocked_by_platform"].includes(check.status),
   );
   const failed = manifestChecks.some((check) => check.status === "failed");
+  const manifestPath = path.join(
+    options.outDir,
+    "macos-desktop-validation.json",
+  );
+  const reportPath = path.join(options.outDir, "report.json");
+  const readmePath = path.join(options.outDir, "README.md");
+  const stableManifestPath = path.join(options.outDir, "manifest.json");
+  const finalArtifacts = Array.from(
+    new Set([
+      ...artifacts,
+      relativeToRepo(manifestPath),
+      relativeToRepo(reportPath),
+      relativeToRepo(readmePath),
+      relativeToRepo(stableManifestPath),
+    ]),
+  );
+
   const manifest = {
     schemaVersion: 1,
     platform: "macos-desktop",
-    status: complete ? "passed" : failed ? "failed" : "requires_device_evidence",
+    status: complete
+      ? "passed"
+      : failed
+        ? "failed"
+        : "requires_device_evidence",
     target: {
       minimumMacos: "macOS 13 or newer",
       requiredPermissions: ["Screen Recording", "Accessibility"],
@@ -782,7 +906,7 @@ async function main() {
       buildId,
       validatedAt: generatedAt,
       validator: `bun scripts/${SCRIPT_NAME} (${gitHead})`,
-      artifacts,
+      artifacts: finalArtifacts,
     },
     checks: manifestChecks,
   };
@@ -805,13 +929,9 @@ async function main() {
     details,
   };
 
-  const manifestPath = path.join(options.outDir, "macos-desktop-validation.json");
-  const reportPath = path.join(options.outDir, "report.json");
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-  artifacts.push(relativeToRepo(manifestPath), relativeToRepo(reportPath));
 
-  const readmePath = path.join(options.outDir, "README.md");
   await writeFile(
     readmePath,
     [
@@ -825,7 +945,7 @@ async function main() {
       `- Git: \`${gitHead}\``,
       "",
       "Artifacts:",
-      ...artifacts.map((artifact) => `- \`${artifact}\``),
+      ...finalArtifacts.map((artifact) => `- \`${artifact}\``),
       "",
       "Validate the generated manifest with:",
       "",
@@ -837,7 +957,6 @@ async function main() {
     "utf8",
   );
 
-  const stableManifestPath = path.join(options.outDir, "manifest.json");
   await copyFile(manifestPath, stableManifestPath);
 
   console.log(
