@@ -3,25 +3,20 @@ import type {
   FieldRenderer,
   FieldRenderProps,
 } from "../../config/config-catalog";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import {
+  type MockAppOptions,
+  MockAppProvider,
+} from "../../storybook/mock-providers";
 import { ConfigField } from "./config-field";
 
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") {
-      return (key: string, opts?: { defaultValue?: string }) => {
-        if (key === "secretsview.Required") return "Required";
-        if (key === "config-field.Configured") return "Configured";
-        if (key === "config-field.Times") return "×";
-        return opts?.defaultValue ?? key;
-      };
-    }
-    if (prop === "uiLanguage") return "en";
-    if (prop === "companionHalfFramerateMode") return "when_saving_power";
-    return () => {};
+const mockAppValue = {
+  t: (key: string, opts?: { defaultValue?: string }) => {
+    if (key === "secretsview.Required") return "Required";
+    if (key === "config-field.Configured") return "Configured";
+    if (key === "config-field.Times") return "×";
+    return opts?.defaultValue ?? key;
   },
-});
+} satisfies MockAppOptions;
 
 const sampleRenderer: FieldRenderer = (props: FieldRenderProps) => (
   <input
@@ -29,6 +24,7 @@ const sampleRenderer: FieldRenderer = (props: FieldRenderProps) => (
     value={String(props.value ?? "")}
     onChange={() => {}}
     placeholder={props.hint.placeholder}
+    aria-label={props.hint.label ?? props.key}
     readOnly={props.readonly}
     className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
   />
@@ -57,11 +53,11 @@ const meta = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <AppContext.Provider value={mockAppContext}>
+      <MockAppProvider value={mockAppValue}>
         <div className="p-6 max-w-md bg-background">
           <Story />
         </div>
-      </AppContext.Provider>
+      </MockAppProvider>
     ),
   ],
   argTypes: {

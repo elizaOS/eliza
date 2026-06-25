@@ -5,14 +5,6 @@
   "chat-messageattachments--pdf-inline": [
     "Blocked script execution in '<url> because the document's frame is sandboxed and the 'allow-scripts' permission is not set."
   ],
-  "configui-configfield--default": [
-    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at <fn> (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
-    "Error rendering story 'configui-configfield--default':"
-  ],
-  "customactions-customactionspanel--open": [
-    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at <fn> (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
-    "Error rendering story 'customactions-customactionspanel--open':"
-  ],
   "pages-databasepageview--vectors": [
     "DynamicViewLoader failed to load view \"vector-browser\" from /api/views/vector-browser/bundle.js TypeError: Failed to fetch dynamically imported module: <url>"
   ],

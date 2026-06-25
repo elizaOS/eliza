@@ -343,6 +343,8 @@
   "composites-trajectories-trajectorypipelinegraph--with-skipped-stages": [
     "color-contrast"
   ],
+  "configui-configfield--readonly": ["color-contrast"],
+  "configui-configfield--with-default": ["color-contrast", "label"],
   "configui-configrenderer--default": ["button-name", "color-contrast"],
   "configui-configrenderer--fully-configured": [
     "button-name",
@@ -385,6 +387,7 @@
   "conversations-conversationssidebar--default": ["aria-valid-attr-value"],
   "conversations-conversationssidebar--game-modal": ["aria-valid-attr-value"],
   "conversations-conversationssidebar--mobile": ["aria-valid-attr-value"],
+  "customactions-customactionspanel--open": ["button-name", "label"],
   "desktop-desktoptabbar--default": ["aria-required-children"],
   "desktop-desktoptabbar--many-tabs": ["aria-required-children"],
   "desktop-desktoptabbar--no-active-tab": ["aria-required-children"],
