@@ -236,7 +236,7 @@ function renderText(node: SpatialTextNode, width: number): string[] {
       : wrapTextWithAnsi(node.value, width);
 
   const align = node.align ?? "start";
-  return lines.map((line) => alignH(sgr(line, codes), width, align));
+  return lines.map((line: string) => alignH(sgr(line, codes), width, align));
 }
 
 function renderButton(node: SpatialButtonNode, width: number): string[] {
