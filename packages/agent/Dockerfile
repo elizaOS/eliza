@@ -12,6 +12,7 @@ WORKDIR /app
 COPY . .
 
 RUN bun install --ignore-scripts
+RUN bun run generate:action-search-keywords
 
 # Final runtime stage
 FROM oven/bun:latest AS runner
