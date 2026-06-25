@@ -110,6 +110,14 @@ packages/training/benchmarks` is 140 passed / 1 skipped.
 > directly. Records:
 > [`evidence/platform/darwin-arm64-metal.json`](evidence/platform/darwin-arm64-metal.json)
 > (+ `darwin-arm64-metal-verify.log`, `darwin-arm64-metal-gemma-gen.log`).
+>
+> **2026-06-25 — per-tier Metal throughput matrix (#9580).** The single
+> gemma-4-E2B point above is one model; the full **per-tier** sweep (the
+> Qwen3.5-era Eliza-1 bundles staged on the M4 Max — `0_6b`→`9b`, pp512
+> 9307→724 / tg128 103→41 t/s) + the §8 kernel gate re-verified 8/8 today live
+> in [`metal-per-tier-perf-matrix.md`](metal-per-tier-perf-matrix.md), reproducible
+> via [`metal-perf-matrix.mjs`](metal-perf-matrix.mjs). Re-run once the Gemma-4
+> bundles are staged for per-tier Gemma numbers.
 
 | Target | Build | Kernel verify | Bench | Status | Prereq if not done |
 | --- | --- | --- | --- | --- | --- |
