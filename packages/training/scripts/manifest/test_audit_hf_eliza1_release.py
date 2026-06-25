@@ -14,6 +14,7 @@ from scripts.manifest.audit_hf_eliza1_release import (  # noqa: E402
     DATASET_API,
     ACTIVE_TEXT_SFT_REQUIRED_FILES,
     ACTIVE_TEXT_SFT_ROOT,
+    ACTIVE_TEXT_SFT_TIER,
     DATASET_SPLITS_API,
     FINETUNE_COMPARISON_EVIDENCE_PATH,
     IMAGEGEN_RUNTIME_EVIDENCE_PATH,
@@ -267,8 +268,8 @@ def _passing_model_readme() -> str:
     return "\n".join(
         [
             "# Eliza-1",
-            "Runtime bundles: `bundles/0_8b/`, `bundles/2b/`, `bundles/4b/`, "
-            "`bundles/9b/`, `bundles/27b/`, `bundles/27b-256k/`.",
+            "Runtime bundles: `bundles/2b/`, `bundles/4b/`, `bundles/9b/`, "
+            "`bundles/27b/`, `bundles/27b-256k/`.",
             "Training data and fine-tuning examples are in `elizaos/eliza-1-training`.",
             "Each text tier ships native context and half context variants.",
             "The runtime includes image generation, structured response handling, "
@@ -379,9 +380,9 @@ def _passing_imagegen_runtime() -> str:
                     "metal": {"status": "pass", "report": "evidence/imagegen/metal.json"},
                 },
                 "models": {
-                    "0_8b/sd-1.5-Q5_0.gguf": {
+                    "2b/sd-1.5-Q5_0.gguf": {
                         "status": "pass",
-                        "report": "evidence/imagegen/sd15-0_8b-metal-smoke.json",
+                        "report": "evidence/imagegen/sd15-2b-metal-smoke.json",
                     },
                     "9b/z-image-turbo-Q4_K_M.gguf": {
                         "status": "pass",
@@ -404,15 +405,15 @@ def _passing_finetune_comparison() -> str:
             "fineTunedReleaseState": "finetuned-v2",
             "activeTiers": list(ELIZA_1_TIERS),
             "comparisons": {
-                "0_8b": {
-                    "baselineModel": "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
-                    "fineTunedModel": "bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf",
+                ACTIVE_TEXT_SFT_TIER: {
+                    "baselineModel": f"bundles/{ACTIVE_TEXT_SFT_TIER}/text/eliza-1-{ACTIVE_TEXT_SFT_TIER}-128k.gguf",
+                    "fineTunedModel": f"bundles/{ACTIVE_TEXT_SFT_TIER}/finetuned-v2/eliza-1-{ACTIVE_TEXT_SFT_TIER}-sft.gguf",
                     "passed": True,
                     "beatsBaseline": True,
                     "reports": {
-                        "eliza_bench": "evidence/training/0_8b/eliza-bench.json",
-                        "native_tool_call": "evidence/training/0_8b/native-tool-call.json",
-                        "structured_response": "evidence/training/0_8b/structured-response.json",
+                        "eliza_bench": f"evidence/training/{ACTIVE_TEXT_SFT_TIER}/eliza-bench.json",
+                        "native_tool_call": f"evidence/training/{ACTIVE_TEXT_SFT_TIER}/native-tool-call.json",
+                        "structured_response": f"evidence/training/{ACTIVE_TEXT_SFT_TIER}/structured-response.json",
                     },
                 }
             },
@@ -533,9 +534,9 @@ def _passing_dataset_live_audit() -> str:
 def _passing_active_sft_manifest() -> str:
     return __import__("json").dumps(
         {
-            "schema": "eliza.eliza1_sft_0_8b_manifest.v1",
+            "schema": f"eliza.eliza1_sft_{ACTIVE_TEXT_SFT_TIER}_manifest.v1",
             "base_model": "google/gemma-4-E2B",
-            "published_name": "eliza-1-0_8b",
+            "published_name": f"eliza-1-{ACTIVE_TEXT_SFT_TIER}",
             "counts": {"train": 116, "val": 6, "test": 3, "total": 125},
             "privacy_filter": {
                 "backend": "privacy_filter_trajectories.redact_value (canonical inline filter)",
@@ -551,7 +552,7 @@ def _passing_active_sft_manifest() -> str:
 def _passing_active_sft_validation() -> str:
     return __import__("json").dumps(
         {
-            "schema": "eliza.eliza1_sft_0_8b_validation.v1",
+            "schema": f"eliza.eliza1_sft_{ACTIVE_TEXT_SFT_TIER}_validation.v1",
             "passed": True,
             "blockers": [],
             "splits": {
@@ -784,7 +785,7 @@ def _passing_model_manifest(tier: str) -> str:
                 "imagegen": {
                     "base": (
                         "second-state/stable-diffusion-v1-5-GGUF"
-                        if tier in {"0_8b", "2b", "4b"}
+                        if tier in {"2b", "4b"}
                         else "city96/z-image-turbo-gguf"
                     ),
                     "license": "model license",
@@ -852,7 +853,7 @@ def test_hf_release_audit_requires_complete_model_readme() -> None:
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "model README content passed"
-        and "bundles/0_8b/: missing" in check["detail"]
+        and "bundles/2b/: missing" in check["detail"]
         and "elizaos/eliza-1-training: missing" in check["detail"]
         for check in failed
     )
@@ -955,8 +956,8 @@ def test_hf_release_audit_blocks_dirty_text_context_variant_evidence() -> None:
         check["name"] == "text context variant audit evidence passed"
         and "passed: False" in check["detail"]
         and "blockers: non-empty" in check["detail"]
-        and "0_8b.passed: False" in check["detail"]
-        and "0_8b.128k.existsOnHub: False" in check["detail"]
+        and "2b.passed: False" in check["detail"]
+        and "2b.128k.existsOnHub: False" in check["detail"]
         for check in failed
     )
 
@@ -1053,7 +1054,7 @@ def test_hf_release_audit_blocks_required_file_missing_from_manifest_files() -> 
 
 
 def test_hf_release_audit_blocks_mtp_tuning_report_missing_from_manifest_files() -> None:
-    bad_manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
+    bad_manifest = __import__("json").loads(_passing_model_manifest("2b"))
     bad_manifest["files"]["evals"] = [
         entry
         for entry in bad_manifest["files"]["evals"]
@@ -1062,31 +1063,31 @@ def test_hf_release_audit_blocks_mtp_tuning_report_missing_from_manifest_files()
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
-        fetch_text=_text_fetcher(model_manifests={"0_8b": __import__("json").dumps(bad_manifest)}),
+        fetch_text=_text_fetcher(model_manifests={"2b": __import__("json").dumps(bad_manifest)}),
     )
 
     assert not report.ok
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
-        check["name"] == "0_8b manifest files cover required runtime artifacts"
+        check["name"] == "2b manifest files cover required runtime artifacts"
         and "evals/mtp-tuning-report.json" in check["detail"]
         for check in failed
     )
 
 
 def test_hf_release_audit_blocks_missing_runtime_component_lineage() -> None:
-    bad_manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
+    bad_manifest = __import__("json").loads(_passing_model_manifest("2b"))
     del bad_manifest["lineage"]["imagegen"]
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
-        fetch_text=_text_fetcher(model_manifests={"0_8b": __import__("json").dumps(bad_manifest)}),
+        fetch_text=_text_fetcher(model_manifests={"2b": __import__("json").dumps(bad_manifest)}),
     )
 
     assert not report.ok
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
-        check["name"] == "0_8b manifest records shipped runtime component lineage"
+        check["name"] == "2b manifest records shipped runtime component lineage"
         and "lineage.imagegen: missing" in check["detail"]
         for check in failed
     )
@@ -1264,7 +1265,7 @@ def test_hf_release_audit_blocks_mtp_acceptance_report_contradiction() -> None:
 
 
 def test_hf_release_audit_requires_real_mtp_validation_pass() -> None:
-    bad_report = __import__("json").loads(_passing_mtp_validation_report("0_8b"))
+    bad_report = __import__("json").loads(_passing_mtp_validation_report("2b"))
     bad_report["pass"] = False
     bad_report["checks"]["acceptanceRollout"]["pass"] = False
     bad_report["checks"]["acceptanceRollout"]["acceptanceRate"] = 0.041666666666666664
@@ -1272,14 +1273,14 @@ def test_hf_release_audit_requires_real_mtp_validation_pass() -> None:
     report = audit_hf_release(
         fetch_json=_fetcher(),
         fetch_text=_text_fetcher(
-            mtp_validation_reports={"0_8b": __import__("json").dumps(bad_report)}
+            mtp_validation_reports={"2b": __import__("json").dumps(bad_report)}
         ),
     )
 
     assert not report.ok
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
-        check["name"] == "0_8b MTP drafter release evidence passed"
+        check["name"] == "2b MTP drafter release evidence passed"
         and "mtp/validation-real.json.pass: False" in check["detail"]
         and "mtp/validation-real.json.checks.acceptanceRollout.pass: False"
         in check["detail"]
@@ -1321,7 +1322,7 @@ def test_hf_release_audit_requires_native_mtp_runtime_smoke_pass() -> None:
 
 
 def test_hf_release_audit_requires_mtp_tuning_report_publishable() -> None:
-    bad_report = __import__("json").loads(_passing_mtp_tuning_report("0_8b"))
+    bad_report = __import__("json").loads(_passing_mtp_tuning_report("2b"))
     bad_report["status"] = "optimization-blocked"
     bad_report["publishEligible"] = False
     bad_report["releaseBench"]["status"] = "fail"
@@ -1333,14 +1334,14 @@ def test_hf_release_audit_requires_mtp_tuning_report_publishable() -> None:
     report = audit_hf_release(
         fetch_json=_fetcher(),
         fetch_text=_text_fetcher(
-            mtp_tuning_reports={"0_8b": __import__("json").dumps(bad_report)}
+            mtp_tuning_reports={"2b": __import__("json").dumps(bad_report)}
         ),
     )
 
     assert not report.ok
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
-        check["name"] == "0_8b MTP drafter release evidence passed"
+        check["name"] == "2b MTP drafter release evidence passed"
         and "evals/mtp-tuning-report.json.status: 'optimization-blocked'"
         in check["detail"]
         and "evals/mtp-tuning-report.json.publishEligible: False"
@@ -1439,8 +1440,8 @@ def test_hf_release_audit_requires_finetune_comparison_file() -> None:
 def test_hf_release_audit_requires_finetune_comparison_pass() -> None:
     bad = __import__("json").loads(_passing_finetune_comparison())
     bad["status"] = "blocked"
-    bad["comparisons"]["0_8b"]["beatsBaseline"] = False
-    bad["comparisons"]["0_8b"]["reports"].pop("structured_response")
+    bad["comparisons"][ACTIVE_TEXT_SFT_TIER]["beatsBaseline"] = False
+    bad["comparisons"][ACTIVE_TEXT_SFT_TIER]["reports"].pop("structured_response")
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
@@ -1486,7 +1487,7 @@ def test_hf_release_audit_rejects_legacy_only_finetune_comparison() -> None:
     assert any(
         check["name"] == "fine-tune comparison evidence passed"
         and "legacy 0_6b" in check["detail"]
-        and "comparisons.0_8b: missing" in check["detail"]
+        and f"comparisons.{ACTIVE_TEXT_SFT_TIER}: missing" in check["detail"]
         for check in failed
     )
 
@@ -1572,14 +1573,14 @@ def test_hf_release_audit_requires_quantization_sidecars() -> None:
 
 
 def test_hf_release_audit_blocks_stale_quantization_contexts() -> None:
-    bad = __import__("json").loads(_passing_quantization_sidecar("0_8b", "turboquant"))
+    bad = __import__("json").loads(_passing_quantization_sidecar("2b", "turboquant"))
     bad["contexts"] = ["32k"]
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
         fetch_text=_text_fetcher(
             quantization_sidecars={
-                "bundles/0_8b/quantization/turboquant.json": __import__("json").dumps(bad)
+                "bundles/2b/quantization/turboquant.json": __import__("json").dumps(bad)
             }
         ),
     )
@@ -1587,7 +1588,7 @@ def test_hf_release_audit_blocks_stale_quantization_contexts() -> None:
     assert not report.ok
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
-        check["name"] == "0_8b quantization sidecars passed"
+        check["name"] == "2b quantization sidecars passed"
         and "quantization/turboquant.json.contexts.32k: unsupported" in check["detail"]
         and "quantization/turboquant.json.contexts.128k: missing" in check["detail"]
         and "quantization/turboquant.json.contexts.256k: missing" in check["detail"]
@@ -1685,7 +1686,7 @@ def test_hf_release_audit_requires_upload_evidence_for_required_bundle_paths() -
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "2b release evidence is publishable"
-        and "hf.uploadEvidence.uploadedPaths.bundles/2b/mtp/drafter-2b.gguf: missing"
+        and "hf.uploadEvidence.uploadedPaths.bundles/2b/asr/eliza-1-asr-mmproj.gguf: missing"
         in check["detail"]
         for check in failed
     )
@@ -1718,14 +1719,14 @@ def test_hf_release_audit_blocks_aggregate_eval_gate_failures() -> None:
 
 
 def test_hf_release_audit_prefers_aggregate_over_provisional_manifest_flags() -> None:
-    manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
+    manifest = __import__("json").loads(_passing_model_manifest("2b"))
     manifest["evals"]["asrWer"]["passed"] = False
     manifest["evals"]["mtp"] = {"passed": False}
     manifest["evals"]["expressive"] = {"passed": False}
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
-        fetch_text=_text_fetcher(model_manifests={"0_8b": __import__("json").dumps(manifest)}),
+        fetch_text=_text_fetcher(model_manifests={"2b": __import__("json").dumps(manifest)}),
     )
 
     assert report.ok, report.render()
@@ -1939,12 +1940,12 @@ def test_hf_release_audit_requires_active_sft_package() -> None:
     assert not report.ok
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
-        check["name"] == "dataset active 0_8b SFT package present"
+        check["name"] == f"dataset active {ACTIVE_TEXT_SFT_TIER} SFT package present"
         and f"{ACTIVE_TEXT_SFT_ROOT}/validation.json" in check["detail"]
         for check in failed
     )
     assert any(
-        check["name"] == "dataset active 0_8b SFT validation passed"
+        check["name"] == f"dataset active {ACTIVE_TEXT_SFT_TIER} SFT validation passed"
         and f"{ACTIVE_TEXT_SFT_ROOT}/validation.json" in check["detail"]
         for check in failed
     )
@@ -1969,7 +1970,7 @@ def test_hf_release_audit_blocks_dirty_active_sft_validation() -> None:
     assert not report.ok
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
-        check["name"] == "dataset active 0_8b SFT validation passed"
+        check["name"] == f"dataset active {ACTIVE_TEXT_SFT_TIER} SFT validation passed"
         and "manifest.base_model: 'google/gemma-4-E2B-legacy'" in check["detail"]
         and "validation.passed: False" in check["detail"]
         and "validation.splits.train.rows: 115 != 116" in check["detail"]
