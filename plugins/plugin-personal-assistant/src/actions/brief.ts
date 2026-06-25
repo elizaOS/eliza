@@ -549,10 +549,26 @@ async function composeNarrative(args: {
   });
   // Tag the trajectory with the exact LifeOps prompt task resolved above so the
   // call buckets into its per-capability dataset for the GEPA loop (#8795).
-  const raw = await runWithTrajectoryContext(
-    { purpose: args.optimizationTask },
-    () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
-  );
+  // A failed compose pass degrades to a narrative-less structured briefing —
+  // symmetric with the other LifeOps LLM consumers (scheduling, reminders),
+  // which all fall back to a safe default rather than propagating the error.
+  let raw: unknown;
+  try {
+    raw = await runWithTrajectoryContext(
+      { purpose: args.optimizationTask },
+      () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+    );
+  } catch (error) {
+    logger.warn(
+      {
+        src: "action:brief",
+        task: args.optimizationTask,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[BRIEF] narrative compose model call failed; returning structured briefing without a narrative",
+    );
+    return undefined;
+  }
   return typeof raw === "string" ? raw.trim() : undefined;
 }
 
