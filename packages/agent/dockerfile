@@ -14,6 +14,7 @@ WORKDIR /app
 COPY . .
 
 # Install dependencies using Bun
+RUN npm install -g node-gyp-build
 RUN bun install
 
 # Build the project
