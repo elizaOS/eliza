@@ -1,6 +1,7 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildScreenTimeRecapRules,
   createOwnerScreenTimeAction,
   createScreenTimeActionRunner,
   SCREEN_TIME_PARAMETERS,
@@ -142,5 +143,32 @@ describe("screen-time action runner", () => {
       identifier: undefined,
       limit: 10,
     });
+  });
+
+  it("swaps in optimized screentime_recap instructions for reply rendering", () => {
+    const optimizedRuntime = {
+      getService: (name: string) =>
+        name === "optimized_prompt"
+          ? {
+              getPrompt: (task: string) =>
+                task === "screentime_recap"
+                  ? {
+                      prompt:
+                        "OPTIMIZED: lead with largest app delta and one focus adjustment.",
+                      optimizerSource: "gepa",
+                    }
+                  : null,
+            }
+          : null,
+    } as unknown as IAgentRuntime;
+
+    const rules = buildScreenTimeRecapRules(optimizedRuntime);
+
+    expect(rules.join("\n")).toContain(
+      "OPTIMIZED: lead with largest app delta and one focus adjustment.",
+    );
+    expect(rules.join("\n")).not.toContain(
+      "Summarize the owner's screen-time and propose one focus adjustment.",
+    );
   });
 });
