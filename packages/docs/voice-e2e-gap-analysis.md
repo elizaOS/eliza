@@ -114,8 +114,8 @@ real speaker identity, and are not valid.
 
 | Engine | Model Files | Status |
 |--------|------------|--------|
-| Eliza-1 ASR (Qwen3-based) | `eliza-1-asr.gguf` + `eliza-1-asr-mmproj.gguf` in 9b/27b bundles | ✅ Installed, loads in llama-server |
-| Whisper.cpp | External whisper model | ✅ FFI adapter built |
+| Gemma ASR | `eliza-1-asr.gguf` + `eliza-1-asr-mmproj.gguf` from a verified Gemma source | ⚠️ Pending explicit hosted source and bundle staging |
+| Legacy external ASR backend | External model | Retired; current desktop paths use Web Speech or fused local-inference ASR |
 
 ### 1.3 Voice Processing Models
 
