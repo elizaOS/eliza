@@ -1,5 +1,6 @@
 import type { PermissionStatus } from "@elizaos/shared";
-import { Button, useAppSelector } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
+import { useAppSelector } from "@elizaos/ui/state";
 import { CheckCircle2, Monitor, Settings, ShieldBan } from "lucide-react";
 import type { WebsiteBlockerSettingsCardProps } from "../types/website-blocker-settings-card";
 

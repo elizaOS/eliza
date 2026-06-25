@@ -398,7 +398,17 @@ function validateUsage(
     );
   }
 
-  return usage as unknown as UsageBreakdown;
+  return {
+    promptTokens: promptTokens as number,
+    completionTokens: completionTokens as number,
+    totalTokens: totalTokens as number,
+    ...(cacheRead !== undefined
+      ? { cacheReadInputTokens: cacheRead as number }
+      : {}),
+    ...(cacheCreate !== undefined
+      ? { cacheCreationInputTokens: cacheCreate as number }
+      : {}),
+  };
 }
 
 function validateModel(

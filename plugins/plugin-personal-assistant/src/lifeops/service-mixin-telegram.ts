@@ -325,7 +325,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(409, TELEGRAM_PLUGIN_SETUP_MESSAGE);
       }
 
-      let read = {
+      let read: VerifyLifeOpsTelegramConnectorResponse["read"] = {
         ok: false,
         error: "Telegram plugin is missing read permission.",
         dialogCount: 0,
@@ -354,7 +354,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         }
       }
 
-      let send = {
+      let send: VerifyLifeOpsTelegramConnectorResponse["send"] = {
         ok: true,
         error: null,
         target: request.sendTarget ?? "",
@@ -460,4 +460,26 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
   }
 
   return LifeOpsTelegramServiceMixin;
+}
+
+/** Public surface added by {@link withTelegram}; listed on the LifeOpsService
+ * declaration-merge (mixin composition exceeds TS inference depth). Type-only. */
+export interface LifeOpsTelegramService {
+  getTelegramConnectorStatus(
+    requestedSide?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsTelegramConnectorStatus>;
+  sendTelegramMessage(request: {
+    side?: LifeOpsConnectorSide;
+    target: string;
+    message: string;
+  }): Promise<{ ok: true; messageId: string | null }>;
+  verifyTelegramConnector(
+    request: VerifyLifeOpsTelegramConnectorRequest,
+  ): Promise<VerifyLifeOpsTelegramConnectorResponse>;
+  searchTelegramMessages(request: {
+    side?: LifeOpsConnectorSide;
+    query: string;
+    scope?: string;
+    limit?: number;
+  }): Promise<TelegramMessageSearchResult[]>;
 }

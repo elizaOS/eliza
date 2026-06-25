@@ -1,8 +1,5 @@
 // Side-effect: register LifeOps methods on ElizaClient.
 import "./api/client-lifeops.js";
-// `ElizaClient` comes from the UI barrel so the client extension augments the
-// same class instance used by the frontend shell.
-import { ElizaClient, getAppBlockerPlugin } from "@elizaos/ui";
 import type {
   AppBlockerPermissionResult,
   AppBlockerPluginLike,
@@ -13,6 +10,10 @@ import type {
   SelectAppsResult,
   UnblockAppsResult,
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
+// `ElizaClient` comes from the UI barrel so the client extension augments the
+// same class instance used by the frontend shell.
+import { ElizaClient } from "@elizaos/ui/api";
+import { getAppBlockerPlugin } from "@elizaos/ui/bridge";
 
 function requireAppBlockerPlugin(): AppBlockerPluginLike {
   const plugin = getAppBlockerPlugin();

@@ -12,6 +12,7 @@ import type {
   LifeOpsReminderAttempt,
   LifeOpsWorkflowRun,
 } from "@elizaos/shared";
+import type { BrowserBridgeService } from "./service-mixin-browser.js";
 import { withBrowser } from "./service-mixin-browser.js";
 // Public method interfaces each mixin contributes. The composed class type
 // exceeds TypeScript's mixin-inference depth (~6 chained generics), so the
@@ -37,9 +38,11 @@ import type { LifeOpsGoogleService } from "./service-mixin-google.js";
 import { withGoogle } from "./service-mixin-google.js";
 import type { LifeOpsHealthServicePublic } from "./service-mixin-health.js";
 import { withHealth } from "./service-mixin-health.js";
+import type { LifeOpsIMessageService } from "./service-mixin-imessage.js";
 import { withIMessage } from "./service-mixin-imessage.js";
 import type { LifeOpsInboxService } from "./service-mixin-inbox.js";
 import { withInbox } from "./service-mixin-inbox.js";
+import type { LifeOpsRelationshipService } from "./service-mixin-relationships.js";
 import { withRelationships } from "./service-mixin-relationships.js";
 import type { LifeOpsReminderService } from "./service-mixin-reminders.js";
 import { withReminders } from "./service-mixin-reminders.js";
@@ -47,6 +50,7 @@ import type { LifeOpsSchedulingService } from "./service-mixin-scheduling.js";
 import { withScheduling } from "./service-mixin-scheduling.js";
 import type { LifeOpsScreenTimeServicePublic } from "./service-mixin-screentime.js";
 import { withScreenTime } from "./service-mixin-screentime.js";
+import type { LifeOpsSignalService } from "./service-mixin-signal.js";
 import { withSignal } from "./service-mixin-signal.js";
 import { withSleep } from "./service-mixin-sleep.js";
 import type { LifeOpsStatusService } from "./service-mixin-status.js";
@@ -54,10 +58,13 @@ import {
   type StatusMixinDependencies,
   withStatus,
 } from "./service-mixin-status.js";
+import type { LifeOpsSubscriptionService } from "./service-mixin-subscriptions.js";
 import { withSubscriptions } from "./service-mixin-subscriptions.js";
+import type { LifeOpsTelegramService } from "./service-mixin-telegram.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import type { LifeOpsTravelServicePublic } from "./service-mixin-travel.js";
 import { withTravel } from "./service-mixin-travel.js";
+import type { LifeOpsWhatsAppService } from "./service-mixin-whatsapp.js";
 import { withWhatsApp } from "./service-mixin-whatsapp.js";
 import type { LifeOpsWorkflowService } from "./service-mixin-workflows.js";
 import { withWorkflows } from "./service-mixin-workflows.js";
@@ -120,7 +127,14 @@ export class LifeOpsService extends LifeOpsServiceComposed {}
 /** Declared explicitly: mixin composition exceeds TypeScript inference depth. */
 // biome-ignore lint/suspicious/noUnsafeDeclarationMerging: intentional class+interface merge to surface mixin methods past TS inference depth
 export interface LifeOpsService
-  extends LifeOpsCalendarService,
+  extends BrowserBridgeService,
+    LifeOpsSubscriptionService,
+    LifeOpsTelegramService,
+    LifeOpsIMessageService,
+    LifeOpsRelationshipService,
+    LifeOpsSignalService,
+    LifeOpsWhatsAppService,
+    LifeOpsCalendarService,
     // `getHealthConnectorStatus` is also declared (with a different return
     // type) by the status mixin already on the composed class, so omit it here.
     Omit<LifeOpsHealthServicePublic, "getHealthConnectorStatus">,
