@@ -110,7 +110,7 @@ is warranted or beneficial for iOS/Mac LLM decode.
 
 | Item | Issue | Why gated |
 |---|---|---|
-| Gemma MTP **drafter GGUF** conversion (`safetensors → mtp-draft GGUF`) + a `darwin-arm64-metal-fused` on-Metal `--spec-type draft-mtp` gate | #8848 / #9172 | artifact conversion + fused build; runbook in `docs/gemma4-mtp-drafter-conversion.md` |
+| ~~Gemma MTP drafter GGUF conversion + on-Metal `--spec-type draft-mtp` gate~~ — **DONE 2026-06-24**: drafter converted (`drafter-2b.gguf`), validated on M-series Metal, and the fast-tier draft window fixed (`draftMax` 4→1 = **1.37–1.66× decode win** on the 2B; the prior "regression" was the mistuned window, not the head). A from-scratch H200 head is now only a possible large/slow-tier optimization, not a fast-tier unlock. | #8848 / #9172 | n/a — shipped; see `docs/gemma4-mtp-drafter-conversion.md` (2026-06-24 correction) |
 | Rebuild + republish the **prebuilt Android Vulkan fused-lib** (mitigation already in source @ `0864259`; FA also explicitly disabled on Android in `eliza_llm_flash_attn_type()`) | #9508 | needs Android NDK/Linux build runner + `eliza-archive` publish creds |
 | **Real-audio GPU CI lane** (DER/WER/echo/owner/impostor numbers) | #9454 | needs a `gpu-cuda-12.6` self-hosted runner + `ELEVENLABS_API_KEY` |
 | **PCM-level AEC3** sample-level echo cancellation (turn-level self-voice gate already shipped) | #9455 | net-new DSP feature (adaptive filter + double-talk detect + ERLE corpus) |
