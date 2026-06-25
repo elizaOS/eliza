@@ -29,6 +29,14 @@ export {
   type TranscribeWavResult,
   transcribeLocalInferenceWav,
 } from "./local-asr-transcribe";
+export {
+  downmixAudioBufferToMono,
+  type PlaybackAudioFrameEvent,
+  PlaybackFramePump,
+  type PlaybackFramePumpOptions,
+  type PlaybackFrameTap,
+  resamplePcmTo16k,
+} from "./playback-frame-pump";
 export * from "./types";
 export {
   createVoiceCapture,
