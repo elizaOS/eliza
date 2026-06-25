@@ -160,7 +160,7 @@ export class ParticipantsRepository {
       return requireParticipant(existing[0], "existence check");
     }
 
-    const results = (await dbWrite
+    const results = await dbWrite
       .insert(participantTable)
       .values({
         roomId: input.roomId,
@@ -169,9 +169,7 @@ export class ParticipantsRepository {
         roomState: input.roomState ? JSON.stringify(input.roomState) : undefined,
         createdAt: new Date(),
       })
-      // Drizzle's .returning() infers the insert model type, not InferSelectModel.
-      // The DB returns all columns; the cast to ParticipantRecord is safe.
-      .returning()) as unknown as ParticipantRecord[];
+      .returning();
 
     return requireParticipant(results[0], "create");
   }

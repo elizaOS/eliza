@@ -10,10 +10,7 @@ export const cloudModelProviderPlugin: Plugin = {
   description: "Eliza Cloud model handlers for cloud-hosted runtimes",
   config: elizaOSCloudPlugin.config,
   init: elizaOSCloudPlugin.init,
-  // The elizaOSCloudPlugin.models property has a concrete internal type that
-  // doesn't satisfy the generic Plugin["models"] signature exactly, despite
-  // being structurally compatible at runtime.
-  models: elizaOSCloudPlugin.models as unknown as Plugin["models"],
+  models: elizaOSCloudPlugin.models,
 };
 
 export default cloudModelProviderPlugin;
