@@ -1,5 +1,6 @@
 import {
   asUUID,
+  ChannelType,
   type Content,
   EventType,
   type IAgentRuntime,
@@ -96,9 +97,7 @@ export class AutonomyService extends Service {
         worldId,
         agentId: this.runtime.agentId,
         source: "autonomy-plugin",
-        // @ts-expect-error AUTONOMOUS is a custom channel type for autonomous agent thinking
-        // Not in the ChannelType enum but valid for our use case
-        type: "AUTONOMOUS",
+        type: ChannelType.AUTONOMOUS,
         metadata: {
           source: "autonomy-plugin",
           description: "Room for autonomous agent thinking",

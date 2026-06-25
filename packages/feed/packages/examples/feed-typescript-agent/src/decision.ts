@@ -8,14 +8,9 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGroq } from "@ai-sdk/groq";
 import { createOpenAI } from "@ai-sdk/openai";
-
-// Use unknown for model type since AI SDK types vary by version
-// The actual type is LanguageModelV2 from @ai-sdk/provider but it's not exported in all versions
-type LanguageModelType = unknown;
-
 import type { A2APerpPosition } from "@feed/a2a";
 import type { JsonValue } from "@feed/shared";
-import { generateText } from "ai";
+import { generateText, type LanguageModel } from "ai";
 import type { MemoryEntry } from "./memory";
 
 export interface PredictionMarket {
@@ -84,7 +79,7 @@ const MAX_RESULT_LENGTH = 60;
 
 export class AgentDecisionMaker {
   private config: DecisionMakerConfig;
-  private model: LanguageModelType;
+  private model: LanguageModel;
   private providerName: string;
 
   constructor(config: DecisionMakerConfig) {
@@ -126,7 +121,6 @@ export class AgentDecisionMaker {
     const prompt = this.buildPrompt(context);
 
     const { text } = await generateText({
-      // @ts-expect-error - model type compatibility between SDK versions
       model: this.model,
       prompt,
       temperature: 0.7,
