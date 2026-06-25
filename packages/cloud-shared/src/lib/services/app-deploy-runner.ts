@@ -28,10 +28,11 @@
  *       gains an ensure-tenant-db step. Either way the deploy route never calls
  *       `pg`, satisfying the workerd constraint.
  *
- * The image is resolved from the build-pipeline output. There is no build service
- * yet (app-deployments.ts notes this), so `resolveImage` reads, in order:
- *   1. an explicit override passed into the runner (CI / tests),
- *   2. `app.metadata.imageTag` (where a future build step writes the built ref),
+ * The image is resolved from the app deploy source. `resolveImage` reads, in
+ * order:
+ *   1. explicit deploy options passed through the APP_DEPLOY job (repo/ref/
+ *      Dockerfile from `POST /api/v1/apps/:id/deploy`),
+ *   2. the app's linked repo / metadata image ref,
  *   3. `APP_DEFAULT_IMAGE` env (a placeholder runtime image for smoke tests).
  * It throws if none resolve, surfacing a clear "no image to deploy" rather than
  * provisioning an empty container.
@@ -49,6 +50,7 @@ import { resolveAppDatabaseMode } from "./app-database-mode";
 import {
   type AppDeployDeps,
   type AppDeployRunner,
+  type AppDeployRunOptions,
   deployApp,
   type NewAppContainerRow,
 } from "./app-deploy-orchestrator";
@@ -138,16 +140,23 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
     this.deps = deps;
   }
 
-  async run(appId: string): Promise<void> {
+  async run(appId: string, options: AppDeployRunOptions = {}): Promise<void> {
     const app = await appsService.getById(appId);
     if (!app) {
       throw new Error(`App ${appId} not found`);
     }
 
+    const appMetadata = (app.metadata as Record<string, unknown>) ?? {};
+    const deployMetadata = {
+      ...appMetadata,
+      ...(options.repoUrl ? { repoUrl: options.repoUrl } : {}),
+      ...(options.ref ? { ref: options.ref } : {}),
+      ...(options.dockerfile ? { dockerfile: options.dockerfile } : {}),
+    };
     const image = await resolveImageRef(this.deps, {
       id: app.id,
       name: app.name,
-      metadata: (app.metadata as Record<string, unknown>) ?? {},
+      metadata: deployMetadata,
       repoUrl: app.github_repo ?? undefined,
     });
     const containerName = containerNameForApp(appId);
@@ -204,9 +213,10 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
         containerName,
         image,
         port: this.deps.port ?? 3000,
+        ...(options.env ? { env: options.env } : {}),
         // Per-app choice (apps.metadata.databaseMode, default "none"): a stateless
         // app provisions no DB; an "isolated" app gets its own per-tenant Postgres.
-        databaseMode: resolveAppDatabaseMode((app.metadata as Record<string, unknown>) ?? {}),
+        databaseMode: resolveAppDatabaseMode(appMetadata),
       },
       orchestratorDeps,
     );

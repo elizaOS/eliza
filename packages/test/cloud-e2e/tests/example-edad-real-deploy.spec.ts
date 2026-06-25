@@ -12,11 +12,10 @@
  *                        provisioned showcase org + grant exist on staging).
  *   2. register EDAD     POST /api/v1/apps (the EDAD descriptor reused from the
  *                        mock spec's SHOWCASE_APPS) -> an app id.
- *   3. deploy            POST /api/v1/apps/:id/deploy (NO body) -> 202 BUILDING.
- *                        The image is pinned OPERATOR-side via APP_DEFAULT_IMAGE
- *                        on the staging Worker (= the GHCR EDAD image #9384
- *                        builds); the driver writes NO metadata, takes NO staging
- *                        DATABASE_URL — it is pure HTTP.
+ *   3. deploy            POST /api/v1/apps/:id/deploy with repo/ref/Dockerfile
+ *                        build hints -> 202 BUILDING. The normal app deploy
+ *                        backend builds the image from source, then runs it in
+ *                        an app container.
  *   4. poll              GET /api/v1/apps/:id/deploy/status until READY — real
  *                        cadence ~5s, ~10min cap (per the status-route docstring).
  *                        NO control-plane mock tick: live cloud-api runs its own
@@ -60,6 +59,10 @@ const MIN_SHOWCASE_BALANCE_USD = 1;
 /** Real deploy: poll every ~5s, cap ~10 min (per the deploy/status docstring). */
 const POLL_INTERVAL_MS = 5_000;
 const POLL_CAP_MS = 10 * 60_000;
+const SHOWCASE_REPO_URL =
+  process.env.SHOWCASE_APPS_REPO_URL ?? "https://github.com/elizaOS/eliza.git";
+const SHOWCASE_REF =
+  process.env.SHOWCASE_APPS_REF ?? process.env.GITHUB_SHA ?? "develop";
 
 /**
  * EDAD's descriptor — the same one the mock spec drives via SHOWCASE_APPS.
@@ -70,6 +73,9 @@ const EDAD = {
   key: "edad",
   name: "eDad Showcase",
   appUrl: "https://edad.example",
+  repoUrl: SHOWCASE_REPO_URL,
+  ref: SHOWCASE_REF,
+  dockerfile: "packages/examples/cloud/edad/Dockerfile.cloud",
 } as const;
 
 /** apps.create / apps.get envelope (see cloud-api .../apps/route.ts). */
@@ -160,10 +166,16 @@ test.describe("real-staging EDAD deploy serves its subdomain (#9300)", () => {
       if (!appId) throw new Error("apps.create did not return an app id");
       logger.info("[edad-real] registered app", { appId, api });
 
-      // ── 3. deploy through the REAL route — image pinned operator-side. ──────
+      // ── 3. deploy through the REAL route — source build, no image map. ──────
       const started = await authed<DeployEnvelope>(
         "POST",
         `/api/v1/apps/${appId}/deploy`,
+        {
+          repoUrl: EDAD.repoUrl,
+          ref: EDAD.ref,
+          dockerfile: EDAD.dockerfile,
+          env: { ELIZA_APP_ID: appId },
+        },
       );
       expect(started.status, "deploy accepted (202)").toBe(202);
       expect(started.json.status, "deploy starts BUILDING").toBe("BUILDING");
@@ -246,6 +258,9 @@ test.describe("real-staging EDAD deploy serves its subdomain (#9300)", () => {
         "EDAD /api/config self-report serves (200)",
       ).toBe(200);
       const config = (await configRes.json()) as EdadConfigResponse;
+      expect(config.app_id, "EDAD self-reports the deployed app id").toBe(
+        appId,
+      );
       expect(
         typeof config.cloud_url === "string" && config.cloud_url.length > 0,
         "EDAD self-reports its cloud_url (real container, not the mock)",

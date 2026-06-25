@@ -1,0 +1,47 @@
+# Source-build Dockerfile for Eliza Cloud app deploys.
+#
+# Build context: repository root, for example:
+#   docker build -f packages/examples/cloud/clone-ur-crush/Dockerfile.cloud .
+#
+# The builder keeps the package at its monorepo path so next.config.ts traces
+# from the repo root and emits the same standalone layout used by CI.
+FROM oven/bun:canary-alpine AS builder
+
+RUN apk add --no-cache nodejs
+
+WORKDIR /repo/packages/examples/cloud/clone-ur-crush
+ENV NODE_ENV=production
+ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
+
+COPY packages/examples/cloud/clone-ur-crush/package.json ./
+RUN bun install --no-frozen-lockfile
+
+COPY packages/examples/cloud/clone-ur-crush/ ./
+
+RUN rm -rf .next && \
+  node scripts/build.mjs && \
+  app=.next/standalone/packages/examples/cloud/clone-ur-crush && \
+  test -f "$app/server.js" && \
+  rsf="$(find "$app" -maxdepth 2 -name required-server-files.json | head -1)" && \
+  test -n "$rsf" && \
+  baked="$(basename "$(dirname "$rsf")")" && \
+  mkdir -p "$app/$baked/static" && \
+  cp -r .next/static/. "$app/$baked/static/" && \
+  cp -r public "$app/public"
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+COPY --from=builder /repo/packages/examples/cloud/clone-ur-crush/.next/standalone ./
+
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/ || exit 1
+
+CMD ["node", "packages/examples/cloud/clone-ur-crush/server.js"]

@@ -102,7 +102,9 @@ Self-hosting closes the loop: app earnings refill the org's credit balance via t
      Bundle the SDK in first (what CI does), then ship the tiny bundle context
      with Dockerfile.bundle. The reproducible showcase image is built+smoke-tested
      by .github/workflows/build-example-app-images.yml and published as
-     ghcr.io/elizaos/example-edad:showcase — see
+     ghcr.io/elizaos/example-edad:showcase. The #9300 real-staging showcase
+     validation uses Dockerfile.cloud through the normal source-build app deploy
+     path instead of pinning that image operator-side — see
      packages/test/cloud-e2e/docs/showcase-apps-coverage.md for the full runbook. -->
 
 ```bash

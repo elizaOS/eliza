@@ -26,6 +26,19 @@ export interface DeployAppRequest {
    * own DB and injects the DSN. See {@link AppDatabaseMode}.
    */
   databaseMode?: AppDatabaseMode;
+  /** Runtime env injected into the app container. DB vars are platform-owned. */
+  env?: Record<string, string>;
+}
+
+export interface AppDeployRunOptions {
+  /** Build context override, normally a git URL supplied to POST /deploy. */
+  repoUrl?: string;
+  /** Git branch/SHA/tag to build. */
+  ref?: string;
+  /** Dockerfile path relative to the build context. */
+  dockerfile?: string;
+  /** Runtime env injected into the app container. */
+  env?: Record<string, string>;
 }
 
 export interface NewAppContainerRow {
@@ -65,7 +78,7 @@ export interface DeployAppResult {
  * `AppDeploymentsService` invokes it after marking the app `building`.
  */
 export interface AppDeployRunner {
-  run(appId: string): Promise<void>;
+  run(appId: string, options?: AppDeployRunOptions): Promise<void>;
 }
 
 /**
@@ -84,6 +97,12 @@ export async function deployApp(
   // (ensureTenantDb is create-if-not-exists, so it materializes seamlessly).
   const mode = req.databaseMode ?? DEFAULT_APP_DATABASE_MODE;
   const dsn = mode === "isolated" ? await deps.ensureTenantDb(req.appId) : undefined;
+  const environmentVars = {
+    ...(req.env ?? {}),
+    // Platform-owned DB values intentionally win over caller-provided values for
+    // these keys.
+    ...(dsn ? { DATABASE_URL: dsn, POSTGRES_URL: dsn } : {}),
+  };
 
   const { containerId } = await deps.createContainerRow({
     appId: req.appId,
@@ -97,7 +116,7 @@ export async function deployApp(
     // eliza-based images read) — never the shared agent DATABASE_URL, and never a
     // silent fallback to a throwaway local/PGlite store. Stateless ("none") apps
     // get neither var.
-    environmentVars: dsn ? { DATABASE_URL: dsn, POSTGRES_URL: dsn } : {},
+    environmentVars,
   });
 
   const { id: jobId } = await deps.enqueueProvision({
