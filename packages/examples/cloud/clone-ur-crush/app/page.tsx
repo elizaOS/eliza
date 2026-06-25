@@ -448,7 +448,7 @@ export default function HomePage() {
       />
 
       {/* Subtle Gradient Overlay for depth */}
-      <div className="fixed inset-0 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10" />
+      <div className="fixed inset-0 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/10 to-pink-500/10" />
 
       {/* Content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-12">
@@ -475,7 +475,7 @@ export default function HomePage() {
                   key={step}
                   className={`h-2 rounded-full transition-all ${
                     step === currentStep
-                      ? "w-8 bg-gradient-to-r from-blue-500 to-pink-500"
+                      ? "w-8 bg-gradient-to-r from-purple-500 to-pink-500"
                       : step < currentStep
                         ? "w-2 bg-purple-400"
                         : "w-2 bg-gray-300"
