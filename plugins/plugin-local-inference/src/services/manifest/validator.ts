@@ -582,17 +582,19 @@ function collectContractErrors(
 		}
 	}
 
-	// EAGLE3 bench metadata is always optional. When
-	// present, it may record a not-run/failure state; only a passing claim must
-	// include measured acceptance/speedup values.
-	if (m.evals.eagle3) {
-		const eagle3Passed = m.evals.eagle3.passed ?? m.evals.eagle3.pass;
+	// Speculative-decode bench metadata is always optional. When present, it may
+	// record a not-run/failure state; only a passing claim must include measured
+	// acceptance/speedup values. The canonical key is `specDecode`; `eagle3` is
+	// the back-compat alias accepted for one release.
+	const specDecodeEval = m.evals.specDecode ?? m.evals.eagle3;
+	if (specDecodeEval) {
+		const specDecodePassed = specDecodeEval.passed ?? specDecodeEval.pass;
 		if (
-			eagle3Passed === true &&
-			(m.evals.eagle3.acceptanceRate == null || m.evals.eagle3.speedup == null)
+			specDecodePassed === true &&
+			(specDecodeEval.acceptanceRate == null || specDecodeEval.speedup == null)
 		) {
 			errors.push(
-				"evals.eagle3: passed=true requires measured acceptanceRate and speedup",
+				"evals.specDecode: passed=true requires measured acceptanceRate and speedup",
 			);
 		}
 	}

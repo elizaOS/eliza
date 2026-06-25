@@ -225,6 +225,22 @@ export const Eliza1LineageSchema = z.object({
 	emotion: lineageEntry.optional(),
 });
 
+// Runtime class a text artifact is served by. Defaults to GGUF/llama.cpp when
+// absent, so every existing manifest round-trips unchanged.
+//   - `llama-cpp` — a `.gguf` served by the fused libelizainference llama.cpp
+//     path (the default).
+//   - `litert-lm` — a `.litertlm` single-file bundle served by the in-process
+//     LiteRT-LM backend (Android NPU / GPU delegate). The C-side
+//     `llm_backend_select` probes `<bundleRoot>/text/*.litertlm` and routes to
+//     it; the TS loader passes `ELIZA_LLM_BACKEND=litert-lm` when this entry is
+//     selected. See `tools/omnivoice/src/backends/litert-backend.cpp`.
+export const ELIZA_1_TEXT_RUNTIME_CLASSES = ["llama-cpp", "litert-lm"] as const;
+export type Eliza1TextRuntimeClass =
+	(typeof ELIZA_1_TEXT_RUNTIME_CLASSES)[number];
+export const Eliza1TextRuntimeClassEnumSchema = z.enum(
+	ELIZA_1_TEXT_RUNTIME_CLASSES,
+);
+
 export const Eliza1FileEntrySchema = z.object({
 	path: z.string().min(1),
 	sha256,
@@ -232,6 +248,11 @@ export const Eliza1FileEntrySchema = z.object({
 	// largest variant that fits the device's RAM budget. Other file kinds
 	// never have ctx.
 	ctx: z.number().int().min(131072, "must be at least 128k").optional(),
+	// Optional runtime-class discriminator on a `files.text` entry. Absent ⇒
+	// `llama-cpp` (GGUF, the default). A `.litertlm` text artifact declares
+	// `runtimeClass: "litert-lm"` so the loader can route it to the LiteRT-LM
+	// backend without re-deriving the runtime from the filename.
+	runtimeClass: Eliza1TextRuntimeClassEnumSchema.optional(),
 });
 
 /**
@@ -351,7 +372,12 @@ export const Eliza1RecipeKernelPinsSchema = z.object({
 	perBlockTolerance: z.number().positive(),
 });
 
-export const Eliza1Eagle3KernelSchema = z
+// Generic speculative-decode capability metadata (drafter-agnostic). Covers
+// Gemma 4's separate-drafter MTP, an embedded draft head, or an EAGLE3 head —
+// the shape only records the capability/spec-type/draft model, never the
+// specific drafter family. `specType` names the runtime spec method (e.g.
+// `draft-mtp`, `draft-eagle3`); `model` names the drafter/head artifact.
+export const Eliza1SpecDecodeKernelSchema = z
 	.object({
 		enabled: z.boolean().optional(),
 		capability: z.string().min(1).optional(),
@@ -373,8 +399,12 @@ export const Eliza1KernelsSchema = z.object({
 		cpu: Eliza1VerifiedBackendStatusSchema,
 	}),
 	recipeManifest: z.record(z.string(), Eliza1RecipeKernelPinsSchema).optional(),
-	// Optional EAGLE3 capability metadata.
-	eagle3: Eliza1Eagle3KernelSchema.optional(),
+	// Optional speculative-decode capability metadata (canonical key).
+	specDecode: Eliza1SpecDecodeKernelSchema.optional(),
+	// Back-compat alias accepted for one release: pre-cutover manifests emit
+	// the same capability object under `eagle3`. New producers stamp
+	// `specDecode`; the validator reads `specDecode ?? eagle3`.
+	eagle3: Eliza1SpecDecodeKernelSchema.optional(),
 });
 
 // Wave-6: voice surface declares which expressive features the bundled
@@ -400,24 +430,27 @@ export const Eliza1VoiceSchema = z.object({
 	capabilities: z.array(z.enum(ELIZA_1_VOICE_CAPABILITIES)).default(["tts"]),
 });
 
-const Eliza1Eagle3EvalSchema = z
+// Generic speculative-decode eval metadata (drafter-agnostic): records the
+// accepted/drafted acceptance rate and the spec-decode-on ÷ baseline speedup
+// for whatever drafter the bundle ships (MTP separate drafter, EAGLE3 head, …).
+const Eliza1SpecDecodeEvalSchema = z
 	.object({
 		/** accepted/drafted; null or absent when not measured. */
 		acceptanceRate: z.number().min(0).max(1).nullable().optional(),
-		/** EAGLE3-on tok/s ÷ baseline tok/s; null or absent when not measured. */
+		/** spec-decode-on tok/s ÷ baseline tok/s; null or absent when not measured. */
 		speedup: z.number().nonnegative().nullable().optional(),
 		/** Preferred spelling for pass/fail status. */
 		passed: z.boolean().optional(),
 		/** Back-compat spelling accepted for manifest producers that emit `pass`. */
 		pass: z.boolean().optional(),
-		/** Human-readable reason when the EAGLE3 eval was not run or failed. */
+		/** Human-readable reason when the spec-decode eval was not run or failed. */
 		failure: z.string().min(1).optional(),
 	})
-	.superRefine((eagle3, ctx) => {
+	.superRefine((specDecode, ctx) => {
 		if (
-			eagle3.pass !== undefined &&
-			eagle3.passed !== undefined &&
-			eagle3.pass !== eagle3.passed
+			specDecode.pass !== undefined &&
+			specDecode.passed !== undefined &&
+			specDecode.pass !== specDecode.passed
 		) {
 			ctx.addIssue({
 				code: "custom",
@@ -425,10 +458,10 @@ const Eliza1Eagle3EvalSchema = z
 				path: ["pass"],
 			});
 		}
-		const passed = eagle3.passed ?? eagle3.pass;
+		const passed = specDecode.passed ?? specDecode.pass;
 		if (
 			passed === true &&
-			(eagle3.acceptanceRate == null || eagle3.speedup == null)
+			(specDecode.acceptanceRate == null || specDecode.speedup == null)
 		) {
 			ctx.addIssue({
 				code: "custom",
@@ -490,8 +523,12 @@ export const Eliza1EvalsSchema = z.object({
 			passed: z.boolean(),
 		})
 		.optional(),
-	// Optional EAGLE3 speculative-decoding bench metadata.
-	eagle3: Eliza1Eagle3EvalSchema.optional(),
+	// Optional speculative-decode bench metadata (canonical key).
+	specDecode: Eliza1SpecDecodeEvalSchema.optional(),
+	// Back-compat alias accepted for one release: pre-cutover manifests emit
+	// the same bench object under `eagle3`. The validator reads
+	// `specDecode ?? eagle3`.
+	eagle3: Eliza1SpecDecodeEvalSchema.optional(),
 	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector eval gates.
 	// Required when `files.turn` is non-empty (validator enforces). Thresholds
 	// applied by `eval_turn_detector.py` in `packages/training/scripts/turn_detector/`:

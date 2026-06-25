@@ -66,6 +66,26 @@ function mtpSupportedForTier(id: Eliza1TierId): boolean {
   return _ELIZA_1_MTP_TIER_ID_SET.has(id);
 }
 
+/**
+ * On-device (mobile-class) tiers. These are the tiers small enough to run on
+ * a phone, so they advertise the Gemma-4 QAT `Q4_0` quant as the
+ * mobile-preferred variant and ship a LiteRT `.litertlm` bundle for the
+ * on-device LiteRT-LM runtime (NPU/GPU delegate). Mirrors the Kokoro-only
+ * voice policy and the SD-1.5 image-gen tiering (2b/4b).
+ */
+export const ELIZA_1_ON_DEVICE_TIER_IDS = [
+  "eliza-1-2b",
+  "eliza-1-4b",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+const _ELIZA_1_ON_DEVICE_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_ON_DEVICE_TIER_IDS,
+);
+
+export function isOnDeviceTier(id: Eliza1TierId): boolean {
+  return _ELIZA_1_ON_DEVICE_TIER_ID_SET.has(id);
+}
+
 // The quantized 2B (Gemma 4 E2B) is the shipped first-run default chat model:
 // it is the smallest/entry tier, fits 8 GB-class phones comfortably, downloads
 // fast, and is the model bundled into the AOSP image. Larger tiers (4B/9B/27B)
@@ -428,6 +448,16 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     vad: bundleComponent(id, "vad/silero-vad-v5.gguf"),
   };
 
+  // LiteRT-LM single-file bundle for the on-device runtime: text + vision +
+  // audio + MTP packed into one QAT (.litertlm) artifact, parallel to the
+  // GGUF `text` component. Only the mobile-class tiers ship it.
+  if (isOnDeviceTier(id)) {
+    components.litert = bundleComponent(
+      id,
+      `text/eliza-1-${tierSlug(id)}.litertlm`,
+    );
+  }
+
   if (spec.hasEmbedding) {
     components.embedding = bundleComponent(
       id,
@@ -505,47 +535,90 @@ function runtimeForTier(
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
   q3_k_m: "q3_k_m",
+  // Google's official Gemma-4 QAT quant. `Q4_0` is the GGUF block format
+  // their QAT checkpoints export to — distinct from the post-training
+  // `q4_k_m` we ship as the desktop default.
   q4_0: "Q4_0",
   q4_k_m: "q4_k_m",
   q5_k_m: "q5_k_m",
   q6_k: "q6_k",
   q8_0: "q8_0",
+  // LiteRT-LM mobile bundle suffix. The artifact is a `.litertlm`, not a
+  // `.gguf`; `textLiteRtComponent` overrides the filename, so this suffix
+  // only feeds the non-LiteRT variant-id naming path defensively.
+  wna8o8: "wna8o8",
 };
 
 function textQuantizationMatrix(args: {
   primaryGgufFile: string;
   q4SizeGb: number;
   q4MinRamGb: number;
+  /**
+   * On-device (mobile-class) tier. When true the Gemma-4 QAT `Q4_0` variant
+   * is flagged `mobilePreferred` so the on-device selector picks it over the
+   * post-training `q4_k_m` default.
+   */
+  onDevice: boolean;
 }): NonNullable<CatalogModel["quantization"]> {
   const fileBase = args.primaryGgufFile.replace(/\.gguf$/, "");
+  const litertFile = `${fileBase.replace(/-128k$|-256k$/, "")}.litertlm`;
   const mk = (
     id: CatalogQuantizationId,
     label: CatalogQuantizationVariant["label"],
     scale: number,
     minRamScale: number,
     status: CatalogQuantizationVariant["status"],
+    extra?: Pick<
+      CatalogQuantizationVariant,
+      "mobilePreferred" | "artifactFormat"
+    >,
   ): CatalogQuantizationVariant => ({
     id,
     label,
     ggufFile:
-      id === "q4_k_m"
-        ? args.primaryGgufFile
-        : `${fileBase}-${QUANT_SUFFIX[id]}.gguf`,
+      extra?.artifactFormat === "litertlm"
+        ? litertFile
+        : id === "q4_k_m"
+          ? args.primaryGgufFile
+          : `${fileBase}-${QUANT_SUFFIX[id]}.gguf`,
     sizeGb: Number((args.q4SizeGb * scale).toFixed(1)),
     minRamGb: Math.ceil(args.q4MinRamGb * minRamScale),
     status,
+    ...extra,
   });
 
-  return {
-    defaultVariantId: "q4_k_m",
-    variants: [
-      mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
-      mk("q4_k_m", "4-bit", 1, 1, "published"),
-      mk("q5_k_m", "5-bit", 1.22, 1.18, "planned"),
-      mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
-      mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
-    ],
-  };
+  const variants: CatalogQuantizationVariant[] = [
+    mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
+    // Gemma-4 QAT Q4_0: same ~4-bit footprint as q4_k_m but the official
+    // quantization-aware-trained checkpoint — ~2x faster on the mobile NPU
+    // and 40-50% lighter on memory, so it is the on-device-preferred quant.
+    mk(
+      "q4_0",
+      "4-bit",
+      0.94,
+      0.95,
+      "published",
+      args.onDevice ? { mobilePreferred: true } : undefined,
+    ),
+    mk("q4_k_m", "4-bit", 1, 1, "published"),
+    mk("q5_k_m", "5-bit", 1.22, 1.18, "planned"),
+    mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
+    mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
+  ];
+
+  // On-device tiers also advertise the LiteRT-LM `.litertlm` bundle: the
+  // wNa8o8 (4-bit weight / 8-bit activation) mobile schema run by the
+  // LiteRT-LM runtime (NPU/GPU delegate), not llama.cpp. It carries the same
+  // ~4-bit footprint as the QAT Q4_0 GGUF.
+  if (args.onDevice) {
+    variants.push(
+      mk("wna8o8", "4-bit", 0.94, 0.95, "planned", {
+        artifactFormat: "litertlm",
+      }),
+    );
+  }
+
+  return { defaultVariantId: "q4_k_m", variants };
 }
 
 function blurbForTier(id: Eliza1TierId): string {
@@ -593,6 +666,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
       primaryGgufFile: bundlePath(id, spec.textFile),
       q4SizeGb: spec.sizeGb,
       q4MinRamGb: spec.q4MinRamGb,
+      onDevice: isOnDeviceTier(id),
     }),
     blurb: blurbForTier(id),
     publishStatus: eliza1TierPublishStatus(id),

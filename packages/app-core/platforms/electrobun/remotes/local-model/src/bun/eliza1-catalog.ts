@@ -363,7 +363,7 @@ export function getEliza1Catalog(): LocalModelCatalogEntry[] {
     default: tier.defaultTier === true,
     source: {
       localCatalog: source,
-      eliza1BaseLineage: "Qwen",
+      eliza1BaseLineage: "Gemma",
       fineTuned: false,
     },
     raw: {
