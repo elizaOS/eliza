@@ -12,6 +12,13 @@
  *   POST /api/voice/audio-frames        body: { frames: AudioFrameEvent[],
  *                                               flush?: boolean }
  *                                       → { ok, framesReceived, turnsObserved }
+ *   POST /api/voice/playback-frames     body: { frames?: AudioFrameEvent[],
+ *                                               reset?: boolean }
+ *                                       → { ok, framesPushed }
+ *     The agent's own TTS playback (far-end) in the same base64 LE-s16 16 kHz
+ *     mono wire format, streamed in real time so the session's NLMS canceller
+ *     removes the agent's echo before VAD/attribution (#9455/#9583). Send
+ *     `reset: true` when playback stops / on barge-in.
  *   GET  /api/voice/audio-frames/status → LiveDiarizationStatus (device evidence)
  *
  * Auth follows the compat pattern: trusted-loopback OR the compat API token.
@@ -115,6 +122,41 @@ export async function handleLiveDiarizationRoute(
 			framesDropped: status.framesDropped,
 			turnsObserved: status.turnsObserved,
 		});
+		return true;
+	}
+
+	if (url.pathname === "/api/voice/playback-frames" && method === "POST") {
+		if (!ensureCompatApiAuthorized(req, res)) return true;
+		const current = getSession(state);
+		if (!current) {
+			sendJsonError(res, 503, "Runtime not ready");
+			return true;
+		}
+		const body = await readCompatJsonBody(req, res);
+		if (!body) return true;
+		if (body.reset === true) current.resetPlayback();
+		const rawFrames = body.frames;
+		if (rawFrames !== undefined && !Array.isArray(rawFrames)) {
+			sendJsonError(
+				res,
+				400,
+				"Expected { frames?: AudioFrameEvent[], reset?: boolean }",
+			);
+			return true;
+		}
+		const frames = Array.isArray(rawFrames)
+			? rawFrames.filter(isAudioFrameEvent)
+			: [];
+		if (Array.isArray(rawFrames) && frames.length !== rawFrames.length) {
+			sendJsonError(
+				res,
+				400,
+				`Malformed playback frame(s): ${rawFrames.length - frames.length} of ${rawFrames.length} did not match AudioFrameEvent`,
+			);
+			return true;
+		}
+		current.pushPlayback(frames);
+		sendJson(res, 200, { ok: true, framesPushed: frames.length });
 		return true;
 	}
 
