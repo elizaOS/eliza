@@ -436,17 +436,6 @@
         "vitest": "4.1.9",
       },
     },
-    "packages/benchmarks/evm/skill_runner": {
-      "name": "evm-skill-runner",
-      "version": "1.0.0",
-      "dependencies": {
-        "viem": "^2.48.8",
-      },
-      "devDependencies": {
-        "@types/bun": "1.3.14",
-        "typescript": "^6.0.3",
-      },
-    },
     "packages/benchmarks/interrupt-bench": {
       "name": "@elizaos/interrupt-bench",
       "version": "0.1.0",
@@ -10989,8 +10978,6 @@
     "eventsource": ["eventsource@3.0.7", "", { "dependencies": { "eventsource-parser": "^3.0.1" } }, "sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA=="],
 
     "eventsource-parser": ["eventsource-parser@1.1.2", "", {}, "sha512-v0eOBUbiaFojBu2s2NPBfYUoRR9GjcDNvCXVaqEf5vVfpIAh9f8RCo4vXTP8c63QRKCFwoLpMpTdPwwhEKVgzA=="],
-
-    "evm-skill-runner": ["evm-skill-runner@workspace:packages/benchmarks/evm/skill_runner"],
 
     "evp_bytestokey": ["evp_bytestokey@1.0.3", "", { "dependencies": { "md5.js": "^1.3.4", "safe-buffer": "^5.1.1" } }, "sha512-/f2Go4TognH/KvCISP7OUsHn85hT9nUkxxA9BEWxFn+Oj9o8ZNLm/40hdlgSLyuOimsrTKLUMEorQexp/aPQeA=="],
 
