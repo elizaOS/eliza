@@ -81,7 +81,14 @@ const libDir = join(root, "usr/lib/x86_64-linux-gnu");
 for (const so of readdirSync(libDir).filter((f) =>
   /^(libtesseract|liblept)\.so/.test(f),
 )) {
-  cpSync(join(libDir, so), join(dest, "lib", so), { dereference: false });
+  // Dereference to the real .so bytes and write them under the SONAME name.
+  // Debian ships libtesseract.so.5 etc. as symlinks into the extraction dir;
+  // copying them as symlinks (dereference:false) leaves the bundle pointing at
+  // a temp dir that is deleted on exit — the "portable" bundle then dlopen-fails
+  // with "libtesseract.so.5: cannot open shared object file". Writing real bytes
+  // under each name makes the bundle self-contained.
+  const realSo = realpathSync(join(libDir, so));
+  copyFileSync(realSo, join(dest, "lib", so));
 }
 
 // Copy the FULL transitive shared-lib closure. libtesseract pulls in leptonica,
