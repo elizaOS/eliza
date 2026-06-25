@@ -129,16 +129,15 @@ describe("Fitbit connector — recorded real API contract", () => {
     expect(calories?.value).toBe(2415);
     expect(calories?.unit).toBe("kcal");
 
-    // distance_meters: the normalizer SUMS every summary.distances[] entry
-    // (not just the `activity: "total"` row) and converts km->m. With total
-    // 8.52 + tracker 8.52 + veryActive 4.1 = 21.14 km -> 21140 m. This is the
-    // genuine syncFitbit behavior (it double-counts the total + per-type rows);
-    // the contract test pins it so any future change to that aggregation is
-    // caught against the real multi-entry Fitbit distances shape.
+    // distance_meters: take ONLY the canonical activity:"total" row (the day
+    // total) and convert km->m. tracker/veryActive/... are per-activity
+    // breakdowns OF that total, so summing them double/triple-counts. The
+    // fixture's multi-entry shape discriminates: a correct total-only read is
+    // 8520 m; a summing regression (8.52 + 8.52 + 4.1 km) would be 21140 m.
     const distance = payload.samples.find(
       (s) => s.metric === "distance_meters",
     );
-    expect(distance?.value).toBeCloseTo((8.52 + 8.52 + 4.1) * 1000, 5);
+    expect(distance?.value).toBe(8.52 * 1000);
     expect(distance?.unit).toBe("m");
 
     // activities-heart[0].value.restingHeartRate -> resting_heart_rate.
