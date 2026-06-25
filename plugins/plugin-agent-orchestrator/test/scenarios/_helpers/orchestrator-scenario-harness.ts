@@ -742,7 +742,7 @@ export async function installOrchestratorScenarioHarness(ctx: {
     );
   }
   if (!baseGetServiceLoadPromiseByRuntime.has(runtime)) {
-    const runtimeWithLoadPromise = runtime as unknown as {
+    const runtimeWithLoadPromise = runtime as {
       getServiceLoadPromise?: (name: string) => Promise<unknown>;
     };
     const loadPromise = runtimeWithLoadPromise.getServiceLoadPromise;

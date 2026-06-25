@@ -127,7 +127,7 @@ function toGmailOperation(op: ManageOperation): {
 function getGoogleService(runtime: IAgentRuntime): IGoogleGmailService | null {
   const service = runtime.getService("google");
   return service && typeof service === "object"
-    ? (service as unknown as IGoogleGmailService)
+    ? (service as IGoogleGmailService)
     : null;
 }
 
