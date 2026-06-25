@@ -148,17 +148,38 @@ function buildFarEnd(tmp) {
 
 // ---- Cross-correlation alignment -------------------------------------------
 
-function estimateAlignment(near, ref, refStartInFar) {
-  // Normalised cross-correlation of the TTS reference window against the whole
-  // recording. Returns the far→near offset and the peak correlation.
+function rms(arr, from = 0, to = arr.length) {
+  let s = 0;
+  for (let i = from; i < to; i++) s += arr[i] * arr[i];
+  return Math.sqrt(s / Math.max(1, to - from));
+}
+
+function findOnset(sig, noiseWinSamples) {
+  // First sample where a 20 ms window's RMS clears the noise floor (measured
+  // from the leading `noiseWinSamples`). The silence→speech transition is a
+  // UNIQUE anchor — unlike a mid-speech window it can't alias to a repeated
+  // phoneme, which is what makes raw speech cross-correlation lock falsely.
+  const noise = rms(sig, 0, noiseWinSamples);
+  const thresh = Math.max(2.5 * noise, 1e-3);
+  const win = Math.floor(0.02 * SR);
+  for (let i = noiseWinSamples; i + win < sig.length; i += win) {
+    if (rms(sig, i, i + win) > thresh) return i;
+  }
+  return -1;
+}
+
+function refineOffset(near, ref, refStartInFar, coarseLag, searchSamples) {
+  // Local normalised cross-correlation in a ±searchSamples window around the
+  // onset-based coarse lag — removes onset jitter, locks the sub-window phase.
   const m = ref.length;
   let refEnergy = 0;
   for (let i = 0; i < m; i++) refEnergy += ref[i] * ref[i];
   refEnergy = Math.sqrt(refEnergy) || 1;
-  let bestLag = 0;
+  let bestLag = coarseLag;
   let bestScore = -Infinity;
-  const maxLag = near.length - m;
-  for (let lag = 0; lag < maxLag; lag++) {
+  const lo = Math.max(0, coarseLag - searchSamples);
+  const hi = Math.min(near.length - m, coarseLag + searchSamples);
+  for (let lag = lo; lag <= hi; lag++) {
     let dot = 0;
     let nearEnergy = 0;
     for (let i = 0; i < m; i++) {
@@ -173,12 +194,6 @@ function estimateAlignment(near, ref, refStartInFar) {
     }
   }
   return { offset: bestLag - refStartInFar, score: bestScore };
-}
-
-function rms(arr, from = 0, to = arr.length) {
-  let s = 0;
-  for (let i = from; i < to; i++) s += arr[i] * arr[i];
-  return Math.sqrt(s / Math.max(1, to - from));
 }
 
 // ---- Capture (play far-end while recording the mic) -------------------------
@@ -229,14 +244,25 @@ async function main() {
     `[device-aec] captured ${(near.length / SR).toFixed(2)}s mic (${near.length} samples)`,
   );
 
-  // Correlation reference: a 1.5 s window 0.3 s into the speech (skip the onset).
+  // Align by the speech ONSET (unique silence→speech transition), then refine
+  // with a local cross-correlation. far onset = silenceN (exact). near onset =
+  // first energy above the recording's leading noise floor.
+  const nearOnset = findOnset(near, Math.floor(0.4 * SR));
+  if (nearOnset < 0) {
+    console.log("\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (mic never rose above its noise floor).");
+    process.exitCode = 2;
+    return;
+  }
+  const coarseOffset = nearOnset - silenceN;
+  // Refine around the onset using a 1.5 s window 0.3 s into the speech.
   const refStart = silenceN + Math.floor(0.3 * SR);
   const refLen = Math.min(Math.floor(1.5 * SR), speechN - Math.floor(0.3 * SR));
   const ref = far.subarray(refStart, refStart + refLen);
-  const { offset, score } = estimateAlignment(near, ref, refStart);
+  const coarseLag = refStart + coarseOffset; // expected position of ref in near
+  const { offset, score } = refineOffset(near, ref, refStart, coarseLag, Math.floor(0.15 * SR));
   const alignMs = (offset / SR) * 1000;
   console.log(
-    `[device-aec] TTS aligned: far→near offset=${offset} (${alignMs.toFixed(1)} ms, incl. capture-start skew), corr peak=${score.toFixed(3)}`,
+    `[device-aec] TTS onset@near ${nearOnset}; refined far→near offset=${offset} (${alignMs.toFixed(1)} ms, incl. capture-start skew), corr peak=${score.toFixed(3)}`,
   );
 
   if (score < LOCK) {
@@ -267,8 +293,9 @@ async function main() {
   const farSpeech = far.subarray(speechStart, speechStart + usable);
   const nearSpeech = near.subarray(nearStart, nearStart + usable);
 
-  // filterTaps=512 ≈ 32 ms tail; pre-aligned so the taps model only room impulse.
-  const aec = new NlmsEchoCanceller({ filterTaps: 512, mu: 0.5 });
+  // Use the SHIPPED defaults (filterTaps 256 ≈ 16 ms, mu 0.3) — validate what
+  // actually runs in the live consumer, not a tuned variant.
+  const aec = new NlmsEchoCanceller();
   const BLOCK = 320; // 20 ms frames, as the live consumer feeds them
   const residual = new Float32Array(nearSpeech.length);
   for (let off = 0; off + BLOCK <= nearSpeech.length; off += BLOCK) {
