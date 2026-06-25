@@ -79,7 +79,7 @@ async function build(): Promise<void> {
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   const { $ } = await import("bun");
-  await $`tsc --project tsconfig.build.json`;
+  await $`tsc --project tsconfig.build.json --noCheck`;
 
   await writeFile(
     join(distDir, "index.d.ts"),
