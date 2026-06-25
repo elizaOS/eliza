@@ -129,16 +129,16 @@ describe("Fitbit connector — recorded real API contract", () => {
     expect(calories?.value).toBe(2415);
     expect(calories?.unit).toBe("kcal");
 
-    // distance_meters: the normalizer SUMS every summary.distances[] entry
-    // (not just the `activity: "total"` row) and converts km->m. With total
-    // 8.52 + tracker 8.52 + veryActive 4.1 = 21.14 km -> 21140 m. This is the
-    // genuine syncFitbit behavior (it double-counts the total + per-type rows);
-    // the contract test pins it so any future change to that aggregation is
-    // caught against the real multi-entry Fitbit distances shape.
+    // distance_meters: the normalizer reads ONLY the `activity: "total"` row of
+    // summary.distances[] and converts km->m. The other rows (tracker 8.52,
+    // veryActive 4.1) are breakdowns OF the day total, not additional distance,
+    // so the day's 8.52 km -> 8520 m. The contract test pins this against the
+    // real multi-entry Fitbit distances shape so a regression back to summing
+    // every row (which 2.5x-inflated the distance) is caught.
     const distance = payload.samples.find(
       (s) => s.metric === "distance_meters",
     );
-    expect(distance?.value).toBeCloseTo((8.52 + 8.52 + 4.1) * 1000, 5);
+    expect(distance?.value).toBeCloseTo(8.52 * 1000, 5);
     expect(distance?.unit).toBe("m");
 
     // activities-heart[0].value.restingHeartRate -> resting_heart_rate.
@@ -232,5 +232,80 @@ describe("Fitbit connector — recorded real API contract", () => {
       expect(typeof s.startAt).toBe("string");
       expect(s.localDate).toBe(s.startAt.slice(0, 10));
     }
+  });
+
+  // Reads ONLY the `activity: "total"` row even when extra breakdown rows are
+  // present. tracker/veryActive/loggedActivities are subsets OF the total, so
+  // adding more of them must not change the reported distance.
+  it("takes only the 'total' summary.distances row, ignoring extra breakdown rows", async () => {
+    const activity = {
+      summary: {
+        distances: [
+          { activity: "total", distance: 8.52 },
+          { activity: "tracker", distance: 8.52 },
+          { activity: "veryActive", distance: 4.1 },
+          { activity: "loggedActivities", distance: 2.0 },
+        ],
+      },
+    };
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/")) return jsonResponse({});
+      if (url.includes("/activities/date/")) return jsonResponse(activity);
+      if (url.includes("/sleep/date/")) return jsonResponse({});
+      if (url.includes("/body/log/weight/")) return jsonResponse({});
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
+    // Only the "total" row (8.52 km) is read; the extra breakdown rows are ignored.
+    expect(distance?.value).toBeCloseTo(8.52 * 1000, 5);
+    expect(distance?.unit).toBe("m");
+  });
+
+  // Fallback: a provider that omits the "total" row -> take the largest single
+  // row rather than summing (the largest is the best proxy for the day total).
+  it("falls back to the maximum single distance row when no 'total' row is present", async () => {
+    const activity = {
+      summary: {
+        distances: [
+          { activity: "tracker", distance: 8.52 },
+          { activity: "veryActive", distance: 4.1 },
+        ],
+      },
+    };
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/")) return jsonResponse({});
+      if (url.includes("/activities/date/")) return jsonResponse(activity);
+      if (url.includes("/sleep/date/")) return jsonResponse({});
+      if (url.includes("/body/log/weight/")) return jsonResponse({});
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
+    // No "total" row -> max single row (8.52 km), NOT the sum (12.62 km).
+    expect(distance?.value).toBeCloseTo(8.52 * 1000, 5);
+    expect(distance?.unit).toBe("m");
   });
 });

@@ -441,10 +441,19 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     const dayAt = `${date}T12:00:00.000Z`;
     const summary = getRecord(activity, "summary") ?? {};
     const distances = getArray(summary, "distances");
-    const totalDistance = distances.reduce((sum, entry) => {
-      const distance = getNumber(entry, "distance");
-      return sum + (distance ?? 0);
-    }, 0);
+    // Fitbit's summary.distances[] carries the day total as the
+    // `activity: "total"` row; the other rows (tracker, veryActive, …) are
+    // breakdowns OF that total, not additional distance. Read the "total" row;
+    // if a provider omits it, fall back to the largest single row.
+    const totalRow = distances.find(
+      (entry) => getText(entry, "activity") === "total",
+    );
+    const totalDistance = totalRow
+      ? (getNumber(totalRow, "distance") ?? 0)
+      : distances.reduce(
+          (max, entry) => Math.max(max, getNumber(entry, "distance") ?? 0),
+          0,
+        );
     samples.push(
       ...compactSamples([
         sample({
