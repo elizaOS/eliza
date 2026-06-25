@@ -61,7 +61,7 @@ function originMs(): number {
 
 function readInjectedTraceId(): string | undefined {
   if (typeof window === "undefined") return undefined;
-  const value = (window as Record<string, unknown>)[
+  const value = (window as unknown as Record<string, unknown>)[
     STARTUP_TRACE_ID_WINDOW_KEY
   ];
   return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -69,7 +69,7 @@ function readInjectedTraceId(): string | undefined {
 
 function mirrorToWindow(): void {
   if (typeof window === "undefined") return;
-  (window as Record<string, unknown>)[STARTUP_TRACE_WINDOW_KEY] = {
+  (window as unknown as Record<string, unknown>)[STARTUP_TRACE_WINDOW_KEY] = {
     traceId,
     timeOrigin: originMs(),
     marks,
@@ -170,7 +170,11 @@ export function __resetStartupTraceForTests(): void {
   marks.length = 0;
   recorded.clear();
   if (typeof window !== "undefined") {
-    delete (window as Record<string, unknown>)[STARTUP_TRACE_WINDOW_KEY];
-    delete (window as Record<string, unknown>)[STARTUP_TRACE_ID_WINDOW_KEY];
+    delete (window as unknown as Record<string, unknown>)[
+      STARTUP_TRACE_WINDOW_KEY
+    ];
+    delete (window as unknown as Record<string, unknown>)[
+      STARTUP_TRACE_ID_WINDOW_KEY
+    ];
   }
 }

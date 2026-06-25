@@ -64,8 +64,7 @@ function defaultLibraryPath(): string {
 
 function defaultModelDir(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ??
-    path.join(os.homedir(), ".eliza");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "models", "face-cpp");
 }
 
@@ -159,7 +158,7 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
     } catch (error) {
       logger.warn(
         `${MODULE_TAG} dlopen failed for ${libPath}:`,
-        error instanceof Error ? error.message : error,
+        error instanceof Error ? error.message : String(error),
       );
       return null;
     }

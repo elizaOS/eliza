@@ -274,16 +274,16 @@ export class VisionService extends Service {
     ocrEnabled: true,
   };
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
 
     // Load configuration from runtime settings
-    this.visionConfig = this.parseConfig(runtime);
+    this.visionConfig = this.parseConfig(this.runtime);
 
     // Face recognition is constructed lazily (see getFaceRecognition).
 
     // Initialize entity tracker
-    const worldIdValue = runtime.getSetting("WORLD_ID");
+    const worldIdValue = this.runtime.getSetting("WORLD_ID");
     const worldId =
       typeof worldIdValue === "string" ? worldIdValue : "default-world";
     this.entityTracker = new EntityTracker(worldId);
@@ -428,7 +428,7 @@ export class VisionService extends Service {
           this.hasObjectDetection = false;
           logger.warn(
             "[VisionService] ggml YOLOv8 detector unavailable, object detection disabled (using motion/heuristic + VLM fallback):",
-            yoloError instanceof Error ? yoloError.message : yoloError,
+            yoloError instanceof Error ? yoloError.message : String(yoloError),
           );
         }
       }
@@ -461,7 +461,7 @@ export class VisionService extends Service {
       // Start processing based on mode
       this.startProcessing();
     } catch (error) {
-      logger.error("[VisionService] Failed to initialize:", error);
+      logger.error({ error }, "[VisionService] Failed to initialize:");
     }
   }
 
@@ -500,8 +500,8 @@ export class VisionService extends Service {
       logger.info("[VisionService] Screen vision initialized");
     } catch (error) {
       logger.error(
+        { error },
         "[VisionService] Failed to initialize screen vision:",
-        error,
       );
     }
   }
@@ -646,8 +646,8 @@ export class VisionService extends Service {
       }
     } catch (error) {
       logger.error(
+        { error },
         "[VisionService] Failed to initialize audio capture:",
-        error,
       );
       // Continue without audio
     }
@@ -666,8 +666,8 @@ export class VisionService extends Service {
       );
     } catch (error) {
       logger.error(
+        { error },
         "[VisionService] Failed to store audio transcription:",
-        error,
       );
     }
   }
@@ -702,7 +702,7 @@ export class VisionService extends Service {
         try {
           await this.captureAndProcessFrame();
         } catch (error) {
-          logger.error("[VisionService] Frame processing error:", error);
+          logger.error({ error }, "[VisionService] Frame processing error:");
         }
         this.isProcessing = false;
       }
@@ -746,7 +746,7 @@ export class VisionService extends Service {
 
       this.lastFrame = frame;
     } catch (error) {
-      logger.error("[VisionService] Error capturing frame:", error);
+      logger.error({ error }, "[VisionService] Error capturing frame:");
     }
   }
 
@@ -884,7 +884,9 @@ export class VisionService extends Service {
           } catch (detectError) {
             logger.warn(
               "[VisionService] YOLOv8 object detection failed, falling back to motion-based:",
-              detectError instanceof Error ? detectError.message : detectError,
+              detectError instanceof Error
+                ? detectError.message
+                : String(detectError),
             );
             detectedObjects = await this.detectMotionObjects(frame);
           }
@@ -1006,7 +1008,10 @@ export class VisionService extends Service {
             }
           }
         } catch (faceError) {
-          logger.error("[VisionService] Face recognition error:", faceError);
+          logger.error(
+            { error: faceError },
+            "[VisionService] Face recognition error:",
+          );
         }
       }
 
@@ -1112,8 +1117,8 @@ export class VisionService extends Service {
       }
     } catch (error) {
       logger.error(
+        { error },
         "[VisionService] Failed to update scene description:",
-        error,
       );
     }
   }
@@ -1158,8 +1163,8 @@ export class VisionService extends Service {
       return await candidate.getContext();
     } catch (error) {
       logger.warn(
+        { error },
         "[VisionService] vision-context provider getContext() failed:",
-        error,
       );
       return null;
     }
@@ -1319,7 +1324,7 @@ export class VisionService extends Service {
       } catch (inputError) {
         logger.warn(
           "[VisionService] rejected unsafe VLM image input:",
-          inputError instanceof Error ? inputError.message : inputError,
+          inputError instanceof Error ? inputError.message : String(inputError),
         );
         return "Unable to describe scene";
       }
@@ -1347,8 +1352,8 @@ export class VisionService extends Service {
         }
       } catch (modelError) {
         logger.warn(
+          { error: modelError },
           "[VisionService] IMAGE_DESCRIPTION call failed:",
-          modelError,
         );
       }
 
@@ -1387,7 +1392,7 @@ export class VisionService extends Service {
       // Final fallback
       return "Visual scene captured";
     } catch (error) {
-      logger.error("[VisionService] VLM description failed:", error);
+      logger.error({ error }, "[VisionService] VLM description failed:");
       return "Unable to describe scene";
     }
   }
@@ -1616,7 +1621,7 @@ export class VisionService extends Service {
         try {
           await this.captureAndProcessScreen();
         } catch (error) {
-          logger.error("[VisionService] Screen processing error:", error);
+          logger.error({ error }, "[VisionService] Screen processing error:");
         }
         this.isProcessingScreen = false;
       }
@@ -1641,7 +1646,7 @@ export class VisionService extends Service {
       // Update enhanced scene description
       await this.updateEnhancedSceneDescription();
     } catch (error) {
-      logger.error("[VisionService] Error capturing screen:", error);
+      logger.error({ error }, "[VisionService] Error capturing screen:");
     }
   }
 
@@ -1657,7 +1662,7 @@ export class VisionService extends Service {
         analysis.text = analysis.ocr.fullText;
       }
     } catch (error) {
-      logger.error("[VisionService] Error analyzing tile:", error);
+      logger.error({ error }, "[VisionService] Error analyzing tile:");
     }
 
     return analysis;
@@ -1961,7 +1966,7 @@ export class VisionService extends Service {
       // Use first available camera
       return this.createCameraDevice(cameras[0]);
     } catch (error) {
-      logger.error("[VisionService] Error finding camera:", error);
+      logger.error({ error }, "[VisionService] Error finding camera:");
       return null;
     }
   }
@@ -2034,7 +2039,7 @@ export class VisionService extends Service {
 
       return [];
     } catch (error) {
-      logger.error("[VisionService] Error listing cameras:", error);
+      logger.error({ error }, "[VisionService] Error listing cameras:");
       return [];
     }
   }
@@ -2130,7 +2135,7 @@ export class VisionService extends Service {
     try {
       return await this.camera.capture();
     } catch (error) {
-      logger.error("[VisionService] Failed to capture image:", error);
+      logger.error({ error }, "[VisionService] Failed to capture image:");
       return null;
     }
   }

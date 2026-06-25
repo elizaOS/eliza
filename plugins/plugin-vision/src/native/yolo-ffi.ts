@@ -126,7 +126,7 @@ export async function loadYoloBindings(): Promise<YoloBindings | null> {
       } catch (error) {
         logger.warn(
           `${MODULE_TAG} dlopen failed for ${libPath}:`,
-          error instanceof Error ? error.message : error,
+          error instanceof Error ? error.message : String(error),
         );
         return null;
       }

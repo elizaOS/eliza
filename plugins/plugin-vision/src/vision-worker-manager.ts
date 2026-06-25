@@ -68,8 +68,8 @@ export class VisionWorkerManager {
       logger.info("[VisionWorkerManager] All workers initialized");
     } catch (error) {
       logger.error(
+        { error },
         "[VisionWorkerManager] Failed to initialize workers:",
-        error,
       );
       throw error;
     }
@@ -180,7 +180,10 @@ export class VisionWorkerManager {
         this.latestOCRResult = result;
       }
     } catch (error) {
-      logger.error("[VisionWorkerManager] Failed to update OCR cache:", error);
+      logger.error(
+        { error },
+        "[VisionWorkerManager] Failed to update OCR cache:",
+      );
     }
   }
 
@@ -206,7 +209,10 @@ export class VisionWorkerManager {
       const json = new TextDecoder().decode(bytes);
       return JSON.parse(json);
     } catch (error) {
-      logger.error("[VisionWorkerManager] Failed to read OCR result:", error);
+      logger.error(
+        { error },
+        "[VisionWorkerManager] Failed to read OCR result:",
+      );
       return null;
     }
   }
@@ -241,8 +247,8 @@ export class VisionWorkerManager {
       this.lastProcessedFrameId = frameId;
     } catch (error) {
       logger.error(
+        { error },
         "[VisionWorkerManager] Failed to read screen capture:",
-        error,
       );
     }
 
@@ -415,8 +421,8 @@ export class VisionWorkerManager {
       this.restartAttempts.set("screenCapture", 0);
     } catch (error) {
       logger.error(
+        { error },
         "[VisionWorkerManager] Failed to restart screen capture worker:",
-        error,
       );
     }
   }
@@ -447,8 +453,8 @@ export class VisionWorkerManager {
       this.restartAttempts.set("ocr", 0);
     } catch (error) {
       logger.error(
+        { error },
         "[VisionWorkerManager] Failed to restart OCR worker:",
-        error,
       );
     }
   }

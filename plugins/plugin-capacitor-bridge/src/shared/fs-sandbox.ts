@@ -86,14 +86,18 @@ export function wrapMobileFsPath<T extends AnyFn>(
 	fn: T | undefined,
 	mode: FsAccessMode,
 ): T {
-	return function wrappedMobileFsPath(this: unknown, ...args: unknown[]) {
-		const pathStr = mobileFsPathLikeToString(args[0], moduleName);
+	return function wrappedMobileFsPath(
+		this: unknown,
+		...args: Parameters<T>
+	): ReturnType<T> {
+		const a: unknown[] = args;
+		const pathStr = mobileFsPathLikeToString(a[0], moduleName);
 		if (pathStr !== null) {
 			const resolved = requireMobileFsResolver(moduleName)(pathStr, mode);
 			if (mode === "write") guardMobileFsWritePath(resolved, pathStr);
-			args[0] = resolved;
+			a[0] = resolved;
 		}
-		return (fn as T).apply(this, args as Parameters<T>);
+		return (fn as T).apply(this, a) as ReturnType<T>;
 	} as T;
 }
 
@@ -101,15 +105,19 @@ export function wrapMobileFsOpen<T extends AnyFn>(
 	moduleName: string,
 	fn: T | undefined,
 ): T {
-	return function wrappedMobileFsOpen(this: unknown, ...args: unknown[]) {
-		const pathStr = mobileFsPathLikeToString(args[0], moduleName);
+	return function wrappedMobileFsOpen(
+		this: unknown,
+		...args: Parameters<T>
+	): ReturnType<T> {
+		const a: unknown[] = args;
+		const pathStr = mobileFsPathLikeToString(a[0], moduleName);
 		if (pathStr !== null) {
-			const mode = modeForMobileFsOpenFlags(args[1]);
+			const mode = modeForMobileFsOpenFlags(a[1]);
 			const resolved = requireMobileFsResolver(moduleName)(pathStr, mode);
 			if (mode === "write") guardMobileFsWritePath(resolved, pathStr);
-			args[0] = resolved;
+			a[0] = resolved;
 		}
-		return (fn as T).apply(this, args as Parameters<T>);
+		return (fn as T).apply(this, a) as ReturnType<T>;
 	} as T;
 }
 
@@ -119,20 +127,24 @@ export function wrapMobileFsTwoPaths<T extends AnyFn>(
 	srcMode: FsAccessMode,
 	dstMode: FsAccessMode,
 ): T {
-	return function wrappedMobileFsTwoPaths(this: unknown, ...args: unknown[]) {
-		const src = mobileFsPathLikeToString(args[0], moduleName);
-		const dst = mobileFsPathLikeToString(args[1], moduleName);
+	return function wrappedMobileFsTwoPaths(
+		this: unknown,
+		...args: Parameters<T>
+	): ReturnType<T> {
+		const a: unknown[] = args;
+		const src = mobileFsPathLikeToString(a[0], moduleName);
+		const dst = mobileFsPathLikeToString(a[1], moduleName);
 		const resolver = requireMobileFsResolver(moduleName);
 		if (src !== null) {
 			const resolved = resolver(src, srcMode);
 			if (srcMode === "write") guardMobileFsWritePath(resolved, src);
-			args[0] = resolved;
+			a[0] = resolved;
 		}
 		if (dst !== null) {
 			const resolved = resolver(dst, dstMode);
 			if (dstMode === "write") guardMobileFsWritePath(resolved, dst);
-			args[1] = resolved;
+			a[1] = resolved;
 		}
-		return (fn as T).apply(this, args as Parameters<T>);
+		return (fn as T).apply(this, a) as ReturnType<T>;
 	} as T;
 }

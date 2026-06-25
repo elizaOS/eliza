@@ -67,13 +67,19 @@ describe("brand surfaces", () => {
   it("capacitor config and native backgrounds are the launch orange", () => {
     const src = read("capacitor.config.ts");
     expect(src).toMatch(
-      new RegExp(`SplashScreen:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`, "s"),
+      new RegExp(
+        `SplashScreen:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`,
+        "s",
+      ),
     );
     expect(src).toMatch(
       new RegExp(`ios:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`, "s"),
     );
     expect(src).toMatch(
-      new RegExp(`android:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`, "s"),
+      new RegExp(
+        `android:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`,
+        "s",
+      ),
     );
   });
 
@@ -109,6 +115,8 @@ describe("brand surfaces", () => {
 
   it("index.html FOUC fallback uses the launch orange, not a foreign color", () => {
     const html = read("index.html");
+    // The FOUC fallback tracks the home background orange (#ef5a1f, #9565) so
+    // boot never flashes a different orange before the home background paints.
     // The previous `#08080a` near-black is a slop value and should not regress.
     expect(html).not.toContain("#08080a");
     expect(html).toMatch(

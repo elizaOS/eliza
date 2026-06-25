@@ -59,7 +59,11 @@ uv sync
 # or
 pip install -e .[anthropic,test]
 
-# List all registered scenarios (1020 total at time of writing)
+# List all scenarios. 1020 base scenarios are expanded 10x under fixed
+# prompt-prefix framings (polite/urgent/mobile/…) into 11220 robustness runs;
+# each edge variant shares its base's ground-truth actions, required outputs
+# and world seed — only the prompt wording differs. `--count-scenarios` prints
+# the base-vs-variant split explicitly.
 python3 -m eliza_lifeops_bench --list-scenarios
 
 # Run the calendar smoke scenario against the perfect oracle
@@ -142,7 +146,10 @@ packages/benchmarks/lifeops-bench/
     evaluator.py             LIVE-mode simulated-user + judge wiring
     scorer.py                state_hash, output_substring, pass@k aggregation
     lifeworld/               In-memory hashable world (entities + snapshots)
-    scenarios/               492 static + 528 live scenarios, organized by domain
+    scenarios/               1020 base scenarios (492 static + 528 live) by domain;
+                             __init__.py expands each 10x under fixed prompt-prefix
+                             framings into 11220 robustness runs (variant shares its
+                             base's ground-truth/required-outputs/world-seed)
       _personas.py           10 reusable personas
       _smoke_scenarios.py    Two original smoke scenarios (kept at front of list)
       _authoring/            Candidate-generator pipeline + spec

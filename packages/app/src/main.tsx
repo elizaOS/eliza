@@ -141,7 +141,10 @@ import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
-import { SIDE_EFFECT_APP_MODULE_LOADERS } from "./plugin-registrations";
+import {
+  SIDE_EFFECT_APP_MODULE_LOADERS,
+  type SideEffectAppModuleLoader,
+} from "./plugin-registrations";
 import { registerViewServiceWorker } from "./sw-registration";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
@@ -557,16 +560,19 @@ function scheduleAppModuleIdleWork(work: () => void): void {
   window.setTimeout(work, 50);
 }
 
-function scheduleSideEffectAppModuleLoads(): void {
+function scheduleAppModuleIdleLoads(
+  loaders: readonly SideEffectAppModuleLoader[],
+): void {
+  if (loaders.length === 0) return;
   let nextIndex = 0;
   let activeCount = 0;
 
   const pump = () => {
     while (
       activeCount < SIDE_EFFECT_APP_MODULE_LOAD_CONCURRENCY &&
-      nextIndex < SIDE_EFFECT_APP_MODULE_LOADERS.length
+      nextIndex < loaders.length
     ) {
-      const registration = SIDE_EFFECT_APP_MODULE_LOADERS[nextIndex];
+      const registration = loaders[nextIndex];
       if (!registration) break;
       const { key, load } = registration;
       nextIndex += 1;
@@ -577,7 +583,7 @@ function scheduleSideEffectAppModuleLoads(): void {
         })
         .finally(() => {
           activeCount -= 1;
-          if (nextIndex < SIDE_EFFECT_APP_MODULE_LOADERS.length) {
+          if (nextIndex < loaders.length) {
             scheduleAppModuleIdleWork(pump);
           }
         });
@@ -632,10 +638,37 @@ function buildAppBootConfig({
   };
 }
 
+// App plugins imported for their self-registration side effects (PA HTTP client
+// + Blocker cards, Vincent overlay app, task-coordinator surfaces, phone,
+// steward, training) and to pre-warm their React.lazy chunks. The boot config
+// only references these as React.lazy handles (see buildAppBootConfig), so NONE
+// is read synchronously while assembling the config — they must not gate the
+// first visible shell (#9565). Deferred onto the idle path like
+// SIDE_EFFECT_APP_MODULE_LOADERS; on-demand render still triggers the cached
+// import if idle work has not run yet, so no surface can be missed.
+const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
+  [
+    { key: "@elizaos/plugin-personal-assistant", load: importPersonalAssistant },
+    { key: "@elizaos/plugin-vincent", load: importAppVincent },
+    { key: "@elizaos/plugin-task-coordinator", load: importAppTaskCoordinator },
+    {
+      key: "@elizaos/plugin-task-coordinator/register",
+      load: importAppTaskCoordinatorRegister,
+    },
+    { key: "@elizaos/plugin-phone", load: importAppPhone },
+    { key: "@elizaos/plugin-steward-app", load: importAppSteward },
+    { key: "@elizaos/plugin-training", load: importAppTraining },
+  ];
+
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
     await importAppCore();
 
+    // Block first paint ONLY on the modules whose exports buildAppBootConfig
+    // reads synchronously: companion app registration, the scene-status hook,
+    // and the inference-notice resolver. Everything else exposed through the
+    // boot config is a React.lazy handle that loads on render, so its import is
+    // deferred below instead of gating the first visible shell (#9565).
     const [
       companionRegistrationModule,
       companionSceneStatusModule,
@@ -644,15 +677,6 @@ function initializeAppModules(): Promise<void> {
       importCompanionAppRegistration(),
       importCompanionSceneStatusContext(),
       importCompanionInferenceNotice(),
-      // Side-effect import for the PA HTTP client + Blocker settings cards.
-      importPersonalAssistant(),
-      // Imported for its self-registration side effect (Vincent overlay app).
-      importAppVincent(),
-      importAppTaskCoordinator(),
-      importAppTaskCoordinatorRegister(),
-      importAppPhone(),
-      importAppSteward(),
-      importAppTraining(),
     ]);
 
     companionRegistrationModule.registerCompanionApp();
@@ -666,12 +690,13 @@ function initializeAppModules(): Promise<void> {
       }),
     );
 
-    // The side-effect plugins (games, wallet-ui, trajectory-logger, feature
-    // registrations) export no components used at first paint and the boot
-    // config doesn't depend on them — load them OFF the first-paint critical
-    // path so the initial render isn't blocked on ~20 extra module loads. Their
-    // nav tabs / overlay apps register a tick later; React.lazy covers the gap.
-    scheduleSideEffectAppModuleLoads();
+    // The boot-config-contributing plugins (above) and the side-effect plugins
+    // (games, wallet-ui, trajectory-logger, feature registrations) export no
+    // components used at first paint, so load them OFF the first-paint critical
+    // path. Their nav tabs / overlay apps register a tick later; React.lazy
+    // covers the gap.
+    scheduleAppModuleIdleLoads(BOOT_CONFIG_DEFERRED_MODULE_LOADERS);
+    scheduleAppModuleIdleLoads(SIDE_EFFECT_APP_MODULE_LOADERS);
   })();
 
   return appModulesInitialized;

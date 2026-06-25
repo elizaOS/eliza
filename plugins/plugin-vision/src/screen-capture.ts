@@ -138,7 +138,7 @@ export class ScreenCaptureService {
         }
       }
     } catch (error) {
-      logger.error("[ScreenCapture] Failed to get screen info:", error);
+      logger.error({ error }, "[ScreenCapture] Failed to get screen info:");
     }
 
     // Default fallback
@@ -260,7 +260,7 @@ export class ScreenCaptureService {
         throw new Error(`Unsupported platform: ${platform}`);
       }
     } catch (error) {
-      logger.error("[ScreenCapture] Screen capture failed:", error);
+      logger.error({ error }, "[ScreenCapture] Screen capture failed:");
 
       // Provide helpful error messages
       const errorMessage =

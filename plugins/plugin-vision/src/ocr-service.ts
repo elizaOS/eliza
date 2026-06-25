@@ -315,7 +315,7 @@ export class OCRService {
         lastError = error;
         logger.warn(
           `[OCR] backend ${backend.name} failed:`,
-          error instanceof Error ? error.message : error,
+          error instanceof Error ? error.message : String(error),
         );
         if (backend === this.chosen && ordered.length > 1) {
           this.chosen = ordered[1];
@@ -355,7 +355,7 @@ export class OCRService {
   async dispose(): Promise<void> {
     for (const backend of this.backends) {
       await backend.dispose().catch((error) => {
-        logger.warn(`[OCR] dispose ${backend.name} failed:`, error);
+        logger.warn({ error }, `[OCR] dispose ${backend.name} failed:`);
       });
     }
     this.backends = [];

@@ -17,9 +17,9 @@ afterEach(() => {
 });
 
 function windowTrace(): StartupTrace | undefined {
-  return (window as Record<string, unknown>)[STARTUP_TRACE_WINDOW_KEY] as
-    | StartupTrace
-    | undefined;
+  return (window as unknown as Record<string, unknown>)[
+    STARTUP_TRACE_WINDOW_KEY
+  ] as StartupTrace | undefined;
 }
 
 describe("startup-telemetry", () => {
@@ -55,8 +55,9 @@ describe("startup-telemetry", () => {
   });
 
   it("adopts a native-host-injected trace id when present", () => {
-    (window as Record<string, unknown>)[STARTUP_TRACE_ID_WINDOW_KEY] =
-      "host-abc-123";
+    (window as unknown as Record<string, unknown>)[
+      STARTUP_TRACE_ID_WINDOW_KEY
+    ] = "host-abc-123";
     expect(initStartupTrace("ignored-preferred")).toBe("host-abc-123");
     expect(getStartupTrace().traceId).toBe("host-abc-123");
   });
