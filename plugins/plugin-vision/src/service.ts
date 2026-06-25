@@ -17,6 +17,13 @@ import {
   StreamingAudioCaptureService,
   type StreamingAudioConfig,
 } from "./audio-capture-stream";
+import { DirtyTileDescriber } from "./dirty-tile-describer";
+import {
+  createTileDescribeFn,
+  type FrameHash,
+  type TileDescribeFn,
+  tilePngToImageUrl,
+} from "./dirty-tile-scene";
 import { EntityTracker } from "./entity-tracker";
 import type { FaceRecognition } from "./face-recognition-ggml";
 import { getSharp } from "./image/sharp-compat";
@@ -235,6 +242,20 @@ export class VisionService extends Service {
   private lastTfUpdateTime = 0;
   private lastVlmUpdateTime = 0;
   private lastTfDescription = "";
+
+  // Change-gated per-tile describe (#9105). Built lazily on first VLM tick:
+  // null until we know whether a perceptual hash is available. When present it
+  // re-describes only the screen tiles that changed since the previous frame;
+  // when absent the VLM path stays exactly as before (full-frame describe).
+  private dirtyTileDescriber: DirtyTileDescriber | null = null;
+  private dirtyTileDescriberInit = false;
+  // Per-frame prompt context for the per-tile describe. Set immediately before
+  // each `dirtyTileDescriber.describe(...)` and read by the bound describeTile
+  // closure (screen/camera processing is serialized, so there is no overlap).
+  private dirtyTileDescribeContext: {
+    detectedObjects: DetectedObject[];
+    recognizedFaces: RecognizedFace[];
+  } = { detectedObjects: [], recognizedFaces: [] };
 
   // Default configuration
   private readonly DEFAULT_CONFIG: VisionConfig = {
@@ -993,15 +1014,43 @@ export class VisionService extends Service {
       // feed the model the freshly-computed YOLO objects + recognized faces
       // as additional context alongside the image.
       if (shouldUpdateVlm) {
-        description = await this.describeSceneWithVLM(
-          imageUrl,
-          detectedObjects,
-          recognizedFaces,
-        );
+        // Prefer the change-gated per-tile describe on incremental updates: once
+        // a prior scene description exists we only re-describe the tiles that
+        // changed since the last frame (the rest reuse cached tile text), which
+        // avoids paying for a full-frame VLM pass every tick. The first frame,
+        // the test-image override, and any unavailable/empty result fall back to
+        // the full-frame describe below.
+        const incremental =
+          !testImage && this.lastSceneDescription
+            ? await this.describeSceneWithDirtyTiles(
+                await sharp(frame.data, {
+                  raw: {
+                    width: frame.width,
+                    height: frame.height,
+                    channels: 4,
+                  },
+                })
+                  .png()
+                  .toBuffer(),
+                frame.width,
+                frame.height,
+                detectedObjects,
+                recognizedFaces,
+              )
+            : null;
+        description =
+          incremental ??
+          (await this.describeSceneWithVLM(
+            imageUrl,
+            detectedObjects,
+            recognizedFaces,
+          ));
         this.lastVlmUpdateTime = currentTime;
         this.lastTfDescription = description;
         logger.debug(
-          `[VisionService] VLM updated: ${timeSinceVlmUpdate}ms since last update, ${changePercentage.toFixed(1)}% change`,
+          `[VisionService] VLM updated: ${timeSinceVlmUpdate}ms since last update, ${changePercentage.toFixed(1)}% change${
+            incremental ? " (per-tile)" : " (full-frame)"
+          }`,
         );
       }
 
@@ -1127,6 +1176,116 @@ export class VisionService extends Service {
       .filter((candidate): candidate is string => Boolean(candidate?.trim()))
       .join("\n");
     return text.length > 0 ? text : null;
+  }
+
+  /**
+   * Resolve the change-gated per-tile describer, building it once. Returns
+   * `null` (and degrades to full-frame describe) when no perceptual hash is
+   * available — i.e. plugin-computeruse's `frameDhash` cannot be imported.
+   *
+   * The dHash is resolved via a best-effort dynamic import so plugin-vision
+   * never eagerly pulls computeruse's module graph at boot (same idiom as the
+   * coord-OCR bridge wiring in `index.ts`).
+   */
+  private async ensureDirtyTileDescriber(): Promise<DirtyTileDescriber | null> {
+    if (this.dirtyTileDescriberInit) {
+      return this.dirtyTileDescriber;
+    }
+    this.dirtyTileDescriberInit = true;
+    const hashTile = await this.resolveFrameHash();
+    if (!hashTile) {
+      logger.debug(
+        "[VisionService] per-tile dHash unavailable; using full-frame VLM describe",
+      );
+      return null;
+    }
+    const describeTile = this.buildTileDescribeFn();
+    this.dirtyTileDescriber = new DirtyTileDescriber({
+      hashTile,
+      describeTile,
+    });
+    logger.info(
+      "[VisionService] change-gated per-tile describe enabled (#9105)",
+    );
+    return this.dirtyTileDescriber;
+  }
+
+  private async resolveFrameHash(): Promise<FrameHash | null> {
+    // Indirect the specifier through a const so the bundler does not eagerly
+    // resolve the optional peer at build time (same idiom as the OCR-bridge
+    // dynamic import in index.ts) — plugin-computeruse is an optional peer.
+    const computerUseSpecifier = "@elizaos/plugin-computeruse";
+    try {
+      const mod = (await import(/* @vite-ignore */ computerUseSpecifier)) as {
+        frameDhash?: FrameHash;
+      };
+      return typeof mod.frameDhash === "function" ? mod.frameDhash : null;
+    } catch (err) {
+      logger.debug(
+        `[VisionService] plugin-computeruse dHash not available (${
+          err instanceof Error ? err.message : String(err)
+        })`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Build the per-tile describe call bound to this service's runtime. Reads the
+   * current frame's prompt context (`dirtyTileDescribeContext`) so each tile is
+   * described with the same context the full-frame path would use.
+   */
+  private buildTileDescribeFn(): TileDescribeFn {
+    return createTileDescribeFn({
+      buildTileImageUrl: tilePngToImageUrl,
+      buildTilePrompt: async () => {
+        const sceneContext = await this.collectVisionContext();
+        return buildSceneDescriptionPrompt(
+          sceneContext,
+          this.collectCurrentOcrTextForPrompt(),
+          this.dirtyTileDescribeContext.detectedObjects,
+          this.dirtyTileDescribeContext.recognizedFaces,
+        );
+      },
+      invokeModel: (imageUrl, prompt) =>
+        this.runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+          imageUrl,
+          prompt,
+        }),
+      extractDescription: (result) =>
+        this.extractDescriptionFromUseModel(result),
+    });
+  }
+
+  /**
+   * Per-tile incremental scene describe. Re-describes only the tiles whose
+   * perceptual hash changed since the previous frame; unchanged tiles reuse
+   * their cached description. Returns `null` when the per-tile path is
+   * unavailable or yields no usable text, so the caller falls back to the
+   * full-frame describe.
+   */
+  private async describeSceneWithDirtyTiles(
+    pngBytes: Buffer,
+    width: number,
+    height: number,
+    detectedObjects: DetectedObject[],
+    recognizedFaces: RecognizedFace[],
+  ): Promise<string | null> {
+    const describer = await this.ensureDirtyTileDescriber();
+    if (!describer) return null;
+    this.dirtyTileDescribeContext = { detectedObjects, recognizedFaces };
+    const out = await describer.describe({
+      displayId: 0,
+      width,
+      height,
+      pngBytes,
+    });
+    const stats = describer.getStats();
+    logger.debug(
+      `[VisionService] dirty-tile describe: ${out.tiles.length} tiles, ${stats.tilesSkipped} reused, ~${stats.approxTokensSaved} tokens saved`,
+    );
+    const scene = out.vlmScene.trim();
+    return scene.length > 0 ? scene : null;
   }
 
   private async describeSceneWithVLM(
@@ -1762,6 +1921,8 @@ export class VisionService extends Service {
     this.lastSceneDescription = null;
     this.lastScreenCapture = null;
     this.lastEnhancedScene = null;
+    this.dirtyTileDescriber = null;
+    this.dirtyTileDescriberInit = false;
     this.isProcessing = false;
     this.isProcessingScreen = false;
 
