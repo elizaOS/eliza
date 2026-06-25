@@ -137,8 +137,8 @@ export const dispatchToAgentsAction: Action = {
         success: false,
         text: "Missing required parameters for multi-agent dispatch. Provide an array of {agentId, command} objects.",
       };
-      _callback?.({ content: failResult as unknown as Content });
-      return failResult as unknown as ActionResult;
+      _callback?.({ content: failResult });
+      return failResult;
     }
 
     // Validate each dispatch entry
@@ -244,8 +244,8 @@ export const dispatchToAgentsAction: Action = {
         successCount,
         totalCount,
       },
-    } as unknown as ActionResult;
-    _callback?.({ content: finalResult as unknown as Content });
+    };
+    _callback?.({ content: finalResult });
     return finalResult;
   },
 };
