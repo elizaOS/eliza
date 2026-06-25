@@ -1,7 +1,6 @@
 import type {
 	Content,
 	UUID as CoreUUID,
-	HandlerCallback,
 	IAgentRuntime,
 	Memory,
 	MetadataValue,
@@ -1039,12 +1038,4 @@ export interface ICommunityInvestorService {
 	getConvictionWeight(conviction: Recommendation["conviction"]): number;
 	getLeaderboardData(runtime: IAgentRuntime): Promise<LeaderboardEntry[]>;
 	// ensureTaskWorkersRegistered(runtime: IAgentRuntime): void; // Task registration is internal to constructor
-}
-
-// Adding MessageReceivedHandlerParams
-export interface MessageReceivedHandlerParams {
-	runtime: IAgentRuntime;
-	message: Memory;
-	callback?: HandlerCallback;
-	onComplete?: () => void;
 }
