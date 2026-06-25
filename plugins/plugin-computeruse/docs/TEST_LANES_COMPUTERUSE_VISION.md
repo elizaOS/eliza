@@ -87,7 +87,7 @@ constant there (see #9165).
 |----|---------|-------|-----|-------|
 | **Windows** | PowerShell / nutjs | nutjs (SendInput) or legacy PowerShell | **`Windows.Media.Ocr`** (WinRT via `powershell` 5.1, **not** pwsh 7) — 0 tokens | **Input needs an interactive desktop** (see gotcha). Read/clipboard/OCR work headless. |
 | **macOS** | `screencapture -D` (retina 2× backing store) | nutjs or `cliclick` | Apple Vision | Needs Accessibility + Screen Recording grants; headful. |
-| **Linux** | X11 `import`/`scrot` (Xvfb headful) | nutjs or `xdotool` | docTR / PaddleOCR | Wayland lacks AT-SPI → OCR-only grounding; clipboard needs `wl-clipboard`/`xclip`. |
+| **Linux** | X11 `import`/`scrot` (Xvfb headful); Wayland `xdg-desktop-portal` screenshot sidecar | nutjs or `xdotool` on X11 | docTR / PaddleOCR | Wayland capture uses `python3` + `gdbus`; Wayland still lacks AT-SPI in many compositors, so grounding can be OCR-only. Clipboard needs `wl-clipboard`/`xclip`. |
 | **AOSP** | MediaProjection | privileged input bridge | Paddle-Lite | Emulator + system-app path. See `AOSP_SYSTEM_APP.md`. |
 
 ## ⚠️ Windows non-interactive-session gotcha (verified 2026-06-23)

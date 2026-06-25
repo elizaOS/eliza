@@ -98,7 +98,9 @@ export function NeedsAttentionWidget(_props: Partial<WidgetProps>) {
   const weight = useMemo(() => {
     if (top == null) return null;
     const stale = Date.now() - top.createdAt >= STALE_PENDING_AGE_MS;
-    return stale ? HOME_SIGNAL_WEIGHTS.escalation : HOME_SIGNAL_WEIGHTS.approval;
+    return stale
+      ? HOME_SIGNAL_WEIGHTS.escalation
+      : HOME_SIGNAL_WEIGHTS.approval;
   }, [top]);
   usePublishHomeAttention(NEEDS_ATTENTION_WIDGET_KEY, weight);
 

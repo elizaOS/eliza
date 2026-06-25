@@ -13,6 +13,7 @@ import { createIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { CreateIssueParameters, LinearIssueInput } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import {
   getPriorityNumberValue,
   getStringArrayValue,
@@ -108,7 +109,7 @@ export const createIssueAction: Action = {
         const errorMessage = "Please provide a description for the issue.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -216,7 +217,7 @@ export const createIssueAction: Action = {
             }
           }
         } catch (parseError) {
-          logger.error("Failed to parse LLM response:", parseError instanceof Error ? parseError.message : String(parseError));
+          logger.error("Failed to parse LLM response:", formatUnknownError(parseError));
           issueData = {
             title: content.length > 100 ? `${content.substring(0, 100)}...` : content,
             description: content,
@@ -250,7 +251,7 @@ export const createIssueAction: Action = {
         const errorMessage = "Could not determine issue title. Please provide more details.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -263,7 +264,7 @@ export const createIssueAction: Action = {
           "No Linear teams found. Please ensure at least one team exists in your Linear workspace.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -276,7 +277,7 @@ export const createIssueAction: Action = {
       const successMessage = `✅ Created Linear issue: ${issue.title} (${issue.identifier})\n\nView it at: ${issue.url}`;
       await callback?.({
         text: successMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
 
       return {
@@ -290,11 +291,11 @@ export const createIssueAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to create issue:", error instanceof Error ? error.message : String(error));
+      logger.error("Failed to create issue:", formatUnknownError(error));
       const errorMessage = `❌ Failed to create issue: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,

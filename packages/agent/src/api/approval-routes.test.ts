@@ -21,7 +21,10 @@ async function makeRuntimeWithService(tasks: Task[]): Promise<{
   const baseRuntime = {
     agentId: AGENT_ID,
     getTasks: vi.fn(
-      async (params: { tags?: string[]; agentIds: UUID[] }): Promise<Task[]> => {
+      async (params: {
+        tags?: string[];
+        agentIds: UUID[];
+      }): Promise<Task[]> => {
         if (!params.agentIds.includes(AGENT_ID)) return [];
         const wanted = new Set(params.tags ?? []);
         return tasks.filter((task) =>
@@ -30,9 +33,7 @@ async function makeRuntimeWithService(tasks: Task[]): Promise<{
       },
     ),
   } as unknown as IAgentRuntime;
-  const service = (await ApprovalService.start(
-    baseRuntime,
-  )) as ApprovalService;
+  const service = (await ApprovalService.start(baseRuntime)) as ApprovalService;
   const runtime = {
     getService: (t: string) => (t === ServiceType.APPROVAL ? service : null),
   };

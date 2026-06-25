@@ -14,9 +14,9 @@
  *   - macOS uses `screencapture -D <displayIndex+1>` to pick a specific
  *     display (1-indexed). For ScreenCaptureKit follow-up, replace this
  *     dispatch with the Swift sidecar.
- *   - Linux/X11 uses `import` (ImageMagick) or `scrot` cropped to the
- *     display's xrandr rect. Wayland-only environments need a portal-based
- *     sidecar — out of scope for v1.
+ *   - Linux/Wayland prefers the xdg-desktop-portal screenshot sidecar. X11
+ *     uses `import` (ImageMagick) or `scrot` cropped to the display's xrandr
+ *     rect.
  *   - Windows uses PowerShell + System.Drawing to crop the virtual desktop
  *     to the screen bounds.
  *
@@ -38,6 +38,11 @@ import {
   createPermissionDeniedError,
   isPermissionDeniedError,
 } from "./permissions.js";
+import {
+  canUseWaylandScreenshotPortal,
+  captureWaylandPortalScreenshot,
+  isWaylandSession,
+} from "./wayland-portal.js";
 
 const SCREEN_RECORDING_OPERATION_MESSAGE =
   "macOS Screen Recording permission is required for screenshots. Grant access in System Settings > Privacy & Security > Screen Recording, then retry.";
@@ -192,6 +197,7 @@ function captureRegionDarwin(tmpFile: string, region: ScreenRegion): void {
 
 function captureDisplayLinux(tmpFile: string, display: DisplayInfo): void {
   const [x, y, w, h] = display.bounds;
+  if (tryCaptureWaylandPortal(tmpFile)) return;
   if (commandExists("import")) {
     runCommandBuffer(
       "import",
@@ -210,7 +216,9 @@ function captureDisplayLinux(tmpFile: string, display: DisplayInfo): void {
     return;
   }
   throw new Error(
-    "No screenshot tool available. Install ImageMagick (import), scrot, or gnome-screenshot.",
+    isWaylandSession()
+      ? "No screenshot tool available. Install xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, or gnome-screenshot for X11 fallback."
+      : "No screenshot tool available. Install ImageMagick (import), scrot, or gnome-screenshot.",
   );
 }
 
@@ -242,6 +250,17 @@ function captureRegionLinux(tmpFile: string, region: ScreenRegion): void {
     return;
   }
   throw new Error("No screenshot tool available for region capture.");
+}
+
+function tryCaptureWaylandPortal(tmpFile: string): boolean {
+  if (!canUseWaylandScreenshotPortal()) return false;
+  try {
+    captureWaylandPortalScreenshot(tmpFile);
+    return true;
+  } catch (error) {
+    if (isPermissionDeniedError(error)) throw error;
+    return false;
+  }
 }
 
 // ── Windows ─────────────────────────────────────────────────────────────────

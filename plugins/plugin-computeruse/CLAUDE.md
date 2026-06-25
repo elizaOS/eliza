@@ -84,6 +84,7 @@ src/
     clipboard.ts             OS clipboard read/write
     a11y.ts                  Accessibility tree query
     coords.ts                localToGlobal coordinate translation
+    wayland-portal.ts        xdg-desktop-portal screenshot sidecar for Wayland
     capabilities.ts          detectPlatformCapabilities
     desktop.ts               High-level desktop helpers
     helpers.ts               Shared platform utilities

@@ -9,12 +9,15 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listPendingActionsMock, publishHomeAttentionSpy, dispatchChatPrefillSpy } =
-  vi.hoisted(() => ({
-    listPendingActionsMock: vi.fn(),
-    publishHomeAttentionSpy: vi.fn(),
-    dispatchChatPrefillSpy: vi.fn(),
-  }));
+const {
+  listPendingActionsMock,
+  publishHomeAttentionSpy,
+  dispatchChatPrefillSpy,
+} = vi.hoisted(() => ({
+  listPendingActionsMock: vi.fn(),
+  publishHomeAttentionSpy: vi.fn(),
+  dispatchChatPrefillSpy: vi.fn(),
+}));
 
 // The widget reads the canonical surface through the typed client; mock only
 // the one method it calls.
@@ -42,9 +45,11 @@ import type { WidgetProps } from "../../../widgets/types";
 import { NeedsAttentionWidget, STALE_PENDING_AGE_MS } from "./needs-attention";
 
 function pending(
-  patch: { id: string; title?: string; ageMs?: number } & Partial<
-    PendingUserAction
-  >,
+  patch: {
+    id: string;
+    title?: string;
+    ageMs?: number;
+  } & Partial<PendingUserAction>,
 ): PendingUserAction {
   return {
     id: patch.id as PendingUserAction["id"],
@@ -93,7 +98,9 @@ describe("NeedsAttentionWidget (#9449)", () => {
     expect(widget.textContent).toContain("Send the contract");
     expect(widget.textContent).not.toContain("Confirm the deploy");
     // The full meaning lives in the aria-label since visible text is minimal.
-    expect(widget.getAttribute("aria-label")).toMatch(/2 actions need your response/i);
+    expect(widget.getAttribute("aria-label")).toMatch(
+      /2 actions need your response/i,
+    );
     expect(widget.getAttribute("aria-label")).toMatch(/Send the contract/);
   });
 
@@ -125,7 +132,11 @@ describe("NeedsAttentionWidget (#9449)", () => {
 
   it("escalates the weight once the oldest decision goes stale", async () => {
     mockPending([
-      pending({ id: "a-1", title: "Old decision", ageMs: STALE_PENDING_AGE_MS + 60_000 }),
+      pending({
+        id: "a-1",
+        title: "Old decision",
+        ageMs: STALE_PENDING_AGE_MS + 60_000,
+      }),
     ]);
 
     render(<NeedsAttentionWidget {...fetchProps} />);
@@ -143,7 +154,9 @@ describe("NeedsAttentionWidget (#9449)", () => {
   });
 
   it("routes back to the handler by prefilling chat with an approval on click", async () => {
-    mockPending([pending({ id: "a-1", title: "Send the contract", ageMs: 5_000 })]);
+    mockPending([
+      pending({ id: "a-1", title: "Send the contract", ageMs: 5_000 }),
+    ]);
 
     render(<NeedsAttentionWidget {...fetchProps} />);
     await waitFor(() => {

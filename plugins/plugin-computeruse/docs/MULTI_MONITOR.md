@@ -119,5 +119,5 @@ manual rig:
 | `screencapture -D 2`                  | macOS   | dual display rig, capture each independently         |
 | Retina backing-store scale            | macOS   | scaleFactor=2, capture is 2× logical bounds          |
 | WGC / DXGI vs PerMonitorV2 DPI        | Windows | per-monitor DPI mix, click lands on correct pixel    |
-| Wayland portal capture                | Linux   | GNOME 45+ / KDE 6 — needs a portal-based sidecar     |
+| Wayland portal capture                | Linux   | GNOME 45+ / KDE 6 — `platform/wayland-portal.ts` captures through xdg-desktop-portal; per-display crop still depends on compositor support |
 | Hyprland / Sway parser                | Linux   | run `hyprctl monitors -j` against live compositor    |

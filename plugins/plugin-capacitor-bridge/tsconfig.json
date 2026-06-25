@@ -67,6 +67,8 @@
 			],
 			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
 			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+			"@elizaos/plugin-capacitor-bridge": ["./src/index.ts"],
+			"@elizaos/plugin-capacitor-bridge/*": ["./src/*"],
 			"@elizaos/plugin-commands": [
 				"../../plugins/plugin-commands/src/index.ts"
 			],

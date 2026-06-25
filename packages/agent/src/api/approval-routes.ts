@@ -87,7 +87,7 @@ export function approvalTaskToPendingAction(
 }
 
 export async function handleApprovalRoute(
-  req: http.IncomingMessage,
+  _req: http.IncomingMessage,
   res: http.ServerResponse,
   pathname: string,
   method: string,
