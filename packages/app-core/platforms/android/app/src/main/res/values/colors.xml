@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Brand accent (logo / App Actions widget). Stays the brand orange. -->
+    <!-- Brand accent (logos, brand surfaces). -->
     <color name="eliza_orange">#FF5800</color>
-    <!-- Launch-splash surface + launch status bar. Tracks the home background
-         orange (#ef5a1f, DEFAULT_BACKGROUND_COLOR) so the native splash does not
-         flash a different orange before the home background paints (#9565). -->
+    <!-- Launch surface: matches the default home-background orange (#ef5a1f)
+         so the native splash + launch status bar flow into the React home with
+         no orange flash (issue #9565). -->
     <color name="splash_background">#ef5a1f</color>
-    <!-- Theme accent colors (brand). -->
     <color name="colorPrimary">#FF5800</color>
     <color name="colorPrimaryDark">#FF5800</color>
     <color name="colorAccent">#FF5800</color>

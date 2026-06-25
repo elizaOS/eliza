@@ -56,6 +56,7 @@ import {
   runStartingRuntime,
   type StartingRuntimeDeps,
 } from "./startup-phase-runtime";
+import { markStartup } from "./startup-telemetry";
 
 // Auto-recovery backoff: probe the backend after a transient startup error,
 // backing off 2.5s → 5s → 10s → 20s → cap 30s, and give up after a bounded
@@ -181,6 +182,15 @@ export function useStartupCoordinator(
     if (!depsReady) return;
     depsRef.current?.setStartupPhase(legacyPhase);
   }, [legacyPhase, depsReady]);
+
+  // ── Startup telemetry — mark each coordinator phase the first time it is
+  // reached (issue #9565). Pure observation: markStartup dedupes by name, so
+  // poll retries / agent switches do not skew the cold-start trace, and this
+  // never feeds back into the reducer. `coordinator:ready` is the renderer's
+  // "usable agent" checkpoint.
+  useEffect(() => {
+    markStartup(`coordinator:${state.phase}`, { phase: state.phase });
+  }, [state.phase]);
 
   // ── Phase: restoring-session ────────────────────────────────────
   useEffect(() => {

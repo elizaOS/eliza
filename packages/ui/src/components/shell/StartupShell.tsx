@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { getBootConfig } from "../../config/boot-config-store";
+import { markStartup } from "../../state/startup-telemetry";
 import { ElizaMark } from "../brand/eliza-mark";
 import { BootstrapStep } from "../setup/BootstrapStep";
 import { PairingView } from "./PairingView";
@@ -8,13 +9,16 @@ import type { StartupShellProps } from "./startup-shell-types";
 
 const FONT = "'Poppins', Arial, system-ui, sans-serif";
 
-// Launch surface for the startup splash + loading: the background tracks the
-// HOME background (--bg, default #ef5a1f) — NOT the brand accent — so boot/launch
-// does not flash a different orange before the home background paints (#9565).
-// The brand mark and foreground stay the brand color. Whitelabel seam: both --bg
-// and --accent-foreground are themeable, no hardcoded brand color.
+// Launch surface for the startup splash + loading: it must match the default
+// HOME background orange (#ef5a1f = DEFAULT_BACKGROUND_COLOR, the home
+// ShaderBackground) so boot/launch flows seamlessly into the home with no
+// orange→orange flash (#9565). NOTE: this is NOT `--bg` — the theme background
+// is white/black (`:root`/`.dark`) or the brand orange #ff8a24 (`.theme-app`),
+// none of which is the home shader color — so a dedicated launch token is used.
+// Whitelabel seam: hosts override `--launch-bg` / `--accent-foreground`; the
+// literal fallbacks are the elizaOS defaults.
 const LAUNCH_SURFACE =
-  "bg-[var(--bg,#ef5a1f)] text-[var(--accent-foreground,#fff)]";
+  "bg-[var(--launch-bg,#ef5a1f)] text-[var(--accent-foreground,#fff)]";
 
 function brandName(): string {
   return getBootConfig().branding?.appName ?? "elizaOS";
@@ -27,6 +31,12 @@ function BrandMark(props: { className?: string }) {
 }
 
 export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
+  // Renderer cold-start checkpoint (#9565): the startup front door has painted.
+  // markStartup dedupes by name, so this records only the first paint.
+  useEffect(() => {
+    markStartup("startup-shell:first-paint", { view: view.kind });
+  }, [view.kind]);
+
   if (view.kind === "error") {
     return <StartupFailureView error={view.error} onRetry={onRetry} />;
   }

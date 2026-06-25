@@ -1,16 +1,20 @@
 /**
- * Brand-surface smoke. Verifies the first-paint surfaces (FOUC HTML, native
- * launch configs, capacitor + Android/iOS resources) agree on the Eliza
- * orange palette so the user never sees a foreign color before the React
- * tree mounts. The actual home / pre-agent screen lives in `@elizaos/ui`'s
- * <App /> (packages/ui/src/App.tsx) and `@elizaos/app-core` window
- * orchestration; this test asserts the shell-owned surfaces this package
- * actually controls.
+ * Brand-surface smoke. Verifies the first-paint / launch surfaces (FOUC HTML,
+ * native launch configs, capacitor + Android/iOS resources) all use the SAME
+ * orange the React home background uses, so the user never sees a foreign
+ * color — or a *different* orange — before the home background paints.
  *
- * Two distinct oranges (#9565): boot/launch/loading/splash surfaces use the
- * HOME-BACKGROUND orange (#ef5a1f, DEFAULT_BACKGROUND_COLOR) so they do not
- * flash a different orange before the home background paints; the brand/logo
- * accent (theme accent, App Actions widget, launcher icon) stays #FF5800.
+ * Two distinct oranges, kept deliberately separate (issue #9565):
+ *  - LAUNCH_ORANGE (#ef5a1f) — every boot/loading/launch surface. This equals
+ *    DEFAULT_BACKGROUND_COLOR (packages/ui/src/state/ui-preferences.ts), the
+ *    default home ShaderBackground, so the native splash → React StartupShell →
+ *    home transition is a single seamless orange.
+ *  - BRAND_ORANGE (#FF5800) — the brand accent (logos, brand surfaces). It may
+ *    persist on brand resources but must NOT be a launch surface.
+ *
+ * The actual home / pre-agent screen lives in `@elizaos/ui`'s <App />
+ * (packages/ui/src/App.tsx) and `@elizaos/app-core` window orchestration; this
+ * test asserts the shell-owned surfaces this package actually controls.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,10 +25,7 @@ const root = join(here, "..");
 const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 
 const BRAND_ORANGE = "#FF5800";
-// DEFAULT_BACKGROUND_COLOR from @elizaos/ui (packages/ui/src/state/ui-preferences.ts):
-// the color the home ShaderBackground + StartupShell loader paint. Boot/launch
-// surfaces track this so boot never flashes the brand accent first (#9565).
-const HOME_BACKGROUND_ORANGE = "#ef5a1f";
+const LAUNCH_ORANGE = "#ef5a1f";
 
 function read(rel: string): string {
   return readFileSync(join(root, rel), "utf8");
@@ -42,63 +43,87 @@ function readGeneratedOrTemplate(rel: string): string {
 }
 
 describe("brand surfaces", () => {
-  it("app.config web/theme colors are the home-background orange (launch surface)", () => {
+  it("launch orange equals the default home background color", () => {
+    // The single source of truth for the home ShaderBackground orange. Every
+    // launch surface below must equal this so boot → home is one seamless
+    // color. If the default home background changes, this test forces the
+    // launch surfaces to move with it.
+    const uiPrefs = readFileSync(
+      join(root, "..", "ui", "src", "state", "ui-preferences.ts"),
+      "utf8",
+    );
+    expect(uiPrefs).toMatch(
+      new RegExp(`DEFAULT_BACKGROUND_COLOR\\s*=\\s*"${LAUNCH_ORANGE}"`),
+    );
+  });
+
+  it("app.config web/theme colors are the launch orange (not the brand accent)", () => {
     const src = read("app.config.ts");
-    // theme_color / background_color feed the PWA manifest + <meta theme-color>
-    // + native launch surfaces — all boot/first-paint, so they track the home
-    // background, not the brand accent (#9565).
-    expect(src).toMatch(/themeColor:\s*"#ef5a1f"/);
-    expect(src).toMatch(/backgroundColor:\s*"#ef5a1f"/);
-    expect(BRAND_ORANGE).toBe("#FF5800");
-    expect(HOME_BACKGROUND_ORANGE).toBe("#ef5a1f");
+    expect(src).toMatch(new RegExp(`themeColor:\\s*"${LAUNCH_ORANGE}"`));
+    expect(src).toMatch(new RegExp(`backgroundColor:\\s*"${LAUNCH_ORANGE}"`));
+    expect(src).not.toMatch(/themeColor:\s*"#FF5800"/);
   });
 
-  it("capacitor config native backgrounds are the home-background orange (launch surface)", () => {
+  it("capacitor config and native backgrounds are the launch orange", () => {
     const src = read("capacitor.config.ts");
-    expect(src).toMatch(/SplashScreen:\s*\{[^}]*backgroundColor:\s*"#ef5a1f"/s);
-    expect(src).toMatch(/ios:\s*\{[^}]*backgroundColor:\s*"#ef5a1f"/s);
-    expect(src).toMatch(/android:\s*\{[^}]*backgroundColor:\s*"#ef5a1f"/s);
+    expect(src).toMatch(
+      new RegExp(
+        `SplashScreen:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`,
+        "s",
+      ),
+    );
+    expect(src).toMatch(
+      new RegExp(`ios:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`, "s"),
+    );
+    expect(src).toMatch(
+      new RegExp(
+        `android:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`,
+        "s",
+      ),
+    );
   });
 
-  it("Android colors.xml + styles.xml: launch surfaces home-orange, accents brand-orange", () => {
+  it("Android launch + status bar use the launch orange; brand orange stays brand", () => {
     const colors = readGeneratedOrTemplate(
       "android/app/src/main/res/values/colors.xml",
     );
-    // Launch splash + launch status bar track the home background.
+    // The launch surface is the home orange; the brand accent token is kept
+    // separate and unchanged.
     expect(colors).toContain(
-      '<color name="splash_background">#ef5a1f</color>',
+      `<color name="splash_background">${LAUNCH_ORANGE}</color>`,
     );
-    // Brand accent (App Actions widget) + theme accent stay brand orange.
-    expect(colors).toContain('<color name="eliza_orange">#FF5800</color>');
-    expect(colors).toContain('<color name="colorPrimary">#FF5800</color>');
+    expect(colors).toContain(
+      `<color name="eliza_orange">${BRAND_ORANGE}</color>`,
+    );
 
     const styles = readGeneratedOrTemplate(
       "android/app/src/main/res/values/styles.xml",
     );
-    // The launch status bar points at the launch-splash (home) color so it does
-    // not flash the brand accent before the home background paints (#9565).
+    // The launch status bar follows the splash/home, not the brand accent.
     expect(styles).toMatch(/statusBarColor[^<]*@color\/splash_background/);
+    expect(styles).not.toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
   });
 
-  it("iOS LaunchScreen.storyboard backdrop is the home-background orange (launch surface)", () => {
+  it("iOS LaunchScreen.storyboard backdrop is the launch orange", () => {
     const xml = readGeneratedOrTemplate(
       "ios/App/App/Base.lproj/LaunchScreen.storyboard",
     );
-    // 0.937 / 0.353 / 0.122 is #ef5a1f in sRGB to 3 decimals — the home
-    // background, so iOS does not flash the brand accent on launch (#9565).
+    // 0.937 / 0.353 / 0.122 is #ef5a1f in sRGB to 3 decimals.
     expect(xml).toMatch(/red="0\.937"\s+green="0\.353"\s+blue="0\.122"/);
+    expect(xml).not.toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);
   });
 
-  it("index.html FOUC fallback is the home background orange, not a foreign color", () => {
+  it("index.html FOUC fallback uses the launch orange, not a foreign color", () => {
     const html = read("index.html");
     // The FOUC fallback tracks the home background orange (#ef5a1f, #9565) so
-    // boot does not flash a different orange before the home background paints;
-    // pure black or the legacy brand orange remain acceptable. The previous
-    // `#08080a` near-black is a slop value and should not regress.
+    // boot never flashes a different orange before the home background paints.
+    // The previous `#08080a` near-black is a slop value and should not regress.
     expect(html).not.toContain("#08080a");
     expect(html).toMatch(
-      /background-color:\s*var\(--bg,\s*(#000000|#FF5800|#ef5a1f)\)/,
+      new RegExp(`background-color:\\s*var\\(--bg,\\s*${LAUNCH_ORANGE}\\)`),
     );
+    // The pre-#9565 brand-accent fallback must not regress.
+    expect(html).not.toMatch(/var\(--bg,\s*#FF5800\)/);
   });
 
   it("no rounded-lg/xl/2xl/3xl chunky rounding in app shell source", () => {
