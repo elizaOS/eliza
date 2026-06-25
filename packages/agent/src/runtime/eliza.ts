@@ -825,7 +825,10 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
       try {
         const runtime = current?.getRuntime();
         if (runtime) {
-          await shutdownRuntime(runtime, "signal shutdown");
+          // SIGINT/SIGTERM is an interactive/dev teardown — use the capped fast
+          // path so the process exits promptly instead of waiting on in-flight
+          // deferred service starts or an embedding-queue flush (#9605).
+          await shutdownRuntime(runtime, "signal shutdown", { fast: true });
         }
       } catch (err) {
         logger.warn(`[eliza] Error during shutdown: ${formatError(err)}`);
@@ -1321,6 +1324,7 @@ type RuntimeAdapterWithClose = {
 export async function shutdownRuntime(
   runtime: AgentRuntime | null | undefined,
   context: string,
+  options: { fast?: boolean } = {},
 ): Promise<void> {
   if (!runtime) return;
 
@@ -1328,7 +1332,9 @@ export async function shutdownRuntime(
   let firstError: unknown = null;
 
   try {
-    await runtime.stop();
+    // Interactive/signal teardown asks for the capped fast path so Ctrl-C does
+    // not block on a slow deferred service start or a long embedding drain.
+    await runtime.stop(options.fast ? { fast: true } : undefined);
   } catch (err) {
     firstError = err;
     logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
