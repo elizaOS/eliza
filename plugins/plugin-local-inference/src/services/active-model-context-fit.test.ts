@@ -97,4 +97,30 @@ describe("resolveLocalInferenceLoadArgs — runtime context fit", () => {
 		expect(args.cacheTypeK).not.toBe("f16");
 		expect(args.cacheTypeV).not.toBe("f16");
 	});
+
+	it("clamps the context window to the mobile ceiling on android/ios (#8848)", async () => {
+		const prevPlatform = process.env.ELIZA_MOBILE_PLATFORM;
+		const prevCeiling = process.env.ELIZA_MOBILE_CONTEXT_CEILING;
+		try {
+			process.env.ELIZA_MOBILE_PLATFORM = "android";
+			process.env.ELIZA_MOBILE_CONTEXT_CEILING = "4096";
+			// A 128k-context tier on a roomy host keeps the full 131072 on desktop
+			// (see "keeps catalog context on a roomy host"). On a phone, loading that
+			// KV at full width OOMs / never lands the first reply (#8848), so it must
+			// be clamped to the mobile ceiling instead of silently running full-width.
+			const args = await resolveLocalInferenceLoadArgs(
+				makeInstalledModel("eliza-1-9b", 5.4),
+				undefined,
+				{ hardware: hardware(24) },
+			);
+			expect(args.contextSize).toBe(4096);
+		} finally {
+			if (prevPlatform === undefined) delete process.env.ELIZA_MOBILE_PLATFORM;
+			else process.env.ELIZA_MOBILE_PLATFORM = prevPlatform;
+			if (prevCeiling === undefined)
+				delete process.env.ELIZA_MOBILE_CONTEXT_CEILING;
+			else process.env.ELIZA_MOBILE_CONTEXT_CEILING = prevCeiling;
+		}
+	});
+
 });
