@@ -25,7 +25,6 @@
 # can target a 2× or 4× H200/B200 box.
 #
 # eliza-1 cloud-tier targets (model_registry.py REGISTRY keys):
-#   REGISTRY_KEY=gemma4-e2b → eliza-1-0_8b   (single H200 — overkill, ~2 GPU-h)
 #   REGISTRY_KEY=gemma4-e2b   → eliza-1-2b     (single H200 — fits seq 8k)
 #   REGISTRY_KEY=gemma4-e4b   → eliza-1-4b     (single H200)
 #   REGISTRY_KEY=gemma4-12b   → eliza-1-9b     (single H200, ~80 GB peak)
@@ -439,7 +438,7 @@ echo "RUN_PIPELINE_DONE_OK"
 EOF
   # NOTE: `bash ... 2>&1 | tee $log` makes `$?` reflect `tee`'s exit (always 0)
   # — masking real failures. Use ${PIPESTATUS[0]} to capture the script's
-  # actual rc. Without this, a 0.8B SFT crash (chat-template TypeError,
+  # actual rc. Without this, a pre-Gemma SFT crash (chat-template TypeError,
   # 2026-05-12 incident) emitted `RUN_PIPELINE_EXIT=0`, the launcher saw
   # "success", and ran fetch + teardown over an empty checkpoint dir.
   ssh -o StrictHostKeyChecking=no "$target" "chmod +x $REMOTE_TRAIN_DIR/.run_pipeline.sh; tmux kill-session -t elizatrain 2>/dev/null || true; tmux new-session -d -s elizatrain \"bash $REMOTE_TRAIN_DIR/.run_pipeline.sh 2>&1 | tee $log; echo RUN_PIPELINE_EXIT=\\\${PIPESTATUS[0]} >> $log\""
@@ -480,8 +479,8 @@ fetch() {
 # --- MTP drafter distillation (distill_mtp_drafter.py) ----------------
 # Env knobs (defaults frugal — a small KD job, not a full pipeline):
 #   MTP_TIER              tier the drafter ships for. Active tiers (per
-#                            distill_mtp_drafter.py::ACTIVE_TIERS): 0_8b,
-#                            2b, 4b, 9b, 27b. Default: 2b.
+#                            distill_mtp_drafter.py::ACTIVE_TIERS): 2b,
+#                            4b, 9b, 27b, 27b-256k. Default: 2b.
 #   MTP_TARGET_CHECKPOINT remote path (relative to $REMOTE_TRAIN_DIR) to the
 #                            SFT'd target text HF checkpoint directory. The
 #                            distiller loads the target via
