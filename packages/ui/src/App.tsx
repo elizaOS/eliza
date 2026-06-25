@@ -2120,6 +2120,19 @@ export function App() {
     <BugReportProvider value={bugReport}>
       <ShellControllerProvider>
         <div
+          // SAFE-AREA FILL INVARIANT (do not break): this root stays
+          // `position: relative` ONLY. It must NEVER acquire a `transform`,
+          // `filter`, `backdrop-filter`/`backdrop-blur`, `perspective`,
+          // `will-change`, or paint/layout `contain`. Any of those makes this
+          // element the containing block for the `fixed inset-0` background
+          // layers below (the opaque `app-opaque-background` underlay and the
+          // `AppBackground` wallpaper), so instead of anchoring to the viewport
+          // they would anchor to this padded box (top = safe-area-top) — leaving
+          // an unfilled band under the notch (the WKWebView host color, brand
+          // orange, would show through). Keeping the backgrounds viewport-fixed
+          // is what lets every view fill edge-to-edge under the notch while the
+          // `paddingTop` below keeps CONTENT notch-aware. Locked by
+          // App.safe-area-fill.test.ts.
           className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
           // Reserve the status-bar safe area so view headers + back buttons sit
           // below the status bar. Top banners bleed their bg back up through it

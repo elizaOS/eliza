@@ -1058,20 +1058,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         next.delete(id);
         return next;
       });
-      // Warm the neighbors in both swipe directions so the next horizontal swipe
-      // paints instantly from cache (the list is most-recent-first). Best-effort
-      // and fire-and-forget; the active load below still fetches `id` itself.
-      const order = conversationsRef.current;
-      const idx = order.findIndex((c) => c.id === id);
-      if (idx >= 0) {
-        const neighbors = [
-          order[idx - 2]?.id,
-          order[idx - 1]?.id,
-          order[idx + 1]?.id,
-          order[idx + 2]?.id,
-        ].filter((n): n is string => typeof n === "string");
-        if (neighbors.length > 0) prefetchConversationMessages(neighbors);
-      }
       const loaded = await loadConversationMessages(id);
       if (loaded.ok === true) return;
       const loadedMessage = loaded.message;
@@ -1133,13 +1119,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     },
     [
       loadConversationMessages,
-      prefetchConversationMessages,
       loadConversations,
       setActionNotice,
       activeConversationIdRef,
       conversationHydrationEpochRef,
       conversationMessagesRef,
-      conversationsRef,
       send.interruptActiveChatPipeline,
       setActiveConversationId,
       setConversationMessages,
@@ -1147,6 +1131,25 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       setUnreadConversations,
     ],
   );
+
+  // Warm the message cache for the conversations on either side of the active
+  // one (the list is most-recent-first) whenever the active conversation
+  // changes — including the initial hydrated one, so even the FIRST horizontal
+  // swipe paints instantly from cache instead of waiting on the network.
+  // Best-effort and deduped inside prefetchConversationMessages.
+  useEffect(() => {
+    if (!activeConversationId) return;
+    const order = conversationsRef.current;
+    const idx = order.findIndex((c) => c.id === activeConversationId);
+    if (idx < 0) return;
+    const neighbors = [
+      order[idx - 2]?.id,
+      order[idx - 1]?.id,
+      order[idx + 1]?.id,
+      order[idx + 2]?.id,
+    ].filter((n): n is string => typeof n === "string");
+    if (neighbors.length > 0) prefetchConversationMessages(neighbors);
+  }, [activeConversationId, prefetchConversationMessages, conversationsRef]);
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {
