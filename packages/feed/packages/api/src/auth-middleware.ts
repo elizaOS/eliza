@@ -87,7 +87,7 @@ async function verifyStewardToken(token: string): Promise<StewardJwtPayload> {
   if (!payload.userId || typeof payload.userId !== "string") {
     throw new AuthenticationError("Steward JWT missing userId claim");
   }
-  return payload as unknown as StewardJwtPayload;
+  return payload as StewardJwtPayload;
 }
 
 // ─── User lookup chain ────────────────────────────────────────────────────────

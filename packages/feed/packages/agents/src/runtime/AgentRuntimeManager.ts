@@ -674,7 +674,7 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
 }
 
 function applyRuntimeCompatibilityShims(runtime: AgentRuntime): void {
-  const adapterRecord = runtime.adapter as unknown as Record<
+  const adapterRecord = runtime.adapter as Record<
     string,
     unknown
   > | null;
@@ -682,7 +682,7 @@ function applyRuntimeCompatibilityShims(runtime: AgentRuntime): void {
     return;
   }
 
-  const runtimeRecord = runtime as unknown as Record<string, unknown>;
+  const runtimeRecord = runtime as Record<string, unknown>;
   const bindAdapterMethod = (
     runtimeName: string,
     adapterName: string,
@@ -1372,10 +1372,10 @@ export class AgentRuntimeManager {
           ...this.getModelSettings(),
           model: packActor.settings.model,
         },
-      } as unknown as Character;
+      } as Character;
 
       // Attach feed metadata so MultiStepExecutor can access autonomy flags
-      (character as unknown as Record<string, unknown>).feed = packActor.feed;
+      (character as Record<string, unknown>).feed = packActor.feed;
     } else {
       // Fallback: build minimal Character from ActorData (backward compat)
       const actorData: ActorData | null = loadActorById(actor.id);
