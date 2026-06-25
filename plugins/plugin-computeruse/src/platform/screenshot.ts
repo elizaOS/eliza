@@ -21,6 +21,11 @@ import {
   isPermissionDeniedError,
 } from "./permissions.js";
 import { tagScreenshotError } from "./screenshot-errors.js";
+import {
+  canUseWaylandScreenshotPortal,
+  captureWaylandPortalScreenshot,
+  isWaylandSession,
+} from "./wayland-portal.js";
 
 const SCREEN_RECORDING_OPERATION_MESSAGE =
   "macOS Screen Recording permission is required for screenshots. Grant access in System Settings > Privacy & Security > Screen Recording, then retry.";
@@ -115,6 +120,8 @@ function captureDarwin(tmpFile: string, region?: ScreenRegion): void {
 // ── Linux ───────────────────────────────────────────────────────────────────
 
 function captureLinux(tmpFile: string, region?: ScreenRegion): void {
+  if (!region && tryCaptureWaylandPortal(tmpFile)) return;
+
   // Try tools in preference order
   if (commandExists("import")) {
     if (region) {
@@ -138,8 +145,21 @@ function captureLinux(tmpFile: string, region?: ScreenRegion): void {
     runCommandBuffer("gnome-screenshot", ["-f", tmpFile], 10000);
   } else {
     throw new Error(
-      "No screenshot tool available. Install ImageMagick (import), scrot, or gnome-screenshot.",
+      isWaylandSession()
+        ? "No screenshot tool available. Install xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, or gnome-screenshot for X11 fallback."
+        : "No screenshot tool available. Install ImageMagick (import), scrot, or gnome-screenshot.",
     );
+  }
+}
+
+function tryCaptureWaylandPortal(tmpFile: string): boolean {
+  if (!canUseWaylandScreenshotPortal()) return false;
+  try {
+    captureWaylandPortalScreenshot(tmpFile);
+    return true;
+  } catch (error) {
+    if (isPermissionDeniedError(error)) throw error;
+    return false;
   }
 }
 
