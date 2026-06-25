@@ -10,12 +10,25 @@ import { parseProactiveMessageEvent } from "../state/parsers";
 
 const RING_BUFFER_CAP = 200;
 
+export interface ActivityEventSource {
+  type: "pty-session-event" | "proactive-message" | "agent_event";
+  stream?: string;
+  data?: unknown;
+  seq?: number;
+  ts?: number;
+  runId?: string;
+  agentId?: string;
+  roomId?: string;
+  sessionKey?: string;
+}
+
 export interface ActivityEvent {
   id: string;
   timestamp: number;
   eventType: string;
   sessionId?: string;
   summary: string;
+  source?: ActivityEventSource;
 }
 
 let nextEventId = 0;
@@ -23,6 +36,30 @@ let nextEventId = 0;
 function makeEventId(): string {
   nextEventId += 1;
   return `evt-${nextEventId}-${Date.now()}`;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function agentEventSource(data: Record<string, unknown>): ActivityEventSource {
+  return {
+    type: "agent_event",
+    stream: readString(data.stream),
+    data: data.payload ?? data.data,
+    seq: readFiniteNumber(data.seq),
+    ts: readFiniteNumber(data.ts),
+    runId: readString(data.runId),
+    agentId: readString(data.agentId),
+    roomId: readString(data.roomId),
+    sessionKey: readString(data.sessionKey),
+  };
 }
 
 /**
@@ -73,10 +110,16 @@ export function useActivityEvents() {
         if (!activity) return;
 
         pushEvent({
-          timestamp: Date.now(),
+          timestamp: readFiniteNumber(data.ts) ?? Date.now(),
           eventType: activity.eventType,
           sessionId: activity.sessionId,
           summary: activity.plaintext,
+          source: {
+            type: "pty-session-event",
+            data,
+            ts: readFiniteNumber(data.ts),
+            sessionKey: readString(data.sessionId),
+          },
         });
       },
     );
@@ -97,9 +140,14 @@ export function useActivityEvents() {
           { maxLength: 120 },
         );
         pushEvent({
-          timestamp: Date.now(),
+          timestamp: readFiniteNumber(data.ts) ?? Date.now(),
           eventType: activity?.eventType ?? "proactive-message",
           summary: activity?.plaintext ?? summary,
+          source: {
+            type: "proactive-message",
+            data,
+            ts: readFiniteNumber(data.ts),
+          },
         });
       },
     );
@@ -111,10 +159,13 @@ export function useActivityEvents() {
         if (!activity) {
           return;
         }
+        const source = agentEventSource(data);
         pushEvent({
-          timestamp: Date.now(),
+          timestamp: source.ts ?? Date.now(),
           eventType: activity.eventType,
+          sessionId: activity.sessionId ?? source.sessionKey,
           summary: activity.plaintext,
+          source,
         });
       },
     );

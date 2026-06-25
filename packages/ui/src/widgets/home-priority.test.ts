@@ -157,6 +157,14 @@ describe("signalKindForEventType", () => {
     expect(signalKindForEventType("error")).toBe("workflow");
   });
 
+  it("normalizes typed AgentEventService streams to home signal kinds", () => {
+    expect(signalKindForEventType("action_complete")).toBe("workflow");
+    expect(signalKindForEventType("tool_result")).toBe("workflow");
+    expect(signalKindForEventType("provider_cached")).toBe("workflow");
+    expect(signalKindForEventType("message_received")).toBe("message");
+    expect(signalKindForEventType("memory_search")).toBe("activity");
+  });
+
   it("falls back to activity for unknown event types", () => {
     expect(signalKindForEventType("nonsense")).toBe("activity");
   });
