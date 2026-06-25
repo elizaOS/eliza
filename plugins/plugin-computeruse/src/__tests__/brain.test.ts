@@ -184,6 +184,8 @@ describe("Brain.observeAndPlan", () => {
     let calls = 0;
     const lastArgs: Array<{ imageUrl: string; prompt: string }> = [];
     const brain = new Brain(null, {
+      // This test exercises the original always-attach plan flow.
+      imagePolicy: "always",
       invokeModel: async (args) => {
         calls += 1;
         lastArgs.push({ imageUrl: args.imageUrl, prompt: args.prompt });
@@ -218,6 +220,8 @@ describe("Brain.observeAndPlan", () => {
     let calls = 0;
     const seenPrompts: string[] = [];
     const brain = new Brain(null, {
+      // The light→strict retry is the always-attach path; pin it explicitly.
+      imagePolicy: "always",
       invokeModel: async (args) => {
         calls += 1;
         seenPrompts.push(args.prompt);

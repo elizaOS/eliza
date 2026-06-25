@@ -70,6 +70,10 @@ export interface AgentLoopStats {
   invocations: number;
   /** Calls served from cache (no model call, no tokens). */
   cacheHits: number;
+  /** Model calls issued with no screenshot attached (#9105). */
+  imagelessCalls: number;
+  /** Estimated image tokens not sent because of imageless calls (#9105). */
+  estImageTokensSaved: number;
 }
 
 export interface AgentLoop {

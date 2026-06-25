@@ -25,11 +25,14 @@
  */
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -78,7 +81,14 @@ const libDir = join(root, "usr/lib/x86_64-linux-gnu");
 for (const so of readdirSync(libDir).filter((f) =>
   /^(libtesseract|liblept)\.so/.test(f),
 )) {
-  cpSync(join(libDir, so), join(dest, "lib", so), { dereference: false });
+  // Dereference to the real .so bytes and write them under the SONAME name.
+  // Debian ships libtesseract.so.5 etc. as symlinks into the extraction dir;
+  // copying them as symlinks (dereference:false) leaves the bundle pointing at
+  // a temp dir that is deleted on exit — the "portable" bundle then dlopen-fails
+  // with "libtesseract.so.5: cannot open shared object file". Writing real bytes
+  // under each name makes the bundle self-contained.
+  const realSo = realpathSync(join(libDir, so));
+  copyFileSync(realSo, join(dest, "lib", so));
 }
 
 // Copy the FULL transitive shared-lib closure. libtesseract pulls in leptonica,
@@ -114,13 +124,19 @@ function lddClosure(binPath) {
 }
 let bundledExtra = 0;
 for (const soPath of lddClosure(join(dest, "bin", "tesseract"))) {
-  const base = soPath.split("/").pop();
-  if (GLIBC_PROVIDED.test(base)) continue;
+  // ldd can resolve a path with a trailing slash (e.g. a symlink dir entry);
+  // strip it so the SONAME basename is never empty (an empty basename made the
+  // target the lib/ dir itself → cpSync EISDIR).
+  const cleanSrc = soPath.replace(/\/+$/, "");
+  const base = cleanSrc.split("/").pop();
+  if (!base || GLIBC_PROVIDED.test(base)) continue;
   const target = join(dest, "lib", base);
   if (existsSync(target)) continue; // already staged (libtesseract/liblept)
-  // dereference: write the SONAME-named file with the real lib bytes, so the
-  // dynamic loader finds it by the name the binary asks for.
-  cpSync(soPath, target, { dereference: true });
+  // dereference the symlink to the real .so file and copy its bytes under the
+  // SONAME the binary asks for, so the dynamic loader finds it by that name.
+  const realSrc = realpathSync(cleanSrc);
+  if (!statSync(realSrc).isFile()) continue;
+  copyFileSync(realSrc, target);
   bundledExtra++;
 }
 console.log(
