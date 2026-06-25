@@ -263,6 +263,35 @@ jobs:
           cp -r .next/static "$app/.next/static"
           cp -r public "$app/public"
 
+      - name: Smoke-test the image (gate the GHCR push on a working container)
+        # Build + run the exact standalone image and assert it actually serves its
+        # UI before we publish it — so the showcase deploy never pulls a broken
+        # :showcase tag. Mirrors the EDAD job's gate above (DoD: failures surface
+        # loudly; the showcase deploy can never pull a broken tag).
+        run: |
+          set -euo pipefail
+          docker build --load -t cuc-smoke:ci \
+            -f packages/examples/cloud/clone-ur-crush/Dockerfile.bundle \
+            packages/examples/cloud/clone-ur-crush/.next/standalone
+          docker rm -f cuc-smoke >/dev/null 2>&1 || true
+          trap 'docker rm -f cuc-smoke >/dev/null 2>&1 || true' EXIT
+          docker run -d --name cuc-smoke -p 3000:3000 cuc-smoke:ci
+          ok=""
+          for _ in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then ok=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::Clone Ur Crush image never started serving" >&2
+            docker logs cuc-smoke || true
+            exit 1
+          fi
+          curl -fsS http://127.0.0.1:3000/ | grep -q "Clone Your Crush" \
+            || { echo "::error::Clone Ur Crush did not serve its UI" >&2; docker logs cuc-smoke || true; exit 1; }
+          docker rm -f cuc-smoke >/dev/null 2>&1 || true
+          trap - EXIT
+          echo "Clone Ur Crush image smoke test passed: container serves its UI."
+
       - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
         with:
           registry: ${{ env.REGISTRY }}
