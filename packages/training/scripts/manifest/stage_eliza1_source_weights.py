@@ -137,41 +137,64 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
 
 DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "0_8b": None,
-    "2b": None,
-    "4b": SourceArtifact(
+    "2b": SourceArtifact(
         kind="mtp",
-        repo="z-lab/gemma-4-E4B-MTP",
+        repo="google/gemma-4-E2B-it-qat-q4_0-unquantized-assistant",
         filename="model.safetensors",
-        destination="source/mtp/gemma4-e4b-mtp.safetensors",
-        license="mit",
+        destination="source/mtp/gemma4-e2b-assistant.safetensors",
+        license="gemma",
         status="source-safetensors",
         notes=(
-            "Official upstream MTP drafter source for google/gemma-4-E4B.",
-            "Final Eliza-1 4B still needs tokenizer merge, GGUF conversion, quantization, and MTP acceptance against the Eliza-1 text checkpoint.",
+            "Official Google Gemma 4 E2B assistant source for MTP/speculative "
+            "decoding.",
+            "Final Eliza-1 2B still needs tokenizer merge, mtp-draft GGUF "
+            "conversion, quantization, and acceptance against the Eliza-1 text "
+            "checkpoint.",
+        ),
+    ),
+    "4b": SourceArtifact(
+        kind="mtp",
+        repo="google/gemma-4-E4B-it-qat-q4_0-unquantized-assistant",
+        filename="model.safetensors",
+        destination="source/mtp/gemma4-e4b-assistant.safetensors",
+        license="gemma",
+        status="source-safetensors",
+        notes=(
+            "Official Google Gemma 4 E4B assistant source for MTP/speculative "
+            "decoding.",
+            "Final Eliza-1 4B still needs tokenizer merge, mtp-draft GGUF "
+            "conversion, quantization, and acceptance against the Eliza-1 text "
+            "checkpoint.",
         ),
     ),
     "9b": SourceArtifact(
         kind="mtp",
-        repo="z-lab/gemma-4-12B-MTP",
+        repo="google/gemma-4-12B-it-qat-q4_0-unquantized-assistant",
         filename="model.safetensors",
-        destination="source/mtp/gemma4-12b-mtp.safetensors",
-        license="mit",
+        destination="source/mtp/gemma4-12b-assistant.safetensors",
+        license="gemma",
         status="source-safetensors",
         notes=(
-            "Official upstream MTP drafter source for google/gemma-4-12B.",
-            "Final Eliza-1 9B still needs tokenizer merge, GGUF conversion, quantization, and MTP acceptance against the Eliza-1 text checkpoint.",
+            "Official Google Gemma 4 12B assistant source for MTP/speculative "
+            "decoding.",
+            "Final Eliza-1 9B still needs tokenizer merge, mtp-draft GGUF "
+            "conversion, quantization, and acceptance against the Eliza-1 text "
+            "checkpoint.",
         ),
     ),
     "27b": SourceArtifact(
         kind="mtp",
-        repo="spiritbuun/gemma-4-31B-MTP-GGUF",
-        filename="mtp-draft-3.6-q8_0.gguf",
-        destination="source/mtp/gemma4-31b-mtp-q8_0.gguf",
-        license="mit",
-        status="source-gguf",
+        repo="google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
+        filename="model.safetensors",
+        destination="source/mtp/gemma4-31b-assistant.safetensors",
+        license="gemma",
+        status="source-safetensors",
         notes=(
-            "GGUF quantization of z-lab/gemma-4-31B-MTP; Q8_0 is the upstream recommended quant for the Gemma 4 drafter.",
-            "Final Eliza-1 27B still needs MTP acceptance against the Eliza-1 text checkpoint before publish.",
+            "Official Google Gemma 4 31B assistant source for MTP/speculative "
+            "decoding.",
+            "Final Eliza-1 27B still needs tokenizer merge, mtp-draft GGUF "
+            "conversion, quantization, and acceptance against the Eliza-1 text "
+            "checkpoint.",
         ),
     ),
 }
@@ -460,7 +483,11 @@ def stage_sources(args: argparse.Namespace) -> dict[str, Any]:
         )
     elif not drafter_source.filename.lower().endswith(".gguf"):
         blockers.append(
-            f"Upstream MTP source for tier {args.tier} is {drafter_source.repo}/{drafter_source.filename}, not a final GGUF; final mtp/drafter-{args.tier}.gguf still needs tokenizer merge, GGUF conversion, quantization, and acceptance."
+            f"Upstream MTP source for tier {args.tier} is "
+            f"{drafter_source.repo}/{drafter_source.filename}, not a final "
+            f"GGUF; final mtp/drafter-{args.tier}.gguf still needs tokenizer "
+            "merge, GGUF conversion, quantization, and acceptance against the "
+            "Eliza-1 text checkpoint."
         )
     else:
         blockers.append(

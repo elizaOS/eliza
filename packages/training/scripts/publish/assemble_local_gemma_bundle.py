@@ -72,17 +72,25 @@ RAM_BUDGET_MB = {
     "27b": (32000, 48000),
     "27b-256k": (32000, 48000),
 }
-# The E2B local drafter is the E4B-extracted MTP head (tier-mismatched smoke
-# drafter). Larger tiers have real per-tier MTP sources.
+# Official Gemma 4 assistant source repos. These publish safetensors sources;
+# a runtime bundle still needs a converted `mtp-draft` GGUF plus acceptance
+# against the exact Eliza-1 text checkpoint.
 DRAFTER_SOURCE_BY_TIER = {
-    "2b": "shadowlilac/gemma-4-e4b-mtp-extraction-effort",
-    "4b": "z-lab/gemma-4-E4B-MTP",
-    "9b": "z-lab/gemma-4-12B-MTP",
-    "27b": "spiritbuun/gemma-4-31B-MTP-GGUF",
-    "27b-256k": "spiritbuun/gemma-4-31B-MTP-GGUF",
+    "2b": "google/gemma-4-E2B-it-qat-q4_0-unquantized-assistant",
+    "4b": "google/gemma-4-E4B-it-qat-q4_0-unquantized-assistant",
+    "9b": "google/gemma-4-12B-it-qat-q4_0-unquantized-assistant",
+    "27b": "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
+    "27b-256k": "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
 }
-# E2B stages the E4B drafter (head dim mismatch); not a checkpoint match.
-DRAFTER_MATCHES_TARGET = {"2b": False, "4b": True, "9b": True, "27b": True, "27b-256k": True}
+# Source assistant drafters are not checkpoint-matched to fine-tuned Eliza-1
+# text weights until the Eliza training pipeline records that match.
+DRAFTER_MATCHES_TARGET = {
+    "2b": False,
+    "4b": False,
+    "9b": False,
+    "27b": False,
+    "27b-256k": False,
+}
 
 MIN_TEXT_CONTEXT = 131_072
 
@@ -195,9 +203,10 @@ def assemble(args: argparse.Namespace) -> dict[str, Any]:
         )
         if not matches:
             note += (
-                f" SMOKE drafter: the E4B-extracted head ({source}) staged on "
-                "the E2B target (tier mismatch). Candidate-only; never "
-                "defaultEligible."
+                f" Candidate drafter: the upstream assistant source is {source}, "
+                "but this local GGUF has not been recorded as trained/distilled "
+                "against the exact Eliza-1 text checkpoint. Candidate-only; "
+                "never defaultEligible."
             )
         drafter_block = {
             "path": drafter_rel,
@@ -227,9 +236,9 @@ def assemble(args: argparse.Namespace) -> dict[str, Any]:
     else:
         # Leave a sentinel so the missing-drafter case is explicit, not silent.
         (out / "mtp" / "MISSING.txt").write_text(
-            "No MTP drafter staged. The only local 2b drafter "
-            "(shadowlilac/gemma-4-e4b-mtp-extraction-effort) is a .safetensors "
-            "file and needs conversion to the `mtp-draft` GGUF arch first. "
+            f"No MTP drafter staged. The official assistant source for this tier "
+            f"({DRAFTER_SOURCE_BY_TIER[tier]}) is a .safetensors file and needs "
+            "conversion to the `mtp-draft` GGUF arch first. "
             "This bundle is text+vision only and is NOT release-shaped "
             "(AGENTS.md §1 requires MTP on every tier).\n"
         )
