@@ -126,7 +126,7 @@ async function generateTextWithModel(
   };
 
   const { text, usage } = await generateText(
-    generateParams as unknown as Parameters<typeof generateText>[0]
+    generateParams as Parameters<typeof generateText>[0]
   );
 
   if (usage) {
