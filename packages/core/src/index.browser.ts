@@ -6,6 +6,7 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
+export * from "./access-context";
 export * from "./actions";
 export * from "./activity-plaintext";
 export * from "./api/http-helpers";

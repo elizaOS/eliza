@@ -93,16 +93,49 @@ export function deriveTenantIdent(appId: string): TenantDbIdent {
  * Admin-connection DDL: create the role, create its database, and lock down
  * connect privileges so ONLY this role can open the database. Statement order
  * is load-bearing — the role must exist before the database can be owned by it.
+ *
+ * IDEMPOTENT AT THE DDL LAYER so re-running `provision()` against the SAME
+ * cluster does not fail loud on "already exists". Postgres `CREATE ROLE` /
+ * `CREATE DATABASE` have no `IF NOT EXISTS`, so:
+ *   - CREATE ROLE is wrapped in a DO block that swallows `duplicate_object`
+ *     (SQLSTATE 42710, raised when the role already exists). The role's password
+ *     is NOT set here — it is set by the `ALTER ROLE` below. Keeping the password
+ *     literal OUT of the dollar-quoted `DO $$ ... $$` body is deliberate: a `$$`
+ *     inside the value would terminate the DO body early. (Identifiers are safe
+ *     in the DO block — `deriveTenantIdent` restricts them to `[a-z0-9_]`.)
+ *   - `ALTER ROLE ... WITH LOGIN PASSWORD` ALWAYS runs, as a plain statement
+ *     where `quoteLiteral` fully escapes the value, so the returned DSN carries
+ *     the freshly-minted password whether the role is new or pre-existing
+ *     (per-app role — rotating its password on retry is safe, the caller gets
+ *     the new DSN). It also self-heals a role that somehow lost `LOGIN`.
+ *   - `CREATE DATABASE` is only emitted when the caller says the DB is absent
+ *     (`databaseExists: false`); it cannot run in a DO block / transaction, and
+ *     re-issuing it on an existing DB would throw.
+ *   - `REVOKE` / `GRANT CONNECT` always run — re-applying them is a no-op.
  */
-export function buildAdminDdl(ident: TenantDbIdent, password: string): string[] {
+export function buildIdempotentAdminDdl(
+  ident: TenantDbIdent,
+  password: string,
+  opts: { databaseExists: boolean },
+): string[] {
   const role = quoteIdent(ident.roleName);
   const db = quoteIdent(ident.dbName);
-  return [
-    `CREATE ROLE ${role} LOGIN PASSWORD ${quoteLiteral(password)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`,
-    `CREATE DATABASE ${db} OWNER ${role}`,
+  const statements: string[] = [
+    // CREATE ROLE has no IF NOT EXISTS; the DO block swallows the duplicate so a
+    // retry is a no-op for an already-created role. Password is set by ALTER ROLE.
+    `DO $$ BEGIN CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    // ALWAYS set the password so the returned DSN is the working credential,
+    // whether the role was just created or already existed.
+    `ALTER ROLE ${role} WITH LOGIN PASSWORD ${quoteLiteral(password)}`,
+  ];
+  if (!opts.databaseExists) {
+    statements.push(`CREATE DATABASE ${db} OWNER ${role}`);
+  }
+  statements.push(
     `REVOKE CONNECT ON DATABASE ${db} FROM PUBLIC`,
     `GRANT CONNECT ON DATABASE ${db} TO ${role}`,
-  ];
+  );
+  return statements;
 }
 
 /**
@@ -142,6 +175,23 @@ export function buildDsn(params: {
  * mint a password, run admin DDL (role+db+connect lockdown), then in-database
  * DDL (schema lockdown), and return the role-scoped DSN. Pure of any real DB
  * driver — the executor is the only IO seam.
+ *
+ * IDEMPOTENT AT THE DDL LAYER: re-running `provision()` for the same app against
+ * the SAME cluster succeeds and returns a WORKING DSN even if the role and/or
+ * database already exist from a prior (possibly partial) attempt — the admin DDL
+ * swallows the duplicate role, gates `CREATE DATABASE` on `databaseExists`, and
+ * always (re)sets the role password + re-applies the connect lockdown.
+ *
+ * SCOPE — this does NOT make the high-level deploy retry path idempotent. The
+ * cluster-allocation layer above (`SqlTenantDbProvisioning.provisionForApp` →
+ * `ClusterPool.allocate` → `tryClaimSlot`) claims a NEW cluster slot on every
+ * call, so retrying a deploy for the same app re-runs this (now safe) DDL but
+ * still increments `tenant_db_clusters.database_count` again for the same
+ * physical database. No app→cluster placement is persisted today, so the
+ * provisioner cannot recover the prior slot — that cluster-slot-leak-on-retry is
+ * tracked separately in #9686. (Same-app concurrent provisions are serialized
+ * upstream by `trySetProvisioning`'s `ON CONFLICT (app_id)` status gate in
+ * `user-database.ts`, not by this builder.)
  */
 export class SqlTenantDbProvisioner {
   private readonly cluster: TenantDbCluster;
@@ -157,7 +207,11 @@ export class SqlTenantDbProvisioner {
   async provision(appId: string): Promise<ProvisionedTenantDb> {
     const ident = deriveTenantIdent(appId);
     const password = this.genPassword();
-    await this.executor.execAdmin(buildAdminDdl(ident, password));
+    // Pre-check on the admin connection: CREATE DATABASE has no IF NOT EXISTS and
+    // cannot run in a DO block, so a retry would throw on an existing DB. Gate it.
+    const databaseExists = await this.executor.databaseExists(ident.dbName);
+    await this.executor.execAdmin(buildIdempotentAdminDdl(ident, password, { databaseExists }));
+    // In-database schema lockdown is pure REVOKE/GRANT — safe to re-apply on retry.
     await this.executor.execInDatabase(ident.dbName, buildTenantDdl(ident));
     return {
       ...ident,
