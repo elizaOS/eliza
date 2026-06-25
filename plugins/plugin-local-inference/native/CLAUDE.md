@@ -536,7 +536,7 @@ catalogs drift from it — generate them.
   "version": "1.0.0",
   "publishedAt": "2026-MM-DDTHH:MM:SSZ",
   "lineage": {
-    "text": { "base": "qwen3.5-4b", "license": "..." },
+    "text": { "base": "gemma-4-E4B", "license": "..." },
     "voice": { "base": "omnivoice-base-Q4_K_M", "license": "..." },
     "drafter": { "base": "mtp-4b-drafter", "license": "..." }
   },
