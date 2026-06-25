@@ -221,6 +221,7 @@ import {
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
+import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import {
 	ResponseSkeletonStreamExtractor,
@@ -4310,15 +4311,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		// Return highest priority handler (first in array after sorting)
-		this.logger.debug(
-			{
-				src: "agent",
-				agentId: this.agentId,
-				model: resolvedModel.modelKey,
-				provider: resolvedModel.provider,
-			},
-			"Using model",
-		);
 		return resolvedModel.handler;
 	}
 
@@ -4530,6 +4522,7 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
+		const lookupCaller = captureModelLookupCaller(this.logger.level);
 		// Per-action model routing seam (closes A5 / W1-R2). If the call
 		// originates inside an action handler that declared a `modelClass`, and
 		// the requested model type is a text-generation model, we resolve
@@ -4934,6 +4927,20 @@ export class AgentRuntime implements IAgentRuntime {
 				params: modelParams,
 			}),
 			"Pre-model pipeline hook",
+		);
+
+		this.logger.debug(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				model: resolvedModelKey,
+				provider: resolvedModel.provider,
+				...(lookupCaller?.caller ? { caller: lookupCaller.caller } : {}),
+				...(lookupCaller?.callerStack.length
+					? { callerStack: lookupCaller.callerStack }
+					: {}),
+			},
+			"Using model",
 		);
 
 		const rawResponse = await handler(
