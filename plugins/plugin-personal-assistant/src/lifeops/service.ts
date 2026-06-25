@@ -59,6 +59,7 @@ import { withSubscriptions } from "./service-mixin-subscriptions.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import type { LifeOpsTravelServicePublic } from "./service-mixin-travel.js";
 import { withTravel } from "./service-mixin-travel.js";
+import type { LifeOpsWhatsAppService } from "./service-mixin-whatsapp.js";
 import { withWhatsApp } from "./service-mixin-whatsapp.js";
 import type { LifeOpsWorkflowService } from "./service-mixin-workflows.js";
 import { withWorkflows } from "./service-mixin-workflows.js";
@@ -122,6 +123,7 @@ export class LifeOpsService extends LifeOpsServiceComposed {}
 // biome-ignore lint/suspicious/noUnsafeDeclarationMerging: intentional class+interface merge to surface mixin methods past TS inference depth
 export interface LifeOpsService
   extends BrowserBridgeService,
+    LifeOpsWhatsAppService,
     LifeOpsCalendarService,
     // `getHealthConnectorStatus` is also declared (with a different return
     // type) by the status mixin already on the composed class, so omit it here.
