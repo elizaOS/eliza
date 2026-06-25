@@ -312,7 +312,20 @@ export function getAttachmentFileName(media: Media): string {
 	return hasExtension ? baseName : `${baseName}${extension}`;
 }
 
-/** Fetch video/audio bytes locally so private URLs (e.g. zerollama /content) upload reliably. */
+/**
+ * Fetch video/audio bytes locally so private URLs (e.g. zerollama `/content`)
+ * upload reliably to Discord, which cannot reach the agent's LAN.
+ *
+ * SSRF note: this deliberately uses an UNGUARDED `fetch` rather than
+ * `fetchWithSsrfGuard`. The whole point is to read the agent's own
+ * generated-media URLs, which are private/LAN endpoints the SSRF guard blocks
+ * by design — guarding here would defeat the feature. The input `media` is the
+ * agent's OUTBOUND reply content (`content.attachments` produced by the agent's
+ * own GENERATE_MEDIA / media providers), not untrusted inbound user input, so
+ * the fetch target is agent-controlled. Only `http(s)` VIDEO/AUDIO URLs are
+ * byte-fetched; anything else is passed to Discord as a plain URL attachment.
+ * Do NOT route untrusted/user-supplied URLs through this helper.
+ */
 export async function buildOutboundDiscordAttachment(
 	media: Media,
 	runtime?: Pick<IAgentRuntime, "logger">,
@@ -330,6 +343,7 @@ export async function buildOutboundDiscordAttachment(
 
 	if (preferFetchedBytes) {
 		try {
+			// Unguarded by design — see the SSRF note on this function.
 			const response = await fetch(url);
 			if (response.ok) {
 				const buffer = Buffer.from(await response.arrayBuffer());
