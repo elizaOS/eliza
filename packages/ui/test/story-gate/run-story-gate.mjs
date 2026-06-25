@@ -221,6 +221,7 @@ function normalizeConsole(text) {
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
       "<uuid>",
     )
+    .replace(/\n\s+at\s+[A-Za-z_$][\w$]*(?=[\s(])/g, "\n    at <fn>")
     .replace(/\d+/g, "<n>")
     .trim()
     .slice(0, 300);

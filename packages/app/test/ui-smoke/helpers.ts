@@ -1882,6 +1882,29 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // Approval/needs-attention poller — shell-level GET on the home surface. The
+  // zero-key smoke stack has no approval queue, so return the canonical empty
+  // pending-actions shape instead of letting the fallback server emit a 501.
+  await page.route("**/api/approvals**", async (route) => {
+    const url = new URL(route.request().url());
+    if (
+      route.request().method() !== "GET" ||
+      url.pathname !== "/api/approvals"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        approvals: [],
+        pending: [],
+        pendingUserActions: [],
+      }),
+    });
+  });
+
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

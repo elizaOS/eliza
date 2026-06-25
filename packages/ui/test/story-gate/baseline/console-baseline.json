@@ -8,6 +8,20 @@
   "accounts-accountlist--default": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
+  "accounts-editableaccountlabel--default": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "chat-messageattachments--model-3-d": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "chat-messageattachments--multiple": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)",
+    "Blocked script execution in '<url> because the document's frame is sandboxed and the 'allow-scripts' permission is not set."
+  ],
+  "chat-messageattachments--pdf-inline": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)",
+    "Blocked script execution in '<url> because the document's frame is sandboxed and the 'allow-scripts' permission is not set."
+  ],
   "chat-widgets-musicplayerwidget--long-title": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
@@ -35,23 +49,9 @@
   "cloudui-brand-elizalogo--small": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
-  "connectors-connectoraccountcard--busy-states": [
-    "Failed to load resource: the server responded with a status of <n> (Not Found)"
-  ],
-  "connectors-connectoraccountcard--default": [
-    "Failed to load resource: the server responded with a status of <n> (Not Found)"
-  ],
-  "connectors-connectoraccountcard--disconnected-and-disabled": [
-    "Failed to load resource: the server responded with a status of <n> (Not Found)"
-  ],
-  "connectors-connectoraccountcard--needs-reauth": [
-    "Failed to load resource: the server responded with a status of <n> (Not Found)"
-  ],
-  "connectors-connectoraccountcard--pending-no-avatar": [
-    "Failed to load resource: the server responded with a status of <n> (Not Found)"
-  ],
-  "connectors-connectoraccountcard--selectable": [
-    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  "configui-configfield--default": [
+    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at <fn> (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
+    "Error rendering story 'configui-configfield--default':"
   ],
   "conversations-conversationssidebar--default": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
@@ -61,6 +61,10 @@
   ],
   "conversations-conversationssidebar--mobile": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "customactions-customactionspanel--open": [
+    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at <fn> (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
+    "Error rendering story 'customactions-customactionspanel--open':"
   ],
   "pages-appdetailsview--default": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
@@ -177,7 +181,19 @@
   "pages-elizaclouddashboard--overview": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
+  "pages-elizaosappsview--contacts": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "pages-elizaosappsview--messages": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "pages-elizaosappsview--phone": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
   "pages-filesview--populated": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
+  "pages-logsview--default": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
   "pages-mediagalleryview--default": [
@@ -205,10 +221,10 @@
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
   "primitives-errorboundary--caught-error": [
-    "Error: Simulated render failure in a child component.\n    at i (<url>)\n    at ko (<url>)\n    at bc (<url>)\n    at Lc (<url>"
+    "Error: Simulated render failure in a child component.\n    at <fn> (<url>)\n    at <fn> (<url>)\n    at <fn> (<url>)\n    at <fn> (<url>"
   ],
   "primitives-errorboundary--custom-labels": [
-    "Error: Simulated render failure in a child component.\n    at i (<url>)\n    at ko (<url>)\n    at bc (<url>)\n    at Lc (<url>"
+    "Error: Simulated render failure in a child component.\n    at <fn> (<url>)\n    at <fn> (<url>)\n    at <fn> (<url>)\n    at <fn> (<url>"
   ],
   "settings-apppermissionssection--default": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
@@ -282,9 +298,11 @@
   "shell-commandpalette--no-results": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)"
   ],
+  "shell-home-dashboard--empty": [
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ],
   "views-dynamicviewloader--failed-to-load": [
-    "Failed to load resource: net::ERR_NAME_NOT_RESOLVED",
-    "DynamicViewLoader failed to load view \"broken.view\" from <url> TypeError: Failed to fetch dynamically imported module: <url>"
+    "DynamicViewLoader failed to load view \"broken.view\" from <url> Error: DynamicViewLoader: refusing to import a cross-origin view bundle (<url>). View bundles must be served same-origin from /api/views/.\n    at <fn>"
   ],
   "views-dynamicviewloader--loading": [
     "Failed to load resource: the server responded with a status of <n> (Not Found)",

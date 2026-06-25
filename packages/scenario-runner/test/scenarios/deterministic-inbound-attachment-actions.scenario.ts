@@ -38,12 +38,19 @@ export default scenario({
       apply: (ctx) => {
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
         runtime.scenarioLlmFixtures?.register({
-          name: "inbound-attachment-direct-reply",
+          name: "inbound-attachment-stage1-direct-reply",
           match: {
-            modelType: ModelType.TEXT_SMALL,
+            modelType: ModelType.RESPONSE_HANDLER,
             input: matchesScenarioInput(attachmentInput),
+            toolName: "HANDLE_RESPONSE",
           },
-          response: replyText,
+          response: {
+            contexts: ["simple"],
+            intents: ["read attached note"],
+            replyText,
+            threadOps: [],
+            candidateActionNames: [],
+          },
           times: "any",
         });
         return undefined;

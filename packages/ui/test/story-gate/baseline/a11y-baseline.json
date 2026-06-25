@@ -26,7 +26,19 @@
   "apps-surfaces-gameoperatorshell--empty": [
     "color-contrast"
   ],
+  "apps-surfaces-gameoperatorshell--error-tone": [
+    "color-contrast"
+  ],
+  "apps-surfaces-gameoperatorshell--live-variant": [
+    "color-contrast"
+  ],
+  "chat-accountrequiredcard--default": [
+    "color-contrast"
+  ],
   "chat-accountrequiredcard--reauth-needed": [
+    "color-contrast"
+  ],
+  "chat-messageattachments--text-code": [
     "color-contrast"
   ],
   "chat-messagecontent--inline-form": [
@@ -74,6 +86,9 @@
   "chat-widgets-formrequest--select-and-checkbox-only": [
     "color-contrast"
   ],
+  "chat-widgets-formrequest--title-only": [
+    "color-contrast"
+  ],
   "chat-widgets-musicplayerwidget--idle": [
     "color-contrast"
   ],
@@ -99,6 +114,9 @@
     "color-contrast"
   ],
   "chat-widgets-orchestratoraccounts--with-assignments": [
+    "color-contrast"
+  ],
+  "chat-widgets-orchestratoraccounts--with-room-roster": [
     "color-contrast"
   ],
   "chat-widgets-shared-widgetsection--empty-state": [
@@ -287,9 +305,6 @@
   "cloudui-docs-openapiviewer--constrained": [
     "scrollable-region-focusable"
   ],
-  "cloudui-icons--accent-tinted": [
-    "color-contrast"
-  ],
   "cloudui-imagegen-imagepromptinput--fantasy-art-portrait": [
     "color-contrast"
   ],
@@ -333,9 +348,6 @@
   "cloudui-layout-dashboardsidebar--unauthenticated": [
     "color-contrast"
   ],
-  "cloudui-layout-dashboardsidebaritem--collapsed": [
-    "link-name"
-  ],
   "cloudui-layout-dashboardsidebaritem--collapsed-active": [
     "link-name"
   ],
@@ -348,7 +360,7 @@
   "cloudui-layout-dashboardsidebarsection--collapsed": [
     "link-name"
   ],
-  "cloudui-layout-pageheadercontext--imperative-setter": [
+  "cloudui-layout-pageheadercontext--empty": [
     "color-contrast"
   ],
   "cloudui-layout-pageheadercontext--title-and-description": [
@@ -446,10 +458,19 @@
   "cloudui-promotion-socialconnectionhint--discord-only": [
     "color-contrast"
   ],
+  "cloudui-promotion-socialconnectionhint--telegram-only": [
+    "color-contrast"
+  ],
   "cloudui-resizable--constrained-sizes": [
     "color-contrast"
   ],
   "cloudui-resizable--horizontal-split": [
+    "color-contrast"
+  ],
+  "cloudui-resizable--vertical-split": [
+    "color-contrast"
+  ],
+  "cloudui-resizable--with-visible-handle": [
     "color-contrast"
   ],
   "cloudui-voice-voiceaudioplayer--compact": [
@@ -479,6 +500,9 @@
     "color-contrast"
   ],
   "cloudui-voice-voiceemptystate--in-container": [
+    "color-contrast"
+  ],
+  "companion-chatavatar--static-interface": [
     "color-contrast"
   ],
   "composites-chat-chatcomposer--game-modal": [
@@ -577,6 +601,9 @@
   "composites-trajectories-trajectorycachestats--no-meta": [
     "color-contrast"
   ],
+  "composites-trajectories-trajectorycachestats--single-metric": [
+    "color-contrast"
+  ],
   "composites-trajectories-trajectorycodeblock--truncated": [
     "scrollable-region-focusable"
   ],
@@ -605,6 +632,9 @@
     "color-contrast"
   ],
   "composites-trajectories-trajectoryeventtimeline--single-info-event": [
+    "color-contrast"
+  ],
+  "composites-trajectories-trajectoryeventtimeline--with-failure": [
     "color-contrast"
   ],
   "composites-trajectories-trajectoryllmcallcard--default": [
@@ -833,9 +863,6 @@
   "pages-documentsview--in-modal": [
     "color-contrast"
   ],
-  "pages-elizaclouddashboard--auth-rejected": [
-    "color-contrast"
-  ],
   "pages-elizaclouddashboard--billing-view": [
     "color-contrast"
   ],
@@ -885,12 +912,6 @@
   "pages-mediagalleryview--with-nav-and-header": [
     "scrollable-region-focusable"
   ],
-  "pages-springboard--favorite-into-dock": [
-    "color-contrast"
-  ],
-  "pages-springboard--long-press-to-edit": [
-    "color-contrast"
-  ],
   "permissions-streamingpermissions--mobile": [
     "color-contrast"
   ],
@@ -937,22 +958,13 @@
   "primitives-alertdialog--destructive": [
     "color-contrast"
   ],
-  "primitives-avatar--default": [
-    "color-contrast"
-  ],
   "primitives-avatar--fallback": [
     "color-contrast"
   ],
   "primitives-avatar--group": [
     "color-contrast"
   ],
-  "primitives-avatar--large": [
-    "color-contrast"
-  ],
   "primitives-badge--all-variants": [
-    "color-contrast"
-  ],
-  "primitives-badge--default": [
     "color-contrast"
   ],
   "primitives-badge--destructive": [
@@ -965,9 +977,6 @@
     "color-contrast"
   ],
   "primitives-button--destructive": [
-    "color-contrast"
-  ],
-  "primitives-button--large": [
     "color-contrast"
   ],
   "primitives-button--small": [
@@ -992,9 +1001,6 @@
     "color-contrast"
   ],
   "primitives-dropdownmenu--checkboxes": [
-    "aria-hidden-focus"
-  ],
-  "primitives-dropdownmenu--default": [
     "aria-hidden-focus"
   ],
   "primitives-dropdownmenu--radio-group": [
@@ -1031,9 +1037,6 @@
     "color-contrast"
   ],
   "primitives-progress--complete": [
-    "aria-progressbar-name"
-  ],
-  "primitives-progress--default": [
     "aria-progressbar-name"
   ],
   "primitives-progress--empty": [
@@ -1087,9 +1090,6 @@
   "primitives-slider--disabled": [
     "aria-input-field-name"
   ],
-  "primitives-slider--stepped": [
-    "aria-input-field-name"
-  ],
   "primitives-stack--default": [
     "color-contrast"
   ],
@@ -1109,9 +1109,6 @@
     "button-name"
   ],
   "primitives-switch--disabled": [
-    "button-name"
-  ],
-  "primitives-switch--disabled-on": [
     "button-name"
   ],
   "primitives-switch--on": [
@@ -1274,7 +1271,10 @@
   "shell-connectionfailedbanner--reconnecting-late": [
     "color-contrast"
   ],
-  "shell-home-dashboard--springboard-page": [
+  "shell-home-dashboard--empty": [
+    "color-contrast"
+  ],
+  "shell-home-dashboard--home-with-widgets": [
     "color-contrast"
   ],
   "shell-loadingscreen--initializing-agent": [
@@ -1317,9 +1317,6 @@
     "color-contrast"
   ],
   "shell-systemwarningbanner--multiple": [
-    "color-contrast"
-  ],
-  "steward-injected--approval-queue-injected": [
     "color-contrast"
   ],
   "steward-injected--transaction-history-injected": [

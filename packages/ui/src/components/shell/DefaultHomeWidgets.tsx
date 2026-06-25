@@ -74,7 +74,7 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
   return (
     <div data-testid="default-home-widgets" className="flex flex-col gap-3">
       {/* Clock + date */}
-      <div className="flex flex-col items-center gap-1 rounded-2xl border border-white/10 bg-black/30 px-6 py-7 text-center backdrop-blur-md">
+      <div className="flex flex-col items-center gap-1 rounded-2xl border border-white/10 bg-black/35 px-6 py-7 text-center">
         <div className="text-[3.25rem] font-semibold leading-none tabular-nums tracking-tight text-white">
           {time}
           <span className="ml-1.5 align-top text-base font-medium text-white/60">
@@ -88,7 +88,7 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
       </div>
 
       {/* This week */}
-      <div className="grid grid-cols-7 gap-1 rounded-2xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md">
+      <div className="grid grid-cols-7 gap-1 rounded-2xl border border-white/10 bg-black/35 px-3 py-3">
         {week.map((day) => {
           const isToday =
             day.getDate() === todayDate && day.getMonth() === d.getMonth();

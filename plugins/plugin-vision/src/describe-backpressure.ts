@@ -138,8 +138,7 @@ export class DescribeBackpressureController {
    */
   evaluate(): DescribeBackpressureDecision {
     const arbiterPaused = this.now() < this.pauseUntilMs;
-    const overCap =
-      this.memoryCapBytes > 0 && this.sampleRssBytes() > this.memoryCapBytes;
+    const overCap = this.isOverGrowthCap();
     const paused = arbiterPaused || overCap;
 
     let transitionedTo: "paused" | "active" | null = null;
@@ -157,6 +156,22 @@ export class DescribeBackpressureController {
         : "memory-cap";
 
     return { describe: !paused, transitionedTo, reason };
+  }
+
+  /**
+   * Has vision-attributable RSS grown past the cap? Captures the baseline on
+   * the first call (the first describe tick, when the loop's models are already
+   * resident) so the steady-state model footprint is absorbed rather than
+   * counted as over-cap. A transient growth that drops back resumes describing.
+   */
+  private isOverGrowthCap(): boolean {
+    if (this.memoryCapBytes <= 0) return false;
+    const rss = this.sampleRssBytes();
+    if (this.baselineRssBytes === null) {
+      this.baselineRssBytes = rss;
+      return false;
+    }
+    return rss - this.baselineRssBytes > this.memoryCapBytes;
   }
 
   stats(): DescribeBackpressureStats {

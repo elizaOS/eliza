@@ -600,6 +600,11 @@ class OrchestratorScenarioHarness {
         deviceProfile: "ios-remote-controller",
         remoteOrchestrator: true,
       },
+      acceptanceCriteria: [
+        "voice-origin metadata is preserved",
+        "the selected Claude subscription account is used",
+        "a narrated voice completion is produced",
+      ],
     })) as TaskDetail;
     const voiceDetail = (await this.taskService.spawnAgentForTask(
       voiceTask.id,
@@ -631,28 +636,21 @@ class OrchestratorScenarioHarness {
       modality: "voice",
       narrated: true,
     });
-    await this.waitForDoc(
+    const voiceDoc = await this.waitForDoc(
       voiceTask.id,
       (doc) =>
-        doc.task.status === "validating" &&
+        doc.task.status === "done" &&
+        doc.events.some((event) => event.eventType === "validation_passed") &&
         doc.sessions.some(
           (session) =>
             session.sessionId === voiceSession.sessionId &&
             session.completionSummary?.includes("Narrated completion"),
         ),
-      "voice task completion narration",
+      "voice task automatic validation pass",
     );
-    const finalVoice = await this.taskService.validateTask(voiceTask.id, {
-      passed: true,
-      summary: narratedCompletion,
-      evidence: narratedCompletion,
-      verifier: "scenario-voice",
-    });
-    const voiceDoc = await this.store.getTask(voiceTask.id);
-    if (!voiceDoc) throw new Error("expected persisted voice task document");
     const voiceMeta = voiceDoc?.task.metadata ?? {};
-    if (finalVoice?.status !== "done") {
-      throw new Error(`voice task expected done, saw ${finalVoice?.status}`);
+    if (voiceDoc.task.status !== "done") {
+      throw new Error(`voice task expected done, saw ${voiceDoc.task.status}`);
     }
 
     return {
@@ -667,7 +665,7 @@ class OrchestratorScenarioHarness {
         voiceSession.sessionId,
       ],
       events: eventTypes(voiceDoc),
-      finalStatuses: { [voiceTask.id]: finalVoice.status },
+      finalStatuses: { [voiceTask.id]: voiceDoc.task.status },
       deviceSupport,
       spawnedProfiles,
       voice: {
@@ -685,7 +683,7 @@ class OrchestratorScenarioHarness {
           typeof voiceMeta.voiceSource === "string"
             ? voiceMeta.voiceSource
             : undefined,
-        finalStatus: finalVoice.status,
+        finalStatus: voiceDoc.task.status,
         narratedCompletion,
       },
     };

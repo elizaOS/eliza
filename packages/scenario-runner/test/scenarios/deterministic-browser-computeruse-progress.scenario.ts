@@ -72,6 +72,7 @@ function fakeComputerUseAgentService(): ComputerUseService {
     getCurrentScene: () => scene(),
     refreshScene: async () => scene(),
     getDisplays: () => [display()],
+    setSceneVlmAnnotations: () => undefined,
   } as unknown as ComputerUseService;
 }
 

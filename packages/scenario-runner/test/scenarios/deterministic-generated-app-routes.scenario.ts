@@ -642,7 +642,7 @@ function expectActionLoadTurn(
     return "expected APP action to be captured";
   }
   const result = record(action.result);
-  if (!result || result.success !== true) {
+  if (result?.success !== true) {
     return `APP action did not succeed: ${JSON.stringify(action.result)}`;
   }
   const values = record(result.values);
@@ -754,10 +754,11 @@ function expectViewsList(
   return (status, body) => {
     if (status !== 200) return `expected 200, saw ${status}`;
     const views = arrayOfRecords(record(body)?.views);
-    const view = views.find(
-      (candidate) =>
-        candidate.id === "views-manager" && candidate.viewType === viewType,
-    );
+    const view = views.find((candidate) => {
+      return (
+        candidate.id === "views-manager" && candidate.viewType === viewType
+      );
+    });
     if (!view) {
       return `expected ${viewType} views-manager registration, saw ${JSON.stringify(body)}`;
     }
