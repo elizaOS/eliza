@@ -399,7 +399,7 @@ function getRuntimeCapabilityRouter(
 ): ElizaCapabilityRouter {
   const router = runtime.getService?.(
     CAPABILITY_ROUTER_SERVICE_TYPE,
-  ) as unknown as ElizaCapabilityRouter | null;
+  ) as ElizaCapabilityRouter | null;
   if (!router) {
     throw new Error("Capability router service is not available.");
   }
