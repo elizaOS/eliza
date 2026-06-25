@@ -1,14 +1,13 @@
 /**
- * Overlap-aware screen tiler for the eliza-1 (Qwen3.5-VL) vision pipeline.
+ * Overlap-aware screen tiler for the eliza-1 local Gemma vision pipeline.
  *
  * Why this exists:
- *   Qwen3.5-VL has a sweet-spot input edge of ~1024-1568 px. A native ultra-
- *   wide or DPI-dense capture (e.g. 5120x2160 or a Retina 6K panel) gets
- *   resized down by the model preprocessor, which destroys small UI text and
- *   makes OCR-class detail unreadable in a single pass. We instead split the
- *   capture into a grid of tiles, each at or below the model's optimal edge,
- *   with a configurable pixel overlap so words/glyphs that straddle a seam
- *   still appear intact in at least one tile.
+ *   Native ultra-wide or DPI-dense captures (e.g. 5120x2160 or a Retina 6K
+ *   panel) get resized down by the model preprocessor, which destroys small UI
+ *   text and makes OCR-class detail unreadable in a single pass. We instead
+ *   split the capture into a grid of local-VLM-sized tiles with a configurable
+ *   pixel overlap so words/glyphs that straddle a seam still appear intact in
+ *   at least one tile.
  *
  * Coordinates:
  *   Every emitted tile carries `sourceX/sourceY` in the source display's
@@ -62,19 +61,19 @@ export interface TileScreenshotOptions {
   maxEdge: number;
   /**
    * Fraction of `tileSize` that adjacent tiles overlap. 0.12 (default) is
-   * tuned for Qwen3.5-VL — large enough to keep multi-glyph tokens intact
-   * across seams, small enough to keep tile count near minimum.
+   * large enough to keep multi-glyph tokens intact across seams, small enough
+   * to keep tile count near minimum.
    */
   overlapFraction: number;
 }
 
-/** Default Qwen3.5-VL-friendly tile budget. */
+/** Default local-VLM tile budget for Gemma vision. */
 export const DEFAULT_MAX_EDGE = 1280;
 /** Default seam overlap (12%). */
 export const DEFAULT_OVERLAP_FRACTION = 0.12;
 
 /**
- * Tile a captured screenshot into Qwen3.5-VL-sized PNG patches with
+ * Tile a captured screenshot into local-VLM-sized PNG patches with
  * pixel-overlap between neighbours.
  *
  * Single-tile fast path: when both dims fit within `maxEdge`, the input is

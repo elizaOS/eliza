@@ -227,7 +227,7 @@ describe("reconstructAbsoluteCoords", () => {
 });
 
 describe("tileScreenshot — defaults", () => {
-  it("exports DEFAULT_MAX_EDGE in the Qwen3.5-VL sweet spot", () => {
+  it("exports DEFAULT_MAX_EDGE in the local-VLM tile budget window", () => {
     expect(DEFAULT_MAX_EDGE).toBeGreaterThanOrEqual(1024);
     expect(DEFAULT_MAX_EDGE).toBeLessThanOrEqual(1568);
   });

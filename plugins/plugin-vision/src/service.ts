@@ -1452,7 +1452,7 @@ export class VisionService extends Service {
       }
 
       // Route every VLM call through the runtime IMAGE_DESCRIPTION handler.
-      // When eliza-1 (Qwen3.5-VL) is registered locally it owns this slot;
+      // When eliza-1 local Gemma vision is registered it owns this slot;
       // otherwise the runtime rotates to whichever cloud/remote provider
       // has registered IMAGE_DESCRIPTION. plugin-vision no longer ships its
       // own VLM.
