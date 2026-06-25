@@ -48,7 +48,7 @@ const publishManifest = {
   module: packageJson.module
     ? transformModulePath(packageJson.module, compiledPrefix)
     : undefined,
-  types: transformTypesPath(getRootEntry(packageJson), compiledPrefix),
+  types: transformTypesPath(getRootTypesEntry(packageJson), compiledPrefix),
   bin: transformBin(packageJson.bin, compiledPrefix),
   exports: transformExports(packageJson.exports, compiledPrefix, assetPrefix),
   dependencies: rewriteWorkspaceDeps(
@@ -169,6 +169,16 @@ function getRootEntry(pkg) {
     return pkg.main;
   }
   return "./src/index.ts";
+}
+
+function getRootTypesEntry(pkg) {
+  if (typeof pkg.types === "string") {
+    return pkg.types;
+  }
+  if (typeof pkg.typings === "string") {
+    return pkg.typings;
+  }
+  return getRootEntry(pkg);
 }
 
 function rewriteWorkspaceDeps(section, versions) {
