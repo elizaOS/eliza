@@ -7,7 +7,12 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from prepare_eliza1_trajectory_dataset import main as prepare_main  # noqa: E402
+from prepare_eliza1_trajectory_dataset import (  # noqa: E402
+    DEFAULT_BASE_MODEL,
+    TARGET_CHAT_TEMPLATE,
+    TARGET_MODEL_FAMILY,
+    main as prepare_main,
+)
 from validate_eliza1_trajectory_dataset import main as validate_main  # noqa: E402
 
 
@@ -281,10 +286,10 @@ def test_validate_rejects_trajectory_record_without_user_turn(tmp_path: Path) ->
         "split": "train",
         "task": "response",
         "target": {
-            "modelFamily": "qwen",
-            "baseModel": "Qwen3.5/3.6",
+            "modelFamily": TARGET_MODEL_FAMILY,
+            "baseModel": DEFAULT_BASE_MODEL,
             "sftFormat": "messages",
-            "chatTemplate": "chatml",
+            "chatTemplate": TARGET_CHAT_TEMPLATE,
         },
         "messages": [{"role": "assistant", "content": "Hello."}],
         "tools": [],
@@ -320,3 +325,54 @@ def test_validate_rejects_trajectory_record_without_user_turn(tmp_path: Path) ->
     assert code == 1
     assert parsed["errorsByCode"]["messages_missing_user"] == 1
     assert parsed["errorsByCode"]["trajectory_not_train_local_convertible"] == 1
+
+
+def test_validate_rejects_legacy_qwen_target_metadata(tmp_path: Path) -> None:
+    row = {
+        "schema": "eliza.eliza1_trajectory_record.v1",
+        "id": "legacy-qwen-target-1",
+        "split": "train",
+        "task": "response",
+        "target": {
+            "modelFamily": "qwen",
+            "baseModel": "Qwen3.5/3.6",
+            "sftFormat": "messages",
+            "chatTemplate": "chatml",
+        },
+        "messages": [
+            {"role": "user", "content": "Hello."},
+            {"role": "assistant", "content": "Hi."},
+        ],
+        "tools": [],
+        "actions": [],
+        "quality": {
+            "success": True,
+            "score": 1.0,
+            "weight": 1.0,
+            "rating": "gold",
+            "requiresRepair": False,
+            "reasons": [],
+        },
+        "source": {
+            "kind": "eliza_native_v1",
+            "dataset": "unit",
+            "path": "unit.jsonl",
+            "rowIndex": 0,
+            "sourceId": None,
+            "trajectoryId": None,
+            "scenarioId": None,
+            "turnIndex": None,
+            "format": "eliza_native_v1",
+        },
+        "metadata": {},
+    }
+    bad = tmp_path / "train.jsonl"
+    _write_jsonl(bad, [row])
+    report = tmp_path / "legacy-target-report.json"
+
+    code = validate_main(["--input", str(bad), "--report", str(report), "--strict"])
+
+    parsed = json.loads(report.read_text(encoding="utf-8"))
+    assert code == 1
+    assert parsed["errorsByCode"]["target_model_family_invalid"] == 1
+    assert parsed["errorsByCode"]["target_chat_template_invalid"] == 1

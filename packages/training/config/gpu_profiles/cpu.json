@@ -1,7 +1,7 @@
 {
   "name": "CPU Only (No GPU)",
   "description": "For testing without GPU - very slow, not for real training",
-  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model": "google/gemma-4-E2B",
   "vllm_gpu_memory": 0,
   "batch_size": 1,
   "max_token_length": 1024,
@@ -9,4 +9,3 @@
   "skip_vllm": true,
   "notes": "Use external inference server or mock mode"
 }
-

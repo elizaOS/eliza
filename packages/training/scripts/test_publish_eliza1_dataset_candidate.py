@@ -8,6 +8,13 @@ from pathlib import Path
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+
+from prepare_eliza1_trajectory_dataset import (  # noqa: E402
+    DEFAULT_BASE_MODEL,
+    TARGET_CHAT_TEMPLATE,
+    TARGET_MODEL_FAMILY,
+)
 
 
 def _load():
@@ -95,10 +102,10 @@ def eliza1_trajectory_record(split: str, *, success: bool = True) -> dict:
         "split": split,
         "task": "lifeops_trajectory_turn",
         "target": {
-            "modelFamily": "qwen",
-            "baseModel": "Qwen3.5/3.6",
+            "modelFamily": TARGET_MODEL_FAMILY,
+            "baseModel": DEFAULT_BASE_MODEL,
             "sftFormat": "messages",
-            "chatTemplate": "chatml",
+            "chatTemplate": TARGET_CHAT_TEMPLATE,
         },
         "messages": [
             {"role": "user", "content": "hello"},
