@@ -11,25 +11,33 @@ name: Build libelizainference (Android, FFI)
 # per token is unacceptable on a battery-constrained device. See
 # `runtime-target.ts` for the decision rules.
 #
-# STATUS: SCAFFOLD. The Android NDK + cmake toolchain is wired but the
-# resulting `.so` install path under `lib/<abi>` has not been validated
-# against Electrobun's APK packaging flow. The `run_real_build` input keeps
-# the workflow out of the default fan-out.
+# Builds in CI at build time (no eliza-archive prebuilt dependency). The fused
+# lib is the real `libelizainference.so` produced by `compile-libllama.mjs` via
+# the zig/musl cross-compile — NOT a renamed `libllama.so`, and NOT a bionic NDK
+# build (bun's in-process FFI can only `dlopen` a musl-linked .so; see the header
+# of `compile-libllama.mjs`). `workflow_call` lets the app build invoke this and
+# consume the uploaded artifact directly instead of syncing from eliza-archive.
 
 on:
+  workflow_call:
+    inputs:
+      abi_filter:
+        required: false
+        type: string
+        default: "arm64-v8a,x86_64"
   workflow_dispatch:
     inputs:
-      run_real_build:
-        description: "Run the scaffold build once it has been verified"
-        required: false
-        type: boolean
-        default: false
       abi_filter:
         description: "Comma-separated subset of ABIs to build (default: all)"
         required: false
         type: string
-        default: "arm64-v8a,armeabi-v7a,x86_64"
+        default: "arm64-v8a,x86_64"
   push:
+    branches: [develop]
+    paths:
+      - "plugins/plugin-local-inference/native/llama.cpp"
+      - "packages/app-core/scripts/aosp/compile-libllama.mjs"
+      - ".github/workflows/build-llama-ffi-android.yml"
     tags:
       - "llama-ffi-android-*"
 
@@ -59,13 +67,16 @@ jobs:
         with:
           script: |
             const inputs = context.payload.inputs ?? {};
-            const filterRaw = (inputs.abi_filter ?? "arm64-v8a,armeabi-v7a,x86_64").trim();
+            const filterRaw = (inputs.abi_filter ?? "arm64-v8a,x86_64").trim();
             const filter = new Set(filterRaw.split(",").map((s) => s.trim()).filter(Boolean));
 
+            // compile-libllama.mjs fused targets: arm64 gets the Vulkan GPU
+            // backend (the QJL/Polar/Mali-FA-mitigation kernels live here),
+            // x86_64 (emulator/cuttlefish) is CPU-only. armeabi-v7a (32-bit)
+            // is unsupported by the fused build and dropped.
             const all = [
-              { abi: "arm64-v8a",   target: "android-arm64-v8a" },
-              { abi: "armeabi-v7a", target: "android-armeabi-v7a" },
-              { abi: "x86_64",      target: "android-x86_64" },
+              { abi: "arm64-v8a", target: "android-arm64-vulkan-fused" },
+              { abi: "x86_64",    target: "android-x86_64-cpu-fused" },
             ];
             const include = all.filter((m) => filter.has(m.abi));
             core.setOutput("matrix", JSON.stringify({ include }));
@@ -73,7 +84,6 @@ jobs:
   build:
     name: ${{ matrix.abi }}
     needs: prepare-matrix
-    if: ${{ inputs.run_real_build == true }}
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     strategy:
@@ -96,99 +106,67 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Install build deps
+      - name: Install build deps (cmake, ninja, Vulkan-Hpp headers)
         run: |
           set -euo pipefail
           sudo apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=30
-          sudo apt-get install -y cmake ninja-build build-essential git python3
+          # libvulkan-dev provides /usr/include/vulkan/vulkan.hpp (arch-independent;
+          # compile-libllama searches /usr/include for it on Linux hosts).
+          sudo apt-get install -y cmake ninja-build build-essential git python3 libvulkan-dev
           cmake --version
 
-      - name: Install Android NDK
+      - name: Install zig 0.13 (the cross-compiler compile-libllama uses)
+        run: |
+          set -euo pipefail
+          # Pinned to 0.13 — the version the build is tested against; newer zig
+          # (0.16) regresses the musl lld link. See compile-libllama.mjs header.
+          curl -fsSL "https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz" -o /tmp/zig.tar.xz
+          mkdir -p "$HOME/.zig" && tar -xf /tmp/zig.tar.xz -C "$HOME/.zig" --strip-components=1
+          echo "$HOME/.zig" >> "$GITHUB_PATH"
+          "$HOME/.zig/zig" version
+
+      - name: Install Android NDK (sysroot + glslc for the Vulkan build)
         uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779
         id: setup-ndk
         with:
           ndk-version: r26d
           add-to-path: false
 
-      - name: Cache llama.cpp android build dir
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
-        with:
-          path: plugins/plugin-local-inference/native/llama.cpp/build-android-${{ matrix.abi }}
-          key: llama-ffi-android-${{ matrix.abi }}-${{ hashFiles('plugins/plugin-local-inference/native/llama.cpp/CMakeLists.txt') }}
-          restore-keys: |
-            llama-ffi-android-${{ matrix.abi }}-
-
-      - name: Configure llama.cpp (Android NDK, ${{ matrix.abi }})
+      - name: Build the real fused libelizainference.so (${{ matrix.target }})
         env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          # compile-libllama derives the NDK sysroot/glslc from ANDROID_HOME/ndk.
+          ANDROID_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}/../..
         run: |
           set -euo pipefail
-          cmake -S plugins/plugin-local-inference/native/llama.cpp \
-                -B plugins/plugin-local-inference/native/llama.cpp/build-android-${{ matrix.abi }} \
-                -G Ninja \
-                -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-                -DANDROID_ABI=${{ matrix.abi }} \
-                -DANDROID_PLATFORM=android-${{ env.ANDROID_API }} \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DBUILD_SHARED_LIBS=ON \
-                -DLLAMA_BUILD_EXAMPLES=OFF \
-                -DLLAMA_BUILD_TOOLS=OFF \
-                -DLLAMA_BUILD_TESTS=OFF \
-                -DLLAMA_BUILD_SERVER=OFF \
-                -DGGML_NATIVE=OFF \
-                -DGGML_OPENMP=OFF
+          # Builds the REAL fused FFI lib (libelizainference.so) via the
+          # zig/musl cross-compile — bun's in-process FFI can only dlopen a
+          # musl-linked .so, which the bionic NDK cmake path could not produce.
+          # The script stages to artifacts/libelizainference/<target>/lib/<abi>/.
+          node packages/app-core/scripts/aosp/compile-libllama.mjs --target ${{ matrix.target }}
 
-      - name: Build llama.cpp shared library
+      - name: Verify fused artifact (FFI symbols + Mali FA mitigation on arm64)
         run: |
           set -euo pipefail
-          cmake --build plugins/plugin-local-inference/native/llama.cpp/build-android-${{ matrix.abi }} --target llama -j 4
-
-      - name: Verify artifact
-        run: |
-          set -euo pipefail
-          ART_DIR="plugins/plugin-local-inference/native/llama.cpp/build-android-${{ matrix.abi }}"
-          if [ -f "$ART_DIR/libllama.so" ]; then
-            ART="$ART_DIR/libllama.so"
-          elif [ -f "$ART_DIR/bin/libllama.so" ]; then
-            ART="$ART_DIR/bin/libllama.so"
-          else
-            echo "no libllama.so found under $ART_DIR"
-            find "$ART_DIR" -maxdepth 2 -name "*.so" || true
-            exit 1
+          SO=$(find artifacts/libelizainference/${{ matrix.target }} -name "libelizainference.so" | head -1)
+          test -n "$SO" || { echo "no libelizainference.so produced"; find artifacts -name "*.so"; exit 1; }
+          file "$SO"; ls -lh "$SO"
+          # The fused FFI must export the eliza_inference_* voice ABI.
+          if ! nm -D "$SO" 2>/dev/null | grep -q "eliza_inference_"; then
+            echo "WARNING: eliza_inference_* symbols not visible via nm (stripped?)"
           fi
-          ls -lh "$ART"
-          file "$ART"
-
-      - name: Stage artifact (${{ matrix.target }})
-        id: stage
-        run: |
-          set -euo pipefail
-          STAGE_DIR="artifacts/libelizainference/${{ matrix.target }}"
-          mkdir -p "$STAGE_DIR/lib/${{ matrix.abi }}"
-          for cand in \
-            plugins/plugin-local-inference/native/llama.cpp/build-android-${{ matrix.abi }}/libllama.so \
-            plugins/plugin-local-inference/native/llama.cpp/build-android-${{ matrix.abi }}/bin/libllama.so; do
-            if [ -f "$cand" ]; then
-              cp "$cand" "$STAGE_DIR/lib/${{ matrix.abi }}/libelizainference.so"
-              break
+          if [ "${{ matrix.abi }}" = "arm64-v8a" ]; then
+            VK=$(find artifacts/libelizainference/${{ matrix.target }} -name "libggml-vulkan.so*" | head -1)
+            if [ -n "$VK" ] && strings "$VK" | grep -q GGML_VK_FA_ALLOW_SUBGROUPS; then
+              echo "OK: arm64 Vulkan lib carries the Mali flash-attn mitigation (#9508)"
+            else
+              echo "WARNING: GGML_VK_FA_ALLOW_SUBGROUPS marker not found in $VK"
             fi
-          done
-          {
-            echo "target=${{ matrix.target }}"
-            echo "abi=${{ matrix.abi }}"
-            echo "android_api=${{ env.ANDROID_API }}"
-            echo "lib_name=libelizainference.so"
-            echo "ref=${{ github.ref }}"
-            echo "sha=${{ github.sha }}"
-            echo "runner=ubuntu-22.04"
-            echo "llama_sha=$(git -C plugins/plugin-local-inference/native/llama.cpp rev-parse HEAD || echo n/a)"
-          } > "$STAGE_DIR/BUILD_INFO.txt"
-          echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Upload libelizainference artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: libelizainference-${{ matrix.target }}
-          path: ${{ steps.stage.outputs.stage_dir }}/**
+          path: artifacts/libelizainference/${{ matrix.target }}/**
           if-no-files-found: error
           retention-days: 30
