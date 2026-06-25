@@ -148,7 +148,11 @@ jobs:
           # artifacts/libelizainference/<target>/<abi>/libelizainference.so so the
           # Verify + Upload steps below find it (the script otherwise defaults to
           # packages/app/android/app/src/main/assets/agent/<abi>/).
-          node packages/app-core/scripts/aosp/compile-libllama.mjs --target ${{ matrix.target }} --assets-dir artifacts/libelizainference/${{ matrix.target }}
+          # --src-dir builds from the in-repo fork submodule (the gitlink the
+          # repo pins + that `submodules: recursive` fetched) rather than
+          # compile-libllama's LLAMA_CPP_COMMIT default, which is a divergent
+          # local-only ref that is not fetchable in CI.
+          node packages/app-core/scripts/aosp/compile-libllama.mjs --target ${{ matrix.target }} --src-dir plugins/plugin-local-inference/native/llama.cpp --assets-dir artifacts/libelizainference/${{ matrix.target }}
 
       - name: Verify fused artifact (FFI symbols + Mali FA mitigation on arm64)
         run: |

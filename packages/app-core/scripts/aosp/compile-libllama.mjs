@@ -1665,12 +1665,28 @@ export function buildLibllamaForAbi({
   // The target name is `llama-server` on the apothic fork (verified against
   // the upstream b8198 examples/server/CMakeLists.txt: `add_executable(
   // ${TARGET} server.cpp ...)` with `set(TARGET llama-server)`).
+  //
+  // Non-fatal for the library build: llama-server is the optional AOSP
+  // MTP/spec-decode HTTP path, but the required in-process libs below
+  // (libllama.so/libggml*.so and, for fused targets, libelizainference.so) are
+  // verified separately. On the musl cross-link this target can fail to resolve
+  // its httplib/OpenSSL deps (undefined `httplib::*` / `SSLClient` symbols).
+  // In that case stage-android-agent warns about the missing server and runtime
+  // falls back to the non-MTP path instead of losing the whole native build.
   log(`[compile-libllama] Compiling llama-server for ${abi} with -j${jobs}`);
-  spawn(
-    "cmake",
-    ["--build", buildDir, "--target", "llama-server", "-j", String(jobs)],
-    {},
-  );
+  try {
+    spawn(
+      "cmake",
+      ["--build", buildDir, "--target", "llama-server", "-j", String(jobs)],
+      {},
+    );
+  } catch (err) {
+    log(
+      `[compile-libllama] WARN: llama-server failed to build for ${abi}; ` +
+        `continuing — it bundles nothing into the APK and libllama.so/libelizainference.so are unaffected. ` +
+        `Cause: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   // libllama.so and the ggml shared-library family are all transitive build
   // products of the `llama` target. b4500's NEEDED chain (verified via
