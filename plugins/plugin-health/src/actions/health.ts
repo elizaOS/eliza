@@ -221,7 +221,12 @@ async function resolveHealthPlanWithLlm(args: {
     failureMessage: "Health planning model call failed",
     source: "action:health",
     modelType: ModelType.TEXT_SMALL,
-    purpose: "planner",
+    // Tag this trajectory with the `health_checkin` LifeOps task (#8795) so it
+    // buckets into the health_checkin training dataset — matching the
+    // resolveOptimizedPromptForRuntime task above. The generic "planner" tag
+    // normalizes to no known training task and was dropped on ingest, so the
+    // health_checkin optimization loop collected zero real trajectories.
+    purpose: "health_checkin",
   });
   const parsed = result?.parsed;
   if (!parsed) {
