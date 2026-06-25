@@ -1,4 +1,8 @@
 {
+  "apps-appscataloggrid--empty": [
+    "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at <fn> (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
+    "Error rendering story 'apps-appscataloggrid--empty':"
+  ],
   "character-characterroster--interactive": [
     "Error: useAppSelector used before AppProvider rendered — wrap the consumer in <AppProvider>.\n    at <fn> (<url>)\n    at <url>\n    at Object.useSyncExternalStore (<url>",
     "Error rendering story 'character-characterroster--interactive':"
