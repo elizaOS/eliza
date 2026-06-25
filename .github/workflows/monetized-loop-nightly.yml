@@ -210,7 +210,11 @@ jobs:
         run: bun run --cwd packages/cloud-shared build || true
 
       - name: Run example-apps showcase + monetized full loop (mock stack)
-        run: bun run cloud:e2e -- example-apps-showcase.spec.ts monetized-full-loop.spec.ts
+        # monetized-mock-llm-journey drives the real POST /api/v1/messages +
+        # x-app-id billing seam through an in-process OpenAI mock (keyless), the
+        # always-on counterpart to the CEREBRAS-gated real-LLM journey — included
+        # here so the scheduled regression net also guards the messages route.
+        run: bun run cloud:e2e -- example-apps-showcase.spec.ts monetized-full-loop.spec.ts monetized-mock-llm-journey.spec.ts
         env:
           CI: "true"
           CLOUD_E2E: "1"
