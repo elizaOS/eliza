@@ -101,10 +101,15 @@ function readWavMono16(path) {
 // ---- Far-end synthesis ------------------------------------------------------
 
 const CHIRP_SEC = 1.0;
+// Silence lead-in before the chirp: ffmpeg/avfoundation capture is unstable for
+// the first ~1 s (warmup + buffer fill), so the chirp must start well after the
+// capture stabilises or the cross-correlation never locks.
+const SILENCE_SEC = 1.0;
 
 function synthFarEnd() {
-  const total = Math.floor(farSeconds * SR);
+  const total = Math.floor((SILENCE_SEC + farSeconds) * SR);
   const far = new Float32Array(total);
+  const silenceN = Math.floor(SILENCE_SEC * SR);
   const chirpN = Math.floor(CHIRP_SEC * SR);
   // Linear chirp 300 → 3500 Hz — broadband + distinctive for cross-correlation.
   const f0 = 300;
@@ -113,12 +118,12 @@ function synthFarEnd() {
     const t = i / SR;
     const k = (f1 - f0) / CHIRP_SEC;
     const phase = 2 * Math.PI * (f0 * t + 0.5 * k * t * t);
-    far[i] = 0.9 * Math.sin(phase);
+    far[silenceN + i] = 0.9 * Math.sin(phase);
   }
   // Speech-like: band-limited noise (1-pole LP) amplitude-modulated into bursts.
   let lp = 0;
-  for (let i = chirpN; i < total; i++) {
-    const t = (i - chirpN) / SR;
+  for (let i = silenceN + chirpN; i < total; i++) {
+    const t = (i - silenceN - chirpN) / SR;
     // 0.4 s on / 0.2 s off bursts.
     const phase = t % 0.6;
     const gate = phase < 0.4 ? 1 : 0;
@@ -206,7 +211,7 @@ async function main() {
   const far = synthFarEnd();
   writeWavMono16(farPath, far);
 
-  const captureSec = farSeconds + 1.0;
+  const captureSec = SILENCE_SEC + farSeconds + 1.5;
   console.log(
     `[device-aec] playing far-end + recording mic (avfoundation :${audioDevice}, ${captureSec}s)…`,
   );
@@ -217,16 +222,22 @@ async function main() {
     `[device-aec] captured ${(near.length / SR).toFixed(2)}s mic (${near.length} samples)`,
   );
 
-  // --- Delay calibration via chirp cross-correlation.
+  // --- Delay calibration via chirp cross-correlation. The chirp begins at far
+  // index `silenceN`; find where it lands in the near recording, search the
+  // whole capture (the playback→mic transport delay is unknown a-priori).
+  const silenceN = Math.floor(SILENCE_SEC * SR);
   const chirpN = Math.floor(CHIRP_SEC * SR);
-  const refChirp = far.subarray(0, chirpN);
-  const { lag, score } = estimateDelaySamples(near, refChirp, SR); // search ≤1 s
-  const delayMs = (lag / SR) * 1000;
+  const refChirp = far.subarray(silenceN, silenceN + chirpN);
+  const { lag, score } = estimateDelaySamples(near, refChirp, near.length);
+  // far index i ↔ near index i + offset; the playback→mic delay is the part of
+  // `offset` beyond the silence lead-in we already injected.
+  const offset = lag - silenceN;
+  const delayMs = (offset / SR) * 1000;
   console.log(
-    `[device-aec] delay calibration: lag=${lag} samples (${delayMs.toFixed(1)} ms), corr peak=${score.toFixed(3)}`,
+    `[device-aec] chirp found at near sample ${lag}; far→near offset=${offset} (playback→mic ${delayMs.toFixed(1)} ms), corr peak=${score.toFixed(3)}`,
   );
 
-  if (score < 0.15) {
+  if (score < 0.15 || offset < 0) {
     console.log(
       "\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (corr < 0.15).",
     );
@@ -240,10 +251,10 @@ async function main() {
     return;
   }
 
-  // --- Align near to far by the measured bulk delay, then run the SHIPPED
-  // canceller. Echo region = everything after the chirp.
-  const aligned = near.subarray(lag);
-  const speechStart = chirpN;
+  // --- Align near to far by the measured offset, then run the SHIPPED
+  // canceller. Echo region = the speech bursts after the chirp.
+  const aligned = near.subarray(offset);
+  const speechStart = silenceN + chirpN;
   const usable = Math.min(far.length, aligned.length) - speechStart;
   const farSpeech = far.subarray(speechStart, speechStart + usable);
   const nearSpeech = aligned.subarray(speechStart, speechStart + usable);
@@ -273,7 +284,7 @@ async function main() {
 
   console.log("\n[device-aec] ===== RESULT =====");
   console.log(
-    `  playback→mic delay      : ${lag} samples / ${delayMs.toFixed(1)} ms (corr ${score.toFixed(3)})`,
+    `  playback→mic delay      : ${offset} samples / ${delayMs.toFixed(1)} ms (corr ${score.toFixed(3)})`,
   );
   console.log(`  mic RMS (echo, post-adapt): ${micRms.toExponential(3)}`);
   console.log(`  residual RMS (post-AEC)   : ${resRms.toExponential(3)}`);
