@@ -1,6 +1,12 @@
 # Use the official Bun image
 FROM oven/bun:1.1.26-slim AS builder
 
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    build-essential
+
 WORKDIR /app
 
 # Copy EVERYTHING from the root context
