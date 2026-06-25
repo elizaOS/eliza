@@ -9,8 +9,9 @@
 
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { Brain } from "../actor/brain.js";
+import { BRAIN_DHASH_HAMMING_THRESHOLD, Brain } from "../actor/brain.js";
 import type { DisplayCapture } from "../platform/capture.js";
+import { frameDhash, hamming } from "../scene/dhash.js";
 import type { Scene } from "../scene/scene-types.js";
 
 // ── minimal PNG synthesizer (16x16 RGB) ──────────────────────────────────────
@@ -40,6 +41,47 @@ function makeTinyPng(seed = 0): Buffer {
     rows.push(0);
     for (let x = 0; x < w; x += 1) {
       const v = ((x + seed) * 16) % 255;
+      rows.push(v, v, v);
+    }
+  }
+  const idat = deflateSync(Buffer.from(rows));
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  return Buffer.concat([
+    sig,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", idat),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+/** 32×32 2-D pattern PNG with an optional rectangular perturbation, so a small
+ * localized change flips only a few dHash bits (unlike the flat 16×16 gradient,
+ * where a change flips a whole bit-column across every identical row). */
+function make2dPng(
+  seed: number,
+  rect?: { x: number; y: number; w: number; h: number; delta: number },
+): Buffer {
+  const w = 32;
+  const h = 32;
+  const rows: number[] = [];
+  for (let y = 0; y < h; y += 1) {
+    rows.push(0);
+    for (let x = 0; x < w; x += 1) {
+      let v = (x * 37 + y * 101 + seed * 53) % 256;
+      if (
+        rect &&
+        x >= rect.x &&
+        x < rect.x + rect.w &&
+        y >= rect.y &&
+        y < rect.y + rect.h
+      ) {
+        v = (v + rect.delta) % 256;
+      }
       rows.push(v, v, v);
     }
   }
@@ -131,6 +173,43 @@ describe("Brain frame-dHash describe cache (M3)", () => {
       imagelessCalls: 0,
       estImageTokensSaved: 0,
     });
+  });
+
+  it("serves a NEAR-identical frame (cosmetic churn) from cache (#9581 tuning)", async () => {
+    // Two frames differing by a small rect → a few dHash bits, the way a cursor
+    // blink / caret / anti-aliasing perturbs a real screen. Self-validate the
+    // fixture is genuinely near-identical-but-not-equal before asserting the hit.
+    const base = make2dPng(5);
+    const nudged = make2dPng(5, { x: 24, y: 24, w: 8, h: 8, delta: 128 });
+    const dhA = frameDhash(base);
+    const dhB = frameDhash(nudged);
+    expect(dhA).not.toBeNull();
+    expect(dhB).not.toBeNull();
+    const dist = hamming(dhA as bigint, dhB as bigint);
+    expect(dist).toBeGreaterThan(0); // not byte-identical (exact cache would still hit)
+    expect(dist).toBeLessThanOrEqual(BRAIN_DHASH_HAMMING_THRESHOLD);
+
+    let calls = 0;
+    const brain = new Brain(null, {
+      imagePolicy: "always",
+      invokeModel: async () => {
+        calls += 1;
+        return VALID;
+      },
+    });
+    const first = await brain.observeAndPlan({
+      scene: dummyScene(),
+      goal: "click save",
+      captures: captures(base),
+    });
+    const second = await brain.observeAndPlan({
+      scene: dummyScene(),
+      goal: "click save",
+      captures: captures(nudged), // near-identical → reuse the plan, skip the model
+    });
+    expect(calls).toBe(1);
+    expect(second).toEqual(first);
+    expect(brain.getStats().cacheHits).toBe(1);
   });
 
   it("re-invokes for a visually different frame", async () => {
