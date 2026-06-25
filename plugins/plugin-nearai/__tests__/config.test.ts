@@ -48,8 +48,8 @@ describe("NEAR AI config", () => {
     const runtime = runtimeWith({});
 
     expect(getBaseURL(runtime)).toBe("https://cloud-api.near.ai/v1");
-    expect(getSmallModel(runtime)).toBe("Qwen/Qwen3.6-35B-A3B-FP8");
-    expect(getLargeModel(runtime)).toBe("zai-org/GLM-5.1-FP8");
+    expect(getSmallModel(runtime)).toBe("google/gemma-4-31B-it");
+    expect(getLargeModel(runtime)).toBe("google/gemma-4-31B-it");
   });
 
   it("normalizes trailing slashes without appending /v1", () => {
