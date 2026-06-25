@@ -61,6 +61,22 @@ vi.mock("motion/react", () => ({
 // Import AFTER the mock is registered.
 import { Springboard } from "./Springboard";
 
+/**
+ * Edit mode is entered via a long-press on a tile (the visible Edit button was
+ * removed per product). Self-contained fake-timer window so non-timer tests stay
+ * on real timers.
+ */
+function longPressTile(label: string): void {
+  vi.useFakeTimers();
+  const tile = screen.getByRole("button", { name: label });
+  fireEvent.pointerDown(tile);
+  act(() => {
+    vi.advanceTimersByTime(450);
+  });
+  fireEvent.pointerUp(tile);
+  vi.useRealTimers();
+}
+
 function entry(id: string, label: string): ViewEntry {
   return {
     key: `view:${id}`,
@@ -151,7 +167,7 @@ describe("Springboard swipe paging (onDragEnd)", () => {
 
   it("does not page while in edit mode", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    longPressTile("View 0");
     act(() => {
       bus.onDragEnd?.({}, { offset: { x: -80, y: 0 } });
     });
@@ -176,19 +192,20 @@ describe("Springboard interaction telemetry", () => {
     render(
       <Springboard entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    longPressTile("Notes");
     fireEvent.click(screen.getByTestId("springboard-fav-notes"));
     fireEvent.click(screen.getByTestId("springboard-fav-notes"));
     expect(actions()).toContain("favorite");
     expect(actions()).toContain("unfavorite");
   });
 
-  it("emits edit-mode enter/exit on the toggle", () => {
+  it("emits edit-mode enter/exit via long-press toggle", () => {
     render(
       <Springboard entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    // First long-press enters edit mode, the second exits it.
+    longPressTile("Chat");
+    longPressTile("Chat");
     expect(actions()).toContain("edit-mode-enter");
     expect(actions()).toContain("edit-mode-exit");
   });

@@ -2,10 +2,10 @@
  * Springboard — iOS-like app/view launcher.
  *
  * Renders every available view as a names-only icon on swipeable pages plus a
- * pinned favorites dock. Tap launches; the Edit toggle (or long-press) enters
- * edit mode where icons can be reordered (drag), favorited into the dock, and —
- * for manageable (dynamic developer) views — edited or deleted. Page order is
- * persisted via the pure `springboard-layout` model. Favorites are
+ * pinned favorites dock. Tap launches; long-press enters edit mode where icons
+ * can be reordered (drag), favorited into the dock, and — for manageable
+ * (dynamic developer) views — edited or deleted. Page order is persisted via
+ * the pure `springboard-layout` model. Favorites are
  * controlled-optional: when `onToggleFavorite` is supplied the dock reflects the
  * caller's `favoriteIds`; otherwise favorites are kept locally. Fully
  * token-themed (light/dark + overrides) and renders no background of its own —
@@ -99,7 +99,7 @@ const IconTile = memo(function IconTile({
   const pressStart = useRef<{ x: number; y: number } | null>(null);
 
   const clear = () => {
-    if (timer.current) {
+    if (timer.current !== null) {
       clearTimeout(timer.current);
       timer.current = null;
     }
