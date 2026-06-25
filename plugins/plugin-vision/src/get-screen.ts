@@ -18,11 +18,18 @@ import {
 } from "./ocr-with-coords.js";
 
 export interface GetScreenElement {
+  /**
+   * Monotonic 1-based Set-of-Marks number (reading order). A model can pick
+   * `[3]` instead of regressing raw coordinates.
+   */
+  index: number;
   /** Stable per-result id. */
   id: string;
   text: string;
   /** Display-absolute [x, y, width, height]. */
   bbox: [number, number, number, number];
+  /** Click target — the integer center of `bbox`, the point `index` resolves to. */
+  center: { x: number; y: number };
   semantic_position: string;
   displayId: number;
 }
@@ -82,9 +89,14 @@ export async function buildGetScreen(
       pngBytes: opts.pngBytes,
     });
     elements = result.blocks.map((block, i) => ({
+      index: i + 1,
       id: `el-${i + 1}`,
       text: block.text,
       bbox: [block.bbox.x, block.bbox.y, block.bbox.width, block.bbox.height],
+      center: {
+        x: Math.round(block.bbox.x + block.bbox.width / 2),
+        y: Math.round(block.bbox.y + block.bbox.height / 2),
+      },
       semantic_position: block.semantic_position,
       displayId,
     }));
@@ -118,8 +130,8 @@ export function summarizeGetScreen(r: GetScreenResult): string {
   }
   const preview = r.elements
     .slice(0, 8)
-    .map((e) => e.text)
-    .filter(Boolean)
+    .filter((e) => e.text)
+    .map((e) => `[${e.index}] ${e.text}`)
     .join(" | ");
   return `Screen captured (${r.width}x${r.height}). ${r.elementCount} text element(s) detected: ${preview}${r.elementCount > 8 ? " …" : ""}`;
 }
