@@ -54,7 +54,7 @@ export const checkFeedPostsAction: Action = {
       description: "Number of posts to retrieve (default: 10, max: 50)",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

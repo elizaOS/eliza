@@ -41,7 +41,7 @@ export const createPostAction: Action = {
       description: "The content/text of the post to create",
       required: true,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

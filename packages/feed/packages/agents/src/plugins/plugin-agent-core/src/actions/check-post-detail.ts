@@ -156,7 +156,7 @@ export const checkPostDetailAction: Action = {
       description: "The ID of the post to retrieve",
       required: true,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

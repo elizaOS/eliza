@@ -57,7 +57,7 @@ export const dispatchToAgentsAction: Action = {
       description:
         'Array of dispatch objects, each with agentId and command. Example: [{"agentId": "abc", "command": "check positions"}, {"agentId": "def", "command": "analyze trends"}]',
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

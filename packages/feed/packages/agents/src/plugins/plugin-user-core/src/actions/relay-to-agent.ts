@@ -50,7 +50,7 @@ export const relayToAgentAction: Action = {
       description:
         'Structured context from other agents to pass along (e.g., "Agent A found: X, Agent B found: Y")',
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

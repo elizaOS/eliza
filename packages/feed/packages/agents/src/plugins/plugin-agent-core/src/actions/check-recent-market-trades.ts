@@ -30,7 +30,7 @@ export const checkRecentMarketTradesAction: Action = {
       description: "Number of trades to show (default: 15, max: 30)",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
   examples: [
     [
       {

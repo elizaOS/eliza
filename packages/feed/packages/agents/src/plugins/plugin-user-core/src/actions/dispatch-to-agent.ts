@@ -44,7 +44,7 @@ export const dispatchToAgentAction: Action = {
       description:
         'The exact instruction to send to the agent (e.g., "open a 2x long on TSLAI for $100", "post about the current market")',
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

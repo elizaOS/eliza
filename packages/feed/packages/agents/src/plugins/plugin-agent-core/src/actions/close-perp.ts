@@ -40,7 +40,7 @@ export const closePerpAction: Action = {
         "Dollar amount of position to close. If not specified, closes the entire position.",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
   examples: [
     [
       {

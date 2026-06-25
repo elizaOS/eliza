@@ -73,7 +73,7 @@ export const setPriceAlertAction: Action = {
         "Minutes between re-triggers (default 15). Prevents alert spam.",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [
@@ -367,7 +367,7 @@ export const removePriceAlertAction: Action = {
         '"above" or "below" — used with tokenSymbol when alertId not provided',
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

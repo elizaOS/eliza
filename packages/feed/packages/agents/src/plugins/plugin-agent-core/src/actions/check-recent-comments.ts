@@ -95,7 +95,7 @@ export const checkRecentCommentsAction: Action = {
       description: "Number of comments to retrieve (default: 5, max: 10)",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [
