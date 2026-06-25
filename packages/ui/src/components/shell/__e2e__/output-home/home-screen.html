@@ -28694,7 +28694,7 @@
                   {
                     "data-testid": "home-springboard-home-page",
                     "aria-hidden": page !== "home",
-                    className: "relative h-full w-1/2 shrink-0",
+                    className: "relative h-full w-1/2 shrink-0 touch-pan-y",
                     onPointerDown: homeHandlers.onPointerDown,
                     onPointerUp: homeHandlers.onPointerUp,
                     onPointerCancel: homeHandlers.onPointerCancel,
@@ -28707,7 +28707,7 @@
                   {
                     "data-testid": "home-springboard-springboard-page",
                     "aria-hidden": page !== "springboard",
-                    className: "relative h-full w-1/2 shrink-0",
+                    className: "relative h-full w-1/2 shrink-0 touch-pan-y",
                     onPointerDown: springboardHandlers.onPointerDown,
                     onPointerUp: springboardHandlers.onPointerUp,
                     onPointerCancel: springboardHandlers.onPointerCancel,
@@ -28819,7 +28819,7 @@
 `;
 
   // packages/ui/src/widgets/WidgetHost.tsx
-  var import_core30 = __toESM(require_core(), 1);
+  var import_core31 = __toESM(require_core(), 1);
   var import_react90 = __toESM(require_react(), 1);
 
   // packages/ui/src/components/config-ui/ui-renderer.tsx
@@ -46220,6 +46220,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var import_react34 = __toESM(require_react(), 1);
 
   // packages/ui/src/config/boot-config-store.ts
+  var import_core12 = __toESM(require_core(), 1);
   var DEFAULT_BOOT_CONFIG = {
     branding: {},
     cloudApiBase: "https://www.elizacloud.ai"
@@ -66326,9 +66327,17 @@ Assistant:`;
     }
     if (!forceCreate) {
       onProgress?.("creating", "Finding your agents...");
-      const list = await this.getCloudCompatAgents().catch(() => null);
-      const agents = list?.success ? list.data : [];
-      const chosen = pickPreferredCloudAgent(agents, preferAgentId);
+      const list = await this.getCloudCompatAgents().catch((cause) => ({
+        success: false,
+        data: [],
+        error: cause instanceof Error ? cause.message : void 0
+      }));
+      if (!list.success) {
+        throw new Error(
+          list.error || "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again."
+        );
+      }
+      const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
       if (chosen) {
         const apiBase2 = resolveCloudAgentApiBase({
           bridgeUrl: chosen.bridge_url,
@@ -66446,7 +66455,7 @@ Assistant:`;
   };
 
   // packages/ui/src/chat/index.ts
-  var import_core25 = __toESM(require_core(), 1);
+  var import_core26 = __toESM(require_core(), 1);
   var DESKTOP_COMMAND_CLICK_AUDIT = [
     {
       id: "desktop-open-workspace",
@@ -72853,7 +72862,7 @@ Assistant:`;
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/components/apps/helpers.ts
-  var import_core28 = __toESM(require_core(), 1);
+  var import_core29 = __toESM(require_core(), 1);
   var APPS_VIEW_HIDDEN_APP_NAMES = [
     "@elizaos/app",
     "@elizaos/browser-bridge-extension",
@@ -72991,9 +73000,9 @@ Assistant:`;
   }) {
     const titleContent = /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)(import_jsx_runtime40.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("span", { className: "inline-flex shrink-0 items-center justify-center text-muted [&>svg]:h-3.5 [&>svg]:w-3.5", children: icon }),
-      /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("span", { className: "truncate text-[11px] leading-none font-semibold uppercase tracking-[0.16em] text-muted", children: title })
+      /* @__PURE__ */ (0, import_jsx_runtime40.jsx)("span", { className: "truncate text-[11px] leading-none font-semibold text-muted", children: title })
     ] });
-    return /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("section", { "data-testid": testId, className: "space-y-1", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("section", { "data-testid": testId, className: "space-y-0.5", children: [
       /* @__PURE__ */ (0, import_jsx_runtime40.jsxs)("div", { className: "flex items-center justify-between gap-2 pr-1", children: [
         onTitleClick ? /* @__PURE__ */ (0, import_jsx_runtime40.jsx)(
           "button",
@@ -73325,7 +73334,7 @@ Assistant:`;
   );
 
   // packages/ui/src/chat/slash-menu.ts
-  var import_core29 = __toESM(require_core(), 1);
+  var import_core30 = __toESM(require_core(), 1);
 
   // packages/ui/src/chat/useSlashCommandController.ts
   function reportUserViewSwitch(viewId, viewPath) {
@@ -75326,23 +75335,34 @@ Assistant:`;
       () => dedupeTodos(workbench?.todos ?? [])
     );
     const [todosLoading, setTodosLoading] = (0, import_react89.useState)(false);
+    const mountedRef = (0, import_react89.useRef)(true);
+    (0, import_react89.useEffect)(() => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+      };
+    }, []);
     (0, import_react89.useEffect)(() => {
       setTodos(dedupeTodos(workbench?.todos ?? []));
     }, [workbench?.todos]);
     const loadTodos = (0, import_react89.useCallback)(
       async (silent = false) => {
-        if (!silent) {
+        if (!silent && mountedRef.current) {
           setTodosLoading(true);
         }
         try {
           const result = await client.listWorkbenchTodos();
-          setTodos(dedupeTodos(result.todos));
+          if (mountedRef.current) {
+            setTodos(dedupeTodos(result.todos));
+          }
         } catch {
-          if ((workbench?.todos?.length ?? 0) > 0) {
+          if (mountedRef.current && (workbench?.todos?.length ?? 0) > 0) {
             setTodos(dedupeTodos(workbench?.todos ?? []));
           }
         } finally {
-          setTodosLoading(false);
+          if (mountedRef.current) {
+            setTodosLoading(false);
+          }
         }
       },
       [workbench?.todos]
@@ -75914,14 +75934,8 @@ Assistant:`;
   var HOME_RENDER_CAP = 12;
   var WIDGET_SLOTS = /* @__PURE__ */ new Set([
     "chat-sidebar",
-    "chat-inline",
-    "wallet",
-    "browser",
-    "heartbeats",
     "character",
-    "settings",
     "nav-page",
-    "automations",
     "home"
   ]);
   function isWidgetSlot(value) {
@@ -75958,7 +75972,7 @@ Assistant:`;
     const resolved = (0, import_react90.useMemo)(() => {
       const all = resolveWidgetsForSlot(slot, plugins ?? [], serverDeclarations);
       const gated = all.filter(
-        (entry) => (0, import_core30.isViewVisible)(entry.declaration, enabledKinds)
+        (entry) => (0, import_core31.isViewVisible)(entry.declaration, enabledKinds)
       );
       return filter2 ? gated.filter((entry) => filter2(entry.declaration)) : gated;
     }, [slot, plugins, serverDeclarations, filter2, enabledKinds]);
