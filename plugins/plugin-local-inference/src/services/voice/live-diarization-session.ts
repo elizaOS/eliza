@@ -40,6 +40,7 @@ import {
 	type TurnTranscriber,
 	type VadSegmenter,
 } from "./audio-frame-consumer.js";
+import { estimateEchoDelaySamples } from "./echo-delay.js";
 import { EchoReferenceBuffer } from "./echo-reference-buffer.js";
 import type {
 	ElizaInferenceContextHandle,
@@ -109,6 +110,13 @@ export interface LiveDiarizationStatus {
 	/** Live AEC wiring status. Echo cancellation runs only when this is true. */
 	aec: {
 		echoReferenceWired: boolean;
+		/** Playback→mic delay (samples @16 kHz) currently applied to align the
+		 * far-end reference — self-calibrated from real echo when confident,
+		 * otherwise the `ELIZA_VOICE_ECHO_DELAY_MS` seed (default 0). */
+		echoDelaySamples: number;
+		/** Peak cross-correlation [0,1] of the last accepted delay calibration;
+		 * 0 until a confident estimate replaces the seed. */
+		echoDelayConfidence: number;
 	};
 	/** The most recent attributed turns (capped), for device-evidence reads. */
 	recentTurns: LiveDiarizationTurnSummary[];
@@ -168,6 +176,32 @@ export function buildLiveDiarizationConsumerDeps({
 
 const AUDIO_FRAME_SAMPLE_RATE = 16_000;
 
+/** Echo-delay self-calibration (#9583/#9586). */
+/** Accumulate this many playback-active samples before estimating the delay
+ * (~0.75 s @16 kHz — enough correlated echo for a stable cross-correlation). */
+const ECHO_CAL_TARGET_SAMPLES = 12_000;
+/** Bound the rolling calibration window so a long talk-over doesn't grow it. */
+const ECHO_CAL_MAX_SAMPLES = 24_000;
+/** Accept a calibrated delay only above this normalized cross-correlation; below
+ * it the near/far are independent (user talking, no echo) — keep the seed. */
+const ECHO_CAL_MIN_CONFIDENCE = 0.3;
+/** Largest playback→mic delay to search (300 ms @16 kHz). */
+const ECHO_CAL_MAX_LAG_SAMPLES = 4_800;
+/** Far-end mean-square floor below which a frame is "no playback" (skip). */
+const ECHO_CAL_FAR_ENERGY_FLOOR = 1e-7;
+
+function concatFloat32(chunks: Float32Array[]): Float32Array {
+	let total = 0;
+	for (const c of chunks) total += c.length;
+	const out = new Float32Array(total);
+	let off = 0;
+	for (const c of chunks) {
+		out.set(c, off);
+		off += c.length;
+	}
+	return out;
+}
+
 /**
  * Playback→mic transport delay used to time-align the far-end echo reference,
  * in samples @ 16 kHz. Device-tunable via `ELIZA_VOICE_ECHO_DELAY_MS`; the
@@ -208,7 +242,22 @@ export class LiveDiarizationSession {
 	 * no-playback case.
 	 */
 	private readonly echoBuffer = new EchoReferenceBuffer();
-	private readonly echoDelaySamples = resolveEchoDelaySamples();
+	/**
+	 * Playback→mic delay applied when reading the far-end reference. Seeded from
+	 * `ELIZA_VOICE_ECHO_DELAY_MS` (default 0) and then SELF-CALIBRATED on the live
+	 * path: once enough playback-active echo is observed, `estimateEchoDelaySamples`
+	 * (#9586) recovers the bulk transport lag by cross-correlation and replaces the
+	 * seed (#9583). Mutable for that reason.
+	 */
+	private echoDelaySamples = resolveEchoDelaySamples();
+	private echoDelayConfidence = 0;
+	private echoDelayCalibrated = false;
+	/** Rolling near/far windows accumulated only while the far-end is active, used
+	 * once to estimate the playback→mic delay. Cleared after a confident estimate
+	 * and on {@link resetPlayback}. */
+	private calNear: Float32Array[] = [];
+	private calFar: Float32Array[] = [];
+	private calSampleCount = 0;
 
 	constructor(
 		private readonly runtime: RuntimeEventSink,
@@ -371,6 +420,66 @@ export class LiveDiarizationSession {
 		);
 	}
 
+	/** Current self-calibrated AEC delay state (for status + tests). */
+	aecDelayState(): {
+		delaySamples: number;
+		confidence: number;
+		calibrated: boolean;
+	} {
+		return {
+			delaySamples: this.echoDelaySamples,
+			confidence: this.echoDelayConfidence,
+			calibrated: this.echoDelayCalibrated,
+		};
+	}
+
+	/**
+	 * Self-calibrate the playback→mic delay (#9583/#9586) from real echo. Called
+	 * per mic frame while uncalibrated: when the far-end is active (the agent is
+	 * playing TTS), accumulate the time-aligned near/far windows; once ~0.75 s of
+	 * playback-active audio is buffered, recover the bulk transport lag by
+	 * cross-correlation and, if confident, replace the static seed. One-shot — the
+	 * device's speaker→mic path is stable, so we lock the first confident estimate
+	 * and stop re-measuring. Public so it can be unit-tested without the fused FFI.
+	 */
+	observeForDelayCalibration(nearPcm: Float32Array, timestampMs: number): void {
+		if (this.echoDelayCalibrated || nearPcm.length === 0) return;
+		// Read the RAW far-end at this frame (delay 0) — calibration recovers the
+		// delay, so it must not pre-apply the value it is trying to measure.
+		const far = this.echoBuffer.referenceAt(timestampMs, nearPcm.length, 0);
+		let farEnergy = 0;
+		for (let i = 0; i < far.length; i++) farEnergy += far[i] * far[i];
+		if (farEnergy / Math.max(1, far.length) < ECHO_CAL_FAR_ENERGY_FLOOR) {
+			return; // no playback → nothing to calibrate against
+		}
+
+		this.calNear.push(nearPcm.slice());
+		this.calFar.push(far);
+		this.calSampleCount += nearPcm.length;
+		while (
+			this.calSampleCount > ECHO_CAL_MAX_SAMPLES &&
+			this.calNear.length > 1
+		) {
+			this.calSampleCount -= (this.calNear.shift() as Float32Array).length;
+			this.calFar.shift();
+		}
+		if (this.calSampleCount < ECHO_CAL_TARGET_SAMPLES) return;
+
+		const near = concatFloat32(this.calNear);
+		const farWin = concatFloat32(this.calFar);
+		const est = estimateEchoDelaySamples(near, farWin, {
+			maxLagSamples: ECHO_CAL_MAX_LAG_SAMPLES,
+		});
+		if (est.confidence >= ECHO_CAL_MIN_CONFIDENCE) {
+			this.echoDelaySamples = est.lagSamples;
+			this.echoDelayConfidence = est.confidence;
+			this.echoDelayCalibrated = true;
+		}
+		this.calNear = [];
+		this.calFar = [];
+		this.calSampleCount = 0;
+	}
+
 	/**
 	 * Feed a batch of agent-playback (far-end) frames for echo cancellation. The
 	 * device captures the agent's TTS output in the SAME base64 LE-s16 16 kHz
@@ -385,9 +494,14 @@ export class LiveDiarizationSession {
 		}
 	}
 
-	/** Drop buffered far-end playback (playback stopped / barge-in). */
+	/** Drop buffered far-end playback (playback stopped / barge-in). Also clears
+	 * the in-progress delay-calibration window (it would otherwise straddle a
+	 * playback gap); the already-learned delay is kept. */
 	resetPlayback(): void {
 		this.echoBuffer.reset();
+		this.calNear = [];
+		this.calFar = [];
+		this.calSampleCount = 0;
 	}
 
 	/** Feed a batch of WebView-captured frames; resolves once VAD has processed them. */
@@ -396,6 +510,16 @@ export class LiveDiarizationSession {
 		if (!this.consumer) return;
 		for (const frame of frames) {
 			this.framesReceived += 1;
+			if (!this.echoDelayCalibrated) {
+				try {
+					this.observeForDelayCalibration(
+						decodeAudioFramePcm(frame),
+						frame.timestamp,
+					);
+				} catch {
+					// Let AudioFrameConsumer own decode-error accounting below.
+				}
+			}
 			await this.consumer.onAudioFrame(frame);
 		}
 	}
@@ -422,6 +546,8 @@ export class LiveDiarizationSession {
 			aec: {
 				echoReferenceWired:
 					this.consumer != null || this.options.echoReference != null,
+				echoDelaySamples: this.echoDelaySamples,
+				echoDelayConfidence: this.echoDelayConfidence,
 			},
 			recentTurns: [...this.recentTurns],
 			...(this.buildError ? { error: this.buildError } : {}),
