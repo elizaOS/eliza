@@ -25598,8 +25598,11 @@
     glyphClassName = "h-6 w-6",
     imageTestId
   }) {
-    const [failed, setFailed] = (0, import_react27.useState)(false);
-    const url = failed ? void 0 : resolveTileImageUrl(entry.imageUrl);
+    const [failure, setFailure] = (0, import_react27.useState)("none");
+    const primaryUrl = failure === "none" ? resolveTileImageUrl(entry.imageUrl) : void 0;
+    const fallbackUrl = failure !== "all" ? resolveTileImageUrl(entry.fallbackImageUrl) : void 0;
+    const url = primaryUrl ?? fallbackUrl;
+    const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
     if (url) {
       return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: containerClassName, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
         "img",
@@ -25615,7 +25618,7 @@
               action: "hero-image-error",
               viewId: entry.id
             });
-            setFailed(true);
+            setFailure(primaryUrl && hasFallback ? "primary" : "all");
           },
           className: "h-full w-full object-cover",
           "data-testid": imageTestId

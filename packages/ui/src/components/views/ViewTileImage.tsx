@@ -49,8 +49,13 @@ export function ViewTileImage({
   /** data-testid for the <img>, when a caller asserts on it. */
   imageTestId?: string;
 }) {
-  const [failed, setFailed] = useState(false);
-  const url = failed ? undefined : resolveTileImageUrl(entry.imageUrl);
+  const [failure, setFailure] = useState<"none" | "primary" | "all">("none");
+  const primaryUrl =
+    failure === "none" ? resolveTileImageUrl(entry.imageUrl) : undefined;
+  const fallbackUrl =
+    failure !== "all" ? resolveTileImageUrl(entry.fallbackImageUrl) : undefined;
+  const url = primaryUrl ?? fallbackUrl;
+  const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
 
   if (url) {
     return (
@@ -67,7 +72,7 @@ export function ViewTileImage({
               action: "hero-image-error",
               viewId: entry.id,
             });
-            setFailed(true);
+            setFailure(primaryUrl && hasFallback ? "primary" : "all");
           }}
           className="h-full w-full object-cover"
           data-testid={imageTestId}

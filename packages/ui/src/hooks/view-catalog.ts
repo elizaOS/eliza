@@ -21,9 +21,28 @@ import {
   isViewVisible,
   type ViewKind,
 } from "@elizaos/core";
+import { generateViewHeroSvgFor } from "@elizaos/shared";
 import type { RegistryAppInfo } from "../api";
 import type { ViewModality } from "../platform/platform-guards";
 import type { ViewRegistryEntry } from "./useAvailableViews";
+
+/**
+ * A deterministic, branded view hero generated CLIENT-SIDE as an inline data
+ * URI. This is the SAME no-blue art the agent serves at `/api/views/:id/hero`,
+ * but rendered with no network round-trip — so every launcher tile shows a real
+ * image even offline / on cloud builds where that endpoint isn't reachable
+ * (the "tiles show glyphs, not images" report). Real plugin heroes
+ * (`heroImageUrl`) still win; this is the universal fallback.
+ */
+function generatedViewHeroDataUri(source: {
+  id: string;
+  label: string;
+  icon?: string;
+}): string {
+  return `data:image/svg+xml,${encodeURIComponent(
+    generateViewHeroSvgFor(source),
+  )}`;
+}
 
 export type { ViewModality } from "../platform/platform-guards";
 
@@ -42,12 +61,14 @@ export interface ViewEntry {
   /** Real preview image URL, or undefined when only a generated fallback exists. */
   heroUrl?: string;
   /**
-   * Always-available preview image URL — the hero endpoint, which returns a real
-   * image when one exists on disk and a deterministic branded SVG otherwise. Use
-   * this (not {@link heroUrl}) when every entry must show an image, e.g. the
-   * Springboard tiles. Undefined only for entries with no hero source at all.
+   * Always-available preview image URL. Real plugin art wins when present;
+   * otherwise this is a deterministic branded SVG data URI. Use this (not
+   * {@link heroUrl}) when every entry must show an image, e.g. Springboard
+   * tiles.
    */
   imageUrl?: string;
+  /** Deterministic branded image used when a real preview image fails to load. */
+  fallbackImageUrl?: string;
   hasHero: boolean;
   category?: string;
   /** Presentation modality (`gui` for catalog apps until loaded). */
@@ -85,6 +106,11 @@ export interface InstalledAppLike {
 
 export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
   const hasHero = Boolean(view.hasHeroImage && view.heroImageUrl);
+  const generatedHero = generatedViewHeroDataUri({
+    id: view.id,
+    label: view.label,
+    icon: view.icon,
+  });
   return {
     key: `view:${view.id}`,
     id: view.id,
@@ -92,12 +118,13 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     description: view.description,
     icon: view.icon,
     heroUrl: hasHero ? view.heroImageUrl : undefined,
-    // `imageUrl` must ALWAYS resolve to the hero endpoint so Springboard tiles
-    // show a real/branded image, never the generic fallback glyph. The backend
-    // always serves `/api/views/{id}/hero` (a real image or a deterministic
-    // branded SVG), so synthesize it when the registry entry omits the URL.
-    imageUrl:
-      view.heroImageUrl ?? `/api/views/${encodeURIComponent(view.id)}/hero`,
+    // `imageUrl` ALWAYS resolves to a real/branded image so a Springboard tile
+    // is never a bare glyph. A real plugin hero (`heroImageUrl`) wins; otherwise
+    // we generate the branded hero CLIENT-SIDE (an inline data URI) rather than
+    // pointing at the `/api/views/:id/hero` endpoint, which 404s offline / on
+    // cloud builds — so the tiles show images everywhere, no agent required.
+    imageUrl: view.heroImageUrl ?? generatedHero,
+    fallbackImageUrl: generatedHero,
     hasHero,
     modality: view.viewType ?? "gui",
     modalities: [view.viewType ?? "gui"],
@@ -114,14 +141,21 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
 
 function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
   const hasHero = Boolean(app.heroImage);
+  const label = app.displayName || app.name;
+  const generatedHero = generatedViewHeroDataUri({
+    id: app.name,
+    label,
+    icon: app.icon ?? undefined,
+  });
   return {
     key: `app:${app.name}`,
     id: app.name,
-    label: app.displayName || app.name,
+    label,
     description: app.description,
     icon: app.icon ?? undefined,
     heroUrl: app.heroImage ?? undefined,
-    imageUrl: app.heroImage ?? undefined,
+    imageUrl: app.heroImage ?? generatedHero,
+    fallbackImageUrl: generatedHero,
     hasHero,
     category: app.category,
     // Catalog cards are a GUI install surface; the loaded view carries the real

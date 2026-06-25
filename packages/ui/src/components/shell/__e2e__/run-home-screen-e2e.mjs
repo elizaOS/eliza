@@ -402,25 +402,29 @@ try {
     "the single indicator shows Home + 2 springboard-page dots",
   );
 
-  // ── Distinct per-view icons — the placeholder-icon regression (#5) ───────
-  const glyphClasses = await mobile.$$eval("[data-view-visual] svg", (svgs) =>
-    Array.from(
-      new Set(
-        svgs
-          .map((s) =>
-            Array.from(s.classList).find((c) => c.startsWith("lucide-")),
-          )
-          .filter(Boolean),
-      ),
+  // ── Real per-view images — every tile shows a branded hero IMAGE (generated
+  // client-side as a data URI when no real hero exists), never a bare glyph.
+  // Each view's hero is deterministic per id, so the srcs are distinct.
+  const imageSrcs = await mobile.$$eval(
+    '[data-testid^="springboard-image-"]',
+    (imgs) =>
+      Array.from(
+        new Set(imgs.map((i) => i.getAttribute("src") ?? "")),
+      ).filter(Boolean),
+  );
+  assert(
+    imageSrcs.length >= 5,
+    `springboard tiles render varied hero images, not one placeholder (${imageSrcs.length} distinct)`,
+  );
+  assert(
+    imageSrcs.every(
+      (s) => s.startsWith("data:image/") || /^(https?:|\/api\/)/.test(s),
     ),
+    "every tile renders a real hero image (data-URI / served), not a glyph",
   );
   assert(
-    glyphClasses.length >= 5,
-    `springboard tiles render varied glyphs, not one placeholder (${glyphClasses.length} distinct)`,
-  );
-  assert(
-    !(glyphClasses.length === 1 && glyphClasses[0] === "lucide-layout-grid"),
-    "tiles are not all the generic layout-grid placeholder",
+    (await mobile.locator("[data-view-visual] svg").count()) === 0,
+    "no tile falls back to the bare Lucide glyph",
   );
 
   // ── A swipe that starts ON a tile never ghost-fires edit mode (#3) ───────

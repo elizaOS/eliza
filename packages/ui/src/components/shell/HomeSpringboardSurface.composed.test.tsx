@@ -235,8 +235,8 @@ describe("Home ↔ Springboard composed surface", () => {
     const filesImage = screen.getByTestId(
       "springboard-image-files",
     ) as HTMLImageElement;
-    expect(settingsImage.getAttribute("src")).toBe("/api/views/settings/hero");
-    expect(filesImage.getAttribute("src")).toBe("/api/views/files/hero");
+    expect(settingsImage.getAttribute("src")).toMatch(/^data:image\/svg\+xml,/);
+    expect(filesImage.getAttribute("src")).toMatch(/^data:image\/svg\+xml,/);
     expect(settingsImage.getAttribute("src")).not.toBe(
       filesImage.getAttribute("src"),
     );
