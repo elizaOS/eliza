@@ -25,8 +25,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-const TIER_ORDER = [
+export const TIER_ORDER = [
 	"0_6b",
 	"0_8b",
 	"1_7b",
@@ -100,7 +101,7 @@ function safeReaddir(dir) {
 }
 
 /** Find the text GGUF for each tier: `<dir>/eliza-1-<tier>.bundle/text/*.gguf`. */
-function discoverTierModels(modelDirs) {
+export function discoverTierModels(modelDirs) {
 	const found = new Map(); // tier -> gguf path
 	for (const root of modelDirs) {
 		for (const entry of safeReaddir(root)) {
@@ -139,7 +140,7 @@ function runBench(bench, model, depths) {
 }
 
 /** Reduce llama-bench rows into {arch, sizeMiB, params, pp512, tg128, depthDecode}. */
-function summarize(rows) {
+export function summarize(rows) {
 	const r0 = rows[0] ?? {};
 	const out = {
 		arch: r0.model_type ?? "?",
@@ -161,11 +162,11 @@ function summarize(rows) {
 	return out;
 }
 
-function fmt(ts) {
+export function fmt(ts) {
 	return ts ? `${ts.avg.toFixed(1)} ± ${ts.sd.toFixed(0)}` : "—";
 }
 
-function buildMarkdown(results, meta) {
+export function buildMarkdown(results, meta) {
 	const depths = meta.depths
 		? meta.depths.split(",").map((d) => Number.parseInt(d, 10))
 		: [];
@@ -237,7 +238,11 @@ async function main() {
 	if (args.json) console.error(JSON.stringify({ meta, results }, null, 2));
 }
 
-main().catch((err) => {
-	console.error(err.stack ?? String(err));
-	process.exit(1);
-});
+const invokedDirectly =
+	process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
+	main().catch((err) => {
+		console.error(err.stack ?? String(err));
+		process.exit(1);
+	});
+}
