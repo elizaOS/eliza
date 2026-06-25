@@ -6,6 +6,7 @@ import type {
 import {
   buildAugmentedPrompt,
   FusedVisionContextAugmenter,
+  isMeaningfulOcrText,
 } from "./vision-context-augmenter.js";
 
 /** A coord-OCR service that returns fixed blocks — no tesseract binary. */
@@ -52,7 +53,33 @@ describe("buildAugmentedPrompt", () => {
   });
 });
 
+describe("isMeaningfulOcrText", () => {
+  it("keeps real words/labels and drops photo-OCR noise", () => {
+    for (const good of ["Bus", "RID", "10", "STOP", "Avani"]) {
+      expect(isMeaningfulOcrText(good)).toBe(true);
+    }
+    for (const noise of ["|", "—", "=", ":", "a", "\\", "‘"]) {
+      expect(isMeaningfulOcrText(noise)).toBe(false);
+    }
+  });
+});
+
 describe("FusedVisionContextAugmenter", () => {
+  it("drops noisy single-glyph OCR fragments, keeps real text", async () => {
+    const aug = new FusedVisionContextAugmenter({
+      getOcr: () =>
+        fakeOcr([
+          { text: "|" },
+          { text: "Bus" },
+          { text: "—" },
+          { text: "RID" },
+          { text: "a" },
+        ]),
+    });
+    const out = await aug.augmentImagePrompt({ image: IMAGE });
+    expect(out?.fused.ocrText).toBe('"Bus", "RID"');
+  });
+
   it("fuses OCR text into the prompt", async () => {
     const aug = new FusedVisionContextAugmenter({
       getOcr: () => fakeOcr([{ text: "ELIZA OCR TEST 1234" }]),

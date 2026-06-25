@@ -65,6 +65,18 @@ export interface VisionAugmenterDetectors {
 
 const DEFAULT_DESCRIBE_PROMPT = "Describe what is in this image.";
 const MAX_OBJECTS = 12;
+const MAX_OCR_BLOCKS = 24;
+
+/**
+ * Keep only OCR fragments that carry real signal. Tesseract run over a natural
+ * photo (vs a clean document) emits per-glyph noise — `|`, `=`, `—`, stray
+ * single letters — that would pollute the prompt and waste tokens. Require at
+ * least two alphanumeric characters so genuine words/labels survive and noise
+ * is dropped. Pure — exported for tests.
+ */
+export function isMeaningfulOcrText(text: string): boolean {
+  return (text.match(/[A-Za-z0-9]/g)?.length ?? 0) >= 2;
+}
 
 /**
  * Sentinel that marks an already-augmented prompt. Lets the augmenter stay
@@ -98,7 +110,8 @@ export class FusedVisionContextAugmenter {
         });
         const lines = res.blocks
           .map((b) => b.text.trim())
-          .filter((t) => t.length > 0);
+          .filter(isMeaningfulOcrText)
+          .slice(0, MAX_OCR_BLOCKS);
         if (lines.length > 0) {
           fused.ocrText = lines.map((t) => `"${t}"`).join(", ");
         }
