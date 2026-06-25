@@ -4641,7 +4641,9 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
-		const lookupCaller = captureModelLookupCaller(this.logger.level);
+		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
+			? captureModelLookupCaller()
+			: undefined;
 		// Per-action model routing seam (closes A5 / W1-R2). If the call
 		// originates inside an action handler that declared a `modelClass`, and
 		// the requested model type is a text-generation model, we resolve

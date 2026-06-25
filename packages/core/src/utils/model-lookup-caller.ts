@@ -1,6 +1,3 @@
-/** Log levels at or below debug, matching @elizaos/logger filtering. */
-const DEBUG_OR_TRACE_LEVELS = new Set(["trace", "verbose", "debug"]);
-
 export type ModelLookupCallerTrace = {
 	/** Outermost plugin or package that triggered the lookup. */
 	caller?: string;
@@ -9,14 +6,10 @@ export type ModelLookupCallerTrace = {
 };
 
 const INTERNAL_FRAME_RE =
-	/model-lookup-caller\.(?:ts|js)(?::|$)|(?:^|[/\\])runtime\.(?:ts|js)|(?:^|[/\\])getModel|(?:^|[/\\])useModel|resolveModelRegistration|node:internal|node_modules|@vitest\/|vitest\/|\/bun:/;
+	/model-lookup-caller\.(?:ts|js)(?::|$)|(?:^|[/\\])runtime\.(?:ts|js)|(?:^|[/\\])getModel|(?:^|[/\\])useModel|resolveModelRegistration|node:internal|@vitest\/|vitest\/|\/bun:/;
 
 const STACK_FRAME_WITH_FN_RE = /^(?:async )?(.+?) \((.+?):(\d+):(\d+)\)$/;
 const STACK_FRAME_FILE_ONLY_RE = /^(.+?):(\d+):(\d+)$/;
-
-function isDebugOrTraceLogLevel(logLevel: string | undefined): boolean {
-	return DEBUG_OR_TRACE_LEVELS.has(String(logLevel ?? "info").toLowerCase());
-}
 
 function parseFrameOrigin(line: string): string | null {
 	const trimmed = line.trim();
@@ -35,6 +28,16 @@ function parseFrameOrigin(line: string): string | null {
 
 	if (INTERNAL_FRAME_RE.test(framePath)) return null;
 	if (withFn?.[1] && INTERNAL_FRAME_RE.test(withFn[1])) return null;
+
+	// Installed elizaOS packages live under node_modules in package-mode
+	// deployments, so classify them before dropping unrelated dependencies.
+	const installedPackageMatch =
+		/(?:^|\/)node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?@elizaos\/([^/]+)\//.exec(
+			framePath,
+		);
+	if (installedPackageMatch?.[1]) return installedPackageMatch[1];
+
+	if (/(?:^|\/)node_modules\//.test(framePath)) return null;
 
 	const pluginMatch = /(?:^|\/)plugins\/([^/]+)\//.exec(framePath);
 	if (pluginMatch?.[1]) return pluginMatch[1];
@@ -55,16 +58,13 @@ function dedupeConsecutive(names: string[]): string[] {
 }
 
 /**
- * Capture a trimmed stack for `runtime.useModel()` calls.
+ * Extract a trimmed caller trace from a stack captured for `runtime.useModel()`.
  * Returns plugin or package names only: no file paths or line numbers.
  */
-export function captureModelLookupCaller(
-	logLevel: string | undefined,
+export function captureModelLookupCallerFromStack(
+	stack: string | undefined,
 	maxFrames = 4,
 ): ModelLookupCallerTrace | undefined {
-	if (!isDebugOrTraceLogLevel(logLevel)) return undefined;
-
-	const stack = new Error("model lookup").stack;
 	if (!stack) return undefined;
 
 	const origins: string[] = [];
@@ -82,4 +82,18 @@ export function captureModelLookupCaller(
 		caller: callerStack[0],
 		callerStack,
 	};
+}
+
+/**
+ * Capture a trimmed stack for `runtime.useModel()` calls.
+ * Caller gates this behind debug logging because stack capture walks the hot
+ * model path and should stay free when debug logs are disabled.
+ */
+export function captureModelLookupCaller(
+	maxFrames = 4,
+): ModelLookupCallerTrace | undefined {
+	return captureModelLookupCallerFromStack(
+		new Error("model lookup").stack,
+		maxFrames,
+	);
 }
