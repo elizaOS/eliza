@@ -24,6 +24,29 @@ export type GmailPlanSubaction =
   | "draft_reply"
   | "send_reply";
 
+const GMAIL_PLAN_SUBACTIONS: ReadonlySet<GmailPlanSubaction> = new Set([
+  "triage",
+  "needs_response",
+  "search",
+  "read",
+  "draft_reply",
+  "send_reply",
+]);
+
+/**
+ * Coerce a model-emitted subaction string to a known {@link GmailPlanSubaction},
+ * falling back to the safe read-shaped default "triage" for a missing/invalid
+ * value (#8795). Without this, a malformed model output (e.g. a hallucinated
+ * "delete_everything") was blind-cast and flowed downstream as if valid.
+ */
+function coerceGmailSubaction(value: string | undefined): GmailPlanSubaction {
+  const normalized = value?.trim().toLowerCase();
+  return normalized &&
+    GMAIL_PLAN_SUBACTIONS.has(normalized as GmailPlanSubaction)
+    ? (normalized as GmailPlanSubaction)
+    : "triage";
+}
+
 export interface GmailPlan {
   subaction: GmailPlanSubaction;
   shouldAct: boolean;
@@ -56,7 +79,7 @@ function parseGmailPlan(text: string): GmailPlan {
     if (match) fields.set(match[1].toLowerCase(), match[2].trim());
   }
 
-  const subaction = (fields.get("subaction") || "triage") as GmailPlanSubaction;
+  const subaction = coerceGmailSubaction(fields.get("subaction"));
   const shouldAct = fields.get("shouldact")?.toLowerCase() !== "false";
   const responseRaw = fields.get("response");
   const response =
