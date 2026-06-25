@@ -36,12 +36,12 @@ import {
 	handleLiveVoiceAttribution,
 } from "../../runtime/voice-entity-binding.js";
 import type { VoiceTurnSignal } from "./eot-classifier.js";
+import { NlmsEchoCanceller } from "./nlms-echo-canceller.js";
 import type {
 	VoiceAttributionOutput,
 	VoiceAttributionPipeline,
 } from "./speaker/attribution-pipeline.js";
 import type { PcmFrame, VadEvent, VoiceInputSource } from "./types.js";
-import { NlmsEchoCanceller } from "./nlms-echo-canceller.js";
 
 /** Shared empty reference — agent silent → echo canceller passes the mic through. */
 const NO_ECHO_REFERENCE = new Float32Array(0);

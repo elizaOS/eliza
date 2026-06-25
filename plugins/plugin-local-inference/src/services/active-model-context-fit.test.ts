@@ -122,5 +122,4 @@ describe("resolveLocalInferenceLoadArgs — runtime context fit", () => {
 			else process.env.ELIZA_MOBILE_CONTEXT_CEILING = prevCeiling;
 		}
 	});
-
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeErle, NlmsEchoCanceller } from "./echo-canceller.ts";
 import { applyReverb } from "./corpus-augment.ts";
+import { computeErle, NlmsEchoCanceller } from "./echo-canceller.ts";
 
 /** Deterministic PRNG so the test is reproducible. */
 function mulberry32(seed: number): () => number {
@@ -107,10 +107,10 @@ describe("NlmsEchoCanceller", () => {
 
 		// Clean path: a short FIR room impulse (same family as the single-talk test).
 		const cleanNear = applyEcho(far, ROOM_IMPULSE);
-		const cleanResidual = new NlmsEchoCanceller({ tailMs: 16, mu: 0.7 }).process(
-			far,
-			cleanNear,
-		);
+		const cleanResidual = new NlmsEchoCanceller({
+			tailMs: 16,
+			mu: 0.7,
+		}).process(far, cleanNear);
 
 		// Reverberant path: Freeverb/Schroeder leaves a long decaying tail, so the
 		// echo is no longer a short FIR — the hard case for a fixed-tail NLMS. Trim
@@ -141,5 +141,4 @@ describe("NlmsEchoCanceller", () => {
 		expect(revErle).toBeGreaterThanOrEqual(0.8);
 		expect(revErle).toBeLessThan(cleanErle);
 	});
-
 });
