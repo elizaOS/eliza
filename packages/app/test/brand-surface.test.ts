@@ -70,13 +70,15 @@ describe("brand surfaces", () => {
     expect(xml).toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);
   });
 
-  it("index.html FOUC fallback is unified with the dark chat shell, not a foreign color", () => {
+  it("index.html FOUC fallback is the home background orange, not a foreign color", () => {
     const html = read("index.html");
-    // Either pure black or the brand orange is acceptable. The previous
+    // The FOUC fallback tracks the home background orange (#ef5a1f, #9565) so
+    // boot does not flash a different orange before the home background paints;
+    // pure black or the legacy brand orange remain acceptable. The previous
     // `#08080a` near-black is a slop value and should not regress.
     expect(html).not.toContain("#08080a");
     expect(html).toMatch(
-      /background-color:\s*var\(--bg,\s*(#000000|#FF5800)\)/,
+      /background-color:\s*var\(--bg,\s*(#000000|#FF5800|#ef5a1f)\)/,
     );
   });
 
