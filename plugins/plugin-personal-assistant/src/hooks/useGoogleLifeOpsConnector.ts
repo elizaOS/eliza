@@ -1,5 +1,9 @@
 import { APP_RESUME_EVENT } from "@elizaos/shared";
-import { client, isApiError, useAppSelector } from "@elizaos/ui";
+import { client } from "@elizaos/ui";
+// isApiError / useAppSelector are exported from the /api and /state subpaths,
+// not the @elizaos/ui root barrel.
+import { isApiError } from "@elizaos/ui/api";
+import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsConnectorGrant,

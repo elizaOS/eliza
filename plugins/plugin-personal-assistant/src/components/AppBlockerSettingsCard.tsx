@@ -1,4 +1,5 @@
-import { Button, client, useAppSelector } from "@elizaos/ui";
+import { Button, client } from "@elizaos/ui";
+import { useAppSelector } from "@elizaos/ui/state";
 import {
   CheckCircle2,
   Clock3,
