@@ -19,24 +19,6 @@ elizaOS is an open-source, local-first operating system for AI agents. Two parts
 
 The agent, your data, and the models all run on your device. [Eliza Cloud](#eliza-cloud-optional) is optional — add it for hosted inference, sync, and deploys.
 
-## The stack
-
-```
-┌────────────────────────────────────────────────────────────┐
-│  Eliza — the app          desktop · mobile · web            │  ← what you use
-│  chat · voice · phone · wallet · browser · assistant        │
-├────────────────────────────────────────────────────────────┤
-│  Apps on elizaOS          installable app-plugins + catalog │  ← what you add
-├────────────────────────────────────────────────────────────┤
-│  elizaOS runtime          agent loop · models · services    │  ← what runs it
-│  on-device inference (Eliza-1) · optional Eliza Cloud       │
-├────────────────────────────────────────────────────────────┤
-│  elizaOS — the OS         Linux · Android                   │  ← what runs your device
-└────────────────────────────────────────────────────────────┘
-```
-
-Run Eliza as an app on the OS you have, or run elizaOS as the OS itself.
-
 ## Get Eliza
 
 | Platform                              | How                                          |
