@@ -198,20 +198,6 @@ jobs:
       - name: Regression matrix contract
         run: bun run test:regression-matrix:release
 
-      - name: Prepare Whisper model artifact
-        run: |
-          bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en
-          mkdir -p .artifacts/whisper-model
-          cp "$HOME/.cache/eliza/whisper/ggml-base.en.bin" .artifacts/whisper-model/ggml-base.en.bin
-
-      - name: Upload Whisper model artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: whisper-model-base-en
-          path: .artifacts/whisper-model/ggml-base.en.bin
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Align version with release tag
         run: |
           node packages/app-core/scripts/align-electrobun-version.mjs
