@@ -12,15 +12,32 @@ import { platform } from "node:os";
 
 /**
  * Check if a CLI tool is available on the system.
+ *
+ * Memoized: tool availability on PATH does not change within a process run, and
+ * the hot CUA paths call this per click/op (e.g. `commandExists("cliclick")` on
+ * every macOS click) — each uncached call spawns `which`/`where` (~50-100ms, and
+ * far worse on Defender-heavy Windows where any spawn is ~10s). Caching collapses
+ * it to a single probe per tool. `clearCommandExistsCache()` resets it for tests.
  */
+const commandExistsCache = new Map<string, boolean>();
 export function commandExists(cmd: string): boolean {
+  const cached = commandExistsCache.get(cmd);
+  if (cached !== undefined) return cached;
+  let exists = false;
   try {
     const which = platform() === "win32" ? "where" : "which";
     execSync(`${which} ${cmd}`, { stdio: "ignore", timeout: 3000 });
-    return true;
+    exists = true;
   } catch {
-    return false;
+    exists = false;
   }
+  commandExistsCache.set(cmd, exists);
+  return exists;
+}
+
+/** Reset the {@link commandExists} memo (test-only / PATH change). */
+export function clearCommandExistsCache(): void {
+  commandExistsCache.clear();
 }
 
 /**
