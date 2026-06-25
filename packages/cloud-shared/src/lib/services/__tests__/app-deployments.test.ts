@@ -29,7 +29,7 @@ mock.module("../apps", () => ({
   },
 }));
 
-import { AppDeploymentsService } from "../app-deployments";
+import { type AppDeployEnqueuer, AppDeploymentsService } from "../app-deployments";
 
 describe("AppDeploymentsService", () => {
   beforeEach(() => {
@@ -46,7 +46,7 @@ describe("AppDeploymentsService", () => {
 
   test("persists deploy-body build hints before enqueueing APP_DEPLOY", async () => {
     const service = new AppDeploymentsService();
-    let enqueued: { appId: string; organizationId: string; userId: string } | undefined;
+    let enqueued: Parameters<AppDeployEnqueuer>[0] | undefined;
     service.setDeployEnqueuer(async (payload) => {
       enqueued = payload;
     });
@@ -61,7 +61,18 @@ describe("AppDeploymentsService", () => {
     });
 
     expect(record.status).toBe("BUILDING");
-    expect(enqueued).toEqual({ appId: APP_ID, organizationId: ORG_ID, userId: USER_ID });
+    // The deploy-body build hints (repoUrl/ref/dockerfile) ride along as `options`
+    // so the daemon job rebuilds from the same source the caller specified.
+    expect(enqueued).toEqual({
+      appId: APP_ID,
+      organizationId: ORG_ID,
+      userId: USER_ID,
+      options: {
+        repoUrl: "https://github.com/elizaOS/eliza.git",
+        ref: "develop",
+        dockerfile: "packages/examples/cloud/clone-ur-crush/Dockerfile",
+      },
+    });
     expect(updates[0]).toMatchObject({
       deployment_status: "building",
       metadata: {
