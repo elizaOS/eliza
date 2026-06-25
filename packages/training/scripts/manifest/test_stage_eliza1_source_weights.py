@@ -53,8 +53,12 @@ def test_mobile_tier_uses_gemma4_e2b_source(
     report = stage.stage_sources(_args(tmp_path, "2b"))
 
     assert "unsloth/gemma-4-E2B-GGUF" in report["sources"]
-    assert stage.DRAFTER_SOURCES["2b"] is None
-    assert any("No upstream MTP drafter" in b for b in report["blockers"])
+    assert (
+        "google/gemma-4-E2B-it-qat-q4_0-unquantized-assistant"
+        in report["sources"]
+    )
+    assert stage.DRAFTER_SOURCES["2b"] is not None
+    assert any("not a final GGUF" in b for b in report["blockers"])
 
 
 def test_4b_tier_records_text_mtp_and_vision_sources(
@@ -67,7 +71,10 @@ def test_4b_tier_records_text_mtp_and_vision_sources(
 
     assert [f["kind"] for f in report["files"]] == ["text", "mtp", "vision"]
     assert "unsloth/gemma-4-E4B-GGUF" in report["sources"]
-    assert "z-lab/gemma-4-E4B-MTP" in report["sources"]
+    assert (
+        "google/gemma-4-E4B-it-qat-q4_0-unquantized-assistant"
+        in report["sources"]
+    )
     assert any("not a final GGUF" in b for b in report["blockers"])
     assert all("final Eliza-1" not in f["destination"] for f in report["files"])
 
@@ -81,7 +88,10 @@ def test_stage_sources_accepts_large_active_tier(
     report = stage.stage_sources(_args(tmp_path, "27b"))
 
     assert "unsloth/gemma-4-31B-GGUF" in report["sources"]
-    assert "spiritbuun/gemma-4-31B-MTP-GGUF" in report["sources"]
+    assert (
+        "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant"
+        in report["sources"]
+    )
 
 
 def test_27b_class_tiers_use_gemma4_31b_source(
@@ -94,7 +104,10 @@ def test_27b_class_tiers_use_gemma4_31b_source(
     report = stage.stage_sources(_args(tmp_path, tier))
 
     assert "unsloth/gemma-4-31B-GGUF" in report["sources"]
-    assert "spiritbuun/gemma-4-31B-MTP-GGUF" in report["sources"]
+    assert (
+        "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant"
+        in report["sources"]
+    )
     # The 27b tier must use the 31B Gemma 4 source, never a smaller-tier base.
     assert all(
         not any(
@@ -108,17 +121,17 @@ def test_27b_class_tiers_use_gemma4_31b_source(
     assert drafter_files == [
         {
             "kind": "mtp",
-            "repo": "spiritbuun/gemma-4-31B-MTP-GGUF",
-            "filename": "mtp-draft-3.6-q8_0.gguf",
-            "destination": f"source/mtp/gemma4-31b-mtp-q8_0.gguf",
-            "license": "mit",
-            "status": "source-gguf",
+            "repo": "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
+            "filename": "model.safetensors",
+            "destination": f"source/mtp/gemma4-31b-assistant.safetensors",
+            "license": "gemma",
+            "status": "source-safetensors",
             "notes": tuple(stage.DRAFTER_SOURCES[tier].notes),
-            "revision": "sha-spiritbuun/gemma-4-31B-MTP-GGUF",
+            "revision": "sha-google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
             "path": str(
                 tmp_path
                 / f"eliza-1-{tier}.bundle"
-                / f"source/mtp/gemma4-31b-mtp-q8_0.gguf"
+                / f"source/mtp/gemma4-31b-assistant.safetensors"
             ),
             "dryRun": True,
         }
@@ -128,22 +141,34 @@ def test_27b_class_tiers_use_gemma4_31b_source(
 
 def test_known_mtp_sources_are_wired_without_faking_small_tiers() -> None:
     assert stage.DRAFTER_SOURCES["0_8b"] is None
-    assert stage.DRAFTER_SOURCES["2b"] is None
 
-    assert stage.DRAFTER_SOURCES["4b"].repo == "z-lab/gemma-4-E4B-MTP"
+    assert (
+        stage.DRAFTER_SOURCES["2b"].repo
+        == "google/gemma-4-E2B-it-qat-q4_0-unquantized-assistant"
+    )
+    assert stage.DRAFTER_SOURCES["2b"].filename == "model.safetensors"
+    assert stage.DRAFTER_SOURCES["2b"].license == "gemma"
+
+    assert (
+        stage.DRAFTER_SOURCES["4b"].repo
+        == "google/gemma-4-E4B-it-qat-q4_0-unquantized-assistant"
+    )
     assert stage.DRAFTER_SOURCES["4b"].filename == "model.safetensors"
-    assert stage.DRAFTER_SOURCES["4b"].license == "mit"
+    assert stage.DRAFTER_SOURCES["4b"].license == "gemma"
 
-    assert stage.DRAFTER_SOURCES["9b"].repo == "z-lab/gemma-4-12B-MTP"
+    assert (
+        stage.DRAFTER_SOURCES["9b"].repo
+        == "google/gemma-4-12B-it-qat-q4_0-unquantized-assistant"
+    )
     assert stage.DRAFTER_SOURCES["9b"].filename == "model.safetensors"
-    assert stage.DRAFTER_SOURCES["9b"].license == "mit"
+    assert stage.DRAFTER_SOURCES["9b"].license == "gemma"
 
     for tier in ("27b",):
         artifact = stage.DRAFTER_SOURCES[tier]
         assert artifact is not None
-        assert artifact.repo == "spiritbuun/gemma-4-31B-MTP-GGUF"
-        assert artifact.filename == "mtp-draft-3.6-q8_0.gguf"
-        assert artifact.status == "source-gguf"
+        assert artifact.repo == "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant"
+        assert artifact.filename == "model.safetensors"
+        assert artifact.status == "source-safetensors"
 
 
 def test_every_active_tier_has_vision_source() -> None:
