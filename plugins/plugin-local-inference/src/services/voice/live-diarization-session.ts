@@ -248,11 +248,9 @@ function resolveEchoDelaySamples(): number {
  *   - unset / anything else → disabled (the canceller does linear NLMS only).
  * Left off until validated with real device audio, per #9649 item 2.
  */
-function resolveResidualSuppression():
-	| boolean
-	| { gain: number }
-	| undefined {
-	const raw = process.env.ELIZA_VOICE_RESIDUAL_SUPPRESSION?.trim().toLowerCase();
+function resolveResidualSuppression(): boolean | { gain: number } | undefined {
+	const raw =
+		process.env.ELIZA_VOICE_RESIDUAL_SUPPRESSION?.trim().toLowerCase();
 	if (!raw) return undefined;
 	if (raw === "1" || raw === "true" || raw === "on") return true;
 	const gain = Number(raw);

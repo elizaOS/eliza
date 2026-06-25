@@ -341,7 +341,7 @@ export class AudioFrameConsumer {
 
 	/** Count of mic frames the echo canceller actually processed (i.e. the agent
 	 *  was playing). Frames skipped while the agent is silent do not count, so
-	 *  this also measures how often AEC took the zero-cost passthrough path. */
+	 *  this also measures how often AEC took the cheap passthrough path. */
 	echoFramesCancelled = 0;
 
 	constructor(
@@ -424,8 +424,8 @@ export class AudioFrameConsumer {
 		if (this.closed) return;
 		// #9455/#9649: cancel the agent's TTS echo before VAD/attribution so the
 		// agent never transcribes its own playback. When the reference provider
-		// returns null/empty the agent is silent — skip the canceller entirely so
-		// AEC is zero-cost (and exactly passthrough) on the common no-playback path.
+		// returns null/empty the agent is silent — skip the FIR canceller so AEC
+		// is cheap and exactly passthrough on the common no-playback path.
 		const micPcm = this.cancelEcho(pcm, timestampMs);
 		this.lastFrameEndMs =
 			timestampMs + (micPcm.length / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) * 1000;
@@ -444,15 +444,18 @@ export class AudioFrameConsumer {
 	/**
 	 * Run the echo canceller on one mic frame when (and only when) the agent is
 	 * playing. The reference provider returns null while the agent is silent, in
-	 * which case the mic frame is passed through verbatim and `process()` is not
-	 * invoked at all — so AEC adds zero per-sample cost on the common no-playback
-	 * path, and the canceller never subtracts a stale echo estimate against a
-	 * silent far-end. Returns the echo-cancelled (or untouched) mic frame.
+	 * which case the mic frame is passed through verbatim and the FIR
+	 * `process()` loop is not invoked. The canceller still observes the silent
+	 * far-end so stale playback history is cleared before playback resumes.
+	 * Returns the echo-cancelled (or untouched) mic frame.
 	 */
 	private cancelEcho(pcm: Float32Array, timestampMs: number): Float32Array {
 		if (!this.echoCanceller || !this.echoReference) return pcm;
 		const reference = this.echoReference(timestampMs, pcm.length);
-		if (!reference || reference.length === 0) return pcm;
+		if (!reference || reference.length === 0) {
+			this.echoCanceller.observeFarEndSilence(pcm);
+			return pcm;
+		}
 		this.echoFramesCancelled += 1;
 		return this.echoCanceller.process(pcm, reference);
 	}

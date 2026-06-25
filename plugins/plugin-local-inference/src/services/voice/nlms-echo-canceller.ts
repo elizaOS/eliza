@@ -239,6 +239,34 @@ export class NlmsEchoCanceller {
 		return out;
 	}
 
+	/**
+	 * Advance cheap detector/reference state while the far-end is silent without
+	 * running the FIR echo-estimation loop. Learned filter weights are preserved,
+	 * but stale playback samples are removed from the delay line/ring so the next
+	 * non-empty reference frame cannot subtract an echo estimate from a previous
+	 * utterance.
+	 */
+	observeFarEndSilence(nearEnd: Float32Array): void {
+		const n = nearEnd.length;
+		this.delayLine.length = 0;
+		this.x.fill(0);
+		this.xEnergy = 0;
+		this.peakXEnergy *= NlmsEchoCanceller.PEAK_DECAY ** n;
+		this.pFar *= 0.99 ** n;
+		this.hangover = Math.max(0, this.hangover - n);
+
+		let residualPow = 0;
+		for (let i = 0; i < n; i++) {
+			const d = nearEnd[i];
+			this.pNear = 0.99 * this.pNear + 0.01 * d * d;
+			residualPow += d * d;
+		}
+		if (this.peakXEnergy < this.eps) this.peakXEnergy = 0;
+		if (this.pFar < this.eps) this.pFar = 0;
+		this.lastEchoPow = 0;
+		this.lastResidualPow = residualPow / Math.max(1, n);
+	}
+
 	/** Echo-return-loss-enhancement (dB) over the last processed block. Higher is
 	 * better; >10 dB is a meaningful cancellation. Returns 0 when there is no
 	 * modeled echo (agent silent) so a passthrough block reads as "no gain". */

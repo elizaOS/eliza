@@ -622,4 +622,48 @@ describe("AudioFrameConsumer — echo cancellation (#9455)", () => {
 			expect(Array.from(silentOutputs[i])).toEqual(Array.from(silentInputs[i]));
 		}
 	});
+
+	it("clears stale far-end state before playback resumes after silence", async () => {
+		const PLAYBACK_FRAMES = 40;
+		const SILENT_FRAMES = 5;
+		const restartFrame = PLAYBACK_FRAMES + SILENT_FRAMES;
+		const totalFrames = restartFrame + 1;
+		const N = totalFrames * BLOCK;
+		const far = farSignal(N);
+		const echo = echoOf(far);
+		const zeroReference = new Float32Array(BLOCK);
+		const zeroMic = new Float32Array(BLOCK);
+		const vad = new RecordingVad();
+		const consumer = new AudioFrameConsumer(
+			{
+				vad,
+				pipeline: new FakePipeline("restart"),
+				runtime: new FakeRuntime(),
+				echoReference: (ts: number, samples: number) => {
+					const idx = Math.round((ts - 1000) / 20);
+					if (idx < PLAYBACK_FRAMES) {
+						const off = idx * BLOCK;
+						return far.subarray(off, off + samples);
+					}
+					if (idx < restartFrame) return null;
+					return zeroReference.subarray(0, samples);
+				},
+			},
+			{ source: { kind: "device", deviceId: "pixel" }, preRollSeconds: 0 },
+		);
+
+		let ts = 1000;
+		for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
+			const off = frameIdx * BLOCK;
+			const mic =
+				frameIdx < PLAYBACK_FRAMES ? echo.subarray(off, off + BLOCK) : zeroMic;
+			await consumer.pushDecodedFrame(mic, ts);
+			ts += 20;
+		}
+
+		// The post-silence non-empty reference frame should not inherit any
+		// stale far-end samples from the previous playback burst.
+		expect(consumer.echoFramesCancelled).toBe(PLAYBACK_FRAMES + 1);
+		expect(Array.from(vad.frames[restartFrame])).toEqual(Array.from(zeroMic));
+	});
 });

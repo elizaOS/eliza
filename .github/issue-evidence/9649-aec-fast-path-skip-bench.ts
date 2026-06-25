@@ -4,8 +4,9 @@
  * skip eliminates. Before the change, every mic frame called
  * `NlmsEchoCanceller.process(pcm, NO_ECHO_REFERENCE)` even while the agent was
  * silent — the full 256-tap × 320-sample inner loop ran for nothing. The skip
- * returns the mic frame verbatim instead. This times the avoided work and proves
- * the output is byte-identical to the old empty-reference passthrough.
+ * returns the mic frame verbatim while advancing cheap silent-reference state.
+ * This times the avoided FIR work and proves the output is byte-identical to
+ * the old empty-reference passthrough.
  */
 import { NlmsEchoCanceller } from "../../plugins/plugin-local-inference/src/services/voice/nlms-echo-canceller.ts";
 
@@ -34,10 +35,13 @@ for (const f of frames) {
 }
 const oldMs = performance.now() - t0;
 
-// NEW behavior: the fast path returns the mic frame verbatim (no process()).
+// NEW behavior: the fast path returns the mic frame verbatim and advances only
+// the cheap silent-reference state (no FIR process()).
+const silentAec = new NlmsEchoCanceller();
 t0 = performance.now();
 let checksumNew = 0;
 for (const f of frames) {
+	silentAec.observeFarEndSilence(f);
 	const out = f; // cancelEcho() short-circuit when reference is null/empty
 	checksumNew += out[0];
 }
@@ -56,7 +60,7 @@ Frames: ${FRAMES} silent 20 ms frames (${((FRAMES * 20) / 1000 / 60).toFixed(1)}
 Per-frame canceller: 256 taps × ${BLOCK} samples
 
 - OLD (process() with empty far-end every frame): ${oldMs.toFixed(1)} ms total, ${((oldMs / FRAMES) * 1000).toFixed(2)} µs/frame
-- NEW (skip — verbatim passthrough):              ${newMs.toFixed(1)} ms total, ${((newMs / FRAMES) * 1000).toFixed(2)} µs/frame
+- NEW (skip FIR — advance silent state):          ${newMs.toFixed(1)} ms total, ${((newMs / FRAMES) * 1000).toFixed(2)} µs/frame
 - CPU avoided on the silent path:                 ${(oldMs / Math.max(newMs, 1e-9)).toFixed(0)}× less work
 
 Correctness: first-frame output of the OLD empty-reference path is bit-identical
