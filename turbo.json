@@ -187,7 +187,7 @@
     },
     "eliza-next-example#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "outputs": []
     },
     "@elizaos/example-browser-extension-chrome#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
