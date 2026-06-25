@@ -461,3 +461,22 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
 
   return LifeOpsTelegramServiceMixin;
 }
+
+/** Public surface added by {@link withTelegram}; listed on the LifeOpsService
+ * declaration-merge (mixin composition exceeds TS inference depth). Type-only. */
+export interface LifeOpsTelegramService {
+  sendTelegramMessage(request: {
+    side?: LifeOpsConnectorSide;
+    target: string;
+    message: string;
+  }): Promise<{ ok: true; messageId: string | null }>;
+  verifyTelegramConnector(
+    request: VerifyLifeOpsTelegramConnectorRequest,
+  ): Promise<VerifyLifeOpsTelegramConnectorResponse>;
+  searchTelegramMessages(request: {
+    side?: LifeOpsConnectorSide;
+    query: string;
+    scope?: string;
+    limit?: number;
+  }): Promise<TelegramMessageSearchResult[]>;
+}

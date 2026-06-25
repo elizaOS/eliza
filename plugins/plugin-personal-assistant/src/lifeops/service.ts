@@ -58,7 +58,9 @@ import {
   type StatusMixinDependencies,
   withStatus,
 } from "./service-mixin-status.js";
+import type { LifeOpsSubscriptionService } from "./service-mixin-subscriptions.js";
 import { withSubscriptions } from "./service-mixin-subscriptions.js";
+import type { LifeOpsTelegramService } from "./service-mixin-telegram.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import type { LifeOpsTravelServicePublic } from "./service-mixin-travel.js";
 import { withTravel } from "./service-mixin-travel.js";
@@ -126,6 +128,8 @@ export class LifeOpsService extends LifeOpsServiceComposed {}
 // biome-ignore lint/suspicious/noUnsafeDeclarationMerging: intentional class+interface merge to surface mixin methods past TS inference depth
 export interface LifeOpsService
   extends BrowserBridgeService,
+    LifeOpsSubscriptionService,
+    LifeOpsTelegramService,
     LifeOpsIMessageService,
     LifeOpsRelationshipService,
     LifeOpsSignalService,
