@@ -129,7 +129,7 @@ function resolveNotificationService(
 ): NotificationServiceLike | null {
 	try {
 		const service = runtime.getService(ServiceType.NOTIFICATION);
-		const candidate = service as unknown as Partial<NotificationServiceLike>;
+		const candidate = service as Partial<NotificationServiceLike>;
 		if (candidate && typeof candidate.notify === "function") {
 			return candidate as NotificationServiceLike;
 		}
