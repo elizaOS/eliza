@@ -231,6 +231,25 @@ function normalizeConsole(text) {
   ) {
     return "";
   }
+  // useAppSelector throws in the headless Story Gate for any story that renders
+  // an app-state consumer without mounting the real AppProvider — a harness
+  // artifact (the app always mounts AppProvider), caught by the story error
+  // boundary so the story still renders `good`. It surfaces FLAKILY: a given
+  // consumer story is classified `needs-runtime` one run and renders-with-throw
+  // the next, which makes per-story baselining a perpetual moving target across
+  // the ~127 app-selector consumers. Drop it (and Storybook's paired "Error
+  // rendering story" wrapper) globally instead. A genuinely broken story is
+  // still caught by the broken verdict (the DOM error display), and a real
+  // (non-useAppSelector) render throw keeps its own specific message — only this
+  // generic wrapper is dropped.
+  if (
+    normalized.startsWith(
+      "Error: useAppSelector used before AppProvider rendered",
+    ) ||
+    /^Error rendering story '[^']*':/.test(normalized)
+  ) {
+    return "";
+  }
   return normalized;
 }
 
