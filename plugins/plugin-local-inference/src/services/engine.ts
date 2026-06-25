@@ -13,6 +13,7 @@
  *      `ensure-local-inference-handler.ts`).
  */
 
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import {
 	logger,
@@ -217,6 +218,32 @@ function estimateTextResidentMb(
 	return baseMb > 0 ? baseMb + TEXT_RESIDENT_OVERHEAD_MB : 0;
 }
 
+function stagedLitertModelPath(
+	bundleRoot: string,
+	modelId: string | undefined,
+): string | undefined {
+	const textDir = path.join(bundleRoot, "text");
+	if (!existsSync(textDir) || !statSync(textDir).isDirectory()) {
+		return undefined;
+	}
+
+	if (modelId?.startsWith("eliza-1-")) {
+		const expected = path.join(textDir, `${modelId}.litertlm`);
+		if (existsSync(expected) && statSync(expected).isFile()) {
+			return expected;
+		}
+	}
+
+	const candidates = readdirSync(textDir)
+		.filter((name) => name.endsWith(".litertlm"))
+		.sort();
+	if (candidates.length === 1) {
+		const candidate = path.join(textDir, candidates[0]);
+		if (statSync(candidate).isFile()) return candidate;
+	}
+	return undefined;
+}
+
 /**
  * Project a fully-resolved `LocalInferenceLoadArgs` onto the subset that
  * the dispatcher cares about. Keeps `BackendLoadOverrides` framework-free
@@ -246,6 +273,8 @@ function toBackendLoadOverrides(
 		const bundleRoot = path.dirname(path.dirname(args.modelPath));
 		overrides.bundleRoot = bundleRoot;
 		overrides.manifestPath = path.join(bundleRoot, "eliza-1.manifest.json");
+		const litertModelPath = stagedLitertModelPath(bundleRoot, args.modelId);
+		if (litertModelPath) overrides.litertModelPath = litertModelPath;
 	}
 	return overrides;
 }

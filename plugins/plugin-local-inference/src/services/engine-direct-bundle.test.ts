@@ -28,6 +28,9 @@ describe("LocalInferenceEngine direct Eliza-1 bundle loads", () => {
 		};
 
 		const bundleRoot = path.join(root, "eliza-1-2b.bundle");
+		const litertPath = path.join(bundleRoot, "text", "eliza-1-2b.litertlm");
+		fs.mkdirSync(path.dirname(litertPath), { recursive: true });
+		fs.writeFileSync(litertPath, "fake litert bundle");
 		const modelPath = path.join(bundleRoot, "text", "eliza-1-2b-128k.gguf");
 		await engine.load(modelPath, {
 			modelPath,
@@ -42,6 +45,7 @@ describe("LocalInferenceEngine direct Eliza-1 bundle loads", () => {
 		expect(captured?.overrides?.manifestPath).toBe(
 			path.join(bundleRoot, "eliza-1.manifest.json"),
 		);
+		expect(captured?.overrides?.litertModelPath).toBe(litertPath);
 		expect(
 			(
 				engine as unknown as {
