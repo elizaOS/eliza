@@ -97,11 +97,14 @@ import type {
   VerifyLifeOpsTelegramConnectorRequest,
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
-// Direct source-module import to break the barrel cycle:
-// app-core/api/client.ts imports this file (LifeOps extension) as a
-// side-effect before re-exporting `ElizaClient` from its barrel, so a
-// barrel import here would resolve to `undefined` at module-init time.
-import { ElizaClient } from "@elizaos/ui";
+// Import the ElizaClient CLASS from the `/api` subpath (not the root barrel):
+// app-core/api/client.ts imports this file (LifeOps extension) as a side-effect
+// before re-exporting `ElizaClient` from its root barrel, so a root-barrel
+// import here resolves to `undefined` at module-init time (and the root barrel
+// does not re-export the class value). The `/api` subpath is the class's home
+// and is the pattern the sibling client extensions use (see
+// plugins/plugin-calendar/src/api/client-calendar.ts).
+import { ElizaClient } from "@elizaos/ui/api";
 // Calendar client methods (getLifeOpsCalendarFeed / create|update|delete event,
 // …) live in @elizaos/plugin-calendar now; this side-effect import attaches
 // them to the shared ElizaClient prototype so the LifeOps dashboard keeps them.
