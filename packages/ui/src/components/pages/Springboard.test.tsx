@@ -13,6 +13,7 @@ import {
   SPRINGBOARD_DOCK_LIMIT,
   SPRINGBOARD_STORAGE_KEY,
 } from "../../state/springboard-layout";
+import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
 import { Springboard } from "./Springboard";
 
 function entry(id: string, label: string): ViewEntry {
@@ -53,7 +54,11 @@ function longPressToEdit(label: string): void {
 }
 
 beforeEach(() => window.localStorage.clear());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("Springboard", () => {
   it("renders every view as a names-only icon tile", () => {
@@ -122,12 +127,17 @@ describe("Springboard", () => {
   });
 
   it("slides adjacent pages with the finger before committing a page swipe", () => {
+    runAnimationFramesImmediately();
     const many = Array.from({ length: 25 }, (_, i) =>
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
 
     const pageWindow = screen.getByTestId("springboard-page-window");
+    Object.defineProperty(pageWindow, "clientWidth", {
+      configurable: true,
+      value: 390,
+    });
     const rail = screen.getByTestId("springboard-page-rail");
     fireEvent.pointerDown(pageWindow, {
       isPrimary: true,
@@ -142,8 +152,8 @@ describe("Springboard", () => {
       clientY: 304,
     });
 
-    expect(rail.getAttribute("style")).toContain("-100px");
-    expect(rail.getAttribute("class")).toContain("transition-none");
+    expect(rail.style.transform).toContain("-100px");
+    expect(rail.style.transition).toBe("none");
 
     fireEvent.pointerUp(pageWindow, {
       isPrimary: true,
@@ -157,7 +167,7 @@ describe("Springboard", () => {
         .getByRole("button", { name: "Page 2" })
         .getAttribute("aria-current"),
     ).toBe("true");
-    expect(rail.getAttribute("style")).toContain("translate3d(-100%,0,0)");
+    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
   });
 
   it("drops views that are no longer available on re-render", () => {

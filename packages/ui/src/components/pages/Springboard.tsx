@@ -15,6 +15,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { Reorder } from "motion/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import {
@@ -79,19 +80,6 @@ const LONG_PRESS_MS = 450;
 /** Finger travel (px) that aborts a long-press — a pan/swipe is not a press, so
  *  a horizontal swipe-back can never ghost-fire edit mode mid-gesture. */
 const LONG_PRESS_MOVE_SLOP = 10;
-/** Horizontal drag distance (px) needed to flip to the adjacent page. */
-const SWIPE_THRESHOLD = 60;
-/** Horizontal travel must clearly beat vertical travel before paging starts. */
-const SWIPE_ANGLE_RATIO = 1.2;
-
-interface PageDragState {
-  pointerId: number;
-  startX: number;
-  startY: number;
-  tracking: boolean;
-  captured: boolean;
-  axis: "pending" | "horizontal" | "vertical";
-}
 
 // Memoized so a layout reconcile (install/uninstall/sort) re-renders only the
 // tiles whose props actually changed, not all ~20 on a page.
@@ -383,16 +371,6 @@ export function Springboard({
   );
   // O(1) dock-membership check inside the tile map instead of Array.includes.
   const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
-  const pagerRef = useRef<HTMLDivElement | null>(null);
-  const pageDrag = useRef<PageDragState>({
-    pointerId: -1,
-    startX: 0,
-    startY: 0,
-    tracking: false,
-    captured: false,
-    axis: "pending",
-  });
-  const [pageDragOffset, setPageDragOffset] = useState<number | null>(null);
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
@@ -436,85 +414,21 @@ export function Springboard({
     ],
   );
 
-  const resetPageDrag = useCallback(() => {
-    pageDrag.current.tracking = false;
-    pageDrag.current.captured = false;
-    pageDrag.current.axis = "pending";
-    pageDrag.current.pointerId = -1;
-    setPageDragOffset(null);
-  }, []);
-
-  const getPageWidth = useCallback(
-    () =>
-      pagerRef.current?.clientWidth ||
-      (typeof window !== "undefined" ? window.innerWidth : 1),
-    [],
-  );
-
-  const clampPageDragOffset = useCallback(
-    (dx: number) => {
-      const width = Math.max(1, getPageWidth());
-      if (dx < 0 && clampedPage < pages.length - 1) {
-        return Math.max(-width, dx);
-      }
-      if (
-        dx > 0 &&
-        (clampedPage > 0 || (showPageDots && onEdgeSwipeRight != null))
-      ) {
-        return Math.min(width, dx);
-      }
-      return 0;
+  const pager = useHorizontalPager({
+    page: clampedPage,
+    pageCount: pages.length,
+    enabled: !editing && pages.length > 1,
+    edgeSwipeRightEnabled: showPageDots && onEdgeSwipeRight != null,
+    onEdgeSwipeRight,
+    onPageChange: (nextPage) => {
+      setActivePage(nextPage);
+      emitViewInteraction({
+        source: "springboard",
+        action: "page-swipe",
+        count: nextPage,
+      });
     },
-    [clampedPage, getPageWidth, onEdgeSwipeRight, pages.length, showPageDots],
-  );
-
-  const commitPageDrag = useCallback(
-    (dx: number, dy: number) => {
-      if (
-        Math.abs(dx) <= Math.abs(dy) * SWIPE_ANGLE_RATIO ||
-        Math.abs(dx) <= SWIPE_THRESHOLD
-      ) {
-        return;
-      }
-
-      if (dx < 0 && clampedPage < pages.length - 1) {
-        const nextPage = clampedPage + 1;
-        setActivePage(nextPage);
-        emitViewInteraction({
-          source: "springboard",
-          action: "page-swipe",
-          count: nextPage,
-        });
-        return;
-      }
-
-      if (dx > 0 && clampedPage > 0) {
-        const nextPage = clampedPage - 1;
-        setActivePage(nextPage);
-        emitViewInteraction({
-          source: "springboard",
-          action: "page-swipe",
-          count: nextPage,
-        });
-        return;
-      }
-
-      if (dx > 0 && showPageDots) {
-        onEdgeSwipeRight?.();
-      }
-    },
-    [clampedPage, onEdgeSwipeRight, pages.length, setActivePage, showPageDots],
-  );
-
-  const pageRailStyle = useMemo<React.CSSProperties>(() => {
-    const base = -clampedPage * 100;
-    return {
-      transform:
-        pageDragOffset == null
-          ? `translate3d(${base}%,0,0)`
-          : `translate3d(calc(${base}% + ${pageDragOffset}px),0,0)`,
-    };
-  }, [clampedPage, pageDragOffset]);
+  });
 
   return (
     <div
@@ -541,75 +455,19 @@ export function Springboard({
           page contents after release. */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
-          ref={pagerRef}
+          ref={pager.viewportRef}
           data-testid="springboard-page-window"
           className="relative flex min-h-0 flex-1 overflow-hidden touch-pan-y"
-          onPointerDown={(event) => {
-            if (editing || pages.length < 2 || event.isPrimary === false) {
-              return;
-            }
-            pageDrag.current = {
-              pointerId: event.pointerId,
-              startX: event.clientX,
-              startY: event.clientY,
-              tracking: true,
-              captured: false,
-              axis: "pending",
-            };
-          }}
-          onPointerMove={(event) => {
-            const state = pageDrag.current;
-            if (!state.tracking || state.pointerId !== event.pointerId) return;
-
-            const dx = event.clientX - state.startX;
-            const dy = event.clientY - state.startY;
-            if (state.axis === "pending") {
-              const travel = Math.hypot(dx, dy);
-              if (travel < 6) return;
-              state.axis =
-                Math.abs(dx) > Math.abs(dy) * SWIPE_ANGLE_RATIO
-                  ? "horizontal"
-                  : "vertical";
-            }
-            if (state.axis !== "horizontal") return;
-
-            const offset = clampPageDragOffset(dx);
-            if (offset === 0) return;
-            if (!state.captured) {
-              event.currentTarget.setPointerCapture?.(event.pointerId);
-              state.captured = true;
-            }
-            setPageDragOffset(offset);
-          }}
-          onPointerUp={(event) => {
-            const state = pageDrag.current;
-            if (!state.tracking || state.pointerId !== event.pointerId) return;
-            if (state.captured) {
-              event.currentTarget.releasePointerCapture?.(event.pointerId);
-            }
-            commitPageDrag(
-              event.clientX - state.startX,
-              event.clientY - state.startY,
-            );
-            resetPageDrag();
-          }}
-          onPointerCancel={(event) => {
-            if (pageDrag.current.pointerId !== event.pointerId) return;
-            if (pageDrag.current.captured) {
-              event.currentTarget.releasePointerCapture?.(event.pointerId);
-            }
-            resetPageDrag();
-          }}
+          onPointerDown={pager.handlers.onPointerDown}
+          onPointerMove={pager.handlers.onPointerMove}
+          onPointerUp={pager.handlers.onPointerUp}
+          onPointerCancel={pager.handlers.onPointerCancel}
+          onLostPointerCapture={pager.handlers.onLostPointerCapture}
         >
           <div
+            ref={pager.railRef}
             data-testid="springboard-page-rail"
-            className={cn(
-              "flex h-full min-h-0 w-full will-change-transform",
-              pageDragOffset == null
-                ? "transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"
-                : "transition-none",
-            )}
-            style={pageRailStyle}
+            className="flex h-full min-h-0 w-full will-change-transform motion-reduce:transition-none"
           >
             {loading && entries.length === 0 ? (
               <div className="flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
@@ -640,7 +498,7 @@ export function Springboard({
                       !active && "pointer-events-none",
                     )}
                   >
-                    {active ? (
+                    {editing && active ? (
                       <Reorder.Group
                         axis="y"
                         values={pageIds}

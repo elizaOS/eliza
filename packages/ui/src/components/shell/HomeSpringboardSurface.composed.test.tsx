@@ -20,6 +20,7 @@ import { useRoutableViews } from "../../hooks/useAvailableViews";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
 import { SpringboardSurface } from "../pages/SpringboardSurface";
 import { HomeSpringboardSurface } from "./HomeSpringboardSurface";
 
@@ -104,6 +105,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetShellSurfaceForTests();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -145,7 +147,12 @@ const swipeBackHome = () => flick("home-springboard-springboard-page", 140);
 
 describe("Home ↔ Springboard composed surface", () => {
   it("tracks the rail with the finger before committing a home ↔ springboard swipe", () => {
+    runAnimationFramesImmediately();
     const surface = renderComposed();
+    Object.defineProperty(surface, "clientWidth", {
+      configurable: true,
+      value: 390,
+    });
     const homePage = screen.getByTestId("home-springboard-home-page");
     const rail = screen.getByTestId("home-springboard-rail");
 
@@ -162,8 +169,8 @@ describe("Home ↔ Springboard composed surface", () => {
       clientY: 304,
     });
 
-    expect(rail.getAttribute("style")).toContain("-90px");
-    expect(rail.getAttribute("class")).toContain("transition-none");
+    expect(rail.style.transform).toContain("-90px");
+    expect(rail.style.transition).toBe("none");
 
     fireEvent.pointerUp(homePage, {
       isPrimary: true,
@@ -173,7 +180,7 @@ describe("Home ↔ Springboard composed surface", () => {
     });
 
     expect(surface.getAttribute("data-page")).toBe("springboard");
-    expect(rail.getAttribute("style")).toContain("translate3d(-50%,0,0)");
+    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
   });
 
   it("renders exactly ONE page-indicator strip — no stacked dot rows (#4)", () => {

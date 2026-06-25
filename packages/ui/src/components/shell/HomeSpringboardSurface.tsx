@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import { cn } from "../../lib/utils";
 import {
   goHome,
@@ -8,20 +9,6 @@ import {
   useShellSurface,
 } from "../../state/shell-surface-store";
 import type { HomeSpringboardPage } from "./home-springboard-events";
-
-/** Horizontal travel (px) needed to commit a rail flick (home ↔ springboard). */
-const RAIL_FLICK_THRESHOLD = 72;
-/** Horizontal travel must beat vertical by this ratio so a scroll never flips. */
-const RAIL_FLICK_ANGLE_RATIO = 1.25;
-
-interface FlickState {
-  startX: number;
-  startY: number;
-  pointerId: number;
-  tracking: boolean;
-  captured: boolean;
-  axis: "pending" | "horizontal" | "vertical";
-}
 
 export interface HomeSpringboardSurfaceProps {
   home: React.ReactNode;
@@ -55,164 +42,35 @@ export function HomeSpringboardSurface({
     setShellSurfacePage(initialPage);
   }, [initialPage]);
 
-  const homeFlick = React.useRef<FlickState>({
-    startX: 0,
-    startY: 0,
-    pointerId: -1,
-    tracking: false,
-    captured: false,
-    axis: "pending",
-  });
-  const springboardFlick = React.useRef<FlickState>({
-    startX: 0,
-    startY: 0,
-    pointerId: -1,
-    tracking: false,
-    captured: false,
-    axis: "pending",
-  });
-  const surfaceRef = React.useRef<HTMLElement | null>(null);
-  const [railDragOffset, setRailDragOffset] = React.useState<number | null>(
-    null,
-  );
   // A committed flick must swallow the click that the browser synthesizes from
   // the same press, so the flick doesn't also tap-launch the tile underneath.
-  const suppressHomeClickRef = React.useRef(false);
-  const suppressSpringboardClickRef = React.useRef(false);
-
-  // One flick detector, parameterized by the direction that commits: the home
-  // half commits a LEFT flick (open springboard); the springboard half commits a
-  // RIGHT flick (return home) — the back gesture the old surface lacked, and the
-  // one escape that works even while the springboard is in edit mode.
-  const makeFlickHandlers = (
-    flick: React.RefObject<FlickState>,
-    suppress: React.RefObject<boolean>,
-    direction: "left" | "right",
-    onCommit: () => void,
-    canStart: () => boolean,
-  ) => {
-    const committed = (dx: number, dy: number) =>
-      Math.abs(dx) > Math.abs(dy) * RAIL_FLICK_ANGLE_RATIO &&
-      (direction === "left"
-        ? dx < -RAIL_FLICK_THRESHOLD
-        : dx > RAIL_FLICK_THRESHOLD);
-    const clampOffset = (dx: number) => {
-      const width =
-        surfaceRef.current?.clientWidth ||
-        (typeof window !== "undefined" ? window.innerWidth : 1);
-      const max = Math.max(1, width);
-      return direction === "left"
-        ? Math.max(-max, Math.min(0, dx))
-        : Math.min(max, Math.max(0, dx));
-    };
-    const stopTracking = () => {
-      flick.current.tracking = false;
-      flick.current.captured = false;
-      flick.current.axis = "pending";
-      flick.current.pointerId = -1;
-      setRailDragOffset(null);
-    };
-    return {
-      onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
-        if (event.isPrimary === false || !canStart()) return;
-        flick.current = {
-          startX: event.clientX,
-          startY: event.clientY,
-          pointerId: event.pointerId,
-          tracking: true,
-          captured: false,
-          axis: "pending",
-        };
-      },
-      onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
-        const state = flick.current;
-        if (!state.tracking || state.pointerId !== event.pointerId) return;
-
-        const dx = event.clientX - state.startX;
-        const dy = event.clientY - state.startY;
-        if (state.axis === "pending") {
-          const travel = Math.hypot(dx, dy);
-          if (travel < 6) return;
-          state.axis =
-            Math.abs(dx) > Math.abs(dy) * RAIL_FLICK_ANGLE_RATIO
-              ? "horizontal"
-              : "vertical";
-        }
-        if (state.axis !== "horizontal") return;
-        const offset = clampOffset(dx);
-        if (offset === 0) return;
-        if (!state.captured) {
-          event.currentTarget.setPointerCapture?.(event.pointerId);
-          state.captured = true;
-        }
-        setRailDragOffset(offset);
-      },
-      onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => {
-        const state = flick.current;
-        if (!state.tracking || state.pointerId !== event.pointerId) return;
-        if (state.captured) {
-          event.currentTarget.releasePointerCapture?.(event.pointerId);
-        }
-        if (
-          committed(event.clientX - state.startX, event.clientY - state.startY)
-        ) {
-          suppress.current = true;
-          onCommit();
-          window.setTimeout(() => {
-            suppress.current = false;
-          }, 0);
-        }
-        stopTracking();
-      },
-      onPointerCancel: (event: React.PointerEvent<HTMLDivElement>) => {
-        if (flick.current.pointerId === event.pointerId) {
-          if (flick.current.captured) {
-            event.currentTarget.releasePointerCapture?.(event.pointerId);
-          }
-          stopTracking();
-        }
-      },
-      onClickCapture: (event: React.MouseEvent<HTMLDivElement>) => {
-        if (!suppress.current) return;
-        suppress.current = false;
-        event.preventDefault();
-        event.stopPropagation();
-      },
-    };
-  };
-
-  const homeHandlers = makeFlickHandlers(
-    homeFlick,
-    suppressHomeClickRef,
-    "left",
-    goSpringboard,
-    () => page === "home",
-  );
-  const springboardHandlers = makeFlickHandlers(
-    springboardFlick,
-    suppressSpringboardClickRef,
-    "right",
-    () => {
-      // A right-flick returns home only from the FIRST springboard page (iOS
-      // back); on deeper pages the inner pager steps back one page instead, so
-      // the two gestures never both fire. While editing it is always the escape
-      // hatch out of jiggle mode (the inner pager is disabled then).
-      if (springboardPage === 0 || springboardEditing) goHome();
+  const suppressClickRef = React.useRef(false);
+  const pager = useHorizontalPager<HTMLElement>({
+    page: page === "springboard" ? 1 : 0,
+    pageCount: 2,
+    // Let the inner Springboard own app-page swipes after page 1. On the first
+    // app page, or while editing, the parent owns the right-swipe home gesture.
+    enabled: page === "home" || springboardPage === 0 || springboardEditing,
+    onPageChange: (nextPage) => {
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      if (nextPage === 0) {
+        goHome();
+      } else {
+        goSpringboard();
+      }
     },
-    () =>
-      page === "springboard" && (springboardPage === 0 || springboardEditing),
-  );
-
-  const railStyle = React.useMemo<React.CSSProperties>(
-    () => ({
-      transform:
-        railDragOffset == null
-          ? page === "springboard"
-            ? "translate3d(-50%,0,0)"
-            : "translate3d(0,0,0)"
-          : `translate3d(calc(${page === "springboard" ? "-50%" : "0%"} + ${railDragOffset}px),0,0)`,
-    }),
-    [page, railDragOffset],
+  });
+  const suppressCommittedSwipeClick = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!suppressClickRef.current) return;
+      suppressClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [],
   );
 
   // ONE indicator for the whole launcher: a home dot followed by one dot per
@@ -232,7 +90,7 @@ export function HomeSpringboardSurface({
 
   return (
     <section
-      ref={surfaceRef}
+      ref={pager.viewportRef}
       data-testid="home-springboard-surface"
       data-page={page}
       // `select-none`: this is a swipeable launcher (home ↔ springboard), so a
@@ -245,14 +103,9 @@ export function HomeSpringboardSurface({
       )}
     >
       <div
+        ref={pager.railRef}
         data-testid="home-springboard-rail"
-        className={cn(
-          "absolute inset-0 flex w-[200%] will-change-transform",
-          railDragOffset == null
-            ? "transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"
-            : "transition-none",
-        )}
-        style={railStyle}
+        className="absolute inset-0 flex w-[200%] will-change-transform motion-reduce:transition-none"
       >
         <div
           data-testid="home-springboard-home-page"
@@ -263,11 +116,12 @@ export function HomeSpringboardSurface({
           // browser's own scroll/back gesture, which fires `pointercancel`
           // instead of `pointerup` — the flick silently never commits.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"
-          onPointerDown={homeHandlers.onPointerDown}
-          onPointerMove={homeHandlers.onPointerMove}
-          onPointerUp={homeHandlers.onPointerUp}
-          onPointerCancel={homeHandlers.onPointerCancel}
-          onClickCapture={homeHandlers.onClickCapture}
+          onPointerDown={pager.handlers.onPointerDown}
+          onPointerMove={pager.handlers.onPointerMove}
+          onPointerUp={pager.handlers.onPointerUp}
+          onPointerCancel={pager.handlers.onPointerCancel}
+          onLostPointerCapture={pager.handlers.onLostPointerCapture}
+          onClickCapture={suppressCommittedSwipeClick}
         >
           {home}
         </div>
@@ -277,11 +131,12 @@ export function HomeSpringboardSurface({
           // Same as the home half: vertical scroll (the tile grid) stays with
           // the browser, horizontal flicks (right → back home) are ours.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"
-          onPointerDown={springboardHandlers.onPointerDown}
-          onPointerMove={springboardHandlers.onPointerMove}
-          onPointerUp={springboardHandlers.onPointerUp}
-          onPointerCancel={springboardHandlers.onPointerCancel}
-          onClickCapture={springboardHandlers.onClickCapture}
+          onPointerDown={pager.handlers.onPointerDown}
+          onPointerMove={pager.handlers.onPointerMove}
+          onPointerUp={pager.handlers.onPointerUp}
+          onPointerCancel={pager.handlers.onPointerCancel}
+          onLostPointerCapture={pager.handlers.onLostPointerCapture}
+          onClickCapture={suppressCommittedSwipeClick}
         >
           {React.cloneElement(springboard, {
             onNavigateHomeFromEdge: goHome,
