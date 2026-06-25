@@ -98,6 +98,8 @@ export interface TaskMetadata {
 	options?: {
 		name: string;
 		description: string;
+		/** This option cancels/denies the request (approval/needs-attention flows). */
+		isCancel?: boolean;
 	}[];
 	/** Allows for other dynamic metadata properties related to the task. */
 	values?: Record<string, JsonValue | object>;

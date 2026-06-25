@@ -30,8 +30,10 @@ vi.mock("../../../widgets/home-attention-store", () => ({
 }));
 
 // The round-trip hands the user back to the agent's RESOLVE_REQUEST action via a
-// prefilled chat composer; stub the rail so the click test asserts the dispatch.
-vi.mock("../../../events", () => ({
+// prefilled chat composer; spy on that one rail while preserving the module's
+// other exports (client-base imports NETWORK_STATUS_CHANGE_EVENT et al.).
+vi.mock("../../../events", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../events")>()),
   dispatchChatPrefill: dispatchChatPrefillSpy,
 }));
 
