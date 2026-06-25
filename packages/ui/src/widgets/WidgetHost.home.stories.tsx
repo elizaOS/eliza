@@ -104,11 +104,21 @@ function HomeWidgetsHarness() {
     // No backend in storybook: the API-polled cards (apps, lifeops) get an empty
     // payload so they self-hide cleanly instead of showing a fetch error.
     const realFetch = globalThis.fetch;
-    globalThis.fetch = async () =>
-      new Response("[]", {
+    globalThis.fetch = async (input) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      const body = url.includes("/api/approvals")
+        ? JSON.stringify({ pending: [] })
+        : "[]";
+      return new Response(body, {
         status: 200,
         headers: { "content-type": "application/json" },
       });
+    };
     setReady(true);
     return () => {
       globalThis.fetch = realFetch;

@@ -4,6 +4,8 @@ import {
   installOrchestratorScenarioHarness,
   ORCHESTRATOR_DEVICE_MODALITY_REACH,
   ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
+  registerJudgeFixture,
+  registerVerifierFixtures,
 } from "./_helpers/orchestrator-scenario-harness";
 
 function actionData(ctx: ScenarioContext): Record<string, unknown> | null {
@@ -52,6 +54,22 @@ export default scenario({
       name: "install deterministic device/modality harness",
       apply: async (ctx) => {
         await installOrchestratorScenarioHarness(ctx);
+        registerVerifierFixtures(
+          ctx.runtime as Parameters<typeof registerVerifierFixtures>[0],
+          ORCHESTRATOR_DEVICE_MODALITY_REACH,
+          [
+            {
+              passed: true,
+              summary:
+                "The voice-origin task preserved metadata, used the selected Claude subscription, and produced a narrated completion.",
+              missing: [],
+            },
+          ],
+        );
+        registerJudgeFixture(
+          ctx.runtime as Parameters<typeof registerJudgeFixture>[0],
+          ORCHESTRATOR_DEVICE_MODALITY_REACH,
+        );
         return undefined;
       },
     },
