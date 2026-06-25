@@ -6,8 +6,8 @@
  *   - the bundle's text GGUF path is declared (per-tier `textFile`),
  *   - the bundle's embedding GGUF path is declared on tiers that have a
  *     dedicated 1024-dim Matryoshka region (2b/4b/9b/27b/27b-256k),
- *   - the bundle's drafter GGUF path is declared only on tiers with a
- *     distilled MTP companion,
+ *   - the bundle's drafter GGUF path is declared only after the hosted
+ *     Gemma MTP companion exists,
  *   - the HuggingFace resolve URL for the text and embedding components
  *     resolves to `elizaos/eliza-1` and includes the expected
  *     per-tier prefix.
@@ -15,9 +15,9 @@
  * Why this matters: the publish pipeline stages a bundle per tier; if a
  * tier loses its embedding region (or a MTP tier's drafter is renamed), the
  * runtime's `useModel(TEXT_EMBEDDING, ...)` falls through to a non-local
- * provider on the desktop path and silently regresses to no MTP on
- * every backend. This test pins the per-tier components catalogue as a
- * single source of truth.
+ * provider on the desktop path. This test pins the per-tier components
+ * catalogue as a single source of truth and prevents the runtime from
+ * chasing missing MTP drafter files.
  *
  * On the 2b entry tier the embedding model is the text backbone pooled with
  * `--pooling last` (see `services/voice/embedding.ts`), so the catalog
@@ -27,8 +27,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrlForPath,
+	ELIZA_1_HOSTED_MTP_TIER_IDS,
 	ELIZA_1_HF_REPO,
-	ELIZA_1_MTP_TIER_IDS,
 	ELIZA_1_TIER_IDS,
 	findCatalogModel,
 } from "../src/services/catalog.ts";
@@ -46,7 +46,9 @@ import {
 const TIERS_WITHOUT_DEDICATED_EMBEDDING: ReadonlySet<string> = new Set([
 	"eliza-1-2b",
 ]);
-const MTP_TIERS: ReadonlySet<string> = new Set(ELIZA_1_MTP_TIER_IDS);
+const HOSTED_MTP_TIERS: ReadonlySet<string> = new Set(
+	ELIZA_1_HOSTED_MTP_TIER_IDS,
+);
 
 describe("per-tier text + embedding bundle resolution", () => {
 	for (const tierId of ELIZA_1_TIER_IDS) {
@@ -68,16 +70,14 @@ describe("per-tier text + embedding bundle resolution", () => {
 				);
 			});
 
-			it("declares a separate-drafter MTP component for MTP tiers", () => {
-				if (!MTP_TIERS.has(tierId)) {
+			it("declares a separate-drafter MTP component only for hosted MTP tiers", () => {
+				if (!HOSTED_MTP_TIERS.has(tierId)) {
 					expect(model?.sourceModel?.components.mtp).toBeUndefined();
 					expect(model?.runtime?.mtp).toBeUndefined();
 					return;
 				}
-				// Separate-drafter MTP: Gemma 4 ships an official standalone
-				// drafter GGUF, so each MTP tier declares a `mtp` component
-				// (`mtp/drafter-<tier>.gguf`) alongside the text GGUF, and the
-				// runtime carries the matching `drafterFile`.
+				// Separate-drafter MTP is enabled only after the tier's hosted
+				// Gemma drafter GGUF is present under `mtp/drafter-<tier>.gguf`.
 				const slug = tierId.slice("eliza-1-".length);
 				expect(model?.sourceModel?.components.mtp?.repo).toBe(
 					ELIZA_1_HF_REPO,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultVoiceQuantForTier,
+  ELIZA_1_HOSTED_MTP_TIER_IDS,
   ELIZA_1_MTP_TIER_IDS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
@@ -109,6 +110,9 @@ describe("Eliza-1 runtime quant metadata", () => {
   });
 
   it("advertises only safe runtime optimizations for the shipped gemma4 tiers", () => {
+    const hostedMtpTiers: ReadonlySet<string> = new Set(
+      ELIZA_1_HOSTED_MTP_TIER_IDS,
+    );
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.runtime?.kvCache).toBeUndefined();
@@ -120,7 +124,7 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.runtime?.optimizations?.requiresKernel).not.toContain(
         "polarquant",
       );
-      if (ELIZA_1_MTP_TIER_IDS.some((mtpId) => mtpId === id)) {
+      if (hostedMtpTiers.has(id)) {
         expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
       } else {
         expect(entry?.runtime?.mtp).toBeUndefined();
@@ -128,24 +132,13 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("enables separate-drafter MTP metadata for MTP tiers", () => {
-    expect(ELIZA_1_MTP_TIER_IDS).not.toContain("eliza-1-0_8b");
+  it("does not advertise Gemma MTP metadata until drafter GGUFs are hosted", () => {
+    expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
+    expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual([]);
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
-      const slug = id.slice("eliza-1-".length);
-      expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
-      // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
-      // GGUF companion, so the catalog carries an explicit drafter file and a
-      // matching source-model component.
-      expect(entry?.runtime?.mtp?.drafterFile).toBe(`mtp/drafter-${slug}.gguf`);
-      expect(entry?.sourceModel?.components.mtp?.file).toBe(
-        `bundles/${slug}/mtp/drafter-${slug}.gguf`,
-      );
-      // Fixed single-token draft window: the gemma4-assistant NextN head only
-      // reliably predicts one token, so wider fixed windows burn rejected draft
-      // forwards and regressed local Metal validation.
-      expect(entry?.runtime?.mtp?.draftMin).toBe(1);
-      expect(entry?.runtime?.mtp?.draftMax).toBe(1);
+      expect(entry?.runtime?.mtp).toBeUndefined();
+      expect(entry?.sourceModel?.components.mtp).toBeUndefined();
     }
   });
 

@@ -6,10 +6,9 @@
  *   - `decideBackend` / `BackendDispatcher` route a `runtimeClass:"fused-eliza1"`
  *     model to the fused `llama-cpp` runtime,
  *   - the fused path retains its full-pipeline binding: the `BackendPlan` that
- *     reaches the fused backend still carries the catalog entry (with its
- *     `runtime.mtp` speculative-decode block) and the bundle-root override that
- *     `DesktopFusedFfiBackendRuntime.acquire()` reads to anchor the fused
- *     context and enable same-file MTP.
+ *     reaches the fused backend still carries the catalog entry and the
+ *     bundle-root override that `DesktopFusedFfiBackendRuntime.acquire()` reads
+ *     to anchor the fused context.
  *
  * It complements `backend-runtime-class.test.ts` (which proves the binary
  * routing) by asserting that the FULL fused load contract is forwarded intact.
@@ -49,12 +48,10 @@ function makeBackend(id: LocalInferenceBackend["id"]): LocalInferenceBackend & {
 }
 
 describe("fused eliza-1 no-regression (C4)", () => {
-	it("the catalog tier under test really is a fused-eliza1 MTP tier", () => {
-		// Guards the test's own premise: if the catalog ever stopped shipping an
-		// MTP block for this tier, the full-pipeline assertion below would be
-		// vacuous. eliza-1-4b is an MTP tier.
+	it("the catalog tier under test really is a fused-eliza1 tier", () => {
 		expect(FUSED_TIER).toBeTruthy();
-		expect(FUSED_TIER.runtime?.mtp?.specType).toBe("draft-mtp");
+		expect(FUSED_TIER.runtimeClass).toBe("fused-eliza1");
+		expect(FUSED_TIER.runtime?.mtp).toBeUndefined();
 	});
 
 	it("decideBackend routes a fused Eliza-1 tier to the fused llama-cpp runtime", () => {
@@ -77,7 +74,7 @@ describe("fused eliza-1 no-regression (C4)", () => {
 		expect(decision.backend).toBe("llama-cpp");
 	});
 
-	it("dispatcher forwards the fused full-pipeline binding (catalog + mtp + bundleRoot) to the fused backend", async () => {
+	it("dispatcher forwards the fused full-pipeline binding (catalog + bundleRoot) to the fused backend", async () => {
 		const ffi = makeBackend("llama-cpp");
 		const dispatcher = new BackendDispatcher(
 			ffi,
@@ -107,13 +104,12 @@ describe("fused eliza-1 no-regression (C4)", () => {
 		expect(dispatcher.activeBackendId()).toBe("llama-cpp");
 
 		// The full-pipeline binding survives dispatch: the fused backend receives
-		// the same catalog entry (the source of the MTP speculative-decode block
-		// that DesktopFusedFfiBackendRuntime.acquire() reads) plus the bundle-root
-		// + drafter overrides that anchor the fused context and enable same-file
-		// MTP and fork KV-cache kernels.
+		// the same catalog entry plus the bundle-root and explicit drafter
+		// overrides that anchor the fused context and preserve fork KV-cache
+		// kernel settings.
 		const forwarded = ffi.loaded[0];
 		expect(forwarded.catalog).toBe(FUSED_TIER);
-		expect(forwarded.catalog?.runtime?.mtp?.specType).toBe("draft-mtp");
+		expect(forwarded.catalog?.runtime?.mtp).toBeUndefined();
 		expect(forwarded.overrides?.bundleRoot).toBe(bundleRoot);
 		expect(forwarded.overrides?.draftModelPath).toBe(
 			`${bundleRoot}/text/eliza-1-4b-mtp.gguf`,
