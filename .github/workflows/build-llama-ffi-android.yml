@@ -35,7 +35,7 @@ on:
   push:
     branches: [develop]
     paths:
-      - "plugins/plugin-local-inference/native/llama.cpp"
+      - "plugins/plugin-local-inference/native/llama.cpp/**"
       - "packages/app-core/scripts/aosp/compile-libllama.mjs"
       - ".github/workflows/build-llama-ffi-android.yml"
     tags:
@@ -141,8 +141,11 @@ jobs:
           # Builds the REAL fused FFI lib (libelizainference.so) via the
           # zig/musl cross-compile — bun's in-process FFI can only dlopen a
           # musl-linked .so, which the bionic NDK cmake path could not produce.
-          # The script stages to artifacts/libelizainference/<target>/lib/<abi>/.
-          node packages/app-core/scripts/aosp/compile-libllama.mjs --target ${{ matrix.target }}
+          # --assets-dir redirects the staged output into
+          # artifacts/libelizainference/<target>/<abi>/libelizainference.so so the
+          # Verify + Upload steps below find it (the script otherwise defaults to
+          # packages/app/android/app/src/main/assets/agent/<abi>/).
+          node packages/app-core/scripts/aosp/compile-libllama.mjs --target ${{ matrix.target }} --assets-dir artifacts/libelizainference/${{ matrix.target }}
 
       - name: Verify fused artifact (FFI symbols + Mali FA mitigation on arm64)
         run: |
