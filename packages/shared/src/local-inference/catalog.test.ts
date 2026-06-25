@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   defaultVoiceQuantForTier,
   ELIZA_1_HOSTED_MTP_TIER_IDS,
+  ELIZA_1_ON_DEVICE_TIER_IDS,
   ELIZA_1_MTP_TIER_IDS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
+  isOnDeviceTier,
   MODEL_CATALOG,
   type OmniVoiceQuantLevel,
   voiceQuantLadderForTier,
@@ -160,4 +162,65 @@ describe("Eliza-1 runtime quant metadata", () => {
       );
     }
   });
+
+  it("gates the on-device tier set to exactly 2b/4b", () => {
+    // The mobile QAT/LiteRT bundle is only valid for phone-class tiers; if this
+    // set ever widens the .litertlm/wna8o8 advertisement leaks onto desktop
+    // tiers, and isOnDeviceTier must agree with the exported id list exactly.
+    expect(ELIZA_1_ON_DEVICE_TIER_IDS).toEqual(["eliza-1-2b", "eliza-1-4b"]);
+    for (const id of ELIZA_1_TIER_IDS) {
+      const expected = id === "eliza-1-2b" || id === "eliza-1-4b";
+      expect(isOnDeviceTier(id)).toBe(expected);
+    }
+    for (const id of [
+      "eliza-1-9b",
+      "eliza-1-27b",
+      "eliza-1-27b-256k",
+    ] as const) {
+      expect(isOnDeviceTier(id)).toBe(false);
+    }
+  });
+
+  it("advertises the mobile QAT Q4_0 + LiteRT-LM bundle on every on-device tier", () => {
+    for (const id of ELIZA_1_ON_DEVICE_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      const variants = entry?.quantization?.variants ?? [];
+
+      const q4_0 = variants.find((variant) => variant.id === "q4_0");
+      expect(q4_0?.mobilePreferred).toBe(true);
+
+      // The LiteRT-LM / NPU mobile bundle is a `.litertlm` artifact, not GGUF.
+      const litert = variants.find((variant) => variant.id === "wna8o8");
+      expect(litert?.artifactFormat).toBe("litertlm");
+      expect(litert?.ggufFile).toMatch(/\.litertlm$/);
+    }
+  });
+
+  it("never advertises the mobile QAT/LiteRT bundle on desktop tiers", () => {
+    const desktopTiers = ELIZA_1_TIER_IDS.filter((id) => !isOnDeviceTier(id));
+    expect(desktopTiers).toEqual([
+      "eliza-1-9b",
+      "eliza-1-27b",
+      "eliza-1-27b-256k",
+    ]);
+    for (const id of desktopTiers) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      const variants = entry?.quantization?.variants ?? [];
+
+      // No variant may carry the mobile-preferred flag or the LiteRT bundle
+      // format on a desktop tier — that would advertise the phone-only QAT
+      // artifact on hardware that runs the post-training GGUF instead.
+      for (const variant of variants) {
+        expect(variant.mobilePreferred).toBeUndefined();
+        expect(variant.artifactFormat).not.toBe("litertlm");
+      }
+      expect(variants.some((variant) => variant.id === "wna8o8")).toBe(false);
+
+      // The shared Q4_0 GGUF variant is present on every tier, but stays
+      // un-flagged on desktop so the on-device selector never picks it.
+      const q4_0 = variants.find((variant) => variant.id === "q4_0");
+      expect(q4_0?.mobilePreferred).toBeUndefined();
+    }
+  });
+
 });
