@@ -1212,7 +1212,7 @@ async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
   }
   logger.info("[eliza] Starting deferred voice warmup");
   await warmVoiceModels(
-    runtime as unknown as Parameters<typeof warmVoiceModels>[0],
+    runtime as Parameters<typeof warmVoiceModels>[0],
     {
       ttsType: ModelType.TEXT_TO_SPEECH,
       transcriptionType: ModelType.TRANSCRIPTION,

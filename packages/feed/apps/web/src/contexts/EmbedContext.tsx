@@ -109,7 +109,7 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
 
       if (id) {
         setAgentId(id);
-        (window as unknown as Record<string, unknown>).__feedEmbedAgentId = id;
+        (window as Record<string, unknown>).__feedEmbedAgentId = id;
       }
       setParentOrigin(event.origin);
 
@@ -118,14 +118,14 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
         void authenticateWithCredentials(id, secret).then((sessionToken) => {
           if (sessionToken) {
             setAgentSessionToken(sessionToken);
-            (window as unknown as Record<string, unknown>).__feedEmbedToken =
+            (window as Record<string, unknown>).__feedEmbedToken =
               sessionToken;
           }
         });
       } else if (secret) {
         // Fallback: use the token directly (pre-authenticated session token)
         setAgentSessionToken(secret);
-        (window as unknown as Record<string, unknown>).__feedEmbedToken =
+        (window as Record<string, unknown>).__feedEmbedToken =
           secret;
       }
     }

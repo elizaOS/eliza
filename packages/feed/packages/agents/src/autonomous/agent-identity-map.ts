@@ -35,7 +35,7 @@ export async function buildAgentIdentityMap(): Promise<
   try {
     const allActors = StaticDataRegistry.getAllActors();
     for (const actor of allActors) {
-      const feed = (actor as unknown as Record<string, unknown>).feed as
+      const feed = (actor as Record<string, unknown>).feed as
         | Record<string, unknown>
         | undefined;
       if (!feed) continue;
@@ -90,7 +90,7 @@ export async function populateIdentityMapOnRuntime(
   // Store this agent's own alignment for downstream use
   if (isNpc) {
     const feed = (
-      runtime.character as unknown as { feed?: Record<string, unknown> }
+      runtime.character as { feed?: Record<string, unknown> }
     ).feed;
     (runtime as { _agentTeam?: string })._agentTeam =
       (feed?.team as string) ?? "gray";

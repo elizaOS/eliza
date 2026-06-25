@@ -350,7 +350,7 @@ export class AutonomousCoordinator {
     if (recordTrajectories) {
       // Enrich NPC trajectories with world state context
       // Derive archetype from character sheet metadata
-      const feedMeta = (runtime.character as unknown as Record<string, unknown>)
+      const feedMeta = (runtime.character as Record<string, unknown>)
         ?.feed as Record<string, unknown> | undefined;
       const archetype = feedMeta
         ? deriveArchetype(

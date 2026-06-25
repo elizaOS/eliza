@@ -189,7 +189,7 @@ export function mountRoutesOnHono(
           headers.set("content-type", "text/plain; charset=utf-8");
         }
       } else if (result.body instanceof Uint8Array) {
-        bodyOut = result.body as unknown as BodyInit;
+        bodyOut = result.body as BodyInit;
         if (!headers.has("content-type")) {
           headers.set("content-type", "application/octet-stream");
         }

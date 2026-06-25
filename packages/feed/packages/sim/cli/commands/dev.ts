@@ -116,7 +116,7 @@ export default defineCommand({
       watchState.systemsWatcher = watch(nextDir, {
         ignoreInitial: true,
         awaitWriteFinish: { stabilityThreshold: 200 },
-      }) as unknown as SystemsWatcher;
+      }) as SystemsWatcher;
 
       watchState.systemsWatcher.on("all", (event, path) => {
         consola.info(`System ${event}: ${path}`);

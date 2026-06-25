@@ -83,7 +83,7 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
   // requires `input: TtsHandlerInput` (concrete union). They are structurally
   // compatible at runtime — the cast bridges the static mismatch.
   const wrapped = wrapWithFirstLineCache(
-    inner as unknown as Parameters<typeof wrapWithFirstLineCache>[0],
+    inner as Parameters<typeof wrapWithFirstLineCache>[0],
     {
       resolveContext: (runtime: IAgentRuntime, input: unknown) => {
         const requestedVoice =
@@ -168,5 +168,5 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
 
   // TtsHandler (stricter input) → EdgeTtsHandler (looser input: unknown).
   // Structurally compatible at runtime; cast bridges the static mismatch.
-  return wrapped as unknown as EdgeTtsHandler;
+  return wrapped as EdgeTtsHandler;
 }

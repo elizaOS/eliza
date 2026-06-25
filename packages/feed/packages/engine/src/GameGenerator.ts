@@ -1565,7 +1565,7 @@ REMINDER: Generate SCENARIOS only. Do NOT generate questions.`;
           }
 
           return {
-            ...(question as unknown as Record<string, unknown>),
+            ...(question as Record<string, unknown>),
             __groupedScenarioHint: groupIndex + 1,
           };
         });
