@@ -4,7 +4,6 @@ import {
   goHome,
   goSpringboard,
   setShellSurfacePage,
-  setSpringboardPage,
   useShellSurface,
 } from "../../state/shell-surface-store";
 import type { HomeSpringboardPage } from "./home-springboard-events";
@@ -42,8 +41,7 @@ export function HomeSpringboardSurface({
   initialPage = "home",
   className,
 }: HomeSpringboardSurfaceProps): React.JSX.Element {
-  const { page, springboardPage, springboardPageCount, springboardEditing } =
-    useShellSurface();
+  const { page, springboardPage, springboardEditing } = useShellSurface();
 
   // The mounting route decides which half shows first. Re-runs only when the
   // route actually changes `initialPage`, so an in-session swipe is never
@@ -144,21 +142,9 @@ export function HomeSpringboardSurface({
     }),
     [page],
   );
-
-  // ONE indicator for the whole launcher: a home dot followed by one dot per
-  // springboard page. Active index is derived from the store, so the doubled
-  // (stacked) dot strips are gone — there is exactly one. Tapping a dot is a
-  // direct jump (dot 0 → home; dot k → springboard page k-1).
-  const totalDots = 1 + Math.max(1, springboardPageCount);
-  const activeDot = page === "home" ? 0 : 1 + springboardPage;
-  const jumpToDot = React.useCallback((index: number) => {
-    if (index <= 0) {
-      goHome();
-      return;
-    }
-    goSpringboard();
-    setSpringboardPage(index - 1);
-  }, []);
+  // No page indicator: the dots collided with the floating chat composer, and
+  // the swipe gesture (left → springboard, right → home / back a page) is the
+  // sole, sufficient navigation. Paging across springboard pages stays a swipe.
 
   return (
     <section
@@ -212,29 +198,6 @@ export function HomeSpringboardSurface({
             onNavigateHomeFromEdge: goHome,
           })}
         </div>
-      </div>
-      <div
-        data-testid="home-springboard-indicator"
-        // Sit ABOVE the floating chat composer (its clearance), with a gap, so
-        // the dots never overlap the "Ask Eliza" input (was a fixed 5.9rem that
-        // collided with the composer on tall devices).
-        className="pointer-events-auto absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)] z-[2] flex justify-center gap-1.5"
-      >
-        {Array.from({ length: totalDots }, (_, index) => (
-          <button
-            // biome-ignore lint/suspicious/noArrayIndexKey: dots have no stable id; index IS the page identity.
-            key={`shell-dot-${index}`}
-            type="button"
-            aria-label={index === 0 ? "Home" : `Apps page ${index}`}
-            aria-current={index === activeDot}
-            onClick={() => jumpToDot(index)}
-            className={cn(
-              // Keep inactive dots discoverable on the orange wallpaper.
-              "h-1.5 w-1.5 rounded-full shadow-sm transition-colors",
-              index === activeDot ? "bg-white/90" : "bg-white/45",
-            )}
-          />
-        ))}
       </div>
     </section>
   );

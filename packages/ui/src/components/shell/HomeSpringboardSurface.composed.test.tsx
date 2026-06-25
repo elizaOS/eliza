@@ -131,27 +131,19 @@ const openSpringboard = () => flick("home-springboard-home-page", -140);
 const swipeBackHome = () => flick("home-springboard-springboard-page", 140);
 
 describe("Home ↔ Springboard composed surface", () => {
-  it("renders exactly ONE page-indicator strip — no stacked dot rows (#4)", () => {
+  it("renders NO page indicator — the dots were removed (collided with chat)", () => {
     const surface = renderComposed();
     openSpringboard();
     expect(surface.getAttribute("data-page")).toBe("springboard");
 
-    // The single rail indicator: Home + one dot per springboard page (2 pages).
-    const indicator = screen.getByTestId("home-springboard-indicator");
-    const railDots = indicator.querySelectorAll("button");
-    expect(railDots.length).toBe(3); // Home + Apps page 1 + Apps page 2
-    expect(screen.getByLabelText("Home")).toBeTruthy();
-    expect(screen.getByLabelText("Apps page 1")).toBeTruthy();
-    expect(screen.getByLabelText("Apps page 2")).toBeTruthy();
-
-    // The inner Springboard's OWN dot strip (aria-label "Page N") must be gone —
-    // it is what stacked under the rail dots before. There must be none.
-    expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
-    // ...and only one indicator container exists.
+    // The rail indicator is gone entirely — navigation is swipe-only now.
     expect(
       document.querySelectorAll('[data-testid="home-springboard-indicator"]')
         .length,
-    ).toBe(1);
+    ).toBe(0);
+    // ...and the inner Springboard's own dot strip stays suppressed too.
+    expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
+    expect(screen.queryByLabelText("Apps page 1")).toBeNull();
   });
 
   it("swiping back from the springboard returns HOME and is NOT in edit mode (#3)", () => {
@@ -208,21 +200,6 @@ describe("Home ↔ Springboard composed surface", () => {
     fireEvent.pointerDown(tile2, { clientX: 50, clientY: 50 });
     act(() => vi.advanceTimersByTime(600));
     expect(screen.getByTestId("springboard-fav-app1")).toBeTruthy();
-  });
-
-  it("tapping a rail dot jumps directly to that surface", () => {
-    const surface = renderComposed();
-    openSpringboard();
-
-    // Jump to springboard page 2 via its dot.
-    fireEvent.click(screen.getByLabelText("Apps page 2"));
-    expect(
-      screen.getByLabelText("Apps page 2").getAttribute("aria-current"),
-    ).toBe("true");
-
-    // Jump home via the home dot.
-    fireEvent.click(screen.getByLabelText("Home"));
-    expect(surface.getAttribute("data-page")).toBe("home");
   });
 
   it("dock tiles render DISTINCT per-view visuals, with distinct glyph fallback (#5)", () => {

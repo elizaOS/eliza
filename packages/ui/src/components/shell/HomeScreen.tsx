@@ -182,7 +182,7 @@ export function HomeScreen({
         // paddingTop: var(--safe-area-top)); adding it again here double-padded
         // the content and left a large empty band above the dashboard. Just a
         // small gutter — the notch is already cleared by the root.
-        "px-4 pt-2",
+        "px-4",
         // Clear the floating chat composer at the bottom.
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
       )}
