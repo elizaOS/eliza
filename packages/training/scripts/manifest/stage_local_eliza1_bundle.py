@@ -77,7 +77,6 @@ DEFAULT_TEXT_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "gemma4-e2b-official" / "gemma-4-E2B-it-Q8_0.gguf",
     LOCAL_MODEL_ROOT / "gemma-4-E2B_q4_0-it.gguf",
     # Legacy local cache names from the pre-official-source Gemma smoke runs.
-    LOCAL_MODEL_ROOT / "gemma4-e4b-mtp" / "Qwen_gemma-4-E4B-Q4_K_M.gguf",
     LOCAL_MODEL_ROOT / "gemma4-e4b-mtp.gguf",
 )
 DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
@@ -100,7 +99,6 @@ VISION_TIERS: Final[set[str]] = set(ELIZA_1_VISION_TIERS)
 MTP_TIERS: Final[set[str]] = set(ELIZA_1_MTP_TIERS)
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (2500, 3700),
     "2b": (4000, 5500),
     "4b": (6000, 8000),
     "9b": (10000, 14000),
