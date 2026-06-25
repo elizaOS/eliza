@@ -16,6 +16,7 @@ import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
   type ElizaCapabilityRouter,
+  type EventPayload,
   type IAgentRuntime,
   type Plugin,
   type PluginCallAppBridgeResult,
@@ -23,7 +24,6 @@ import {
   type RemotePluginModuleManifest,
   type Service,
   type UUID,
-  type EventPayload,
 } from "@elizaos/core";
 import { build as esbuild } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
