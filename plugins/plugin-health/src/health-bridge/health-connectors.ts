@@ -451,7 +451,9 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     path: "/1/user/-/profile.json",
   });
   const profileUser = getRecord(identityJson, "user");
-  const distanceUnit = profileUser ? getText(profileUser, "distanceUnit") : null;
+  const distanceUnit = profileUser
+    ? getText(profileUser, "distanceUnit")
+    : null;
   const weightUnit = profileUser ? getText(profileUser, "weightUnit") : null;
   const samples: LifeOpsHealthMetricSample[] = [];
   const sleepEpisodes: LifeOpsHealthSleepEpisode[] = [];
