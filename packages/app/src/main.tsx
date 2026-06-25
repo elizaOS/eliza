@@ -412,8 +412,11 @@ const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
 const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
+const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
+const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
+const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "In one short sentence, confirm the iOS full Bun local backend is running.";
 const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
@@ -427,6 +430,7 @@ let keyboardListenersRegistered = false;
 let lifecycleListenersRegistered = false;
 let networkStatusListenerRegistered = false;
 let iosFullBunSmokeStarted = false;
+let iosOnboardingSmokeStarted = false;
 
 function isDesktopPlatform(): boolean {
   return isElectrobunRuntime();
@@ -694,22 +698,31 @@ function logNativePluginUnavailable(pluginName: string, error: unknown): void {
 async function writeIosFullBunSmokeResult(
   result: Record<string, unknown>,
 ): Promise<void> {
+  await writeIosPreferenceSmokeResult(IOS_FULL_BUN_SMOKE_RESULT_KEY, result);
+}
+
+async function writeIosOnboardingSmokeResult(
+  result: Record<string, unknown>,
+): Promise<void> {
+  await writeIosPreferenceSmokeResult(IOS_ONBOARDING_SMOKE_RESULT_KEY, result);
+}
+
+async function writeIosPreferenceSmokeResult(
+  key: string,
+  result: Record<string, unknown>,
+): Promise<void> {
   const value = JSON.stringify({
     ...result,
     updatedAt: new Date().toISOString(),
   });
   try {
-    Storage.prototype.setItem.call(
-      window.localStorage,
-      IOS_FULL_BUN_SMOKE_RESULT_KEY,
-      value,
-    );
+    Storage.prototype.setItem.call(window.localStorage, key, value);
   } catch {
     // Ignore localStorage failures; Preferences is the simulator harness source of truth.
   }
   await boundedPreferenceWrite(() =>
     Preferences.set({
-      key: IOS_FULL_BUN_SMOKE_RESULT_KEY,
+      key,
       value,
     }),
   );
@@ -756,6 +769,160 @@ function renderIosFullBunSmokeStatus(message: string): void {
   } catch {
     // Smoke diagnostics are best-effort.
   }
+}
+
+function parseIosOnboardingSmokeRequest(raw: string | null): {
+  apiBase: string;
+} {
+  const fallback = { apiBase: "http://127.0.0.1:31337" };
+  if (!raw || raw === "1") return fallback;
+  try {
+    const parsed = JSON.parse(raw) as { apiBase?: unknown };
+    return {
+      apiBase:
+        typeof parsed.apiBase === "string" && parsed.apiBase.trim()
+          ? parsed.apiBase.trim()
+          : fallback.apiBase,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+async function waitForIosOnboardingElement<T extends Element>(
+  selector: string,
+  options?: { timeoutMs?: number; visible?: boolean },
+): Promise<T> {
+  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  let lastElement: Element | null = null;
+  while (Date.now() < deadline) {
+    lastElement = document.querySelector(selector);
+    if (lastElement) {
+      const visible =
+        !options?.visible ||
+        (lastElement instanceof HTMLElement &&
+          lastElement.offsetParent !== null);
+      if (visible) return lastElement as T;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out waiting for iOS onboarding selector ${selector}${lastElement ? " to become visible" : ""}`,
+  );
+}
+
+function setIosOnboardingInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function readIosOnboardingSmokeStorageSnapshot(): Record<
+  string,
+  string | null
+> {
+  const keys = [
+    "eliza:first-run-complete",
+    "eliza:setup:step",
+    "eliza:mobile-runtime-mode",
+    "elizaos:active-server",
+  ];
+  return Object.fromEntries(
+    keys.map((key) => {
+      try {
+        return [key, window.localStorage.getItem(key)];
+      } catch {
+        return [key, null];
+      }
+    }),
+  );
+}
+
+async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
+  if (!isIOS || iosOnboardingSmokeStarted) return iosOnboardingSmokeStarted;
+  let rawRequest: string | null = null;
+  try {
+    rawRequest = window.localStorage.getItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
+  } catch {
+    rawRequest = null;
+  }
+  if (!rawRequest) {
+    rawRequest = await boundedPreferenceGet(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
+  }
+  if (!rawRequest) return false;
+
+  iosOnboardingSmokeStarted = true;
+  const request = parseIosOnboardingSmokeRequest(rawRequest);
+  await writeIosOnboardingSmokeResult({
+    ok: false,
+    phase: "running",
+    startedAt: new Date().toISOString(),
+    apiBase: request.apiBase,
+  });
+
+  try {
+    const remoteOption = await waitForIosOnboardingElement<HTMLButtonElement>(
+      '[data-testid="onboarding-option-remote"]',
+      { visible: true },
+    );
+    remoteOption.click();
+
+    const remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
+      "#onboarding-remote-address",
+      { visible: true },
+    );
+    remoteAddress.focus();
+    setIosOnboardingInputValue(remoteAddress, request.apiBase);
+
+    const remoteConnect = await waitForIosOnboardingElement<HTMLButtonElement>(
+      '[data-testid="onboarding-remote-connect"]',
+      { visible: true },
+    );
+    remoteConnect.click();
+
+    const home = await waitForIosOnboardingElement<HTMLElement>(
+      '[data-testid="home-springboard-surface"][data-page="home"]',
+      { visible: true },
+    );
+    const composer = await waitForIosOnboardingElement<HTMLElement>(
+      '[data-testid="chat-composer-textarea"]',
+      { visible: true },
+    );
+
+    await writeIosOnboardingSmokeResult({
+      ok: true,
+      phase: "complete",
+      finishedAt: new Date().toISOString(),
+      apiBase: request.apiBase,
+      homeVisible: Boolean(home),
+      composerVisible: Boolean(composer),
+      storage: readIosOnboardingSmokeStorageSnapshot(),
+    });
+  } catch (error) {
+    await writeIosOnboardingSmokeResult({
+      ok: false,
+      phase: "failed",
+      finishedAt: new Date().toISOString(),
+      apiBase: request.apiBase,
+      error: error instanceof Error ? error.message : String(error),
+      storage: readIosOnboardingSmokeStorageSnapshot(),
+    });
+  } finally {
+    try {
+      window.localStorage.removeItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
+    } catch {
+      // Preferences removal below is authoritative for the simulator harness.
+    }
+    await boundedPreferenceWrite(() =>
+      Preferences.remove({ key: IOS_ONBOARDING_SMOKE_REQUEST_KEY }),
+    );
+  }
+  return true;
 }
 
 async function fetchIosFullBunSmokeJson<T>(
@@ -1353,6 +1520,7 @@ async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
   void runIosFullBunSmokeIfRequested();
+  void runIosOnboardingSmokeIfRequested();
 
   if (isIOS || isAndroid) {
     await initializeStatusBar();

@@ -8,6 +8,7 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 |---|---|---|
 | `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
 | `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
+| `ios-onboarding-smoke.mjs` | Fresh iOS Capacitor first-run onboarding selects the same real remote host agent, completes first-run, and lands on the home/chat surface with screenshot + video artifacts | `xcrun simctl` + in-WebView smoke request/result via Capacitor Preferences |
 | `playwright.android.config.ts` (`test/android/*.android.spec.ts`) | Every route/feature renders on the real WebView against the live backend | Playwright Android driver (`_android`) over the WebView CDP socket |
 
 The Playwright Android suite reuses the canonical route enumerations
@@ -129,3 +130,14 @@ iOS uses the same `mobile-local-chat-smoke.mjs` (simulator path via `xcrun
 simctl`) and `scripts/ios-e2e.mjs`; run on a Mac (`xcrun` is macOS-only). The
 WebKit WebView is not CDP-drivable like Android, so iOS route coverage is
 screenshot + deep-link + backend-probe based rather than Playwright-driven.
+
+`mobile-build-smoke.yml` also runs `scripts/ios-onboarding-smoke.mjs` after the
+iOS Simulator `.app` build/stamp checks. The workflow starts the deterministic
+host agent on `127.0.0.1:31337`, installs the freshly built simulator app, clears
+Capacitor first-run Preferences, writes `eliza:ios-onboarding-smoke:request`,
+and launches the app. The WebView then clicks the real Remote onboarding card,
+fills the host-agent URL, submits first-run, and writes
+`eliza:ios-onboarding-smoke:result` for the harness to poll. Artifacts land in
+`packages/app/test-results/ios-onboarding-to-home/`: `fresh-onboarding.png`,
+`home-landing.png`, `onboarding-to-home.mp4`, `result.json`, and
+`host-agent.log`.

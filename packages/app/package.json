@@ -23,6 +23,7 @@
     "test:e2e:android:onboarding": "ELIZA_ANDROID_BACKEND=host ELIZA_ANDROID_REQUIRE_AGENT=1 bunx playwright test --config playwright.android.config.ts test/android/onboarding-to-home.android.spec.ts",
     "test:e2e:android:cloud": "node scripts/android-e2e.mjs --skip-local-chat --skip-route-coverage --cloud",
     "test:e2e:android:webview": "ANDROID_SERIAL=${ANDROID_SERIAL:-} bunx playwright test --config playwright.android.config.ts",
+    "test:e2e:ios:onboarding": "node scripts/ios-onboarding-smoke.mjs",
     "test:sim:local-chat": "node scripts/mobile-local-chat-smoke.mjs --platform ios",
     "test:sim:local-chat:android": "node scripts/mobile-local-chat-smoke.mjs --platform android",
     "test:sim:local-chat:android:live": "node scripts/mobile-local-chat-smoke.mjs --platform android --require-installed --live --android-select-local --android-stage-smoke-model",
