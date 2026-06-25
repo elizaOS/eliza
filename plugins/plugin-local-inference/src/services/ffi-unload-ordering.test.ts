@@ -158,5 +158,9 @@ describe("DesktopFusedFfiBackendRuntime.release() ordering (#14)", () => {
 		// is explicitly poisoned so a new native model is not allocated over a
 		// failed cleanup state.
 		await expect(runtime.acquire(PLAN)).rejects.toThrow(/restart required/i);
-	}, 20_000);
+		// Heavy path (dynamic import + FFI acquire/release/acquire): fast in
+		// isolation but CPU-starved under the full 2122-test parallel suite, where
+		// it brushed the old 20s ceiling (20012ms). Headroom; a true hang still
+		// fails well within this bound.
+	}, 45_000);
 });
