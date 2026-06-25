@@ -162,7 +162,7 @@
     {
       "includes": [
         "plugins/**/src/**/*.ts",
-        "!plugins/plugin-personal-assistant/**",
+        "!plugins/plugin-personal-assistant/**"
       ],
       "linter": {
         "rules": {
