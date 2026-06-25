@@ -46,7 +46,7 @@ assert_contains() {
 }
 
 # --- dispatch-vast.sh, train task, multiple tiers ------------------------------
-for TIER in 0_8b 2b 4b 9b 27b; do
+for TIER in 2b 4b 9b 27b 27b-256k; do
   out="$(bash "$HERE/dispatch-vast.sh" --task train --tier "$TIER" --dry-run 2>&1 || true)"
   assert_contains "vast/train/$TIER plan-banner"  "[dispatch-vast] === PLAN ==="  "$out"
   assert_contains "vast/train/$TIER tier-line"    "tier: $TIER"                   "$out"
@@ -64,9 +64,9 @@ assert_contains "vast/kernel-verify create-cmd"  "vastai create instance"       
 assert_contains "vast/kernel-verify destroy-cmd" "vastai destroy instance"       "$out"
 
 # --- dispatch-vast.sh, bench task ----------------------------------------------
-out="$(bash "$HERE/dispatch-vast.sh" --task bench --gpu rtx4090 --tier 0_8b --dry-run 2>&1 || true)"
+out="$(bash "$HERE/dispatch-vast.sh" --task bench --gpu rtx4090 --tier 2b --dry-run 2>&1 || true)"
 assert_contains "vast/bench plan-banner"     "[dispatch-vast] === PLAN ===" "$out"
-assert_contains "vast/bench tier-line"       "tier: 0_8b"                    "$out"
+assert_contains "vast/bench tier-line"       "tier: 2b"                      "$out"
 assert_contains "vast/bench gpu-line"        "gpu          : rtx4090"        "$out"
 
 # --- dispatch-vast.sh, min-VRAM gate -- 9b on rtx4090 24GB must FAIL -----------
@@ -89,7 +89,7 @@ else
 fi
 
 # --- dispatch-nebius.sh, train task, multiple tiers ----------------------------
-for TIER in 0_8b 2b 4b 9b 27b; do
+for TIER in 2b 4b 9b 27b 27b-256k; do
   out="$(bash "$HERE/dispatch-nebius.sh" --task train --tier "$TIER" --dry-run 2>&1 || true)"
   assert_contains "nebius/train/$TIER plan-banner"  "[dispatch-nebius] === PLAN ===" "$out"
   assert_contains "nebius/train/$TIER tier-line"    "tier: $TIER"                    "$out"
@@ -118,6 +118,10 @@ fi
 # --- run-on-cloud.sh routing -- tier 27b without --provider should pick nebius -
 out="$(bash "$HERE/run-on-cloud.sh" --task train --tier 27b --dry-run 2>&1 || true)"
 assert_contains "selector/27b auto-route-to-nebius" "[dispatch-nebius] === PLAN ===" "$out"
+
+# --- run-on-cloud.sh routing -- tier 27b-256k should pick nebius --------------
+out="$(bash "$HERE/run-on-cloud.sh" --task train --tier 27b-256k --dry-run 2>&1 || true)"
+assert_contains "selector/27b-256k auto-route-to-nebius" "[dispatch-nebius] === PLAN ===" "$out"
 
 # --- run-on-cloud.sh routing -- tier 9b without --provider -> recommended=vast -
 out="$(bash "$HERE/run-on-cloud.sh" --task train --tier 9b --dry-run 2>&1 || true)"

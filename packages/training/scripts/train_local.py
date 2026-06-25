@@ -12,13 +12,13 @@ Usage:
     # Smoke test on the smallest eliza-1 tier
     uv run --extra train python scripts/train_local.py \
         --registry-key gemma4-e2b \
-        --max-samples 256 --epochs 1 --run-name eliza-1-0_8b-smoke
+        --max-samples 256 --epochs 1 --run-name eliza-1-2b-smoke
 
     # Real run
     uv run --extra train python scripts/train_local.py \
         --registry-key gemma4-e2b \
         --epochs 3 --batch-size 4 --grad-accum 8 \
-        --run-name eliza-1-0_8b-eliza-native-v1
+        --run-name eliza-1-2b-eliza-native-v1
 """
 
 from __future__ import annotations
@@ -309,7 +309,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--resume-from-checkpoint", default=None,
         help="Resume SFT from an existing checkpoint dir (e.g. "
-             "checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/"
+             "checkpoints/eliza-1-2b-apollo-fullcorpus-h200-1778619044/"
              "checkpoint-1000). The Trainer restores model + optimizer + LR "
              "scheduler + global_step from the checkpoint; combine with "
              "--max-steps to extend training past the original cap. Path "
@@ -322,7 +322,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-seq-len", type=int, default=None,
         help="Training sequence length. When `--registry-key` is set and the "
              "user did not pass `--max-seq-len`, the registry's `seq_len` "
-             "default is used (e.g. 4k for 0.8B, 8k for 2B, 16k for 4B). "
+             "default is used (8k for 2B/4B, 16k for 9B, 64k for 27B). "
              "Default None falls back to 4096 when no registry key is set. "
              "Pass `--max-seq-len <N>` to override the registry default for "
              "a single run — useful for long-context experiments "
@@ -417,8 +417,9 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
                 f"--registry-key {args.registry_key!r} → hf_id {entry.hf_id!r} "
                 "is an UNVERIFIED registry entry with no published checkpoint as of "
                 "2026-05; loading it will fail. Use a real key "
-                "(gemma4-e2b / gemma4-e2b / gemma4-e4b → eliza-1-0_8b / eliza-1-2b / "
-                "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
+                "(gemma4-e2b / gemma4-e4b / gemma4-12b / gemma4-31b → "
+                "eliza-1-2b / eliza-1-4b / eliza-1-9b / eliza-1-27b), "
+                "pass an explicit --model <real-hf-id>, or set "
                 "ELIZA_ALLOW_UNVERIFIED_BASE=1 to override."
             )
         if not user_passed["model"]:

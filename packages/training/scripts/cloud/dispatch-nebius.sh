@@ -13,7 +13,7 @@
 # --dry-run prints the provisioning plan and spends nothing.
 #
 # Usage (forwarded straight from run-on-cloud.sh; see also that script's --help):
-#   dispatch-nebius.sh --task train         --tier 0_8b [--yes-i-will-pay]
+#   dispatch-nebius.sh --task train         --tier 2b   [--yes-i-will-pay]
 #   dispatch-nebius.sh --task train         --tier 9b   [--yes-i-will-pay]
 #   dispatch-nebius.sh --task train         --tier 27b  [--yes-i-will-pay]   # 8xH200, expensive
 #   dispatch-nebius.sh --task kernel-verify --gpu h200  [--yes-i-will-pay]
@@ -24,7 +24,7 @@
 #   NEBIUS_PROJECT_ID       required for any real provisioning (the project ==
 #                            --parent-id for `nebius compute v1 instance create`)
 #   HUGGING_FACE_HUB_TOKEN  forwarded by train_nebius.sh for gated repos
-#   NEBIUS_VM_PRESET        gpu-h200x1 (default for 0_8b/2b/4b/9b) | gpu-h200x2 (27b)
+#   NEBIUS_VM_PRESET        gpu-h200x1 (default for 2b/4b/9b) | gpu-h200x2 (27b/27b-256k)
 #   SSH_PUBKEY              path to your ssh pubkey (default ~/.ssh/id_ed25519.pub)
 #   ELIZA_MTP_SMOKE_MODEL  optional GGUF for the kernel-verify graph smoke
 set -euo pipefail
@@ -39,7 +39,7 @@ TIER_ROUTING_JSON="$HERE/tier-routing.json"
 
 TASK="train"
 GPU=""
-TIER="0_8b"
+TIER="2b"
 PAY=0
 DRYRUN=0
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"
@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK' (build|kernel-verify|bench|train)" ;; esac
-case "$TIER" in 0_8b|2b|4b|9b|27b) ;; *) die "unknown tier '$TIER' (0_8b|2b|4b|9b|27b)" ;; esac
+case "$TIER" in 2b|4b|9b|27b|27b-256k) ;; *) die "unknown tier '$TIER' (2b|4b|9b|27b|27b-256k)" ;; esac
 
 # --- tier -> defaults from tier-routing.json ----------------------------------
 read_tier_field() {
@@ -79,8 +79,8 @@ DEFAULT_PRESET="$(read_tier_field default_nebius_preset)"
 # only; there is no 2gpu preset. 27b therefore rents 8x H200.
 tier_to_preset() {
   case "$1" in
-    0_8b|2b|4b|9b)  echo "${DEFAULT_PRESET:-gpu-h200x1}" ;;
-    27b)             echo "${DEFAULT_PRESET:-gpu-h200x2}" ;;
+    2b|4b|9b)        echo "${DEFAULT_PRESET:-gpu-h200x1}" ;;
+    27b|27b-256k)    echo "${DEFAULT_PRESET:-gpu-h200x2}" ;;
   esac
 }
 NEBIUS_VM_PRESET="$(tier_to_preset "$TIER")"
@@ -88,11 +88,10 @@ NEBIUS_VM_PRESET="$(tier_to_preset "$TIER")"
 # Map --tier to model_registry.py REGISTRY key (matches dispatch-vast's mapping).
 tier_to_registry_key() {
   case "$1" in
-    0_8b) echo gemma4-e2b ;;
-    2b)   echo gemma4-e2b ;;
-    4b)   echo gemma4-e4b ;;
-    9b)   echo gemma4-12b ;;
-    27b) echo gemma4-31b ;;
+    2b)        echo gemma4-e2b ;;
+    4b)        echo gemma4-e4b ;;
+    9b)        echo gemma4-12b ;;
+    27b|27b-256k) echo gemma4-31b ;;
   esac
 }
 
@@ -122,7 +121,7 @@ if [[ "$TASK" == "train" ]]; then
   fi
   [[ "$PAY" == 1 ]] || die "refusing to provision without --yes-i-will-pay (train runs cost real money -- 8xH200 is ~\$240+/hr; see ../train_nebius.sh)"
   [[ -n "${NEBIUS_PROJECT_ID:-}" ]] || die "NEBIUS_PROJECT_ID not set -- fail-closed"
-  if [[ "$TIER" == "27b" ]]; then
+  if [[ "$TIER" == 27b* ]]; then
     log "WARNING: $TIER on Nebius rents 8x H200 (~\$240+/hr). Prefer dispatch-vast for 2-4 GPU configurations."
   fi
   exec env NEBIUS_VM_PRESET="$NEBIUS_VM_PRESET" REGISTRY_KEY="$REG_KEY" "${CMD[@]}"

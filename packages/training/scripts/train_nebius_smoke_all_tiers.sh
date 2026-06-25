@@ -6,7 +6,7 @@
 # `full` provisions+trains+fetches+tears-down ONE tier per VM lifecycle, this
 # driver loops over EVERY eliza-1 tier on a SINGLE VM lifecycle (~$30-40 on H200
 # at ~10h end-to-end) so a single billing window validates the full
-# 0.8B → 27B chain on a small smoke corpus.
+# 2B → 27B chain on a small smoke corpus.
 #
 # CONTROL FLOW (5 lines, matches the EXIT-trap pattern at line 615 of train_nebius.sh):
 #   1) provision (or reuse) ONE Nebius H200 VM
@@ -33,16 +33,15 @@
 #                                  (auto-detected at startup, snapshotted into
 #                                  REUSE_EXISTING_VM for the EXIT trap).
 #   TIERS                        space-separated tier list. Default:
-#                                  "0_8b 2b 4b 9b 27b"
+#                                  "2b 4b 9b 27b"
 #                                  Each token maps to a registry key + optional
 #                                  --max-seq-len override:
-#                                    0_8b      → gemma4-e2b   (registry seq_len)
-#                                    2b        → gemma4-e2b
+#                                    2b        → gemma4-e2b   (registry seq_len)
 #                                    4b        → gemma4-e4b
 #                                    9b        → gemma4-12b
 #                                    27b       → gemma4-31b
 #                                  Use a smaller list to test a subset:
-#                                    TIERS="0_8b 2b" bash ... smoke-all
+#                                    TIERS="2b 4b" bash ... smoke-all
 #   SMOKE_MAX_STEPS              hard step cap per tier. Default 50 (smoke).
 #                                  Set 0 to use --epochs 1 (real run).
 #   SMOKE_DATA_DIR               relative to packages/training/. Default
@@ -51,7 +50,7 @@
 #                                    $SMOKE_DATA_DIR/{train,val,test}.jsonl
 #                                  (~10 records each is enough — this is a
 #                                  pipeline smoke, not a quality run).
-#   HUGGING_FACE_HUB_TOKEN       for gated Qwen access (forwarded to remote).
+#   HUGGING_FACE_HUB_TOKEN       for gated Gemma access (forwarded to remote).
 #   ELIZA_SMOKE_RUN_TAG          stem for per-tier run names. Default
 #                                  "smoke-all-$(date +%s)". Final run name per
 #                                  tier is "<eliza-public-name>-<tag>-<tier>".
@@ -90,7 +89,7 @@ fi
 
 : "${NEBIUS_PROJECT_ID:?must export NEBIUS_PROJECT_ID}"
 : "${NEBIUS_VM_NAME:=eliza-train-h200-smoke-all}"
-: "${TIERS:=0_8b 2b 4b 9b 27b}"
+: "${TIERS:=2b 4b 9b 27b}"
 : "${SMOKE_MAX_STEPS:=50}"
 : "${SMOKE_DATA_DIR:=data/final-eliza1-smoke}"
 : "${ELIZA_SMOKE_RUN_TAG:=smoke-all-$(date +%s)}"
@@ -123,7 +122,6 @@ _tier_args() {
   # carves out the 27B tier by default — the smoke still exercises
   # base-bench + quant + bundle + publish for that tier.
   case "$1" in
-    0_8b)     echo "gemma4-e2b" ;;
     2b)       echo "gemma4-e2b" ;;
     4b)       echo "gemma4-e4b" ;;
     9b)       echo "gemma4-12b" ;;
@@ -465,7 +463,7 @@ smoke_all() {
 case "$cmd" in
   smoke-all) smoke_all ;;
   fetch)
-    tier="${2:?fetch needs a tier token (e.g. 0_8b)}"
+    tier="${2:?fetch needs a tier token (e.g. 2b)}"
     _fetch_one_tier "$tier"
     ;;
   teardown)
