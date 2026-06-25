@@ -51,10 +51,35 @@ const stubPromptSuggestions = {
   },
 };
 // The overlay's import graph transitively reaches server-only @elizaos/core
-// features (working-memory, todos, …) that import node builtins — DEAD code in
-// the browser (never executed at render). Stub every node builtin to a no-op
-// Proxy so the browser bundle builds; if any of it actually ran at module load
-// the page-error guard below would catch it.
+// features (plugin-manager, working-memory, todos, …) whose module-init touches
+// the `process` global and node builtins — DEAD code in the browser (never
+// executed at render; the only render-path core symbol, findInteractionRegions,
+// is test-only). Production Vite resolves core's `browser` export condition;
+// this raw-esbuild bundle does not, so replace `@elizaos/core` with a no-op
+// Proxy (mirrors run-home-screen-e2e) instead of bundling its Node graph.
+const stubElizaCore = {
+  name: "stub-eliza-core",
+  setup(b) {
+    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
+      path: args.path,
+      namespace: "eliza-core-stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
+      contents: `
+        const noop = new Proxy(() => noop, { get: () => noop });
+        module.exports = new Proxy(
+          {
+            isViewVisible: () => true,
+            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
+            findInteractionRegions: () => [],
+          },
+          { get: (t, p) => (p in t ? t[p] : noop) },
+        );
+      `,
+      loader: "js",
+    }));
+  },
+};
 const nodeBuiltins = new Set([
   ...builtinModules,
   ...builtinModules.map((m) => `node:${m}`),
@@ -88,12 +113,13 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubPromptSuggestions, stubNodeBuiltins],
+  plugins: [stubPromptSuggestions, stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>chat sheet e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}</style>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "chat-sheet.html");
@@ -295,11 +321,11 @@ async function runDragSuite(p, pointer, tag) {
     grabberBarOpacity === "1",
     `[${pointer}] grabber bar paints (inner-span opacity "${grabberBarOpacity}" === "1", not opacity-0) (#9142)`,
   );
-  // The sheet header (maximize/clear/home/settings) shows at HALF and up now,
+  // The sheet header (maximize/clear/springboard) shows at HALF and up now,
   // not only at FULL.
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
-      (await p.getByTestId("chat-full-settings").count()) === 1,
+      (await p.getByTestId("chat-full-springboard").count()) === 1,
     `[${pointer}] HALF detent shows the sheet header`,
   );
 
@@ -316,15 +342,16 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // Header: Maximize + Clear on the left, Home + Settings on the right. With no
-  // active tab set, Home, Views and Settings all show (and are enabled).
+  // Header (post home↔springboard consolidation, #9450): Maximize + Copy +
+  // Clear on the left, a single Springboard button on the right (the old
+  // Home/Views/Settings trio collapsed into one launcher target). Copy only
+  // shows when there's a thread (the default fixture seeds one).
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
       (await p.getByTestId("chat-full-clear").count()) === 1 &&
-      (await p.getByTestId("chat-full-home").count()) === 1 &&
-      (await p.getByTestId("chat-full-views").count()) === 1 &&
-      (await p.getByTestId("chat-full-settings").count()) === 1,
-    `[${pointer}] header shows maximize + clear + home + views + settings`,
+      (await p.getByTestId("chat-full-copy-conversation").count()) === 1 &&
+      (await p.getByTestId("chat-full-springboard").count()) === 1,
+    `[${pointer}] header shows maximize + copy + clear + springboard`,
   );
   // Maximize → full-bleed (edge-to-edge): data-maximized flips + panel reaches x=0.
   await p.getByTestId("chat-full-maximize").click();
@@ -1151,41 +1178,33 @@ try {
     await p.close();
   }
 
-  // HEADER CONTEXT: Home | Views | Settings are ALWAYS shown; each is DISABLED
-  // (dimmed, inert) — never hidden — while on its own screen, so the row never
-  // reflows. The other two stay enabled.
-  for (const [tab, disabledId, enabledId] of [
-    ["chat", "chat-full-home", "chat-full-settings"],
-    ["views", "chat-full-views", "chat-full-home"],
-    ["settings", "chat-full-settings", "chat-full-home"],
-  ]) {
+  // HEADER NAV (post-consolidation): the per-tab Home/Views/Settings trio is
+  // gone — a single always-present, always-enabled Springboard button replaces
+  // it, and the old testids must stay gone (regression guard for #9450).
+  {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?tab=${tab}`);
+    await p.goto(url);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
-    assert((await detent(p)) === "half", `DISABLE[${tab}]: opened to half`);
-    // All three nav buttons present on every screen (never hidden).
+    assert((await detent(p)) === "half", "NAV: opened to half");
     assert(
-      (await p.getByTestId("chat-full-home").count()) === 1 &&
-        (await p.getByTestId("chat-full-views").count()) === 1 &&
-        (await p.getByTestId("chat-full-settings").count()) === 1,
-      `DISABLE[${tab}]: home|views|settings all present`,
+      (await p.getByTestId("chat-full-springboard").count()) === 1 &&
+        !(await p.getByTestId("chat-full-springboard").isDisabled()),
+      "NAV: single springboard button present and enabled",
     );
     assert(
-      await p.getByTestId(disabledId).isDisabled(),
-      `DISABLE[${tab}]: ${disabledId} disabled on the ${tab} screen`,
-    );
-    assert(
-      !(await p.getByTestId(enabledId).isDisabled()),
-      `DISABLE[${tab}]: ${enabledId} enabled on the ${tab} screen`,
+      (await p.getByTestId("chat-full-home").count()) === 0 &&
+        (await p.getByTestId("chat-full-views").count()) === 0 &&
+        (await p.getByTestId("chat-full-settings").count()) === 0,
+      "NAV: legacy home/views/settings buttons removed (#9450)",
     );
     await p.close();
   }
 
-  // NAVIGATE-AND-CLOSE: tapping Settings/Home animates OUT of maximize (if
+  // NAVIGATE-AND-CLOSE: tapping Springboard animates OUT of maximize (if
   // maximized) and collapses the sheet, THEN navigates — the page swap waits for
   // the close animation to start, so it reads as the chat closing into the new
   // view rather than a jump-cut from full-screen.
@@ -1205,23 +1224,23 @@ try {
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 1,
-      "NAV-CLOSE: maximized before tapping settings",
+      "NAV-CLOSE: maximized before tapping springboard",
     );
-    await p.getByTestId("chat-full-settings").click();
+    await p.getByTestId("chat-full-springboard").click();
     await p.waitForTimeout(600);
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 0,
-      "NAV-CLOSE: tapping settings animates OUT of maximize",
+      "NAV-CLOSE: tapping springboard animates OUT of maximize",
     );
     assert(
       (await detent(p)) === "collapsed",
-      "NAV-CLOSE: tapping settings collapses the sheet (close)",
+      "NAV-CLOSE: tapping springboard collapses the sheet (close)",
     );
     assert(
-      sink.logs.some((l) => l.includes("openSettings")),
-      "NAV-CLOSE: settings navigation fires after the close starts",
+      sink.logs.some((l) => l.includes("navigateHome")),
+      "NAV-CLOSE: springboard navigation fires after the close starts",
     );
     await p.close();
   }
