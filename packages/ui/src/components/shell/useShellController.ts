@@ -39,6 +39,10 @@ import { dispatchHomeSpringboardNavigation } from "./home-springboard-events";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
+/** Upper bound (ms) the conversation-switch / clear loading spinner may show
+ *  before it is force-cleared — see `runWithConversationLoading`. */
+const CONVERSATION_LOADING_MAX_MS = 12_000;
+
 /** How a voice capture turn is consumed when it produces a final transcript.
  *  `"transcription"` records long-form: finals accumulate into ONE recording
  *  session (not per-utterance chat bubbles) and the agent stays quiet until an
@@ -290,7 +294,20 @@ export function useShellController(): ShellController {
       const seq = conversationLoadingSeqRef.current + 1;
       conversationLoadingSeqRef.current = seq;
       setConversationLoading(true);
+      // Watchdog: never let the empty-thread spinner outlive a stuck switch or
+      // create. A cache-hit switch resolves in the same tick and a network load
+      // in a few seconds, but the on-device agent can be model-bound (a warming
+      // or loading 1.4 GB model, an in-flight generation), and a spinner that
+      // hangs there reads as a permanently frozen new chat. Force-clear after a
+      // bound so the (already-activated) conversation is usable while a slow
+      // greeting backfills. Seq-guarded so a newer switch owns the flag.
+      const watchdog = setTimeout(() => {
+        if (conversationLoadingSeqRef.current === seq) {
+          setConversationLoading(false);
+        }
+      }, CONVERSATION_LOADING_MAX_MS);
       void task().finally(() => {
+        clearTimeout(watchdog);
         if (conversationLoadingSeqRef.current === seq) {
           setConversationLoading(false);
         }

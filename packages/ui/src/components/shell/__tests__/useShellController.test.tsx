@@ -71,6 +71,17 @@ const appMock = vi.hoisted(() => ({
     chatFirstTokenReceived: false,
     sendChatText: vi.fn(),
     agentStatus: { state: "running", canRespond: true },
+    // Conversation-management callbacks the controller wraps in the loading
+    // flag (clear / swipe). Default to instant resolution; the watchdog tests
+    // override handleNewConversation with a controllable promise.
+    handleNewConversation: vi.fn(() => Promise.resolve()),
+    handleSelectConversation: vi.fn(() => Promise.resolve()),
+    activeConversationId: null as string | null,
+    conversations: [] as Array<{ id: string }>,
+    setTab: vi.fn(),
+    handleChatStop: vi.fn(),
+    uiLanguage: "en",
+    elizaCloudVoiceProxyAvailable: false,
   },
   // Live server-reported turn status (#8813), read via useChatTurnStatus().
   serverTurnStatus: null as { kind: string } | null,
@@ -137,6 +148,10 @@ afterEach(() => {
   appMock.serverTurnStatus = null;
   appMock.value.sendChatText.mockClear();
   appMock.value.agentStatus = { ...READY_STATUS };
+  appMock.value.handleNewConversation = vi.fn(() => Promise.resolve());
+  appMock.value.handleSelectConversation = vi.fn(() => Promise.resolve());
+  appMock.value.activeConversationId = null;
+  appMock.value.conversations = [];
 });
 
 describe("useShellController", () => {
@@ -180,6 +195,61 @@ describe("useShellController", () => {
 
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
     expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("hi");
+  });
+});
+
+// ── Conversation loading watchdog + swipe (clear/new-chat robustness) ────────
+
+describe("useShellController — conversation loading watchdog", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("force-clears the loading spinner when the new-chat create hangs", async () => {
+    // A create that never resolves — the on-device agent queued behind a
+    // warming/loading model or an in-flight generation. The spinner must NOT
+    // hang there forever ("reset shows a spinner but never makes the new chat").
+    let resolveCreate: (() => void) | undefined;
+    appMock.value.handleNewConversation = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolveCreate = () => r();
+        }),
+    );
+
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.clearConversation());
+    expect(result.current.conversationLoading).toBe(true);
+
+    // Self-clears after the bounded watchdog window.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+
+    // A late create resolution neither errors nor re-sticks the spinner.
+    await act(async () => {
+      resolveCreate?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+  });
+
+  it("clears the loading flag as soon as a fast switch resolves (no needless wait)", async () => {
+    appMock.value.conversations = [{ id: "a" }, { id: "b" }];
+    appMock.value.activeConversationId = "a";
+
+    const { result } = renderHook(() => useShellController());
+
+    // Swipe to the next (older) conversation — the path that "thumbs back and
+    // forth". It resolves instantly, so the flag clears well before the cap and
+    // never strands the UI.
+    await act(async () => {
+      result.current.conversationNav.goNext();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(appMock.value.handleSelectConversation).toHaveBeenCalledWith("b");
+    expect(result.current.conversationLoading).toBe(false);
   });
 });
 

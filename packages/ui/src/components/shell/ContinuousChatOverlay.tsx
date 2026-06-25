@@ -62,6 +62,10 @@ import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
+import {
+  measureSafeAreaInsetTop,
+  resolveChatPanelLayout,
+} from "./chat-panel-layout";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import { type ShellMessage, selectVisibleShellMessages } from "./shell-state";
 import { TopicChipsBar } from "./TopicChipsBar";
@@ -162,10 +166,9 @@ type PttPhase =
 type MotionControls = { stop: () => void };
 
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
-// px kept clear above the panel. Sized to clear an edge-to-edge status bar
-// (~58px) plus a buffer so the grabber sits BELOW the notification-shade pull
-// zone — the full sheet reaches the top without fighting the system gesture.
-const SHEET_TOP_MARGIN = 72;
+// The panel's top clearance + max height (which decide where the header buttons
+// land relative to the notch) live in the pure, unit-tested
+// `resolveChatPanelLayout` — see chat-panel-layout.ts.
 // Detent magnetism: on a deliberate (non-flick) drag release, a height within
 // this many px of a detent (collapsed/half/full) snaps to that detent instead
 // of resting free — so near-detent releases are deterministic + clean, and only
@@ -1682,6 +1685,22 @@ export function ContinuousChatOverlay({
   }, []);
   const [viewport, setViewport] = React.useState(readViewport);
   const [bottomPad, setBottomPad] = React.useState(0);
+  // The real `env(safe-area-inset-top)` in px, so the panel's top clearance
+  // reserves the actual notch/Dynamic-Island inset (not a fixed guess) and the
+  // header buttons always sit below it. Re-measured on rotation (`resize`); it
+  // never changes between resizes, so it stays off the high-rate vv `scroll`.
+  const [safeAreaTop, setSafeAreaTop] = React.useState(0);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const measure = () =>
+      setSafeAreaTop((prev) => {
+        const next = measureSafeAreaInsetTop();
+        return prev === next ? prev : next;
+      });
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const commit = () => {
@@ -1809,21 +1828,23 @@ export function ContinuousChatOverlay({
   // panel styles + a zero top margin.
   const fullBleed = maximized && expanded && sheetOpen && !pilled;
 
-  // The chat panel may never exceed the visible height minus its own
-  // safe-area/nav padding and a top margin — so it can't spill above the screen.
-  // The thread (flex-shrink) gives way to this cap, scrolling instead of pushing
-  // the panel off-screen. Maximized drops the top margin so it reaches the top.
-  const topMargin = fullBleed ? 0 : SHEET_TOP_MARGIN;
-  // Full-bleed drops the overlay's own bottom padding (its `paddingBottom` is 0
-  // edge-to-edge — the composer carries the home-gesture clearance itself), so
-  // the panel must fill the ENTIRE viewport height. Subtracting the (bottom-anchored)
-  // `bottomPad` here would shrink the panel by the gesture inset and float it a
-  // gesture-inset BELOW the top — the gap that left a hard-cut glass seam under
-  // the status bar and pushed the safe-area-padded header buttons down.
-  const panelMaxH = Math.max(
-    200,
-    viewportH - (fullBleed ? 0 : bottomPad) - topMargin,
-  );
+  // Top clearance + max height come from the pure, unit-tested layout solver.
+  // It reserves the real measured notch inset (`safeAreaTop`) above the panel,
+  // and — critically — subtracts any keyboard lift the visual viewport did NOT
+  // report (the iOS Capacitor `resize:"body"` case where `keyboardInset` reads 0
+  // but the native Keyboard plugin still lifted the overlay): without that, the
+  // panel is sized against the full height while ALSO being pushed up by the
+  // keyboard, so its top edge — the header buttons — shoots above the notch and
+  // off-screen. Full-bleed drops the top margin + the overlay's bottom padding
+  // so the maximized panel fills the screen edge-to-edge.
+  const { panelMaxH } = resolveChatPanelLayout({
+    viewportH,
+    bottomPad,
+    keyboardInset,
+    effectiveKeyboardInset,
+    safeAreaTopPx: safeAreaTop,
+    fullBleed,
+  });
 
   // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
   // flex-basis; flex-shrink clamps the real height to fit. FULL == panelMaxH so
