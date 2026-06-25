@@ -182,7 +182,11 @@ export async function handleTextEmbedding(
   }
 
   const vectors = await requestEmbeddings(runtime, truncate(trimmed), embeddingDimension);
-  return vectors[0];
+  const vector = vectors[0];
+  if (!vector) {
+    throw new Error("Embedding provider returned no vector for the input");
+  }
+  return vector;
 }
 
 /**
