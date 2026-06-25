@@ -104,6 +104,26 @@ describe("WidgetHost", () => {
     expect(grid.className).toContain("sm:grid-cols-2");
   });
 
+  it("renders the fallback in place of an empty host (home default widgets)", () => {
+    resolveWidgetsForSlotMock.mockReturnValue([]);
+    render(
+      <WidgetHost
+        slot="chat-sidebar"
+        fallback={<div data-testid="hw-fallback">defaults</div>}
+      />,
+    );
+    // The host itself renders nothing, but the fallback shows so the surface is
+    // never blank.
+    expect(screen.queryByTestId("widget-host-chat-sidebar")).toBeNull();
+    expect(screen.getByTestId("hw-fallback")).toBeTruthy();
+  });
+
+  it("hides entirely when empty with no fallback", () => {
+    resolveWidgetsForSlotMock.mockReturnValue([]);
+    const { container } = render(<WidgetHost slot="chat-sidebar" />);
+    expect(container.firstChild).toBeNull();
+  });
+
   it("renders uiSpec widgets and dispatches their actions", () => {
     const seen: unknown[] = [];
     window.addEventListener(WIDGET_UI_ACTION_EVENT, (event) => {

@@ -13,6 +13,7 @@ import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -194,14 +195,17 @@ export function HomeScreen({
           </div>
         ) : null}
 
-        {/* The prioritized home widgets (#9143). WidgetHost renders nothing when
-            no widget has content, so the home stays clean otherwise. */}
+        {/* The prioritized home widgets (#9143). Data-driven widgets self-hide
+            when empty; when none have content, the WidgetHost renders the
+            always-on default widgets (clock / date / calendar) instead, so the
+            dashboard is never just the floating chat. */}
         <div className={enterClass} style={{ animationDelay: "70ms" }}>
           <WidgetHost
             slot="home"
             layout="grid"
             events={events}
             clearEvents={clearEvents}
+            fallback={<DefaultHomeWidgets />}
           />
         </div>
 

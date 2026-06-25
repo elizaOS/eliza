@@ -143,6 +143,13 @@ export interface WidgetHostProps {
    * visibility overrides on top of the registry's plugin-enabled gate.
    */
   filter?: (declaration: PluginWidgetDeclaration) => boolean;
+  /**
+   * Rendered in place of an empty host (when `hideWhenEmpty` and no widget has
+   * content). The home dashboard passes the always-on default widgets (clock /
+   * date / calendar) here so it is never blank, while the data-driven widgets
+   * keep self-hiding until they have something to show (#9143).
+   */
+  fallback?: ReactNode;
 }
 
 export function WidgetHost({
@@ -153,6 +160,7 @@ export function WidgetHost({
   layout = "stack",
   hideWhenEmpty = true,
   filter,
+  fallback,
 }: WidgetHostProps) {
   const plugins = useAppSelectorShallow((s) => s.plugins);
   const enabledKinds = useEnabledViewKinds();
@@ -319,7 +327,11 @@ export function WidgetHost({
     [displayed, widgetPropsBase, pluginById],
   );
 
-  if (children.length === 0 && hideWhenEmpty) return null;
+  // Nothing to show: render the caller's fallback (the home's default
+  // clock/date/calendar widgets) so a dashboard is never blank, or hide.
+  if (children.length === 0 && hideWhenEmpty) {
+    return fallback ?? null;
+  }
 
   const layoutClass =
     layout === "grid"
