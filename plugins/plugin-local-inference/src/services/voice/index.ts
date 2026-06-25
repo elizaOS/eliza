@@ -59,6 +59,10 @@ export {
 	type EchoDelayOptions,
 	estimateEchoDelaySamples,
 } from "./echo-delay";
+export {
+	EchoReferenceBuffer,
+	type EchoReferenceBufferOptions,
+} from "./echo-reference-buffer";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
