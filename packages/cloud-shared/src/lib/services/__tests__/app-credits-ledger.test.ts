@@ -82,11 +82,16 @@ mock.module("../../../db/helpers", () => ({
   dbWrite: { update: updateMock },
 }));
 
+const cacheGet = mock(async () => null);
+const cacheSet = mock(async () => undefined);
+const cacheDel = mock(async () => undefined);
+
 mock.module("../../cache/client", () => ({
   cache: {
-    get: mock(async () => null),
-    set: mock(async () => undefined),
-    delete: mock(async () => undefined),
+    get: cacheGet,
+    set: cacheSet,
+    del: cacheDel,
+    delete: cacheDel,
   },
 }));
 
@@ -125,6 +130,12 @@ beforeEach(() => {
   addEarnings.mockReset();
   reduceEarnings.mockReset();
   updateMock.mockClear();
+  cacheGet.mockReset();
+  cacheSet.mockReset();
+  cacheDel.mockReset();
+  cacheGet.mockResolvedValue(null);
+  cacheSet.mockResolvedValue(undefined);
+  cacheDel.mockResolvedValue(undefined);
 
   findAppById.mockResolvedValue(monetizedApp);
   findUserById.mockResolvedValue({ id: USER_ID, organization_id: ORG_ID });
@@ -382,5 +393,184 @@ describe("checkBalance — reads the org ledger", () => {
 
     const tooMuch = await freshService().checkBalance(APP_ID, USER_ID, 50);
     expect(tooMuch.sufficient).toBe(false);
+  });
+});
+
+// The per-inference billing PRICE quoted on the LLM hot path
+// (/v1/messages, /v1/chat/*). calculateCostWithMarkup reads the markup config
+// through getCostMarkupConfig, which is cache-backed: a miss falls through to
+// the apps repo, and a missing app is negative-cached so the hot path stops
+// hammering Postgres for an id that doesn't exist.
+describe("calculateCostWithMarkup — quotes the inference price", () => {
+  test("monetized app marks the base cost up by its inference_markup_percentage", async () => {
+    // monetizedApp: monetization_enabled true, inference_markup_percentage 10.
+    const quote = await freshService().calculateCostWithMarkup(APP_ID, 2);
+
+    // 10% markup on a $2 base.
+    expect(quote.markupPercentage).toBe(10);
+    expect(quote.creatorMarkup).toBeCloseTo(0.2, 10);
+    expect(quote.totalCost).toBeCloseTo(2.2, 10);
+    expect(quote.baseCost).toBe(2);
+  });
+
+  test("monetization disabled collapses to base cost with zero markup", async () => {
+    findAppById.mockResolvedValue({
+      ...monetizedApp,
+      monetization_enabled: false,
+    });
+
+    const quote = await freshService().calculateCostWithMarkup(APP_ID, 2);
+
+    expect(quote.markupPercentage).toBe(0);
+    expect(quote.creatorMarkup).toBe(0);
+    expect(quote.totalCost).toBe(2); // totalCost === baseCost
+  });
+
+  test("missing app quotes zero markup AND negative-caches the __none marker", async () => {
+    findAppById.mockResolvedValue(null);
+
+    const quote = await freshService().calculateCostWithMarkup(APP_ID, 2);
+
+    // No markup, total collapses to base.
+    expect(quote.markupPercentage).toBe(0);
+    expect(quote.creatorMarkup).toBe(0);
+    expect(quote.totalCost).toBe(2);
+    expect(quote.baseCost).toBe(2);
+
+    // The miss was written through to the negative cache: the __none marker
+    // under the cost-markup key, with the short "none" TTL (CacheTTL.app.none).
+    expect(cacheSet).toHaveBeenCalledTimes(1);
+    const [key, value, ttl] = cacheSet.mock.calls[0];
+    expect(key).toBe(`app:cost-markup:${APP_ID}:v1`);
+    expect(value).toEqual({ __none: true });
+    expect(ttl).toBe(60);
+  });
+});
+
+// The platform offset is a flat fee skimmed off a purchase before the creator
+// share. If a creator sets an offset larger than the purchase, the clamp
+// (Math.min(offset, purchaseAmount)) keeps the buyer's post-offset amount —
+// and therefore the creator's share — at 0 instead of going negative.
+describe("processPurchase — clamps an oversized platform offset", () => {
+  test("offset >= purchase is clamped to the purchase; creator earns 0, never negative", async () => {
+    findAppById.mockResolvedValue({
+      ...monetizedApp,
+      platform_offset_amount: "5.00", // bigger than the $2 purchase
+      purchase_share_percentage: "20",
+    });
+
+    const result = await freshService().processPurchase({
+      appId: APP_ID,
+      userId: USER_ID,
+      organizationId: ORG_ID,
+      purchaseAmount: 2,
+      stripePaymentIntentId: "pi_clamp",
+    });
+
+    // Clamped to the purchase amount, not the configured 5.00.
+    expect(result.platformOffset).toBe(2);
+    // amountAfterOffset is 0, so 20% of nothing is 0 — not -0.60.
+    expect(result.creatorEarnings).toBe(0);
+    // Buyer still receives the full purchase as spendable credits.
+    expect(result.creditsAdded).toBe(2);
+    // Zero creator earnings ⇒ no creator-share bookkeeping fires.
+    expect(addPurchaseEarnings).not.toHaveBeenCalled();
+    expect(addEarnings).not.toHaveBeenCalled();
+  });
+});
+
+// Even with monetization OFF, a purchase carrying a Stripe payment-intent id
+// still writes a dedup transaction so a webhook retry can't double-credit. The
+// row records zero earnings and is tagged monetizationDisabled.
+describe("processPurchase — monetization-disabled dedup record", () => {
+  test("writes a zero-amount dedup transaction and records no creator earnings", async () => {
+    findAppById.mockResolvedValue({
+      ...monetizedApp,
+      monetization_enabled: false,
+    });
+
+    const result = await freshService().processPurchase({
+      appId: APP_ID,
+      userId: USER_ID,
+      organizationId: ORG_ID,
+      purchaseAmount: 10,
+      stripePaymentIntentId: "pi_disabled",
+    });
+
+    // Buyer still gets full credits; no platform/creator economics apply.
+    expect(result.creditsAdded).toBe(10);
+    expect(result.platformOffset).toBe(0);
+    expect(result.creatorEarnings).toBe(0);
+
+    // The dedup record was written with the disabled-purchase shape.
+    expect(createTransaction).toHaveBeenCalledTimes(1);
+    const tx = createTransaction.mock.calls[0][0];
+    expect(tx.app_id).toBe(APP_ID);
+    expect(tx.user_id).toBe(USER_ID);
+    expect(tx.type).toBe("credit_purchase");
+    expect(tx.amount).toBe("0");
+    expect(tx.metadata.monetizationDisabled).toBe(true);
+    expect(tx.metadata.stripePaymentIntentId).toBe("pi_disabled");
+
+    // No creator earnings recorded when monetization is off.
+    expect(addPurchaseEarnings).not.toHaveBeenCalled();
+    expect(addEarnings).not.toHaveBeenCalled();
+  });
+});
+
+// validateMetadata guards the metadata blob persisted with each charge against
+// storage bloat / DOS (size) and stack-overflow (depth). It runs first thing in
+// deductCredits and throws on violation, so the bad call never reaches the
+// ledger.
+describe("deductCredits — validateMetadata size & depth guards", () => {
+  test("rejects metadata that serializes beyond the 10KB cap", async () => {
+    const oversized = { blob: "x".repeat(11000) }; // > 10240 bytes serialized
+
+    await expect(
+      freshService().deductCredits({
+        appId: APP_ID,
+        userId: USER_ID,
+        baseCost: 1,
+        description: "inference",
+        metadata: oversized,
+      }),
+    ).rejects.toThrow("Metadata exceeds maximum size");
+
+    // The guard short-circuits before any debit is attempted.
+    expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+  });
+
+  test("rejects metadata nested deeper than the max depth", async () => {
+    // 7 levels deep (a > b > c > d > e > f > g) exceeds MAX_METADATA_DEPTH (5).
+    const deep = { a: { b: { c: { d: { e: { f: { g: 1 } } } } } } };
+
+    await expect(
+      freshService().deductCredits({
+        appId: APP_ID,
+        userId: USER_ID,
+        baseCost: 1,
+        description: "inference",
+        metadata: deep,
+      }),
+    ).rejects.toThrow("Metadata exceeds maximum nesting depth");
+
+    expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+  });
+
+  test("accepts small, shallow metadata and proceeds to the debit", async () => {
+    const ok = { requestId: "r-1", model: "gpt-oss-120b" };
+
+    const spend = await freshService().deductCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      baseCost: 1,
+      description: "inference",
+      metadata: ok,
+    });
+
+    expect(spend.success).toBe(true);
+    expect(reserveAndDeductCredits).toHaveBeenCalledTimes(1);
+    // The validated metadata is forwarded onto the debit's metadata.
+    expect(reserveAndDeductCredits.mock.calls[0][0].metadata.requestId).toBe("r-1");
   });
 });
