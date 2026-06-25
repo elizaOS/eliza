@@ -37,9 +37,10 @@
  * `@elizaos/plugin-training` and adding the dependency would invert the layering.
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import {
+	open,
 	readFile,
 	readlink,
 	rename,
@@ -184,6 +185,37 @@ export interface OptimizedPromptMetadata {
 
 function defaultStoreRoot(): string {
 	return join(resolveStateDir(), "optimized-prompts");
+}
+
+/** Collision-proof temp filename suffix for write-then-rename scratch files. */
+function uniqueTempSuffix(): string {
+	return `${process.pid}-${Date.now()}-${randomBytes(6).toString("hex")}`;
+}
+
+/**
+ * Per-key serialization. setPrompt for a given task dir mutates shared
+ * symlinks + the retention window; overlapping in-process writes for the same
+ * dir would race the repoint/prune. Each key (the task dir) gets a tail
+ * promise; callers chain onto it so writes for one dir run one-at-a-time,
+ * while different dirs stay fully parallel. The map self-cleans when a key's
+ * chain drains.
+ */
+const dirWriteChains = new Map<string, Promise<unknown>>();
+
+async function runExclusive<T>(
+	key: string,
+	work: () => Promise<T>,
+): Promise<T> {
+	const prior = dirWriteChains.get(key) ?? Promise.resolve();
+	// Swallow the prior result/rejection for chaining purposes only — the
+	// originating caller still observes its own outcome.
+	const run = prior.then(work, work);
+	dirWriteChains.set(key, run);
+	try {
+		return await run;
+	} finally {
+		if (dirWriteChains.get(key) === run) dirWriteChains.delete(key);
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -381,11 +413,13 @@ interface CachedEntry {
 
 /**
  * Parse the `OPTIMIZED_PROMPT_DISABLE` env var into a strongly-typed set of
- * disabled tasks. Unknown task names are silently dropped — an operator
- * disabling a misspelled task should not crash the runtime, but the
- * misspelling should also not accidentally disable some other task.
+ * disabled tasks. Unknown task names are dropped — an operator disabling a
+ * misspelled task should not crash the runtime, and the misspelling must not
+ * accidentally disable some other task — but each dropped token is logged so a
+ * typo doesn't silently disable nothing.
  *
- * Format: comma-separated list of task names. Whitespace is trimmed.
+ * Format: comma-separated list of task names. Whitespace is trimmed; empty
+ * tokens are ignored without a warning.
  * Example: `OPTIMIZED_PROMPT_DISABLE=should_respond,response`.
  */
 export function parseDisabledTasksEnv(
@@ -395,8 +429,14 @@ export function parseDisabledTasksEnv(
 	const tasks = new Set<OptimizedPromptTask>();
 	for (const part of raw.split(",")) {
 		const trimmed = part.trim();
+		if (trimmed === "") continue;
 		if (isTask(trimmed)) {
 			tasks.add(trimmed);
+		} else {
+			logger.warn(
+				{ src: "service:optimized_prompt", entry: trimmed },
+				`[OptimizedPromptService] OPTIMIZED_PROMPT_DISABLE entry "${trimmed}" is not a known task — ignored`,
+			);
 		}
 	}
 	return tasks;
@@ -499,6 +539,14 @@ export class OptimizedPromptService extends Service {
 	 * repoints `current` / `previous` / `previous2` symlinks, prunes the
 	 * directory to the last `OPTIMIZED_PROMPT_RETAIN_VERSIONS` artifacts, and
 	 * refreshes the cache for the task.
+	 *
+	 * The same taxonomy is registered by both core basicServices and
+	 * plugin-training register-runtime, and trigger/CLI train also call this —
+	 * so two setPrompt calls for one task can overlap in-process. The version
+	 * claim is made cross-process-safe with O_EXCL; the symlink-repoint and
+	 * prune steps mutate shared `current`/`previous` links and the retention
+	 * window, so the whole write is serialized per task dir via an in-process
+	 * lock to keep those mutations consistent.
 	 */
 	async setPrompt(
 		task: OptimizedPromptTask,
@@ -510,27 +558,47 @@ export class OptimizedPromptService extends Service {
 			);
 		}
 		const dir = join(this.storeRoot, task);
+		return runExclusive(dir, () => this.writeArtifact(task, dir, artifact));
+	}
+
+	private async writeArtifact(
+		task: OptimizedPromptTask,
+		dir: string,
+		artifact: OptimizedPromptArtifact,
+	): Promise<string> {
 		mkdirSync(dir, { recursive: true });
 
-		const existingVersions = listVersionNumbers(dir);
-		const nextVersion = (existingVersions.at(-1) ?? 0) + 1;
-		const finalName = `v${nextVersion}.json`;
-		const finalPath = join(dir, finalName);
-		const tempPath = `${finalPath}.tmp-${process.pid}-${Date.now()}`;
 		const payload = `${JSON.stringify(artifact, null, 2)}\n`;
+		const macHex = computeArtifactMac(payload);
+
+		// Atomically claim the next `vN.json` slot. Two concurrent setPrompt
+		// calls for the same task (e.g. basicServices + plugin-training, or a
+		// CLI/trigger train) read the same version list and would otherwise
+		// both target the same vN — clobbering one artifact and/or leaving a
+		// vN.json without a matching .mac. Claiming the filename with O_EXCL
+		// ('wx') serializes the race: the loser gets EEXIST, re-reads the
+		// directory, and bumps to the next free version.
+		const { nextVersion, finalPath } = await claimNextVersionPath(dir);
+
+		// The slot is reserved (empty vN.json exists). Write the payload to a
+		// temp file and rename over the reserved name for write durability —
+		// the rename target equals the reserved path, so no other claimant can
+		// own it.
+		const tempPath = `${finalPath}.tmp-${uniqueTempSuffix()}`;
 		await writeFile(tempPath, payload, "utf-8");
 		await rename(tempPath, finalPath);
 
 		// SOC2 CC6.8: persist HMAC sidecar so getPrompt() can detect
 		// tampering. The MAC covers the on-disk payload bytes verbatim.
-		const macHex = computeArtifactMac(payload);
 		const macPath = macPathFor(finalPath);
-		const macTemp = `${macPath}.tmp-${process.pid}-${Date.now()}`;
+		const macTemp = `${macPath}.tmp-${uniqueTempSuffix()}`;
 		await writeFile(macTemp, `${macHex}\n`, "utf-8");
 		await rename(macTemp, macPath);
 
 		// Repoint symlinks: current → vN, previous → vN-1, previous2 → vN-2.
-		const allVersions = [...existingVersions, nextVersion];
+		// Re-scan the directory: concurrent claims may have created versions
+		// between our claim and now, so the on-disk list is authoritative.
+		const allVersions = listVersionNumbers(dir);
 		await repointVersionLinks(dir, allVersions);
 
 		// Prune older artifacts beyond the retention window. Done after the
@@ -704,6 +772,47 @@ function listVersionNumbers(dir: string): number[] {
 }
 
 /**
+ * Maximum O_EXCL retries when claiming a version slot. Each attempt is one
+ * concurrent setPrompt losing the race; the number of contenders for a single
+ * task dir is tiny (basicServices + plugin-training + at most one CLI/trigger
+ * train), so this is comfortably above any real-world contention. Exhausting
+ * it means the directory is genuinely wedged — surface that as an error rather
+ * than spinning forever.
+ */
+const VERSION_CLAIM_MAX_ATTEMPTS = 64;
+
+/**
+ * Atomically reserve the next free `vN.json` slot in `dir`. Reads the current
+ * version list, then tries to create `v(last+1).json` with `O_EXCL` ('wx') so
+ * exactly one concurrent caller can own a given version. On `EEXIST` (another
+ * setPrompt claimed it first) re-read the directory and bump. Returns the
+ * claimed version number and its absolute path; the empty file now exists on
+ * disk and the caller overwrites it via temp-then-rename.
+ */
+async function claimNextVersionPath(
+	dir: string,
+): Promise<{ nextVersion: number; finalPath: string }> {
+	let candidate = (listVersionNumbers(dir).at(-1) ?? 0) + 1;
+	for (let attempt = 0; attempt < VERSION_CLAIM_MAX_ATTEMPTS; attempt += 1) {
+		const finalPath = join(dir, `v${candidate}.json`);
+		try {
+			const handle = await open(finalPath, "wx");
+			await handle.close();
+			return { nextVersion: candidate, finalPath };
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+			// Lost the claim race: re-read the directory and target the next
+			// free version above whatever the winner(s) just wrote.
+			const highest = listVersionNumbers(dir).at(-1) ?? 0;
+			candidate = Math.max(candidate + 1, highest + 1);
+		}
+	}
+	throw new Error(
+		`[OptimizedPromptService] could not claim a version slot in ${dir} after ${VERSION_CLAIM_MAX_ATTEMPTS} attempts`,
+	);
+}
+
+/**
  * Repoint `current`, `previous`, and `previous2` symlinks based on the
  * sorted-ascending list of version numbers. `current` always points at the
  * largest. `previous` and `previous2` are unset when the corresponding
@@ -763,13 +872,8 @@ async function pruneOldVersions(
  * absent during the swap.
  */
 async function replaceSymlink(linkPath: string, target: string): Promise<void> {
-	const tempPath = `${linkPath}.tmp-${process.pid}-${Date.now()}`;
+	const tempPath = `${linkPath}.tmp-${uniqueTempSuffix()}`;
 	mkdirSync(dirname(tempPath), { recursive: true });
-	try {
-		await unlink(tempPath);
-	} catch {
-		// nothing to clean up
-	}
 	await symlink(target, tempPath);
 	await rename(tempPath, linkPath);
 }
