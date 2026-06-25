@@ -154,7 +154,13 @@ export const visionProvider: Provider = {
           const ageInSeconds = (Date.now() - sceneDescription.timestamp) / 1000;
           const secondsAgo = Math.round(ageInSeconds);
 
-          perceptionText += `Camera view (${secondsAgo}s ago):\n${sceneDescription.description}`;
+          // When the describe step was paused under backpressure the prose is
+          // reused/stale even though the frame is fresh — flag it so the agent
+          // doesn't treat the description as a current observation (#9693).
+          const staleNote = sceneDescription.describePaused
+            ? " — description below is reused (VLM paused under memory pressure); objects/people are current"
+            : "";
+          perceptionText += `Camera view (${secondsAgo}s ago${staleNote}):\n${sceneDescription.description}`;
 
           if (sceneDescription.people.length > 0) {
             perceptionText += `\n\nPeople detected: ${sceneDescription.people.length}`;

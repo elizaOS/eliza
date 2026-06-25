@@ -46,6 +46,8 @@ export interface DescribeBackpressureStats {
   describesSkipped: number;
   /** Count of paused<->active edges (telemetry / test signal). */
   pauseTransitions: number;
+  /** How long the describe has been continuously paused, in ms (0 if active). */
+  continuousPauseMs: number;
 }
 
 export interface DescribeBackpressureDecision {
@@ -55,13 +57,25 @@ export interface DescribeBackpressureDecision {
   transitionedTo: "paused" | "active" | null;
   /** Why we are paused (only meaningful when `describe === false`). */
   reason: DescribePauseReason;
+  /** How long the describe has been continuously paused, in ms (0 if active). */
+  continuousPauseMs: number;
+  /**
+   * True on the tick the caller should emit an escalation `warn` — set once the
+   * continuous pause first crosses `warnAfterMs` and again every `warnRepeatMs`
+   * thereafter while it persists, so a stuck loop is observable (#9693).
+   */
+  escalate: boolean;
 }
 
 export interface DescribeBackpressureConfig {
   /**
-   * RSS cap in bytes. While sampled RSS exceeds it the describe step pauses.
-   * `0` or negative disables the local check — only the arbiter signal can
-   * pause describing.
+   * Vision-attributable RSS GROWTH cap in bytes — the describe step pauses
+   * while `sampledRss - baseline` exceeds it, where `baseline` is the RSS
+   * captured on the first `evaluate()` tick (after the local model is already
+   * mmapped). Comparing GROWTH (not absolute RSS) is what stops the loop from
+   * pausing forever on a device whose steady-state RSS already exceeds any
+   * reasonable MB cap — see #9693. `0` or negative disables the local check —
+   * only the arbiter signal can pause describing.
    */
   memoryCapBytes?: number;
   /**
@@ -75,22 +89,44 @@ export interface DescribeBackpressureConfig {
    * auto-clears after this window of silence. Default 15_000.
    */
   arbiterPauseCooldownMs?: number;
+  /**
+   * Escalate from edge-only logging to a repeated warning once the describe has
+   * been paused continuously for this long, so a permanently-stuck loop becomes
+   * observable instead of silent (#9693). Default 60_000. `0`/negative disables.
+   */
+  warnAfterMs?: number;
+  /**
+   * Minimum gap between escalation warnings while a continuous pause persists,
+   * in ms. Default 60_000.
+   */
+  warnRepeatMs?: number;
   /** Clock, injectable for tests. Defaults to `Date.now`. */
   now?: () => number;
 }
 
 const DEFAULT_ARBITER_PAUSE_COOLDOWN_MS = 15_000;
+const DEFAULT_WARN_AFTER_MS = 60_000;
+const DEFAULT_WARN_REPEAT_MS = 60_000;
 
 export class DescribeBackpressureController {
   private readonly memoryCapBytes: number;
   private readonly sampleRssBytes: () => number;
   private readonly arbiterPauseCooldownMs: number;
+  private readonly warnAfterMs: number;
+  private readonly warnRepeatMs: number;
   private readonly now: () => number;
   private pressureLevel: MemoryPressureLevel = "nominal";
   private pauseUntilMs = 0;
   private paused = false;
   private describesSkipped = 0;
   private pauseTransitions = 0;
+  /** RSS captured on the first evaluate() tick; the growth cap is measured against it. */
+  private rssBaseline = 0;
+  private rssBaselineCaptured = false;
+  /** `now()` when the current continuous pause began (0 while active). */
+  private pausedSinceMs = 0;
+  /** `now()` of the last escalation warn emitted for the current pause (0 if none). */
+  private lastWarnMs = 0;
 
   constructor(config: DescribeBackpressureConfig = {}) {
     this.memoryCapBytes =
@@ -104,6 +140,14 @@ export class DescribeBackpressureController {
       config.arbiterPauseCooldownMs > 0
         ? config.arbiterPauseCooldownMs
         : DEFAULT_ARBITER_PAUSE_COOLDOWN_MS;
+    this.warnAfterMs =
+      typeof config.warnAfterMs === "number" && config.warnAfterMs > 0
+        ? config.warnAfterMs
+        : DEFAULT_WARN_AFTER_MS;
+    this.warnRepeatMs =
+      typeof config.warnRepeatMs === "number" && config.warnRepeatMs > 0
+        ? config.warnRepeatMs
+        : DEFAULT_WARN_REPEAT_MS;
     this.now = config.now ?? (() => Date.now());
   }
 
@@ -131,9 +175,19 @@ export class DescribeBackpressureController {
    * the reported `reason` is the more authoritative one.
    */
   evaluate(): DescribeBackpressureDecision {
-    const arbiterPaused = this.now() < this.pauseUntilMs;
+    const nowMs = this.now();
+    // Capture the RSS baseline on the first tick — by now the local model is
+    // mmapped, so the cap measures only the vision loop's own growth on top of
+    // a large-but-steady footprint instead of tripping on absolute RSS forever.
+    if (!this.rssBaselineCaptured) {
+      this.rssBaseline = this.sampleRssBytes();
+      this.rssBaselineCaptured = true;
+    }
+
+    const arbiterPaused = nowMs < this.pauseUntilMs;
     const overCap =
-      this.memoryCapBytes > 0 && this.sampleRssBytes() > this.memoryCapBytes;
+      this.memoryCapBytes > 0 &&
+      this.sampleRssBytes() - this.rssBaseline > this.memoryCapBytes;
     const paused = arbiterPaused || overCap;
 
     let transitionedTo: "paused" | "active" | null = null;
@@ -141,8 +195,24 @@ export class DescribeBackpressureController {
       transitionedTo = paused ? "paused" : "active";
       this.paused = paused;
       this.pauseTransitions += 1;
+      this.pausedSinceMs = paused ? nowMs : 0;
+      this.lastWarnMs = 0;
     }
     if (paused) this.describesSkipped += 1;
+
+    const continuousPauseMs = paused ? nowMs - this.pausedSinceMs : 0;
+    // Escalate to a repeated warn once a pause persists past warnAfterMs, so a
+    // permanently-stuck describe loop is observable rather than silent (#9693).
+    let escalate = false;
+    if (
+      paused &&
+      this.warnAfterMs > 0 &&
+      continuousPauseMs >= this.warnAfterMs &&
+      nowMs - this.lastWarnMs >= this.warnRepeatMs
+    ) {
+      escalate = true;
+      this.lastWarnMs = nowMs;
+    }
 
     const reason: DescribePauseReason = !paused
       ? null
@@ -150,7 +220,13 @@ export class DescribeBackpressureController {
         ? "arbiter-pressure"
         : "memory-cap";
 
-    return { describe: !paused, transitionedTo, reason };
+    return {
+      describe: !paused,
+      transitionedTo,
+      reason,
+      continuousPauseMs,
+      escalate,
+    };
   }
 
   stats(): DescribeBackpressureStats {
@@ -159,6 +235,7 @@ export class DescribeBackpressureController {
       pressureLevel: this.pressureLevel,
       describesSkipped: this.describesSkipped,
       pauseTransitions: this.pauseTransitions,
+      continuousPauseMs: this.paused ? this.now() - this.pausedSinceMs : 0,
     };
   }
 }

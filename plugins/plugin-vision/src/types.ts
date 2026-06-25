@@ -22,6 +22,13 @@ export interface SceneDescription {
   sceneChanged: boolean;
   changePercentage: number;
   audioTranscription?: string;
+  /**
+   * True when this tick's pixels/objects/OCR are fresh but the VLM `description`
+   * prose was NOT re-run (the describe step was paused under memory/RSS
+   * backpressure) — so the prose is stale even though `sceneChanged` is true.
+   * Consumers must not present the description as freshly generated (#9693).
+   */
+  describePaused?: boolean;
 }
 
 export interface DetectedObject {

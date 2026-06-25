@@ -1101,6 +1101,16 @@ export class VisionService extends Service {
       } else if (describeGate?.transitionedTo === "active") {
         logger.info("[VisionService] VLM describe resumed");
       }
+      if (describeGate?.escalate) {
+        // The pause has persisted — escalate from the one-shot pause-edge info
+        // log to a repeated warn so a permanently-stuck describe loop is
+        // observable (the prose is stale while OCR/YOLO keep running) (#9693).
+        logger.warn(
+          `[VisionService] VLM describe still paused (${describeGate.reason}) after ${Math.round(
+            describeGate.continuousPauseMs / 1000,
+          )}s — ${this.describeBackpressure.stats().describesSkipped} describes skipped; scene prose is stale (OCR/YOLO still fresh)`,
+        );
+      }
       if (shouldUpdateVlm && describeGate?.describe) {
         // Prefer the change-gated per-tile describe on incremental updates: once
         // a prior scene description exists we only re-describe the tiles that
@@ -1158,6 +1168,11 @@ export class VisionService extends Service {
         people,
         sceneChanged: shouldUpdateVlm || shouldUpdateTf,
         changePercentage,
+        // A VLM update was due but the describe was skipped under backpressure:
+        // the prose is the reused stale one even though the frame is fresh (#9693).
+        describePaused: Boolean(
+          shouldUpdateVlm && describeGate && !describeGate.describe,
+        ),
       };
 
       // Enhanced logging
