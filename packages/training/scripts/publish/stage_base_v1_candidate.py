@@ -122,14 +122,14 @@ def download_asset(repo: str, remote_path: str, dest: Path) -> None:
     shutil.copy2(src, dest)
 
 
-def voice_asset_source(rel_under_tts: str) -> tuple[str, str, Path]:
+def voice_asset_source(tier: str, rel_under_tts: str) -> tuple[str, str, Path]:
     dest = Path("tts") / rel_under_tts
-    if rel_under_tts == "kokoro/model_q4.onnx":
-        return K.KOKORO_REPO, K.KOKORO_MODEL_REMOTE, dest
+    if rel_under_tts == "kokoro/kokoro-82m-v1_0-Q4_K_M.gguf":
+        return K.KOKORO_REPO, K.KOKORO_MODEL_REMOTE_TEMPLATE.format(tier=tier), dest
     if rel_under_tts == "kokoro/tokenizer.json":
-        return K.KOKORO_REPO, K.KOKORO_TOKENIZER_REMOTE, dest
+        return K.KOKORO_REPO, K.KOKORO_TOKENIZER_REMOTE_TEMPLATE.format(tier=tier), dest
     if rel_under_tts.startswith("kokoro/voices/"):
-        return K.KOKORO_REPO, f"voices/{Path(rel_under_tts).name}", dest
+        return K.KOKORO_REPO, K.DEFAULT_VOICE_REMOTE_TEMPLATE.format(tier=tier, voice=Path(rel_under_tts).stem), dest
     if rel_under_tts.startswith("omnivoice-"):
         return A.VOICE_REPO, Path(rel_under_tts).name, dest
     raise ValueError(f"unsupported voice artifact for {rel_under_tts!r}")
@@ -299,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         (ASSETS_REPO, f"{ASSETS_TIER}/evidence/bundle-assets.json", out / "evidence" / "bundle-assets.json"),
     ]
     for rel in M.required_voice_artifacts_for_tier(tier):
-        repo, remote, dest = voice_asset_source(rel)
+        repo, remote, dest = voice_asset_source(tier, rel)
         asset_map.append((repo, remote, out / dest))
     for repo, remote, dest in asset_map:
         download_asset(repo, remote, dest)

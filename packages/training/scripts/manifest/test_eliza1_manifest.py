@@ -110,7 +110,7 @@ def base_kwargs(tier: str = "4b") -> dict:
         kwargs["files"]["vision"] = []
     if VOICE_BACKENDS_BY_TIER[tier] == ("kokoro",):
         kwargs["files"]["voice"] = [
-            FileEntry(path="tts/kokoro/model_q4.onnx", sha256=SHA),
+            FileEntry(path="tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf", sha256=SHA),
             FileEntry(path="tts/kokoro/tokenizer.json", sha256=SHA),
             FileEntry(path="tts/kokoro/voices/af_bella.bin", sha256=SHA),
         ]

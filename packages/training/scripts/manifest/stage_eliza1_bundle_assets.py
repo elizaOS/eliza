@@ -767,14 +767,14 @@ def write_license_notes(
     dry_run: bool = False,
 ) -> None:
     voice_note = (
-        "Kokoro-82M ONNX TTS assets staged from "
-        "onnx-community/Kokoro-82M-v1.0-ONNX.\n"
+        "Kokoro-82M GGUF TTS assets staged from elizaos/eliza-1 "
+        "(original hexgrad/Kokoro-82M lineage).\n"
         "Declared upstream license: Apache-2.0.\n"
     )
     if "omnivoice" in voice_backends and "kokoro" in voice_backends:
         voice_note = (
-            "Tiered TTS assets: Kokoro-82M ONNX from "
-            "onnx-community/Kokoro-82M-v1.0-ONNX plus OmniVoice GGUF from "
+            "Tiered TTS assets: Kokoro-82M GGUF from "
+            "elizaos/eliza-1 plus OmniVoice GGUF from "
             "Serveurperso/OmniVoice-GGUF.\n"
             "Declared upstream licenses: Apache-2.0.\n"
         )

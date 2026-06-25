@@ -247,7 +247,7 @@ def _sync_voice_lineage(bundle_dir: Path, components: Sequence[str]) -> None:
         kokoro = _lineage_entry(
             lineage,
             "kokoro",
-            fallback_base="onnx-community/Kokoro-82M-v1.0-ONNX",
+            fallback_base="elizaos/eliza-1 (Kokoro-82M GGUF; original hexgrad/Kokoro-82M)",
             bundle_root="tts/kokoro",
         )
         lineage["kokoro"] = kokoro

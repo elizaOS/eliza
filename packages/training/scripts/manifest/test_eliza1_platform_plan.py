@@ -206,7 +206,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "finetuned": False,
                 "sourceModels": {
                     "text": {"repo": "google/gemma-4-E2B-Base"},
-                    "voice": {"repo": "onnx-community/Kokoro-82M-v1.0-ONNX"},
+                    "voice": {"repo": ELIZA_1_HF_REPO},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
@@ -268,7 +268,7 @@ def test_release_status_blockers_rejects_incomplete_uploaded_paths(
                 "finetuned": False,
                 "sourceModels": {
                     "text": {"repo": "google/gemma-4-E2B-Base"},
-                    "voice": {"repo": "onnx-community/Kokoro-82M-v1.0-ONNX"},
+                    "voice": {"repo": ELIZA_1_HF_REPO},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
