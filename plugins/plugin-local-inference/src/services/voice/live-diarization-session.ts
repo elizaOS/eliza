@@ -29,11 +29,15 @@ import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 import {
 	type AttributedTurn,
+	type AttributionPipelineLike,
 	AudioFrameConsumer,
 	type AudioFrameConsumerConfig,
+	type AudioFrameConsumerDeps,
 	type AudioFrameEvent,
+	type EchoReferenceProvider,
 	type RuntimeEventSink,
 	type TurnTranscriber,
+	type VadSegmenter,
 } from "./audio-frame-consumer.js";
 import type {
 	ElizaInferenceContextHandle,
@@ -100,6 +104,10 @@ export interface LiveDiarizationStatus {
 	framesDropped: number;
 	/** Turns segmented + attributed so far. */
 	turnsObserved: number;
+	/** Live AEC wiring status. Echo cancellation runs only when this is true. */
+	aec: {
+		echoReferenceWired: boolean;
+	};
 	/** The most recent attributed turns (capped), for device-evidence reads. */
 	recentTurns: LiveDiarizationTurnSummary[];
 	/** Populated only when readiness failed — the precise blocker. */
@@ -123,6 +131,39 @@ export interface LiveDiarizationTurnSummary {
 
 const MAX_RECENT_TURNS = 20;
 
+export interface LiveDiarizationSessionOptions {
+	/**
+	 * Agent-playback PCM provider for AEC. The caller owns playback capture and
+	 * delay calibration; this session only forwards the provider into
+	 * AudioFrameConsumer so cancellation happens before VAD/attribution.
+	 */
+	echoReference?: EchoReferenceProvider | null;
+}
+
+export interface LiveDiarizationConsumerDepsInput {
+	vad: VadSegmenter;
+	pipeline: AttributionPipelineLike;
+	runtime: RuntimeEventSink;
+	transcribe?: TurnTranscriber | null;
+	echoReference?: EchoReferenceProvider | null;
+}
+
+export function buildLiveDiarizationConsumerDeps({
+	vad,
+	pipeline,
+	runtime,
+	transcribe,
+	echoReference,
+}: LiveDiarizationConsumerDepsInput): AudioFrameConsumerDeps {
+	return {
+		vad,
+		pipeline,
+		runtime,
+		...(transcribe ? { transcribe } : {}),
+		...(echoReference ? { echoReference } : {}),
+	};
+}
+
 /**
  * Owns the single live diarization consumer for the agent process. Built
  * lazily on first frame batch so it does not load voice models at boot.
@@ -143,7 +184,10 @@ export class LiveDiarizationSession {
 	/** True once the fused ASR region is mmap-acquired for per-turn transcribe. */
 	private asrRegionAcquired = false;
 
-	constructor(private readonly runtime: RuntimeEventSink) {}
+	constructor(
+		private readonly runtime: RuntimeEventSink,
+		private readonly options: LiveDiarizationSessionOptions = {},
+	) {}
 
 	/** Ensure the real-deps consumer exists; idempotent + concurrency-safe. */
 	private ensureBuilt(): Promise<void> {
@@ -220,12 +264,13 @@ export class LiveDiarizationSession {
 		// decoder — the path then stays diarization-only, as before.
 		const transcribe = this.buildTurnTranscriber(ffi, ctx);
 		const consumer = new AudioFrameConsumer(
-			{
+			buildLiveDiarizationConsumerDeps({
 				vad: detector,
 				pipeline,
 				runtime: this.runtime,
-				...(transcribe ? { transcribe } : {}),
-			},
+				transcribe,
+				echoReference: this.options.echoReference ?? null,
+			}),
 			config,
 		);
 		consumer.onTurn((turn) => this.recordTurn(turn));
@@ -307,6 +352,7 @@ export class LiveDiarizationSession {
 			framesReceived: this.framesReceived,
 			framesDropped: this.consumer?.droppedFrames ?? 0,
 			turnsObserved: this.turnsObserved,
+			aec: { echoReferenceWired: this.options.echoReference != null },
 			recentTurns: [...this.recentTurns],
 			...(this.buildError ? { error: this.buildError } : {}),
 		};

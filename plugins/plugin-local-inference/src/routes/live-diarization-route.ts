@@ -20,7 +20,10 @@
  */
 
 import type http from "node:http";
-import type { AudioFrameEvent } from "../services/voice/audio-frame-consumer.js";
+import type {
+	AudioFrameEvent,
+	EchoReferenceProvider,
+} from "../services/voice/audio-frame-consumer.js";
 import {
 	LiveDiarizationSession,
 	type RuntimeEventSink,
@@ -35,11 +38,37 @@ import {
 
 let session: LiveDiarizationSession | null = null;
 
+type RuntimeEchoReferenceSource = RuntimeEventSink & {
+	/**
+	 * Optional live far-end playback provider. Hosts that can tap agent TTS PCM
+	 * expose this so the diarization consumer can run AEC before VAD.
+	 */
+	voiceEchoReferenceProvider?: EchoReferenceProvider | null;
+	getVoiceEchoReferenceProvider?: () =>
+		| EchoReferenceProvider
+		| null
+		| undefined;
+};
+
+function resolveRuntimeEchoReference(
+	runtime: RuntimeEventSink,
+): EchoReferenceProvider | null {
+	const source = runtime as RuntimeEchoReferenceSource;
+	if (typeof source.getVoiceEchoReferenceProvider === "function") {
+		return source.getVoiceEchoReferenceProvider() ?? null;
+	}
+	return source.voiceEchoReferenceProvider ?? null;
+}
+
 /** Lazily own one session per agent process, bound to the live runtime. */
 function getSession(state: CompatRuntimeState): LiveDiarizationSession | null {
 	const runtime = state.current as RuntimeEventSink | null;
 	if (!runtime || typeof runtime.emitEvent !== "function") return null;
-	if (!session) session = new LiveDiarizationSession(runtime);
+	if (!session) {
+		session = new LiveDiarizationSession(runtime, {
+			echoReference: resolveRuntimeEchoReference(runtime),
+		});
+	}
 	return session;
 }
 
