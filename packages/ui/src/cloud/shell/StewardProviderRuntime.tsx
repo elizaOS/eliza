@@ -12,10 +12,15 @@
  */
 
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
-import type { StewardClient as StewardReactClient } from "@stwd/react";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
 import { StewardClient } from "@stwd/sdk";
-import { type ReactNode, useEffect, useMemo, useRef } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import {
@@ -33,6 +38,7 @@ import {
 
 const REFRESH_CHECK_INTERVAL_MS = 60_000;
 const REFRESH_AHEAD_SECS = 120;
+type StewardProviderClient = ComponentProps<typeof StewardProvider>["client"];
 
 function AuthTokenSync({ children }: { children: ReactNode }) {
   const auth = useStewardAuth();
@@ -249,22 +255,19 @@ export default function StewardAuthRuntimeProvider({
   children: ReactNode;
   tenantId?: string;
 }) {
-  // @stwd/react bundles an older @stwd/sdk than the one pinned here. The
-  // StewardClient classes are public-API-identical and differ only by added
-  // private fields, so the cast bridges the nominal mismatch; StewardProvider
-  // only calls the public `client.getBaseUrl()` at runtime.
   const client = useMemo(
     () =>
       new StewardClient({
         baseUrl: apiUrl,
         ...(tenantId && !isPlaceholderValue(tenantId) ? { tenantId } : {}),
-      }) as StewardReactClient,
+      }),
     [apiUrl, tenantId],
   );
   const authConfig = useMemo(() => ({ baseUrl: apiUrl }), [apiUrl]);
-  const providerClient = client as unknown as React.ComponentProps<
-    typeof StewardProvider
-  >["client"];
+  // @stwd/react bundles an older @stwd/sdk than the one pinned here. The
+  // client classes are runtime-compatible, but TypeScript treats them as
+  // nominally different because both versions declare private fields.
+  const providerClient = client as unknown as StewardProviderClient;
 
   return (
     <StewardProvider
