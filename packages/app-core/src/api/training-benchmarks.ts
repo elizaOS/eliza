@@ -300,13 +300,19 @@ function readSqliteString(
   throw new Error(`Invalid benchmark row: ${column} must be a string`);
 }
 
-function readSqliteNumber(row: Record<string, unknown>, column: string): number {
+function readSqliteNumber(
+  row: Record<string, unknown>,
+  column: string,
+): number {
   const value = row[column];
   if (typeof value === "number" && Number.isFinite(value)) return value;
   throw new Error(`Invalid benchmark row: ${column} must be a finite number`);
 }
 
-function readSqliteInteger(row: Record<string, unknown>, column: string): number {
+function readSqliteInteger(
+  row: Record<string, unknown>,
+  column: string,
+): number {
   const value = row[column];
   if (typeof value === "number" && Number.isSafeInteger(value)) return value;
   if (typeof value === "bigint") {
