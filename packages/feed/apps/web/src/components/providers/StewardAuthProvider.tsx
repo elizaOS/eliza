@@ -20,7 +20,7 @@ function getOrCreateStewardAuth(): StewardAuth {
   const baseUrl =
     process.env.NEXT_PUBLIC_STEWARD_API_URL ??
     (typeof window !== "undefined" && window.location.hostname !== "localhost"
-      ? "https://auth.elizacloud.ai"
+      ? "https://eliza.steward.fi"
       : "http://localhost:3200");
   _stewardAuthInstance = new StewardAuth({
     baseUrl,
