@@ -19,6 +19,7 @@
   },
   "scripts": {
     "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs && bun packages/scripts/sync-artifacts.mjs",
+    "install:light": "ELIZA_SKIP_ARTIFACT_SYNC=1 bun install",
     "cloud:mock": "bun scripts/cloud/mock-stack-up.mjs",
     "cloud:mock:fresh": "bun scripts/cloud/mock-stack-up.mjs --reset",
     "fix-deps": "bun packages/scripts/fix-workspace-deps.mjs",

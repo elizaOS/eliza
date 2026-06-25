@@ -3,6 +3,7 @@ import { logger, promoteSubactionsToActions } from "@elizaos/core";
 import { visionAction } from "./action";
 import { wireComputerUseOcrBridge } from "./computeruse-ocr-bridge";
 import { LinuxTesseractOcrService } from "./ocr-service-linux-tesseract";
+import { PaddleOcrService } from "./ocr-service-paddleocr";
 import { WindowsMediaOcrService } from "./ocr-service-windows";
 import {
   getOcrWithCoordsService,
@@ -58,7 +59,12 @@ export const visionPlugin: Plugin = {
       // NPU-accelerated): Windows.Media.Ocr on Windows; the classic tesseract
       // CLI on Linux when installed; otherwise the docTR / Apple-Vision chain.
       // Native providers can override via registerOcrWithCoordsService later.
-      if (WindowsMediaOcrService.isAvailable()) {
+      if (PaddleOcrService.isAvailable()) {
+        // Opt-in alternate engine (#9581): ELIZA_VISION_OCR_BACKEND=paddleocr.
+        // Cross-platform; only selected when explicitly requested so it never
+        // displaces a verified default provider.
+        registerOcrWithCoordsService(new PaddleOcrService());
+      } else if (WindowsMediaOcrService.isAvailable()) {
         registerOcrWithCoordsService(new WindowsMediaOcrService());
       } else if (LinuxTesseractOcrService.isAvailable()) {
         registerOcrWithCoordsService(new LinuxTesseractOcrService());

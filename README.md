@@ -95,7 +95,7 @@ Full reference: `elizaos --help` or `elizaos <command> --help`.
 
 ## Local mock stack
 
-One command boots the full local cloud stack with mocks (Hetzner + control-plane + cloud-api with `MOCK_REDIS` + PGlite, plus cloud-frontend):
+One command boots the local cloud backend stack with mocks (Hetzner + control-plane + cloud-api with `MOCK_REDIS` + PGlite). The standalone `packages/cloud-frontend` app was consolidated into `packages/app`, so the mock stack skips frontend boot when that removed package is absent.
 
 ```bash
 bun run cloud:mock          # boot with existing PGlite data
@@ -200,6 +200,7 @@ The runbook for orchestrator-driven benchmark runs is [`packages/benchmarks/ORCH
 
 ```bash
 bun install            # workspace install
+bun run install:light  # skip the large artifact download when disk or time is tight
 bun run dev            # API + Vite UI for apps/app
 bun run build          # turbo build across the workspace
 bun run lint           # turbo lint across the workspace

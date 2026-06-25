@@ -292,28 +292,34 @@ export class SceneBuilder extends EventEmitter {
             dims.width,
             dims.height,
           );
-          const crops: Array<{
+          // Capture all dirty regions concurrently — they are independent OS
+          // grabs, so wall-clock is max(region) not sum(region). If ANY region
+          // fails we drop to full-frame OCR for this display (unchanged
+          // semantics). Promise.all preserves order, so OCR id assignment
+          // downstream stays deterministic.
+          let crops: Array<{
             png: Buffer;
             bbox: [number, number, number, number];
           }> = [];
-          for (const rect of rects) {
-            try {
-              const regionCapture = await this.deps.captureRegion(displayId, {
-                x: rect.bbox[0],
-                y: rect.bbox[1],
-                width: rect.bbox[2],
-                height: rect.bbox[3],
-              });
-              crops.push({ png: regionCapture.frame, bbox: rect.bbox });
-            } catch (err) {
-              this.deps.log(
-                `[scene-builder] captureRegion(${displayId}, ${rect.bbox.join(",")}) failed: ${
-                  err instanceof Error ? err.message : String(err)
-                } — falling back to full-frame OCR for this display`,
-              );
-              crops.length = 0;
-              break;
-            }
+          try {
+            crops = await Promise.all(
+              rects.map(async (rect) => {
+                const regionCapture = await this.deps.captureRegion(displayId, {
+                  x: rect.bbox[0],
+                  y: rect.bbox[1],
+                  width: rect.bbox[2],
+                  height: rect.bbox[3],
+                });
+                return { png: regionCapture.frame, bbox: rect.bbox };
+              }),
+            );
+          } catch (err) {
+            this.deps.log(
+              `[scene-builder] captureRegion(${displayId}) failed: ${
+                err instanceof Error ? err.message : String(err)
+              } — falling back to full-frame OCR for this display`,
+            );
+            crops = [];
           }
           if (crops.length > 0) {
             const refreshed = await this.deps.runOcrOnCrops(

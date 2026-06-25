@@ -149,30 +149,39 @@ export async function runOcrOnRegions(
 ): Promise<SceneOcrBox[]> {
   const coord = getCoordOcrProvider();
   if (coord) {
-    const out: SceneOcrBox[] = [];
-    for (const crop of crops) {
-      try {
-        // The coord provider shifts block bboxes by sourceX/sourceY, so the
-        // returned coordinates are already in display-local source space.
-        const result = await coord.describe({
-          displayId: String(displayId),
-          sourceX: crop.bbox[0] ?? 0,
-          sourceY: crop.bbox[1] ?? 0,
-          pngBytes: new Uint8Array(
-            crop.png.buffer,
-            crop.png.byteOffset,
-            crop.png.byteLength,
-          ),
-        });
-        for (const block of result.blocks) {
-          out.push(coordBlockToSceneBox(block, displayId, idState));
+    // OCR each dirty region concurrently (independent calls), then assign ids
+    // sequentially. Promise.all preserves input order, so ocr ids stay stable
+    // turn-to-turn regardless of which region's OCR finishes first.
+    const perCrop = await Promise.all(
+      crops.map(async (crop) => {
+        try {
+          // The coord provider shifts block bboxes by sourceX/sourceY, so the
+          // returned coordinates are already in display-local source space.
+          const result = await coord.describe({
+            displayId: String(displayId),
+            sourceX: crop.bbox[0] ?? 0,
+            sourceY: crop.bbox[1] ?? 0,
+            pngBytes: new Uint8Array(
+              crop.png.buffer,
+              crop.png.byteOffset,
+              crop.png.byteLength,
+            ),
+          });
+          return result.blocks;
+        } catch (err) {
+          logFn(
+            `[scene-builder] CoordOcr region failed at ${crop.bbox.join(",")}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+          return [];
         }
-      } catch (err) {
-        logFn(
-          `[scene-builder] CoordOcr region failed at ${crop.bbox.join(",")}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+      }),
+    );
+    const out: SceneOcrBox[] = [];
+    for (const blocks of perCrop) {
+      for (const block of blocks) {
+        out.push(coordBlockToSceneBox(block, displayId, idState));
       }
     }
     return out;
@@ -180,38 +189,46 @@ export async function runOcrOnRegions(
 
   const provider = pickProvider();
   if (!provider) return [];
-  const out: SceneOcrBox[] = [];
-  for (const crop of crops) {
-    try {
-      const result = await provider.recognize({
-        kind: "bytes",
-        data: new Uint8Array(
-          crop.png.buffer,
-          crop.png.byteOffset,
-          crop.png.byteLength,
-        ),
-      });
-      for (const line of result.lines) {
-        const offset = crop.bbox;
-        out.push({
-          id: nextOcrId(idState, displayId),
-          text: line.text,
-          bbox: [
-            (offset[0] ?? 0) + line.boundingBox.x,
-            (offset[1] ?? 0) + line.boundingBox.y,
-            line.boundingBox.width,
-            line.boundingBox.height,
-          ],
-          conf: line.confidence,
-          displayId,
+  // Same concurrency pattern as the coord path: recognize regions in parallel,
+  // assign ids in input order afterward (Promise.all preserves order).
+  const perCrop = await Promise.all(
+    crops.map(async (crop) => {
+      try {
+        const result = await provider.recognize({
+          kind: "bytes",
+          data: new Uint8Array(
+            crop.png.buffer,
+            crop.png.byteOffset,
+            crop.png.byteLength,
+          ),
         });
+        return { crop, lines: result.lines };
+      } catch (err) {
+        logFn(
+          `[scene-builder] OCR region failed at ${crop.bbox.join(",")}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        return { crop, lines: [] };
       }
-    } catch (err) {
-      logFn(
-        `[scene-builder] OCR region failed at ${crop.bbox.join(",")}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+    }),
+  );
+  const out: SceneOcrBox[] = [];
+  for (const { crop, lines } of perCrop) {
+    const offset = crop.bbox;
+    for (const line of lines) {
+      out.push({
+        id: nextOcrId(idState, displayId),
+        text: line.text,
+        bbox: [
+          (offset[0] ?? 0) + line.boundingBox.x,
+          (offset[1] ?? 0) + line.boundingBox.y,
+          line.boundingBox.width,
+          line.boundingBox.height,
+        ],
+        conf: line.confidence,
+        displayId,
+      });
     }
   }
   return out;

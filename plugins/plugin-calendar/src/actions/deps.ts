@@ -28,8 +28,8 @@ export interface CalendarJsonModelResult<
  * mirrors the LifeOps `TravelBufferResult` fields the calendar handler reads.
  */
 export interface CalendarTravelBufferResult {
-  originAddress: string;
-  destinationAddress: string;
+  originAddress: string | null;
+  destinationAddress: string | null;
   bufferMinutes: number;
   method: string;
 }

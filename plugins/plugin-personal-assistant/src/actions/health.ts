@@ -6,7 +6,10 @@ import {
   HEALTH_SIMILES,
 } from "@elizaos/plugin-health";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { runLifeOpsJsonModel } from "../lifeops/google/format-helpers.js";
+import {
+  type LifeOpsModelType,
+  runLifeOpsJsonModel,
+} from "../lifeops/google/format-helpers.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   messageText,
@@ -21,5 +24,12 @@ export const runHealthHandler = createHealthActionRunner({
   messageText,
   renderReply: renderLifeOpsActionReply,
   recentConversationTexts,
-  runJsonModel: runLifeOpsJsonModel,
+  // The runner types modelType as the broad ModelTypeName; LifeOps's call args
+  // want the model-enum subset. The runner only ever passes a standard ModelType
+  // value, so narrow at the boundary.
+  runJsonModel: (args) =>
+    runLifeOpsJsonModel({
+      ...args,
+      modelType: args.modelType as LifeOpsModelType,
+    }),
 });
