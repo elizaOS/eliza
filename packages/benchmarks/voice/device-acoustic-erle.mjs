@@ -263,10 +263,7 @@ async function main() {
   // index near directly rather than slicing from a negative start.
   const speechStart = silenceN + chirpN;
   const nearStart = speechStart + offset;
-  const usable = Math.min(
-    far.length - speechStart,
-    near.length - nearStart,
-  );
+  const usable = Math.min(far.length - speechStart, near.length - nearStart);
   if (usable < SR) {
     console.log(
       `\n[device-aec] RESULT: aligned overlap too short (${usable} samples) — re-run.`,
@@ -302,7 +299,7 @@ async function main() {
 
   console.log("\n[device-aec] ===== RESULT =====");
   console.log(
-    `  playback→mic delay      : ${offset} samples / ${delayMs.toFixed(1)} ms (corr ${score.toFixed(3)})`,
+    `  alignment offset          : ${offset} samples / ${alignMs.toFixed(1)} ms (corr ${score.toFixed(3)})`,
   );
   console.log(`  mic RMS (echo, post-adapt): ${micRms.toExponential(3)}`);
   console.log(`  residual RMS (post-AEC)   : ${resRms.toExponential(3)}`);
