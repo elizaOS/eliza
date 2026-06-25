@@ -70,6 +70,14 @@ export function appsDeployOrganizationDecision(
     return { allowed: false, reason: "production_allowlist_missing" };
   }
 
+  // "*" opens deploys to every org — the full-launch posture. Kept as an
+  // explicit opt-in token (not "empty allowlist = all") so a missing/unset
+  // config still fails closed: you open to everyone on purpose, never by
+  // forgetting to configure the allowlist.
+  if (allowedOrgIds.has("*")) {
+    return { allowed: true };
+  }
+
   if (!organizationId || !allowedOrgIds.has(organizationId)) {
     return { allowed: false, reason: "organization_not_allowlisted" };
   }
