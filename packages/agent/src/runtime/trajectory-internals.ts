@@ -2095,10 +2095,7 @@ async function replaceStepsForTrajectoryInternal(
       typeof step.script === "string" && step.script.length > 0
         ? step.script
         : null;
-    const { script: _script, ...payloadObj } = step as unknown as Record<
-      string,
-      unknown
-    >;
+    const { script: _script, ...payloadObj } = step;
     const payload = JSON.stringify(payloadObj);
     const startedAt = Number.isFinite(step.timestamp) ? step.timestamp : null;
     const endedAt = startedAt;

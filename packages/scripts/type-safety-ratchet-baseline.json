@@ -1,6 +1,6 @@
 {
   "schema": "eliza_type_safety_ratchet_v1",
-  "updatedAt": "2026-06-25T11:04:20.940Z",
+  "updatedAt": "2026-06-25T11:06:42.577Z",
   "scope": {
     "trackedOnly": true,
     "globs": [
@@ -36,7 +36,7 @@
     ]
   },
   "limits": {
-    "asUnknownAs": 155,
+    "asUnknownAs": 153,
     "asAny": 0,
     "tsSuppress": 0,
     "nonNullAssertion": 577

@@ -1498,10 +1498,13 @@ async function handleNonStreamingRequest(
     // (inputTokens ?? promptTokens, etc.) — so the entire billing/settlement
     // chain below can run off the response path without changing the bytes the
     // client receives.
-    const usageRec = (result.usage ?? {}) as unknown as Record<
-      string,
-      number | undefined
-    >;
+    const usageRec = (result.usage ?? {}) as {
+      inputTokens?: number;
+      promptTokens?: number;
+      outputTokens?: number;
+      completionTokens?: number;
+      totalTokens?: number;
+    };
     const responseInputTokens =
       usageRec.inputTokens ?? usageRec.promptTokens ?? 0;
     const responseOutputTokens =
