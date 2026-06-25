@@ -1,6 +1,5 @@
 # Use the official Bun image
-FROM oven/bun:1.1.26-slim AS builder
-
+FROM oven/bun:1.4.0 AS builder
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
@@ -21,7 +20,7 @@ RUN bun install --frozen-lockfile
 RUN bun run build
 
 # Final runtime stage
-FROM oven/bun:1.1.26-slim AS runner
+FROM oven/bun:1.4.0 AS runner
 WORKDIR /app
 
 # Copy the built files from the builder stage
