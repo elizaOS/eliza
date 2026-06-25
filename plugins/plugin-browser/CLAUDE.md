@@ -83,6 +83,7 @@ src/
     browser-workspace.ts           Public API surface and main command router (executeBrowserWorkspaceCommand)
     browser-workspace-types.ts     All workspace types and interfaces
     browser-workspace-state.ts     Mutable tab/session state
+    browser-workspace-errors.ts    Structured workspace error codes
     browser-workspace-helpers.ts   Utilities and command normalization
     browser-workspace-desktop.ts   Desktop bridge HTTP client
     browser-workspace-jsdom.ts     JSDOM document loading and DOM setup
