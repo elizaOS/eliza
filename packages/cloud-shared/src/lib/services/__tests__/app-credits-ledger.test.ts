@@ -239,6 +239,40 @@ describe("deductCredits — debits the same org ledger", () => {
     expect(spend.success).toBe(false);
     expect(spend.message).toContain("Insufficient cloud credits");
   });
+
+  // Money-safety: the org balance is debited BEFORE the earnings/activity
+  // accounting runs. If that post-debit accounting throws, the user has already
+  // paid for an inference whose bookkeeping failed — they must be made whole, or
+  // they're charged with nothing to show for it. deductCredits() compensates the
+  // full totalCost and rethrows so the caller still sees the failure.
+  test("compensates the full charge and rethrows when post-debit accounting fails", async () => {
+    // The atomic debit succeeds...
+    reserveAndDeductCredits.mockResolvedValue({
+      success: true,
+      newBalance: 41.4,
+      transaction: { id: "tx-2" },
+    });
+    // ...but the very next step (earnings/activity bookkeeping) blows up.
+    trackAppUserActivity.mockRejectedValue(new Error("accounting down"));
+
+    await expect(
+      freshService().deductCredits({
+        appId: APP_ID,
+        userId: USER_ID,
+        baseCost: 1,
+        description: "inference",
+      }),
+    ).rejects.toThrow("accounting down");
+
+    // The $1.10 debit (base $1 + 10% markup) MUST be refunded — exactly once,
+    // to the same org, tagged so it reconciles against the original charge.
+    expect(addCredits).toHaveBeenCalledTimes(1);
+    const refund = addCredits.mock.calls[0][0];
+    expect(refund.organizationId).toBe(ORG_ID);
+    expect(refund.amount).toBeCloseTo(1.1, 10);
+    expect(refund.metadata.reason).toBe("post_debit_accounting_failed");
+    expect(refund.metadata.originalChargeTransactionId).toBe("tx-2");
+  });
 });
 
 describe("reconcileCredits — charges/refunds the estimate↔actual delta (#9145)", () => {
@@ -314,6 +348,30 @@ describe("reconcileCredits — charges/refunds the estimate↔actual delta (#914
     });
     expect(result.reconciled).toBe(false);
     expect(result.action).toBe("none");
+  });
+
+  // Money-safety: the inference already ran, so when the upward reconcile charge
+  // can't be collected (org out of credits), the platform absorbs the delta. It
+  // must NOT credit the creator for revenue that was never collected, and must
+  // report the charge as un-reconciled (adjustedAmount 0) for loss tracking.
+  test("absorbs the loss without crediting the creator when the reconcile charge is uncollectable", async () => {
+    reserveAndDeductCredits.mockResolvedValue({ success: false, newBalance: 0.05 });
+
+    const result = await freshService().reconcileCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 1,
+      actualBaseCost: 2,
+      description: "recon",
+    });
+
+    expect(result.reconciled).toBe(false);
+    expect(result.action).toBe("charge");
+    expect(result.adjustedAmount).toBe(0);
+    expect(result.newBalance).toBe(0.05);
+    // No revenue was collected — the creator's earnings ledgers stay untouched.
+    expect(addInferenceEarnings).not.toHaveBeenCalled();
+    expect(addEarnings).not.toHaveBeenCalled();
   });
 });
 
