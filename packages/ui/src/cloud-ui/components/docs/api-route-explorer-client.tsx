@@ -41,7 +41,8 @@ function methodBadgeClass(method: HttpMethod) {
     case "GET":
       return `${base} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 `;
     case "POST":
-      return `${base} bg-blue-500/10 text-blue-400 border-blue-500/30 `;
+      // Brand rule: no blue. Slate keeps POST distinct from the amber PUT.
+      return `${base} bg-slate-500/10 text-slate-300 border-slate-500/30 `;
     case "PUT":
       return `${base} bg-amber-500/10 text-amber-400 border-amber-500/30 `;
     case "PATCH":
