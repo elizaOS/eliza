@@ -194,7 +194,7 @@ export function PerpPriceChart({
       // lightweight-charts v5: chart.addSeries(AreaSeries, options)
       // lightweight-charts v4: chart.addAreaSeries(options)
       // IMPORTANT: do not call extracted methods directly; lightweight-charts relies on `this`.
-      const chartAny = chart as unknown as {
+      const chartAny = chart as {
         addSeries?: (
           seriesType: unknown,
           options: unknown,

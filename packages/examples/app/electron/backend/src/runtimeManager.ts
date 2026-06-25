@@ -127,50 +127,50 @@ function applySettings(
 }
 
 async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
-  const base: Plugin[] = [localdbPlugin as unknown as Plugin];
+  const base: Plugin[] = [localdbPlugin as Plugin];
   switch (mode) {
     case "elizaClassic":
-      return [...base, elizaClassicPlugin as unknown as Plugin];
+      return [...base, elizaClassicPlugin as Plugin];
     case "openai":
       return [
         ...base,
-        (await import("@elizaos/plugin-openai")).default as unknown as Plugin,
+        (await import("@elizaos/plugin-openai")).default as Plugin,
       ];
     case "anthropic":
       return [
         ...base,
         (await import("@elizaos/plugin-anthropic"))
-          .default as unknown as Plugin,
+          .default as Plugin,
       ];
     case "xai":
       return [
         ...base,
-        (await import("@elizaos/plugin-openai")).default as unknown as Plugin,
+        (await import("@elizaos/plugin-openai")).default as Plugin,
       ];
     case "gemini":
       return [
         ...base,
         (await import("@elizaos/plugin-google-genai"))
-          .default as unknown as Plugin,
+          .default as Plugin,
       ];
     case "groq":
       return [
         ...base,
-        (await import("@elizaos/plugin-groq")).default as unknown as Plugin,
+        (await import("@elizaos/plugin-groq")).default as Plugin,
       ];
     case "openrouter":
       return [
         ...base,
         (await import("@elizaos/plugin-openrouter"))
-          .default as unknown as Plugin,
+          .default as Plugin,
       ];
     case "ollama":
       return [
         ...base,
-        (await import("@elizaos/plugin-ollama")).default as unknown as Plugin,
+        (await import("@elizaos/plugin-ollama")).default as Plugin,
       ];
     default:
-      return [...base, elizaClassicPlugin as unknown as Plugin];
+      return [...base, elizaClassicPlugin as Plugin];
   }
 }
 

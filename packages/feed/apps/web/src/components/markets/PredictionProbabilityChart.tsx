@@ -250,7 +250,7 @@ export function PredictionProbabilityChart({
       };
 
       // IMPORTANT: do not call extracted methods directly; lightweight-charts relies on `this`.
-      const chartAny = chart as unknown as {
+      const chartAny = chart as {
         addSeries?: (
           seriesType: unknown,
           options: unknown,
