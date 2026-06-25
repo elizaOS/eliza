@@ -321,7 +321,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 		arbiter.registerCapability(visionReg);
 
 		const tHandle = await arbiter.acquire("text", "eliza-1-2b");
-		const vHandle = await arbiter.acquire("vision-describe", "qwen3-vl");
+		const vHandle = await arbiter.acquire("vision-describe", "gemma-vl");
 		await tHandle.release();
 		await vHandle.release();
 
@@ -340,7 +340,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 		expect(evictions).toHaveLength(1);
 		expect(evictions[0]).toMatchObject({
 			capability: "vision-describe",
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			reason: "pressure",
 		});
 	});
@@ -372,7 +372,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 		);
 
 		const t = await arbiter.acquire("text", "eliza-1-2b");
-		const v = await arbiter.acquire("vision-describe", "qwen3-vl");
+		const v = await arbiter.acquire("vision-describe", "gemma-vl");
 		await t.release();
 		await v.release();
 
@@ -384,7 +384,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 
 		// And per docs: while critical, further non-text acquires throw.
 		await expect(
-			arbiter.acquire("vision-describe", "qwen3-vl"),
+			arbiter.acquire("vision-describe", "gemma-vl"),
 		).rejects.toThrow(/critical/);
 	});
 
@@ -412,7 +412,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 				loader: async () => makeFakeBackend(visionState),
 			}),
 		);
-		const v = await arbiter.acquire("vision-describe", "qwen3-vl");
+		const v = await arbiter.acquire("vision-describe", "gemma-vl");
 		await v.release();
 
 		// Desktop reports nominal; mobile dispatches critical via the
@@ -458,7 +458,7 @@ describe("WS1↔WS2 seam — eviction order uses real WS2 wrapper", () => {
 		// Order is intentional: text first, then vision. We are testing
 		// that priority (not insertion order) drives the pressure pick.
 		const t = await arbiter.acquire("text", "eliza-1-2b");
-		const v = await arbiter.acquire("vision-describe", "qwen3-vl");
+		const v = await arbiter.acquire("vision-describe", "gemma-vl");
 		await t.release();
 		await v.release();
 
@@ -512,7 +512,7 @@ describe("WS1↔WS2 seam — AOSP backend unavailable surfaces cleanly", () => {
 		);
 		await expect(
 			arbiter.requestVisionDescribe({
-				modelKey: "qwen3-vl",
+				modelKey: "gemma-vl",
 				payload: {
 					image: { kind: "bytes", bytes: tinyPngBytes() },
 					prompt: "x",
@@ -524,7 +524,7 @@ describe("WS1↔WS2 seam — AOSP backend unavailable surfaces cleanly", () => {
 		// return stale data.
 		await expect(
 			arbiter.requestVisionDescribe({
-				modelKey: "qwen3-vl",
+				modelKey: "gemma-vl",
 				payload: {
 					image: { kind: "bytes", bytes: tinyPngBytes() },
 					prompt: "x",
@@ -620,7 +620,7 @@ describe("WS1↔WS2 seam — in-flight vision-describe + pressure", () => {
 
 		// Fire a describe in the background; it holds the vision refcount.
 		const inflight = arbiter.requestVisionDescribe({
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			payload: {
 				image: { kind: "bytes", bytes: tinyPngBytes() },
 				prompt: "x",
