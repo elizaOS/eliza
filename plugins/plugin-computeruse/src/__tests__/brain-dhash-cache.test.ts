@@ -104,6 +104,9 @@ describe("Brain frame-dHash describe cache (M3)", () => {
   it("serves an identical frame+goal from cache without re-invoking the model", async () => {
     let calls = 0;
     const brain = new Brain(null, {
+      // Pin "always" so this dHash-cache test isolates frame dedup from the
+      // imageless image-policy (#9105), exercised separately.
+      imagePolicy: "always",
       invokeModel: async () => {
         calls += 1;
         return VALID;
@@ -122,12 +125,20 @@ describe("Brain frame-dHash describe cache (M3)", () => {
     });
     expect(calls).toBe(1);
     expect(second).toEqual(first);
-    expect(brain.getStats()).toEqual({ invocations: 1, cacheHits: 1 });
+    expect(brain.getStats()).toEqual({
+      invocations: 1,
+      cacheHits: 1,
+      imagelessCalls: 0,
+      estImageTokensSaved: 0,
+    });
   });
 
   it("re-invokes for a visually different frame", async () => {
     let calls = 0;
     const brain = new Brain(null, {
+      // Pin "always" so this dHash-cache test isolates frame dedup from the
+      // imageless image-policy (#9105), exercised separately.
+      imagePolicy: "always",
       invokeModel: async () => {
         calls += 1;
         return VALID;
@@ -150,6 +161,9 @@ describe("Brain frame-dHash describe cache (M3)", () => {
   it("re-invokes when the goal changes even for the same frame", async () => {
     let calls = 0;
     const brain = new Brain(null, {
+      // Pin "always" so this dHash-cache test isolates frame dedup from the
+      // imageless image-policy (#9105), exercised separately.
+      imagePolicy: "always",
       invokeModel: async () => {
         calls += 1;
         return VALID;
