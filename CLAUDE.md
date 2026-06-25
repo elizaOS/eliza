@@ -70,7 +70,7 @@ packages/        framework, shared libraries, and product surfaces
   scenario-runner/ scenario + eval harness
   sweagent/      SWE-bench style coding-agent harness
   cloud-api/     managed backend API (Hono on Cloudflare Workers)
-  cloud-frontend/ cloud dashboard (Vite + React) — see visual-review gate below
+  app/           web + desktop dashboard; also hosts the current cloud apex UI
   cloud-shared/  shared cloud backend: db (Drizzle), billing, services, types
   cloud-sdk/ cloud-routing/ cloud-infra/  cloud client SDK, model routing, IaC
   contracts/     on-chain contracts + ABIs
@@ -133,26 +133,25 @@ To build on the runtime from your own TypeScript with no CLI/UI, import
 - Keep weak types (`any` / `unknown` / unsafe casts) out; validate at runtime
   boundaries and type the validated result.
 
-## Cloud frontend visual review — REQUIRED for any UI change in `packages/cloud-frontend/`
+## App visual review — REQUIRED for UI changes in `packages/app/`
 
-Any change in `packages/cloud-frontend/` (or a shared package whose UI bleeds
-into it) MUST pass the screenshot + manual-review loop before it is "done":
+Any change in `packages/app/` (or a shared package whose UI bleeds into it) MUST
+pass the screenshot + manual-review loop before it is "done":
 
 ```bash
-bun run --cwd packages/cloud-frontend audit:cloud
+bun run --cwd packages/app audit:app
 ```
 
-This walks every route in `src/App.tsx` (desktop + mobile, rest + hover), logs
-in with the synthetic injected-ethereum JWT, captures the populated UI, and
-auto-stubs `aesthetic-audit-output/manual-review/<slug>.md` per route. Fill in
-the verdict (`good` · `needs-work` · `needs-eyeball` · `broken`) for every page
-you touched or can reach via shared layout/theme/components.
+This walks the app views (desktop + mobile, rest + hover), captures the
+populated UI, and auto-stubs `aesthetic-audit-output/manual-review/<slug>.md`
+per view. Fill in the verdict (`good` · `needs-work` · `needs-eyeball` ·
+`broken`) for every page you touched or can reach via shared
+layout/theme/components.
 
 - No page may stay `needs-work` / `broken` when a UI task is declared done.
 - Iterate the loop ≥5× for any meaningful redesign.
 - Orange is accent only; no blue anywhere; orange-resting → darker-orange hover
-  (never orange→black). Full rules: `packages/cloud-frontend/AGENTS.md`,
-  `packages/cloud-frontend/docs/HOVER_SYSTEM.md`.
+  (never orange→black). Full package rules: `packages/app/AGENTS.md`.
 
 ## LifeOps + health: one scheduler, structural behavior
 
@@ -209,8 +208,8 @@ be able to confirm it works **without reading the code**. Full standard:
   - **Backend logs** (structured `[ClassName] …`) and **frontend logs**
     (console + network) showing the actual code path.
   - **Before/after full-page screenshots** + a **video walkthrough** of the
-    flow — `bun run test:e2e:record`; for cloud-frontend,
-    `bun run --cwd packages/cloud-frontend audit:cloud`.
+    flow — `bun run test:e2e:record`; for app UI,
+    `bun run --cwd packages/app audit:app`.
   - **Audio + narrated walkthrough** for voice/transcript/TTS/STT changes.
   - Artifacts land in `.github/issue-evidence/<issue#>-<slug>.<ext>` (see that
     dir's `README.md`). Each evidence type is attached **or** explicitly marked
