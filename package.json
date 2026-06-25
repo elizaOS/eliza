@@ -319,6 +319,9 @@
     "three": "0.184.0"
   },
   "overrides": {
+     "@vue/shared": "^3.5.38",
+  "vue": "^3.5.38",
+  "@vue/compiler-sfc": "^3.5.38",
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@elizaos/shared": "workspace:*",
