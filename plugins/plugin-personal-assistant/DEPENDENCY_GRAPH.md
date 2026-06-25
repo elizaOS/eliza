@@ -71,3 +71,27 @@ relationship types live in `@elizaos/shared`. PA's `lifeops/entities/*` and
 `lifeops/relationships/*` are thin re-export shims over those primitives — there
 is no second knowledge-graph store. `plugin-relationships` owns the user-facing
 graph surface (the `KNOWLEDGE_GRAPH` action + viewer).
+
+## Domain-extraction status (Scope 2 audit, #9299)
+
+Audited the modules the issue flagged as "still embedded" in the PA monolith.
+Each is already in its correct home; none is misplaced domain logic that a
+sibling plugin should own:
+
+| Module | Verdict | Why it stays in PA |
+| --- | --- | --- |
+| `lifeops/calendar-gate.ts` | correct PA glue | Implements `plugin-calendar`'s `CalendarHostGate` and injects PA's repository/Google-grant layer into `CalendarService`. It imports `LifeOpsService`, so moving it to `plugin-calendar` would invert the dependency (cycle). This *is* "PA composes the calendar plugin." |
+| `lifeops/email-classifier.ts` | re-export shim | Real classifier already lives in `@elizaos/shared`; this 19-line file only preserves the historic import path. |
+| `lifeops/entities/*`, `lifeops/relationships/*` | re-export shims | Thin shims over the runtime `EntityStore`/`RelationshipStore` (see "Knowledge graph ownership" above). |
+| `lifeops/service-mixin-{calendar,inbox,scheduling}.ts` | correct PA glue | Composition mixins that wire PA's `LifeOpsService` to the domain plugins; they are the composition layer, not domain logic. |
+
+### Flagged: `lifeops/bill-extraction.ts` (unconsumed)
+
+`bill-extraction.ts` (457 lines of finance/bill parsing) has **no source
+consumer** anywhere in `packages/` or `plugins/` — `grep -rn 'extractBill' --include='*.ts'`
+matches only the file itself and doc comments. It is finance-domain logic that,
+if revived, belongs in `@elizaos/plugin-finances` (PA already depends on it,
+inward), not in the PA monolith. Left in place rather than relocated/deleted
+because it reads as intended scaffolding for a future finances action; the repo
+owner should either wire a `plugin-finances` consumer or remove it. Recorded
+here so the next pass does not re-discover it cold.
