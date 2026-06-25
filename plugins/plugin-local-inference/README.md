@@ -12,7 +12,7 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 - **Text-to-speech** (`TEXT_TO_SPEECH`) via the local Kokoro/OmniVoice runtime selected by tier and policy.
 - **Automatic speech recognition** (`TRANSCRIPTION`) via the eligible bundled local ASR head in fused `libelizainference`; there is no whisper.cpp fallback.
 - **Image generation** (`IMAGE`) via sd.cpp, CoreML (Apple Silicon), mflux, TensorRT, or AOSP backends; selected by hardware and catalog entry.
-- **Image description / vision** (`IMAGE_DESCRIPTION`) via the Qwen3-VL multimodal projector attached to the active text model.
+- **Image description / vision** (`IMAGE_DESCRIPTION`) via the tier-matched Eliza-1 multimodal projector attached to the active text model.
 - **Model catalog, download management, and hardware-fit recommendation** exposed as HTTP routes for the elizaOS dashboard.
 - **Voice pipeline**: barge-in, VAD, speaker imprint, phrase streaming, voice profiles, and first-run onboarding.
 

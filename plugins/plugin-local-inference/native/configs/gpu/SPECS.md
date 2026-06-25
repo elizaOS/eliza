@@ -66,7 +66,8 @@ Two budgets dominate every choice:
 Transformer KV cost: `bytes/token = 2 × n_layers × n_kv_heads × head_dim × bytes_per_element`
 (factor of 2 = K and V).
 
-Eliza-1 bundles (Qwen3.5 / 3.6 base):
+Legacy Eliza-1 KV baseline (retired Qwen-shaped tiers; active Gemma tiers use
+manifest-declared stock Gemma KV plus MTP):
 
 | Bundle | n_layers | n_kv_heads | head_dim | FP16 KiB/tok | Q8K/Q4V KiB/tok | QJL+Polar KiB/tok |
 |---|---|---|---|---|---|---|
