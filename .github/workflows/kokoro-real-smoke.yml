@@ -13,36 +13,25 @@ name: Kokoro real-weight smoke (Linux)
 # tensor names drift again, this job goes RED instead of shipping noise.
 #
 # Opt-in: it builds native code and downloads a ~167 MB model, so it is NOT in
-# the default PR fan-out — only workflow_dispatch or a `kokoro-smoke-*` tag runs
-# it. To run locally, see the staging steps in
+# the default PR fan-out — only workflow_dispatch, a `kokoro-smoke-*` tag, or a
+# change to the loader / converter / smoke / this workflow / the llama.cpp
+# submodule pointer triggers it. To run locally, see the staging steps in
 # `plugins/plugin-local-inference/README.md`.
-#
-# IMPORTANT — expected RED until the GGUF is republished. The published bundle
-# GGUF (elizaos/eliza-1 .../kokoro-82m-v1_0-Q4_K_M.gguf) is STILL the pre-#9588
-# all-F32 artifact that loads but synthesizes noise; the converter/loader fix
-# landed on develop (#9684) but the artifact regen + republish is a pending ops
-# step (#9588). So this gate fails the envelope-cv guard against the CURRENT
-# published assets. It is therefore wired to manual/tag dispatch ONLY — NOT the
-# path-based push auto-trigger the loader/converter changes would otherwise fire
-# — so it does not paint develop RED for a known pending-ops condition. Once the
-# fixed F16 GGUF is republished and a `kokoro-smoke-*` tag run goes green,
-# re-enable the path-scoped `push` auto-trigger (loader / converter / smoke /
-# this workflow / the llama.cpp submodule pointer) to gate future drift:
-#   push:
-#     branches: ["**"]
-#     paths:
-#       - "plugins/plugin-local-inference/native/llama.cpp"
-#       - "plugins/plugin-local-inference/native/llama.cpp/tools/kokoro/**"
-#       - "plugins/plugin-local-inference/scripts/kokoro-real-smoke.ts"
-#       - "plugins/plugin-local-inference/src/services/voice/kokoro/**"
-#       - "packages/app-core/scripts/stage-desktop-fused-lib.mjs"
-#       - ".github/workflows/kokoro-real-smoke.yml"
 
 on:
   workflow_dispatch: {}
   push:
+    branches:
+      - "**"
     tags:
       - "kokoro-smoke-*"
+    paths:
+      - "plugins/plugin-local-inference/native/llama.cpp"
+      - "plugins/plugin-local-inference/native/llama.cpp/tools/kokoro/**"
+      - "plugins/plugin-local-inference/scripts/kokoro-real-smoke.ts"
+      - "plugins/plugin-local-inference/src/services/voice/kokoro/**"
+      - "packages/app-core/scripts/stage-desktop-fused-lib.mjs"
+      - ".github/workflows/kokoro-real-smoke.yml"
 
 concurrency:
   group: kokoro-real-smoke-${{ github.ref }}
@@ -56,7 +45,7 @@ env:
   BUN_VERSION: "canary"
   # Published Kokoro bundle (the #9588 repro file — verified present on the repo).
   KOKORO_HF_REPO: "elizaos/eliza-1"
-  KOKORO_GGUF_PATH: "bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf"
+  KOKORO_GGUF_PATH: "bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf"
   # Catalog FALLBACK voice (af_bella). af_same (Samantha) is not published yet —
   # discovery falls back to af_bella, which is the voice actually staged on HF.
   KOKORO_VOICE_PATH: "bundles/2b/tts/kokoro/voices/af_bella.bin"

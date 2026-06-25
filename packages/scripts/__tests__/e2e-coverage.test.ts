@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   buildCoverageMatrix,
@@ -188,6 +191,44 @@ describe("e2e coverage ship-gate", () => {
         reason.length,
         `zero-test exemption for ${plugin} needs a written reason`,
       ).toBeGreaterThan(20);
+    }
+  });
+
+  test("zero-test discovery ignores generated asset-only plugin directories", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "e2e-coverage-"));
+    try {
+      mkdirSync(path.join(root, "plugins", "plugin-generated", "assets"), {
+        recursive: true,
+      });
+      writeFileSync(
+        path.join(root, "plugins", "plugin-generated", "assets", "hero.png"),
+        "",
+      );
+      mkdirSync(path.join(root, "plugins", "plugin-real", "src"), {
+        recursive: true,
+      });
+      mkdirSync(path.join(root, "plugins", "plugin-placeholder"), {
+        recursive: true,
+      });
+      writeFileSync(
+        path.join(root, "plugins", "plugin-real", "package.json"),
+        JSON.stringify({ name: "@elizaos/plugin-real" }),
+      );
+      writeFileSync(
+        path.join(root, "plugins", "plugin-real", "src", "index.ts"),
+        "export const plugin = {};\n",
+      );
+      writeFileSync(
+        path.join(root, "plugins", "plugin-placeholder", "bun.lock"),
+        "",
+      );
+
+      expect(discoverZeroTestPlugins(root)).toEqual([
+        "plugin-placeholder",
+        "plugin-real",
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
