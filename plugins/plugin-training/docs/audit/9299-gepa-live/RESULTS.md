@@ -30,7 +30,10 @@ intermittently return.
 | --- | --- | --- | --- | --- |
 | `calendar_extract` | 0.795 | 0.864 | **+0.068** | `optimized-prompts/calendar_extract/v1.json` |
 | `inbox_triage` | 0.625 | 0.667 | **+0.042** | `optimized-prompts/inbox_triage/v1.json` |
-| `schedule_plan` | _pending_ | _pending_ | _pending_ | _pending_ |
+| `schedule_plan` | 0.773 | 0.955 | **+0.182** | `optimized-prompts/schedule_plan/v1.json` |
+
+All three seed tasks improved against gpt-oss-120b; `schedule_plan` (which carries
+multilingual FR/ES formal/informal rows) gained the most (+0.182).
 
 The optimized prompts auto-load at boot via `OptimizedPromptService` from the
 state-dir optimized-prompt store (`~/.local/state/eliza/optimized-prompts/<task>/v1.json`);
