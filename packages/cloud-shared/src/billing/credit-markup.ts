@@ -13,13 +13,23 @@
  *   totalCredits       = baseCredits + markupCredits + platformFeeCredits
  *
  * `markupPercent` is the creator / affiliate markup expressed as a percentage
- * (0..100). `platformFeeRate` is the platform's cut expressed as a fraction
+ * (0..`MAX_MARKUP_PERCENT`). `platformFeeRate` is the platform's cut expressed as a fraction
  * (0..1) and defaults to `0` so routes that only charge a creator markup do
  * not accidentally pick up a platform fee. The MCP-proxy affiliate flow opts
  * in by passing `platformFeeRate: DEFAULT_PLATFORM_FEE_RATE`.
  */
 
 export const DEFAULT_PLATFORM_FEE_RATE = 0.2;
+
+/**
+ * Maximum creator markup percentage. Matches the ceiling the monetization
+ * settings validate (`agent-monetization` + `app-credits`: "0% .. 1000%") and
+ * the inline inference-billing math, which apply no cap. This helper — used by
+ * the A2A-skill + MCP routes — previously capped at 100%, which `RangeError`-d
+ * (→ 500) those routes for any creator who set 101–1000%, a range the product
+ * explicitly accepts.
+ */
+export const MAX_MARKUP_PERCENT = 1000;
 
 export interface CreditMarkupBreakdown {
   /** Base cost (credits or USD) before markups. */
@@ -72,7 +82,7 @@ export function calculateCreditMarkup(input: CreditMarkupInput): CreditMarkupBre
   assertFiniteNonNegative(baseCredits, "baseCredits");
   assertFiniteNonNegative(markupPercent, "markupPercent");
   assertFiniteNonNegative(platformFeeRate, "platformFeeRate");
-  assertAtMost(markupPercent, 100, "markupPercent");
+  assertAtMost(markupPercent, MAX_MARKUP_PERCENT, "markupPercent");
   assertAtMost(platformFeeRate, 1, "platformFeeRate");
 
   const markupCredits = baseCredits * (markupPercent / 100);
