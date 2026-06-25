@@ -196,8 +196,14 @@ describe("FusedVisionContextAugmenter", () => {
     // A real readable file at each url shape: the fixed augmenter still must not
     // touch it (OCR never runs → result null), so file:// and bare paths can't
     // be used to exfiltrate disk contents into the describe prompt.
-    for (const url of [`file://${onDisk}`, onDisk, "https://example.com/x.png"]) {
-      expect(await aug.augmentImagePrompt({ image: { kind: "url", url } })).toBeNull();
+    for (const url of [
+      `file://${onDisk}`,
+      onDisk,
+      "https://example.com/x.png",
+    ]) {
+      expect(
+        await aug.augmentImagePrompt({ image: { kind: "url", url } }),
+      ).toBeNull();
     }
     expect(ocrRan).toBe(false);
   });
