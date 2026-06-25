@@ -197,11 +197,25 @@ hosted under the `elizalabs` HuggingFace org under `eliza-1`.
 
 | Tier            | Tagline                       | Text  | Voice           | Vision | Context  | MTP | Quant default                   |
 | --------------- | ----------------------------- | ----- | --------------- | ------ | -------- | ------ | ------------------------------- |
-| `2b`         | small / low-RAM phones (entry) | 2B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
-| `4b`         | flagship phones, small desktops| 4B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
-| `9b`         | desktop / midrange GPU          | 9B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b`        | flagship GPU                    | 27B   | OmniVoice       | mmproj | 128k     | yes    | TurboQuant Q4 + QJL + Polar TCQ |
-| `27b-256k`  | long-context flagship            | 27B   | OmniVoice       | mmproj | 256k     | yes    | + turbo3_tcq                    |
+| `2b`         | small / low-RAM phones (entry) | 2B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + stock Gemma KV  |
+| `4b`         | flagship phones, small desktops| 4B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + stock Gemma KV  |
+| `9b`         | desktop / midrange GPU          | 9B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + stock Gemma KV  |
+| `27b`        | flagship GPU                    | 27B   | OmniVoice       | mmproj | 128k     | yes    | TurboQuant Q4 + turbo3_tcq      |
+| `27b-256k`  | long-context flagship            | 27B   | OmniVoice       | mmproj | 256k     | yes    | + turbo3_tcq (long ctx)         |
+
+> **Quant default — Gemma 4 reality (binding, see §1/§3 + `catalog.ts`).** The
+> shipped tiers run **Gemma 4** bases. Gemma's KV is already minimal (MQA +
+> windowed-SWA + shared-KV, dual head dims 512 global / 256 swa), so the runtime
+> ships **stock KV (f16/q8_0)** and the mandatory optimization set is
+> **TurboQuant weight-quant (`turbo3`/`turbo4`, + `turbo3_tcq` on the big/long-ctx
+> tiers) + MTP**. The legacy **head_dim=128 QJL K-cache / PolarQuant (TBQ) V-cache
+> fused-attn kernels are NOT used on Gemma** — they were the Qwen3.5/3.6-era KV
+> optimizations. The kernels still ship and pass `metal_verify`/`vulkan_verify`,
+> but the decode graph never routes a Gemma KV through them (the dequant-to-F16
+> hop in `src/llama-graph.cpp` only fires for `QJL1_256`/`TBQ3_TCQ`/`Q4_POLAR`
+> cache types, which Gemma never allocates). `catalog.test.ts`
+> (`"advertises only safe runtime optimizations for the shipped gemma4 tiers"`)
+> pins this contract.
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which

@@ -1,0 +1,116 @@
+# Per-platform on-device inference backend strategy — CoreML / LiteRT-LM / Metal
+
+**Status: decision record + current-state evidence (2026-06-24).** Answers the
+recurring question "should iOS/Mac LLM inference move to CoreML or LiteRT-LM, and
+does llama.cpp give us per-platform backends for max battery/GPU efficiency?"
+
+Short answer: **the per-platform backend strategy already exists and is correct.**
+One `elizaOS/llama.cpp` fork compiles into `libelizainference` with the right GGML
+backend per platform. **CoreML and LiteRT-LM are not the levers for Apple LLM
+decode** — Metal is, and it is already the shipped, optimized, verified path.
+
+---
+
+## 1. Per-platform backend table (what is actually built/used)
+
+| Platform | GGML backend | Source of truth |
+|---|---|---|
+| **macOS** (Apple Silicon) | **Metal** (TurboQuant + eliza kernels embedded) | `packages/app-core/scripts/build-llama-cpp-mtp.mjs` (`-DGGML_METAL=ON`, embed metallib) |
+| **iOS** (arm64) | **Metal** (static archives) | same build script, `ios-arm64-metal` / `…-metal-fused` targets |
+| **Android** arm64 | **Vulkan** (GPU) + CPU fallback | `packages/app-core/scripts/aosp/compile-libllama.mjs` |
+| **Android** x86_64 | CPU only | same (Vulkan wired for arm64 only) |
+| **Linux / Windows desktop** | CUDA (NVIDIA) / CPU | desktop dylib build + `cuda_verify` |
+
+All from **one fork → one managed library (`libelizainference`) → one FFI pipe**
+(native/AGENTS.md §11). This *is* "per-platform backends for max battery/GPU
+efficiency." There is no separate per-platform runtime to add.
+
+## 2. CoreML — wrong tool for LLM decode; correct where it is already used
+
+- **LLM autoregressive decode:** CoreML/ANE is **not viable**. CoreML compiles a
+  *static* graph with fixed tensor shapes; LLM decode grows a KV cache token by
+  token with per-position masks. ANE targets fixed-graph CV/encoder workloads, not
+  streaming text. There is no CoreML LLM-decode backend in llama.cpp, and we have
+  none. The correct Apple LLM backend is **Metal/MPS**, which handles dynamic KV
+  shapes natively.
+- **Where CoreML IS used (correctly):** fixed-graph models — **Kokoro TTS on iOS**
+  (`kokoro-coreml/*.mlmodelc`) and **image generation** (`src/services/imagegen/`
+  CoreML backend). These are encoder/diffusion graphs, the right shape for CoreML.
+- **Apple Foundation Models** (`src/backends/apple-foundation.ts`): an
+  **opportunistic** iOS-26 text adapter, never the owned backend (native/AGENTS.md
+  §11). Out-of-process OS model services cannot satisfy the single-runtime
+  contract.
+
+## 3. LiteRT-LM — not used; permitted only as a future in-process Android-NPU backend
+
+- **Not present in the resolved code path.** No LiteRT/TFLite/MediaPipe LLM runtime
+  is wired.
+- The architecture **permits** LiteRT-LM *only* as an in-process backend that links
+  into `libelizainference` behind the same FFI symbols, for the **Android NPU**
+  path (native/AGENTS.md §11). It is **additive** to llama.cpp, not a replacement,
+  and is **unimplemented**.
+- It does **nothing for Apple.** Adopting it would not touch the iOS/Mac story.
+  It is a future Android-NPU optimization, gated on real product demand.
+
+## 4. The shipped model is Gemma 4 — its optimization set is applied + verified
+
+The current Eliza-1 tiers ship **Gemma 4** bases (E2B/E4B/12B/31B → 2b/4b/9b/27b),
+not the retired Qwen3.5/3.6 line (`packages/shared/src/local-inference/catalog.ts`).
+Gemma's KV is already minimal (MQA + windowed-SWA + shared-KV, dual head dims
+512/256), so:
+
+- **Mandatory set (applied):** TurboQuant weight-quant (`turbo3`/`turbo4`,
+  `+turbo3_tcq` on big/long-ctx tiers) + **MTP separate-drafter speculative decode**
+  + Gemma-native memory settings + **stock minimal KV (f16/q8_0)**.
+- **MTP wiring (applied on the Apple/desktop path):** `catalog.ts runtimeForTier`
+  → `active-model.ts` (`draftMin/draftMax/speculativeSamples`) →
+  `desktop-fused-ffi-backend-runtime.ts` → the FFI's separate-drafter MTP engine
+  (`tools/omnivoice/src/eliza-inference-ffi.cpp`).
+- **NOT applicable on Gemma:** the legacy **head_dim=128 QJL K-cache /
+  PolarQuant(TBQ) V-cache fused-attn** kernels. They still ship and pass
+  verification, but the decode graph never routes a Gemma KV through them — the
+  dequant-to-F16 hop in `src/llama-graph.cpp:1990` only fires for
+  `QJL1_256`/`TBQ3_TCQ`/`Q4_POLAR` cache types, which Gemma never allocates.
+  `catalog.test.ts` ("advertises only safe runtime optimizations for the shipped
+  gemma4 tiers") pins this contract.
+
+### Implication for issue #8848
+
+#8848's headline item — "fused QJL/TBQ attention is implemented but never routed,
+leaving a win on the table" — is a **legacy-Qwen** concern, filed from a Pixel
+audit of the Qwen-shaped `eliza-1-0_8b`. It is **not on the shipped Gemma critical
+path**: routing it would not speed up the Gemma model (Gemma has no QJL/TBQ cache
+to route). The live Gemma audit (TurboQuant + MTP + stock KV) is green and tested.
+The Mali/Vulkan items in #8848 (#4 generic-FA race, #5 prefill matmul) remain real
+for Android GPU but are independent of the fused-attn routing.
+
+## 5. Host-side verification evidence (Apple M-series, this machine, 2026-06-24)
+
+Run from `plugins/plugin-local-inference/native/verify/` (Metal framework runtime
+shader compilation — no full Xcode required):
+
+```
+make reference-test        → self-test: turbo3/turbo4/turbo3_tcq/qjl/polar/fused all finite, parity OK
+make metal-verify          → turbo3 8/8 · turbo4 8/8 · turbo3_tcq 8/8 · qjl 8/8 · polar PASS (tol 1e-3)
+make metal-verify-fused    → fused_attn_qjl_polar 1920/1920 PASS (max_diff 4.8e-7)
+                             fused_attn_qjl_polar causal-prefix 1536/1536 PASS (max_diff 9.5e-7)
+                             polar_preht use_qjl=0/1 8/8 PASS
+```
+
+Cross-check: `verify/PLATFORM_MATRIX.md` records the 2026-06-23 Gemma-4 Metal
+cutover — §8 kernel gate 40/40 PASS incl. fused-attention, and **real
+`google/gemma-4-E2B` (head_dim 512, MQA, SWA) generation + `llama-bench` pp512 636
+/ tg128 23 t/s (FA=1)** on the Metal FA path.
+
+**Conclusion:** the Apple/Metal Gemma path is optimized (TurboQuant + MTP + minimal
+KV), and every shipped kernel is bit-exact on Apple Silicon. No CoreML/LiteRT pivot
+is warranted or beneficial for iOS/Mac LLM decode.
+
+## 6. Genuinely-remaining gated items (not code-fixable from a Mac host)
+
+| Item | Issue | Why gated |
+|---|---|---|
+| Gemma MTP **drafter GGUF** conversion (`safetensors → mtp-draft GGUF`) + a `darwin-arm64-metal-fused` on-Metal `--spec-type draft-mtp` gate | #8848 / #9172 | artifact conversion + fused build; runbook in `docs/gemma4-mtp-drafter-conversion.md` |
+| Rebuild + republish the **prebuilt Android Vulkan fused-lib** (mitigation already in source @ `0864259`; FA also explicitly disabled on Android in `eliza_llm_flash_attn_type()`) | #9508 | needs Android NDK/Linux build runner + `eliza-archive` publish creds |
+| **Real-audio GPU CI lane** (DER/WER/echo/owner/impostor numbers) | #9454 | needs a `gpu-cuda-12.6` self-hosted runner + `ELEVENLABS_API_KEY` |
+| **PCM-level AEC3** sample-level echo cancellation (turn-level self-voice gate already shipped) | #9455 | net-new DSP feature (adaptive filter + double-talk detect + ERLE corpus) |
