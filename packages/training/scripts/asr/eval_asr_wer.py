@@ -126,8 +126,8 @@ def _transcribe(
         )
         return ""
     out = proc.stdout.strip()
-    # Qwen3-ASR wraps its transcript with `language English<asr_text>...`
-    # plus an optional `</asr_text>` close tag.
+    # Some ASR chat-template paths wrap transcripts with
+    # `language English<asr_text>...` plus an optional `</asr_text>` close tag.
     out = _LANG_TAG_RE.sub("", out).strip()
     out = _CLOSE_TAG_RE.sub("", out).strip()
     # Drop common chat-template artifacts.

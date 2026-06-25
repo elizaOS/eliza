@@ -1,12 +1,13 @@
-# Base config for Qwen3-ASR fine-tuning.
+# Base config for ASR fine-tuning.
 # All corpus-specific configs extend this via `extends: base.yaml`.
 #
-# Model: Qwen/Qwen3-ASR-0.6B (default) or Qwen/Qwen3-ASR-1.7B.
+# Model: intentionally blank until a verified Gemma-compatible ASR checkpoint
+# and matching projector are hosted. Real train/eval fails closed without it.
 # Optimizer: APOLLO-Mini (repo policy — APOLLO-only, no AdamW fallback).
 # Mixed precision: bf16 on CUDA, fp32 on CPU/MPS.
 
-base_model: Qwen/Qwen3-ASR-0.6B
-sample_rate: 16000        # WhisperFeatureExtractor native rate
+base_model: ""
+sample_rate: 16000        # selected ASR front-end native rate
 mel_bins: 80              # 80-bin log-mel
 max_audio_seconds: 30.0
 min_audio_seconds: 0.5

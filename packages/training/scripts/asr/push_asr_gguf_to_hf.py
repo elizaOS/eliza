@@ -1,4 +1,4 @@
-"""Publish the Qwen3-ASR K-quant ladder + Q8_0 mmproj to HuggingFace.
+"""Publish a verified ASR K-quant ladder + Q8_0 projector to HuggingFace.
 
 Target: ``elizaos/eliza-1-training`` (Apache-2.0, public) under ``voice/asr/``.
 
@@ -24,6 +24,7 @@ The wrapper:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -31,6 +32,19 @@ from pathlib import Path
 
 log = logging.getLogger("push_asr_gguf_to_hf")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+
+def _contains_retired_asr_source(sidecar: Path) -> bool:
+    try:
+        text = sidecar.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = text
+    normalized = json.dumps(payload, sort_keys=True).lower()
+    return "qwen" in normalized and "asr" in normalized
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -74,6 +88,15 @@ def main(argv: list[str] | None = None) -> int:
     missing = [str(p) for p, _ in expected if not p.exists()]
     if missing:
         log.error("missing files:\n  %s", "\n  ".join(missing))
+        return 2
+
+    sidecar = quant_dir / "gguf_asr.json"
+    if _contains_retired_asr_source(sidecar):
+        log.error(
+            "%s contains retired ASR provenance; publish only verified "
+            "Gemma-compatible ASR artifacts.",
+            sidecar,
+        )
         return 2
 
     if args.dry_run:

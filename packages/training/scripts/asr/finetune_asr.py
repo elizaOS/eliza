@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-"""Fine-tune scaffold for Qwen3-ASR (eliza-1 ASR model).
+"""Fine-tune scaffold for the frozen eliza-1 ASR model.
 
-Qwen3-ASR-{0.6B,1.7B} is a Qwen3 text backbone + HuBERT-derived audio
-mmproj projector. The upstream HuggingFace checkpoints
-(``Qwen/Qwen3-ASR-0.6B``, ``Qwen/Qwen3-ASR-1.7B``) use a
-WhisperFeatureExtractor front-end plus a projection head that maps 80-bin
-mel frames to the Qwen3 hidden space.
+The active Gemma cutover has no verified ASR checkpoint/projector pair yet.
+Synthetic smoke remains available for CI shape checks, but real train/eval
+must fail closed until a Gemma-compatible ASR base is explicitly configured.
 
 Why this scaffold exists
 ------------------------
 
-Wave 3 (W3-11) requires a fine-tune pipeline scaffold for Qwen3-ASR with
-real training out of scope (compute budget). This module provides:
+Wave 3 (W3-11) required a fine-tune pipeline scaffold with real training out
+of scope (compute budget). This module provides:
 
 - A working **data pipeline**: LJSpeech / Librispeech / custom corpus →
   HuggingFace ``DatasetDict`` format, with 80-bin log-mel feature
-  extraction matching the upstream WhisperFeatureExtractor parameters.
+  extraction matching the configured ASR front-end parameters.
 - A configurable **training loop** with:
   - CTC loss (the upstream model's head) as the primary loss.
   - Optional cross-entropy on the LM head (for encoder-decoder fine-tune).
@@ -103,8 +101,8 @@ log = logging.getLogger("asr.finetune")
 # ---------------------------------------------------------------------------
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "base_model": "Qwen/Qwen3-ASR-0.6B",
-    "sample_rate": 16000,          # WhisperFeatureExtractor expects 16 kHz
+    "base_model": "",
+    "sample_rate": 16000,          # configured ASR front-end rate
     "mel_bins": 80,
     "max_audio_seconds": 30.0,
     "min_audio_seconds": 0.5,
@@ -130,6 +128,28 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "rtf_min": 2.0,            # RTF ≥ 2× realtime
     },
 }
+
+
+def _asr_source_blocker(cfg: dict[str, Any]) -> str | None:
+    base_model = str(cfg.get("base_model", "")).strip()
+    if not base_model:
+        return (
+            "ASR real train/eval is disabled until a verified "
+            "Gemma-compatible ASR base_model and projector are configured."
+        )
+    lowered = base_model.lower()
+    if "qwen" in lowered and "asr" in lowered:
+        return (
+            f"{base_model} is retired for active Eliza-1 Gemma ASR work; "
+            "configure a verified Gemma-compatible ASR base_model instead."
+        )
+    return None
+
+
+def _require_active_asr_source(cfg: dict[str, Any]) -> None:
+    blocker = _asr_source_blocker(cfg)
+    if blocker:
+        raise SystemExit(blocker)
 
 
 # ---------------------------------------------------------------------------
@@ -477,8 +497,8 @@ def _load_corpus(data_dir: Path, cfg: dict[str, Any]) -> tuple[list[dict[str, An
 def _extract_features(wav_path: str, *, target_sr: int, mel_bins: int) -> Any:
     """Load WAV, resample to target_sr, compute 80-bin log-mel features.
 
-    Uses librosa for loading + resampling. The mel parameters match the
-    WhisperFeatureExtractor used by Qwen3-ASR upstream:
+    Uses librosa for loading + resampling. The default mel parameters match
+    the legacy 80-bin ASR front-end shape:
 
         n_fft=400, hop_length=160, n_mels=80, fmin=0, fmax=8000 at 16 kHz.
 
@@ -519,7 +539,7 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
         pip install torch transformers datasets jiwer librosa apollo-torch
 
     Training steps:
-    1. Load Qwen3-ASR from HuggingFace (base_model).
+    1. Load the configured Gemma-compatible ASR base from HuggingFace.
     2. Load and split corpus (train/val).
     3. Compute mel features for each clip.
     4. Minimize CTC loss (+ optional LM-head CE) using APOLLO-Mini.
@@ -527,6 +547,8 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     6. Save best checkpoint (lowest val WER).
     7. Emit eval.json + train_manifest.json + artifact receipt.
     """
+    _require_active_asr_source(cfg)
+
     try:
         import torch  # noqa: PLC0415
     except ImportError as exc:
@@ -894,7 +916,7 @@ def _push_to_hf(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Fine-tune scaffold for Qwen3-ASR (eliza-1 ASR model).",
+        description="Fine-tune scaffold for the frozen eliza-1 ASR model.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

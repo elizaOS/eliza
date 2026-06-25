@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate a Qwen3-ASR checkpoint.
+"""Evaluate an eliza-1 ASR checkpoint.
 
 Computes WER + RTF against a corpus of WAV+transcript pairs and writes
 ``<run-dir>/eval.json``. Matches the eval contract in W3-11:
@@ -57,7 +57,7 @@ log = logging.getLogger("asr.eval")
 def _load_config(config_arg: str) -> dict[str, Any]:
     """Load YAML config; fallback to defaults."""
     defaults: dict[str, Any] = {
-        "base_model": "Qwen/Qwen3-ASR-0.6B",
+        "base_model": "",
         "sample_rate": 16000,
         "mel_bins": 80,
         "voice_name": "custom",
@@ -90,6 +90,28 @@ def _load_config(config_arg: str) -> dict[str, Any]:
             defaults.update(base_cfg)
     defaults.update(user_cfg)
     return defaults
+
+
+def _asr_source_blocker(cfg: dict[str, Any]) -> str | None:
+    base_model = str(cfg.get("base_model", "")).strip()
+    if not base_model:
+        return (
+            "ASR real eval is disabled until a verified Gemma-compatible "
+            "ASR base_model and projector are configured."
+        )
+    lowered = base_model.lower()
+    if "qwen" in lowered and "asr" in lowered:
+        return (
+            f"{base_model} is retired for active Eliza-1 Gemma ASR eval; "
+            "configure a verified Gemma-compatible ASR base_model instead."
+        )
+    return None
+
+
+def _require_active_asr_source(cfg: dict[str, Any]) -> None:
+    blocker = _asr_source_blocker(cfg)
+    if blocker:
+        raise SystemExit(blocker)
 
 
 def _apply_gates(metrics: dict[str, float], gates: dict[str, float]) -> dict[str, Any]:
@@ -156,6 +178,8 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
 def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     """Run real WER + RTF eval against a checkpoint."""
+    _require_active_asr_source(cfg)
+
     try:
         import torch  # noqa: PLC0415
     except ImportError as exc:
@@ -272,7 +296,7 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Evaluate a Qwen3-ASR fine-tune checkpoint.",
+        description="Evaluate an eliza-1 ASR fine-tune checkpoint.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--run-dir", required=True)

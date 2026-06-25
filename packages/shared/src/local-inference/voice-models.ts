@@ -823,7 +823,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "Gemma ASR cutover placeholder — Qwen ASR assets retired; downloads stay disabled until Gemma ASR artifacts are published.",
+      "Gemma ASR cutover placeholder — pre-Gemma ASR assets retired; downloads stay disabled until Gemma ASR artifacts are published.",
     minBundleVersion: "1.0.0",
   },
   {
@@ -850,7 +850,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "Initial release — Eliza-1 ASR (Qwen3-ASR base) streaming transcriber Q8_0.",
+      "Retired pre-Gemma ASR release — streaming transcriber Q8_0.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -898,7 +898,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "K-quant ladder: Q3_K_M, Q4_K_M, Q5_K_M, Q6_K added for Eliza-1 ASR (Qwen3-ASR-1.7B base). Enables memory-tier selection. mmproj stays Q8_0 per R8 §3.6.",
+      "Retired pre-Gemma ASR K-quant ladder: Q3_K_M, Q4_K_M, Q5_K_M, Q6_K. Kept only as historical release metadata; active downloads remain on the Gemma ASR placeholder until verified artifacts are hosted.",
     minBundleVersion: "0.0.0",
   },
 ];
