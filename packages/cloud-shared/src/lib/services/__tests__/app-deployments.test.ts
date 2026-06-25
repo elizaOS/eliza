@@ -11,7 +11,7 @@ interface AppRow {
   metadata: Record<string, unknown>;
   deployment_status: AppDeploymentStatus;
   production_url: string | null;
-  last_deployed_at: Date | null;
+  last_deployed_at: Date | string | null;
 }
 
 const appStore: { current: AppRow | undefined } = { current: undefined };
@@ -72,5 +72,24 @@ describe("AppDeploymentsService", () => {
       },
     });
     expect(appStore.current?.metadata.repoUrl).toBe("https://github.com/elizaOS/eliza.git");
+  });
+
+  test("returns startedAt from cached ISO-string deployment timestamps", async () => {
+    appStore.current = {
+      id: APP_ID,
+      github_repo: null,
+      metadata: {},
+      deployment_status: "building",
+      production_url: "https://example.vercel.app",
+      last_deployed_at: "2026-05-19T15:00:00.000Z",
+    };
+
+    await expect(new AppDeploymentsService().getLatestDeployment(APP_ID)).resolves.toEqual({
+      deploymentId: `${APP_ID}:2026-05-19T15:00:00.000Z`,
+      status: "BUILDING",
+      vercelUrl: "https://example.vercel.app",
+      error: null,
+      startedAt: "2026-05-19T15:00:00.000Z",
+    });
   });
 });
