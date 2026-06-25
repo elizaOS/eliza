@@ -3,7 +3,7 @@
   "compilerOptions": {
     "composite": false,
     "moduleResolution": "bundler",
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun"],

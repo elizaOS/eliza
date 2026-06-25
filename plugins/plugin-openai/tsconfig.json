@@ -7,7 +7,7 @@
       "ES2022",
       "DOM"
     ],
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "noEmit": true,
     "skipLibCheck": true,
