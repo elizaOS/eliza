@@ -1,5 +1,15 @@
 import { elizaLogger } from "@elizaos/core";
 
+const KNOWN_CEREBRAS_BARE_MODELS = new Set([
+  "gpt-oss-120b",
+  "zai-glm-4.7",
+  "gemma-4-31b",
+]);
+
+function isKnownCerebrasBareModel(model: string): boolean {
+  return KNOWN_CEREBRAS_BARE_MODELS.has(model.trim().toLowerCase());
+}
+
 /**
  * Auto-wire the `@elizaos/plugin-openai` env keys from a `CEREBRAS_API_KEY`
  * when no competing OpenAI-compat configuration is present.
@@ -35,9 +45,7 @@ export function autoWireCerebras(): void {
     process.env.BENCHMARK_MODEL_NAME?.trim() ||
     process.env.CEREBRAS_MODEL?.trim() ||
     "";
-  const modelIsCerebras =
-    selectedModel === "gpt-oss-120b" ||
-    selectedModel === "qwen-3-235b-a22b-instruct-2507";
+  const modelIsCerebras = isKnownCerebrasBareModel(selectedModel);
   const explicitCerebras =
     process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase() === "cerebras" ||
     process.env.ELIZA_PROVIDER?.trim().toLowerCase() === "cerebras" ||
