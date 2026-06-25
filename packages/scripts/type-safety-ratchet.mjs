@@ -36,6 +36,7 @@ const KIND_LABELS = {
   asUnknownAs: "as unknown as",
   asAny: "as any",
   tsSuppress: "@ts-expect-error / @ts-ignore",
+  nonNullAssertion: "non-null assertion (!)",
 };
 
 const EXCLUDED_SEGMENTS = new Set([
@@ -147,6 +148,15 @@ function collectUnsafeCasts(sourceText, relPath) {
       }
     }
 
+    // Non-null assertion operator (`expr!`). A postfix `!` that silently asserts
+    // a value is not null/undefined — a runtime-unchecked escape in the same
+    // family as the casts above. Definite-assignment assertions (`let x!: T`)
+    // are a different node (PropertyDeclaration/VariableDeclaration exclamation
+    // token), not a NonNullExpression, so they are correctly not counted.
+    if (ts.isNonNullExpression(node)) {
+      record("nonNullAssertion", node);
+    }
+
     ts.forEachChild(node, visit);
   }
 
@@ -172,7 +182,12 @@ function collectUnsafeCasts(sourceText, relPath) {
 }
 
 function summarize(findings) {
-  const counts = { asUnknownAs: 0, asAny: 0, tsSuppress: 0 };
+  const counts = {
+    asUnknownAs: 0,
+    asAny: 0,
+    tsSuppress: 0,
+    nonNullAssertion: 0,
+  };
   for (const finding of findings) {
     counts[finding.kind] += 1;
   }
@@ -346,12 +361,17 @@ function runSelfTest() {
     // @ts-ignore self-test directive
     const eight: number = "x";
     const nine = "// @ts-ignore inside a string is not a directive";
+    const ten = (value as Result)!;
+    let eleven!: Result;
   `;
   const counts = summarize(collectUnsafeCasts(sample, "sample.ts"));
   if (
     counts.asUnknownAs !== 2 ||
     counts.asAny !== 1 ||
-    counts.tsSuppress !== 2
+    counts.tsSuppress !== 2 ||
+    // `ten` is a NonNullExpression; `eleven!` is a definite-assignment
+    // assertion (not counted), so exactly one non-null assertion is expected.
+    counts.nonNullAssertion !== 1
   ) {
     console.error(
       `[type-safety-ratchet] self-test failed: ${JSON.stringify(counts)}`,
