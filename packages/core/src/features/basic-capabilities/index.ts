@@ -25,6 +25,7 @@ import {
 	bridgeActionStartedToStreams,
 	bridgeEvaluatorCompletedToStreams,
 	bridgeEvaluatorStartedToStreams,
+	bridgeMessageReceivedToStreams,
 	bridgeRunEndedToStreams,
 	bridgeRunStartedToStreams,
 } from "../../services/agent-event-bridge.ts";
@@ -972,6 +973,12 @@ const events: PluginEvents = {
 				},
 				"Message sent",
 			);
+		},
+	],
+
+	[EventType.MESSAGE_RECEIVED]: [
+		async (payload: MessagePayload) => {
+			await bridgeMessageReceivedToStreams(payload);
 		},
 	],
 
