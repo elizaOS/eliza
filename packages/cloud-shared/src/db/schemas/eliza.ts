@@ -7,8 +7,6 @@
 
 import * as elizaSchema from "@elizaos/plugin-sql";
 
-type ElizaSqlSchema = Record<string, any>;
-
 /**
  * Re-exported elizaOS plugin-sql tables.
  */
@@ -30,4 +28,4 @@ export const {
   messageServerTable,
   channelTable,
   channelParticipantsTable,
-} = elizaSchema as ElizaSqlSchema;
+} = elizaSchema;

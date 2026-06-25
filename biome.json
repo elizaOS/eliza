@@ -174,8 +174,7 @@
     },
     {
       "includes": [
-        "packages/**/src/**/*.ts",
-        "!packages/cloud-shared/**"
+        "packages/**/src/**/*.ts"
       ],
       "linter": {
         "rules": {

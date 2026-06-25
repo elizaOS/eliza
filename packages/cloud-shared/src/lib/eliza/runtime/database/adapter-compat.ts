@@ -14,9 +14,11 @@ import {
 import { stableSerialize } from "../stable-serialize";
 
 // Uses any[] for args because defineCompatMethod passes concrete implementations
-// with specific typed parameter lists. TypeScript requires function argument
-// contravariance, so unknown[] would reject those implementations.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// with specific typed parameter lists AND the methods are then invoked with real
+// args. `unknown[]` rejects the typed implementations (function-arg contravariance);
+// `never[]` rejects the call sites. The any here is the only shape that satisfies
+// both directions for this heterogeneous compat-method registry.
+// biome-ignore lint/suspicious/noExplicitAny: documented contravariance — see above
 type CompatDatabaseMethod = (...args: any[]) => Promise<unknown> | unknown;
 type CompatDatabaseAdapter = IDatabaseAdapter & Record<string, unknown>;
 type LegacyDeleteAllMemories = (roomId: UUID, tableName: string) => Promise<void>;

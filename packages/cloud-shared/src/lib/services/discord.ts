@@ -305,7 +305,7 @@ class DiscordService {
     title: string;
     message: string;
     stack?: string;
-    context?: Record<string, any>;
+    context?: Record<string, unknown>;
   }): Promise<boolean> {
     const fields: DiscordEmbedField[] = [
       {
@@ -864,7 +864,7 @@ class DiscordService {
   async logWarning(warning: {
     title: string;
     message: string;
-    context?: Record<string, any>;
+    context?: Record<string, unknown>;
   }): Promise<boolean> {
     const fields: DiscordEmbedField[] = [
       {
