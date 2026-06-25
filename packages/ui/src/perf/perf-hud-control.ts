@@ -67,7 +67,7 @@ export function bootPerfHud(): void {
   if (!win || win.__ELIZA_PERF_HUD__ === true) return;
   const env = (import.meta as ImportMetaWithEnv).env;
   const envFlag = env?.VITE_ELIZA_PERF_HUD;
-  let on = envFlag === true || envFlag === "1" || envFlag === "true";
+  let on = envFlag === "1" || envFlag === "true";
   if (!on) {
     try {
       on = win.localStorage?.getItem(PERSIST_KEY) === "1";
