@@ -97,7 +97,7 @@ export async function handleNativePcmTurnRoute(
 	const turnId = normalizeTurnId(body.turnId);
 
 	try {
-		await localInferenceEngine.ensureActiveBundleVoiceReady();
+		await localInferenceEngine.ensureActiveBundleAsrReady();
 		const exitReason = await localInferenceEngine.runVoiceTurn(
 			{ pcm, sampleRate },
 			{ events: voiceEventsForTurn({ turnId, nativeSignal: body.signal }) },

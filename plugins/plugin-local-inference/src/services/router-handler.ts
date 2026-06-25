@@ -54,8 +54,8 @@
  *   6. **Edge-TTS (`edge-tts`)** — free Microsoft Edge endpoint, no key.
  *
  * Same precedence applies to `TRANSCRIPTION`, with the local side using
- * Qwen3-ASR via the fused libelizainference (no whisper.cpp; see
- * `plugin-local-inference/native/AGENTS.md` §1).
+ * the fused Gemma ASR path when the active bundle stages eligible ASR
+ * artifacts (no whisper.cpp fallback).
  *
  * Users can override this per slot via the routing-preferences settings
  * panel (`prefer-local` ↔ `manual` + explicit `preferredProvider`).
@@ -218,12 +218,18 @@ export async function filterUnavailableLocalInference(
 	preferredProvider: string | null,
 	candidates: HandlerRegistration[],
 ): Promise<HandlerRegistration[]> {
-	// Voice slots (TTS / STT) are self-sufficient — their handlers call
-	// ensureActiveBundleVoiceReady() internally which loads the voice model
-	// on-demand. Don't gate them behind text model availability; the text
-	// model assignment check only makes sense for text generation slots.
-	if (slot === "TEXT_TO_SPEECH" || slot === "TRANSCRIPTION") {
+	// TTS is self-sufficient: its handler calls ensureActiveBundleVoiceReady()
+	// internally and can use the Kokoro-only bridge on demand.
+	if (slot === "TEXT_TO_SPEECH") {
 		return candidates;
+	}
+
+	if (slot === "TRANSCRIPTION") {
+		return filterUnavailableLocalInferenceCandidates(
+			candidates,
+			await localInferenceEngine.canTranscribeLocally(),
+			shouldForceLocalInference(policy, preferredProvider),
+		);
 	}
 
 	const hasLocalInference = candidates.some(

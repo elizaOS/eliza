@@ -6,14 +6,14 @@ import { transcribeWavWithWords } from "./local-inference-asr-transcribe";
 vi.mock("../services/engine", () => ({
 	localInferenceEngine: {
 		available: vi.fn(),
-		ensureActiveBundleVoiceReady: vi.fn(),
+		ensureActiveBundleAsrReady: vi.fn(),
 		transcribePcmTimed: vi.fn(),
 	},
 }));
 
 const engine = vi.mocked(localInferenceEngine, true) as unknown as {
 	available: ReturnType<typeof vi.fn>;
-	ensureActiveBundleVoiceReady: ReturnType<typeof vi.fn>;
+	ensureActiveBundleAsrReady: ReturnType<typeof vi.fn>;
 	transcribePcmTimed: ReturnType<typeof vi.fn>;
 };
 
@@ -53,7 +53,7 @@ describe("transcribeWavWithWords", () => {
 
 	it("runs the fused FFI timed pipe when the in-process engine is active", async () => {
 		engine.available.mockResolvedValue(true);
-		engine.ensureActiveBundleVoiceReady.mockResolvedValue(undefined);
+		engine.ensureActiveBundleAsrReady.mockResolvedValue(undefined);
 		engine.transcribePcmTimed.mockResolvedValue({
 			text: "  hello world  ",
 			words: [
@@ -69,7 +69,7 @@ describe("transcribeWavWithWords", () => {
 
 		// useModel is never touched — the single FFI pipe owns this path.
 		expect(runtime.useModel).not.toHaveBeenCalled();
-		expect(engine.ensureActiveBundleVoiceReady).toHaveBeenCalledTimes(1);
+		expect(engine.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		// The WAV decoded to a Float32Array @ 16 kHz before the timed call.
 		const [audioArg] = engine.transcribePcmTimed.mock.calls[0] ?? [];
 		expect((audioArg as { pcm: Float32Array }).pcm).toBeInstanceOf(

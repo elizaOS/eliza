@@ -6,7 +6,7 @@ import {
 } from "./voice-provider-defaults";
 
 describe("pickDefaultVoiceProvider", () => {
-  it("desktop + local-only agent uses on-device OmniVoice + Qwen3-ASR", () => {
+  it("desktop + local-only agent uses on-device OmniVoice + Gemma ASR", () => {
     expect(
       pickDefaultVoiceProvider({
         platform: "desktop",

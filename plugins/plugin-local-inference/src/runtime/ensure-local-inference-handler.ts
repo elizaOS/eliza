@@ -884,7 +884,7 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 		// The fused libelizainference ASR runtime is the sole on-device
 		// transcriber. A startup/availability failure propagates (AGENTS.md §3) —
 		// there is no whisper.cpp second attempt and no silent empty transcript.
-		await localInferenceEngine.ensureActiveBundleVoiceReady();
+		await localInferenceEngine.ensureActiveBundleAsrReady();
 		throwIfAborted(signal);
 		// Stream partial transcripts through the same pipe as chat text when the
 		// runtime wired a chunk sink (useModel injects onStreamChunk into local
@@ -1052,8 +1052,9 @@ function makeImageDescriptionHandler(): ImageDescriptionHandler {
 // libelizainference, so the engine-driven transcriber / memory-arbiter vision
 // paths above can't run here. Instead the audio / image bytes are forwarded to
 // the in-process bionic host over the UDS (op="asr" / op="image"), which runs
-// the fused Qwen3-ASR + mmproj vision on the Mali GPU and returns text. This is
-// the same delegation `BionicHostLoader` already does for text generation.
+// the fused Gemma ASR + mmproj vision path on the Mali GPU and returns text.
+// This is the same delegation `BionicHostLoader` already does for text
+// generation.
 
 /** The bionic-host loader when registered (exposes transcribe + describeImage). */
 function getBionicHostLoader(runtime: IAgentRuntime): BionicHostLoader | null {
@@ -1578,7 +1579,7 @@ export async function ensureLocalInferenceHandler(
 		// priority (0). It is the last-resort handler: any cloud / other-plugin
 		// TRANSCRIPTION handler registers above 0 and wins. When the handler
 		// does run, it drives the fused libelizainference ASR runtime — the sole
-		// on-device transcriber (Qwen3-ASR streaming → fused batch interim →
+		// on-device transcriber (Gemma ASR streaming → fused batch interim →
 		// AsrUnavailableError) via the engine's armed voice bridge — see
 		// makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
 		// (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a

@@ -22,6 +22,10 @@ import {
 } from "@elizaos/core";
 import { isMobilePlatform } from "@elizaos/shared";
 import type { LocalInferenceLoadArgs } from "./active-model";
+import {
+	bundleHasAsrModelFiles,
+	readBundleAsrProvenanceBlockers,
+} from "./asr-provenance";
 import { readEffectiveAssignments } from "./assignments";
 import type {
 	GenerateArgs as BackendGenerateArgs,
@@ -48,6 +52,8 @@ import { resolveDefaultPoolSize } from "./session-pool";
 import type { InstalledModel } from "./types";
 import type { CoordinatorRuntime } from "./voice/cancellation-coordinator";
 import {
+	createKokoroSpeakerPreset,
+	createKokoroTtsBackend,
 	EngineVoiceBridge,
 	type EngineVoiceBridgeOptions,
 	VoiceStartupError,
@@ -319,6 +325,7 @@ export class LocalInferenceEngine {
 	 */
 	private voiceBridge: EngineVoiceBridge | null = null;
 	private voiceReadyPromise: Promise<EngineVoiceBridge> | null = null;
+	private asrReadyPromise: Promise<EngineVoiceBridge> | null = null;
 
 	/**
 	 * The general onload/offload coordinator (W10 / J5). One registry per
@@ -562,6 +569,16 @@ export class LocalInferenceEngine {
 		return this.dispatcher.currentRuntimeLoadConfig();
 	}
 
+	private async disposeVoiceBridge(bridge: EngineVoiceBridge): Promise<void> {
+		try {
+			await bridge.disarm();
+			await bridge.settle();
+		} finally {
+			bridge.dispose();
+			if (this.voiceBridge === bridge) this.voiceBridge = null;
+		}
+	}
+
 	async unload(): Promise<void> {
 		// Stop the memory monitor + idle timer and deregister evictable roles
 		// before anything else — they reference the model that's about to go.
@@ -573,13 +590,7 @@ export class LocalInferenceEngine {
 			// Drop voice resources before tearing down text. Disarm is a
 			// no-op when the lifecycle is already in voice-off, so this is
 			// safe even if the caller never called startVoice().
-			try {
-				await bridge.disarm();
-				await bridge.settle();
-			} finally {
-				bridge.dispose();
-				if (this.voiceBridge === bridge) this.voiceBridge = null;
-			}
+			await this.disposeVoiceBridge(bridge);
 		}
 		await this.dispatcher.unload();
 	}
@@ -953,6 +964,15 @@ export class LocalInferenceEngine {
 				"[voice] Voice session is already active. Call stopVoice() before starting a new one.",
 			);
 		}
+		if (opts.useFfiBackend && bundleHasAsrModelFiles(opts.bundleRoot)) {
+			const blockers = readBundleAsrProvenanceBlockers(opts.bundleRoot);
+			if (blockers.length > 0) {
+				throw new VoiceStartupError(
+					"blocked-asr-provenance",
+					`[voice] Cannot start fused local voice: ${blockers.join("; ")}`,
+				);
+			}
+		}
 		// Pass the engine's shared-resource registry through so voice ref-counts
 		// against the same canonical resources as text and the `MemoryMonitor`
 		// sees voice's evictable roles too. The engine's registry is canonical —
@@ -1015,34 +1035,143 @@ export class LocalInferenceEngine {
 		}
 	}
 
+	private async activateAssignedBundleForVoice(): Promise<void> {
+		if (this.activeEliza1Bundle || this.dispatcher.hasLoadedModel()) return;
+		try {
+			const assignments = await readEffectiveAssignments();
+			const textModelId = assignments.TEXT_LARGE ?? assignments.TEXT_SMALL;
+			if (!textModelId) return;
+			const installed = await listInstalledModels();
+			const target = installed.find((m) => m.id === textModelId);
+			if (!target) return;
+			logger.info(
+				`[voice] Pre-loading text model ${textModelId} to activate Eliza-1 bundle for voice`,
+			);
+			await this.load(target.path);
+		} catch (err) {
+			logger.warn(
+				`[voice] Failed to pre-load text model for bundle activation: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
+	}
+
+	private localAsrBlockersForBundle(bundle: ActiveEliza1Bundle): string[] {
+		const blockers: string[] = [];
+		if (!bundleHasAsrModelFiles(bundle.root)) {
+			blockers.push(
+				`files.asr: no ASR model artifacts are staged under ${path.join(
+					bundle.root,
+					"asr",
+				)}`,
+			);
+		}
+		blockers.push(...readBundleAsrProvenanceBlockers(bundle.root));
+		return blockers;
+	}
+
+	private assertLocalAsrEligible(bundle: ActiveEliza1Bundle): void {
+		const blockers = this.localAsrBlockersForBundle(bundle);
+		if (blockers.length === 0) return;
+		const code = blockers.some((blocker) => blocker.startsWith("files.asr:"))
+			? "missing-asr-model"
+			: "blocked-asr-provenance";
+		throw new VoiceStartupError(
+			code,
+			`[voice] Cannot start local Gemma ASR for ${bundle.tierId}: ${blockers.join("; ")}`,
+		);
+	}
+
+	private async assignedLocalAsrBundle(): Promise<ActiveEliza1Bundle | null> {
+		if (this.activeEliza1Bundle) return this.activeEliza1Bundle;
+		const assignments = await readEffectiveAssignments();
+		const modelId =
+			assignments.TRANSCRIPTION ??
+			assignments.TEXT_LARGE ??
+			assignments.TEXT_SMALL;
+		if (!modelId) return null;
+		const installed = await listInstalledModels();
+		const target = installed.find((m) => m.id === modelId);
+		return resolveActiveEliza1Bundle(target);
+	}
+
+	async canTranscribeLocally(): Promise<boolean> {
+		try {
+			const bridge = this.voiceBridge;
+			if (bridge?.asrAvailable) return true;
+			const bundle = await this.assignedLocalAsrBundle();
+			return (
+				bundle !== null && this.localAsrBlockersForBundle(bundle).length === 0
+			);
+		} catch (err) {
+			logger.warn(
+				`[voice] Local ASR readiness check failed: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+			return false;
+		}
+	}
+
+	async ensureActiveBundleAsrReady(): Promise<EngineVoiceBridge> {
+		if (this.asrReadyPromise) return this.asrReadyPromise;
+		this.asrReadyPromise = this.ensureActiveBundleAsrReadyOnce();
+		try {
+			return await this.asrReadyPromise;
+		} finally {
+			this.asrReadyPromise = null;
+		}
+	}
+
+	private async ensureActiveBundleAsrReadyOnce(): Promise<EngineVoiceBridge> {
+		await this.activateAssignedBundleForVoice();
+		const bundle = this.activeEliza1Bundle;
+		if (!bundle) {
+			throw new VoiceStartupError(
+				"missing-bundle-root",
+				"[voice] Cannot start local ASR: no active Eliza-1 bundle is loaded. Install and activate a Gemma ASR-capable Eliza-1 bundle.",
+			);
+		}
+		this.assertLocalAsrEligible(bundle);
+
+		let bridge = this.voiceBridge;
+		if (bridge?.asrAvailable) {
+			await bridge.arm();
+			return bridge;
+		}
+		if (bridge) {
+			await this.disposeVoiceBridge(bridge);
+		}
+
+		const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
+		const kokoro =
+			resolveKokoroEngineConfig(bundleKokoroRoot) ??
+			resolveKokoroEngineConfig();
+		const kokoroOverrides = kokoro
+			? {
+					ttsBackendOverride: createKokoroTtsBackend(kokoro, {
+						bundleRoot: bundle.root,
+					}),
+					speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
+				}
+			: {};
+		bridge = this.startVoice({
+			bundleRoot: bundle.root,
+			useFfiBackend: true,
+			...kokoroOverrides,
+		});
+		await bridge.arm();
+		return bridge;
+	}
+
 	private async ensureActiveBundleVoiceReadyOnce(): Promise<EngineVoiceBridge> {
 		let bridge = this.voiceBridge;
 		if (!bridge) {
 			// If no text model is loaded yet, try to load the assigned one so
 			// the Eliza-1 bundle activates before voice needs it. This covers
 			// the boot-time warmup race where TTS fires before any text request.
-			if (!this.activeEliza1Bundle && !this.dispatcher.hasLoadedModel()) {
-				try {
-					const assignments = await readEffectiveAssignments();
-					const textModelId = assignments.TEXT_LARGE ?? assignments.TEXT_SMALL;
-					if (textModelId) {
-						const installed = await listInstalledModels();
-						const target = installed.find((m) => m.id === textModelId);
-						if (target) {
-							logger.info(
-								`[voice] Pre-loading text model ${textModelId} to activate Eliza-1 bundle for voice`,
-							);
-							await this.load(target.path);
-						}
-					}
-				} catch (err) {
-					logger.warn(
-						`[voice] Failed to pre-load text model for bundle activation: ${
-							err instanceof Error ? err.message : String(err)
-						}`,
-					);
-				}
-			}
+			await this.activateAssignedBundleForVoice();
 			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
 				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");

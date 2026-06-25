@@ -808,6 +808,26 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   },
   {
     id: "asr",
+    version: "0.3.0",
+    parentVersion: "0.2.0",
+    publishedToHfAt: "2026-06-25T00:00:00Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "pending",
+    ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "voice/asr/eliza-1-gemma-asr-q4_0.gguf",
+        quant: "q4_0",
+        reason: "missing-from-hf-repo",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "Gemma ASR cutover placeholder — Qwen ASR assets retired; downloads stay disabled until Gemma ASR artifacts are published.",
+    minBundleVersion: "1.0.0",
+  },
+  {
+    id: "asr",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1",

@@ -20,8 +20,8 @@
  *      v1) over a sliding window with overlap, so each call covers ≤ ~6–7 s
  *      of audio — incremental, not "buffer the whole utterance, one giant
  *      decode". It lives inside the single shipped llama.cpp/GGML build and
- *      emits the Qwen2-BPE text-vocab (AGENTS.md §1/§4), so it does not
- *      vendor a second ggml or introduce a tokenizer-family mismatch.
+ *      emits Gemma text-vocabulary tokens, so it does not vendor a second
+ *      ggml or introduce a tokenizer-family mismatch.
  *      Selected whenever a `libelizainference` handle + bundled ASR model are
  *      present (which is always true when the fused build is loaded).
  *
@@ -449,8 +449,8 @@ export interface FfiBatchTranscriberOptions {
  * streaming decoder (`eliza_inference_asr_stream_*`, ABI v2) reports unsupported
  * until its runtime lands; this adapter is the contract-clean interim — it runs
  * inside the one shipped llama.cpp/GGML build and emits
- * Qwen2-BPE token-vocab text (AGENTS.md §1, §4), so no second ggml is
- * vendored and no tokenizer-family mismatch is introduced.
+ * Gemma token-vocab text, so no second ggml is vendored and no
+ * tokenizer-family mismatch is introduced.
  *
  * It runs a *windowed re-transcription with overlap* strategy: a prefix older
  * than `windowSeconds` is committed (decoded once, in window-sized chunks

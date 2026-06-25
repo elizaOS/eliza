@@ -310,10 +310,9 @@ export class VoicePipeline {
 		// Drive the live `StreamingTranscriber` as a batch: feed the whole
 		// (already VAD-gated) utterance buffer as one frame, `flush()` to
 		// force-finalize, and split the final transcript into contiguous text
-		// tokens. The fused Qwen3-ASR decoder shares the text vocab (AGENTS.md
-		// §1), so when it reports token ids alongside the transcript they ride
-		// along as `TextToken.id`; when it omits them the word-chunk fallback
-		// is used.
+		// tokens. The fused Gemma ASR decoder shares the text-model tokenizer, so
+		// when it reports token ids alongside the transcript they ride along as
+		// `TextToken.id`; when it omits them the word-chunk fallback is used.
 		const asrTokens = await this.transcribeAll(audio, cancel);
 		if (cancel.cancelled) return this.finish("cancelled");
 		// The instant ASR's last token has been emitted: drafter + verifier

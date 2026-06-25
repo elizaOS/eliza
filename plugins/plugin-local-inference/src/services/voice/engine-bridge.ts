@@ -607,7 +607,7 @@ export interface EngineVoiceBridgeOptions {
 	/**
 	 * Override only the TTS backend while keeping the fused bundle lifecycle
 	 * and ASR FFI loaded. Used when a bundle falls back from OmniVoice speech
-	 * to Kokoro speech but still needs bundled Qwen3-ASR for mic input.
+	 * to Kokoro speech but still needs bundled Gemma ASR for mic input.
 	 */
 	ttsBackendOverride?: OmniVoiceBackend;
 	/** Optional speaker preset paired with `ttsBackendOverride`. */
@@ -1184,7 +1184,9 @@ export class EngineVoiceBridge {
 		const registry = opts.sharedResources ?? new SharedResourceRegistry();
 		const loaders =
 			opts.lifecycleLoaders ??
-			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef);
+			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef, {
+				skipTtsRegion: Boolean(opts.ttsBackendOverride),
+			});
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
 		// Wire speaker-attribution when a profile store is provided. The
@@ -2123,8 +2125,8 @@ function ensureContext(
  * `createStreamingTranscriber` directly (the fused-only chain in
  * `transcriber.ts`: fused streaming → fused batch → AsrUnavailableError).
  */
-function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
-	const noopMmap = (id: string): MmapRegionHandle => ({
+function noopMmapRegion(id: string): MmapRegionHandle {
+	return {
 		id,
 		path: "",
 		sizeBytes: 0,
@@ -2134,10 +2136,13 @@ function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 		async release() {
 			// No mmap region to release.
 		},
-	});
+	};
+}
+
+function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 	return {
-		loadTtsRegion: async () => noopMmap("kokoro:tts"),
-		loadAsrRegion: async () => noopMmap("kokoro:asr"),
+		loadTtsRegion: async () => noopMmapRegion("kokoro:tts"),
+		loadAsrRegion: async () => noopMmapRegion("kokoro:asr"),
 		loadVoiceCaches: async () => ({
 			id: "kokoro:voice-caches",
 			async release() {},
@@ -2153,10 +2158,13 @@ function defaultLifecycleLoaders(
 	bundleRoot: string,
 	ffi: ElizaInferenceFfi | null,
 	ctx: ElizaInferenceContextHandle | FfiContextRef | null,
+	options: { skipTtsRegion?: boolean } = {},
 ): VoiceLifecycleLoaders {
 	return {
 		loadTtsRegion: async () =>
-			bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
+			options.skipTtsRegion === true
+				? noopMmapRegion(`tts-override:${bundleRoot}`)
+				: bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
 		loadAsrRegion: async () =>
 			bundleMmapRegion(path.join(bundleRoot, "asr"), "asr", ffi, ctx),
 		loadVoiceCaches: async () => ({
