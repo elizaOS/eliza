@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrl,
 	DEFAULT_ELIGIBLE_MODEL_IDS,
+	ELIZA_1_HOSTED_MTP_TIER_IDS,
 	ELIZA_1_MTP_TIER_IDS,
 	ELIZA_1_TIER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
@@ -124,14 +125,20 @@ describe("local inference catalog", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it("declares native MTP only on Eliza-1 tiers with embedded draft heads", () => {
-		const mtpTiers = new Set(ELIZA_1_MTP_TIER_IDS);
+	it("does not declare native MTP until Gemma drafter GGUFs are hosted", () => {
+		const hostedMtpTiers: ReadonlySet<string> = new Set(
+			ELIZA_1_HOSTED_MTP_TIER_IDS,
+		);
+		expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
+		expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual([]);
 		for (const id of ELIZA_1_MTP_TIER_IDS) {
 			const model = findCatalogModel(id);
-			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
+			expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
 		}
-		for (const id of ELIZA_1_TIER_IDS.filter((tier) => !mtpTiers.has(tier))) {
+		for (const id of ELIZA_1_TIER_IDS.filter(
+			(tier) => !hostedMtpTiers.has(tier),
+		)) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
 		}
@@ -139,7 +146,9 @@ describe("local inference catalog", () => {
 
 	it("declares the mandatory local runtime contract for every default tier", () => {
 		const baseKernels = ["turbo3", "turbo4"];
-		const mtpTiers = new Set(ELIZA_1_MTP_TIER_IDS);
+		const hostedMtpTiers: ReadonlySet<string> = new Set(
+			ELIZA_1_HOSTED_MTP_TIER_IDS,
+		);
 		for (const id of ELIZA_1_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
@@ -152,7 +161,7 @@ describe("local inference catalog", () => {
 				).toContain(kernel);
 			}
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
-			if (mtpTiers.has(id)) {
+			if (hostedMtpTiers.has(id)) {
 				expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
 			} else {
 				expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();

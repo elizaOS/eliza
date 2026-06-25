@@ -11,8 +11,10 @@
  * registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
  * (PLE) + MQA architecture; KV is already minimal so the legacy
  * QJL/PolarQuant KV kernels are not used (stock KV), while TurboQuant
- * weight-quant + separate-drafter MTP still apply. External Hub search
- * remains custom/opt-in and never enters first-run or default eligibility.
+ * weight-quant remains active. External Hub search remains custom/opt-in and
+ * never enters first-run or default eligibility.
+ * Separate-drafter MTP is still the required release shape, but runtime
+ * metadata is gated until the Gemma drafter GGUFs are actually hosted.
  */
 
 import { resolveHfDownloadBase } from "./hf-proxy.js";
@@ -58,12 +60,20 @@ export const ELIZA_1_MTP_TIER_IDS = [
   "eliza-1-27b-256k",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
-const _ELIZA_1_MTP_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
-  ELIZA_1_MTP_TIER_IDS,
-);
+/**
+ * Tiers whose Gemma MTP drafter GGUFs are present at
+ * `bundles/<tier>/mtp/drafter-<tier>.gguf` in the active HF tree.
+ *
+ * Current HF state (2026-06-25): the active bundles only expose legacy
+ * `dflash/` drafter paths, while the Gemma candidate publishes
+ * `candidates/gemma-2b-base-v1/mtp/MISSING.txt`. Keep this empty so the
+ * runtime and downloader do not advertise or fetch missing MTP artifacts.
+ */
+export const ELIZA_1_HOSTED_MTP_TIER_IDS =
+  [] as const satisfies ReadonlyArray<Eliza1TierId>;
 
-function mtpSupportedForTier(id: Eliza1TierId): boolean {
-  return _ELIZA_1_MTP_TIER_ID_SET.has(id);
+function hostedMtpDrafterAvailableForTier(id: Eliza1TierId): boolean {
+  return ELIZA_1_HOSTED_MTP_TIER_IDS.some((mtpId) => mtpId === id);
 }
 
 /**
@@ -474,11 +484,11 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       `vision/mmproj-${tierSlug(id)}.gguf`,
     );
   }
-  // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
-  // (speculative decoding), so each MTP tier downloads a `mtp/drafter-<tier>.gguf`
-  // companion alongside the text GGUF — unlike the retired Qwen3.5 same-file
-  // NextN head.
-  if (mtpSupportedForTier(id)) {
+  // Separate-drafter MTP remains the Gemma release target, but the active HF
+  // tree does not host `mtp/drafter-<tier>.gguf` yet. The available `dflash/`
+  // files are legacy artifacts, so only advertise this component when the
+  // hosted Gemma drafter list is explicitly populated.
+  if (hostedMtpDrafterAvailableForTier(id)) {
     components.mtp = bundleComponent(id, `mtp/drafter-${tierSlug(id)}.gguf`);
   }
 
@@ -508,7 +518,7 @@ function runtimeForTier(
     },
   };
 
-  if (mtpSupportedForTier(id)) {
+  if (hostedMtpDrafterAvailableForTier(id)) {
     // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
     // GGUF, loaded via `-md mtp/drafter-<tier>.gguf --spec-type draft-mtp`.
     //
