@@ -56,7 +56,6 @@ import { logger } from "../logger";
 import { recordStartupPhase, resolveStartupBundlePath } from "../startup-trace";
 import type { SendToWebview } from "../types.js";
 import { findFirstAvailableLoopbackPort } from "./loopback-port";
-import { applyBundledWhisperEnv } from "./whisper-env";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1568,12 +1567,6 @@ export class AgentManager {
         cwd: runtimeDistPath,
       });
       applyDatabaseResolutionToEnv(childEnv, databaseResolution);
-      const bundledWhisper = applyBundledWhisperEnv(childEnv, runtimeDistPath);
-      if (bundledWhisper) {
-        diagnosticLog(
-          `[Agent] Bundled Whisper ASR: ${bundledWhisper.libraryPath}`,
-        );
-      }
       const effectiveTarget =
         databaseResolution.mode === "postgres"
           ? redactDatabaseTarget(databaseResolution.postgresUrl)
