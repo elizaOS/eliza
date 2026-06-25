@@ -664,6 +664,15 @@ export function parseArgs(argv) {
     srcDir: null,
     cacheDirExplicit: false,
     dryRun: false,
+    // Optional source dir of prebuilt LiteRT-LM `.litertlm` text artifacts to
+    // stage into the on-device bundle assets (`models/text/`), parallel to the
+    // `.so`/.gguf staging. Defaults to ELIZA_LITERTLM_DIR; absent ⇒ no-op (the
+    // GGUF-only default bundle is byte-identical).
+    litertlmDir:
+      process.env.ELIZA_LITERTLM_DIR &&
+      process.env.ELIZA_LITERTLM_DIR.trim().length > 0
+        ? path.resolve(process.env.ELIZA_LITERTLM_DIR.trim())
+        : null,
   };
 
   const readFlagValue = (flag, index) => {
@@ -685,6 +694,9 @@ export function parseArgs(argv) {
       i += 1;
     } else if (arg === "--src-dir") {
       args.srcDir = path.resolve(readFlagValue(arg, i));
+      i += 1;
+    } else if (arg === "--litertlm-dir") {
+      args.litertlmDir = path.resolve(readFlagValue(arg, i));
       i += 1;
     } else if (arg === "--abi") {
       const value = readFlagValue(arg, i);
@@ -719,7 +731,11 @@ export function parseArgs(argv) {
         "Usage: node eliza/packages/app-core/scripts/aosp/compile-libllama.mjs " +
           "[--assets-dir <PATH>] [--cache-dir <PATH>] [--src-dir <PATH>] " +
           "[--abi <arm64-v8a|x86_64|riscv64>] [--target <android-<arch>-<backend>[-fused]>] " +
-          "[--jobs <N>] [--skip-if-present] [--dry-run]\n" +
+          "[--litertlm-dir <PATH>] [--jobs <N>] [--skip-if-present] [--dry-run]\n" +
+          "  --litertlm-dir <PATH>  Stage prebuilt LiteRT-LM .litertlm text artifacts from\n" +
+          "                    PATH into the on-device bundle assets (models/text/), parallel\n" +
+          "                    to the .so/.gguf staging. Defaults to ELIZA_LITERTLM_DIR.\n" +
+          "                    Omit ⇒ GGUF-only bundle (the default).\n" +
           "  --target <TRIPLE>  Build a single target: android-{arm64,x86_64,riscv64}-cpu[-fused].\n" +
           "                    riscv64 requires NDK r27+ (first stable NDK with a real\n" +
           "                    riscv64-linux-android sysroot); older NDKs will fail the\n" +
@@ -2234,6 +2250,75 @@ export function applyOmnivoiceGraft({ srcDir: _srcDir, log = console.log }) {
 }
 
 /**
+ * Stage prebuilt LiteRT-LM `.litertlm` text artifacts into the on-device
+ * bundle assets, parallel to the `.so` libs this script stages and the `.gguf`
+ * models `stage-default-models.mjs` stages. The destination is
+ * `<androidAssetsDir>/models/text/` — the same `text/` subdir the GGUF text
+ * weights land in (`models/text/eliza-1-<tier>-128k.gguf`) and the path the
+ * C-side `llm_backend_select` / `find_litertlm_artifact` probes at runtime
+ * (`<bundleRoot>/text/*.litertlm`, see
+ * `tools/omnivoice/src/backends/litert-backend.cpp`).
+ *
+ * GGUF stays the default: when no `litertlmDir` is configured (no
+ * `--litertlm-dir` / `ELIZA_LITERTLM_DIR`) or the dir holds no `.litertlm`,
+ * this is a no-op and the bundle is byte-identical to a GGUF-only build. A
+ * configured dir that does not exist is a hard error (the operator asked for
+ * LiteRT staging but pointed us at nothing — don't silently ship GGUF-only).
+ *
+ * `.litertlm` artifacts are model files, arch-independent like the GGUFs, so
+ * they are staged ONCE into the shared `models/text/` dir — not per-ABI.
+ *
+ * Exported for unit tests.
+ */
+export function stageLitertlmArtifacts({
+  litertlmDir,
+  androidAssetsDir,
+  log = console.log,
+  dryRun = false,
+}) {
+  if (!litertlmDir) return [];
+  if (!fs.existsSync(litertlmDir)) {
+    throw new Error(
+      `[compile-libllama] --litertlm-dir ${litertlmDir} does not exist. ` +
+        `Point it at a directory of prebuilt .litertlm artifacts, or omit it to ` +
+        `ship the GGUF-only bundle.`,
+    );
+  }
+  const artifacts = fs
+    .readdirSync(litertlmDir, { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith(".litertlm"))
+    .map((e) => e.name);
+  if (artifacts.length === 0) {
+    log(
+      `[compile-libllama] No .litertlm artifacts under ${litertlmDir}; LiteRT ` +
+        `staging is a no-op (GGUF-only bundle).`,
+    );
+    return [];
+  }
+  const textDir = path.join(androidAssetsDir, "models", "text");
+  if (dryRun) {
+    log(
+      `[compile-libllama] (dry-run) would stage ${artifacts.length} .litertlm ` +
+        `artifact(s) into ${textDir}: ${artifacts.join(", ")}`,
+    );
+    return artifacts.map((name) => path.join(textDir, name));
+  }
+  fs.mkdirSync(textDir, { recursive: true });
+  const staged = [];
+  for (const name of artifacts) {
+    const src = path.join(litertlmDir, name);
+    const dst = path.join(textDir, name);
+    fs.copyFileSync(src, dst);
+    staged.push(dst);
+    log(
+      `[compile-libllama] Staged LiteRT artifact ${name} -> ${dst} ` +
+        `(${(fs.statSync(dst).size / (1024 * 1024)).toFixed(2)} MB).`,
+    );
+  }
+  return staged;
+}
+
+/**
  * Print the dry-run plan for one `android-<arch>-<backend>[-fused]` target:
  * the cmake invocation, the post-cmake build target list, the graft steps
  * (for fused targets), the expected output file layout, and the post-build
@@ -2501,6 +2586,14 @@ export async function main(argv = process.argv.slice(2)) {
   // the production-landing checklist.
   await compileShimMain(["--skip-if-present"]);
 
+  // Stage any prebuilt LiteRT-LM `.litertlm` text artifacts into the shared
+  // on-device bundle assets (arch-independent, so once — not per ABI). No-op
+  // unless --litertlm-dir / ELIZA_LITERTLM_DIR is configured; GGUF stays default.
+  stageLitertlmArtifacts({
+    litertlmDir: args.litertlmDir,
+    androidAssetsDir: args.androidAssetsDir,
+  });
+
   console.log(
     `[compile-libllama] Built libllama.so + libggml*.so + llama-server for ` +
       `${args.abis.join(", ")} (${srcDescription}).`,
@@ -2684,6 +2777,11 @@ export async function mainTargets(args) {
   }
 
   if (args.dryRun) {
+    stageLitertlmArtifacts({
+      litertlmDir: args.litertlmDir,
+      androidAssetsDir: args.androidAssetsDir,
+      dryRun: true,
+    });
     console.log(
       `[compile-libllama] (dry-run) plan complete: ${args.targets.length} target(s) (${srcDescription}).`,
     );
@@ -2695,6 +2793,14 @@ export async function mainTargets(args) {
   if (args.targets.some((t) => t.androidAbi === "x86_64")) {
     await compileShimMain(["--skip-if-present"]);
   }
+
+  // Stage any prebuilt LiteRT-LM `.litertlm` text artifacts into the shared
+  // on-device bundle assets (once — arch-independent). No-op unless
+  // --litertlm-dir / ELIZA_LITERTLM_DIR is configured; GGUF stays the default.
+  stageLitertlmArtifacts({
+    litertlmDir: args.litertlmDir,
+    androidAssetsDir: args.androidAssetsDir,
+  });
 
   console.log(
     `[compile-libllama] Built ${args.targets.map((t) => t.target).join(", ")} (${srcDescription}).`,

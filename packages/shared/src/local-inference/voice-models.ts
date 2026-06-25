@@ -829,7 +829,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
       },
     ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — Qwen3-ASR streaming transcriber Q8_0.",
+    changelogEntry:
+      "Initial release — Eliza-1 ASR (Qwen3-ASR base) streaming transcriber Q8_0.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -877,7 +878,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "K-quant ladder: Q3_K_M, Q4_K_M, Q5_K_M, Q6_K added for Qwen3-ASR-1.7B. Enables memory-tier selection. mmproj stays Q8_0 per R8 §3.6.",
+      "K-quant ladder: Q3_K_M, Q4_K_M, Q5_K_M, Q6_K added for Eliza-1 ASR (Qwen3-ASR-1.7B base). Enables memory-tier selection. mmproj stays Q8_0 per R8 §3.6.",
     minBundleVersion: "0.0.0",
   },
 ];

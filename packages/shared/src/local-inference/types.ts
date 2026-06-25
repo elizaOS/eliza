@@ -311,7 +311,13 @@ export type CatalogQuantizationId =
   | "q4_k_m"
   | "q5_k_m"
   | "q6_k"
-  | "q8_0";
+  | "q8_0"
+  // LiteRT-LM mobile quant. Not a GGUF weight format — it is the
+  // wNa8o8 (4-bit weight / 8-bit activation) schema baked into Google's
+  // LiteRT `.litertlm` bundle and executed by the LiteRT-LM runtime
+  // (NPU/GPU delegate), not llama.cpp. The catalog advertises it on a
+  // `runtimeClass: "litert"` artifact; GGUF quant handling is unchanged.
+  | "wna8o8";
 
 export interface CatalogQuantizationVariant {
   id: CatalogQuantizationId;
@@ -320,6 +326,19 @@ export interface CatalogQuantizationVariant {
   sizeGb: number;
   minRamGb: number;
   status: "published" | "planned";
+  /**
+   * Quant artifact format. Defaults to GGUF (llama.cpp / fused-eliza1) when
+   * omitted, preserving every existing catalog entry. `"litertlm"` marks a
+   * LiteRT-LM bundle whose `ggufFile` is actually a `.litertlm` artifact.
+   */
+  artifactFormat?: "gguf" | "litertlm";
+  /**
+   * Set on the quant the on-device (mobile) path should prefer for a tier.
+   * Google's Gemma-4 QAT Q4_0 is the mobile sweet spot (NPU-friendly,
+   * ~2x faster, 40-50% less memory) — and the LiteRT wNa8o8 bundle where a
+   * tier ships one. Desktop selection still defaults to `defaultVariantId`.
+   */
+  mobilePreferred?: boolean;
 }
 
 export interface CatalogQuantization {
@@ -427,7 +446,17 @@ export interface CatalogModel {
     finetuned: false;
     components: Partial<
       Record<
-        "text" | "voice" | "asr" | "vad" | "embedding" | "vision" | "mtp",
+        | "text"
+        | "voice"
+        | "asr"
+        | "vad"
+        | "embedding"
+        | "vision"
+        // LiteRT-LM single-file bundle (text + vision + audio + MTP, QAT
+        // weights). Parallel to `text` (the GGUF) — present only on tiers
+        // that ship a `.litertlm` for the on-device LiteRT runtime.
+        | "litert"
+        | "mtp",
         { repo: string; file?: string }
       >
     >;

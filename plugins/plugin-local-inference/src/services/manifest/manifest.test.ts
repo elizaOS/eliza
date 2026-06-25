@@ -183,7 +183,35 @@ describe("validateManifest — valid input", () => {
 		expect(result.ok).toBe(true);
 	});
 
-	it("accepts optional EAGLE3 kernel and eval metadata without requiring it by tier", () => {
+	it("accepts optional specDecode kernel and eval metadata without requiring it by tier", () => {
+		const m = baseManifest("2b");
+		m.kernels.specDecode = {
+			enabled: true,
+			capability: "spec-decode",
+			specType: "draft-mtp",
+			model: "mtp/drafter-2b.gguf",
+			maxDraftTokens: 15,
+		};
+		m.evals.specDecode = {
+			acceptanceRate: 0.64,
+			speedup: 1.35,
+			passed: true,
+		};
+
+		const result = validateManifest(m);
+		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).not.toContain(
+			"specDecode",
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.manifest.kernels.specDecode?.capability).toBe(
+				"spec-decode",
+			);
+			expect(result.manifest.evals.specDecode?.speedup).toBe(1.35);
+		}
+	});
+
+	it("accepts the back-compat eagle3 alias for specDecode metadata", () => {
 		const m = baseManifest("2b");
 		m.kernels.eagle3 = {
 			enabled: true,
@@ -199,9 +227,6 @@ describe("validateManifest — valid input", () => {
 		};
 
 		const result = validateManifest(m);
-		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).not.toContain(
-			"eagle3",
-		);
 		expect(result.ok).toBe(true);
 		if (result.ok) {
 			expect(result.manifest.kernels.eagle3?.capability).toBe("eagle3");
@@ -209,17 +234,17 @@ describe("validateManifest — valid input", () => {
 		}
 	});
 
-	it("accepts optional EAGLE3 failure metadata without affecting default eligibility", () => {
+	it("accepts optional specDecode failure metadata without affecting default eligibility", () => {
 		const m = baseManifest("9b");
-		m.kernels.eagle3 = {
+		m.kernels.specDecode = {
 			enabled: false,
 			failure: "not available in this build",
 		};
-		m.evals.eagle3 = {
+		m.evals.specDecode = {
 			acceptanceRate: null,
 			speedup: null,
 			passed: false,
-			failure: "not run on EAGLE3-capable runtime",
+			failure: "not run on a spec-decode-capable runtime",
 		};
 
 		const result = validateManifest(m);
@@ -269,9 +294,9 @@ describe("validateManifest — schema-level rejections", () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it("rejects out-of-range EAGLE3 eval metrics", () => {
+	it("rejects out-of-range specDecode eval metrics", () => {
 		const m = baseManifest() as unknown as Record<string, unknown>;
-		(m.evals as Record<string, unknown>).eagle3 = {
+		(m.evals as Record<string, unknown>).specDecode = {
 			acceptanceRate: 1.2,
 			speedup: 1.35,
 			passed: false,
@@ -280,19 +305,21 @@ describe("validateManifest — schema-level rejections", () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it("rejects a passing EAGLE3 eval without measured numbers", () => {
+	it("rejects a passing specDecode eval without measured numbers", () => {
 		const m = baseManifest();
-		m.evals.eagle3 = { speedup: null, passed: true };
+		m.evals.specDecode = { speedup: null, passed: true };
 		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
-			expect(result.errors.some((e) => e.includes("evals.eagle3"))).toBe(true);
+			expect(result.errors.some((e) => e.includes("evals.specDecode"))).toBe(
+				true,
+			);
 		}
 	});
 
-	it("rejects invalid known EAGLE3 kernel metadata fields", () => {
+	it("rejects invalid known specDecode kernel metadata fields", () => {
 		const m = baseManifest() as unknown as Record<string, unknown>;
-		(m.kernels as Record<string, unknown>).eagle3 = {
+		(m.kernels as Record<string, unknown>).specDecode = {
 			specType: "",
 			maxDraftTokens: 0,
 		};
