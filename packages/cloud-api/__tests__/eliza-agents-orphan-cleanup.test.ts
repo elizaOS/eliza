@@ -18,13 +18,16 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
 }));
 
 const createAgent = mock(async () => ({
-  id: "sandbox-1",
-  agent_name: "e2e-dedicated-test",
-  status: "pending",
-  created_at: new Date("2026-06-14T00:00:00.000Z"),
-  execution_tier: "custom",
-  agent_config: undefined,
-  character_id: null,
+  agent: {
+    id: "sandbox-1",
+    agent_name: "e2e-dedicated-test",
+    status: "pending",
+    created_at: new Date("2026-06-14T00:00:00.000Z"),
+    execution_tier: "custom",
+    agent_config: undefined,
+    character_id: null,
+  },
+  idempotent: false,
 }));
 const updateAgentEnvironment = mock(async () => undefined);
 const deleteSandbox = mock(async () => true);
