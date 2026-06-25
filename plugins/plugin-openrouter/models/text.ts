@@ -13,6 +13,7 @@ import {
 import {
   generateText,
   type JSONSchema7,
+  jsonSchema,
   type LanguageModel,
   type ModelMessage,
   streamText,
@@ -185,6 +186,94 @@ function supportsSamplingParameters(modelName: string): boolean {
   }
 
   return !NO_SAMPLING_MODEL_PATTERNS.some((pattern) => lowerModelName.includes(pattern));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  // The runtime exposes tools as ordered ToolDefinition arrays. The AI SDK
+  // expects a ToolSet keyed by provider-visible tool names; passing the array
+  // through gives providers function names like "0", which Google rejects.
+  const isArr = Array.isArray(value);
+  const entries: Array<[string, unknown]> = isArr
+    ? (value as unknown[]).map((v, i) => [String(i), v] as [string, unknown])
+    : Object.entries(value as Record<string, unknown>);
+
+  const namedKeys = new Set<string>();
+  for (const [, rawTool] of entries) {
+    if (isRecord(rawTool) && typeof rawTool.name === "string" && rawTool.name) {
+      namedKeys.add(rawTool.name);
+    }
+  }
+
+  const tools: Record<string, unknown> = {};
+  let sawNamedTool = false;
+  for (const [origKey, rawTool] of entries) {
+    if (!isRecord(rawTool)) {
+      continue;
+    }
+    const functionTool = isRecord(rawTool.function) ? rawTool.function : undefined;
+    const name =
+      typeof rawTool.name === "string" && rawTool.name
+        ? rawTool.name
+        : typeof functionTool?.name === "string" && functionTool.name
+          ? functionTool.name
+          : undefined;
+    if (name) {
+      sawNamedTool = true;
+      const schema = isRecord(rawTool.parameters)
+        ? (rawTool.parameters as JSONSchema7)
+        : isRecord(functionTool?.parameters)
+          ? (functionTool.parameters as JSONSchema7)
+          : isRecord(rawTool.input_schema)
+            ? (rawTool.input_schema as JSONSchema7)
+            : ({ type: "object" } satisfies JSONSchema7);
+      const description =
+        typeof rawTool.description === "string"
+          ? rawTool.description
+          : typeof functionTool?.description === "string"
+            ? functionTool.description
+            : undefined;
+      tools[name] = {
+        ...(description ? { description } : {}),
+        inputSchema: jsonSchema(schema),
+      };
+    } else if (!isArr && !namedKeys.has(origKey)) {
+      tools[origKey] = rawTool;
+    }
+  }
+
+  if (sawNamedTool) {
+    return Object.keys(tools).length > 0 ? (tools as ToolSet) : undefined;
+  }
+  return !isArr && isRecord(value) ? (value as ToolSet) : undefined;
+}
+
+function readToolChoice(value: GenerateTextParams["toolChoice"]): ToolChoice<ToolSet> | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (typeof value === "string" && (value === "auto" || value === "none" || value === "required")) {
+    return value;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const choice = value as Record<string, unknown>;
+  if (choice.type === "tool" && typeof choice.name === "string") {
+    return { type: "tool", toolName: choice.name };
+  }
+  if (choice.type === "function" && isRecord(choice.function)) {
+    const name = choice.function.name;
+    return typeof name === "string" ? { type: "tool", toolName: name } : undefined;
+  }
+  return typeof choice.name === "string" ? { type: "tool", toolName: choice.name } : undefined;
 }
 
 function buildStructuredOutput(responseSchema: unknown): NativeOutput {
@@ -361,6 +450,8 @@ function buildGenerateParams(
   };
   const resolvedProviderOptions =
     Object.keys(mergedProviderOptions).length > 0 ? mergedProviderOptions : undefined;
+  const normalizedTools = readToolSet(paramsWithAttachments.tools);
+  const normalizedToolChoice = readToolChoice(paramsWithAttachments.toolChoice);
 
   type NativeProviderOptions = NativeTextParams["providerOptions"];
   const generateParams: NativeTextParams = {
@@ -376,8 +467,8 @@ function buildGenerateParams(
         }
       : {}),
     ...(resolvedMaxOutput !== undefined ? { maxOutputTokens: resolvedMaxOutput } : {}),
-    ...(paramsWithAttachments.tools ? { tools: paramsWithAttachments.tools } : {}),
-    ...(paramsWithAttachments.toolChoice ? { toolChoice: paramsWithAttachments.toolChoice } : {}),
+    ...(normalizedTools ? { tools: normalizedTools } : {}),
+    ...(normalizedToolChoice ? { toolChoice: normalizedToolChoice } : {}),
     ...(paramsWithAttachments.responseSchema
       ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
       : {}),
