@@ -100,7 +100,7 @@ function readWavMono16(path) {
 
 // ---- Far-end synthesis ------------------------------------------------------
 
-const CHIRP_SEC = 0.5;
+const CHIRP_SEC = 1.0;
 
 function synthFarEnd() {
   const total = Math.floor(farSeconds * SR);
@@ -113,7 +113,7 @@ function synthFarEnd() {
     const t = i / SR;
     const k = (f1 - f0) / CHIRP_SEC;
     const phase = 2 * Math.PI * (f0 * t + 0.5 * k * t * t);
-    far[i] = 0.6 * Math.sin(phase);
+    far[i] = 0.9 * Math.sin(phase);
   }
   // Speech-like: band-limited noise (1-pole LP) amplitude-modulated into bursts.
   let lp = 0;
@@ -126,7 +126,7 @@ function synthFarEnd() {
     const env = 0.5 + 0.5 * Math.sin(2 * Math.PI * 4 * t);
     const white = Math.random() * 2 - 1;
     lp = 0.85 * lp + 0.15 * white; // ~2.4 kHz LP
-    far[i] = 0.45 * gate * env * lp;
+    far[i] = 0.7 * gate * env * lp;
   }
   return far;
 }
