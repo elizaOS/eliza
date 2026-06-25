@@ -490,7 +490,6 @@ export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 	}
 	for (const relPath of observedManifestPaths) recordIfExists(relPath);
 	recordIfExists("cache/voice-preset-default.bin");
-	recordIfExists("tts/omnivoice/samantha-ref.wav");
 
 	const defaultPresetPath = resolve(bundleRoot, "cache", "voice-preset-default.bin");
 	const defaultPreset = inspectVoicePresetDefault(defaultPresetPath);
@@ -555,10 +554,10 @@ export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 			found: defaultPreset.status === "missing" ? [] : ["cache/voice-preset-default.bin"],
 			requiredFor: "default voice profile seed",
 			note:
-				"Presence proves only a seeded default preset exists; reference cloning still requires encode_reference/free_tokens and an ASR round trip.",
+				"Presence proves only a seeded default preset exists; publish-time voice eval still requires encode_reference/free_tokens and an ASR round trip.",
 			blocker:
 				defaultPreset.placeholderDetected === true
-					? `cache/voice-preset-default.bin is the ${defaultPreset.byteLength}-byte zero-fill Samantha placeholder; af_same is not product-ready until the preset is regenerated.`
+					? `cache/voice-preset-default.bin is the ${defaultPreset.byteLength}-byte zero-fill Samantha placeholder; af_same is not product-ready until publish stages a real precomputed preset.`
 					: undefined,
 			preset: {
 				byteLength: defaultPreset.byteLength ?? null,
@@ -566,20 +565,6 @@ export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 				placeholderDetected: defaultPreset.placeholderDetected === true,
 				referenceCloneSeeded: defaultPreset.referenceCloneSeeded === true,
 			},
-		},
-		{
-			key: "samanthaReferenceWav",
-			status: fileExists("tts/omnivoice/samantha-ref.wav") ? "present" : "missing",
-			expected: "tts/omnivoice/samantha-ref.wav",
-			found: fileExists("tts/omnivoice/samantha-ref.wav")
-				? ["tts/omnivoice/samantha-ref.wav"]
-				: [],
-			requiredFor: "runtime regeneration of the Samantha reference preset",
-			blocker:
-				defaultPreset.placeholderDetected === true &&
-				!fileExists("tts/omnivoice/samantha-ref.wav")
-					? `The ${tier} bundle default preset is a zero-fill Samantha placeholder, but tts/omnivoice/samantha-ref.wav is not staged for deterministic regeneration.`
-					: undefined,
 		},
 		{
 			key: "nativeEmotionAcousticModel",
