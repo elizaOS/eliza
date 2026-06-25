@@ -1251,7 +1251,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             return { createdAt, roomId, text };
           })
           .filter(
-            (response) =>
+            (response): response is typeof response & { createdAt: number } =>
               response.createdAt !== null &&
               response.createdAt > attemptedMs &&
               response.createdAt <= nowMs &&
