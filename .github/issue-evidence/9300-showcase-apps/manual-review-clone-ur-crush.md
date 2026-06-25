@@ -1,8 +1,9 @@
 # Aesthetic + UX review — Clone Ur Crush (`packages/examples/cloud/clone-ur-crush`)
 
-**Verdict: `good` (after a no-blue fix — see below)** · reviewed live (desktop
-1280×900 + mobile 390×844) on `next dev`, agent (Claude) screenshot + critique.
-Human sign-off: _pending_ (see contact sheet).
+**Verdict: `good`** (after two rounds of no-blue fixes + a static brand-lint that
+now guards against regression — see below) · reviewed live (desktop 1280×900 +
+mobile 390×844) on `next dev`, agent (Claude) screenshot + critique, plus a real
+Docker-image smoke test. Human sign-off: _pending_ (see contact sheet).
 
 Screenshots: [`clone-ur-crush-desktop.png`](clone-ur-crush-desktop.png) ·
 [`clone-ur-crush-desktop-step2.png`](clone-ur-crush-desktop-step2.png) ·
