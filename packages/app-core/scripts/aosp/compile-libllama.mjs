@@ -162,9 +162,11 @@
 //   call (Commandment 8: don't hide broken pipelines behind fallbacks).
 //
 // Repo-root resolution:
-//   The script defaults `--assets-dir` to
-//   `<repoRoot>/packages/app/android/app/src/main/assets/agent` and
-//   `--cache-dir` to `~/.cache/eliza-android-agent/llama-cpp-<tag>`.
+//   The script defaults `--assets-dir` to the first app shell found under
+//   `<repoRoot>/packages/app`, `<repoRoot>/apps/app`, or
+//   `<repoRoot>/eliza/packages/app`, then appends
+//   `android/app/src/main/assets/agent`. `--cache-dir` defaults to
+//   `~/.cache/eliza-android-agent/llama-cpp-<tag>`.
 //   `<repoRoot>` is derived from this script's location: walk up from
 //   `eliza/packages/app-core/scripts/aosp/` to the host repo root by
 //   default, but when the parent host repo invokes this via the
@@ -554,19 +556,45 @@ export function resolveAndroidVulkanCmakeFlags({
   ];
 }
 
+export function resolveDefaultAndroidAssetsDir({ root = repoRoot } = {}) {
+  const appRelativeCandidates = [
+    path.join("packages", "app"),
+    path.join("apps", "app"),
+    path.join("eliza", "packages", "app"),
+  ];
+  for (const appRelative of appRelativeCandidates) {
+    const appRoot = path.join(root, appRelative);
+    if (
+      fs.existsSync(path.join(appRoot, "android")) ||
+      fs.existsSync(path.join(appRoot, "package.json"))
+    ) {
+      return path.join(
+        appRoot,
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "agent",
+      );
+    }
+  }
+  return path.join(
+    root,
+    "packages",
+    "app",
+    "android",
+    "app",
+    "src",
+    "main",
+    "assets",
+    "agent",
+  );
+}
+
 export function parseArgs(argv) {
   const args = {
-    androidAssetsDir: path.join(
-      repoRoot,
-      "packages",
-      "app",
-      "android",
-      "app",
-      "src",
-      "main",
-      "assets",
-      "agent",
-    ),
+    androidAssetsDir: resolveDefaultAndroidAssetsDir(),
     cacheDir: path.join(
       os.homedir(),
       ".cache",

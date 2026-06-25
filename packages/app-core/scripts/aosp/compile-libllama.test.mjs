@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   assertZigSupportsAndroidAbis,
   resolveAndroidNdkHostDir,
+  resolveDefaultAndroidAssetsDir,
   resolveHomebrewFormulaIncludeDirs,
 } from "./compile-libllama.mjs";
 
@@ -60,6 +61,75 @@ describe("compile-libllama Android Vulkan host resolution", () => {
       path.join(prefix, "opt", "vulkan-headers", "include"),
       path.join(prefix, "Cellar", "vulkan-headers", "1.3.290", "include"),
     ]);
+  });
+});
+
+describe("compile-libllama Android assets dir resolution", () => {
+  test("prefers the flat elizaOS packages/app shell when present", () => {
+    const root = makeTmpDir();
+    fs.mkdirSync(path.join(root, "packages", "app", "android"), {
+      recursive: true,
+    });
+    fs.mkdirSync(path.join(root, "apps", "app", "android"), {
+      recursive: true,
+    });
+
+    expect(resolveDefaultAndroidAssetsDir({ root })).toBe(
+      path.join(
+        root,
+        "packages",
+        "app",
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "agent",
+      ),
+    );
+  });
+
+  test("uses host apps/app shell when packages/app is absent", () => {
+    const root = makeTmpDir();
+    fs.mkdirSync(path.join(root, "apps", "app", "android"), {
+      recursive: true,
+    });
+
+    expect(resolveDefaultAndroidAssetsDir({ root })).toBe(
+      path.join(
+        root,
+        "apps",
+        "app",
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "agent",
+      ),
+    );
+  });
+
+  test("falls back to nested eliza/packages/app shell", () => {
+    const root = makeTmpDir();
+    fs.mkdirSync(path.join(root, "eliza", "packages", "app", "android"), {
+      recursive: true,
+    });
+
+    expect(resolveDefaultAndroidAssetsDir({ root })).toBe(
+      path.join(
+        root,
+        "eliza",
+        "packages",
+        "app",
+        "android",
+        "app",
+        "src",
+        "main",
+        "assets",
+        "agent",
+      ),
+    );
   });
 });
 
