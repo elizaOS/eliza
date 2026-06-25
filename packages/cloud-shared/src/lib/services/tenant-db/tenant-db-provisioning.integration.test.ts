@@ -41,7 +41,9 @@ import { closeDatabaseConnectionsForTests } from "../../../db/client";
 import { tenantDbClustersRepository } from "../../../db/repositories/tenant-db-clusters";
 import { acquireEphemeralPostgres, type EphemeralPostgres } from "./__tests__/ephemeral-postgres";
 import { ClusterPool, NoClusterCapacityError } from "./cluster-pool";
+import { DirectPgExecutor } from "./direct-pg-executor";
 import { makeTenantDbProvisioning } from "./make-tenant-db-provisioning";
+import { deriveTenantIdent, SqlTenantDbProvisioner } from "./tenant-db-provisioner";
 
 /** Resolved at runtime in beforeAll; `null` ⇒ the describe self-skips loudly. */
 let pg: EphemeralPostgres | null = null;
@@ -94,6 +96,21 @@ function parseDsn(dsn: string): { role: string; pw: string; db: string } {
 
 async function resetClusters(): Promise<void> {
   await adminExec("DELETE FROM tenant_db_clusters");
+}
+
+/** Read a cluster's recorded slot count by host (NaN-safe). */
+async function clusterDatabaseCount(host: string): Promise<number> {
+  const client = new Client({ connectionString: ADMIN_DSN });
+  await client.connect();
+  try {
+    const res = await client.query<{ database_count: number }>(
+      "SELECT database_count FROM tenant_db_clusters WHERE host = $1",
+      [host],
+    );
+    return Number(res.rows[0]?.database_count ?? -1);
+  } finally {
+    await client.end();
+  }
 }
 
 // Resolve the ephemeral/external Postgres up front so the whole describe can be
@@ -202,5 +219,57 @@ d("tenant-db provisioning over real Postgres", () => {
 
     // The allocator recorded both placements on the cluster.
     expect(r1.clusterId).toBe(r2.clusterId);
+  });
+
+  test("SqlTenantDbProvisioner.provision() is DDL-idempotent against REAL Postgres: a re-run on the SAME cluster does not throw, rotates the DSN, and consumes NO cluster slot", async () => {
+    // The load-bearing retry case the mocks cannot prove: against a live PG, a
+    // second provision() hits an EXISTING role + database, so it must rely on the
+    // DO-block swallowing `duplicate_object` (CREATE ROLE) and the `databaseExists`
+    // gate skipping CREATE DATABASE — re-running the real DDL with no IF NOT EXISTS
+    // would otherwise throw 42710 / 42P04.
+    //
+    // It drives SqlTenantDbProvisioner DIRECTLY on one fixed cluster — NOT
+    // provisionForApp — because the deploy path claims a NEW cluster slot per call
+    // (ClusterPool.allocate -> tryClaimSlot). That cluster-slot-leak-on-retry is a
+    // SEPARATE, still-open concern (no app->cluster placement is persisted today);
+    // this test pins ONLY what the PR fixes: provisioner DDL idempotency, and that
+    // the provisioner layer never touches the slot count.
+    const SEED_COUNT = 7;
+    await tenantDbClustersRepository.create({
+      provider: "direct_pg",
+      host: HOST,
+      admin_dsn_encrypted: ADMIN_DSN!,
+      max_databases: 100,
+      database_count: SEED_COUNT,
+      is_active: true,
+    });
+
+    const app = randomUUID();
+    const ident = deriveTenantIdent(app);
+    created.push({ role: ident.roleName, db: ident.dbName });
+
+    let pw = 0;
+    const provisioner = new SqlTenantDbProvisioner({
+      cluster: { host: HOST },
+      executor: new DirectPgExecutor(ADMIN_DSN),
+      genPassword: () => `pw-real-${++pw}`,
+    });
+
+    const first = await provisioner.provision(app);
+    const second = await provisioner.provision(app); // the deploy RETRY — same app, DB already there
+
+    // Stable identifiers both times (derivation is stable), but the password rotated.
+    expect(second.dbName).toBe(first.dbName);
+    expect(second.roleName).toBe(first.roleName);
+    expect(parseDsn(second.dsn).pw).not.toBe(parseDsn(first.dsn).pw);
+
+    // The credential the retry handed back is the live one: the ALTER ROLE on the
+    // second pass rotated the password, so ONLY the second DSN connects.
+    expect(await connectAndPing(localize(second.dsn))).toBe(1);
+    await expect(connectAndPing(localize(first.dsn))).rejects.toThrow();
+
+    // The provisioner layer claims NO slot — re-running it is slot-neutral. (Slot
+    // accounting lives in ClusterPool/provisionForApp, intentionally bypassed here.)
+    expect(await clusterDatabaseCount(HOST)).toBe(SEED_COUNT);
   });
 });
