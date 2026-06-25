@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { AppImageBuilder, type BuildExec } from "../app-image-builder";
-import { makeBuildFromRepoResolver } from "../app-image-resolver";
+import {
+  composeImageResolvers,
+  makeBuildFromRepoResolver,
+  makePrebuiltImageMapResolver,
+} from "../app-image-resolver";
 
 const APP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -69,5 +73,61 @@ describe("makeBuildFromRepoResolver", () => {
     const resolve = makeBuildFromRepoResolver({ builder, registry: "r" });
     expect(await resolve({ id: APP, name: "demo", metadata: {} })).toBeUndefined();
     expect(cmds).toHaveLength(0);
+  });
+});
+
+describe("makePrebuiltImageMapResolver", () => {
+  test("returns undefined when no map is configured", () => {
+    expect(makePrebuiltImageMapResolver({})).toBeUndefined();
+  });
+
+  test("uses the longest matching app name prefix", async () => {
+    const resolve = makePrebuiltImageMapResolver({
+      APP_PREBUILT_IMAGES: JSON.stringify({
+        "Clone Your Crush": "ghcr.io/elizaos/clone:base",
+        "Clone Your Crush Showcase": "ghcr.io/elizaos/clone:showcase",
+        "eDad Showcase": "ghcr.io/elizaos/edad:showcase",
+      }),
+    });
+
+    expect(resolve).toBeDefined();
+    await expect(
+      resolve?.({
+        id: APP,
+        name: "Clone Your Crush Showcase 8f3a",
+        metadata: {},
+      }),
+    ).resolves.toBe("ghcr.io/elizaos/clone:showcase");
+    await expect(
+      resolve?.({
+        id: APP,
+        name: "eDad Showcase 1a2b",
+        metadata: {},
+      }),
+    ).resolves.toBe("ghcr.io/elizaos/edad:showcase");
+    await expect(resolve?.({ id: APP, name: "Other App", metadata: {} })).resolves.toBeUndefined();
+  });
+
+  test("ignores invalid JSON maps", () => {
+    expect(makePrebuiltImageMapResolver({ APP_PREBUILT_IMAGES: "not-json" })).toBeUndefined();
+  });
+});
+
+describe("composeImageResolvers", () => {
+  test("returns undefined when no resolver is active", () => {
+    expect(composeImageResolvers(undefined)).toBeUndefined();
+  });
+
+  test("returns the first resolver image and falls through undefined results", async () => {
+    const resolve = composeImageResolvers(
+      () => undefined,
+      () => "ghcr.io/elizaos/app:prebuilt",
+      () => "ghcr.io/elizaos/app:later",
+    );
+
+    expect(resolve).toBeDefined();
+    await expect(resolve?.({ id: APP, name: "demo", metadata: {} })).resolves.toBe(
+      "ghcr.io/elizaos/app:prebuilt",
+    );
   });
 });

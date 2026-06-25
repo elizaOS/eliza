@@ -12,6 +12,7 @@
  * repo URL is passed straight through as the build context — no clone step.
  */
 
+import { logger } from "../utils/logger";
 import type { AppImageBuilder } from "./app-image-builder";
 
 /**
@@ -42,6 +43,60 @@ interface ResolverApp {
 function buildContextFor(repo: string, sourceRef?: string): string {
   if (!sourceRef || repo.includes("#")) return repo;
   return `${repo}#${sourceRef}`;
+}
+
+/**
+ * Per-app prebuilt-image resolver (#9300). Lets an operator deploy more than
+ * one distinct prebuilt app without relying on one global APP_DEFAULT_IMAGE.
+ *
+ * Reads APP_PREBUILT_IMAGES as a JSON object mapping an app-name prefix to an
+ * image ref. The longest matching prefix wins so timestamped showcase app names
+ * still resolve deterministically.
+ */
+export function makePrebuiltImageMapResolver(
+  env: NodeJS.ProcessEnv = process.env,
+): AppImageResolver | undefined {
+  const raw = env.APP_PREBUILT_IMAGES;
+  if (!raw || !raw.trim()) return undefined;
+
+  let entries: Array<[string, string]>;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    entries = Object.entries(parsed).filter(
+      (entry): entry is [string, string] =>
+        entry[0].length > 0 && typeof entry[1] === "string" && entry[1].length > 0,
+    );
+  } catch {
+    logger.warn(
+      "[AppImageResolver] APP_PREBUILT_IMAGES is not valid JSON; ignoring the per-app prebuilt image map",
+    );
+    return undefined;
+  }
+
+  if (entries.length === 0) return undefined;
+  entries.sort((a, b) => b[0].length - a[0].length);
+
+  return async (app) => {
+    for (const [prefix, image] of entries) {
+      if (app.name.startsWith(prefix)) return image;
+    }
+    return undefined;
+  };
+}
+
+export function composeImageResolvers(
+  ...resolvers: Array<AppImageResolver | undefined>
+): AppImageResolver | undefined {
+  const active = resolvers.filter((resolver): resolver is AppImageResolver => Boolean(resolver));
+  if (active.length === 0) return undefined;
+
+  return async (app) => {
+    for (const resolve of active) {
+      const image = await resolve(app);
+      if (image) return image;
+    }
+    return undefined;
+  };
 }
 
 /** A `resolveImage` that builds + pushes the app image from its repo. */
