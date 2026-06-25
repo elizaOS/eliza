@@ -174,6 +174,7 @@ test.describe("real-staging EDAD deploy serves its subdomain (#9300)", () => {
           repoUrl: EDAD.repoUrl,
           ref: EDAD.ref,
           dockerfile: EDAD.dockerfile,
+          env: { ELIZA_APP_ID: appId },
         },
       );
       expect(started.status, "deploy accepted (202)").toBe(202);
@@ -257,6 +258,9 @@ test.describe("real-staging EDAD deploy serves its subdomain (#9300)", () => {
         "EDAD /api/config self-report serves (200)",
       ).toBe(200);
       const config = (await configRes.json()) as EdadConfigResponse;
+      expect(config.app_id, "EDAD self-reports the deployed app id").toBe(
+        appId,
+      );
       expect(
         typeof config.cloud_url === "string" && config.cloud_url.length > 0,
         "EDAD self-reports its cloud_url (real container, not the mock)",

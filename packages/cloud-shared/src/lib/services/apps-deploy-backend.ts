@@ -69,11 +69,11 @@ export interface AppsDeployBackendConfig {
  */
 export function configureAppsDeployBackend(config: AppsDeployBackendConfig): void {
   // BUILD-FROM-REPO ("Vercel-like": the platform builds the user's repo, no
-  // manual image push) is armed when a registry is configured and the builder
-  // host gate returns an exec (see container-executor-deps/app-builder-host).
-  // With no armed builder, resolveImage stays undefined and the runner falls
-  // back to app.metadata.imageTag / APP_DEFAULT_IMAGE (the legacy prebuilt path)
-  // — unchanged behavior.
+  // manual image push) is armed when a registry is configured. The builder exec
+  // is the explicit one if passed, else the app node's own SSH (it already has
+  // Docker + buildx). With no armed builder, buildResolver stays undefined and
+  // the runner falls back through the optional APP_PREBUILT_IMAGES map, then
+  // app.metadata.imageTag / APP_DEFAULT_IMAGE (the legacy prebuilt path).
   const registry = config.registry ?? process.env.APPS_IMAGE_REGISTRY;
   const dockerfile = config.dockerfile ?? process.env.APPS_BUILD_DOCKERFILE;
   const buildExec = config.buildExec ?? (registry ? makeNodeBuilderExec() : null);

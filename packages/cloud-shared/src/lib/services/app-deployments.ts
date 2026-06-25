@@ -11,7 +11,7 @@
  * becomes the integration boundary — callers will not need to change.
  */
 import { logger } from "../utils/logger";
-import type { AppDeployRunner } from "./app-deploy-orchestrator";
+import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestrator";
 import {
   assertDeployable,
   type DeploymentStatus,
@@ -74,6 +74,7 @@ export type AppDeployEnqueuer = (p: {
   appId: string;
   organizationId: string;
   userId: string;
+  options?: AppDeployRunOptions;
 }) => Promise<unknown>;
 
 export class AppDeploymentsService {
@@ -146,14 +147,16 @@ export class AppDeploymentsService {
     // On failure, mark the app errored so the caller's status poll reflects it.
     if (this.deployEnqueuer || this.deployRunner) {
       try {
+        const deployOptions = deploymentOptionsFor(input);
         if (this.deployEnqueuer) {
           await this.deployEnqueuer({
             appId: input.appId,
             organizationId: input.organizationId,
             userId: input.userId,
+            ...(deployOptions ? { options: deployOptions } : {}),
           });
         } else if (this.deployRunner) {
-          await this.deployRunner.run(input.appId);
+          await this.deployRunner.run(input.appId, deployOptions);
         }
       } catch (error) {
         logger.error("[AppDeployments] deploy trigger failed", {
@@ -212,3 +215,13 @@ export class AppDeploymentsService {
 }
 
 export const appDeploymentsService = new AppDeploymentsService();
+
+function deploymentOptionsFor(input: CreateDeploymentInput): AppDeployRunOptions | undefined {
+  const options: AppDeployRunOptions = {
+    ...(input.repoUrl ? { repoUrl: input.repoUrl } : {}),
+    ...(input.ref ? { ref: input.ref } : {}),
+    ...(input.dockerfile ? { dockerfile: input.dockerfile } : {}),
+    ...(input.env ? { env: input.env } : {}),
+  };
+  return Object.keys(options).length > 0 ? options : undefined;
+}

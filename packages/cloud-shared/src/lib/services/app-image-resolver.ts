@@ -5,8 +5,8 @@
  * {@link AppImageBuilder} and returns the pushed, resolvable ref.
  *
  * Returns `undefined` when the app has no repo, so the deploy runner falls
- * through to `app.metadata.imageTag` / `APP_DEFAULT_IMAGE` (e.g. a prebuilt or
- * smoke-test image) — never an error for the no-repo case.
+ * through to `app.metadata.imageTag` / `APP_DEFAULT_IMAGE` for legacy/prebuilt
+ * lanes — never an error for the no-repo case.
  *
  * Docker builds git URLs natively (`docker build <git-url>#ref:subdir`), so the
  * repo URL is passed straight through as the build context — no clone step.

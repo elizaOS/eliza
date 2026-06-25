@@ -55,7 +55,6 @@ const MIN_SHOWCASE_BALANCE_USD = 1;
 /** Real deploy: poll every ~5s, cap ~10 min (per the deploy/status docstring). */
 const POLL_INTERVAL_MS = 5_000;
 const POLL_CAP_MS = 10 * 60_000;
-
 const SHOWCASE_REPO_URL =
   process.env.SHOWCASE_APPS_REPO_URL ?? "https://github.com/elizaOS/eliza.git";
 const SHOWCASE_REF =

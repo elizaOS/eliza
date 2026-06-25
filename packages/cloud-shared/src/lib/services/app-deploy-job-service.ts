@@ -14,7 +14,7 @@
  * module imports no `pg`/SSH and stays safe to load anywhere.
  */
 
-import type { AppDeployRunner } from "./app-deploy-orchestrator";
+import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestrator";
 import { appDeploymentsService } from "./app-deployments";
 import type { ContainerJobsWriter } from "./container-job-service";
 import { containerJobsWriter } from "./container-jobs-writer";
@@ -36,32 +36,36 @@ export function getAppDeployRunner(): AppDeployRunner {
   return appDeployRunner;
 }
 
-/** Extract the appId from an APP_DEPLOY job payload (throws if absent). */
-export function readAppDeployJobData(job: { data: unknown }): { appId: string } {
+/** Extract deploy data from an APP_DEPLOY job payload (throws if malformed). */
+export function readAppDeployJobData(job: { data: unknown }): {
+  appId: string;
+  options?: AppDeployRunOptions;
+} {
   const data = (job.data ?? {}) as Record<string, unknown>;
   if (typeof data.appId !== "string" || data.appId.length === 0) {
     throw new Error("APP_DEPLOY job missing data.appId");
   }
-  return { appId: data.appId };
+  const options = parseDeployOptions(data.options);
+  return options ? { appId: data.appId, options } : { appId: data.appId };
 }
 
 /** Daemon: run the full deploy for a claimed APP_DEPLOY job via the injected runner. */
 export async function dispatchAppDeployJob(job: { data: unknown }): Promise<void> {
-  const { appId } = readAppDeployJobData(job);
-  await getAppDeployRunner().run(appId);
+  const { appId, options } = readAppDeployJobData(job);
+  await getAppDeployRunner().run(appId, options);
 }
 
 // ── enqueue (Worker / request side) ─────────────────────────────────────────
 /** Enqueue an APP_DEPLOY job (pg-free) over the shared job writer. */
 export function enqueueAppDeploy(
   writer: ContainerJobsWriter,
-  p: { appId: string; organizationId: string; userId?: string },
+  p: { appId: string; organizationId: string; userId?: string; options?: AppDeployRunOptions },
 ): Promise<{ id: string }> {
   return writer.insertJob({
     type: JOB_TYPES.APP_DEPLOY,
     organizationId: p.organizationId,
     userId: p.userId,
-    data: { appId: p.appId },
+    data: p.options ? { appId: p.appId, options: p.options } : { appId: p.appId },
   });
 }
 
@@ -73,4 +77,39 @@ export function enqueueAppDeploy(
  */
 export function configureAppsDeployTrigger(): void {
   appDeploymentsService.setDeployEnqueuer((p) => enqueueAppDeploy(containerJobsWriter, p));
+}
+
+function parseDeployOptions(value: unknown): AppDeployRunOptions | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("APP_DEPLOY job data.options must be an object when present");
+  }
+  const raw = value as Record<string, unknown>;
+  const options: AppDeployRunOptions = {};
+
+  for (const key of ["repoUrl", "ref", "dockerfile"] as const) {
+    const next = raw[key];
+    if (next !== undefined) {
+      if (typeof next !== "string" || next.length === 0) {
+        throw new Error(`APP_DEPLOY job data.options.${key} must be a non-empty string`);
+      }
+      options[key] = next;
+    }
+  }
+
+  if (raw.env !== undefined) {
+    if (typeof raw.env !== "object" || raw.env === null || Array.isArray(raw.env)) {
+      throw new Error("APP_DEPLOY job data.options.env must be an object");
+    }
+    const env: Record<string, string> = {};
+    for (const [key, val] of Object.entries(raw.env)) {
+      if (typeof val !== "string") {
+        throw new Error("APP_DEPLOY job data.options.env values must be strings");
+      }
+      env[key] = val;
+    }
+    options.env = env;
+  }
+
+  return Object.keys(options).length > 0 ? options : undefined;
 }

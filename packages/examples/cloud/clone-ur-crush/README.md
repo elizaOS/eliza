@@ -46,9 +46,10 @@ NEXT_PUBLIC_ELIZA_CLOUD_URL=http://localhost:3000 bun run dev
 This app is one of the two flagship monetized showcase apps. Its container image
 (`ghcr.io/elizaos/example-clone-ur-crush:showcase`) is built + smoke-tested by
 [`build-example-app-images.yml`](../../../../.github/workflows/build-example-app-images.yml)
-(Next.js `output: "standalone"` via `Dockerfile.bundle`), and the
-register → deploy → subdomain → monetize → earn loop is driven end to end by the
-cloud e2e harness. Full runbook (mock + real-staging activation):
+(Next.js `output: "standalone"` via `Dockerfile.bundle`). The #9300 real-staging
+showcase loop uses `Dockerfile.cloud` through the normal source-build app deploy
+path, then drives register → deploy → subdomain → monetize → earn end to end via
+the cloud e2e harness. Full runbook (mock + real-staging activation):
 [`packages/test/cloud-e2e/docs/showcase-apps-coverage.md`](../../../test/cloud-e2e/docs/showcase-apps-coverage.md).
 
 ## Environment Variables
