@@ -7,7 +7,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitAny": false,
-    "strict": false,
+    "strict": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
     "types": ["bun-types"],

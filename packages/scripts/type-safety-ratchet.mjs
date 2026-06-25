@@ -104,6 +104,48 @@ function sourceFileKind(relPath) {
   return relPath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
 }
 
+// Every package + plugin opts into full `strict` (#9474 Phase 2). This guard
+// keeps it that way: any tracked tsconfig that re-introduces `"strict": false`
+// fails the ratchet. `strictNullChecks`/`strictFunctionTypes`/etc. are distinct
+// keys and are intentionally not matched.
+// Configs allowed to keep `"strict": false`:
+//  - emit-only build variants (they don't type-check; the strict CHECK lives in
+//    the sibling type-checking tsconfig),
+//  - a small set of example / sub-chain packages with open strict burndowns
+//    tracked in #9474 Phase 2's tail.
+// Anything else with `"strict": false` is a regression and fails the ratchet.
+const STRICT_FALSE_ALLOWLIST = new Set([
+  "packages/agent/tsconfig.bundle.json", // emit-only bundle config
+  "plugins/tsconfig.build.shared.json", // emit-only (emitDeclarationOnly)
+  "packages/examples/smartglasses/tsconfig.json", // open burndown (#9474)
+  "plugins/plugin-wallet/src/chains/evm/tsconfig.json", // open burndown (#9474)
+  "plugins/plugin-wallet/src/chains/solana/tsconfig.json", // open burndown (#9474)
+]);
+
+function strictFalseTsconfigs() {
+  const output = execFileSync(
+    "git",
+    ["ls-files", "--", ":(glob)**/tsconfig*.json"],
+    { cwd: ROOT, encoding: "utf8" },
+  );
+  const violations = [];
+  for (const relPath of output.split("\n").filter(Boolean)) {
+    if (STRICT_FALSE_ALLOWLIST.has(relPath)) {
+      continue;
+    }
+    let text;
+    try {
+      text = readFileSync(path.join(ROOT, relPath), "utf8");
+    } catch {
+      continue;
+    }
+    if (/"strict"\s*:\s*false/.test(text)) {
+      violations.push(relPath);
+    }
+  }
+  return violations;
+}
+
 function collectUnsafeCasts(sourceText, relPath) {
   const sourceFile = ts.createSourceFile(
     relPath,
@@ -432,6 +474,16 @@ if (JSON_FLAG) {
   });
 }
 
-if (regressions.length > 0) {
+const strictFalse = strictFalseTsconfigs();
+if (strictFalse.length > 0 && !JSON_FLAG) {
+  console.error(
+    `[type-safety-ratchet] ${strictFalse.length} tsconfig(s) set "strict": false (must be true — #9474 Phase 2):`,
+  );
+  for (const relPath of strictFalse) {
+    console.error(`  - ${relPath}`);
+  }
+}
+
+if (regressions.length > 0 || strictFalse.length > 0) {
   process.exit(1);
 }
