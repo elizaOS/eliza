@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { localInferenceEngine } from "../src/services/engine.ts";
 import {
 	filterUnavailableLocalInference,
 	filterUnavailableLocalInferenceCandidates,
@@ -77,15 +78,32 @@ describe("filterUnavailableLocalInference (slot-aware)", () => {
 		expect(result).toEqual(candidates);
 	});
 
-	it("bypasses the availability gate for TRANSCRIPTION", async () => {
+	it("gates TRANSCRIPTION on local ASR availability (#9652)", async () => {
 		const candidates = [cloud, local];
-		const result = await filterUnavailableLocalInference(
-			"TRANSCRIPTION",
-			"prefer-local",
-			null,
-			candidates,
-		);
-		expect(result).toEqual(candidates);
+		const spy = vi.spyOn(localInferenceEngine, "canTranscribeLocally");
+		// #9652: TRANSCRIPTION no longer bypasses the availability gate — without an
+		// eligible Gemma ASR bundle the local candidate is filtered out, like any
+		// other slot.
+		spy.mockResolvedValue(false);
+		expect(
+			await filterUnavailableLocalInference(
+				"TRANSCRIPTION",
+				"prefer-local",
+				null,
+				candidates,
+			),
+		).toEqual([cloud]);
+		// With local ASR available, the local candidate is kept.
+		spy.mockResolvedValue(true);
+		expect(
+			await filterUnavailableLocalInference(
+				"TRANSCRIPTION",
+				"prefer-local",
+				null,
+				candidates,
+			),
+		).toEqual(candidates);
+		spy.mockRestore();
 	});
 
 	it("returns text-slot candidates unchanged when none are local-inference", async () => {

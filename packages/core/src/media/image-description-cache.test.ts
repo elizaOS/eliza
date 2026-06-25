@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createMockRuntime } from "../testing/mock-runtime";
 import type { IAgentRuntime } from "../types/index.ts";
 import {
 	describeImageCached,
@@ -20,12 +21,12 @@ function fakeRuntime(overrides: {
 		store.set(key, value);
 		return true;
 	});
-	const runtime = {
+	const runtime = createMockRuntime({
 		getCache: vi.fn(async (key: string) => store.get(key)),
 		setCache,
 		useModel,
 		logger: { warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() },
-	} as unknown as IAgentRuntime;
+	});
 	return { runtime, useModel, setCache };
 }
 

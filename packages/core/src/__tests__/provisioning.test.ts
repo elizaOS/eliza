@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createMockRuntime } from "../testing/mock-runtime";
 import { ensureEmbeddingDimension } from "../provisioning";
 import type { IAgentRuntime } from "../types/runtime";
 
@@ -22,14 +23,14 @@ function makeRuntime(opts: {
 	embeddingDimension?: string | number;
 }): { runtime: IAgentRuntime; ensureDim: ReturnType<typeof vi.fn> } {
 	const ensureDim = vi.fn(async () => true);
-	const runtime = {
+	const runtime = createMockRuntime({
 		agentId: "00000000-0000-0000-0000-000000000001",
 		adapter: { ensureEmbeddingDimension: ensureDim },
 		getModel: vi.fn(() => (opts.hasModel ? async () => [] : undefined)),
 		getSetting: vi.fn((key: string) =>
 			key === "EMBEDDING_DIMENSION" ? opts.embeddingDimension : undefined,
 		),
-	} as unknown as IAgentRuntime;
+	});
 	return { runtime, ensureDim };
 }
 

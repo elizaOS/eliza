@@ -94,21 +94,56 @@ function validateBuild(v: unknown): AospBuild {
   if (!isString(v.id)) throw new Error("build.id must be a string");
   if (!isString(v.label)) throw new Error("build.label must be a string");
   if (!isString(v.version)) throw new Error("build.version must be a string");
+  if (!isString(v.channel) || !["stable", "beta", "nightly"].includes(v.channel))
+    throw new Error("build.channel must be one of stable|beta|nightly");
+  if (!isString(v.targetDevice))
+    throw new Error("build.targetDevice must be a string");
+  if (
+    !isString(v.architecture) ||
+    !["arm64-v8a", "x86_64", "riscv64"].includes(v.architecture)
+  )
+    throw new Error("build.architecture must be one of arm64-v8a|x86_64|riscv64");
+  if (!isString(v.publishedAt))
+    throw new Error("build.publishedAt must be a string");
   if (!isString(v.manifestUrl))
     throw new Error("build.manifestUrl must be a string");
   if (!isNumber(v.sizeBytes))
     throw new Error("build.sizeBytes must be a number");
-  return v as unknown as AospBuild;
+  return {
+    id: v.id,
+    label: v.label,
+    version: v.version,
+    channel: v.channel as AospBuild["channel"],
+    targetDevice: v.targetDevice,
+    architecture: v.architecture as AospBuild["architecture"],
+    publishedAt: v.publishedAt,
+    manifestUrl: v.manifestUrl,
+    sizeBytes: v.sizeBytes,
+    ...(isString(v.artifactDir) ? { artifactDir: v.artifactDir } : {}),
+    ...(isBoolean(v.wipeData) ? { wipeData: v.wipeData } : {}),
+  };
 }
 
 function validateFlashPlan(v: unknown): FlashPlan {
   if (!isObject(v)) throw new Error("plan: not an object");
-  validateConnectedDevice(v.device);
-  validateBuild(v.build);
+  const device = validateConnectedDevice(v.device);
+  const build = validateBuild(v.build);
   if (!Array.isArray(v.steps)) throw new Error("plan.steps must be an array");
   if (!isObject(v.request))
     throw new Error("plan.request must be an object (FlashRequest)");
-  return v as unknown as FlashPlan;
+  return {
+    device,
+    build,
+    steps: v.steps as FlashPlan["steps"],
+    artifactDir: isString(v.artifactDir) ? v.artifactDir : null,
+    // FlashRequest is a deeply-structured request type; it is validated only as
+    // an object here (full field validation is a separate task), so the narrow
+    // to its type stays an explicit assertion.
+    request: v.request as unknown as FlashPlan["request"],
+    ...(isObject(v.artifactPaths)
+      ? { artifactPaths: v.artifactPaths as Record<string, string> }
+      : {}),
+  };
 }
 
 type ExecuteFrame =

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { createMockRuntime } from "../../testing/mock-runtime";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
 import { embedRecallQuery } from "./recall-embed.ts";
@@ -16,7 +17,7 @@ function makeRuntime(opts: RuntimeMockOpts): {
 	calls: { count: number };
 } {
 	const calls = { count: 0 };
-	const runtime = {
+	const runtime = createMockRuntime({
 		getCurrentRunId: () => opts.runId ?? RUN_A,
 		useModel: (type: string, params: { text: string }) => {
 			if (type !== ModelType.TEXT_EMBEDDING) {
@@ -25,7 +26,7 @@ function makeRuntime(opts: RuntimeMockOpts): {
 			calls.count++;
 			return opts.embed(params);
 		},
-	} as unknown as IAgentRuntime;
+	});
 	return { runtime, calls };
 }
 
@@ -141,13 +142,13 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 	test("a new turn (different runId) does NOT reuse the prior turn's cache", async () => {
 		let runId = RUN_A;
 		const calls = { count: 0 };
-		const runtime = {
+		const runtime = createMockRuntime({
 			getCurrentRunId: () => runId,
 			useModel: (_type: string, _params: { text: string }) => {
 				calls.count++;
 				return Promise.resolve([0.1]);
 			},
-		} as unknown as IAgentRuntime;
+		});
 
 		await embedRecallQuery(runtime, "shared query");
 		expect(calls.count).toBe(1);

@@ -78,7 +78,7 @@ import {
 import { commandExists, currentPlatform } from "../platform/helpers.js";
 import { killApp, launchApp, openTarget } from "../platform/launch.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
-import { shutdownPsHost, warmPsHost } from "../platform/ps-host.js";
+import { disposePsHost, warmPsHost } from "../platform/ps-host.js";
 import {
   clearTerminal,
   closeAllTerminalSessions,
@@ -278,8 +278,9 @@ export class ComputerUseService extends Service {
     } catch {
       // ignore browser shutdown failures
     }
-    // Tear down the persistent PowerShell host so we don't leak the process.
-    shutdownPsHost();
+    // Tear down the persistent PowerShell host and latch spawning off so a
+    // late fire-and-forget warm continuation can't resurrect it post-stop.
+    disposePsHost();
     logger.info("[computeruse] Service stopped");
   }
 

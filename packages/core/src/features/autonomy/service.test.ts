@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { createMockRuntime } from "../../testing/mock-runtime";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptArtifact,
@@ -39,14 +40,14 @@ describe("AutonomyService optimized prompt integration", () => {
 			"GEPA autonomy prompt\ncontext={{targetRoomContext}}\nlast={{lastThought}}",
 		);
 		const service = new AutonomyService();
-		(service as unknown as { runtime: IAgentRuntime }).runtime = {
+		(service as unknown as { runtime: IAgentRuntime }).runtime = createMockRuntime({
 			getService<T>(name: string): T | null {
 				if (name === OPTIMIZED_PROMPT_SERVICE) {
 					return optimizedPromptService as T;
 				}
 				return null;
 			},
-		} as unknown as IAgentRuntime;
+		});
 
 		const output = (
 			service as unknown as {
@@ -69,7 +70,7 @@ describe("AutonomyService optimized prompt integration", () => {
 		const service = new AutonomyService();
 		const agentId = "00000000-0000-0000-0000-000000000020" as UUID;
 		const cache = new Map<string, unknown>();
-		(service as unknown as { runtime: IAgentRuntime }).runtime = {
+		(service as unknown as { runtime: IAgentRuntime }).runtime = createMockRuntime({
 			agentId,
 			getCache: async <T>(key: string): Promise<T | undefined> =>
 				cache.get(key) as T | undefined,
@@ -77,7 +78,7 @@ describe("AutonomyService optimized prompt integration", () => {
 				cache.set(key, value);
 				return true;
 			},
-		} as unknown as IAgentRuntime;
+		});
 
 		const memories = Array.from({ length: 18 }, (_, index) => ({
 			id: `00000000-0000-0000-0000-${String(index + 100).padStart(
@@ -142,12 +143,12 @@ describe("AutonomyService optimized prompt integration", () => {
 		const getRoomsForParticipant = vi.fn(async () => {
 			throw new Error("should not enumerate rooms by default");
 		});
-		(service as unknown as { runtime: IAgentRuntime }).runtime = {
+		(service as unknown as { runtime: IAgentRuntime }).runtime = createMockRuntime({
 			agentId: "00000000-0000-0000-0000-000000000020" as UUID,
 			getSetting: () => null,
 			getRoomsForParticipant,
 			getMemories: async () => [],
-		} as unknown as IAgentRuntime;
+		});
 
 		const output = await (
 			service as unknown as {
