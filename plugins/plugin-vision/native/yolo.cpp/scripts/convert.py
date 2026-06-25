@@ -90,11 +90,6 @@ def main() -> int:
         print(f"missing dependency: {exc}. pip install torch numpy", file=sys.stderr)
         return 2
     try:
-        from ultralytics import YOLO
-    except ImportError:
-        print("ultralytics not installed. pip install ultralytics", file=sys.stderr)
-        return 2
-    try:
         import gguf
     except ImportError:
         print("gguf not installed. pip install gguf", file=sys.stderr)
@@ -110,7 +105,21 @@ def main() -> int:
 
     weights = args.weights or f"{args.variant}.pt"
     print(f"[convert] loading {weights}", file=sys.stderr)
-    model = YOLO(weights).model  # DetectionModel (nn.Module)
+    # Prefer ultralytics; fall back to loading the DetectionModel straight from
+    # the checkpoint when ultralytics/torchvision can't import (a broken
+    # torchvision<->torch ABI raises at import, not ImportError). The .pt already
+    # pickles the full DetectionModel, so torch alone can recover the weights.
+    try:
+        from ultralytics import YOLO
+
+        model = YOLO(weights).model  # DetectionModel (nn.Module)
+    except Exception as exc:  # noqa: BLE001 - any import/registration failure
+        print(
+            f"[convert] ultralytics unavailable ({exc}); "
+            "loading the DetectionModel directly from the checkpoint",
+            file=sys.stderr,
+        )
+        model = torch.load(weights, map_location="cpu", weights_only=False)["model"]
     model.eval().float()
 
     out_dir = os.path.dirname(os.path.abspath(args.out))
