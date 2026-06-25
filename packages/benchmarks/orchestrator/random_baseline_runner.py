@@ -403,6 +403,23 @@ def _personality_payload(score: float) -> dict[str, Any]:
     }
 
 
+def _three_agent_dialogue_payload(score: float) -> dict[str, Any]:
+    # verification.json shape (VerificationResult). The benchmark score is the
+    # emotion-detected fraction across turns; the synthetic calibration payload
+    # sets it to the requested score and marks a non-empty 2-turn run.
+    return {
+        "transcriptNotNull": score > 0.0,
+        "audioNotBlank": score > 0.0,
+        "distinctSpeakersDetected": 3,
+        "emotionsDetected": _passed_count(score, 2),
+        "emotionDetectedFraction": score,
+        "turnsTaken": 2,
+        "durationSec": 1.0,
+        "pass": score >= 1.0,
+        "failures": [] if score >= 1.0 else ["calibration"],
+    }
+
+
 def _rlm_payload(score: float) -> dict[str, Any]:
     total = 2
     return {
@@ -677,6 +694,7 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "social_alpha": ("benchmark_results_random_v1.json", _social_alpha_payload),
     "solana": ("eliza_random_v1_metrics.json", _solana_payload),
     "swe_bench": ("swe-bench-results.json", _swe_bench_payload),
+    "three_agent_dialogue": ("verification.json", _three_agent_dialogue_payload),
     "swe_bench_orchestrated": ("swe-bench-orchestrated-results.json", _swe_bench_orchestrated_payload),
     "tau_bench": ("tau-bench-results.json", _tau_bench_payload),
     "terminal_bench": ("terminal-bench-results.json", _terminal_bench_payload),

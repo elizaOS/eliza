@@ -90,9 +90,6 @@ IGNORED_BENCHMARK_DIRS = {
     "scripts",
     "swe-bench-workspace",
     "tests",
-    # Standalone dialogue runner; not wired into the normalized benchmark
-    # orchestrator contract yet.
-    "three-agent-dialogue",
     "viewer",
     # Standalone package; not yet wired as an orchestrator adapter.
     "voice-emotion",
@@ -2177,6 +2174,48 @@ def _score_from_interrupt_bench(path: Path) -> ScoreSummary:
     )
 
 
+def _command_three_agent_dialogue(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    # Spawns three Eliza agents (Alice/Bob/Cleo) through the canonical scripted
+    # dialogue and writes verification.json. GROQ_API_KEY (propagated by the
+    # runner) enables real TTS/ASR; without it the harness falls back to
+    # synthetic audio while still exercising the real Eliza dialogue agents.
+    return [
+        "bun",
+        "run",
+        "runner/run-dialogue.ts",
+        "--scenario=canonical",
+        f"--output={ctx.output_root}",
+    ]
+
+
+def _score_from_three_agent_dialogue(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("three-agent-dialogue verification result is not an object")
+    turns = data.get("turnsTaken")
+    if not isinstance(turns, (int, float)) or turns <= 0:
+        raise ValueError("three-agent-dialogue run captured no turns")
+    fraction = data.get("emotionDetectedFraction")
+    if not isinstance(fraction, (int, float)):
+        raise ValueError(
+            "three-agent-dialogue verification missing emotionDetectedFraction"
+        )
+    return ScoreSummary(
+        score=float(fraction),
+        unit="emotion_detected_fraction",
+        higher_is_better=True,
+        metrics={
+            "pass": bool(data.get("pass", False)),
+            "turns_taken": int(turns),
+            "distinct_speakers": int(data.get("distinctSpeakersDetected", 0) or 0),
+            "emotions_detected": int(data.get("emotionsDetected", 0) or 0),
+            "duration_sec": float(data.get("durationSec", 0.0) or 0.0),
+        },
+    )
+
+
 def _command_personality_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     return [
         "bun",
@@ -2663,6 +2702,16 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             result_patterns=["report.json"],
             score_extractor=_score_from_personality_bench,
             default_timeout_seconds=600,
+        ),
+        _make_extra_adapter(
+            adapter_id="three_agent_dialogue",
+            directory="three-agent-dialogue",
+            description="Three Eliza agents (Alice/Bob/Cleo) voice dialogue: diarization + emotion + ASR + non-blank audio",
+            cwd=str((benchmarks_root / "three-agent-dialogue").resolve()),
+            command_builder=_command_three_agent_dialogue,
+            result_patterns=["verification.json"],
+            score_extractor=_score_from_three_agent_dialogue,
+            default_timeout_seconds=900,
         ),
         _make_extra_adapter(
             adapter_id="rolodex",
