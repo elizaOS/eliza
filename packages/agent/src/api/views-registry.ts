@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  getViewModalities,
   logger,
   type Plugin,
   resolveViewKind,
@@ -269,32 +270,40 @@ export async function registerPluginViews(
 
   const registered: ViewRegistryEntry[] = [];
   for (const view of views) {
-    const entry = await buildEntry(view, plugin.name, resolvedDir);
-    const key = viewRegistryKey(entry.id, entry.viewType);
-    const existing = registry.get(key);
-    if (existing && existing.pluginName !== plugin.name) {
-      logger.warn(
+    for (const viewType of getViewModalities(view)) {
+      const entry = await buildEntry(
+        { ...view, viewType },
+        plugin.name,
+        resolvedDir,
+      );
+      const key = viewRegistryKey(entry.id, entry.viewType);
+      const existing = registry.get(key);
+      if (existing && existing.pluginName !== plugin.name) {
+        logger.warn(
+          {
+            src: "ViewRegistry",
+            viewId: entry.id,
+            viewType: entry.viewType,
+            existingPlugin: existing.pluginName,
+            incomingPlugin: plugin.name,
+          },
+          `View id "${entry.id}" (${entry.viewType}) from plugin "${plugin.name}" conflicts with plugin "${existing.pluginName}"; keeping existing entry`,
+        );
+        continue;
+      }
+      registry.set(key, entry);
+      registered.push(entry);
+      logger.debug(
         {
           src: "ViewRegistry",
           viewId: entry.id,
-          existingPlugin: existing.pluginName,
-          incomingPlugin: plugin.name,
+          viewType: entry.viewType,
+          pluginName: entry.pluginName,
+          available: entry.available,
         },
-        `View id "${entry.id}" from plugin "${plugin.name}" conflicts with plugin "${existing.pluginName}"; keeping existing entry`,
+        `Registered view "${entry.id}" (${entry.viewType}) from plugin "${plugin.name}"`,
       );
-      continue;
     }
-    registry.set(key, entry);
-    registered.push(entry);
-    logger.debug(
-      {
-        src: "ViewRegistry",
-        viewId: entry.id,
-        pluginName: entry.pluginName,
-        available: entry.available,
-      },
-      `Registered view "${entry.id}" from plugin "${plugin.name}"`,
-    );
   }
 
   // Queue embedding computation in the background — non-blocking.
@@ -345,37 +354,44 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
   const pluginName = "@elizaos/builtin";
   const registered: ViewRegistryEntry[] = [];
   for (const view of BUILTIN_VIEWS) {
-    const viewType = normalizeViewType(view.viewType);
-    const key = viewRegistryKey(view.id, viewType);
-    if (registry.has(key)) {
-      // Already registered (e.g. called twice at startup). Skip silently.
-      continue;
+    for (const modality of getViewModalities(view)) {
+      const viewType = normalizeViewType(modality);
+      const key = viewRegistryKey(view.id, viewType);
+      if (registry.has(key)) {
+        // Already registered (e.g. called twice at startup). Skip silently.
+        continue;
+      }
+      const platform: AgentPlatform =
+        (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
+      const pluginDir = AGENT_PACKAGE_DIR;
+      const hasHeroImage = pluginDir
+        ? hasDeclaredHeroOnDiskSync({
+            pluginDir,
+            heroImagePath: view.heroImagePath,
+          })
+        : false;
+      const params = new URLSearchParams();
+      if (viewType !== DEFAULT_VIEW_TYPE) {
+        params.set("viewType", viewType);
+      }
+      const query = params.toString();
+      const entry: ViewRegistryEntry = {
+        ...view,
+        viewType,
+        pluginName,
+        pluginDir,
+        bundleUrl: undefined,
+        bundleUrlVersioned: undefined,
+        heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero${query ? `?${query}` : ""}`,
+        hasHeroImage,
+        available: true,
+        loadedAt,
+        platform,
+        builtin: true,
+      };
+      registry.set(key, entry);
+      registered.push(entry);
     }
-    const platform: AgentPlatform =
-      (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
-    const pluginDir = AGENT_PACKAGE_DIR;
-    const hasHeroImage = pluginDir
-      ? hasDeclaredHeroOnDiskSync({
-          pluginDir,
-          heroImagePath: view.heroImagePath,
-        })
-      : false;
-    const entry: ViewRegistryEntry = {
-      ...view,
-      viewType,
-      pluginName,
-      pluginDir,
-      bundleUrl: undefined,
-      bundleUrlVersioned: undefined,
-      heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero`,
-      hasHeroImage,
-      available: true,
-      loadedAt,
-      platform,
-      builtin: true,
-    };
-    registry.set(key, entry);
-    registered.push(entry);
   }
   // Called on every /api/views request and again during deferred startup, but
   // registration is idempotent — only the first call adds entries. Stay silent

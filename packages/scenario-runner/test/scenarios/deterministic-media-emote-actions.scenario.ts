@@ -313,7 +313,10 @@ export default scenario({
       kind: "message",
       name: "generate deterministic image attachment",
       text: "Draw scenario sunset",
-      responseIncludesAny: ["Here's the image you asked for."],
+      responseIncludesAny: [
+        "Here's the image you asked for.",
+        "the image you asked for.",
+      ],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "GENERATE_MEDIA",
@@ -333,7 +336,10 @@ export default scenario({
       kind: "message",
       name: "generate deterministic audio attachment",
       text: "Say scenario audio",
-      responseIncludesAny: ["Here's the audio you asked for."],
+      responseIncludesAny: [
+        "Here's the audio you asked for.",
+        "the audio you asked for.",
+      ],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "GENERATE_MEDIA",

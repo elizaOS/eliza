@@ -105,7 +105,7 @@ export function HomeWidgetCard({
       onClick={onActivate}
       className={cn(
         // Dark neutral glass keeps white text and orange status values legible.
-        "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/45 px-3 py-2.5 text-left backdrop-blur-md",
+        "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/55 px-3 py-2.5 text-left",
         "transition-colors hover:bg-black/55",
       )}
     >
@@ -121,8 +121,7 @@ export function HomeWidgetCard({
           <span
             aria-hidden
             className={cn(
-              // Use a filled dot; the ring only separates it from the icon.
-              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-black/40",
+              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-black/40",
               TONE_DOT_CLASS[tone],
             )}
           />

@@ -137,6 +137,45 @@ describe("stage 1: plugin declares views → registry populated", () => {
     expect(entry?.tags).toEqual(["test"]);
   });
 
+  it("expands one multimodal declaration into concrete viewType entries", async () => {
+    await registerPluginViews(
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [
+          {
+            ...SMOKE_VIEW,
+            id: "smoke.multimodal",
+            label: "Smoke Multimodal",
+            modalities: ["gui", "xr", "tui"],
+          },
+        ],
+      },
+      undefined,
+    );
+
+    for (const viewType of ["gui", "xr", "tui"] as const) {
+      const entry = getView("smoke.multimodal", { viewType });
+      expect(entry).toBeDefined();
+      expect(entry?.viewType).toBe(viewType);
+      expect(entry?.modalities).toEqual(["gui", "xr", "tui"]);
+      expect(
+        listViews({ developerMode: true, viewType }).filter(
+          (view) => view.id === "smoke.multimodal",
+        ),
+      ).toHaveLength(1);
+    }
+
+    expect(getView("smoke.multimodal")?.bundleUrl).not.toContain("viewType=");
+    expect(
+      getView("smoke.multimodal", { viewType: "tui" })?.bundleUrl,
+    ).toContain("viewType=tui");
+    expect(
+      getView("smoke.multimodal", { viewType: "xr" })?.heroImageUrl,
+    ).toContain("viewType=xr");
+  });
+
   it("entry includes derived fields: bundleUrl and heroImageUrl", async () => {
     await registerPluginViews(
       {

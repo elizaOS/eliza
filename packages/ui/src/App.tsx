@@ -2121,10 +2121,9 @@ export function App() {
       <ShellControllerProvider>
         <div
           // SAFE-AREA FILL INVARIANT (do not break): this root stays
-          // `position: relative` ONLY. It must NEVER acquire a `transform`,
-          // `filter`, `backdrop-filter`/`backdrop-blur`, `perspective`,
-          // `will-change`, or paint/layout `contain`. Any of those makes this
-          // element the containing block for the `fixed inset-0` background
+          // `position: relative` ONLY. It must NEVER acquire compositor,
+          // filter, perspective, or containment declarations. Any of those
+          // makes this element the containing block for the fixed background
           // layers below (the opaque `app-opaque-background` underlay and the
           // `AppBackground` wallpaper), so instead of anchoring to the viewport
           // they would anchor to this padded box (top = safe-area-top) — leaving

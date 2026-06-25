@@ -730,7 +730,7 @@ test.describe("assistant home app flow", () => {
     await screenshot(page, "04-chat-pill-suppressed");
 
     await openAppPath(page, "/views");
-    await expect(page.getByRole("heading", { name: "Views" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Terminal/i })).toBeVisible();
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "05-views-with-pill");
 

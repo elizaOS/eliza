@@ -175,10 +175,10 @@ const IconTile = memo(function IconTile({
             }}
             className={cn(
               // Filled chips stay legible across image and dark tile backgrounds.
-              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold shadow-md ring-1",
+              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-bold shadow-md",
               favorited
-                ? "bg-accent text-white ring-black/20"
-                : "bg-white text-neutral-900 ring-black/15",
+                ? "border-black/20 bg-accent text-white"
+                : "border-black/15 bg-white text-neutral-900",
             )}
           >
             {favorited ? "★" : "+"}
@@ -429,7 +429,7 @@ export function Springboard({
       {favoriteEntries.length > 0 ? (
         <div
           data-testid="springboard-dock"
-          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md sm:mx-4 sm:gap-4 sm:px-6"
+          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
         >
           {favoriteEntries.map((entry) => (
             <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
