@@ -1,6 +1,6 @@
 import {
-	ContentType,
 	type Content,
+	ContentType,
 	type IAgentRuntime,
 	type Media,
 } from "@elizaos/core";
