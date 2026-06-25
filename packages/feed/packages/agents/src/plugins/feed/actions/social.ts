@@ -94,7 +94,7 @@ export const createPostAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+  }),
 };
 
 /**
@@ -180,7 +180,7 @@ export const commentAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+  }),
 };
 
 /**
@@ -263,5 +263,5 @@ export const likePostAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+  }),
 };

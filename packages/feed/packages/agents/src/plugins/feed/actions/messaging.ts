@@ -315,7 +315,7 @@ export const sendMessageAction: Action = {
       text: "Could not determine where to send the message. Specify a chat ID (chat 12345: ...), group name (to 'My Group': ...), or recipient (@username: ...).",
       action: "SEND_MESSAGE",
     });
-  }) as unknown as Action["handler"],
+  }),
 };
 
 // =============================================================================
@@ -409,5 +409,5 @@ export const createGroupAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+  }),
 };
