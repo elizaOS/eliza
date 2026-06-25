@@ -688,6 +688,16 @@ declare module "./client-base" {
       limit?: number;
       minLlmCallsPerTrajectory?: number;
     }): Promise<{ dataset: TrainingDatasetRecord }>;
+    writeTrainingBenchmarkMatrix(options: {
+      rows: Array<{
+        modelId: string;
+        benchmark: string;
+        score: number;
+        variant: "reference" | "base" | "trained";
+      }>;
+      outputDir?: string;
+      referenceModelId?: string;
+    }): Promise<{ outputDir: string; artifactPath: string; artifact: unknown }>;
     listTrainingJobs(): Promise<{ jobs: TrainingJobRecord[] }>;
     startTrainingJob(
       options?: StartTrainingOptions,
@@ -2355,6 +2365,16 @@ ElizaClient.prototype.buildTrainingDataset = async function (
   return this.fetch("/api/training/datasets/build", {
     method: "POST",
     body: JSON.stringify(options ?? {}),
+  });
+};
+
+ElizaClient.prototype.writeTrainingBenchmarkMatrix = async function (
+  this: ElizaClient,
+  options,
+) {
+  return this.fetch("/api/training/benchmarks/matrix", {
+    method: "POST",
+    body: JSON.stringify(options),
   });
 };
 

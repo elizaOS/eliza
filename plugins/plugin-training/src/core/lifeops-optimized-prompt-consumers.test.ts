@@ -39,7 +39,8 @@ describe("LifeOps optimized prompt consumers", () => {
     );
 
     for (const task of LIFEOPS_OPTIMIZED_PROMPT_TASKS) {
-      const relativePath = EXPECTED_CONSUMERS[task];
+      const relativePath =
+        EXPECTED_CONSUMERS[task as keyof typeof EXPECTED_CONSUMERS];
       const source = readFileSync(join(repoRoot, relativePath), "utf8");
       const snippet = resolverSnippetFor(source, task);
 

@@ -54,9 +54,10 @@ export function formatProgress(value: number): string {
 
 /* ── Event parsing ─────────────────────────────────────────────────── */
 
-export function asTrainingEvent(
-  envelope: Partial<StreamEventEnvelope>,
-): TrainingStreamEvent | null {
+export function asTrainingEvent(envelope: {
+  type?: string;
+  payload?: unknown;
+}): TrainingStreamEvent | null {
   if (envelope.type !== "training_event") return null;
   const payloadValue = envelope.payload;
   if (!payloadValue || typeof payloadValue !== "object") return null;
