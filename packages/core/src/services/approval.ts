@@ -381,7 +381,7 @@ export class ApprovalService extends Service {
 		for (const pending of this.pendingApprovals.values()) {
 			actions.push({
 				id: pending.taskId,
-				kind: "approval",
+				kind: "task_approval",
 				source: "approval-service",
 				title: pending.request.description,
 				roomId: pending.request.roomId,
@@ -391,7 +391,11 @@ export class ApprovalService extends Service {
 					...(option.isDefault ? { isDefault: true } : {}),
 					...(option.isCancel ? { isCancel: true } : {}),
 				})),
-				weight: PENDING_USER_ACTION_WEIGHT.approval,
+				weight: PENDING_USER_ACTION_WEIGHT.task_approval,
+				resolution: {
+					target: "approval_service",
+					requestId: pending.taskId,
+				},
 				createdAt: pending.createdAt,
 				expiresAt: pending.expiresAt ?? null,
 			});
