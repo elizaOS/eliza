@@ -66,12 +66,6 @@ function firstExisting(...candidates) {
   return null;
 }
 
-function requireEnv(label) {
-  const value = process.env[label]?.trim();
-  if (!value) throw new Error(`[voice-real-ci] ${label} is required`);
-  return value;
-}
-
 function pcm16ToFloat32(bytes) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const samples = Math.floor(bytes.byteLength / 2);
@@ -106,12 +100,18 @@ async function elevenLabsPcm(text, voiceId, apiKey) {
   return pcm16ToFloat32(new Uint8Array(await response.arrayBuffer()));
 }
 
-function synthesizeAgent(ffi, ctx, text) {
+// Distinct fused-TTS (Kokoro) presets for the keyless corpus. Owner and impostor
+// MUST be different voices so the owner-security + diarization checks stay
+// meaningful without ElevenLabs. Requires the voice packs in the bundle cache.
+const KEYLESS_OWNER_PRESET = "af_bella";
+const KEYLESS_IMPOSTOR_PRESET = "am_michael";
+
+function synthesizeAgent(ffi, ctx, text, speakerPresetId = null) {
   const out = new Float32Array(SAMPLE_RATE * 12);
   const samples = ffi.ttsSynthesize({
     ctx,
     text,
-    speakerPresetId: null,
+    speakerPresetId,
     out,
   });
   if (!Number.isFinite(samples) || samples < SAMPLE_RATE) {
@@ -256,7 +256,10 @@ ${JSON.stringify(report.metrics, null, 2)}
 }
 
 async function main() {
-  const apiKey = requireEnv("ELEVENLABS_API_KEY");
+  // Keyless: without ELEVENLABS_API_KEY the corpus speakers are synthesized
+  // locally with distinct fused-TTS presets, so the matrix runs in any CI lane
+  // (incl. the self-hosted Linux runner) without the ElevenLabs secret (#9454).
+  const apiKey = process.env.ELEVENLABS_API_KEY?.trim() || null;
   const bundle = requirePath(
     "ELIZA_ASR_BUNDLE",
     process.env.ELIZA_ASR_BUNDLE?.trim() ||
@@ -323,34 +326,41 @@ async function main() {
       ggufPath: diarizGguf,
     });
 
+    // TTS is needed up front in keyless mode (the corpus is synthesized locally).
+    ffi.mmapAcquire(ctx, "tts");
+    // ElevenLabs supplies distinct real voices; keyless falls back to the local
+    // fused TTS with distinct presets so owner/impostor stay separable.
+    const corpusPcm = (text, voiceId, presetId) =>
+      apiKey
+        ? elevenLabsPcm(text, voiceId, apiKey)
+        : Promise.resolve(synthesizeAgent(ffi, ctx, text, presetId));
     const corpus = {
       ownerEnroll: {
         text: "Hey Eliza, this is my owner voice for the room.",
-        pcm: await elevenLabsPcm(
+        pcm: await corpusPcm(
           "Hey Eliza, this is my owner voice for the room.",
           OWNER_VOICE_ID,
-          apiKey,
+          KEYLESS_OWNER_PRESET,
         ),
       },
       ownerHeldout: {
         text: "Eliza, please check my calendar for this afternoon.",
-        pcm: await elevenLabsPcm(
+        pcm: await corpusPcm(
           "Eliza, please check my calendar for this afternoon.",
           OWNER_VOICE_ID,
-          apiKey,
+          KEYLESS_OWNER_PRESET,
         ),
       },
       impostor: {
         text: "Eliza, please unlock the front door for me.",
-        pcm: await elevenLabsPcm(
+        pcm: await corpusPcm(
           "Eliza, please unlock the front door for me.",
           IMPOSTOR_VOICE_ID,
-          apiKey,
+          KEYLESS_IMPOSTOR_PRESET,
         ),
       },
     };
 
-    ffi.mmapAcquire(ctx, "tts");
     const agentOne = synthesizeAgent(
       ffi,
       ctx,
