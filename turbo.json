@@ -464,11 +464,18 @@
       "outputs": []
     },
     "@elizaos/example-telegram#typecheck": {
-      "dependsOn": ["@elizaos/plugin-sql#build"],
+      "dependsOn": [
+        "@elizaos/plugin-openai#build",
+        "@elizaos/plugin-sql#build"
+      ],
       "outputs": []
     },
     "@elizaos/example-bluesky#typecheck": {
-      "dependsOn": ["@elizaos/plugin-sql#build"],
+      "dependsOn": [
+        "@elizaos/plugin-bluesky#build",
+        "@elizaos/plugin-openai#build",
+        "@elizaos/plugin-sql#build"
+      ],
       "outputs": []
     },
     "@elizaos/example-chat#typecheck": {
