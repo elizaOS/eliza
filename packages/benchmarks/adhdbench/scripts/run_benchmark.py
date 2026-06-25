@@ -49,15 +49,15 @@ def parse_args() -> argparse.Namespace:
     )
     run_parser.add_argument(
         "--provider",
-        default=None,
+        default="eliza",
         choices=("mock-passthrough", "eliza", "openai", "cerebras", "groq", "openrouter", "vllm"),
         help=(
-            "Model provider. 'mock-passthrough' is the deterministic local "
-            "runner — smoke tests only, always scores ~100%% by construction. "
-            "'eliza' routes through the Eliza TypeScript benchmark bridge. "
-            "The remaining choices hit an OpenAI-compatible chat completions "
-            "endpoint directly. Required (no default) so accidental runs "
-            "never silently use the mock."
+            "Model provider (default: eliza — routes through the Eliza "
+            "TypeScript benchmark bridge against the real AgentRuntime, #9475). "
+            "'mock-passthrough' is the deterministic local runner — smoke "
+            "tests only, always scores ~100%% by construction — and must be "
+            "requested explicitly. The remaining choices hit an "
+            "OpenAI-compatible chat completions endpoint directly."
         ),
     )
     run_parser.add_argument("--levels", nargs="+", type=int, default=[0, 1, 2], help="Levels to run (0, 1, 2)")

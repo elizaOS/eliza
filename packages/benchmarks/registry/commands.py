@@ -980,7 +980,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(mode, str) and mode in ("stub", "rlm", "eliza", "custom"):
             args.extend(["--mode", mode])
         else:
-            args.extend(["--mode", "stub"])  # Default to stub for testing
+            # Default to a REAL mode (#9475): "rlm" runs real RLM-plugin
+            # inference (no Eliza server needed). The orchestrator's adapter
+            # default_extra_config overrides this to the fuller "eliza" agent
+            # loop; only the bare/no-extra path falls back here. "stub" is the
+            # heuristic mock and must be requested explicitly via extra.
+            args.extend(["--mode", "rlm"])
         backend = extra.get("backend")
         if isinstance(backend, str):
             args.extend(["--backend", backend])
