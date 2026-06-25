@@ -119,7 +119,7 @@ jobs:
       - name: Install homepage browser
         if: steps.release_data_check.outputs.available == 'true'
         working-directory: packages/homepage
-        run: ../../node_modules/.bin/playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Generate missing snapshot baselines
         if: steps.release_data_check.outputs.available == 'true'

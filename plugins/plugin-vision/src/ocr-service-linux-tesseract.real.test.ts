@@ -21,7 +21,9 @@ import { LinuxTesseractOcrService } from "./ocr-service-linux-tesseract";
 const available = LinuxTesseractOcrService.isAvailable();
 
 const fixturePng = readFileSync(
-  fileURLToPath(new URL("../test/fixtures/ocr-real-sample.png", import.meta.url)),
+  fileURLToPath(
+    new URL("../test/fixtures/ocr-real-sample.png", import.meta.url),
+  ),
 );
 
 describe.skipIf(!available)(

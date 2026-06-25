@@ -122,7 +122,7 @@ jobs:
 
       - name: Install homepage browser
         working-directory: packages/homepage
-        run: ../../node_modules/.bin/playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Test homepage downloads
         working-directory: packages/homepage
