@@ -395,7 +395,13 @@ export class EmbeddingGenerationService extends Service {
 		}
 
 		const remaining = this.batchQueue.size;
-		await this.batchQueue.dispose(this.runtime, { flushHighPriority: true });
+		const fastShutdown = process.env.ELIZA_FAST_SHUTDOWN === "1";
+		if (fastShutdown) {
+			this.batchQueue.clear();
+		}
+		await this.batchQueue.dispose(this.runtime, {
+			flushHighPriority: !fastShutdown,
+		});
 
 		this.runtime.logger.info(
 			{
