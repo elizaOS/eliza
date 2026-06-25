@@ -13,7 +13,7 @@
     "rootDir": ".",
     "skipLibCheck": true,
     "typeRoots": ["node_modules/@types"],
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "target": "ES2022",
     "useUnknownInCatchVariables": false

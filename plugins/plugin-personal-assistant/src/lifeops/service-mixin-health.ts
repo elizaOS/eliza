@@ -74,7 +74,7 @@ type DailySummaryAverageField =
   | "bloodPressureDiastolic"
   | "bloodOxygenPercent";
 
-type LifeOpsHealthServicePublic = {
+export type LifeOpsHealthServicePublic = {
   getHealthConnectorStatus(): Promise<{
     available: boolean;
     backend: HealthBackend;

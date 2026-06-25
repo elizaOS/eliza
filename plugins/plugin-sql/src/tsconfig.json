@@ -6,7 +6,7 @@
     "lib": ["ESNext", "dom"],
     "moduleResolution": "bundler",
     "outDir": "../dist",
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
