@@ -1,0 +1,72 @@
+{
+  "id": "embeddings",
+  "name": "Embeddings",
+  "description": "Provider-agnostic (bring-your-own) TEXT_EMBEDDING provider. Point EMBEDDING_BASE_URL / EMBEDDING_API_KEY at any OpenAI-compatible /embeddings endpoint (a personal OpenAI key, Eliza Cloud, Voyage, Together, or a local TEI/Infinity/vLLM/LM Studio server) to get real memory/RAG embeddings independently of the chat brain. Registers ONLY the embedding slot — no text/image/audio handlers.",
+  "npmName": "@elizaos/plugin-embeddings",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["ai-provider", "llm", "embedding", "embeddings"],
+  "config": {
+    "EMBEDDING_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Embedding Base Url",
+      "help": "Base URL of an OpenAI-compatible /embeddings endpoint (e.g. https://api.openai.com/v1, an Eliza Cloud URL, a Voyage proxy, or a local TEI/Infinity/vLLM server). Setting this (or the API key) activates the plugin.",
+      "placeholder": "e.g., https://api.openai.com/v1",
+      "advanced": false
+    },
+    "EMBEDDING_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Embedding Api Key",
+      "help": "Bearer token for the embedding endpoint. Setting this (or the base URL) activates the plugin. Omit for local servers that need no auth.",
+      "advanced": false
+    },
+    "EMBEDDING_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "text-embedding-3-small",
+      "label": "Embedding Model",
+      "help": "Embedding model identifier sent as the request `model` field.",
+      "placeholder": "e.g., text-embedding-3-small",
+      "advanced": false
+    },
+    "EMBEDDING_DIMENSIONS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "1536",
+      "label": "Embedding Dimensions",
+      "help": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
+      "advanced": false
+    },
+    "EMBEDDING_BROWSER_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Embedding Browser Url",
+      "help": "Browser-only server-side proxy URL for /embeddings. In a browser build the Authorization header is never sent unless this is set, so the API key stays server-side.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Boxes",
+    "group": "ai-provider",
+    "groupOrder": 0,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaOS/eliza/tree/HEAD/plugins/plugin-embeddings",
+    "repository": "https://github.com/elizaOS/eliza",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#embeddings"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}
