@@ -49,8 +49,10 @@ import { ensureRouteAuthorized } from "./auth.ts";
 // normalize to the small read-only surface this reader needs. When neither is
 // present the route reports `dbReady: false` instead of crashing the API.
 interface SqliteStatement {
-  all(...params: unknown[]): Record<string, unknown>[];
-  get(...params: unknown[]): Record<string, unknown> | undefined;
+  all<T extends object = Record<string, unknown>>(...params: unknown[]): T[];
+  get<T extends object = Record<string, unknown>>(
+    ...params: unknown[]
+  ): T | undefined;
   run(...params: unknown[]): { changes: number; lastInsertRowid: number };
 }
 type DatabaseSyncCtor = new (

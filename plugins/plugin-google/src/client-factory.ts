@@ -56,7 +56,7 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<calendar_v3.Calendar> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.calendar(this.apiOptions("v3", auth) as unknown as calendar_v3.Options);
+    return google.calendar(this.apiOptions("v3", auth) as calendar_v3.Options);
   }
 
   async drive(
@@ -74,7 +74,7 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<docs_v1.Docs> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.docs(this.apiOptions("v1", auth) as unknown as docs_v1.Options);
+    return google.docs(this.apiOptions("v1", auth) as docs_v1.Options);
   }
 
   async sheets(
@@ -92,7 +92,7 @@ export class GoogleApiClientFactory {
     reason: string
   ): Promise<meet_v2.Meet> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
-    return google.meet(this.apiOptions("v2", auth) as unknown as meet_v2.Options);
+    return google.meet(this.apiOptions("v2", auth) as meet_v2.Options);
   }
 
   // The `as <ns>.Options` casts at each call site bridge a TypeScript
@@ -100,7 +100,7 @@ export class GoogleApiClientFactory {
   // google-auth-library (one direct, one nested under googleapis-common),
   // so `Auth.OAuth2Client` from 'googleapis' and the `OAuth2Client` baked
   // into each `<ns>.Options['auth']` resolve to different physical classes.
-  // Runtime is fine — the cast pins TS to the correct Options shape per
+  // Runtime is fine: these casts pin TS to the correct Options shape per
   // method without an override or a global `any`.
   private apiOptions<TVersion extends string>(
     version: TVersion,

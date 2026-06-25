@@ -7,7 +7,6 @@ import {
 } from "node:http";
 import { request as requestHttps } from "node:https";
 import net from "node:net";
-import { Readable } from "node:stream";
 import { createPinnedLookup } from "../../network/ssrf.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -108,6 +107,7 @@ type PinnedFetchInput = {
 };
 
 type PinnedFetchImpl = (input: PinnedFetchInput) => Promise<Response>;
+type ResponseBodyChunk = Uint8Array<ArrayBuffer>;
 
 function toRequestHeaders(headers: Headers): Record<string, string> {
 	const normalized: Record<string, string> = {};
@@ -117,11 +117,24 @@ function toRequestHeaders(headers: Headers): Record<string, string> {
 	return normalized;
 }
 
-/** Node's `Readable.toWeb` stream is valid `fetch` `BodyInit`; lib.dom and `node:stream/web` disagree in TypeScript. */
+function toResponseBodyChunk(chunk: Buffer | string): ResponseBodyChunk {
+	const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+	return Uint8Array.from(bytes);
+}
+
 function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
-	return Readable.toWeb(stream) as unknown as ReadableStream<
-		Uint8Array<ArrayBuffer>
-	>;
+	return new ReadableStream<ResponseBodyChunk>({
+		start(controller) {
+			stream.on("data", (chunk: Buffer | string) => {
+				controller.enqueue(toResponseBodyChunk(chunk));
+			});
+			stream.once("end", () => controller.close());
+			stream.once("error", (error) => controller.error(error));
+		},
+		cancel() {
+			stream.destroy();
+		},
+	});
 }
 
 function responseFromIncomingMessage(response: IncomingMessage): Response {

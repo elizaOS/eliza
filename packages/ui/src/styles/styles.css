@@ -44,6 +44,7 @@ body {
   max-width: 100%;
   height: 100%;
   margin: 0;
+  background: var(--launch-bg, #ef5a1f);
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
@@ -58,7 +59,7 @@ body {
   overflow: hidden;
   font-family: var(--font-body);
   color: var(--text);
-  background: var(--bg);
+  background: var(--launch-bg, #ef5a1f);
 }
 
 html.eliza-chat-overlay-shell,
