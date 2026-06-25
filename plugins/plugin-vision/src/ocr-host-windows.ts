@@ -74,6 +74,8 @@ while ($true) {
   $ImagePath = [Console]::In.ReadLine()
   if ($null -eq $ImagePath) { break }
   if ($ImagePath.Length -eq 0) { continue }
+  $stream = $null
+  $bitmap = $null
   try {
     if ($null -eq $engine) { [Console]::Out.WriteLine('{"width":0,"height":0,"lines":[]}'); [Console]::Out.Flush(); continue }
     $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($ImagePath)) ([Windows.Storage.StorageFile])
@@ -91,11 +93,15 @@ while ($true) {
       $lines += [pscustomobject]@{ text = $line.Text; words = $words }
     }
     $out = [pscustomobject]@{ width = [int]$bitmap.PixelWidth; height = [int]$bitmap.PixelHeight; lines = $lines } | ConvertTo-Json -Depth 6 -Compress
-    $bitmap.Dispose()
-    $stream.Dispose()
     [Console]::Out.WriteLine($out)
   } catch {
     [Console]::Out.WriteLine('{"width":0,"height":0,"lines":[],"error":"ocr-host"}')
+  } finally {
+    # Always release the file handle + bitmap, even on a mid-iteration throw —
+    # otherwise the handle leaks and keeps the temp PNG locked so the caller's
+    # rmSync cannot delete it (this is a long-lived session).
+    if ($null -ne $bitmap) { try { $bitmap.Dispose() } catch {} }
+    if ($null -ne $stream) { try { $stream.Dispose() } catch {} }
   }
   [Console]::Out.Flush()
 }`;
@@ -180,8 +186,18 @@ async function ensureHost(): Promise<void> {
     child.stderr.on("data", (c: Buffer) => {
       stderrRing = (stderrRing + c.toString("utf8")).slice(-2048);
     });
-    child.once("exit", onExit);
-    child.once("error", onExit);
+    // Swallow stdin pipe errors (EPIPE when the host dies between requests) so
+    // Node doesn't throw an uncaught exception and crash the process; the dead
+    // pipe surfaces via onExit → a normal rejection the caller falls back from.
+    child.stdin.on("error", () => {});
+    // Bind exit/error to THIS child so a previously-killed host's late 'exit'
+    // can't tear down a freshly respawned host or reject its pending request.
+    const onChildGone = () => {
+      if (host !== child) return;
+      onExit();
+    };
+    child.once("exit", onChildGone);
+    child.once("error", onChildGone);
     host = child;
     // Probe: a blank line is ignored by the loop, so prove readiness by sending
     // a path we expect to fail recognition — the loop always answers one JSON
@@ -220,7 +236,14 @@ function sendRaw(imagePath: string, timeoutMs: number): Promise<string> {
       );
     }, timeoutMs);
     pending = { resolve, reject, timer };
-    host.stdin.write(`${imagePath}\n`);
+    try {
+      host.stdin.write(`${imagePath}\n`);
+    } catch (err) {
+      clearTimeout(timer);
+      pending = null;
+      shutdownOcrHost();
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
   });
 }
 

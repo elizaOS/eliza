@@ -16,6 +16,7 @@
 import { platform } from "node:os";
 import { afterAll, describe, expect, it } from "vitest";
 import {
+  disposePsHost,
   psHostAvailable,
   runPsHost,
   shutdownPsHost,
@@ -81,6 +82,23 @@ describe("ps-host (warm PowerShell host, Windows)", () => {
       await expect(runPsHost("throw 'boom'", 30_000)).rejects.toThrow();
       const out = await runPsHost("Write-Output 'still-alive'", 30_000);
       expect(out).toContain("still-alive");
+    },
+    60_000,
+  );
+
+  it.skipIf(!RUN)(
+    "disposePsHost latches spawning off until re-warmed",
+    async () => {
+      await warmPsHost();
+      // After an owner dispose, a fresh call must NOT resurrect the host (so a
+      // late fire-and-forget continuation can't leak a process post-stop). The
+      // caller sees a rejection and falls back to a one-shot spawn.
+      disposePsHost();
+      await expect(runPsHost("Write-Output 'nope'", 30_000)).rejects.toThrow();
+      // An explicit warm re-enables a fresh session.
+      await warmPsHost();
+      const out = await runPsHost("Write-Output 're-enabled'", 30_000);
+      expect(out).toContain("re-enabled");
     },
     60_000,
   );

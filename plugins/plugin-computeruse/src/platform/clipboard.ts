@@ -138,7 +138,12 @@ export async function writeClipboard(text: string): Promise<void> {
   // Windows: prefer the warm PowerShell host. The value is base64-encoded into
   // the command (no stdin pipe needed), then decoded host-side, so it round-trips
   // any UTF-8 text safely. Falls back to the one-shot stdin-piped spawn.
-  if (psHostAvailable()) {
+  //
+  // Empty string is routed to the fallback path deliberately: `Set-Clipboard
+  // -Value ''` rejects an empty value, and base64('') would otherwise let the
+  // host "succeed" where the one-shot spawn fails — a non-transparent
+  // divergence. Routing both through the same path keeps the behavior identical.
+  if (psHostAvailable() && text.length > 0) {
     try {
       const b64 = Buffer.from(text, "utf-8").toString("base64");
       await runPsHost(
