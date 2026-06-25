@@ -19,6 +19,19 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 /** Timeout for health checks (ms) */
 const HEALTH_TIMEOUT_MS = 5_000;
 
+/**
+ * Pre-auth key TTL window (ms): how long a freshly-created key stays valid for a
+ * container to boot AND finish VPN enrollment. 10 min proved too tight on slow
+ * boots — the key could expire before headscale registration completed, looping
+ * the container on re-auth (one prod agent hit 176 restarts before this was
+ * raised on the box). Default 60 min (verified healthy in prod); env-overridable
+ * via `HEADSCALE_PREAUTH_TTL_MIN` so it survives a daemon redeploy.
+ */
+export function resolvePreAuthTtlMs(): number {
+  const minutes = Number.parseInt(process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "", 10);
+  return (Number.isFinite(minutes) && minutes > 0 ? minutes : 60) * 60 * 1000;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -165,7 +178,7 @@ export class HeadscaleClient {
    *
    * @param opts.reusable   Allow the key to be used more than once (default false)
    * @param opts.ephemeral  Node will be removed once it goes offline (default false)
-   * @param opts.expiration ISO-8601 expiration timestamp (default: 10 min from now)
+   * @param opts.expiration ISO-8601 expiration timestamp (default: now + HEADSCALE_PREAUTH_TTL_MIN, 60 min)
    * @param opts.aclTags    ACL tags to attach to the key (default: ["tag:agent"])
    */
   async createPreAuthKey(opts?: {
@@ -185,9 +198,11 @@ export class HeadscaleClient {
       ensureUser = false,
     } = opts ?? {};
 
-    // 10-minute window is sufficient for container boot + VPN enrollment.
-    // Previous 24h was unnecessarily large for single-use ephemeral keys.
-    const expirationTime = expiration ?? new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    // The key must stay valid long enough for the container to boot AND finish
+    // VPN enrollment; 10 min was too tight on slow boots (key expired mid-
+    // registration -> container re-auth loop). Default 60 min, env-overridable
+    // via HEADSCALE_PREAUTH_TTL_MIN (see resolvePreAuthTtlMs).
+    const expirationTime = expiration ?? new Date(Date.now() + resolvePreAuthTtlMs()).toISOString();
 
     const userId = ensureUser ? await this.ensureUser(user) : await this.resolveUserId(user);
 
