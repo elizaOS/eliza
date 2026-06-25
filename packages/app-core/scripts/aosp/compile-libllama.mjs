@@ -1013,6 +1013,16 @@ export function ensureLlamaCppCheckout({
       cwd: cacheDir,
     });
   }
+  // The pinned commit is authoritative and may NOT be the tag tip — the moving
+  // LLAMA_CPP_TAG and LLAMA_CPP_COMMIT can diverge (e.g. the commit lives on a
+  // feature branch while the tag was re-pointed at a release). A
+  // `--branch <tag>` shallow clone only carries the tag's commit, so a bare
+  // `git checkout <commit>` then fails with "unable to read tree". Fetch the
+  // exact pinned commit by sha first (GitHub serves any ref-reachable sha) so
+  // the working tree always lands on LLAMA_CPP_COMMIT, never the tag.
+  spawn("git", ["fetch", "--depth", "1", "origin", LLAMA_CPP_COMMIT], {
+    cwd: cacheDir,
+  });
   spawn("git", ["checkout", "--detach", LLAMA_CPP_COMMIT], {
     cwd: cacheDir,
   });

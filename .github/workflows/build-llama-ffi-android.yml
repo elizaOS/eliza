@@ -109,6 +109,13 @@ jobs:
       - name: Install build deps (cmake, ninja, Vulkan-Hpp headers)
         run: |
           set -euo pipefail
+          # The runner image ships a packages.microsoft.com apt source that
+          # intermittently 403s / "is no longer signed", which fails apt-get
+          # update under pipefail even though this build needs nothing from it.
+          # Drop any MS apt source (filename varies by image) before updating.
+          for f in $(sudo grep -rliE 'packages\.microsoft\.com' /etc/apt/sources.list.d/ 2>/dev/null || true); do
+            sudo rm -f "$f"
+          done
           sudo apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=30
           # libvulkan-dev provides /usr/include/vulkan/vulkan.hpp (arch-independent;
           # compile-libllama searches /usr/include for it on Linux hosts).
