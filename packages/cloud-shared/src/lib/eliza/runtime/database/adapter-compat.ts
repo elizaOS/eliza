@@ -18,7 +18,6 @@ import { stableSerialize } from "../stable-serialize";
 // args. `unknown[]` rejects the typed implementations (function-arg contravariance);
 // `never[]` rejects the call sites. The any here is the only shape that satisfies
 // both directions for this heterogeneous compat-method registry.
-// biome-ignore lint/suspicious/noExplicitAny: documented contravariance — see above
 type CompatDatabaseMethod = (...args: any[]) => Promise<unknown> | unknown;
 type CompatDatabaseAdapter = IDatabaseAdapter & Record<string, unknown>;
 type LegacyDeleteAllMemories = (roomId: UUID, tableName: string) => Promise<void>;
