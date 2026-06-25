@@ -570,4 +570,56 @@ describe("AudioFrameConsumer — echo cancellation (#9455)", () => {
 		await consumer.pushDecodedFrame(frame, 1000);
 		expect(Array.from(vad.frames[0])).toEqual(Array.from(frame));
 	});
+
+	it("skips the canceller entirely while the agent is silent (#9649 fast path)", async () => {
+		// The reference provider returns far PCM while the agent plays, then null
+		// once it stops. Frames during silence must be EXACT passthrough — proving
+		// the canceller is not invoked at all (so it can't subtract a stale echo
+		// estimate against converged weights) — and must not increment the
+		// cancelled-frame counter.
+		const N = SR * 2;
+		const far = farSignal(N);
+		const echo = echoOf(far);
+		const PLAYBACK_FRAMES = 40; // agent plays for the first 40 frames, then stops
+		const vad = new RecordingVad();
+		const consumer = new AudioFrameConsumer(
+			{
+				vad,
+				pipeline: new FakePipeline("skip"),
+				runtime: new FakeRuntime(),
+				echoReference: (ts: number, samples: number) => {
+					const idx = Math.round((ts - 1000) / 20);
+					if (idx >= PLAYBACK_FRAMES) return null; // agent silent
+					const off = idx * BLOCK;
+					return far.subarray(off, off + samples);
+				},
+			},
+			{ source: { kind: "device", deviceId: "pixel" }, preRollSeconds: 0 },
+		);
+
+		// Mic carries echo while the agent plays, then pure (distinct) near speech.
+		const nearSilentEra = farSignal(N, 555);
+		let ts = 1000;
+		let frameIdx = 0;
+		const silentInputs: Float32Array[] = [];
+		for (let off = 0; off + BLOCK <= N; off += BLOCK, frameIdx++) {
+			const mic =
+				frameIdx < PLAYBACK_FRAMES
+					? echo.subarray(off, off + BLOCK)
+					: nearSilentEra.subarray(off, off + BLOCK);
+			if (frameIdx >= PLAYBACK_FRAMES) silentInputs.push(mic);
+			await consumer.pushDecodedFrame(mic, ts);
+			ts += 20;
+		}
+
+		// Only the playback frames were cancelled; silent frames took the fast path.
+		expect(consumer.echoFramesCancelled).toBe(PLAYBACK_FRAMES);
+
+		// Every silent-era frame is bit-identical to its input (no canceller touch).
+		const silentOutputs = vad.frames.slice(PLAYBACK_FRAMES);
+		expect(silentOutputs.length).toBe(silentInputs.length);
+		for (let i = 0; i < silentOutputs.length; i++) {
+			expect(Array.from(silentOutputs[i])).toEqual(Array.from(silentInputs[i]));
+		}
+	});
 });
