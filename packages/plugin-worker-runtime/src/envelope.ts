@@ -36,7 +36,7 @@ export function createWorkerChannel(): WorkerChannel {
       handler: (event: MessageEvent) => void,
     ): void;
   };
-  const self = globalThis as unknown as WorkerSelf;
+  const self = globalThis as WorkerSelf;
 
   const subscribers = new Set<(message: RemotePluginWorkerMessage) => void>();
   let closed = false;
@@ -85,7 +85,7 @@ export function createSubprocessChannel(): WorkerChannel {
     off(event: "data", handler: (chunk: string) => void): void;
   };
   const proc = (
-    globalThis as unknown as {
+    globalThis as {
       process: { stdin: NodeReadable; stdout: NodeWritable };
     }
   ).process;
@@ -146,9 +146,8 @@ export function createSubprocessChannel(): WorkerChannel {
  * defaults to the Bun-Worker postMessage channel.
  */
 export function createDefaultChannel(): WorkerChannel {
-  const env = (
-    globalThis as unknown as { process?: { env?: Record<string, string> } }
-  ).process?.env;
+  const env = (globalThis as { process?: { env?: Record<string, string> } })
+    .process?.env;
   if (env?.ELIZA_REMOTE_PLUGIN_CHANNEL === "stdio") {
     return createSubprocessChannel();
   }
