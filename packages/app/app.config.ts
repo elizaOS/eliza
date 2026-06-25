@@ -36,10 +36,13 @@ const config = {
 
   web: {
     shortName: "Eliza",
-    // Eliza brand orange used by manifest theme_color, <meta name="theme-color">,
-    // and native launch surfaces.
-    themeColor: "#FF5800",
-    backgroundColor: "#FF5800",
+    // Home-background orange (#ef5a1f, DEFAULT_BACKGROUND_COLOR) used by manifest
+    // theme_color / background_color, <meta name="theme-color">, and native launch
+    // surfaces. These are boot/launch first-paint surfaces (PWA splash, OS launch
+    // chrome), so they track the home background — not the brand accent #FF5800 —
+    // to avoid flashing a different orange before the home background paints (#9565).
+    themeColor: "#ef5a1f",
+    backgroundColor: "#ef5a1f",
     shareImagePath: "/brand/ogembeds/eliza_ogembed.svg",
   },
 
