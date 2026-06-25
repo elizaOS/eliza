@@ -68,7 +68,7 @@ interface InvokeActionParams {
 
 interface LoadedAction {
 	name: string;
-	handler: (...args: any[]) => unknown | Promise<unknown>;
+	handler: (...args: unknown[]) => unknown | Promise<unknown>;
 }
 
 if (isMainThread) {
