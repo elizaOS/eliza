@@ -60,6 +60,7 @@ import {
 } from "./persistence";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
+import { isTrustedRestoreApiBaseUrl } from "./startup-phase-restore";
 import { useTranslation } from "./TranslationContext.hooks";
 import { TranslationProvider } from "./TranslationProvider";
 import { useAppLifecycleEvents } from "./useAppLifecycleEvents";
@@ -1722,6 +1723,17 @@ function AppProviderInner({
         (p) => p.id === profileId,
       );
       if (!profile) return;
+
+      // The profile registry is persisted in localStorage, so a tampered/
+      // attacker-written profile could point a "remote" agent at an untrusted
+      // host. Refuse to switch to (and dial / send the bearer token to) such a
+      // profile — same trust gate the boot-restore path uses.
+      if (
+        profile.kind === "remote" &&
+        !isTrustedRestoreApiBaseUrl(profile.apiBase)
+      ) {
+        return;
+      }
 
       setActiveProfileId(profileId);
 
