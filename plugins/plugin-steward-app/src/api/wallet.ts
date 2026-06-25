@@ -361,7 +361,7 @@ export function syncSolanaPublicKeyEnv(
   privateKey = process.env.SOLANA_PRIVATE_KEY,
 ): string | null {
   const trimmed = privateKey?.trim();
-  if (!trimmed || PLACEHOLDER_RE.test(trimmed)) {
+  if (!trimmed || ENV_SENTINEL_RE.test(trimmed)) {
     return null;
   }
 
@@ -583,7 +583,7 @@ export function getWalletAddresses(): WalletAddresses {
   // ── 2. Local private key derivation (fallback) ─────────────────────
   if (!evmAddress) {
     const evmKey = process.env.EVM_PRIVATE_KEY;
-    if (evmKey && !PLACEHOLDER_RE.test(evmKey)) {
+    if (evmKey && !ENV_SENTINEL_RE.test(evmKey)) {
       try {
         evmAddress = deriveEvmAddress(evmKey);
       } catch (e) {
@@ -594,7 +594,7 @@ export function getWalletAddresses(): WalletAddresses {
 
   if (!solanaAddress) {
     const solKey = process.env.SOLANA_PRIVATE_KEY;
-    if (solKey && !PLACEHOLDER_RE.test(solKey)) {
+    if (solKey && !ENV_SENTINEL_RE.test(solKey)) {
       try {
         solanaAddress = deriveSolanaAddress(solKey);
       } catch (e) {
