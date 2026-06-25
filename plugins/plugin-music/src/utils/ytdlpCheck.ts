@@ -86,13 +86,7 @@ function getCandidatePaths(): string[] {
   // Walk up from module dir (handles both source and bundled dist layouts)
   for (let depth = 2; depth <= 5; depth++) {
     add(
-      resolve(
-        moduleDir,
-        ...Array(depth).fill(".."),
-        "scripts",
-        "bin",
-        binName,
-      ),
+      resolve(moduleDir, ...Array(depth).fill(".."), "scripts", "bin", binName),
     );
   }
   add(resolve(process.cwd(), "scripts", "bin", binName));
