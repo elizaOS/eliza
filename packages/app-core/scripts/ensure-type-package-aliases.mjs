@@ -56,7 +56,7 @@ const MATERIALIZED_TYPE_PACKAGES = [
   "three",
   "ws",
 ];
-const MATERIALIZED_PACKAGES = ["bun-types"];
+const MATERIALIZED_PACKAGES = ["bun-types", "csstype"];
 
 function collectBrokenBundledTypePackages() {
   const packageNames = new Set();
