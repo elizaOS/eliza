@@ -34,7 +34,11 @@ import {
 import { detectPlatformCapabilities } from "../platform/capabilities.js";
 import { captureDisplay, capturePrimaryDisplay } from "../platform/capture.js";
 import { localToGlobalDefault } from "../platform/coords.js";
-import { getPrimaryDisplay, listDisplays } from "../platform/displays.js";
+import {
+  getPrimaryDisplay,
+  listDisplays,
+  warmDisplaysCache,
+} from "../platform/displays.js";
 import {
   driverCaptureScreenshot,
   driverClick,
@@ -74,6 +78,7 @@ import {
 import { commandExists, currentPlatform } from "../platform/helpers.js";
 import { killApp, launchApp, openTarget } from "../platform/launch.js";
 import { classifyPermissionDeniedError } from "../platform/permissions.js";
+import { shutdownPsHost, warmPsHost } from "../platform/ps-host.js";
 import {
   clearTerminal,
   closeAllTerminalSessions,
@@ -251,6 +256,17 @@ export class ComputerUseService extends Service {
       `[computeruse] Service started on ${currentPlatform()} (${instance.screenSize.width}x${instance.screenSize.height}) approval=${instance.getApprovalMode()}`,
     );
 
+    // Windows: pre-warm the persistent PowerShell host (and seed the display
+    // cache through it) so the first capture/clipboard/scene turn doesn't pay
+    // the ~10-16s cold `powershell.exe` spawn tax. Fire-and-forget — never
+    // blocks startup, and every consumer falls back to one-shot spawns if the
+    // host fails to warm. No-op off Windows.
+    if (currentPlatform() === "win32") {
+      void warmPsHost()
+        .then(() => warmDisplaysCache())
+        .catch(() => {});
+    }
+
     return instance;
   }
 
@@ -262,6 +278,8 @@ export class ComputerUseService extends Service {
     } catch {
       // ignore browser shutdown failures
     }
+    // Tear down the persistent PowerShell host so we don't leak the process.
+    shutdownPsHost();
     logger.info("[computeruse] Service stopped");
   }
 
