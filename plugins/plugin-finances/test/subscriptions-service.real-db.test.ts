@@ -19,6 +19,11 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/test/helpers/real-runtime.ts";
+import { browserPlugin } from "../../plugin-browser/src/plugin.ts";
+import {
+  __resetBrowserWorkspaceStateForTests,
+  executeBrowserWorkspaceCommand,
+} from "../../plugin-browser/src/workspace/browser-workspace.ts";
 import financesPlugin from "../src/plugin.ts";
 import type { SubscriptionsBrowserGateway } from "../src/services/browser-bridge-seam.ts";
 import type { SubscriptionsGmailGateway } from "../src/services/gmail-seam.ts";
@@ -73,6 +78,86 @@ const noCompanionBrowser: SubscriptionsBrowserGateway = {
   },
 };
 
+const GOOGLE_PLAY_SUBSCRIPTIONS_URL =
+  "https://play.google.com/store/account/subscriptions";
+
+const googlePlayFixtureRoutes = [
+  {
+    url: GOOGLE_PLAY_SUBSCRIPTIONS_URL,
+    title: "Google Play Subscriptions",
+    body: [
+      "<main>",
+      "<h1>Google Play</h1>",
+      "<h2>Subscriptions</h2>",
+      `<form method="get" action="${GOOGLE_PLAY_SUBSCRIPTIONS_URL}">`,
+      '<input type="hidden" name="confirm" value="1" />',
+      '<button data-lifeops-action="cancel-subscription" type="submit">Cancel subscription</button>',
+      "</form>",
+      "</main>",
+    ].join(""),
+  },
+  {
+    url: `${GOOGLE_PLAY_SUBSCRIPTIONS_URL}?canceled=1`,
+    title: "Google Play Cancellation Complete",
+    body: [
+      "<main>",
+      "<h1>Google Play</h1>",
+      "<p>subscription canceled</p>",
+      "</main>",
+    ].join(""),
+  },
+  {
+    url: `${GOOGLE_PLAY_SUBSCRIPTIONS_URL}?confirm=1`,
+    title: "Google Play Confirm Cancellation",
+    body: [
+      "<main>",
+      "<h1>Google Play</h1>",
+      "<p>Confirm cancellation</p>",
+      `<form method="get" action="${GOOGLE_PLAY_SUBSCRIPTIONS_URL}">`,
+      '<input type="hidden" name="canceled" value="1" />',
+      '<button data-lifeops-action="confirm-cancellation" type="submit">Confirm cancellation</button>',
+      "</form>",
+      "</main>",
+    ].join(""),
+  },
+] as const;
+
+async function seedGooglePlayWorkspaceFixture(): Promise<void> {
+  delete process.env.ELIZA_BROWSER_WORKSPACE_URL;
+  delete process.env.ELIZA_BROWSER_WORKSPACE_TOKEN;
+  __resetBrowserWorkspaceStateForTests();
+
+  const opened = await executeBrowserWorkspaceCommand({
+    show: true,
+    subaction: "open",
+    title: "Google Play Fixture",
+    url: "about:blank",
+  });
+  const tabId = opened.tab?.id;
+  if (!tabId) {
+    throw new Error(
+      "browser workspace did not create a Google Play fixture tab",
+    );
+  }
+
+  for (const route of googlePlayFixtureRoutes) {
+    await executeBrowserWorkspaceCommand({
+      id: tabId,
+      networkAction: "route",
+      responseBody: [
+        "<!doctype html>",
+        "<html>",
+        `<head><title>${route.title}</title></head>`,
+        `<body>${route.body}</body>`,
+        "</html>",
+      ].join(""),
+      responseStatus: 200,
+      subaction: "network",
+      url: route.url,
+    });
+  }
+}
+
 describe("SubscriptionsService — real PGLite", () => {
   let runtime: AgentRuntime;
   let testResult: RealTestRuntimeResult;
@@ -80,7 +165,7 @@ describe("SubscriptionsService — real PGLite", () => {
   beforeAll(async () => {
     testResult = await createRealTestRuntime({
       characterName: "subscriptions-real-db-tests",
-      plugins: [financesPlugin],
+      plugins: [financesPlugin, browserPlugin],
     });
     runtime = testResult.runtime;
   }, 180_000);
@@ -197,7 +282,10 @@ describe("SubscriptionsService — real PGLite", () => {
         executor: "agent_browser",
         confirmed: true,
       });
-      expect(summary.cancellation.status).toBe("completed");
+      expect(
+        summary.cancellation.status,
+        JSON.stringify(summary.cancellation, null, 2),
+      ).toBe("completed");
 
       // Round-trips through the real DB.
       const status = await service.getSubscriptionCancellationStatus({
@@ -209,6 +297,51 @@ describe("SubscriptionsService — real PGLite", () => {
       (runtime as any).getService = originalGetService;
     }
   });
+
+  it("drives an agent_browser cancellation through BrowserService workspace when computeruse is absent", async () => {
+    await seedGooglePlayWorkspaceFixture();
+
+    type RuntimeGetService = AgentRuntime["getService"];
+    const mutableRuntime = runtime as AgentRuntime & {
+      getService: RuntimeGetService;
+    };
+    const originalGetService = mutableRuntime.getService.bind(runtime);
+    mutableRuntime.getService = ((serviceType: string) => {
+      if (serviceType === "computeruse") {
+        return null;
+      }
+      return originalGetService(serviceType);
+    }) as RuntimeGetService;
+
+    try {
+      const service = new SubscriptionsService(runtime, {
+        gmailGateway: emptyGmail,
+        browserGateway: noCompanionBrowser,
+      });
+      const summary = await service.cancelSubscription({
+        serviceSlug: "google_play",
+        executor: "agent_browser",
+        confirmed: true,
+      });
+
+      if (summary.cancellation.status !== "completed") {
+        throw new Error(JSON.stringify(summary.cancellation, null, 2));
+      }
+      expect(summary.cancellation.artifactCount).toBeGreaterThanOrEqual(1);
+      expect(summary.cancellation.evidenceSummary).toBe(
+        "subscription canceled",
+      );
+      expect(summary.cancellation.metadata.artifacts).toEqual([
+        expect.objectContaining({
+          kind: "screenshot",
+          label: "google-play-cancelled",
+        }),
+      ]);
+    } finally {
+      mutableRuntime.getService = originalGetService as RuntimeGetService;
+      __resetBrowserWorkspaceStateForTests();
+    }
+  }, 30_000);
 
   it("creates a user_browser session via the mocked browser gateway", async () => {
     const created: Array<Record<string, unknown>> = [];
