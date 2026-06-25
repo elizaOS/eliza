@@ -1,1 +1,0 @@
-We maintain a set of games from [TextArena](https://github.com/LeonGuertler/TextArena) and make them compatible with our environment specifications.

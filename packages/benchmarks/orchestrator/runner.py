@@ -801,7 +801,6 @@ def _publication_warnings(
     token_telemetry_optional = benchmark_id in {
         "configbench",
         "eliza_replay",
-        "evm",
         "framework",
         "hermes_yc_bench",
         "personality_bench",

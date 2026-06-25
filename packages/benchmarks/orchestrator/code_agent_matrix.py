@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import importlib.util
 import json
 import math
 import os
@@ -52,7 +51,7 @@ DEFAULT_PROVIDER = "cerebras"
 DEFAULT_CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CODE_CAPABILITIES = "code.read,code.write,code.edit,code.search,code.shell"
 DEFAULT_LOG_LIMIT_BYTES = 16 * 1024 * 1024
-RUNNABLE_DEFERRED_BENCHMARKS = frozenset({"swe_bench_pro", "vision_language"})
+RUNNABLE_DEFERRED_BENCHMARKS = frozenset({"vision_language"})
 NON_CODE_GUARDRAIL_EXCLUDED_BENCHMARKS = tuple(
     sorted({item.benchmark_id for item in CODE_AGENT_COVERAGE})
 )
@@ -454,196 +453,6 @@ def _standard_humaneval_agent_command_template(adapter: str, env: dict[str, str]
     )
 
 
-def _app_eval_coding_command_env_name(adapter: str) -> str:
-    adapter_key = sanitize(adapter).replace("-", "_").upper()
-    return f"APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE_{adapter_key}"
-
-
-def _app_eval_coding_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
-    env = os.environ if env is None else env
-    configured = (
-        env.get(_app_eval_coding_command_env_name(adapter), "")
-        or env.get("APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE", "")
-    ).strip()
-    if configured:
-        return configured
-    disable_builtin = env.get("APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    if disable_builtin:
-        return ""
-    agent_command = workspace_root() / "packages" / "benchmarks" / "app-eval" / "agent_command.py"
-    if not agent_command.exists():
-        return ""
-    return " ".join(
-        shlex.quote(part)
-        for part in (
-            sys.executable,
-            str(agent_command),
-            "--adapter",
-            adapter,
-            "--workspace",
-            "{workspace}",
-            "--prompt",
-            "{prompt}",
-            "--task",
-            "{task}",
-            "--result-json",
-            "{result_json}",
-            "--provider",
-            "{model_provider}",
-            "--model",
-            "{model}",
-        )
-    )
-
-
-def _qwen_claw_bench_command_env_name(adapter: str) -> str:
-    adapter_key = sanitize(adapter).replace("-", "_").upper()
-    return f"QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE_{adapter_key}"
-
-
-def _qwen_claw_bench_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
-    env = os.environ if env is None else env
-    configured = (
-        env.get(_qwen_claw_bench_command_env_name(adapter), "")
-        or env.get("QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE", "")
-    ).strip()
-    if configured:
-        return configured
-    disable_builtin = env.get("QWEN_CLAW_BENCH_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    if disable_builtin:
-        return ""
-    agent_command = workspace_root() / "packages" / "benchmarks" / "qwen_claw_bench_matrix" / "agent_command.py"
-    if not agent_command.exists():
-        return ""
-    return " ".join(
-        shlex.quote(part)
-        for part in (
-            sys.executable,
-            str(agent_command),
-            "--adapter",
-            adapter,
-            "--workspace",
-            "{workspace}",
-            "--task-path",
-            "{task_path}",
-            "--task",
-            "{task}",
-            "--result-json",
-            "{result_json}",
-            "--provider",
-            "{model_provider}",
-            "--model",
-            "{model}",
-        )
-    )
-
-
-def _claw_eval_command_env_name(adapter: str) -> str:
-    adapter_key = sanitize(adapter).replace("-", "_").upper()
-    return f"CLAW_EVAL_AGENT_COMMAND_TEMPLATE_{adapter_key}"
-
-
-def _claw_eval_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
-    env = os.environ if env is None else env
-    configured = (
-        env.get(_claw_eval_command_env_name(adapter), "")
-        or env.get("CLAW_EVAL_AGENT_COMMAND_TEMPLATE", "")
-    ).strip()
-    if configured:
-        return configured
-    disable_builtin = env.get("CLAW_EVAL_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    if disable_builtin:
-        return ""
-    agent_command = workspace_root() / "packages" / "benchmarks" / "claw_eval_matrix" / "agent_command.py"
-    if not agent_command.exists():
-        return ""
-    return " ".join(
-        shlex.quote(part)
-        for part in (
-            sys.executable,
-            str(agent_command),
-            "--adapter",
-            adapter,
-            "--task-yaml",
-            "{task_yaml}",
-            "--task",
-            "{task}",
-            "--result-json",
-            "{result_json}",
-            "--provider",
-            "{model_provider}",
-            "--model",
-            "{model}",
-        )
-    )
-
-
-def _swe_bench_pro_command_env_name(adapter: str) -> str:
-    adapter_key = sanitize(adapter).replace("-", "_").upper()
-    return f"SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE_{adapter_key}"
-
-
-def _swe_bench_pro_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
-    env = os.environ if env is None else env
-    configured = (
-        env.get(_swe_bench_pro_command_env_name(adapter), "")
-        or env.get("SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE", "")
-    ).strip()
-    if configured:
-        return configured
-    disable_builtin = env.get("SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    if disable_builtin:
-        return ""
-    agent_command = workspace_root() / "packages" / "benchmarks" / "swe_bench_pro_matrix" / "agent_command.py"
-    if not agent_command.exists():
-        return ""
-    return " ".join(
-        shlex.quote(part)
-        for part in (
-            sys.executable,
-            str(agent_command),
-            "--adapter",
-            adapter,
-            "--workspace",
-            "{workspace}",
-            "--prompt",
-            "{prompt}",
-            "--task",
-            "{task}",
-            "--repo",
-            "{repo}",
-            "--base-commit",
-            "{base_commit}",
-            "--result-json",
-            "{result_json}",
-            "--provider",
-            "{model_provider}",
-            "--model",
-            "{model}",
-        )
-    )
-
-
 def preflight_matrix(
     *,
     root: Path,
@@ -837,102 +646,6 @@ def preflight_matrix(
                         ),
                     }
                 )
-        if cell.benchmark == "app_eval_coding" and "--mock" not in cell.command:
-            if "--agent-command-template" not in cell.command:
-                issues.append(
-                    {
-                        "severity": "error",
-                        "kind": "missing_app_eval_coding_agent_command_template",
-                        "message": (
-                            f"{cell.benchmark}/{cell.adapter} requires "
-                            "APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE or "
-                            f"{_app_eval_coding_command_env_name(cell.adapter)}"
-                        ),
-                    }
-                )
-        if cell.benchmark == "qwen_claw_bench" and "--mock" not in cell.command:
-            if "--agent-command-template" not in cell.command:
-                issues.append(
-                    {
-                        "severity": "error",
-                        "kind": "missing_qwen_claw_bench_agent_command_template",
-                        "message": (
-                            f"{cell.benchmark}/{cell.adapter} requires "
-                            "QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE or "
-                            f"{_qwen_claw_bench_command_env_name(cell.adapter)}"
-                        ),
-                    }
-                )
-        if cell.benchmark == "claw_eval" and "--mock" not in cell.command:
-            if "--agent-command-template" not in cell.command:
-                issues.append(
-                    {
-                        "severity": "error",
-                        "kind": "missing_claw_eval_agent_command_template",
-                        "message": (
-                            f"{cell.benchmark}/{cell.adapter} requires "
-                            "CLAW_EVAL_AGENT_COMMAND_TEMPLATE or "
-                            f"{_claw_eval_command_env_name(cell.adapter)}"
-                        ),
-                    }
-                )
-        if cell.benchmark == "swe_bench_pro" and "--mock" not in cell.command:
-            if "--agent-command-template" not in cell.command:
-                issues.append(
-                    {
-                        "severity": "error",
-                        "kind": "missing_swe_bench_pro_agent_command_template",
-                        "message": (
-                            f"{cell.benchmark}/{cell.adapter} requires "
-                            "SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE or "
-                            f"{_swe_bench_pro_command_env_name(cell.adapter)}"
-                        ),
-                    }
-                )
-            evaluator_backend = _swe_bench_pro_evaluator_backend(cell.command)
-            if evaluator_backend == "modal":
-                if importlib.util.find_spec("modal") is None:
-                    issues.append(
-                        {
-                            "severity": "error",
-                            "kind": "missing_modal_package",
-                            "message": (
-                                f"{cell.benchmark} Modal scoring requires the modal Python package"
-                            ),
-                        }
-                    )
-            elif "--no-docker" not in cell.command and not docker_checked:
-                docker_checked = True
-                docker = shutil.which("docker")
-                if not docker:
-                    issues.append(
-                        {
-                            "severity": "error",
-                            "kind": "missing_docker_cli",
-                            "message": f"{cell.benchmark} live scoring requires the Docker CLI",
-                        }
-                    )
-                else:
-                    completed = subprocess.run(
-                        [docker, "version"],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        timeout=10,
-                        check=False,
-                    )
-                    if completed.returncode != 0:
-                        detail = (completed.stderr or completed.stdout or "").strip()
-                        issues.append(
-                            {
-                                "severity": "error",
-                                "kind": "docker_daemon_unavailable",
-                                "message": (
-                                    f"{cell.benchmark} live scoring requires a running Docker daemon"
-                                    + (f": {detail}" if detail else "")
-                                ),
-                            }
-                        )
         if cell.benchmark == "osworld" and "--dry_run" not in cell.command:
             provider_name = _command_option(cell.command, "--provider_name") or "docker"
             no_docker_requested = cell.env_overrides.get("OSWORLD_NO_DOCKER_REQUESTED") == "1"
@@ -1025,17 +738,6 @@ def preflight_matrix(
         "unblock_count": len(unblock_steps),
         "cells": cell_checks,
     }
-
-
-def _swe_bench_pro_evaluator_backend(command: list[str]) -> str:
-    try:
-        index = command.index("--evaluator-backend")
-    except ValueError:
-        return "local-docker"
-    if index + 1 >= len(command):
-        return "local-docker"
-    backend = str(command[index + 1]).strip()
-    return backend or "local-docker"
 
 
 def _command_option(command: list[str], option: str) -> str | None:
@@ -1169,46 +871,6 @@ def build_preflight_unblock_steps(
                     "or provide STANDARD_HUMANEVAL_AGENT_COMMAND_TEMPLATE for an external runner."
                 ),
                 "command": "unset STANDARD_HUMANEVAL_DISABLE_BUILTIN_AGENT_COMMAND",
-            }
-        elif kind == "missing_app_eval_coding_agent_command_template":
-            steps_by_kind[kind] = {
-                "kind": kind,
-                "title": "Configure App Eval coding agent command",
-                "action": (
-                    "Unset APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
-                    "or provide APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE for an external runner."
-                ),
-                "command": "unset APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND",
-            }
-        elif kind == "missing_qwen_claw_bench_agent_command_template":
-            steps_by_kind[kind] = {
-                "kind": kind,
-                "title": "Configure QwenClawBench agent command",
-                "action": (
-                    "Unset QWEN_CLAW_BENCH_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
-                    "or provide QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE for an external runner."
-                ),
-                "command": "unset QWEN_CLAW_BENCH_DISABLE_BUILTIN_AGENT_COMMAND",
-            }
-        elif kind == "missing_claw_eval_agent_command_template":
-            steps_by_kind[kind] = {
-                "kind": kind,
-                "title": "Configure Claw-Eval agent command",
-                "action": (
-                    "Unset CLAW_EVAL_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
-                    "or provide CLAW_EVAL_AGENT_COMMAND_TEMPLATE for an external runner."
-                ),
-                "command": "unset CLAW_EVAL_DISABLE_BUILTIN_AGENT_COMMAND",
-            }
-        elif kind == "missing_swe_bench_pro_agent_command_template":
-            steps_by_kind[kind] = {
-                "kind": kind,
-                "title": "Configure SWE-bench Pro agent command",
-                "action": (
-                    "Unset SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
-                    "or provide SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE for an external runner."
-                ),
-                "command": "unset SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND",
             }
         elif kind == "missing_docker_cli":
             steps_by_kind[kind] = {
@@ -1482,111 +1144,11 @@ def default_command(
             cmd.append("--mock")
         return cmd, root
 
-    if benchmark == "app_eval_coding":
-        cmd = [
-            python,
-            "-m",
-            "benchmarks.app_eval.code_agent_coding",
-            "--task-agent",
-            adapter,
-            "--model-provider",
-            provider,
-            "--model",
-            model,
-            "--output",
-            str(output_dir),
-            "--trajectory-dir",
-            str(trajectory_dir),
-            "--json",
-        ]
-        if max_tasks is not None:
-            cmd.extend(["--max-tasks", str(max_tasks)])
-        command_template = _app_eval_coding_agent_command_template(adapter)
-        if command_template:
-            cmd.extend(["--agent-command-template", command_template])
-        if smoke:
-            cmd.append("--mock")
-        return cmd, root
-
     if benchmark == "mint":
         cmd = [
             python,
             "-m",
             "benchmarks.mint.code_agent_matrix",
-            "--task-agent",
-            adapter,
-            "--model-provider",
-            provider,
-            "--model",
-            model,
-            "--output",
-            str(output_dir),
-            "--trajectory-dir",
-            str(trajectory_dir),
-            "--json",
-        ]
-        if max_tasks is not None:
-            cmd.extend(["--max-tasks", str(max_tasks)])
-        if smoke:
-            cmd.append("--mock")
-        if no_docker:
-            cmd.append("--no-docker")
-        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }:
-            cmd.append("--expand-scenarios")
-        return cmd, root
-
-    if benchmark == "openclaw_benchmark":
-        cmd = [
-            python,
-            "-m",
-            "benchmarks.openclaw_benchmark.code_agent_matrix",
-            "--task-agent",
-            adapter,
-            "--model-provider",
-            provider,
-            "--model",
-            model,
-            "--output",
-            str(output_dir),
-            "--trajectory-dir",
-            str(trajectory_dir),
-            "--json",
-        ]
-        if max_tasks is not None:
-            cmd.extend(["--max-tasks", str(max_tasks)])
-        if smoke:
-            cmd.append("--mock")
-        if no_docker:
-            cmd.append("--no-docker")
-        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }:
-            cmd.append("--expand-scenarios")
-        return cmd, root
-
-    if benchmark == "clawbench":
-        cmd = [
-            python,
-            "-m",
-            "benchmarks.clawbench_matrix.code_agent_matrix",
             "--task-agent",
             adapter,
             "--model-provider",
@@ -1643,112 +1205,6 @@ def default_command(
         if no_docker:
             cmd.append("--no-docker")
         if _expand_scenarios_env_enabled():
-            cmd.append("--expand-scenarios")
-        return cmd, root
-
-    if benchmark == "qwen_claw_bench":
-        cmd = [
-            python,
-            "-m",
-            "benchmarks.qwen_claw_bench_matrix.code_agent_matrix",
-            "--task-agent",
-            adapter,
-            "--model-provider",
-            provider,
-            "--model",
-            model,
-            "--output",
-            str(output_dir),
-            "--trajectory-dir",
-            str(trajectory_dir),
-            "--json",
-        ]
-        if max_tasks is not None:
-            cmd.extend(["--max-tasks", str(max_tasks)])
-        command_template = _qwen_claw_bench_agent_command_template(adapter)
-        if command_template:
-            cmd.extend(["--agent-command-template", command_template])
-        if smoke:
-            cmd.append("--mock")
-        if no_docker:
-            cmd.append("--no-docker")
-        if _expand_scenarios_env_enabled():
-            cmd.append("--expand-scenarios")
-        return cmd, root
-
-    if benchmark == "claw_eval":
-        cmd = [
-            python,
-            "-m",
-            "benchmarks.claw_eval_matrix.code_agent_matrix",
-            "--task-agent",
-            adapter,
-            "--model-provider",
-            provider,
-            "--model",
-            model,
-            "--output",
-            str(output_dir),
-            "--trajectory-dir",
-            str(trajectory_dir),
-            "--json",
-        ]
-        if max_tasks is not None:
-            cmd.extend(["--max-tasks", str(max_tasks)])
-        command_template = _claw_eval_agent_command_template(adapter)
-        if command_template:
-            cmd.extend(["--agent-command-template", command_template])
-        if smoke:
-            cmd.append("--mock")
-        if no_docker:
-            cmd.append("--no-docker")
-        if _expand_scenarios_env_enabled():
-            cmd.append("--expand-scenarios")
-        return cmd, root
-
-    if benchmark == "swe_bench_pro":
-        cmd = [
-            python,
-            "-m",
-            "benchmarks.swe_bench_pro_matrix.code_agent_matrix",
-            "--task-agent",
-            adapter,
-            "--model-provider",
-            provider,
-            "--model",
-            model,
-            "--output",
-            str(output_dir),
-            "--trajectory-dir",
-            str(trajectory_dir),
-            "--json",
-        ]
-        if max_tasks is not None:
-            cmd.extend(["--max-tasks", str(max_tasks)])
-        evaluator_backend = os.environ.get("SWE_BENCH_PRO_EVALUATOR_BACKEND", "").strip()
-        if evaluator_backend:
-            cmd.extend(["--evaluator-backend", evaluator_backend])
-        eval_num_workers = os.environ.get("SWE_BENCH_PRO_EVAL_NUM_WORKERS", "").strip()
-        if eval_num_workers:
-            cmd.extend(["--eval-num-workers", eval_num_workers])
-        command_template = _swe_bench_pro_agent_command_template(adapter)
-        if command_template:
-            cmd.extend(["--agent-command-template", command_template])
-        if smoke:
-            cmd.append("--mock")
-        if no_docker:
-            cmd.extend(["--no-docker", "--skip-clone"])
-        if os.environ.get("EXPAND_SCENARIOS", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        } or os.environ.get("INCLUDE_EDGE_SCENARIOS", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }:
             cmd.append("--expand-scenarios")
         return cmd, root
 

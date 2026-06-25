@@ -63,15 +63,6 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
         reason="Desktop computer-use benchmark via the OSWorld eliza bridge.",
     ),
     CodeAgentBenchmark(
-        benchmark_id="swe_bench_multilingual",
-        status=INCLUDED_STATUS,
-        domains=("coding",),
-        reason=(
-            "SWE-bench Multilingual is routed through the shared SWE-bench "
-            "adapter bridge with the multilingual dataset variant."
-        ),
-    ),
-    CodeAgentBenchmark(
         benchmark_id="nl2repo",
         status=INCLUDED_STATUS,
         domains=("coding",),
@@ -86,22 +77,6 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
             "monitor live scored rows for stability before raising task counts",
         ),
         promotion_priority="p0",
-    ),
-    CodeAgentBenchmark(
-        benchmark_id="swe_bench_pro",
-        status=DEFERRED_STATUS,
-        domains=("coding",),
-        reason=(
-            "Long-horizon SWE-bench Pro now has a patch-generation wrapper, "
-            "but remains deferred until matched non-mock ElizaOS/OpenCode "
-            "runs are validated against the Docker/Modal evaluator."
-        ),
-        promotion_requirements=(
-            "run non-mock ElizaOS/OpenCode patch generation on the public split",
-            "validate local Docker or Modal scoring for generated patches",
-            "capture live per-agent trajectory token and call telemetry",
-        ),
-        promotion_priority="p1",
     ),
     CodeAgentBenchmark(
         benchmark_id="agentbench",
@@ -136,22 +111,6 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
         promotion_priority="p0",
     ),
     CodeAgentBenchmark(
-        benchmark_id="app_eval_coding",
-        status=INCLUDED_STATUS,
-        domains=("coding",),
-        reason=(
-            "App Eval coding tasks are materialized into isolated TypeScript "
-            "workspaces and run through matched ElizaOS/OpenCode command "
-            "templates with file, command, test, trajectory, and token telemetry."
-        ),
-        promotion_requirements=(
-            "keep coding-task assertions deterministic and non-LLM judged",
-            "capture non-mock ElizaOS and OpenCode workspace trajectories with token usage",
-            "monitor live task stability before raising task counts",
-        ),
-        promotion_priority="p0",
-    ),
-    CodeAgentBenchmark(
         benchmark_id="standard_humaneval",
         status=INCLUDED_STATUS,
         domains=("coding",),
@@ -165,88 +124,6 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
             "capture non-mock ElizaOS and OpenCode trajectories with token usage",
             "monitor pass@1 stability before raising task counts",
         ),
-    ),
-    CodeAgentBenchmark(
-        benchmark_id="qwen_web_bench",
-        status=DEFERRED_STATUS,
-        domains=("coding", "browser", "web"),
-        reason=(
-            "QwenWebBench is a front-end code-generation/browser-rendering "
-            "benchmark placeholder in this repo, but the upstream dataset and "
-            "runner are not public yet."
-        ),
-        promotion_requirements=(
-            "track upstream release of the public runner and dataset",
-            "add an ElizaOS/OpenCode artifact-generation adapter once runner shape is known",
-            "normalize visual judge or Elo outcomes into reportable head-to-head rows",
-        ),
-    ),
-    CodeAgentBenchmark(
-        benchmark_id="openclaw_benchmark",
-        status=INCLUDED_STATUS,
-        domains=("coding", "terminal"),
-        reason=(
-            "OpenClaw benchmark execution scenarios run through the same "
-            "ElizaOS/OpenCode agent bridge with shared-sandbox tool execution, "
-            "deterministic rubric scoring, right/wrong totals, and "
-            "trajectory/token telemetry."
-        ),
-        promotion_requirements=(
-            "keep setup/implementation/testing scenarios deterministic",
-            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
-            "run the full ordered scenario set for release-comparable reports",
-        ),
-        promotion_priority="p0",
-    ),
-    CodeAgentBenchmark(
-        benchmark_id="claw_eval",
-        status=INCLUDED_STATUS,
-        domains=("coding", "terminal", "agent"),
-        reason=(
-            "Claw-Eval deterministic coding tasks run through matched "
-            "ElizaOS/OpenCode command templates and are scored with the "
-            "benchmark's non-LLM YAML keyword/tool-call components."
-        ),
-        promotion_requirements=(
-            "keep the included slice limited to non-LLM-judged coding tasks",
-            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
-            "promote browser/computer-use and Pass^3 judge tasks only after stable non-LLM scoring exists",
-        ),
-        promotion_priority="p0",
-    ),
-    CodeAgentBenchmark(
-        benchmark_id="qwen_claw_bench",
-        status=INCLUDED_STATUS,
-        domains=("coding", "terminal", "computer-use", "agent"),
-        reason=(
-            "QwenClawBench's deterministic automated workspace task runs "
-            "through matched ElizaOS/OpenCode command templates with embedded "
-            "Python grading, right/wrong totals, and trajectory/token telemetry."
-        ),
-        promotion_requirements=(
-            "keep the included slice limited to automated non-LLM-judged tasks",
-            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
-            "promote hybrid and LLM-judge tasks only after judge dependencies are stable",
-        ),
-        promotion_priority="p0",
-    ),
-    CodeAgentBenchmark(
-        benchmark_id="clawbench",
-        status=INCLUDED_STATUS,
-        domains=("terminal", "browser", "computer-use", "tool-use"),
-        reason=(
-            "ClawBench is a deterministic multi-tool workspace benchmark with "
-            "exec, read, Slack, memory, and web tools; the matrix runs the same "
-            "scenario fixtures through the ElizaOS/OpenCode bridge and "
-            "normalizes rubric scores into right/wrong totals with trajectory "
-            "and token telemetry."
-        ),
-        promotion_requirements=(
-            "keep ClawBench scenarios deterministic and non-LLM judged",
-            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
-            "monitor full-scenario score stability before raising release gates",
-        ),
-        promotion_priority="p0",
     ),
     CodeAgentBenchmark(
         benchmark_id="vision_language",
@@ -276,18 +153,10 @@ REPO_LOCAL_RELATED_BENCHMARK_DIRS: tuple[RepoLocalBenchmarkDirectory, ...] = (
     RepoLocalBenchmarkDirectory("visualwebbench", "visualwebbench", ("browser", "vision")),
     RepoLocalBenchmarkDirectory("webshop", "webshop", ("browser", "web")),
     RepoLocalBenchmarkDirectory("osworld", "OSWorld", ("computer-use", "desktop")),
-    RepoLocalBenchmarkDirectory("swe_bench_multilingual", "swe-bench-multilingual", ("coding",)),
     RepoLocalBenchmarkDirectory("nl2repo", "nl2repo", ("coding",)),
-    RepoLocalBenchmarkDirectory("swe_bench_pro", "swe-bench-pro", ("coding",)),
     RepoLocalBenchmarkDirectory("agentbench", "agentbench", ("terminal", "browser", "web", "computer-use")),
     RepoLocalBenchmarkDirectory("mint", "mint", ("coding", "tool-use")),
-    RepoLocalBenchmarkDirectory("app_eval_coding", "app-eval", ("coding",)),
     RepoLocalBenchmarkDirectory("standard_humaneval", "standard", ("coding",)),
-    RepoLocalBenchmarkDirectory("qwen_web_bench", "qwen-web-bench", ("coding", "browser", "web")),
-    RepoLocalBenchmarkDirectory("openclaw_benchmark", "openclaw-benchmark", ("coding", "terminal")),
-    RepoLocalBenchmarkDirectory("claw_eval", "claw-eval", ("coding", "browser", "computer-use", "agent")),
-    RepoLocalBenchmarkDirectory("qwen_claw_bench", "qwen-claw-bench", ("coding", "terminal", "computer-use", "agent")),
-    RepoLocalBenchmarkDirectory("clawbench", "clawbench", ("terminal", "browser", "computer-use", "tool-use")),
     RepoLocalBenchmarkDirectory("vision_language", "eliza-1/vision-cua-e2e", ("computer-use", "browser", "vision")),
 )
 

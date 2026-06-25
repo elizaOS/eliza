@@ -446,40 +446,6 @@ def test_standard_humaneval_cell_uses_builtin_agent_command_by_default(
     assert "{result_json}" in template
 
 
-def test_app_eval_coding_cell_uses_builtin_agent_command_by_default(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE", raising=False)
-    monkeypatch.delenv("APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False)
-    monkeypatch.delenv("APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND", raising=False)
-
-    cell = build_cell(
-        root=_root().parent,
-        run_root=tmp_path,
-        benchmark="app_eval_coding",
-        adapter="elizaos",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        max_tasks=1,
-        smoke=False,
-        no_docker=True,
-    )
-
-    assert cell.command[:3] == [
-        sys.executable,
-        "-m",
-        "benchmarks.app_eval.code_agent_coding",
-    ]
-    assert "--trajectory-dir" in cell.command
-    template = cell.command[cell.command.index("--agent-command-template") + 1]
-    assert "packages/benchmarks/app-eval/agent_command.py" in template
-    assert "--adapter elizaos" in template
-    assert "--workspace" in template
-    assert "--result-json" in template
-    assert "{result_json}" in template
-
-
 def test_mint_cell_runs_coding_slice_through_matrix_wrapper(tmp_path: Path) -> None:
     cell = build_cell(
         root=_root().parent,
@@ -500,141 +466,6 @@ def test_mint_cell_runs_coding_slice_through_matrix_wrapper(tmp_path: Path) -> N
     ]
     assert "--task-agent" in cell.command
     assert "opencode" in cell.command
-    assert "--trajectory-dir" in cell.command
-    assert "--mock" in cell.command
-    assert "--no-docker" in cell.command
-
-
-def test_openclaw_benchmark_cell_runs_execution_wrapper(tmp_path: Path) -> None:
-    cell = build_cell(
-        root=_root().parent,
-        run_root=tmp_path,
-        benchmark="openclaw_benchmark",
-        adapter="elizaos",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        max_tasks=1,
-        smoke=True,
-        no_docker=True,
-    )
-
-    assert cell.command[:3] == [
-        sys.executable,
-        "-m",
-        "benchmarks.openclaw_benchmark.code_agent_matrix",
-    ]
-    assert "--task-agent" in cell.command
-    assert "elizaos" in cell.command
-    assert "--max-tasks" in cell.command
-    assert "--trajectory-dir" in cell.command
-    assert "--mock" in cell.command
-    assert "--no-docker" in cell.command
-
-
-def test_claw_eval_cell_runs_deterministic_slice_wrapper(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("CLAW_EVAL_AGENT_COMMAND_TEMPLATE", raising=False)
-    monkeypatch.delenv("CLAW_EVAL_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False)
-    monkeypatch.delenv("CLAW_EVAL_DISABLE_BUILTIN_AGENT_COMMAND", raising=False)
-
-    cell = build_cell(
-        root=_root().parent,
-        run_root=tmp_path,
-        benchmark="claw_eval",
-        adapter="elizaos",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        max_tasks=1,
-        smoke=True,
-        no_docker=True,
-    )
-
-    assert cell.command[:3] == [
-        sys.executable,
-        "-m",
-        "benchmarks.claw_eval_matrix.code_agent_matrix",
-    ]
-    assert "--task-agent" in cell.command
-    assert "elizaos" in cell.command
-    assert "--max-tasks" in cell.command
-    assert "--trajectory-dir" in cell.command
-    assert "--mock" in cell.command
-    assert "--no-docker" in cell.command
-    template = cell.command[cell.command.index("--agent-command-template") + 1]
-    assert "claw_eval_matrix/agent_command.py" in template
-    assert "--adapter elizaos" in template
-    assert "--task-yaml" in template
-    assert "{result_json}" in template
-
-
-def test_swe_bench_pro_cell_runs_patch_generation_wrapper(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE", raising=False)
-    monkeypatch.delenv("SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False)
-    monkeypatch.delenv("SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND", raising=False)
-    monkeypatch.setenv("SWE_BENCH_PRO_EVALUATOR_BACKEND", "modal")
-    monkeypatch.setenv("SWE_BENCH_PRO_EVAL_NUM_WORKERS", "9")
-
-    cell = build_cell(
-        root=_root().parent,
-        run_root=tmp_path,
-        benchmark="swe_bench_pro",
-        adapter="elizaos",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        max_tasks=1,
-        smoke=True,
-        no_docker=True,
-    )
-
-    assert cell.command[:3] == [
-        sys.executable,
-        "-m",
-        "benchmarks.swe_bench_pro_matrix.code_agent_matrix",
-    ]
-    assert "--task-agent" in cell.command
-    assert "elizaos" in cell.command
-    assert "--max-tasks" in cell.command
-    assert "--trajectory-dir" in cell.command
-    assert "--mock" in cell.command
-    assert "--no-docker" in cell.command
-    assert "--skip-clone" in cell.command
-    assert cell.command[cell.command.index("--evaluator-backend") + 1] == "modal"
-    assert cell.command[cell.command.index("--eval-num-workers") + 1] == "9"
-    template = cell.command[cell.command.index("--agent-command-template") + 1]
-    assert "swe_bench_pro_matrix/agent_command.py" in template
-    assert "--adapter elizaos" in template
-    assert "--workspace" in template
-    assert "--repo" in template
-    assert "--base-commit" in template
-    assert "{result_json}" in template
-
-
-def test_clawbench_cell_runs_matrix_wrapper(tmp_path: Path) -> None:
-    cell = build_cell(
-        root=_root().parent,
-        run_root=tmp_path,
-        benchmark="clawbench",
-        adapter="opencode",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        max_tasks=1,
-        smoke=True,
-        no_docker=True,
-    )
-
-    assert cell.command[:3] == [
-        sys.executable,
-        "-m",
-        "benchmarks.clawbench_matrix.code_agent_matrix",
-    ]
-    assert "--task-agent" in cell.command
-    assert "opencode" in cell.command
-    assert "--max-tasks" in cell.command
     assert "--trajectory-dir" in cell.command
     assert "--mock" in cell.command
     assert "--no-docker" in cell.command
@@ -685,45 +516,6 @@ def test_agentbench_cell_runs_matrix_wrapper(tmp_path: Path) -> None:
     assert "--trajectory-dir" in cell.command
     assert "--mock" in cell.command
     assert "--no-docker" in cell.command
-
-
-def test_qwen_claw_bench_cell_runs_automated_slice_wrapper(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE", raising=False)
-    monkeypatch.delenv("QWEN_CLAW_BENCH_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False)
-    monkeypatch.delenv("QWEN_CLAW_BENCH_DISABLE_BUILTIN_AGENT_COMMAND", raising=False)
-
-    cell = build_cell(
-        root=_root().parent,
-        run_root=tmp_path,
-        benchmark="qwen_claw_bench",
-        adapter="elizaos",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        max_tasks=1,
-        smoke=True,
-        no_docker=True,
-    )
-
-    assert cell.command[:3] == [
-        sys.executable,
-        "-m",
-        "benchmarks.qwen_claw_bench_matrix.code_agent_matrix",
-    ]
-    assert "--task-agent" in cell.command
-    assert "elizaos" in cell.command
-    assert "--max-tasks" in cell.command
-    assert "--trajectory-dir" in cell.command
-    assert "--mock" in cell.command
-    assert "--no-docker" in cell.command
-    template = cell.command[cell.command.index("--agent-command-template") + 1]
-    assert "qwen_claw_bench_matrix/agent_command.py" in template
-    assert "--adapter elizaos" in template
-    assert "--workspace" in template
-    assert "--task-path" in template
-    assert "{result_json}" in template
 
 
 def test_builds_real_webshop_cell_with_bridge(tmp_path: Path) -> None:
@@ -788,16 +580,10 @@ def test_default_matrix_covers_code_terminal_browser_and_computer_use() -> None:
         "visualwebbench",
         "webshop",
         "osworld",
-        "swe_bench_multilingual",
         "nl2repo",
         "agentbench",
         "mint",
-        "app_eval_coding",
         "standard_humaneval",
-        "openclaw_benchmark",
-        "claw_eval",
-        "qwen_claw_bench",
-        "clawbench",
     )
 
     entries = coverage_status_by_id()
@@ -805,7 +591,6 @@ def test_default_matrix_covers_code_terminal_browser_and_computer_use() -> None:
         assert entries[benchmark].status == INCLUDED_STATUS
         assert entries[benchmark].domains
         assert entries[benchmark].reason
-    assert entries["swe_bench_multilingual"].status == INCLUDED_STATUS
 
 
 def test_coverage_manifest_tracks_vision_language_as_deferred_computer_use() -> None:
@@ -822,18 +607,16 @@ def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
 
     assert coverage["selection_complete"] is True
     assert coverage["status_counts"] == {
-        "included": 16,
-        "included_selected": 16,
+        "included": 10,
+        "included_selected": 10,
         "included_unselected": 0,
-        "deferred": 3,
+        "deferred": 1,
     }
     assert coverage["unselected_included_benchmarks"] == []
     assert coverage["repo_local_audit"]["ok"] is True
-    assert coverage["repo_local_audit"]["existing_directory_count"] == 19
+    assert coverage["repo_local_audit"]["existing_directory_count"] == 11
     assert coverage["repo_local_audit"]["missing_manifest_directories"] == []
     assert {item["benchmark"] for item in coverage["deferred_benchmarks"]} == {
-        "qwen_web_bench",
-        "swe_bench_pro",
         "vision_language",
     }
     deferred_by_id = {
@@ -848,23 +631,6 @@ def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
     assert "HumanEval/MBPP coding subtasks" in included_by_id["mint"]["reason"]
     assert included_by_id["standard_humaneval"]["domains"] == ["coding"]
     assert "code-agent function-body task" in included_by_id["standard_humaneval"]["reason"]
-    assert included_by_id["app_eval_coding"]["domains"] == ["coding"]
-    assert "isolated TypeScript workspaces" in included_by_id["app_eval_coding"]["reason"]
-    assert included_by_id["openclaw_benchmark"]["domains"] == ["coding", "terminal"]
-    assert "shared-sandbox tool execution" in included_by_id["openclaw_benchmark"]["reason"]
-    assert included_by_id["claw_eval"]["domains"] == [
-        "coding",
-        "terminal",
-        "agent",
-    ]
-    assert "non-LLM YAML" in included_by_id["claw_eval"]["reason"]
-    assert included_by_id["clawbench"]["domains"] == [
-        "terminal",
-        "browser",
-        "computer-use",
-        "tool-use",
-    ]
-    assert "normalizes rubric scores" in included_by_id["clawbench"]["reason"]
     assert included_by_id["agentbench"]["domains"] == [
         "terminal",
         "browser",
@@ -872,21 +638,6 @@ def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
         "computer-use",
     ]
     assert "OS, WebShop, and Mind2Web" in included_by_id["agentbench"]["reason"]
-    assert included_by_id["qwen_claw_bench"]["domains"] == [
-        "coding",
-        "terminal",
-        "computer-use",
-        "agent",
-    ]
-    assert "deterministic automated workspace task" in included_by_id["qwen_claw_bench"]["reason"]
-    assert deferred_by_id["qwen_web_bench"]["domains"] == [
-        "coding",
-        "browser",
-        "web",
-    ]
-    assert "upstream release" in " ".join(
-        deferred_by_id["qwen_web_bench"]["promotion_requirements"]
-    )
     assert "ElizaOS/OpenCode harness labels" in deferred_by_id["vision_language"]["reason"]
 
     partial = build_coverage_summary(["swe_bench"])
@@ -900,12 +651,13 @@ def test_repo_local_coverage_audit_tracks_manifest_directories() -> None:
 
     assert audit["ok"] is True
     assert audit["manifest_complete"] is True
-    assert audit["existing_directory_count"] == 19
+    assert audit["existing_directory_count"] == 11
     by_directory = {item["directory"]: item for item in audit["directories"]}
     assert by_directory["terminal-bench"]["benchmark"] == "terminal_bench"
     assert by_directory["eliza-1/vision-cua-e2e"]["benchmark"] == "vision_language"
-    assert by_directory["claw-eval"]["manifest_status"] == "included"
-    assert by_directory["qwen-claw-bench"]["manifest_status"] == "included"
+    assert by_directory["eliza-1/vision-cua-e2e"]["manifest_status"] == "deferred"
+    assert by_directory["swe_bench"]["manifest_status"] == "included"
+    assert by_directory["nl2repo"]["manifest_status"] == "included"
     assert by_directory["OSWorld"]["manifest_status"] == "included"
 
 
@@ -923,13 +675,15 @@ def test_deferred_promotion_queue_prioritizes_known_followup_work() -> None:
 
     queue = build_deferred_promotion_queue(summary)
 
-    assert queue[0]["benchmark"] == "swe_bench_pro"
+    assert queue[0]["benchmark"] == "vision_language"
     assert queue[0]["priority"] == "p1"
-    assert queue[0]["next_action"] == "run non-mock ElizaOS/OpenCode patch generation on the public split"
+    assert queue[0]["next_action"] == (
+        "validate non-stub ElizaOS and OpenCode runs through the vision-language harness labels"
+    )
     assert queue[0]["remaining_count"] == 3
     assert queue[0]["evidence_command_template"] == (
         "python -m benchmarks.orchestrator.code_agent_matrix "
-        "--benchmarks swe_bench_pro "
+        "--benchmarks vision_language "
         "--adapters elizaos,opencode "
         "--provider cerebras "
         "--model gpt-oss-120b "
@@ -950,34 +704,8 @@ def test_deferred_promotion_queue_prioritizes_known_followup_work() -> None:
         item["benchmark"] for item in queue if item["priority"] == "p1"
     }
     assert {
-        "swe_bench_pro",
         "vision_language",
     }.issubset(p1_benchmarks)
-
-
-def test_deferred_promotion_command_preserves_swe_bench_pro_backend() -> None:
-    summary = {
-        "coverage": build_coverage_summary(list(DEFAULT_BENCHMARKS)),
-        "run_config": {
-            "provider": "cerebras",
-            "model": "gpt-oss-120b",
-            "max_tasks": 2,
-            "timeout_seconds": 300,
-            "run_root": "/tmp/code-agent-matrix",
-            "swe_bench_pro_evaluator_backend": "modal",
-            "swe_bench_pro_eval_num_workers": "9",
-        },
-    }
-
-    queue = build_deferred_promotion_queue(summary)
-
-    command = queue[0]["evidence_command_template"]
-    assert command.startswith(
-        "SWE_BENCH_PRO_EVALUATOR_BACKEND=modal "
-        "SWE_BENCH_PRO_EVAL_NUM_WORKERS=9 "
-        "python -m benchmarks.orchestrator.code_agent_matrix"
-    )
-    assert "--benchmarks swe_bench_pro" in command
 
 
 def test_coverage_gate_blocks_partial_benchmark_selection() -> None:
@@ -3249,92 +2977,6 @@ def test_standard_humaneval_preflight_blocks_live_without_agent_command_template
     ]
 
 
-def test_app_eval_coding_preflight_blocks_live_without_agent_command_template(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE", raising=False)
-    monkeypatch.delenv("APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False)
-    monkeypatch.setenv("APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND", "1")
-    cell = build_cell(
-        root=_root().parent,
-        run_root=tmp_path,
-        benchmark="app_eval_coding",
-        adapter="elizaos",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        max_tasks=1,
-        smoke=False,
-        no_docker=True,
-    )
-
-    report = preflight_matrix(
-        root=tmp_path,
-        cells=[cell],
-        provider="cerebras",
-        env={"CEREBRAS_API_KEY": "present"},
-    )
-
-    assert report["ok"] is False
-    assert {issue["kind"] for issue in report["issues"]} == {
-        "missing_app_eval_coding_agent_command_template"
-    }
-    assert report["unblock_steps"] == [
-        {
-            "kind": "missing_app_eval_coding_agent_command_template",
-            "title": "Configure App Eval coding agent command",
-            "action": (
-                "Unset APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
-                "or provide APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE for an external runner."
-            ),
-            "command": "unset APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND",
-        }
-    ]
-
-
-def test_swe_bench_pro_preflight_blocks_live_without_agent_command_template(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE", raising=False)
-    monkeypatch.delenv("SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False)
-    monkeypatch.setenv("SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND", "1")
-    cell = build_cell(
-        root=_root().parent,
-        run_root=tmp_path,
-        benchmark="swe_bench_pro",
-        adapter="elizaos",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        max_tasks=1,
-        smoke=False,
-        no_docker=True,
-    )
-
-    report = preflight_matrix(
-        root=tmp_path,
-        cells=[cell],
-        provider="cerebras",
-        env={"CEREBRAS_API_KEY": "present"},
-    )
-
-    assert report["ok"] is False
-    assert {issue["kind"] for issue in report["issues"]} == {
-        "missing_swe_bench_pro_agent_command_template"
-    }
-    assert report["unblock_steps"] == [
-        {
-            "kind": "missing_swe_bench_pro_agent_command_template",
-            "title": "Configure SWE-bench Pro agent command",
-            "action": (
-                "Unset SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND to use the repo helper, "
-                "or provide SWE_BENCH_PRO_AGENT_COMMAND_TEMPLATE for an external runner."
-            ),
-            "command": "unset SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND",
-        }
-    ]
-
-
 def test_nl2repo_preflight_reports_shared_docker_issue_once(
     tmp_path: Path,
     monkeypatch,
@@ -3366,93 +3008,6 @@ def test_nl2repo_preflight_reports_shared_docker_issue_once(
     ]
 
     assert len(docker_issues) <= 1
-
-
-def test_swe_bench_pro_preflight_reports_shared_docker_issue_once(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND", raising=False)
-    original_which = code_agent_matrix.shutil.which
-    monkeypatch.setattr(
-        code_agent_matrix.shutil,
-        "which",
-        lambda name: None if name == "docker" else original_which(name),
-    )
-    cells = [
-        build_cell(
-            root=_root().parent,
-            run_root=tmp_path,
-            benchmark="swe_bench_pro",
-            adapter=adapter,
-            provider="cerebras",
-            model="gpt-oss-120b",
-            max_tasks=1,
-            smoke=False,
-            no_docker=False,
-        )
-        for adapter in ("elizaos", "opencode")
-    ]
-
-    report = preflight_matrix(
-        root=_root().parent,
-        cells=cells,
-        provider="cerebras",
-        env={"CEREBRAS_API_KEY": "present"},
-    )
-    docker_issues = [
-        issue for issue in report["issues"] if issue["kind"] in {"missing_docker_cli", "docker_daemon_unavailable"}
-    ]
-
-    assert len(docker_issues) == 1
-    assert docker_issues[0]["kind"] == "missing_docker_cli"
-    assert "swe_bench_pro live scoring requires the Docker CLI" in docker_issues[0]["message"]
-
-
-def test_swe_bench_pro_modal_preflight_does_not_require_docker(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("SWE_BENCH_PRO_DISABLE_BUILTIN_AGENT_COMMAND", raising=False)
-    monkeypatch.setenv("SWE_BENCH_PRO_EVALUATOR_BACKEND", "modal")
-    original_which = code_agent_matrix.shutil.which
-    original_find_spec = code_agent_matrix.importlib.util.find_spec
-    monkeypatch.setattr(
-        code_agent_matrix.shutil,
-        "which",
-        lambda name: None if name == "docker" else original_which(name),
-    )
-    monkeypatch.setattr(
-        code_agent_matrix.importlib.util,
-        "find_spec",
-        lambda name: object() if name == "modal" else original_find_spec(name),
-    )
-    cell = build_cell(
-        root=_root().parent,
-        run_root=tmp_path,
-        benchmark="swe_bench_pro",
-        adapter="elizaos",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        max_tasks=1,
-        smoke=False,
-        no_docker=False,
-    )
-
-    report = preflight_matrix(
-        root=_root().parent,
-        cells=[cell],
-        provider="cerebras",
-        env={"CEREBRAS_API_KEY": "present"},
-    )
-    docker_issues = [
-        issue
-        for issue in report["issues"]
-        if issue["kind"] in {"missing_docker_cli", "docker_daemon_unavailable"}
-    ]
-
-    assert cell.command[cell.command.index("--evaluator-backend") + 1] == "modal"
-    assert docker_issues == []
 
 
 def test_preflight_next_commands_preserve_swe_bench_pro_backend_env(
@@ -3519,7 +3074,7 @@ def test_smoke_preflight_cli_does_not_require_provider_key(tmp_path: Path) -> No
     assert "--enforce-trajectory-reviews" in report["next_commands"]["live_evidence"]
     assert "--enforce-token-evidence" in report["next_commands"]["live_evidence"]
     assert "--enforce-token-evidence" in report["next_commands"]["deferred_live_evidence"]
-    assert "--benchmarks swe_bench_pro,vision_language" in (
+    assert "--benchmarks vision_language" in (
         report["next_commands"]["deferred_live_evidence"]
     )
     assert "--adapters elizaos,opencode" in report["next_commands"]["deferred_live_evidence"]
@@ -3528,11 +3083,11 @@ def test_smoke_preflight_cli_does_not_require_provider_key(tmp_path: Path) -> No
     assert "--adapters elizaos,opencode" in report["next_commands"]["release_comparable"]
     assert "--benchmarks webshop" in report["next_commands"]["live_evidence"]
     assert (
-        "--benchmarks agentbench,app_eval_coding,claw_eval,clawbench,mind2web,mint,nl2repo,openclaw_benchmark,osworld,qwen_claw_bench,standard_humaneval,swe_bench,swe_bench_multilingual,terminal_bench,visualwebbench,webshop"
+        "--benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,visualwebbench,webshop"
         in report["next_commands"]["release_comparable"]
     )
     assert (
-        "--benchmarks agentbench,app_eval_coding,claw_eval,clawbench,mind2web,mint,nl2repo,openclaw_benchmark,osworld,qwen_claw_bench,standard_humaneval,swe_bench,swe_bench_multilingual,terminal_bench,visualwebbench,webshop"
+        "--benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,visualwebbench,webshop"
         in report["next_commands"]["release_preflight"]
     )
     assert "--quality-guardrail-summary /path/to/non-code-quality-guardrail.json" in (
@@ -3593,11 +3148,11 @@ def test_live_preflight_cli_persists_blocker_report(tmp_path: Path) -> None:
     assert "--adapters elizaos,opencode" in report["next_commands"]["release_comparable"]
     assert "--benchmarks webshop" in report["next_commands"]["live_evidence"]
     assert (
-        "--benchmarks agentbench,app_eval_coding,claw_eval,clawbench,mind2web,mint,nl2repo,openclaw_benchmark,osworld,qwen_claw_bench,standard_humaneval,swe_bench,swe_bench_multilingual,terminal_bench,visualwebbench,webshop"
+        "--benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,visualwebbench,webshop"
         in report["next_commands"]["release_comparable"]
     )
     assert (
-        "--benchmarks agentbench,app_eval_coding,claw_eval,clawbench,mind2web,mint,nl2repo,openclaw_benchmark,osworld,qwen_claw_bench,standard_humaneval,swe_bench,swe_bench_multilingual,terminal_bench,visualwebbench,webshop"
+        "--benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,visualwebbench,webshop"
         in report["next_commands"]["release_preflight"]
     )
     assert "--quality-guardrail-summary /path/to/non-code-quality-guardrail.json" in (
@@ -4332,7 +3887,7 @@ def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -
     assert summary["benchmark_gate"]["ok"] is True
     assert summary["benchmark_gate"]["blocking_benchmarks"] == []
     assert summary["improvement_queue"] == []
-    assert summary["deferred_promotion_queue"][0]["benchmark"] == "swe_bench_pro"
+    assert summary["deferred_promotion_queue"][0]["benchmark"] == "vision_language"
     assert summary["deferred_promotion_queue"][0]["priority"] == "p1"
     assert any(
         item["benchmark"] == "vision_language" and "computer-use" in item["domains"]
@@ -4371,15 +3926,15 @@ def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -
     assert "## Benchmark Coverage" in markdown
     assert "Status: partial" in markdown
     assert "### Repo-Local Coverage Audit" in markdown
-    assert "Audited directories: 19/19" in markdown
+    assert "Audited directories: 11/11" in markdown
     assert "### Deferred Related Benchmarks" in markdown
     assert "promotion requirements" in markdown
     assert "vision_language" in markdown
     assert "## Deferred Promotion Queue" in markdown
     assert (
-        "| p1 | swe_bench_pro | coding | "
-        "run non-mock ElizaOS/OpenCode patch generation on the public split | 3 | "
-        "`python -m benchmarks.orchestrator.code_agent_matrix --benchmarks swe_bench_pro --adapters elizaos,opencode"
+        "| p1 | vision_language | computer-use, browser, vision | "
+        "validate non-stub ElizaOS and OpenCode runs through the vision-language harness labels | 3 | "
+        "`python -m benchmarks.orchestrator.code_agent_matrix --benchmarks vision_language --adapters elizaos,opencode"
     ) in markdown
     assert "## Report Gate" in markdown
     assert "Blocking gates: benchmark coverage" in markdown
@@ -4390,14 +3945,14 @@ def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -
     ) in markdown
     assert "### Release Unblock Commands" in markdown
     assert "run_full_live_evidence" in markdown
-    assert "--benchmarks agentbench,app_eval_coding,claw_eval,clawbench,mind2web,mint,nl2repo,openclaw_benchmark,osworld,qwen_claw_bench,standard_humaneval,swe_bench,swe_bench_multilingual,terminal_bench,visualwebbench,webshop" in markdown
+    assert "--benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,visualwebbench,webshop" in markdown
     assert "run_deferred_live_evidence" in markdown
-    assert "--benchmarks swe_bench_pro,vision_language" in markdown
+    assert "--benchmarks vision_language" in markdown
     assert "--enforce-token-evidence" in markdown
     assert "promote_deferred_benchmarks" in markdown
     assert "attach_non_code_quality_guardrail" in markdown
     assert "## Coverage Gate" in markdown
-    assert "Blocking benchmarks: agentbench, app_eval_coding, claw_eval, clawbench, mind2web, mint, nl2repo, openclaw_benchmark, osworld, qwen_claw_bench, standard_humaneval, swe_bench_multilingual, terminal_bench, visualwebbench, webshop" in markdown
+    assert "Blocking benchmarks: agentbench, mind2web, mint, nl2repo, osworld, standard_humaneval, terminal_bench, visualwebbench, webshop" in markdown
     assert "## Benchmark Gate" in markdown
     assert "Status: ok" in markdown
     assert "## Required Stats Gate" in markdown

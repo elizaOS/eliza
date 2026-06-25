@@ -113,7 +113,7 @@ def _trajectory_expectations(adapter_id: str) -> list[str]:
     ]
     if adapter_id == "trajectory_replay":
         expectations.append("requires extra.traj_set pointing at existing trajectory JSONs")
-    if adapter_id in {"loca_bench", "webshop"}:
+    if adapter_id == "webshop":
         expectations.append("adapter has explicit trajectory capture/reporting controls")
     return expectations
 
