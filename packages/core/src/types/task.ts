@@ -142,3 +142,64 @@ export interface TaskRunStatus {
 	nextRunAt?: number;
 	lastError?: string;
 }
+
+/**
+ * What kind of user response a {@link PendingUserAction} is waiting on. Drives
+ * how the canonical "needs your response" surface routes the user back to the
+ * handler:
+ *  - `approval`   — a yes/no or pick-an-option decision (ApprovalService task).
+ *  - `prompt`     — a free-text answer the agent asked for.
+ *  - `credential` — a secret/OAuth/QR the agent needs (the credential bridge).
+ *  - `clarifying` — a disambiguation question (which X did you mean?).
+ *
+ * This pass (#9449 PILLAR C) wires only the `approval` path end-to-end; the
+ * other kinds are part of the type so the prompt/credential/clarifying stores
+ * can be folded into the same surface later without a contract change.
+ */
+export type PendingUserActionKind =
+	| "approval"
+	| "prompt"
+	| "credential"
+	| "clarifying";
+
+/**
+ * One option the user can pick to resolve a {@link PendingUserAction} (mirrors
+ * an ApprovalService option). The `name` is the value routed back to the
+ * handler; `description` is the human-readable label.
+ */
+export interface PendingUserActionOption {
+	name: string;
+	description?: string;
+	/** This option cancels/denies the request. */
+	isCancel?: boolean;
+}
+
+/**
+ * A single action that is blocked waiting on the user — the canonical transport
+ * DTO behind the one "needs your response" surface (#9449 PILLAR C).
+ *
+ * It is a read-model projection (computed in the route/use-case, rendered by
+ * the client) over whatever store actually holds the pending request — for the
+ * approval path, an ApprovalService task (`AWAITING_CHOICE`/`APPROVAL`). Fields
+ * are required by default; only `expectedReplyKind`/`options` are genuinely
+ * optional (a confirm has neither).
+ */
+export interface PendingUserAction {
+	/** Stable identifier (the underlying task id for the approval path). */
+	id: UUID;
+	/** Which response the surface should solicit + how it routes back. */
+	kind: PendingUserActionKind;
+	/** One-line, human-readable description of what is being asked. */
+	title: string;
+	/** Epoch-ms when the request was created (drives age-based escalation). */
+	createdAt: number;
+	/** Room the request belongs to — where the resolving reply must land. */
+	roomId: UUID;
+	/**
+	 * For `prompt`/`clarifying`: the shape of reply expected (e.g. "text",
+	 * "date", "amount"). Omitted for `approval`/`credential`.
+	 */
+	expectedReplyKind?: string;
+	/** Selectable options (approval picks). Absent for free-text prompts. */
+	options?: PendingUserActionOption[];
+}
