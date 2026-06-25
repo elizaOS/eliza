@@ -1,7 +1,7 @@
 {
   "name": "2x L40 GPUs (96GB total)",
-  "description": "Dual L40 with vLLM on GPU 0, training on GPU 1 (for 14B models)",
-  "model": "Qwen/Qwen2.5-14B-Instruct",
+  "description": "Dual L40 with vLLM on GPU 0, training on GPU 1 (for Gemma 4 E4B)",
+  "model": "google/gemma-4-E4B",
   "vllm_gpu_memory": 0.85,
   "vllm_gpu": "0",
   "training_gpu": "1",
@@ -16,7 +16,6 @@
   "warmup_steps": 150,
   "kl_coefficient": 0.05,
   "use_flash_attention": true,
-  "notes": "vLLM on GPU 0 (48GB for 14B model), training on GPU 1. No OOM conflicts."
+  "notes": "vLLM on GPU 0 for Gemma 4 E4B, training on GPU 1. No OOM conflicts."
 }
-
 

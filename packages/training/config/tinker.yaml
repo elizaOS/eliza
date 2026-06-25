@@ -73,8 +73,8 @@ inference:
   max_tokens: 512
   temperature: 0.7
   stop_sequences:
-    - "<|im_end|>"
-    - "<|endoftext|>"
+    - "<end_of_turn>"
+    - "<eos>"
 
 # =============================================================================
 # Logging
