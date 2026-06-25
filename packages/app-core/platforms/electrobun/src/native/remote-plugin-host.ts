@@ -1218,7 +1218,9 @@ export class RemotePluginHost {
   ): Promise<JsonValue> {
     switch (method) {
       case "list-remote-plugins":
-        return JSON.parse(JSON.stringify(this.listRemotePlugins())) as JsonValue;
+        return JSON.parse(
+          JSON.stringify(this.listRemotePlugins()),
+        ) as JsonValue;
       case "start-remote-plugin": {
         this.requireManageRemotePlugins(callerId, "start-remote-plugin");
         const targetId = hostRequestStringField(params, "id");
@@ -1233,18 +1235,26 @@ export class RemotePluginHost {
       }
       case "agent-manager-start":
         this.requireManageRemotePlugins(callerId, "agent-manager-start");
-        return JSON.parse(JSON.stringify((await getAgentManager().start()))) as JsonValue;
+        return JSON.parse(
+          JSON.stringify(await getAgentManager().start()),
+        ) as JsonValue;
       case "agent-manager-stop": {
         this.requireManageRemotePlugins(callerId, "agent-manager-stop");
         await getAgentManager().stop();
-        return JSON.parse(JSON.stringify(getAgentManager().getStatus())) as JsonValue;
+        return JSON.parse(
+          JSON.stringify(getAgentManager().getStatus()),
+        ) as JsonValue;
       }
       case "agent-manager-restart":
         this.requireManageRemotePlugins(callerId, "agent-manager-restart");
-        return JSON.parse(JSON.stringify((await getAgentManager().restart()))) as JsonValue;
+        return JSON.parse(
+          JSON.stringify(await getAgentManager().restart()),
+        ) as JsonValue;
       case "agent-manager-status":
         this.requireManageRemotePlugins(callerId, "agent-manager-status");
-        return JSON.parse(JSON.stringify(getAgentManager().getStatus())) as JsonValue;
+        return JSON.parse(
+          JSON.stringify(getAgentManager().getStatus()),
+        ) as JsonValue;
       case "agent-manager-health":
         this.requireManageRemotePlugins(callerId, "agent-manager-health");
         return this.readAgentManagerHealth();

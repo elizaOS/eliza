@@ -212,7 +212,9 @@ export async function bootstrap(
       channel.send({
         type: "event",
         name: "plugin.init.failed",
-        payload: { error: JSON.parse(JSON.stringify(toWireError(error))) as JsonValue },
+        payload: {
+          error: JSON.parse(JSON.stringify(toWireError(error))) as JsonValue,
+        },
       } as RemotePluginWorkerMessage);
       throw error;
     }

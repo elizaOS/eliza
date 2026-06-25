@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   defaultVoiceQuantForTier,
   ELIZA_1_HOSTED_MTP_TIER_IDS,
-  ELIZA_1_ON_DEVICE_TIER_IDS,
   ELIZA_1_MTP_TIER_IDS,
+  ELIZA_1_ON_DEVICE_TIER_IDS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
   isOnDeviceTier,
@@ -222,5 +222,4 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(q4_0?.mobilePreferred).toBeUndefined();
     }
   });
-
 });

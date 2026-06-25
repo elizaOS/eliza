@@ -836,7 +836,7 @@ export class RemotePluginBridge {
         const memory = await this.runtime.getMemoryById(
           memoryId as Parameters<IAgentRuntime["getMemoryById"]>[0],
         );
-        return JSON.parse(JSON.stringify((memory ?? null))) as JsonValue;
+        return JSON.parse(JSON.stringify(memory ?? null)) as JsonValue;
       }
       case "createMemory": {
         const memory = args.memory as JsonValue;
@@ -882,7 +882,7 @@ export class RemotePluginBridge {
       case "composeState": {
         const memory = args.message as unknown as Memory;
         const result = await this.runtime.composeState(memory);
-        return JSON.parse(JSON.stringify((result ?? null))) as JsonValue;
+        return JSON.parse(JSON.stringify(result ?? null)) as JsonValue;
       }
       default:
         throw new Error(
