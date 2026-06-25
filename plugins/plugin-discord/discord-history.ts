@@ -269,9 +269,10 @@ export async function saveSpiderState(
 				await service.runtime.addParticipant(entityId, roomId);
 				service.runtime.logger.debug("[SpiderState] Participant added to room");
 			} catch {
-				const participantErrorMessage = participantError?.message
-					? participantError.message
-					: String(participantError);
+				const participantErrorMessage =
+					participantError instanceof Error
+						? participantError.message
+						: String(participantError);
 				service.runtime.logger.debug(
 					`[SpiderState] Participant ensure error: ${participantErrorMessage}`,
 				);
@@ -306,12 +307,13 @@ export async function saveSpiderState(
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);
 		const errorCause =
-			error &&
-			(
-				error as {
-					cause?: { message?: string; code?: string; detail?: string };
-				}
-			).cause;
+			error && typeof error === "object"
+				? (
+						error as {
+							cause?: { message?: string; code?: string; detail?: string };
+						}
+					).cause
+				: undefined;
 		const causeMsg =
 			errorCause?.message || (errorCause ? String(errorCause) : "");
 		const causeCode = errorCause?.code || "";
