@@ -78,11 +78,16 @@ describe("buildGetScreen", () => {
     expect(r.elementCount).toBe(2);
     expect(r.elements.map((e) => e.text)).toEqual(["Save", "Open File"]);
     expect(r.elements[0]).toMatchObject({
+      index: 1,
       id: "el-1",
       bbox: [10, 20, 40, 16],
+      center: { x: 30, y: 28 },
       semantic_position: "upper-left",
       displayId: 0,
     });
+    // Set-of-Marks numbering is monotonic and 1-based.
+    expect(r.elements.map((e) => e.index)).toEqual([1, 2]);
+    expect(r.elements[1]?.center).toEqual({ x: 115, y: 28 });
     expect(r.ocrText).toBe("Save\nOpen File");
     expect(r.image).toBeUndefined();
   });
@@ -131,16 +136,20 @@ describe("summarizeGetScreen", () => {
       ocrText: "Save\nOpen",
       elements: [
         {
+          index: 1,
           id: "el-1",
           text: "Save",
           bbox: [0, 0, 1, 1],
+          center: { x: 0, y: 0 },
           semantic_position: "center",
           displayId: 0,
         },
         {
+          index: 2,
           id: "el-2",
           text: "Open",
           bbox: [0, 0, 1, 1],
+          center: { x: 0, y: 0 },
           semantic_position: "center",
           displayId: 0,
         },
@@ -148,7 +157,8 @@ describe("summarizeGetScreen", () => {
       elementCount: 2,
     };
     expect(summarizeGetScreen(r)).toContain("2 text element");
-    expect(summarizeGetScreen(r)).toContain("Save | Open");
+    // Summary lists the Set-of-Marks numbers so a model can pick "[1]" / "[2]".
+    expect(summarizeGetScreen(r)).toContain("[1] Save | [2] Open");
   });
 
   it("notes when no OCR provider is present", () => {
