@@ -98,7 +98,7 @@ def default_revision_for_tier(tier: str) -> str:
     prefixed (``"eliza-1-4b"``) tier ids.
     """
     bare = tier[len("eliza-1-") :] if tier.startswith("eliza-1-") else tier
-    if bare in ("0_8b", "2b"):
+    if bare == "2b":
         return DEFAULT_REVISION_EN
     return DEFAULT_REVISION_INTL
 

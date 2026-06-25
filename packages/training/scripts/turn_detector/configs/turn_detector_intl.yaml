@@ -1,4 +1,4 @@
-# Turn detector fine-tune config — multilingual tier (4b / 9b / 27b).
+# Turn detector fine-tune config - multilingual tier (4b / 9b / 27b / 27b-256k).
 #
 # Targets the LiveKit `v0.4.1-intl` revision (Qwen2-0.5B, 14 languages).
 # Bundle target is ~396 MB Q8 ONNX in upstream; the APOLLO-Mini fine-tune

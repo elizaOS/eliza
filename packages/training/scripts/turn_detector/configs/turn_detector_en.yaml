@@ -1,8 +1,8 @@
-# Turn detector fine-tune config — English tier (0_8b / 2b).
+# Turn detector fine-tune config - English tier (2b).
 #
 # Targets the LiveKit `v1.2.2-en` revision (SmolLM2-135M-distilled, 4-layer
 # Llama, EN only). Bundle target is ~66 MB Q8 ONNX, fits the mobile /
-# 0.6B / 1.7B tier memory budgets per .swarm/research/R1-turn.md §3.
+# 2b tier memory budget per .swarm/research/R1-turn.md section 3.
 #
 # Per repo policy (packages/training/AGENTS.md §1): APOLLO optimizer only.
 # AdamW / Muon are not accepted.
