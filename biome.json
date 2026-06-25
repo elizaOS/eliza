@@ -166,10 +166,7 @@
       }
     },
     {
-      "includes": [
-        "plugins/**/src/**/*.ts",
-        "!plugins/plugin-personal-assistant/**"
-      ],
+      "includes": ["plugins/**/src/**/*.ts"],
       "linter": {
         "rules": {
           "suspicious": {
