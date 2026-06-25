@@ -188,17 +188,6 @@ describe("Springboard interaction telemetry", () => {
     expect(launch?.viewId).toBe("chat");
   });
 
-  it("emits favorite then unfavorite as the dock is toggled", () => {
-    render(
-      <Springboard entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
-    );
-    longPressTile("Notes");
-    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
-    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
-    expect(actions()).toContain("favorite");
-    expect(actions()).toContain("unfavorite");
-  });
-
   it("emits edit-mode enter/exit via long-press toggle", () => {
     render(
       <Springboard entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,

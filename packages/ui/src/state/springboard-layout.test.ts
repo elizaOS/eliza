@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_SPRINGBOARD_FAVORITES,
   defaultLayout,
   emptyLayout,
   moveIcon,
@@ -149,44 +148,31 @@ describe("springboard-layout persistence", () => {
 describe("springboard-layout default dock (#9144)", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("seeds the default favorites dock on first run (no stored layout)", () => {
+  it("seeds an empty layout on first run — the favorites dock was removed", () => {
     expect(readSpringboardLayout()).toEqual(defaultLayout());
-    expect(readSpringboardLayout().favorites).toEqual([
-      ...DEFAULT_SPRINGBOARD_FAVORITES,
-    ]);
-  });
-
-  it("respects a user-cleared dock (stored favorites: []) — does NOT re-seed", () => {
-    writeSpringboardLayout({ favorites: [], pages: [["a"]] });
     expect(readSpringboardLayout().favorites).toEqual([]);
+    expect(readSpringboardLayout().pages).toEqual([]);
   });
 
-  it("does not exceed the dock limit", () => {
-    expect(defaultLayout().favorites.length).toBeLessThanOrEqual(
-      SPRINGBOARD_DOCK_LIMIT,
-    );
+  it("first-run default seeds no favorites", () => {
+    expect(defaultLayout().favorites).toEqual([]);
   });
 
-  it("keeps available default favorites and drops unknown ones on reconcile", () => {
-    // Only the first three default favorites exist in this catalog; missing
-    // defaults drop cleanly (no hole, no page placement).
+  it("flows every available view onto pages (no favorites reserved by default)", () => {
+    // With no default favorites, every available id lands on a page tile — none
+    // are held back in a dock.
     const out = reconcileLayout(defaultLayout(), [
       "settings",
       "activity",
       "files",
       "notes",
     ]);
-    expect(out.favorites).toEqual(["settings", "activity", "files"]);
-    // Dropped defaults never leak into the page grid.
-    expect(out.pages.flat()).toEqual(["notes"]);
-  });
-
-  it("keeps all default favorites when every default id is available", () => {
-    const out = reconcileLayout(defaultLayout(), [
-      ...DEFAULT_SPRINGBOARD_FAVORITES,
+    expect(out.favorites).toEqual([]);
+    expect(out.pages.flat()).toEqual([
+      "settings",
+      "activity",
+      "files",
       "notes",
     ]);
-    expect(out.favorites).toEqual([...DEFAULT_SPRINGBOARD_FAVORITES]);
-    expect(out.pages.flat()).toEqual(["notes"]);
   });
 });

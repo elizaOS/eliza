@@ -119,11 +119,15 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     icon: view.icon,
     heroUrl: hasHero ? view.heroImageUrl : undefined,
     // `imageUrl` ALWAYS resolves to a real/branded image so a Springboard tile
-    // is never a bare glyph. A real plugin hero (`heroImageUrl`) wins; otherwise
-    // we generate the branded hero CLIENT-SIDE (an inline data URI) rather than
-    // pointing at the `/api/views/:id/hero` endpoint, which 404s offline / on
-    // cloud builds — so the tiles show images everywhere, no agent required.
-    imageUrl: view.heroImageUrl ?? generatedHero,
+    // is never a bare glyph. A real plugin hero wins ONLY when one actually
+    // exists on disk (`hasHero`); otherwise we use the branded hero generated
+    // CLIENT-SIDE (an inline data URI). The server sets `heroImageUrl` to the
+    // `/api/views/:id/hero` endpoint for EVERY view regardless of whether a real
+    // hero exists, and that bare `/api/...` path 404s on native/desktop shells
+    // (no API base ⇒ resolves to the SPA, not the agent) and offline / on cloud
+    // builds. Gating on `hasHero` means viewless tiles load the client SVG
+    // directly with no doomed network round-trip, and real heroes still win.
+    imageUrl: hasHero ? view.heroImageUrl : generatedHero,
     fallbackImageUrl: generatedHero,
     hasHero,
     modality: view.viewType ?? "gui",
@@ -139,8 +143,19 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
   };
 }
 
+/**
+ * An app hero is reachable from any shell ONLY when it is an absolute URL
+ * (data/blob/http(s)/custom scheme). A root-relative `/api/apps/hero/<slug>`
+ * path — what the registry assigns when an app ships no hero, or to stream an
+ * on-disk one — 404s on native/desktop shells the same way view heroes do, so
+ * it must NOT be used as the primary tile image.
+ */
+function isReachableHero(url: string | null | undefined): url is string {
+  return Boolean(url) && /^[a-z][a-z0-9+.-]*:/i.test(url as string);
+}
+
 function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
-  const hasHero = Boolean(app.heroImage);
+  const reachableHero = isReachableHero(app.heroImage);
   const label = app.displayName || app.name;
   const generatedHero = generatedViewHeroDataUri({
     id: app.name,
@@ -153,10 +168,13 @@ function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
     label,
     description: app.description,
     icon: app.icon ?? undefined,
-    heroUrl: app.heroImage ?? undefined,
-    imageUrl: app.heroImage ?? generatedHero,
+    heroUrl: reachableHero ? (app.heroImage ?? undefined) : undefined,
+    // Use the app's own hero only when it is an absolute, shell-reachable URL;
+    // a root-relative `/api/...` fallback path 404s on native, so render the
+    // branded client SVG directly instead of a doomed network round-trip.
+    imageUrl: reachableHero ? (app.heroImage as string) : generatedHero,
     fallbackImageUrl: generatedHero,
-    hasHero,
+    hasHero: reachableHero,
     category: app.category,
     // Catalog cards are a GUI install surface; the loaded view carries the real
     // modality once the plugin registers.

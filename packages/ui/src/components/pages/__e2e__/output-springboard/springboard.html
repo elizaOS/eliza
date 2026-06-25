@@ -12780,7 +12780,6 @@
 
   // packages/ui/src/components/pages/__e2e__/springboard-fixture.tsx
   var React = __toESM(require_react(), 1);
-  var import_react30 = __toESM(require_react(), 1);
   var import_client = __toESM(require_client(), 1);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
@@ -25263,17 +25262,11 @@
   var SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
   var SPRINGBOARD_PAGE_SIZE = 20;
   var SPRINGBOARD_DOCK_LIMIT = 4;
-  var DEFAULT_SPRINGBOARD_FAVORITES = [
-    "settings",
-    "activity",
-    "files",
-    "tasks"
-  ];
   function emptyLayout() {
     return { favorites: [], pages: [] };
   }
   function defaultLayout() {
-    return { favorites: [...DEFAULT_SPRINGBOARD_FAVORITES], pages: [] };
+    return emptyLayout();
   }
   function isStringArray(value) {
     return Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -25335,13 +25328,6 @@
       }
     }
     return { favorites, pages: chunk(ordered, pageSize), manual: layout2.manual };
-  }
-  function toggleFavorite(layout2, id3) {
-    if (layout2.favorites.includes(id3)) {
-      return { ...layout2, favorites: layout2.favorites.filter((f) => f !== id3) };
-    }
-    const favorites = [...layout2.favorites, id3].slice(-SPRINGBOARD_DOCK_LIMIT);
-    return { ...layout2, favorites };
   }
   function moveIcon(layout2, id3, targetPage, targetIndex, pageSize = SPRINGBOARD_PAGE_SIZE) {
     const favorites = layout2.favorites.filter((f) => f !== id3);
@@ -25644,10 +25630,8 @@
   var IconTile = (0, import_react29.memo)(function IconTile2({
     entry,
     editing,
-    favorited,
     manageable,
     onLaunch,
-    onToggleFavorite,
     onEdit,
     onDelete,
     onLongPress
@@ -25692,13 +25676,14 @@
                 onPointerLeave: clear,
                 onPointerCancel: clear,
                 className: cn(
-                  // ViewTileImage handles image-vs-glyph internally, so the button is
-                  // one constant surface. The hero image (object-cover) covers the
-                  // tile when it loads; this dark neutral fill + white glyph is the
-                  // fallback so a tile reads as a real app icon (not a bare glyph
-                  // floating on the background) even before/without the image. Filter
-                  // effects (#9281) and focus rings (#9292) were removed on develop.
-                  "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
+                  // NAKED tile: no card, no border. ViewTileImage handles
+                  // image-vs-glyph internally. The hero image (object-cover) IS the
+                  // tile when it loads; otherwise the white glyph (with a soft shadow,
+                  // applied in ViewTileImage's glyphClassName) sits directly on the
+                  // ambient orange field. Hover is a faint white wash (never
+                  // orange→black). Filter effects (#9281) and focus rings (#9292) were
+                  // removed on develop.
+                  "h-16 w-16 overflow-hidden rounded-2xl text-white transition-colors hover:bg-white/8",
                   editing && "animate-pulse"
                 ),
                 children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
@@ -25707,30 +25692,12 @@
                     entry,
                     source: "springboard",
                     containerClassName: "grid h-full w-full place-items-center",
-                    glyphClassName: "h-7 w-7",
+                    glyphClassName: "h-7 w-7 text-white [filter:drop-shadow(0_1px_3px_rgba(0,0,0,0.38))]",
                     imageTestId: `springboard-image-${entry.id}`
                   }
                 )
               }
             ),
-            editing ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-              "button",
-              {
-                type: "button",
-                "aria-label": favorited ? `Unpin ${entry.label}` : `Pin ${entry.label}`,
-                "data-testid": `springboard-fav-${entry.id}`,
-                onClick: (e) => {
-                  e.stopPropagation();
-                  onToggleFavorite(entry.id);
-                },
-                className: cn(
-                  // Filled chips stay legible across image and dark tile backgrounds.
-                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold shadow-md ring-1",
-                  favorited ? "bg-accent text-white ring-black/20" : "bg-white text-neutral-900 ring-black/15"
-                ),
-                children: favorited ? "\u2605" : "+"
-              }
-            ) : null,
             editing && manageable ? /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "absolute -left-1.5 -top-1.5 flex gap-1", children: [
               onEdit ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
                 "button",
@@ -25762,7 +25729,7 @@
               ) : null
             ] }) : null
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]", children: entry.label })
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]", children: entry.label })
         ]
       }
     );
@@ -25772,8 +25739,8 @@
     loading = false,
     onLaunch,
     onEdgeSwipeRight,
-    favoriteIds,
-    onToggleFavorite,
+    // favoriteIds / onToggleFavorite are accepted for desktop-tab type
+    // compatibility but intentionally unused — the favorites dock was removed.
     canManageView,
     onEditView,
     onDeleteView,
@@ -25787,15 +25754,10 @@
   }) {
     const availableIds = (0, import_react29.useMemo)(() => entries.map((e) => e.id), [entries]);
     const byId = (0, import_react29.useMemo)(() => new Map(entries.map((e) => [e.id, e])), [entries]);
-    const controlled = onToggleFavorite != null;
-    const favorites = (0, import_react29.useMemo)(
-      () => controlled ? favoriteIds ?? [] : null,
-      [controlled, favoriteIds]
-    );
     const [layout2, setLayout] = (0, import_react29.useState)(() => {
       const stored = readSpringboardLayout();
       return reconcileLayout(
-        { favorites: favorites ?? stored.favorites, pages: stored.pages },
+        { ...stored, favorites: [] },
         entries.map((e) => e.id)
       );
     });
@@ -25820,13 +25782,8 @@
       [editingControlled, onEditingChange]
     );
     (0, import_react29.useEffect)(() => {
-      setLayout(
-        (prev) => reconcileLayout(
-          { favorites: favorites ?? prev.favorites, pages: prev.pages },
-          availableIds
-        )
-      );
-    }, [availableIds, favorites]);
+      setLayout((prev) => reconcileLayout(prev, availableIds));
+    }, [availableIds]);
     (0, import_react29.useEffect)(() => {
       if (pageControlled) return;
       const pageCount = layout2.pages.length > 0 ? layout2.pages.length : 1;
@@ -25836,22 +25793,6 @@
       setLayout(next);
       writeSpringboardLayout(next);
     }, []);
-    const toggleFav = (0, import_react29.useCallback)(
-      (id3) => {
-        const wasFavorited = (favorites ?? layout2.favorites).includes(id3);
-        emitViewInteraction({
-          source: "springboard",
-          action: wasFavorited ? "unfavorite" : "favorite",
-          viewId: id3
-        });
-        if (controlled) {
-          onToggleFavorite?.(id3);
-          return;
-        }
-        commit(reconcileLayout(toggleFavorite(layout2, id3), availableIds));
-      },
-      [controlled, onToggleFavorite, commit, layout2, availableIds, favorites]
-    );
     const handleLaunch = (0, import_react29.useCallback)(
       (entry) => {
         emitViewInteraction({
@@ -25878,15 +25819,6 @@
       onPageCountChange?.(pages.length);
     }, [pages.length, onPageCountChange]);
     const clampedPage = Math.min(activePage, pages.length - 1);
-    const favoriteIdList = (0, import_react29.useMemo)(
-      () => (favorites ?? layout2.favorites).slice(0, SPRINGBOARD_DOCK_LIMIT),
-      [favorites, layout2.favorites]
-    );
-    const favoriteEntries = (0, import_react29.useMemo)(
-      () => favoriteIdList.map((id3) => byId.get(id3)).filter((e) => e != null),
-      [byId, favoriteIdList]
-    );
-    const favoriteSet = (0, import_react29.useMemo)(() => new Set(favoriteIdList), [favoriteIdList]);
     const handleReorder = (0, import_react29.useCallback)(
       (pageIndex, nextIds) => {
         let next = layout2;
@@ -25903,15 +25835,13 @@
       [layout2, commit]
     );
     const renderTile = (0, import_react29.useCallback)(
-      (entry, favorited) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+      (entry) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
         IconTile,
         {
           entry,
           editing,
-          favorited,
           manageable: canManageView?.(entry.id) ?? false,
           onLaunch: handleLaunch,
-          onToggleFavorite: toggleFav,
           onEdit: onEditView,
           onDelete: onDeleteView,
           onLongPress: toggleEditMode
@@ -25921,108 +25851,97 @@
         editing,
         canManageView,
         handleLaunch,
-        toggleFav,
         onEditView,
         onDeleteView,
         toggleEditMode
       ]
     );
-    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       "div",
       {
         className: cn("flex min-h-0 flex-1 flex-col", className),
         "data-testid": "springboard",
-        children: [
-          favoriteEntries.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-            "div",
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            motion.div,
             {
-              "data-testid": "springboard-dock",
-              className: "mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md sm:mx-4 sm:gap-4 sm:px-6",
-              children: favoriteEntries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { children: renderTile(entry, true) }, `dock-${entry.id}`))
-            }
-          ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-              motion.div,
-              {
-                drag: editing ? false : "x",
-                dragConstraints: { left: 0, right: 0 },
-                dragElastic: 0.2,
-                dragSnapToOrigin: true,
-                onDragEnd: (_event, info) => {
-                  if (editing) return;
-                  if (info.offset.x < -SWIPE_THRESHOLD && clampedPage < pages.length - 1) {
-                    setActivePage(clampedPage + 1);
-                    emitViewInteraction({
-                      source: "springboard",
-                      action: "page-swipe",
-                      count: clampedPage + 1
-                    });
-                  } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
-                    setActivePage(clampedPage - 1);
-                    emitViewInteraction({
-                      source: "springboard",
-                      action: "page-swipe",
-                      count: clampedPage - 1
-                    });
-                  } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage === 0) {
-                    onEdgeSwipeRight?.();
-                  }
+              drag: editing ? false : "x",
+              dragConstraints: { left: 0, right: 0 },
+              dragElastic: 0.2,
+              dragSnapToOrigin: true,
+              onDragEnd: (_event, info) => {
+                if (editing) return;
+                if (info.offset.x < -SWIPE_THRESHOLD && clampedPage < pages.length - 1) {
+                  setActivePage(clampedPage + 1);
+                  emitViewInteraction({
+                    source: "springboard",
+                    action: "page-swipe",
+                    count: clampedPage + 1
+                  });
+                } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
+                  setActivePage(clampedPage - 1);
+                  emitViewInteraction({
+                    source: "springboard",
+                    action: "page-swipe",
+                    count: clampedPage - 1
+                  });
+                } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage === 0) {
+                  onEdgeSwipeRight?.();
+                }
+              },
+              className: "flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
+              children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id3) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+                "div",
+                {
+                  className: "flex flex-col items-center gap-1.5 opacity-60",
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "h-16 w-16 rounded-2xl bg-bg-accent/50" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "h-2.5 w-12 rounded-full bg-bg-accent/50" })
+                  ]
                 },
-                className: "flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
-                children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id3) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-                  "div",
-                  {
-                    className: "flex flex-col items-center gap-1.5 opacity-60",
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "h-16 w-16 rounded-2xl bg-bg-accent/50" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "h-2.5 w-12 rounded-full bg-bg-accent/50" })
-                    ]
-                  },
-                  id3
-                )) }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                  namespace_exports.Group,
-                  {
-                    axis: "y",
-                    values: pages[clampedPage] ?? [],
-                    onReorder: (next) => handleReorder(clampedPage, next),
-                    className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5",
-                    children: (pages[clampedPage] ?? []).map((id3) => {
-                      const entry = byId.get(id3);
-                      if (!entry) return null;
-                      return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-                        namespace_exports.Item,
-                        {
-                          value: id3,
-                          drag: editing,
-                          dragListener: editing,
-                          className: "flex justify-center",
-                          children: renderTile(entry, favoriteSet.has(id3))
-                        },
-                        id3
-                      );
-                    })
-                  }
-                )
-              },
-              "springboard-page"
-            ),
-            showPageDots && pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-              "button",
-              {
-                type: "button",
-                "aria-label": `Page ${index + 1}`,
-                "aria-current": index === clampedPage,
-                onClick: () => setActivePage(index),
-                className: cn(
-                  "h-2 w-2 rounded-full transition-colors",
-                  index === clampedPage ? "bg-accent" : "bg-border"
-                )
-              },
-              `dot-${index}-${pageIds[0] ?? "empty"}`
-            )) }) : null
-          ] })
-        ]
+                id3
+              )) }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                namespace_exports.Group,
+                {
+                  axis: "y",
+                  values: pages[clampedPage] ?? [],
+                  onReorder: (next) => handleReorder(clampedPage, next),
+                  className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5",
+                  children: (pages[clampedPage] ?? []).map((id3) => {
+                    const entry = byId.get(id3);
+                    if (!entry) return null;
+                    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+                      namespace_exports.Item,
+                      {
+                        value: id3,
+                        drag: editing,
+                        dragListener: editing,
+                        className: "flex justify-center",
+                        children: renderTile(entry)
+                      },
+                      id3
+                    );
+                  })
+                }
+              )
+            },
+            "springboard-page"
+          ),
+          showPageDots && pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            "button",
+            {
+              type: "button",
+              "aria-label": `Page ${index + 1}`,
+              "aria-current": index === clampedPage,
+              onClick: () => setActivePage(index),
+              className: cn(
+                "h-2 w-2 rounded-full transition-colors",
+                index === clampedPage ? "bg-accent" : "bg-border"
+              )
+            },
+            `dot-${index}-${pageIds[0] ?? "empty"}`
+          )) }) : null
+        ] })
       }
     );
   }
@@ -26084,11 +26003,6 @@
   var ENTRIES = SPECS.map(makeEntry);
   var MANAGEABLE = /* @__PURE__ */ new Set(["models", "vectors"]);
   function Harness() {
-    const [favorites, setFavorites] = (0, import_react30.useState)([
-      "chat",
-      "views",
-      "settings"
-    ]);
     React.useLayoutEffect(() => {
       const win = window;
       win.__springboardCalls = { launch: [], edit: [], delete: [] };
@@ -26108,12 +26022,6 @@
           Springboard,
           {
             entries: ENTRIES,
-            favoriteIds: favorites,
-            onToggleFavorite: (id3) => {
-              setFavorites(
-                (prev) => prev.includes(id3) ? prev.filter((f) => f !== id3) : [...prev, id3].slice(-4)
-              );
-            },
             onLaunch: (entry) => {
               window.__springboardCalls?.launch.push(entry.id);
             },

@@ -60,11 +60,12 @@ function view(
   };
 }
 
-// Four dock favorites (so the dock fills) + 24 page views, which pack into TWO
-// springboard pages (page size 20). Two pages is what makes the doubled-dots
-// bug observable: the inner Springboard WOULD render its own dot strip here if
-// it weren't suppressed in favor of the rail's single indicator.
-const DOCK_VIEWS = [
+// 4 system views + 24 plain views = 28 tiles, which pack into TWO springboard
+// pages (page size 20). Two pages is what makes the doubled-dots bug
+// observable: the inner Springboard WOULD render its own dot strip here if it
+// weren't suppressed in favor of the rail's single indicator. (The favorites
+// dock was removed — every one of these renders as a uniform page tile.)
+const SYSTEM_VIEWS = [
   view("settings", "Settings", "/settings", { icon: "Settings" }),
   view("files", "Files", "/apps/files", { icon: "FolderClosed" }),
   view("tasks", "Tasks", "/apps/tasks", { icon: "ListTodo" }),
@@ -73,7 +74,15 @@ const DOCK_VIEWS = [
 const PAGE_VIEWS = Array.from({ length: 24 }, (_, i) =>
   view(`app${i}`, `App ${i}`, `/apps/app${i}`),
 );
-const ALL_VIEWS = [...DOCK_VIEWS, ...PAGE_VIEWS];
+const ALL_VIEWS = [...SYSTEM_VIEWS, ...PAGE_VIEWS];
+
+/** Edit mode pulses every tile (no pin badge anymore) — the editing signal. */
+const tilePulsing = (id: string): boolean =>
+  Boolean(
+    document
+      .querySelector(`[data-testid="springboard-tile-${id}"] button`)
+      ?.classList.contains("animate-pulse"),
+  );
 
 beforeEach(() => {
   resetShellSurfaceForTests();
@@ -161,8 +170,8 @@ describe("Home ↔ Springboard composed surface", () => {
     act(() => vi.advanceTimersByTime(600));
     fireEvent.pointerUp(settingsTile);
     vi.useRealTimers();
-    // Edit mode is on: per-tile pin affordances appear (no Done button now).
-    expect(screen.getByTestId("springboard-fav-settings")).toBeTruthy();
+    // Edit mode is on: tiles pulse (no pin badge / Done button anymore).
+    expect(tilePulsing("settings")).toBe(true);
 
     // Swipe back. This is the exact gesture that used to strand the user in
     // jiggle mode. It must return home AND drop edit mode (store invariant).
@@ -172,7 +181,7 @@ describe("Home ↔ Springboard composed surface", () => {
     // Re-enter the springboard: it must be a CLEAN launch view, not stale edit.
     openSpringboard();
     expect(surface.getAttribute("data-page")).toBe("springboard");
-    expect(screen.queryByTestId("springboard-fav-settings")).toBeNull();
+    expect(tilePulsing("settings")).toBe(false);
   });
 
   it("a horizontal swipe that starts ON a tile never ghost-fires edit mode (#3)", () => {
@@ -188,8 +197,8 @@ describe("Home ↔ Springboard composed surface", () => {
     fireEvent.pointerDown(tile, { clientX: 50, clientY: 50 });
     fireEvent.pointerMove(tile, { clientX: 90, clientY: 52 }); // dx 40 > slop
     act(() => vi.advanceTimersByTime(600));
-    // Swipe ⇒ NOT a long-press ⇒ NOT edit mode (no pin affordances surfaced).
-    expect(screen.queryByTestId("springboard-fav-app0")).toBeNull();
+    // Swipe ⇒ NOT a long-press ⇒ NOT edit mode (tile does not pulse).
+    expect(tilePulsing("app0")).toBe(false);
 
     // Control: a STATIONARY hold past the threshold DOES enter edit mode, so the
     // intentional long-press affordance still works.
@@ -199,10 +208,10 @@ describe("Home ↔ Springboard composed surface", () => {
     if (!tile2) throw new Error("tile button missing");
     fireEvent.pointerDown(tile2, { clientX: 50, clientY: 50 });
     act(() => vi.advanceTimersByTime(600));
-    expect(screen.getByTestId("springboard-fav-app1")).toBeTruthy();
+    expect(tilePulsing("app1")).toBe(true);
   });
 
-  it("dock tiles render DISTINCT per-view visuals, with distinct glyph fallback (#5)", () => {
+  it("tiles render DISTINCT per-view visuals, with distinct glyph fallback (#5)", () => {
     renderComposed();
     openSpringboard();
 

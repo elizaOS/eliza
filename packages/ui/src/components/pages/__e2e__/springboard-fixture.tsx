@@ -8,7 +8,6 @@
 // Paired with run-springboard-e2e.mjs.
 
 import * as React from "react";
-import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { ViewEntry } from "../../../hooks/view-catalog";
 import { Springboard } from "../Springboard";
@@ -34,9 +33,9 @@ function tileImage(a: string, b: string): string {
   )}`;
 }
 
-// Stable id list (25) — first two are "system" management tiles so the dynamic
+// Stable id list (25) — two are "manageable" dynamic-developer views so the
 // per-tile edit/delete affordances render in edit mode; the rest are plain
-// views, two of which carry a hero image.
+// views, two of which carry a hero image. Every tile is uniform (no dock).
 const SPECS: Array<{ id: string; label: string; icon?: string; image?: boolean }> =
   [
     { id: "chat", label: "Chat", icon: "MessageSquare" },
@@ -89,12 +88,6 @@ const ENTRIES: ViewEntry[] = SPECS.map(makeEntry);
 const MANAGEABLE = new Set<string>(["models", "vectors"]);
 
 function Harness(): React.JSX.Element {
-  const [favorites, setFavorites] = useState<string[]>([
-    "chat",
-    "views",
-    "settings",
-  ]);
-
   React.useLayoutEffect(() => {
     const win = window as Win;
     win.__springboardCalls = { launch: [], edit: [], delete: [] };
@@ -113,14 +106,6 @@ function Harness(): React.JSX.Element {
     >
       <Springboard
         entries={ENTRIES}
-        favoriteIds={favorites}
-        onToggleFavorite={(id) => {
-          setFavorites((prev) =>
-            prev.includes(id)
-              ? prev.filter((f) => f !== id)
-              : [...prev, id].slice(-4),
-          );
-        }}
         onLaunch={(entry) => {
           (window as Win).__springboardCalls?.launch.push(entry.id);
         }}

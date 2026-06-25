@@ -5,14 +5,9 @@ import {
   fireEvent,
   render,
   screen,
-  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import {
-  SPRINGBOARD_DOCK_LIMIT,
-  SPRINGBOARD_STORAGE_KEY,
-} from "../../state/springboard-layout";
 import { Springboard } from "./Springboard";
 
 function entry(id: string, label: string): ViewEntry {
@@ -80,19 +75,34 @@ describe("Springboard", () => {
     expect(onLaunch).not.toHaveBeenCalled();
   });
 
-  it("favorites a view into the dock and persists the layout", () => {
-    // `notes` is not in DEFAULT_SPRINGBOARD_FAVORITES (#9144), so favoriting it
-    // genuinely adds it to the dock rather than toggling off a pre-seeded id.
+  it("renders no favorites dock — every tile is a uniform page tile", () => {
     const entries = [entry("notes", "Notes"), entry("settings", "Settings")];
     render(<Springboard entries={entries} onLaunch={() => {}} />);
-    longPressToEdit("Notes");
-    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
-    // The dock now contains a Notes tile (keyed dock-notes).
+    // The dark favorites dock is gone entirely.
+    expect(screen.queryByTestId("springboard-dock")).toBeNull();
+    // Both views render as ordinary page tiles (nothing held back in a dock).
     expect(screen.getByTestId("springboard-tile-notes")).toBeTruthy();
-    const stored = JSON.parse(
-      window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY) ?? "{}",
+    expect(screen.getByTestId("springboard-tile-settings")).toBeTruthy();
+  });
+
+  it("renders every tile uniformly with no dark card or border", () => {
+    const entries = [entry("notes", "Notes"), entry("settings", "Settings")];
+    const { container } = render(
+      <Springboard entries={entries} onLaunch={() => {}} />,
     );
-    expect(stored.favorites).toContain("notes");
+    // No tile carries the old dark-card / border classes.
+    expect(container.querySelector(".bg-black\\/35")).toBeNull();
+    expect(container.querySelector(".bg-black\\/45")).toBeNull();
+    expect(container.querySelector(".border-white\\/10")).toBeNull();
+    // Both launch buttons share the identical naked tile class string.
+    const buttons = Array.from(
+      container.querySelectorAll(
+        '[data-testid^="springboard-tile-"] > div > button',
+      ),
+    );
+    expect(buttons).toHaveLength(2);
+    const classes = new Set(buttons.map((b) => b.getAttribute("class")));
+    expect(classes.size).toBe(1);
   });
 
   it("shows page dots when there is more than one page", () => {
@@ -183,19 +193,26 @@ describe("Springboard image tiles", () => {
 describe("Springboard long-press to edit", () => {
   afterEach(() => vi.useRealTimers());
 
+  /** Edit mode pulses every tile (the only resting→editing visual now that the
+   *  pin badge is gone). A pulsing tile is the edit-mode signal. */
+  const editingTileCount = () =>
+    document.querySelectorAll(
+      '[data-testid^="springboard-tile-"] button.animate-pulse',
+    ).length;
+
   it("enters edit mode after a long press on a tile", () => {
     vi.useFakeTimers();
     render(<Springboard entries={FEW} onLaunch={() => {}} />);
-    // Resting: no per-tile pin affordances (there is no Edit button anymore).
-    expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
+    // Resting: no tile is pulsing.
+    expect(editingTileCount()).toBe(0);
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Chat" }));
     act(() => {
       vi.advanceTimersByTime(450);
     });
 
-    // Edit mode is on: per-tile pin affordances appear.
-    expect(screen.getByTestId("springboard-fav-chat")).toBeTruthy();
+    // Edit mode is on: tiles pulse.
+    expect(editingTileCount()).toBeGreaterThan(0);
   });
 
   it("does not enter edit mode when the press is released early", () => {
@@ -210,8 +227,8 @@ describe("Springboard long-press to edit", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    // Still resting: no pin affordances surfaced.
-    expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
+    // Still resting: no pulse.
+    expect(editingTileCount()).toBe(0);
   });
 
   it("cancels the long-press when the pointer is cancelled (touch scroll)", () => {
@@ -228,15 +245,14 @@ describe("Springboard long-press to edit", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(screen.queryByTestId("springboard-fav-chat")).toBeNull();
+    expect(editingTileCount()).toBe(0);
   });
 });
 
-describe("Springboard controlled favorites (desktop tabs)", () => {
-  it("clamps the dock to SPRINGBOARD_DOCK_LIMIT even when more are supplied", () => {
-    // Controlled mode (onToggleFavorite set) renders the caller's favoriteIds.
-    // A caller that supplies more than the cap must still render at most
-    // SPRINGBOARD_DOCK_LIMIT dock tiles (the iOS-style 4-slot dock).
+describe("Springboard desktop-tab props (favorites dock removed)", () => {
+  it("ignores favoriteIds / onToggleFavorite — renders no dock, plain page tiles", () => {
+    // The favorites props are retained for desktop-tab type compatibility but
+    // no longer render a dock. Supplying them must not produce a dock.
     const ids = ["a", "b", "c", "d", "e", "f"];
     render(
       <Springboard
@@ -246,61 +262,10 @@ describe("Springboard controlled favorites (desktop tabs)", () => {
         onToggleFavorite={() => {}}
       />,
     );
-    const dockTiles = screen
-      .getByTestId("springboard-dock")
-      .querySelectorAll('[data-testid^="springboard-tile-"]');
-    expect(dockTiles).toHaveLength(SPRINGBOARD_DOCK_LIMIT);
-  });
-});
-
-describe("Springboard dock favorites (local, uncontrolled)", () => {
-  // None of these ids are in DEFAULT_SPRINGBOARD_FAVORITES, so the seeded dock
-  // reconciles to empty and each favorite is a genuine add.
-  const MANY = ["a", "b", "c", "d", "e"].map((id) =>
-    entry(id, id.toUpperCase()),
-  );
-
-  it("unpins a favorited view from the dock", () => {
-    // `notes` and `archive` are not default-dock ids (#9144), so the seeded dock
-    // reconciles to empty and the dock only exists once we pin `notes`.
-    render(
-      <Springboard
-        entries={[entry("notes", "Notes"), entry("archive", "Archive")]}
-        onLaunch={() => {}}
-      />,
-    );
-    longPressToEdit("Notes");
-    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
-    expect(
-      within(screen.getByTestId("springboard-dock")).getByText("Notes"),
-    ).toBeTruthy();
-
-    // Toggle it off again → the dock empties and unmounts.
-    fireEvent.click(screen.getByTestId("springboard-fav-notes"));
     expect(screen.queryByTestId("springboard-dock")).toBeNull();
-    const stored = JSON.parse(
-      window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY) ?? "{}",
-    );
-    expect(stored.favorites).not.toContain("notes");
-  });
-
-  it("evicts the oldest favorite when the dock is full", () => {
-    render(<Springboard entries={MANY} onLaunch={() => {}} />);
-    longPressToEdit("A");
-    for (const id of ["a", "b", "c", "d", "e"]) {
-      fireEvent.click(screen.getByTestId(`springboard-fav-${id}`));
+    // Every supplied view renders exactly once as a page tile.
+    for (const id of ids) {
+      expect(screen.getAllByTestId(`springboard-tile-${id}`)).toHaveLength(1);
     }
-    // Dock caps at 4 → the first-added ("A") is evicted, B–E remain.
-    const dock = within(screen.getByTestId("springboard-dock"));
-    expect(dock.queryByText("A")).toBeNull();
-    expect(dock.getByText("B")).toBeTruthy();
-    expect(dock.getByText("E")).toBeTruthy();
-    const stored = JSON.parse(
-      window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY) ?? "{}",
-    );
-    expect(stored.favorites).toEqual(["b", "c", "d", "e"]);
   });
 });
-
-// Keep `within` referenced for future grouped-dock assertions without lint noise.
-void within;

@@ -1,15 +1,18 @@
 /**
  * Springboard — iOS-like app/view launcher.
  *
- * Renders every available view as a names-only icon on swipeable pages plus a
- * pinned favorites dock. Tap launches; long-press enters edit mode where icons
- * can be reordered (drag), favorited into the dock, and — for manageable
- * (dynamic developer) views — edited or deleted. Page order is persisted via
- * the pure `springboard-layout` model. Favorites are
- * controlled-optional: when `onToggleFavorite` is supplied the dock reflects the
- * caller's `favoriteIds`; otherwise favorites are kept locally. Fully
- * token-themed (light/dark + overrides) and renders no background of its own —
- * the shared root `AppBackground` shows through, matching the home screen.
+ * Renders every available view as a single uniform, NAKED tile on swipeable
+ * pages: a real branded hero image when one loads, otherwise the view glyph
+ * sitting directly on the ambient orange field (no dark card, no border). Every
+ * tile looks the same. Tap launches; long-press enters edit mode where icons can
+ * be reordered (drag) and — for manageable (dynamic developer) views — edited or
+ * deleted. Page order is persisted via the pure `springboard-layout` model.
+ * Renders no background of its own — the shared root `AppBackground` shows
+ * through, matching the home screen.
+ *
+ * The `favoriteIds` / `onToggleFavorite` props are retained for the desktop-tab
+ * caller's type compatibility but are no longer rendered: there is no favorites
+ * dock, so every tile is identical.
  */
 
 import { Pencil, Trash2 } from "lucide-react";
@@ -21,9 +24,7 @@ import {
   moveIcon,
   readSpringboardLayout,
   reconcileLayout,
-  SPRINGBOARD_DOCK_LIMIT,
   type SpringboardLayout,
-  toggleFavorite,
   writeSpringboardLayout,
 } from "../../state/springboard-layout";
 import { emitViewInteraction } from "../../view-telemetry";
@@ -34,7 +35,10 @@ export interface SpringboardProps {
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
   onEdgeSwipeRight?: () => void;
-  /** When set, favorites are controlled by the caller (e.g. desktop tabs). */
+  /**
+   * Retained for desktop-tab caller type compatibility. The favorites dock was
+   * removed, so these are accepted and ignored — every tile renders uniformly.
+   */
   favoriteIds?: string[];
   onToggleFavorite?: (id: string) => void;
   /** Per-tile management for dynamic views, shown in edit mode when allowed. */
@@ -66,10 +70,8 @@ export interface SpringboardProps {
 interface IconTileProps {
   entry: ViewEntry;
   editing: boolean;
-  favorited: boolean;
   manageable: boolean;
   onLaunch: (entry: ViewEntry) => void;
-  onToggleFavorite: (id: string) => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onLongPress: () => void;
@@ -87,10 +89,8 @@ const SWIPE_THRESHOLD = 60;
 const IconTile = memo(function IconTile({
   entry,
   editing,
-  favorited,
   manageable,
   onLaunch,
-  onToggleFavorite,
   onEdit,
   onDelete,
   onLongPress,
@@ -144,13 +144,14 @@ const IconTile = memo(function IconTile({
           // ghost-fires edit mode after the user finishes scrolling.
           onPointerCancel={clear}
           className={cn(
-            // ViewTileImage handles image-vs-glyph internally, so the button is
-            // one constant surface. The hero image (object-cover) covers the
-            // tile when it loads; this dark neutral fill + white glyph is the
-            // fallback so a tile reads as a real app icon (not a bare glyph
-            // floating on the background) even before/without the image. Filter
-            // effects (#9281) and focus rings (#9292) were removed on develop.
-            "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
+            // NAKED tile: no card, no border. ViewTileImage handles
+            // image-vs-glyph internally. The hero image (object-cover) IS the
+            // tile when it loads; otherwise the white glyph (with a soft shadow,
+            // applied in ViewTileImage's glyphClassName) sits directly on the
+            // ambient orange field. Hover is a faint white wash (never
+            // orange→black). Filter effects (#9281) and focus rings (#9292) were
+            // removed on develop.
+            "h-16 w-16 overflow-hidden rounded-2xl text-white transition-colors hover:bg-white/8",
             editing && "animate-pulse",
           )}
         >
@@ -158,32 +159,10 @@ const IconTile = memo(function IconTile({
             entry={entry}
             source="springboard"
             containerClassName="grid h-full w-full place-items-center"
-            glyphClassName="h-7 w-7"
+            glyphClassName="h-7 w-7 text-white [filter:drop-shadow(0_1px_3px_rgba(0,0,0,0.38))]"
             imageTestId={`springboard-image-${entry.id}`}
           />
         </button>
-        {editing ? (
-          <button
-            type="button"
-            aria-label={
-              favorited ? `Unpin ${entry.label}` : `Pin ${entry.label}`
-            }
-            data-testid={`springboard-fav-${entry.id}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFavorite(entry.id);
-            }}
-            className={cn(
-              // Filled chips stay legible across image and dark tile backgrounds.
-              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-bold shadow-md",
-              favorited
-                ? "border-black/20 bg-accent text-white"
-                : "border-black/15 bg-white text-neutral-900",
-            )}
-          >
-            {favorited ? "★" : "+"}
-          </button>
-        ) : null}
         {editing && manageable ? (
           <div className="absolute -left-1.5 -top-1.5 flex gap-1">
             {onEdit ? (
@@ -217,7 +196,7 @@ const IconTile = memo(function IconTile({
           </div>
         ) : null}
       </div>
-      <span className="max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]">
+      <span className="max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]">
         {entry.label}
       </span>
     </div>
@@ -229,8 +208,8 @@ export function Springboard({
   loading = false,
   onLaunch,
   onEdgeSwipeRight,
-  favoriteIds,
-  onToggleFavorite,
+  // favoriteIds / onToggleFavorite are accepted for desktop-tab type
+  // compatibility but intentionally unused — the favorites dock was removed.
   canManageView,
   onEditView,
   onDeleteView,
@@ -245,16 +224,13 @@ export function Springboard({
   const availableIds = useMemo(() => entries.map((e) => e.id), [entries]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
 
-  const controlled = onToggleFavorite != null;
-  const favorites = useMemo(
-    () => (controlled ? (favoriteIds ?? []) : null),
-    [controlled, favoriteIds],
-  );
-
   const [layout, setLayout] = useState<SpringboardLayout>(() => {
     const stored = readSpringboardLayout();
+    // The favorites dock is gone — drop any favorites a prior version persisted
+    // so those views reappear as ordinary page tiles instead of vanishing
+    // (reconcileLayout keeps favorites OUT of the page grid).
     return reconcileLayout(
-      { favorites: favorites ?? stored.favorites, pages: stored.pages },
+      { ...stored, favorites: [] },
       entries.map((e) => e.id),
     );
   });
@@ -286,15 +262,10 @@ export function Springboard({
     [editingControlled, onEditingChange],
   );
 
-  // Re-reconcile when the available views or controlled favorites change.
+  // Re-reconcile when the available views change.
   useEffect(() => {
-    setLayout((prev) =>
-      reconcileLayout(
-        { favorites: favorites ?? prev.favorites, pages: prev.pages },
-        availableIds,
-      ),
-    );
-  }, [availableIds, favorites]);
+    setLayout((prev) => reconcileLayout(prev, availableIds));
+  }, [availableIds]);
 
   // Keep the LOCAL active page index in range when pages shrink (views removed).
   // When controlled, the store clamps the page, so this only guards the
@@ -309,23 +280,6 @@ export function Springboard({
     setLayout(next);
     writeSpringboardLayout(next);
   }, []);
-
-  const toggleFav = useCallback(
-    (id: string) => {
-      const wasFavorited = (favorites ?? layout.favorites).includes(id);
-      emitViewInteraction({
-        source: "springboard",
-        action: wasFavorited ? "unfavorite" : "favorite",
-        viewId: id,
-      });
-      if (controlled) {
-        onToggleFavorite?.(id);
-        return;
-      }
-      commit(reconcileLayout(toggleFavorite(layout, id), availableIds));
-    },
-    [controlled, onToggleFavorite, commit, layout, availableIds, favorites],
-  );
 
   const handleLaunch = useCallback(
     (entry: ViewEntry) => {
@@ -358,23 +312,6 @@ export function Springboard({
     onPageCountChange?.(pages.length);
   }, [pages.length, onPageCountChange]);
   const clampedPage = Math.min(activePage, pages.length - 1);
-  // Cap the rendered dock at SPRINGBOARD_DOCK_LIMIT in BOTH modes. The
-  // uncontrolled path already enforces it via toggleFavorite; controlled
-  // (desktop-tab) favorites are capped at the pinning source too, but clamp
-  // here as defense so the dock can never overflow regardless of caller.
-  const favoriteIdList = useMemo(
-    () => (favorites ?? layout.favorites).slice(0, SPRINGBOARD_DOCK_LIMIT),
-    [favorites, layout.favorites],
-  );
-  const favoriteEntries = useMemo(
-    () =>
-      favoriteIdList
-        .map((id) => byId.get(id))
-        .filter((e): e is ViewEntry => e != null),
-    [byId, favoriteIdList],
-  );
-  // O(1) dock-membership check inside the tile map instead of Array.includes.
-  const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
@@ -394,14 +331,12 @@ export function Springboard({
   );
 
   const renderTile = useCallback(
-    (entry: ViewEntry, favorited: boolean) => (
+    (entry: ViewEntry) => (
       <IconTile
         entry={entry}
         editing={editing}
-        favorited={favorited}
         manageable={canManageView?.(entry.id) ?? false}
         onLaunch={handleLaunch}
-        onToggleFavorite={toggleFav}
         onEdit={onEditView}
         onDelete={onDeleteView}
         onLongPress={toggleEditMode}
@@ -411,7 +346,6 @@ export function Springboard({
       editing,
       canManageView,
       handleLaunch,
-      toggleFav,
       onEditView,
       onDeleteView,
       toggleEditMode,
@@ -423,20 +357,6 @@ export function Springboard({
       className={cn("flex min-h-0 flex-1 flex-col", className)}
       data-testid="springboard"
     >
-      {/* Favorites bar — pinned to the TOP of the springboard (not an iOS-style
-          bottom dock). There is no Edit button: long-press any icon toggles
-          edit mode (reorder / pin / unpin), and a right-flick leaves it. */}
-      {favoriteEntries.length > 0 ? (
-        <div
-          data-testid="springboard-dock"
-          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
-        >
-          {favoriteEntries.map((entry) => (
-            <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
-          ))}
-        </div>
-      ) : null}
-
       {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
           never fights the in-tile drag-to-reorder gesture. */}
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -507,7 +427,7 @@ export function Springboard({
                     dragListener={editing}
                     className="flex justify-center"
                   >
-                    {renderTile(entry, favoriteSet.has(id))}
+                    {renderTile(entry)}
                   </Reorder.Item>
                 );
               })}
