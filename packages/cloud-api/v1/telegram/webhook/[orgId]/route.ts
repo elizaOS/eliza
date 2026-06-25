@@ -15,6 +15,7 @@ import {
   nextStyleParams,
   type RouteContext,
 } from "@/lib/api/hono-next-style-params";
+import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import {
   RateLimitPresets,
   rateLimit,
@@ -45,7 +46,7 @@ async function handleTelegramWebhook(
       logger.warn("[Telegram Webhook] Missing secret token header", { orgId });
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (secretToken !== storedSecret) {
+    if (!timingSafeEqualSecret(secretToken, storedSecret)) {
       logger.warn("[Telegram Webhook] Invalid secret token", { orgId });
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
