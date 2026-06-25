@@ -60,6 +60,25 @@ const STUB_MARKERS = Object.freeze([
 // pre-#9508 prebuilt that SIGABRTs mid-decode on Mali GPUs.
 const MALI_FA_MITIGATION_MARKER = "GGML_VK_FA_ALLOW_SUBGROUPS";
 
+// Mali flash-attn mitigation gate (#9508/#9528), extracted so the fail-closed
+// behavior is unit-testable headless (it is pure fs marker-scanning, no nm/otool).
+// A Vulkan fused build MUST ship a libggml-vulkan.so carrying the ARM
+// subgroup-race mitigation marker, or it SIGABRTs mid-decode on Mali GPUs.
+export function assertVulkanMaliMitigation({ lib, target }) {
+  if (!target.includes("vulkan")) return;
+  const vulkanBackend = path.join(path.dirname(lib), "libggml-vulkan.so");
+  if (!fs.existsSync(vulkanBackend)) {
+    throw new Error(
+      `[omnivoice-verify] symbol-verify: target=${target} is a Vulkan build but libggml-vulkan.so is missing next to ${lib} — the GPU backend did not build, so the fused lib would silently run CPU-only on device.`,
+    );
+  }
+  if (!binaryContainsAnyMarker(vulkanBackend, [MALI_FA_MITIGATION_MARKER])) {
+    throw new Error(
+      `[omnivoice-verify] symbol-verify: ${vulkanBackend} lacks the '${MALI_FA_MITIGATION_MARKER}' Mali flash-attn mitigation marker — this is a stale pre-#9508 GPU backend that SIGABRTs mid-decode on Mali. Build libggml-vulkan.so from source carrying the VK_VENDOR_ID_ARM disable_subgroups branch; never stage a prebuilt artifact into a release.`,
+    );
+  }
+}
+
 function pickToolForPlatform(target) {
   // target is e.g. "darwin-arm64-metal-fused", "linux-x64-vulkan-fused", etc.
   if (target.startsWith("darwin-") || target.startsWith("ios-")) {
@@ -433,19 +452,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   // SIGABRTs mid-decode on Mali GPUs (Tensor G-series etc.). Building from
   // source emits the mitigation; copying a stale prebuilt does not. Fail-closed
   // so a stale GPU backend can never be baked into a release APK.
-  if (target.includes("vulkan")) {
-    const vulkanBackend = path.join(path.dirname(lib), "libggml-vulkan.so");
-    if (!fs.existsSync(vulkanBackend)) {
-      throw new Error(
-        `[omnivoice-verify] symbol-verify: target=${target} is a Vulkan build but libggml-vulkan.so is missing next to ${lib} — the GPU backend did not build, so the fused lib would silently run CPU-only on device.`,
-      );
-    }
-    if (!binaryContainsAnyMarker(vulkanBackend, [MALI_FA_MITIGATION_MARKER])) {
-      throw new Error(
-        `[omnivoice-verify] symbol-verify: ${vulkanBackend} lacks the '${MALI_FA_MITIGATION_MARKER}' Mali flash-attn mitigation marker — this is a stale pre-#9508 GPU backend that SIGABRTs mid-decode on Mali. Build libggml-vulkan.so from source carrying the VK_VENDOR_ID_ARM disable_subgroups branch; never stage a prebuilt artifact into a release.`,
-      );
-    }
-  }
+  assertVulkanMaliMitigation({ lib, target });
 
   if (isIos) {
     return {
