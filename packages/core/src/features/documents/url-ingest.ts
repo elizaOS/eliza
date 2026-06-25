@@ -7,7 +7,6 @@ import {
 } from "node:http";
 import { request as requestHttps } from "node:https";
 import net from "node:net";
-import { Readable } from "node:stream";
 import { createPinnedLookup } from "../../network/ssrf.ts";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -117,11 +116,38 @@ function toRequestHeaders(headers: Headers): Record<string, string> {
 	return normalized;
 }
 
-/** Node's `Readable.toWeb` stream is valid `fetch` `BodyInit`; lib.dom and `node:stream/web` disagree in TypeScript. */
+function nodeReadableChunkToUint8Array(
+	chunk: Buffer | Uint8Array | string,
+): Uint8Array {
+	if (typeof chunk === "string") {
+		return new Uint8Array(Buffer.from(chunk));
+	}
+	return new Uint8Array(chunk);
+}
+
 function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
-	return Readable.toWeb(stream) as ReadableStream<
-		Uint8Array<ArrayBuffer>
+	const iterator = stream[Symbol.asyncIterator]() as AsyncIterator<
+		Buffer | Uint8Array | string
 	>;
+
+	return new ReadableStream<Uint8Array>({
+		async pull(controller) {
+			try {
+				const next = await iterator.next();
+				if (next.done) {
+					controller.close();
+					return;
+				}
+				controller.enqueue(nodeReadableChunkToUint8Array(next.value));
+			} catch (error) {
+				controller.error(error);
+			}
+		},
+		async cancel(reason) {
+			await iterator.return?.();
+			stream.destroy(reason instanceof Error ? reason : undefined);
+		},
+	});
 }
 
 function responseFromIncomingMessage(response: IncomingMessage): Response {
