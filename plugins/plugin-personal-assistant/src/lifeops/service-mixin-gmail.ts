@@ -709,7 +709,10 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
                 mode,
                 side,
                 grantId: grant.id,
-                query,
+                // Guaranteed non-empty here: the guard above fails the request
+                // when there are no messageIds and no query, and this branch is
+                // the no-messageIds path. The `?? ""` only satisfies the type.
+                query: query ?? "",
                 maxResults: max,
                 includeSpamTrash: true,
               })
