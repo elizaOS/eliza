@@ -29,7 +29,10 @@
         "tsconfig.*.json",
         "package.json",
         "assets/**",
-        "public/**"
+        "public/**",
+        "$TURBO_ROOT$/plugins/tsup.plugin-packages.shared.ts",
+        "$TURBO_ROOT$/packages/scripts/view-bundle-vite.config.ts",
+        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
       ]
     },
     "@elizaos-benchmarks/lib#build": {
