@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleNativePcmTurnRoute } from "./native-pcm-turn-route";
 
 const engineMock = vi.hoisted(() => ({
-	ensureActiveBundleVoiceReady: vi.fn(async () => undefined),
+	ensureActiveBundleAsrReady: vi.fn(async () => undefined),
 	runVoiceTurn: vi.fn(
 		async (): Promise<"done" | "token-cap" | "cancelled"> => "done",
 	),
@@ -63,7 +63,7 @@ function float32Base64(samples: ReadonlyArray<number>): string {
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	engineMock.ensureActiveBundleVoiceReady.mockResolvedValue(undefined);
+	engineMock.ensureActiveBundleAsrReady.mockResolvedValue(undefined);
 	engineMock.runVoiceTurn.mockResolvedValue("done");
 });
 
@@ -87,7 +87,7 @@ describe("handleNativePcmTurnRoute", () => {
 		);
 
 		expect(handled).toBe(true);
-		expect(engineMock.ensureActiveBundleVoiceReady).toHaveBeenCalledTimes(1);
+		expect(engineMock.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		expect(engineMock.runVoiceTurn).toHaveBeenCalledTimes(1);
 		const [audio, opts] = engineMock.runVoiceTurn.mock.calls[0] as [
 			{ pcm: Float32Array; sampleRate: number },
@@ -130,7 +130,7 @@ describe("handleNativePcmTurnRoute", () => {
 		expect(res.json()).toEqual({
 			error: "pcm byte length must be a multiple of 4 for Float32 PCM",
 		});
-		expect(engineMock.ensureActiveBundleVoiceReady).not.toHaveBeenCalled();
+		expect(engineMock.ensureActiveBundleAsrReady).not.toHaveBeenCalled();
 		expect(engineMock.runVoiceTurn).not.toHaveBeenCalled();
 	});
 });

@@ -441,7 +441,7 @@ describe("FfiBatchTranscriber — flush() returns committed final on speech-end"
 
 	// Guard: real model tests are skipped — no models >2B are loaded.
 	it.skipIf(true)(
-		"SKIP — real Qwen3-ASR model: flush() of a live stream returns the full utterance",
+		"SKIP — real Gemma ASR model: flush() of a live stream returns the full utterance",
 		async () => {
 			// This test requires a real libelizainference build with a bundled
 			// ASR model. It is always skipped in CI to avoid loading large models.

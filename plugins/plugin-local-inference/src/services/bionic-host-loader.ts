@@ -28,6 +28,10 @@ import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
 } from "./active-model";
+import {
+	bundleHasAsrModelFiles,
+	readBundleAsrProvenanceBlockers,
+} from "./asr-provenance";
 
 /** Connect + full round-trip budget. A cold GPU decode of a long reply fits. */
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -115,14 +119,25 @@ export class BionicHostLoader implements LocalInferenceLoader {
 
 	/**
 	 * On-device STT: transcribe mono fp32 PCM via the bionic host's fused
-	 * Qwen3-ASR (op="asr"). The musl agent can't load the fused lib, so the
-	 * TRANSCRIPTION delegate routes the audio here over the UDS and gets the
-	 * transcript back. `pcm` is little-endian fp32 already base64-encoded.
+	 * Gemma ASR path (op="asr"). The musl agent can't load the fused lib, so
+	 * the TRANSCRIPTION delegate routes the audio here over the UDS and gets
+	 * the transcript back. `pcm` is little-endian fp32 already base64-encoded.
 	 */
 	async transcribe(args: {
 		pcmBase64: string;
 		sampleRate: number;
 	}): Promise<string> {
+		if (!this.bundleDir || !bundleHasAsrModelFiles(this.bundleDir)) {
+			throw new Error(
+				"[BionicHostLoader] host asr requires an active Gemma ASR-capable bundle; refusing to use the bionic host default bundle",
+			);
+		}
+		const blockers = readBundleAsrProvenanceBlockers(this.bundleDir);
+		if (blockers.length > 0) {
+			throw new Error(
+				`[BionicHostLoader] host asr refused non-Gemma ASR provenance: ${blockers.join("; ")}`,
+			);
+		}
 		const res = await this.roundTrip<BionicTextResponse>({
 			op: "asr",
 			bundleDir: this.bundleDir,

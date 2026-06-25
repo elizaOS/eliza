@@ -1,4 +1,7 @@
+import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { BionicHostLoader } from "./bionic-host-loader";
 
@@ -38,14 +41,33 @@ function startHost(
 }
 
 let host: net.Server | null = null;
+const tempDirs: string[] = [];
 afterEach(() => {
 	host?.close();
 	host = null;
+	for (const dir of tempDirs.splice(0)) {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
 });
 
 const SOCK = `eliza-bionic-test-${process.pid}`;
 const describeLinuxOnly =
 	process.platform === "linux" ? describe : describe.skip;
+
+function makeBundleModelPath(manifest: unknown = {}): string {
+	const bundleRoot = fs.mkdtempSync(
+		path.join(os.tmpdir(), "eliza-bionic-bundle-"),
+	);
+	tempDirs.push(bundleRoot);
+	fs.mkdirSync(path.join(bundleRoot, "text"), { recursive: true });
+	fs.mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+	fs.writeFileSync(path.join(bundleRoot, "asr", "gemma-asr.gguf"), "asr");
+	fs.writeFileSync(
+		path.join(bundleRoot, "eliza-1.manifest.json"),
+		JSON.stringify(manifest),
+	);
+	return path.join(bundleRoot, "text", "model.gguf");
+}
 
 describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 	it("round-trips a buffered generate and returns the host completion", async () => {
@@ -140,9 +162,8 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 			return JSON.stringify({ ok: true, text: "the quick brown fox" });
 		});
 		const loader = new BionicHostLoader(SOCK);
-		await loader.loadModel({
-			modelPath: "/data/x/eliza-1/bundle/text/model.gguf",
-		});
+		const modelPath = makeBundleModelPath();
+		await loader.loadModel({ modelPath });
 		const out = await loader.transcribe({
 			pcmBase64: "AAAA",
 			sampleRate: 16000,
@@ -152,8 +173,20 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 			op: "asr",
 			pcmBase64: "AAAA",
 			sampleRate: 16000,
-			bundleDir: "/data/x/eliza-1/bundle",
+			bundleDir: path.dirname(path.dirname(modelPath)),
 		});
+	});
+
+	it("transcribe refuses Qwen ASR provenance before contacting the host", async () => {
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({
+			modelPath: makeBundleModelPath({
+				lineage: { asr: { base: "Qwen3-ASR" } },
+			}),
+		});
+		await expect(
+			loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 }),
+		).rejects.toThrow(/Qwen ASR provenance/);
 	});
 
 	it("describeImage forwards op=image with bytes + prompt and returns the description", async () => {
@@ -185,7 +218,7 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 			JSON.stringify({ ok: false, error: "no asr weights staged" }),
 		);
 		const loader = new BionicHostLoader(SOCK);
-		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		await loader.loadModel({ modelPath: makeBundleModelPath() });
 		await expect(
 			loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 }),
 		).rejects.toThrow(/no asr weights staged/);

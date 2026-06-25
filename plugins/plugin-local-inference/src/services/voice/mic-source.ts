@@ -243,7 +243,7 @@ abstract class BaseMicSource implements MicSource {
 }
 
 export interface DesktopMicSourceOptions {
-	/** Capture sample rate. Default 16 kHz (what the VAD + Qwen3-ASR expect). */
+	/** Capture sample rate. Default 16 kHz (what VAD + Gemma ASR expect). */
 	sampleRate?: number;
 	/** Frame duration in ms. Default 32 ms (one Silero window @ 16 kHz). */
 	frameMs?: number;

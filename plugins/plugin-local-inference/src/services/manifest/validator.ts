@@ -23,6 +23,10 @@
 // `packages/training/scripts/manifest/eliza1_manifest.py`.
 
 import {
+	collectQwenAsrProvenanceBlockers,
+	QWEN_PROVENANCE_RE,
+} from "../asr-provenance";
+import {
 	ELIZA_1_TOKENIZER_FAMILY,
 	ELIZA_1_TOKENIZER_VOCAB_SIZE,
 	Eliza1ManifestSchema,
@@ -206,8 +210,6 @@ const STAGING_VERSION_TOKENS: ReadonlySet<string> = new Set([
 	"local",
 ]);
 
-const QWEN_PROVENANCE_RE = /\bqwen/i;
-
 function isStagingManifestVersion(version: string): boolean {
 	const prerelease = version.match(
 		/^[0-9]+\.[0-9]+\.[0-9]+-([^+]+)(?:\+.*)?$/,
@@ -247,18 +249,7 @@ function collectContractErrors(
 				`lineage.text.base: a strict/defaultEligible release must ship the real Gemma-4 base, not a stand-in (${textBase})`,
 			);
 		}
-		const asrBase = m.lineage.asr?.base;
-		if (asrBase && QWEN_PROVENANCE_RE.test(asrBase)) {
-			errors.push(
-				`lineage.asr.base: a strict/defaultEligible Gemma-4 release must not ship Qwen ASR provenance (${asrBase})`,
-			);
-		}
-		const asrRepo = m.provenance?.sourceModels?.asr?.repo;
-		if (asrRepo && QWEN_PROVENANCE_RE.test(asrRepo)) {
-			errors.push(
-				`provenance.sourceModels.asr.repo: a strict/defaultEligible Gemma-4 release must not source ASR from Qwen (${asrRepo})`,
-			);
-		}
+		errors.push(...collectQwenAsrProvenanceBlockers(m));
 	}
 
 	// Tokenizer identity: when the bundle stamps the Gemma 4 tokenizer block
