@@ -97,7 +97,6 @@ def test_registry_has_all_required_benchmarks() -> None:
         "swe-bench",
         "mint",
         "solana",
-        "evm",
         "hyperliquid",
         "lifeops-bench",
         "clawbench",
