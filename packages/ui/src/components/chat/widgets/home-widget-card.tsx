@@ -52,8 +52,12 @@ export function useWidgetNavigation(): {
 
 export type HomeWidgetTone = "default" | "danger" | "warn";
 
+// White by default: the card sits on the bright orange home wallpaper, so the
+// datum must be near-white for legibility (theme `text-txt` washed out to a
+// low-contrast dark on orange — a WCAG-AA failure). Danger/warn keep their
+// semantic hues, which read clearly on the dark-glass tile.
 const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
-  default: "text-txt",
+  default: "text-white",
   danger: "text-danger",
   warn: "text-warn",
 };
@@ -103,13 +107,22 @@ export function HomeWidgetCard({
       title={label}
       onClick={onActivate}
       className={cn(
-        "group flex w-full items-center gap-3 rounded-xl border border-border/40 bg-card/75 px-3 py-2.5 text-left",
-        "transition-colors hover:bg-card",
+        // Dark translucent glass on the orange home wallpaper (theme-independent,
+        // matching the OS tiles / springboard icons) so white text reads and the
+        // card lifts off the orange field with real figure/ground. Neutral
+        // resting → neutral-with-opacity hover (never orange→black), per the
+        // hover system.
+        // A clearly DARK neutral glass (not a light orange-tint) is required so
+        // BOTH white default values AND the brand-orange danger/warn values
+        // (--danger/--warn are brand orange) read with contrast — orange text
+        // only pops on a dark, mostly-neutral surface, not on an orange wash.
+        "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/45 px-3 py-2.5 text-left backdrop-blur-md",
+        "transition-colors hover:bg-black/55",
       )}
     >
       <span
         className={cn(
-          "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg/60 text-muted [&>svg]:h-4 [&>svg]:w-4",
+          "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/85 [&>svg]:h-4 [&>svg]:w-4",
           tone === "danger" && "text-danger",
           tone === "warn" && "text-warn",
         )}
@@ -119,7 +132,10 @@ export function HomeWidgetCard({
           <span
             aria-hidden
             className={cn(
-              "absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-card",
+              // A clearly FILLED status dot (a thin ring just separates it from
+              // the icon). The old h-2 + border-2 left the border dominating the
+              // dot so it read as a hollow ring / artifact on every toned card.
+              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-black/40",
               TONE_DOT_CLASS[tone],
             )}
           />
@@ -143,7 +159,7 @@ export function HomeWidgetCard({
       </span>
 
       {meta != null ? (
-        <span className="shrink-0 text-2xs tabular-nums text-muted">
+        <span className="shrink-0 text-2xs tabular-nums text-white/60">
           {meta}
         </span>
       ) : null}

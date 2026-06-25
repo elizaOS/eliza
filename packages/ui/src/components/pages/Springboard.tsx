@@ -174,10 +174,15 @@ const IconTile = memo(function IconTile({
               onToggleFavorite(entry.id);
             }}
             className={cn(
-              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold",
+              // A solid contrasting chip with a ring + shadow so the toggle
+              // lifts off ANY hero-image hue or dark tile and never reads as a
+              // stray glyph. Pinned = filled orange disc with a white star;
+              // unpinned = white disc with a dark plus — state is legible by
+              // COLOR/FILL, not just glyph shape.
+              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold shadow-md ring-1",
               favorited
-                ? "bg-accent text-accent-foreground"
-                : "bg-border text-foreground",
+                ? "bg-accent text-white ring-black/20"
+                : "bg-white text-neutral-900 ring-black/15",
             )}
           >
             {favorited ? "★" : "+"}
