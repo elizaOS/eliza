@@ -5,7 +5,6 @@
  * Produces:
  * - dist/node/index.node.js (ESM for Node.js)
  * - dist/browser/index.browser.js (ESM for browsers)
- * - dist/cjs/index.node.cjs (CommonJS for Node.js)
  * - dist/*.d.ts (TypeScript declarations)
  */
 
@@ -57,8 +56,6 @@ async function build(): Promise<void> {
   }
 
   console.log(`✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`);
-
-  // Node CJS build
 
   // TypeScript declarations
   const dtsStart = Date.now();
