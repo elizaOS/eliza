@@ -17,8 +17,6 @@
  */
 
 import { Buffer } from "node:buffer";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import {
   getOcrWithCoordsService,
@@ -179,10 +177,15 @@ export function buildAugmentedPrompt(
 }
 
 /**
- * Resolve an image wrapper to encoded image bytes. Handles inline shapes
- * (bytes / base64 / data URL) and `file://` + local-path URLs. Remote
- * (`http(s)://`) URLs return `null` — the describe backend fetches those
- * through the SSRF guard; the augmenter does not perform network I/O.
+ * Resolve an image wrapper to encoded image bytes. Handles only the inline
+ * shapes (bytes / base64 / data URL). `url` inputs of EVERY form —
+ * `http(s)://`, `file://`, and bare filesystem paths — return `null`: the
+ * augmenter performs no file or network I/O. Remote URLs are fetched by the
+ * describe backend through the SSRF guard, and reading a `file://`/bare-path
+ * off an agent-supplied describe URL would be a local-file-read primitive (the
+ * canonical resolver in `plugin-local-inference/.../hash.ts` refuses `url`
+ * inputs for the same reason). No bytes → no OCR augmentation; the backend
+ * still describes the raw image via its own resolution.
  */
 function resolveImageBytes(image: AugmenterImageInput): Buffer | null {
   switch (image.kind) {
@@ -195,17 +198,8 @@ function resolveImageBytes(image: AugmenterImageInput): Buffer | null {
       if (comma < 0) return null;
       return Buffer.from(image.dataUrl.slice(comma + 1), "base64");
     }
-    case "url": {
-      const { url } = image;
-      if (url.startsWith("file://")) {
-        return readFileSync(fileURLToPath(url));
-      }
-      if (url.startsWith("http://") || url.startsWith("https://")) {
-        return null;
-      }
-      // Bare filesystem path.
-      return readFileSync(url);
-    }
+    case "url":
+      return null;
   }
 }
 

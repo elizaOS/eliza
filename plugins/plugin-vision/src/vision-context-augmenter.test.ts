@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type {
   OcrWithCoordsResult,
@@ -161,5 +164,41 @@ describe("FusedVisionContextAugmenter", () => {
       image: { kind: "dataUrl", dataUrl: `data:image/png;base64,${b64}` },
     });
     expect(out?.fused.ocrText).toBe('"FROM DATAURL"');
+  });
+
+  // Security regression: the augmenter must NOT read local files for `url`
+  // inputs. A readFileSync on an agent-supplied file:///bare-path describe URL
+  // is a local-file-read primitive — the augmenter performs no file I/O and
+  // returns no augmentation for any url shape (the backend resolves the image).
+  it("never reads local files for url inputs (no local-file-read primitive)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vca-sec-"));
+    const onDisk = join(dir, "real.png");
+    writeFileSync(onDisk, Buffer.from(PNG_BYTES));
+    let ocrRan = false;
+    const aug = new FusedVisionContextAugmenter({
+      getOcr: () => ({
+        name: "spy-ocr",
+        async describe(): Promise<OcrWithCoordsResult> {
+          ocrRan = true;
+          return {
+            blocks: [
+              {
+                text: "LEAKED FILE CONTENTS",
+                bbox: { x: 0, y: 0, width: 10, height: 10 },
+                words: [],
+                semantic_position: "center" as const,
+              },
+            ],
+          };
+        },
+      }),
+    });
+    // A real readable file at each url shape: the fixed augmenter still must not
+    // touch it (OCR never runs → result null), so file:// and bare paths can't
+    // be used to exfiltrate disk contents into the describe prompt.
+    for (const url of [`file://${onDisk}`, onDisk, "https://example.com/x.png"]) {
+      expect(await aug.augmentImagePrompt({ image: { kind: "url", url } })).toBeNull();
+    }
+    expect(ocrRan).toBe(false);
   });
 });
