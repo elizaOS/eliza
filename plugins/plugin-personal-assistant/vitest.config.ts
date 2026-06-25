@@ -46,10 +46,27 @@ const escapedAgentSourceRoot = agentSourceRoot.replace(
   /[.*+?^${}()|[\]\\]/g,
   "\\$&",
 );
+const optionalCorePluginStubPrefix = "\0lifeops-optional-core-plugin-stub:";
+const optionalCorePluginStubPackages = new Set([
+  "@elizaos/plugin-agent-orchestrator",
+  "@elizaos/plugin-task-coordinator",
+  "@elizaos/plugin-app-control",
+  "@elizaos/plugin-shell",
+  "@elizaos/plugin-coding-tools",
+  "@elizaos/plugin-commands",
+  "@elizaos/plugin-video",
+  "@elizaos/plugin-background-runner",
+  "@elizaos/plugin-ollama",
+  "@elizaos/plugin-anthropic",
+  "@elizaos/plugin-openai",
+]);
 const agentSourceJsToTsPlugin = {
   name: "lifeops-agent-source-js-to-ts",
   enforce: "pre" as const,
   resolveId(source: string, importer?: string) {
+    if (optionalCorePluginStubPackages.has(source)) {
+      return `${optionalCorePluginStubPrefix}${source}`;
+    }
     if (source === "@elizaos/agent") {
       return path.join(lifeopsTestStubsRoot, "agent.ts");
     }
@@ -76,6 +93,23 @@ const agentSourceJsToTsPlugin = {
     }
 
     return null;
+  },
+  load(id: string) {
+    if (!id.startsWith(optionalCorePluginStubPrefix)) return null;
+    const packageName = id.slice(optionalCorePluginStubPrefix.length);
+    const name = `${packageName.slice("@elizaos/".length)}-test-stub`;
+    return [
+      `const plugin = ${JSON.stringify({
+        name,
+        description: `Test stub for ${packageName}`,
+        actions: [],
+        providers: [],
+        evaluators: [],
+        services: [],
+      })};`,
+      "export { plugin };",
+      "export default plugin;",
+    ].join("\n");
   },
 };
 function resolveNodePackageRoot(packageName: string): string {
