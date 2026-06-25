@@ -79,7 +79,7 @@ export type ScheduledTaskSubjectKind =
   | "self";
 
 export interface ScheduledTaskContextRequest {
-  includeOwnerFacts?: (
+  includeOwnerFacts?: readonly (
     | "preferredName"
     | "timezone"
     | "morningWindow"
@@ -88,7 +88,7 @@ export interface ScheduledTaskContextRequest {
   )[];
   includeEntities?: {
     entityIds: string[];
-    fields?: (
+    fields?: readonly (
       | "preferredName"
       | "type"
       | "identities"
