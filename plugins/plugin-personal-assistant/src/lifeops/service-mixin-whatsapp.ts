@@ -298,6 +298,7 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
  * composition exceeds TypeScript's mixin inference depth.
  */
 export interface LifeOpsWhatsAppService {
+  getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus>;
   sendWhatsAppMessage(
     req: WhatsAppSendRequest,
   ): Promise<{ ok: true; messageId: string }>;

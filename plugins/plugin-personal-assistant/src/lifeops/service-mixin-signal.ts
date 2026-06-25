@@ -320,6 +320,9 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
 /** Public surface added by {@link withSignal}; listed on the LifeOpsService
  * declaration-merge (mixin composition exceeds TS inference depth). Type-only. */
 export interface LifeOpsSignalService {
+  getSignalConnectorStatus(
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsSignalConnectorStatus>;
   readSignalInbound(
     limit?: number,
     side?: LifeOpsConnectorSide,
