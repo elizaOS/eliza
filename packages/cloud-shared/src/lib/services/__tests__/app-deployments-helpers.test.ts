@@ -42,6 +42,18 @@ describe("deploymentIdFor", () => {
   test("uses 0 sentinel when last_deployed_at is null", () => {
     expect(deploymentIdFor({ id: "app_2", last_deployed_at: null })).toBe("app_2:0");
   });
+  // Regression (#9300): a cached `appsService.getById` read round-trips the
+  // timestamp through JSON, so `last_deployed_at` arrives as an ISO STRING.
+  // Calling `.toISOString()` on it threw → the deploy-status route 500'd on
+  // real staging. The helper must coerce a string the same as a Date.
+  test("coerces an ISO-string last_deployed_at (cached read) without throwing", () => {
+    expect(
+      deploymentIdFor({
+        id: "app_3",
+        last_deployed_at: "2026-05-19T15:00:00.000Z",
+      }),
+    ).toBe("app_3:2026-05-19T15:00:00.000Z");
+  });
 });
 
 describe("assertDeployable", () => {
