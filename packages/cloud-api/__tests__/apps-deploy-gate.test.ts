@@ -62,4 +62,36 @@ describe("apps deploy production gate", () => {
       reason: "organization_not_allowlisted",
     });
   });
+
+  test('"*" opens deploys to every production org (full launch)', () => {
+    const env = {
+      APPS_DEPLOY_ENABLED: "1",
+      ENVIRONMENT: "production",
+      APPS_DEPLOY_ALLOWED_ORG_IDS: "*",
+    };
+
+    expect(appsDeployTriggerDecision(env)).toEqual({ enabled: true });
+    expect(appsDeployOrganizationDecision(env, "org-a")).toEqual({
+      allowed: true,
+    });
+    expect(appsDeployOrganizationDecision(env, "any-other-org")).toEqual({
+      allowed: true,
+    });
+    // wildcard does not depend on a caller org being present
+    expect(appsDeployOrganizationDecision(env, null)).toEqual({
+      allowed: true,
+    });
+  });
+
+  test('"*" mixed with explicit ids still allows every org', () => {
+    const env = {
+      APPS_DEPLOY_ENABLED: "1",
+      ENVIRONMENT: "production",
+      APPS_DEPLOY_ALLOWED_ORG_IDS: "org-a, *",
+    };
+
+    expect(appsDeployOrganizationDecision(env, "org-z")).toEqual({
+      allowed: true,
+    });
+  });
 });
