@@ -11,12 +11,18 @@
 //      recovery (`nominal`) edge, so a pressure signal pauses describing for a
 //      cooldown window and auto-resumes after that window of silence. A direct
 //      arbiter that does report `nominal` clears the pause immediately.
-//   2. **Local RSS over the configured cap** — a self-contained low-RAM guard
-//      (`MAX_MEMORY_USAGE_MB`) so the loop throttles even when no arbiter is
-//      registered (standalone / on-device), which is the common case for a
-//      local agent on a memory-constrained machine. This signal is always-on
-//      and self-recovering: describing resumes the moment RSS drops back under
-//      the cap.
+//   2. **Local RSS GROWTH over a captured baseline** — a self-contained
+//      low-RAM guard (`MAX_MEMORY_USAGE_MB`) so the loop throttles even when no
+//      arbiter is registered (standalone / on-device), the common case for a
+//      local agent on a memory-constrained machine. The cap measures
+//      *vision-attributable growth* over the RSS baseline captured on the first
+//      describe tick — NOT absolute process RSS. A local agent mmaps multi-GB
+//      GGUF text + vision models, so its steady-state RSS routinely exceeds any
+//      reasonable MB cap; comparing absolute RSS to the cap would pause
+//      describing forever. Measuring growth over the loop's starting footprint
+//      means a large-but-steady baseline never trips the guard, while a genuine
+//      runaway still does. This signal is always-on and self-recovering:
+//      describing resumes the moment RSS drops back within `baseline + cap`.
 //
 // While paused the describe step is skipped (backpressure) and the skip is
 // counted so the token telemetry can prove the saving. Pause/resume edges are
@@ -53,9 +59,12 @@ export interface DescribeBackpressureDecision {
 
 export interface DescribeBackpressureConfig {
   /**
-   * RSS cap in bytes. While sampled RSS exceeds it the describe step pauses.
-   * `0` or negative disables the local check — only the arbiter signal can
-   * pause describing.
+   * Cap in bytes on **vision-attributable RSS growth** over the baseline
+   * captured on the first describe tick. While `rss - baseline` exceeds it the
+   * describe step pauses. `0` or negative disables the local check — only the
+   * arbiter signal can pause describing. (Deliberately growth-relative, not
+   * absolute: a local agent's steady-state RSS includes multi-GB mmap'd GGUF
+   * models, so an absolute comparison would pause describing permanently.)
    */
   memoryCapBytes?: number;
   /**
@@ -85,6 +94,9 @@ export class DescribeBackpressureController {
   private paused = false;
   private describesSkipped = 0;
   private pauseTransitions = 0;
+  // RSS baseline captured on the first cap evaluation; the cap measures growth
+  // over this, not absolute RSS (see config.memoryCapBytes). null until set.
+  private baselineRssBytes: number | null = null;
 
   constructor(config: DescribeBackpressureConfig = {}) {
     this.memoryCapBytes =
@@ -126,8 +138,7 @@ export class DescribeBackpressureController {
    */
   evaluate(): DescribeBackpressureDecision {
     const arbiterPaused = this.now() < this.pauseUntilMs;
-    const overCap =
-      this.memoryCapBytes > 0 && this.sampleRssBytes() > this.memoryCapBytes;
+    const overCap = this.isOverGrowthCap();
     const paused = arbiterPaused || overCap;
 
     let transitionedTo: "paused" | "active" | null = null;
@@ -145,6 +156,22 @@ export class DescribeBackpressureController {
         : "memory-cap";
 
     return { describe: !paused, transitionedTo, reason };
+  }
+
+  /**
+   * Has vision-attributable RSS grown past the cap? Captures the baseline on
+   * the first call (the first describe tick, when the loop's models are already
+   * resident) so the steady-state model footprint is absorbed rather than
+   * counted as over-cap. A transient growth that drops back resumes describing.
+   */
+  private isOverGrowthCap(): boolean {
+    if (this.memoryCapBytes <= 0) return false;
+    const rss = this.sampleRssBytes();
+    if (this.baselineRssBytes === null) {
+      this.baselineRssBytes = rss;
+      return false;
+    }
+    return rss - this.baselineRssBytes > this.memoryCapBytes;
   }
 
   stats(): DescribeBackpressureStats {
