@@ -7,22 +7,25 @@
  *    gn + morning brief + sleep recap from plugin-health, all consolidated
  *    on anchor where applicable)."
  *
- * The W1-A spine (`ScheduledTaskRunner`) does not exist in this worktree
- * yet, so the smoke is a **simulation**: we walk every owner-visible
+ * This is a budget/consolidation **simulation**: we walk every owner-visible
  * record's trigger, inject the wake.confirmed and bedtime.target anchors,
  * apply consolidation policies to co-firing tasks, and count the resulting
- * user-facing nudges.
+ * user-facing nudges. It deliberately stays at the anchor-arithmetic layer —
+ * the actual `ScheduledTaskRunner` spine (gate evaluation, fire decisions) is
+ * exercised against the real imported packs in
+ * `health-default-packs-runner.test.ts`.
  *
- * The plugin-health (W1-B) sleep-recap pack is referenced as a phantom
- * record so the consolidation policy on `bedtime.target` is exercised even
- * though the W1-D package does not own it.
+ * The plugin-health (W1-B) sleep-recap pack is pulled in as the real imported
+ * `sleepRecapDefaultPack` record so the cross-plugin nudge budget includes the
+ * pack health actually ships (not a fabricated stand-in).
  */
 
+import {
+  type ScheduledTaskSeed,
+  sleepRecapDefaultPack,
+} from "@elizaos/plugin-health";
 import { describe, expect, it } from "vitest";
-import type {
-  AnchorConsolidationPolicy,
-  ScheduledTaskSeed,
-} from "../src/default-packs/index.js";
+import type { AnchorConsolidationPolicy } from "../src/default-packs/index.js";
 import {
   DEFAULT_CONSOLIDATION_POLICIES,
   dailyRhythmPack,
@@ -155,31 +158,15 @@ describe("W1-D default-pack smoke — 24h simulated nudge budget", () => {
       connectorRegistry: null,
     });
 
-    // Add a phantom plugin-health sleep-recap record so the bedtime.target
-    // consolidation policy is exercised. Wave-1 expects plugin-health to
-    // ship this; W1-D's smoke test guards the consolidation invariant.
-    const phantomSleepRecap: ScheduledTaskSeed = {
-      kind: "recap",
-      promptInstructions: "Phantom sleep recap (plugin-health W1-B record).",
-      trigger: {
-        kind: "relative_to_anchor",
-        anchorKey: "bedtime.target",
-        offsetMinutes: 0,
-      },
-      priority: "low",
-      respectsGlobalPause: true,
-      source: "plugin",
-      createdBy: "plugin-health:sleep-recap",
-      ownerVisible: true,
-      idempotencyKey: "plugin-health:sleep-recap:nightly",
-      metadata: {
-        recordKey: "sleep-recap",
-        packKey: "plugin-health:sleep-recap",
-      },
-    };
+    // Include the REAL plugin-health sleep-recap pack so the cross-plugin
+    // nudge budget reflects the record health actually ships (fires on
+    // wake.confirmed +240) rather than a fabricated stand-in.
+    const sleepRecapRecords: ScheduledTaskSeed[] = [
+      ...sleepRecapDefaultPack.records,
+    ];
     const packs = [
       ...enabledPacks,
-      { key: "plugin-health:sleep-recap", records: [phantomSleepRecap] },
+      { key: sleepRecapDefaultPack.key, records: sleepRecapRecords },
     ];
 
     const fires = simulateOneDay({
