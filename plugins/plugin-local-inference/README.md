@@ -5,12 +5,12 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 ## What it does
 
 - **Text generation** (`TEXT_SMALL`, `TEXT_LARGE`) via an in-process llama.cpp FFI binding. There are two text runtime classes, picked per model by the dispatcher (`services/backend.ts`):
-  - **fused Eliza-1 bundles** (`runtimeClass: "fused-eliza1"`) run through the fused `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`) — the full local pipeline: same-file MTP speculative decoding, fork KV kernels (TurboQuant/QJL/PolarQuant), native tokenization over the resident Qwen3.5 vocab, and fused voice/vision. This is the default/recommended path.
+  - **fused Eliza-1 bundles** (`runtimeClass: "fused-eliza1"`) run through the fused `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`) — the full local pipeline: manifest-gated MTP speculative decoding, fork kernels where applicable, native tokenization over the active Eliza-1 bundle tokenizer, and fused voice/vision/ASR. This is the default/recommended path.
   - **generic single-file GGUF** (`runtimeClass: "generic-gguf"`) — a model you downloaded/scanned (Hugging Face / ModelScope / LM Studio / Ollama) loaded from an explicit `modelPath` with stock f16 KV and *reduced optimizations* (no MTP, no fork kernels, no fused voice/vision). The explicit-`modelPath` binding ships on mobile (`llama-cpp-capacitor`); on desktop it is not yet built into the shipping `libelizainference`, so an assigned generic model is rejected at the assignment boundary with a typed reason rather than failing silently at load.
 - `node-llama-cpp` has been retired; there is no node-llama-cpp fallback.
 - **Text embeddings** (`TEXT_EMBEDDING`) via a dedicated embedding GGUF loaded separately from the chat model.
-- **Text-to-speech** (`TEXT_TO_SPEECH`) via the Kokoro TTS engine (ONNX-based, runs locally).
-- **Automatic speech recognition** (`TRANSCRIPTION`) via whisper.cpp (GGML-based).
+- **Text-to-speech** (`TEXT_TO_SPEECH`) via the local Kokoro/OmniVoice runtime selected by tier and policy.
+- **Automatic speech recognition** (`TRANSCRIPTION`) via the eligible bundled local ASR head in fused `libelizainference`; there is no whisper.cpp fallback.
 - **Image generation** (`IMAGE`) via sd.cpp, CoreML (Apple Silicon), mflux, TensorRT, or AOSP backends; selected by hardware and catalog entry.
 - **Image description / vision** (`IMAGE_DESCRIPTION`) via the Qwen3-VL multimodal projector attached to the active text model.
 - **Model catalog, download management, and hardware-fit recommendation** exposed as HTTP routes for the elizaOS dashboard.
@@ -23,8 +23,8 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 | `GENERATE_MEDIA` action | Agent responds to "draw me a ...", "say ...", "speak ...", etc. by calling the local image or TTS backend. |
 | `TEXT_SMALL` / `TEXT_LARGE` handler | Agent uses the active Eliza-1 text model for all reasoning and response generation. |
 | `TEXT_EMBEDDING` handler | Agent embeds memories using the local embedding GGUF; avoids cloud API calls for RAG. |
-| `TEXT_TO_SPEECH` handler | Agent converts text to audio using Kokoro (or another registered TTS backend). |
-| `TRANSCRIPTION` handler | Agent transcribes audio using whisper.cpp. |
+| `TEXT_TO_SPEECH` handler | Agent converts text to audio using the selected local TTS backend. |
+| `TRANSCRIPTION` handler | Agent transcribes audio using the eligible bundled local ASR runtime. |
 | `IMAGE` handler | Agent generates images using the active local diffusion backend. |
 | `IMAGE_DESCRIPTION` handler | Agent describes images using the active multimodal model. |
 
@@ -32,7 +32,7 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 
 - Node.js 20+ or Bun runtime.
 - The fused `libelizainference` native library for the desktop text/voice/vision path (built from `tools/omnivoice`; resolved via `ELIZA_INFERENCE_LIBRARY` / `ELIZA_INFERENCE_LIB_DIR` or the bundle's `lib/` dir). Generic single-file GGUF additionally needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile).
-- Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows, `mflux` for Apple Silicon image-gen, `whisper.cpp` built with the shared library flag for ASR.
+- Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows and `mflux` for Apple Silicon image-gen.
 - An Eliza-1 GGUF bundle downloaded via the model catalog (dashboard → Models, or `POST /api/local-inference/downloads`).
 
 ## Enabling the plugin
@@ -68,7 +68,6 @@ Key environment variables (all optional unless noted):
 | `SD_CPP_BIN` | Absolute path to sd.cpp binary |
 | `MFLUX_BIN` | Absolute path to mflux binary |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | Default Kokoro TTS voice |
-| `ELIZA_WHISPER_USE_GPU` | Enable GPU for Whisper ASR |
 
 ## Architecture notes
 

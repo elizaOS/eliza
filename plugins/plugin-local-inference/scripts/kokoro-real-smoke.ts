@@ -205,7 +205,7 @@ try {
 	// desktop CPU even when the audio is perfect). The non-empty/sample-rate
 	// checks above pass even on noise/garbage (the exact gap that let a loader
 	// regression ship inaudible audio). When an ASR bundle is staged, transcribe
-	// the synthesized speech with the fused Qwen3-ASR and gate on WER against the
+	// the synthesized speech with eligible fused local ASR and gate on WER against the
 	// input text, so "it produced audio" can't masquerade as "it produced
 	// speech". Without the bundle the gate is skipped with a loud warning (audio
 	// remains UNVERIFIED), preserving the lighter dev lane.
