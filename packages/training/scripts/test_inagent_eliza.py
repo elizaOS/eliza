@@ -6,7 +6,7 @@ engine eliza uses locally) to load the fine-tuned GGUF and verify it produces
 valid eliza_native_v1 formatted responses.
 
 Usage:
-    python scripts/test_inagent_eliza.py --tier 0_8b [--max-samples 20]
+    python scripts/test_inagent_eliza.py --tier 2b [--max-samples 20]
     python scripts/test_inagent_eliza.py --tiers all [--hf-token TOKEN]
     python scripts/test_inagent_eliza.py --local-gguf /path/to/model.gguf
 
@@ -28,6 +28,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from manifest.eliza1_manifest import ELIZA_1_TIERS
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -38,7 +40,8 @@ HF_REPO = "elizaos/eliza-1"
 TEST_FILE = ROOT / "data" / "final" / "test.jsonl"
 CACHE_DIR = Path.home() / ".cache" / "eliza-1-ggufs"
 
-ALL_TIERS = ["0_8b", "2b", "4b", "9b"]
+ALL_TIERS = list(ELIZA_1_TIERS)
+ACTIVE_TIER_SET = set(ALL_TIERS)
 
 ELIZA_SYSTEM_PROMPT = "You are Eliza, an AI assistant. Help the user with their request."
 
@@ -85,6 +88,34 @@ TEXT_PROMPTS = [
     "Explain what an API is in one sentence.",
     "Write a haiku about programming.",
 ]
+
+
+def _active_tier_help() -> str:
+    return ", ".join(ALL_TIERS)
+
+
+def _split_tiers(value: str) -> list[str]:
+    if value == "all":
+        return list(ALL_TIERS)
+    return [tier.strip() for tier in value.split(",") if tier.strip()]
+
+
+def resolve_requested_tiers(tier: str | None, tiers: str | None) -> list[str]:
+    if tier:
+        requested = [tier]
+    elif tiers:
+        requested = _split_tiers(tiers)
+    else:
+        requested = list(ALL_TIERS)
+    if not requested:
+        raise SystemExit(f"no tiers requested; active tiers: {_active_tier_help()}")
+    invalid = [candidate for candidate in requested if candidate not in ACTIVE_TIER_SET]
+    if invalid:
+        raise SystemExit(
+            "unknown or retired eliza-1 tier(s): "
+            f"{', '.join(invalid)}; active tiers: {_active_tier_help()}"
+        )
+    return requested
 
 
 def _download_gguf(tier: str, hf_token: str | None) -> Path | None:
@@ -343,7 +374,11 @@ def push_report_to_hf(tier: str, report: dict, hf_token: str | None) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="In-agent eliza-1 verification via llama.cpp")
-    parser.add_argument("--tier", default=None, help="Single tier to test (0_8b, 2b, 4b, 9b)")
+    parser.add_argument(
+        "--tier",
+        default=None,
+        help=f"Single active tier to test ({_active_tier_help()})",
+    )
     parser.add_argument("--tiers", default=None, help="Comma-separated tiers or 'all'")
     parser.add_argument("--local-gguf", default=None, help="Path to local GGUF (skips HF download)")
     parser.add_argument("--hf-token", default=os.environ.get("HF_TOKEN"), help="HuggingFace token")
@@ -359,13 +394,7 @@ def main() -> int:
         print(json.dumps(report, indent=2))
         return 0 if report.get("passed") else 1
 
-    tiers: list[str] = []
-    if args.tier:
-        tiers = [args.tier]
-    elif args.tiers:
-        tiers = ALL_TIERS if args.tiers == "all" else [t.strip() for t in args.tiers.split(",")]
-    else:
-        tiers = ALL_TIERS
+    tiers = resolve_requested_tiers(args.tier, args.tiers)
 
     out_dir = Path(args.output_dir) if args.output_dir else ROOT / "reports" / "inagent"
     out_dir.mkdir(parents=True, exist_ok=True)

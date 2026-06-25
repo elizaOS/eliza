@@ -25,7 +25,7 @@ requiring live model endpoints:
 ```bash
 bun run --cwd plugins/plugin-training src/core/cli.ts run-collection \
   -o /tmp/eliza-training-run \
-  --tiers 0_8b,2b
+  --tiers 2b,4b
 ```
 
 Useful live-readiness checks:

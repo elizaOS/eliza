@@ -87,7 +87,6 @@ See `packages/inference/AGENTS.md §2` for the full bundle contract.
 
 | Tier      | Path inside `elizaos/eliza-1`                                    |
 |-----------|------------------------------------------------------------------|
-| 0_8b      | `bundles/0_8b/`                                                  |
 | 2b        | `bundles/2b/`                                                    |
 | 4b        | `bundles/4b/`                                                    |
 | 9b        | `bundles/9b/`                                                    |
