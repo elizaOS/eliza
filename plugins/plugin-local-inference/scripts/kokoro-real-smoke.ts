@@ -142,6 +142,50 @@ try {
 	if (sampleRate !== 24_000) fail(`expected 24 kHz PCM, got ${sampleRate}`);
 	if (firstAudibleMs === null) fail("no audible chunk was emitted");
 
+	// Speech-vs-noise guard — runs ALWAYS (no ASR bundle needed), catching the
+	// class of bug where the model loads + synthesizes prompt PCM but the audio
+	// is inaudible NOISE rather than speech. Real speech is strongly amplitude-
+	// modulated by syllables (frame-RMS envelope coefficient-of-variation ≫ 0.4);
+	// constant noise/tone is flat (cv ≈ 0). This is exactly the signature that
+	// distinguished working Kokoro (cv≈1.3) from the #9588 dtype-bug noise
+	// (cv≈0.002, where weights shipped quantized/F32 instead of F16). The full
+	// pcm is reassembled once here and reused by the ASR gate below.
+	const pcmAll = new Float32Array(totalSamples);
+	{
+		let off = 0;
+		for (const ch of pcmChunks) {
+			pcmAll.set(ch, off);
+			off += ch.length;
+		}
+	}
+	{
+		const frame = Math.floor(sampleRate * 0.01); // 10 ms frames
+		const env: number[] = [];
+		for (let i = 0; i + frame <= pcmAll.length; i += frame) {
+			let s = 0;
+			for (let j = 0; j < frame; j++) {
+				const v = pcmAll[i + j] ?? 0;
+				s += v * v;
+			}
+			env.push(Math.sqrt(s / frame));
+		}
+		const mean = env.reduce((a, b) => a + b, 0) / Math.max(1, env.length);
+		const variance =
+			env.reduce((a, b) => a + (b - mean) * (b - mean), 0) /
+			Math.max(1, env.length);
+		const cv = mean > 1e-6 ? Math.sqrt(variance) / mean : 0;
+		const SPEECH_ENVELOPE_CV_MIN = 0.4;
+		console.log(
+			`[kokoro-real-smoke] envelope-cv ${cv.toFixed(3)} (speech ≫${SPEECH_ENVELOPE_CV_MIN}, noise ≈0)`,
+		);
+		if (cv < SPEECH_ENVELOPE_CV_MIN) {
+			fail(
+				`synthesized audio is inaudible noise, not speech: envelope-cv ${cv.toFixed(3)} < ${SPEECH_ENVELOPE_CV_MIN} ` +
+					`(a flat amplitude envelope — the model loaded + produced PCM but it is noise, e.g. weights not F16; see #9588)`,
+			);
+		}
+	}
+
 	// Audio-CORRECTNESS gate (run BEFORE the TTFA perf gate — "is it speech" is a
 	// stricter, more important question than "is it fast", and TTFA is slow on
 	// desktop CPU even when the audio is perfect). The non-empty/sample-rate
@@ -158,18 +202,12 @@ try {
 				"(non-empty PCM only). Set it to a dir with asr/eliza-1-asr.gguf + -mmproj.gguf to gate intelligibility (WER).",
 		);
 	} else {
-		const pcm = new Float32Array(totalSamples);
-		let off = 0;
-		for (const ch of pcmChunks) {
-			pcm.set(ch, off);
-			off += ch.length;
-		}
 		const asrCtx = ffi.create(asrBundle);
 		let transcript: string;
 		try {
 			ffi.mmapAcquire(asrCtx, "asr");
 			transcript = ffi
-				.asrTranscribe({ ctx: asrCtx, pcm, sampleRateHz: sampleRate })
+				.asrTranscribe({ ctx: asrCtx, pcm: pcmAll, sampleRateHz: sampleRate })
 				.trim();
 		} finally {
 			ffi.mmapEvict(asrCtx, "asr");
