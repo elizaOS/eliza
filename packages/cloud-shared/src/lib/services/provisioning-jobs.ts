@@ -26,6 +26,7 @@ import {
 } from "../../db/repositories/jobs";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { apps } from "../../db/schemas/apps";
+import { containers } from "../../db/schemas/containers";
 import { jobs } from "../../db/schemas/jobs";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
@@ -34,6 +35,7 @@ import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
 import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
+import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } from "./eliza-sandbox";
@@ -1590,6 +1592,35 @@ export class ProvisioningJobService {
           logger.warn(
             "[provisioning-jobs] Marked app deployment as failed after permanent failure",
             { jobId: job.id, appId },
+          );
+        };
+      }
+      // Apps / Product 2: the APP_DEPLOY job above only self-completes after
+      // enqueuing the real CONTAINER_PROVISION, so a SUCCESSFUL deploy that then
+      // fails to provision its container exhausts retries HERE — and would
+      // otherwise strand the app in `building` forever (the success path's
+      // markAppDeployed is the only other writer of deployment_status). Mirror
+      // that path: the app-container's `project_name` IS the app id (a UUID); a
+      // plain /v1/containers row has a non-UUID project_name and is not an app,
+      // so it's a clean no-op (same guard as markAppDeployed in
+      // container-executor-deps).
+      case JOB_TYPES.CONTAINER_PROVISION: {
+        const { containerId } = readContainerProvisionJobData(job);
+        return async (tx) => {
+          const [row] = await tx
+            .select({ projectName: containers.project_name })
+            .from(containers)
+            .where(eq(containers.id, containerId))
+            .limit(1);
+          const appId = row?.projectName;
+          if (!appId || !/^[0-9a-f-]{36}$/i.test(appId)) return;
+          await tx
+            .update(apps)
+            .set({ deployment_status: "failed", updated_at: new Date() })
+            .where(eq(apps.id, appId));
+          logger.warn(
+            "[provisioning-jobs] Marked app deployment as failed after container provision permanent failure",
+            { jobId: job.id, containerId, appId },
           );
         };
       }
