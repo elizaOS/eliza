@@ -50,7 +50,7 @@ export const relayToAgentAction: Action = {
       description:
         'Structured context from other agents to pass along (e.g., "Agent A found: X, Agent B found: Y")',
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [
@@ -118,8 +118,8 @@ export const relayToAgentAction: Action = {
         success: false,
         text: "Missing required parameters for relay dispatch.",
       };
-      _callback?.({ content: failResult as unknown as Content });
-      return failResult as unknown as ActionResult;
+      _callback?.({ content: failResult });
+      return failResult;
     }
 
     // Build enriched command with relay context prepended
@@ -143,8 +143,8 @@ export const relayToAgentAction: Action = {
         text: `Failed to relay to agent: ${result.error ?? "Unknown error"}`,
         values: { agentId, command, relayContext, error: result.error },
       };
-      _callback?.({ content: failResult as unknown as Content });
-      return failResult as unknown as ActionResult;
+      _callback?.({ content: failResult });
+      return failResult;
     }
 
     const successResult = {
@@ -158,8 +158,8 @@ export const relayToAgentAction: Action = {
         agentResponse: result.response,
         actionsExecuted: result.actionsExecuted,
       },
-    } as unknown as ActionResult;
-    _callback?.({ content: successResult as unknown as Content });
+    };
+    _callback?.({ content: successResult });
     return successResult;
   },
 };

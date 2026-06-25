@@ -59,7 +59,7 @@ export const checkPredictionsAction: Action = {
         "Number of predictions to show (default: 10, max: 20). Only used when marketId is not provided.",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
   examples: [
     [
       {

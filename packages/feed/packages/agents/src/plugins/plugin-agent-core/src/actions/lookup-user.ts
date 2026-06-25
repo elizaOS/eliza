@@ -26,7 +26,7 @@ export const lookupUserAction: Action = {
         'Username or display name to search for (e.g., "ThunderGrid" or "tcm0843")',
       required: true,
     },
-  } as unknown as Action["parameters"],
+  },
   examples: [
     [
       {

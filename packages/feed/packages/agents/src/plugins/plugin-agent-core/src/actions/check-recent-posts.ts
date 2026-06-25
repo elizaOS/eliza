@@ -33,7 +33,7 @@ export const checkRecentPostsAction: Action = {
       description: "Number of posts to retrieve (default: 5, max: 20)",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

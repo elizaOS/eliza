@@ -118,7 +118,7 @@ export const buySharesAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+  }),
 };
 
 /**
@@ -219,7 +219,7 @@ export const sellSharesAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+  }),
 };
 
 /**
@@ -324,7 +324,7 @@ export const openPerpPositionAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+  }),
 };
 
 /**
@@ -420,5 +420,5 @@ export const closePerpPositionAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+  }),
 };

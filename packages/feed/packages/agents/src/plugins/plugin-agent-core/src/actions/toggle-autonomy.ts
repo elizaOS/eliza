@@ -59,7 +59,7 @@ export const toggleAutonomyAction: Action = {
       description: "Whether to enable (true) or disable (false) the feature",
       required: true,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

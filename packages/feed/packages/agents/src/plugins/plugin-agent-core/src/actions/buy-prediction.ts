@@ -50,7 +50,7 @@ export const buyPredictionAction: Action = {
       description: "Dollar amount to spend on shares",
       required: true,
     },
-  } as unknown as Action["parameters"],
+  },
   examples: [
     [
       {
