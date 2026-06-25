@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
 import { ensureEmbeddingDimension } from "../provisioning";
+import { createMockRuntime } from "../testing/mock-runtime";
 import type { IAgentRuntime } from "../types/runtime";
 
 /**
