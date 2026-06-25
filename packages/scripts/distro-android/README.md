@@ -88,12 +88,11 @@ to the corresponding role intents.
 | Script | What it does |
 |---|---|
 | `brand-config.mjs`        | Brand config loader; exports `loadBrandFromArgv(argv)` |
-| `build-aosp.mjs`          | Top-level orchestrator: libllama → APK → sync → validate → m → cvd start → boot-validate |
+| `build-aosp.mjs`          | Top-level orchestrator: APK → sync → validate → m → cvd start → boot-validate |
 | `sync-to-aosp.mjs`        | Copy `<vendorDir>` to `<aospRoot>/vendor/<brand>` |
 | `validate.mjs`            | Static validation of vendor tree + APK (xmllint, aapt) |
 | `boot-validate.mjs`       | adb checks against a booted device (roles, intents, package flags, logcat) |
 | `lint-init-rc.mjs`        | Brand-agnostic Android init.rc syntax checker |
-| `compile-libllama.mjs`    | Cross-compile musl-linked libllama.so per ABI for the bundled bun runtime |
 
 ### Pending ports (developer tooling, eliza-only for now)
 
