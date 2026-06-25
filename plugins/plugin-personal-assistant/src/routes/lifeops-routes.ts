@@ -994,7 +994,8 @@ export async function handleLifeOpsRoutes(
       url,
       runRoute: (fn) =>
         runRoute(ctx, fn as unknown as (service: LifeOpsService) => Promise<void>),
-      rateLimit: (key) => rateLimitRequest(ctx, key),
+      rateLimit: (key) =>
+        rateLimitRequest(ctx, key as LifeOpsRateLimitOperation),
       json: (data, status) => json(res, data, status),
       readJsonBody: <T extends object>() => readJsonBody<T>(req, res),
       decodePathComponent: (raw, label) =>
