@@ -2,6 +2,7 @@ import {
 	buildFactKeywordsForStorage,
 	scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
+import { logger } from "../logger";
 import { isMobilePlatform } from "../runtime-env";
 import type {
 	MessageHandlerExtract,
@@ -368,7 +369,15 @@ async function searchSimilarFacts(
 			.sort((left, right) => right.relevance - left.relevance)
 			.slice(0, 8)
 			.map((entry) => entry.memory);
-	} catch {
+	} catch (error) {
+		// Failing to load existing facts disables dedup for this turn, which
+		// risks duplicate facts in the knowledge graph. Degrade to no dedup, but
+		// surface the read failure so a broken `getMemories` pipeline is visible.
+		logger.warn(
+			`[FactsAndRelationships] searchSimilarFacts read failed; skipping fact dedup: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
 		return [];
 	}
 }
@@ -389,7 +398,15 @@ async function fetchExistingRelationships(
 			limit: 16,
 		});
 		return Array.isArray(results) ? results : [];
-	} catch {
+	} catch (error) {
+		// Failing to load existing relationships disables dedup for this turn,
+		// risking duplicate relationships. Degrade to no dedup, but surface the
+		// read failure so a broken `getRelationships` pipeline is visible.
+		logger.warn(
+			`[FactsAndRelationships] fetchExistingRelationships read failed; skipping relationship dedup: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
 		return [];
 	}
 }
