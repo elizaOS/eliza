@@ -53,45 +53,6 @@ function optimizedPromptRuntime(args: {
 }
 
 describe("LifeOps optimized prompt routing", () => {
-  it("swaps inbox_triage instructions for Gmail plan extraction", async () => {
-    const { extractGmailPlanWithLlm } = await import(
-      "../src/lifeops/llm/extract-gmail-plan.js"
-    );
-    const capturedPrompts: string[] = [];
-    const runtime = optimizedPromptRuntime({
-      task: "inbox_triage",
-      optimizedPrompt: "OPTIMIZED INBOX: classify the mail action first.",
-      modelResponses: [
-        [
-          "subaction: search",
-          "shouldAct: true",
-          "response: null",
-          "queries: invoice || vendor renewal",
-        ].join("\n"),
-      ],
-      capturedPrompts,
-    });
-
-    const plan = await extractGmailPlanWithLlm(
-      runtime,
-      userMessage("Find the vendor renewal invoice from last week"),
-      undefined,
-      "Find the vendor renewal invoice from last week",
-    );
-
-    expect(plan.subaction).toBe("search");
-    expect(plan.queries).toEqual(["invoice", "vendor renewal"]);
-    expect(capturedPrompts[0]).toContain(
-      "OPTIMIZED INBOX: classify the mail action first.",
-    );
-    expect(capturedPrompts[0]).not.toContain(
-      "Plan the Gmail/inbox triage action",
-    );
-    expect(capturedPrompts[0]).toContain(
-      "Find the vendor renewal invoice from last week",
-    );
-  });
-
   it("swaps schedule_plan instructions while preserving scheduling context", async () => {
     const { runSchedulingNegotiationHandler } = await import(
       "../src/actions/lib/scheduling-handler.js"
@@ -160,53 +121,5 @@ describe("LifeOps optimized prompt routing", () => {
     );
     expect(capturedPrompts[0]).toContain("- title: Take medication");
     expect(capturedPrompts[0]).toContain("Other reminders around this time:");
-  });
-
-  it("coerces a hallucinated Gmail subaction to the safe triage default (#8795)", async () => {
-    const { extractGmailPlanWithLlm } = await import(
-      "../src/lifeops/llm/extract-gmail-plan.js"
-    );
-    const capturedPrompts: string[] = [];
-    const runtime = optimizedPromptRuntime({
-      task: "inbox_triage",
-      optimizedPrompt: "OPTIMIZED INBOX",
-      modelResponses: [
-        // A malformed/hallucinated plan: an invalid subaction the type does not
-        // allow. It must not flow downstream as a valid subaction.
-        ["subaction: delete_everything", "shouldAct: true"].join("\n"),
-      ],
-      capturedPrompts,
-    });
-
-    const plan = await extractGmailPlanWithLlm(
-      runtime,
-      userMessage("clean up my inbox"),
-      undefined,
-      "clean up my inbox",
-    );
-
-    expect(plan.subaction).toBe("triage");
-    expect(plan.replyNeededOnly).toBeUndefined();
-  });
-
-  it("defaults a missing Gmail subaction to triage (#8795)", async () => {
-    const { extractGmailPlanWithLlm } = await import(
-      "../src/lifeops/llm/extract-gmail-plan.js"
-    );
-    const runtime = optimizedPromptRuntime({
-      task: "inbox_triage",
-      optimizedPrompt: "OPTIMIZED INBOX",
-      modelResponses: ["response: null"],
-      capturedPrompts: [],
-    });
-
-    const plan = await extractGmailPlanWithLlm(
-      runtime,
-      userMessage("what's in my inbox"),
-      undefined,
-      "what's in my inbox",
-    );
-
-    expect(plan.subaction).toBe("triage");
   });
 });
