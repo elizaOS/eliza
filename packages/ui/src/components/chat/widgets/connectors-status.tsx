@@ -201,10 +201,13 @@ function ProviderChipView({
         onClick={onConnect}
         className={cn(
           "group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1",
-          "bg-warn/15 text-xs font-medium text-warn transition-colors hover:bg-warn/25",
+          // Neutral white pill (legible over the orange field) with an amber
+          // alert glyph carrying the "needs attention" signal — an orange-on-
+          // orange warn pill blended into the background.
+          "bg-white/10 text-xs font-medium text-white transition-colors hover:bg-white/16",
         )}
       >
-        <AlertTriangle aria-hidden className="h-3.5 w-3.5" />
+        <AlertTriangle aria-hidden className="h-3.5 w-3.5 text-amber-300" />
         <span className="max-w-[8rem] truncate">{chip.name}</span>
       </button>
     );
