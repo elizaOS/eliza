@@ -158,6 +158,22 @@
           }
         }
       }
+    },
+    {
+      "includes": [
+        "plugins/**/src/**/*.ts",
+        "!plugins/plugin-app-control/**",
+        "!plugins/plugin-capacitor-bridge/**",
+        "!plugins/plugin-personal-assistant/**",
+        "!plugins/plugin-undesirables/**"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
     }
   ],
   "formatter": {
