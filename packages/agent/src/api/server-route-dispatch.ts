@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import { handleApprovalRoute } from "./approval-routes.ts";
 import { handleChatRoutes } from "./chat-routes.ts";
 import { handleConversationRoutes } from "./conversation-routes.ts";
 import { handleDatabaseRoute } from "./database.ts";
@@ -113,6 +114,17 @@ export async function handleInboxAndCloudRelayRouteGroup({
 
   if (pathname.startsWith("/api/inbox")) {
     return handleInboxRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { runtime: state.runtime ?? null },
+      { json, error, readJsonBody },
+    );
+  }
+
+  if (pathname === "/api/approvals") {
+    return handleApprovalRoute(
       req,
       res,
       pathname,

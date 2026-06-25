@@ -230,6 +230,7 @@ export {
 // ---------------------------------------------------------------------------
 
 import "./client-agent";
+import "./client-approvals";
 import "./client-automations";
 import "./client-background";
 import "./client-browser-workspace";

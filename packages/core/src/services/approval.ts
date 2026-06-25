@@ -367,6 +367,18 @@ export class ApprovalService extends Service {
 	}
 
 	/**
+	 * Get every pending approval across all rooms for this agent. Powers the
+	 * canonical "needs your response" surface (#9449), which aggregates the
+	 * agent's blocked-on-user decisions rather than scoping to one room.
+	 */
+	async getAllPendingApprovals(): Promise<Task[]> {
+		return this.runtime.getTasks({
+			tags: ["AWAITING_CHOICE", "APPROVAL"],
+			agentIds: [this.runtime.agentId],
+		});
+	}
+
+	/**
 	 * Handle timeout for a pending approval
 	 */
 	private async handleTimeout(taskId: UUID): Promise<void> {

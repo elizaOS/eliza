@@ -39,6 +39,7 @@ import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
 import { INBOX_HOME_WIDGET } from "../components/chat/widgets/inbox-unread";
 import { MessagesWidget } from "../components/chat/widgets/messages";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
+import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-attention";
 import { NotificationsWidget } from "../components/chat/widgets/notifications";
 import { RELATIONSHIPS_HOME_WIDGET } from "../components/chat/widgets/relationships-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
@@ -78,6 +79,7 @@ for (const w of [
   HEALTH_HOME_WIDGET,
   RELATIONSHIPS_HOME_WIDGET,
   INBOX_HOME_WIDGET,
+  NEEDS_ATTENTION_HOME_WIDGET,
 ]) {
   registerWidgetComponent(w.pluginId, w.id, w.Component);
 }
@@ -401,6 +403,21 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     defaultEnabled: true,
     signalKinds: INBOX_HOME_WIDGET.signalKinds,
   },
+  // Needs response — the canonical "actions requiring your response" card
+  // (#9449). Backed by the core ApprovalService (GET /api/approvals), not a
+  // loadable plugin, so it is always-visible (see
+  // ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS) and self-hides when nothing is
+  // pending. Floats up at approval/escalation weight on its own data.
+  {
+    id: NEEDS_ATTENTION_HOME_WIDGET.id,
+    pluginId: NEEDS_ATTENTION_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Needs response",
+    icon: "CircleHelp",
+    order: NEEDS_ATTENTION_HOME_WIDGET.order,
+    defaultEnabled: true,
+    signalKinds: NEEDS_ATTENTION_HOME_WIDGET.signalKinds,
+  },
   {
     id: RELATIONSHIPS_HOME_WIDGET.id,
     pluginId: RELATIONSHIPS_HOME_WIDGET.pluginId,
@@ -518,6 +535,10 @@ const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   // plugin snapshot. (#9143). Messages was removed (#9304) — redundant with the
   // always-present chat overlay.
   "notifications",
+  // Needs-response is backed by the core ApprovalService (not a loadable
+  // plugin), so its frontpage widget must render regardless of the plugin
+  // snapshot — it self-hides when no decisions are pending (#9449).
+  "needs-attention",
 ]);
 
 export interface ResolvedWidget {

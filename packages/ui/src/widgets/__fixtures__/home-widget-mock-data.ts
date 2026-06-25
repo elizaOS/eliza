@@ -276,6 +276,34 @@ function notificationsPayload() {
   };
 }
 
+/** NeedsAttentionWidget reads GET /api/approvals; the wire shape is
+ *  { pending: PendingUserAction[] } (see needs-attention.tsx / approval-routes).
+ *  Two pending decisions; the older one is the single datum the card shows. */
+function approvalsPayload() {
+  return {
+    pending: [
+      {
+        id: "approval-1",
+        kind: "approval",
+        title: "Send the signed contract to Acme",
+        createdAt: Date.now() - 45 * 60_000,
+        roomId: "11111111-1111-1111-1111-111111111111",
+        options: [
+          { name: "approve", description: "Approve and send" },
+          { name: "deny", description: "Don't send", isCancel: true },
+        ],
+      },
+      {
+        id: "approval-2",
+        kind: "approval",
+        title: "Confirm the production deploy",
+        createdAt: Date.now() - 5 * 60_000,
+        roomId: "11111111-1111-1111-1111-111111111111",
+      },
+    ],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Direct accessors for the relationships widget, which fetches via the typed
 // `client.getRelationshipsPeople()` / `client.getRelationshipsCandidates()`
@@ -328,6 +356,7 @@ function routeTable(): RouteMatch[] {
       body: relationshipsCandidates,
     },
     { test: has("/api/notifications"), body: notificationsPayload },
+    { test: has("/api/approvals"), body: approvalsPayload },
   ];
 }
 
