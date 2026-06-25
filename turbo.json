@@ -215,8 +215,14 @@
     "@elizaos/core#build": {
       "dependsOn": ["@elizaos/contracts#build", "@elizaos/logger#build"],
       "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"],
-      "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
+      "outputs": ["dist/**", "src/i18n/generated/**"],
+      "inputs": [
+        "src/**",
+        "build.ts",
+        "tsconfig.declarations.json",
+        "$TURBO_ROOT$/packages/shared/scripts/generate-keywords.mjs",
+        "$TURBO_ROOT$/packages/shared/src/i18n/keywords/*.keywords.json"
+      ]
     },
     "@elizaos/contracts#build": {
       "dependsOn": [],
