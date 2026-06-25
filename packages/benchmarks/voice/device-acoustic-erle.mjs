@@ -111,18 +111,30 @@ function ttsToWav16(tmp) {
   const out = join(tmp, "tts16.wav");
   if (ttsWav) {
     // Resample a provided Kokoro/agent-TTS WAV to 16 kHz mono.
-    const r = spawnSync("ffmpeg", ["-i", ttsWav, "-ar", String(SR), "-ac", "1", "-y", out], { stdio: "ignore" });
-    if (r.status !== 0) throw new Error(`ffmpeg failed to read --tts-wav ${ttsWav}`);
+    const r = spawnSync(
+      "ffmpeg",
+      ["-i", ttsWav, "-ar", String(SR), "-ac", "1", "-y", out],
+      { stdio: "ignore" },
+    );
+    if (r.status !== 0)
+      throw new Error(`ffmpeg failed to read --tts-wav ${ttsWav}`);
     console.log(`[device-aec] far-end = real TTS wav: ${ttsWav}`);
     return out;
   }
   // macOS `say` → genuine synthesized speech.
   const aiff = join(tmp, "tts.aiff");
   const s = spawnSync("say", ["-v", voice, "-o", aiff, sentence]);
-  if (s.status !== 0) throw new Error("`say` failed — pass --tts-wav <file> on non-macOS");
-  const r = spawnSync("ffmpeg", ["-i", aiff, "-ar", String(SR), "-ac", "1", "-y", out], { stdio: "ignore" });
+  if (s.status !== 0)
+    throw new Error("`say` failed — pass --tts-wav <file> on non-macOS");
+  const r = spawnSync(
+    "ffmpeg",
+    ["-i", aiff, "-ar", String(SR), "-ac", "1", "-y", out],
+    { stdio: "ignore" },
+  );
   if (r.status !== 0) throw new Error("ffmpeg failed to convert `say` output");
-  console.log(`[device-aec] far-end = macOS say (voice=${voice}): "${sentence.slice(0, 56)}…"`);
+  console.log(
+    `[device-aec] far-end = macOS say (voice=${voice}): "${sentence.slice(0, 56)}…"`,
+  );
   return out;
 }
 
@@ -174,7 +186,20 @@ function rms(arr, from = 0, to = arr.length) {
 async function playAndRecord(farWavPath, outWavPath, captureSeconds) {
   const rec = spawn(
     "ffmpeg",
-    ["-f", "avfoundation", "-i", `:${audioDevice}`, "-ar", String(SR), "-ac", "1", "-t", String(captureSeconds), "-y", outWavPath],
+    [
+      "-f",
+      "avfoundation",
+      "-i",
+      `:${audioDevice}`,
+      "-ar",
+      String(SR),
+      "-ac",
+      "1",
+      "-t",
+      String(captureSeconds),
+      "-y",
+      outWavPath,
+    ],
     { stdio: ["ignore", "ignore", "ignore"] },
   );
   await new Promise((r) => setTimeout(r, 500)); // let capture stabilise
@@ -194,11 +219,15 @@ async function main() {
   const farSeconds = far.length / SR;
 
   const captureSec = farSeconds + 2.0;
-  console.log(`[device-aec] playing real TTS far-end (${farSeconds.toFixed(1)}s) + recording mic (avfoundation :${audioDevice}, ${captureSec.toFixed(1)}s)…`);
+  console.log(
+    `[device-aec] playing real TTS far-end (${farSeconds.toFixed(1)}s) + recording mic (avfoundation :${audioDevice}, ${captureSec.toFixed(1)}s)…`,
+  );
   await playAndRecord(farPath, nearPath, captureSec);
 
   const near = readWavMono16(nearPath);
-  console.log(`[device-aec] captured ${(near.length / SR).toFixed(2)}s mic (${near.length} samples)`);
+  console.log(
+    `[device-aec] captured ${(near.length / SR).toFixed(2)}s mic (${near.length} samples)`,
+  );
 
   // Correlation reference: a 1.5 s window 0.3 s into the speech (skip the onset).
   const refStart = silenceN + Math.floor(0.3 * SR);
@@ -206,12 +235,20 @@ async function main() {
   const ref = far.subarray(refStart, refStart + refLen);
   const { offset, score } = estimateAlignment(near, ref, refStart);
   const alignMs = (offset / SR) * 1000;
-  console.log(`[device-aec] TTS aligned: far→near offset=${offset} (${alignMs.toFixed(1)} ms, incl. capture-start skew), corr peak=${score.toFixed(3)}`);
+  console.log(
+    `[device-aec] TTS aligned: far→near offset=${offset} (${alignMs.toFixed(1)} ms, incl. capture-start skew), corr peak=${score.toFixed(3)}`,
+  );
 
   if (score < LOCK) {
-    console.log(`\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (corr < ${LOCK}).`);
-    console.log("  The mic did not capture the TTS playback — output muted/headphones, mic muted, or wrong device.");
-    console.log("  Re-run with the speaker audible and the built-in mic selected: --device <N>.");
+    console.log(
+      `\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (corr < ${LOCK}).`,
+    );
+    console.log(
+      "  The mic did not capture the TTS playback — output muted/headphones, mic muted, or wrong device.",
+    );
+    console.log(
+      "  Re-run with the speaker audible and the built-in mic selected: --device <N>.",
+    );
     process.exitCode = 2;
     return;
   }
@@ -221,7 +258,9 @@ async function main() {
   const nearStart = speechStart + offset;
   const usable = Math.min(far.length - speechStart, near.length - nearStart);
   if (usable < SR) {
-    console.log(`\n[device-aec] RESULT: aligned overlap too short (${usable} samples) — re-run.`);
+    console.log(
+      `\n[device-aec] RESULT: aligned overlap too short (${usable} samples) — re-run.`,
+    );
     process.exitCode = 2;
     return;
   }
@@ -233,18 +272,26 @@ async function main() {
   const BLOCK = 320; // 20 ms frames, as the live consumer feeds them
   const residual = new Float32Array(nearSpeech.length);
   for (let off = 0; off + BLOCK <= nearSpeech.length; off += BLOCK) {
-    const out = aec.process(nearSpeech.subarray(off, off + BLOCK), farSpeech.subarray(off, off + BLOCK));
+    const out = aec.process(
+      nearSpeech.subarray(off, off + BLOCK),
+      farSpeech.subarray(off, off + BLOCK),
+    );
     residual.set(out, off);
   }
 
   const half = Math.floor(nearSpeech.length / 2);
   const erleFull = computeErle(nearSpeech, residual);
-  const erleConverged = computeErle(nearSpeech.subarray(half), residual.subarray(half));
+  const erleConverged = computeErle(
+    nearSpeech.subarray(half),
+    residual.subarray(half),
+  );
   const micRms = rms(nearSpeech, half, nearSpeech.length);
   const resRms = rms(residual, half, residual.length);
 
   console.log("\n[device-aec] ===== RESULT =====");
-  console.log(`  alignment offset          : ${offset} samples / ${alignMs.toFixed(1)} ms (corr ${score.toFixed(3)})`);
+  console.log(
+    `  alignment offset          : ${offset} samples / ${alignMs.toFixed(1)} ms (corr ${score.toFixed(3)})`,
+  );
   console.log(`  mic RMS (echo, converged) : ${micRms.toExponential(3)}`);
   console.log(`  residual RMS (post-AEC)   : ${resRms.toExponential(3)}`);
   console.log(`  ERLE (whole utterance)    : ${erleFull.toFixed(2)} dB`);
