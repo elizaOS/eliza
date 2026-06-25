@@ -31,6 +31,7 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
@@ -126,25 +127,13 @@ interface BriefLifeOpsService {
     reminders?: readonly unknown[];
     goals?: readonly unknown[];
   }>;
-  getRecurringCharges(request: Record<string, never>): Promise<
-    Array<{
-      merchantNormalized: string;
-      merchantDisplay: string;
-      cadence: unknown;
-      averageAmountUsd: number;
-      nextExpectedAt: string | null;
-    }>
-  >;
 }
 
 async function getBriefLifeOpsService(
   runtime: IAgentRuntime,
 ): Promise<BriefLifeOpsService> {
   const { LifeOpsService } = await import("../lifeops/service.js");
-  // Single-step cast: LifeOpsService is a mixin-composed class that
-  // structurally satisfies BriefLifeOpsService, but TypeScript cannot verify
-  // this through the composed type so a cast is required.
-  return new LifeOpsService(runtime) as BriefLifeOpsService;
+  return new LifeOpsService(runtime);
 }
 
 function periodWindow(period: LifeOpsBriefingPeriod): {
@@ -332,8 +321,10 @@ async function loadMoneyFromPayments(args: {
   runtime: IAgentRuntime;
 }): Promise<readonly LifeOpsBriefingMoneyItem[]> {
   try {
-    const service = await getBriefLifeOpsService(args.runtime);
-    const charges = await service.getRecurringCharges({});
+    // Recurring-charge data moved out of LifeOpsService to FinancesService
+    // (@elizaos/plugin-finances); call it there directly.
+    const finances = new FinancesService(args.runtime);
+    const charges = await finances.getRecurringCharges({});
     return charges.slice(0, 25).map((charge) => ({
       id: `${charge.merchantNormalized}:${charge.cadence}`,
       merchant: charge.merchantDisplay,
