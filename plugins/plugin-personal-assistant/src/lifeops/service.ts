@@ -12,6 +12,7 @@ import type {
   LifeOpsReminderAttempt,
   LifeOpsWorkflowRun,
 } from "@elizaos/shared";
+import type { BrowserBridgeService } from "./service-mixin-browser.js";
 import { withBrowser } from "./service-mixin-browser.js";
 // Public method interfaces each mixin contributes. The composed class type
 // exceeds TypeScript's mixin-inference depth (~6 chained generics), so the
@@ -120,7 +121,8 @@ export class LifeOpsService extends LifeOpsServiceComposed {}
 /** Declared explicitly: mixin composition exceeds TypeScript inference depth. */
 // biome-ignore lint/suspicious/noUnsafeDeclarationMerging: intentional class+interface merge to surface mixin methods past TS inference depth
 export interface LifeOpsService
-  extends LifeOpsCalendarService,
+  extends BrowserBridgeService,
+    LifeOpsCalendarService,
     // `getHealthConnectorStatus` is also declared (with a different return
     // type) by the status mixin already on the composed class, so omit it here.
     Omit<LifeOpsHealthServicePublic, "getHealthConnectorStatus">,
