@@ -57,8 +57,10 @@ const SCENE_CONTEXT_OPEN_APPS_LIMIT = 20;
 const SCENE_CONTEXT_RECENT_ACTIONS_LIMIT = 10;
 const SCENE_DESCRIPTION_OCR_LINE_LIMIT = 40;
 const SCENE_DESCRIPTION_OCR_TEXT_LIMIT = 2000;
+const SCENE_DESCRIPTION_OBJECT_LIMIT = 20;
+const SCENE_DESCRIPTION_FACE_LIMIT = 10;
 
-interface VisionContextSnapshot {
+export interface VisionContextSnapshot {
   openApps: string[];
   focusedWindow: {
     app: string;
@@ -77,6 +79,23 @@ const SCENE_DESCRIPTION_INSTRUCTIONS = [
   "Describe visible people, objects, UI, text, and notable scene changes.",
   "Keep the answer concise and factual.",
 ];
+
+/**
+ * A face that the ggml face-recognition pipeline matched to a known profile,
+ * shaped for the VLM prompt. `label` is the profile's display name when set,
+ * otherwise the opaque profile id. `bbox` is the detected face region.
+ */
+export interface RecognizedFace {
+  label: string;
+  bbox: BoundingBox;
+}
+
+/** Prompt-shaped detected object: label + confidence + region. */
+interface DetectedObjectForPrompt {
+  type: string;
+  confidence: number;
+  bbox: BoundingBox;
+}
 
 function isVisionContextProvider(
   candidate: unknown,
@@ -101,9 +120,11 @@ function trimVisionContextForPrompt(
   };
 }
 
-function buildSceneDescriptionPrompt(
+export function buildSceneDescriptionPrompt(
   context: VisionContextSnapshot | null,
   ocrText?: string | null,
+  detectedObjects?: DetectedObject[] | null,
+  recognizedFaces?: RecognizedFace[] | null,
 ): string {
   const payload: Record<string, unknown> = {
     task: "describe_visual_scene",
@@ -112,7 +133,42 @@ function buildSceneDescriptionPrompt(
   if (context) payload.context = trimVisionContextForPrompt(context);
   const detectedText = normalizeOcrTextForPrompt(ocrText);
   if (detectedText) payload.detectedText = detectedText;
+  const objects = normalizeDetectedObjectsForPrompt(detectedObjects);
+  if (objects.length > 0) payload.detectedObjects = objects;
+  const faces = normalizeRecognizedFacesForPrompt(recognizedFaces);
+  if (faces.length > 0) payload.recognizedFaces = faces;
   return JSON.stringify(payload, null, 2);
+}
+
+function normalizeDetectedObjectsForPrompt(
+  objects?: DetectedObject[] | null,
+): DetectedObjectForPrompt[] {
+  if (!objects || objects.length === 0) return [];
+  return [...objects]
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, SCENE_DESCRIPTION_OBJECT_LIMIT)
+    .map((obj) => ({
+      type: obj.type,
+      confidence: obj.confidence,
+      bbox: obj.boundingBox,
+    }));
+}
+
+function normalizeRecognizedFacesForPrompt(
+  faces?: RecognizedFace[] | null,
+): RecognizedFace[] {
+  if (!faces || faces.length === 0) return [];
+  const seen = new Set<string>();
+  const result: RecognizedFace[] = [];
+  for (const face of faces) {
+    const label = face.label.trim();
+    if (label.length === 0) continue;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    result.push({ label, bbox: face.bbox });
+    if (result.length >= SCENE_DESCRIPTION_FACE_LIMIT) break;
+  }
+  return result;
 }
 
 function normalizeOcrTextForPrompt(text?: string | null): string | null {
@@ -774,16 +830,6 @@ export class VisionService extends Service {
 
       let description = this.lastTfDescription;
 
-      if (shouldUpdateVlm) {
-        // Use VLM to describe the scene
-        description = await this.describeSceneWithVLM(imageUrl);
-        this.lastVlmUpdateTime = currentTime;
-        this.lastTfDescription = description;
-        logger.debug(
-          `[VisionService] VLM updated: ${timeSinceVlmUpdate}ms since last update, ${changePercentage.toFixed(1)}% change`,
-        );
-      }
-
       // Determine if we should update TensorFlow detections
       const timeSinceTfUpdate = currentTime - this.lastTfUpdateTime;
       const tfUpdateInterval = this.visionConfig.tfUpdateInterval ?? 1000;
@@ -856,6 +902,7 @@ export class VisionService extends Service {
 
       // Face recognition and entity tracking
       const faceProfiles = new Map<string, string>();
+      const recognizedFaces: RecognizedFace[] = [];
       const getSettingString = (key: string): string | undefined => {
         const value = this.runtime.getSetting(key);
         return value === true || value === false
@@ -873,17 +920,10 @@ export class VisionService extends Service {
         enableFaceRecognition &&
         people.length > 0 &&
         frame.width > 0 &&
-        frame.height > 0
+        frame.height > 0 &&
+        frame.data.length > 0
       ) {
         try {
-          // Validate frame data
-          if (frame.data.length === 0) {
-            logger.warn(
-              "[VisionService] Invalid frame data for face recognition",
-            );
-            return;
-          }
-
           // Detect faces in the frame
           const faceRecognition = await this.getFaceRecognition();
           const faces = await faceRecognition.detectFaces(
@@ -930,6 +970,16 @@ export class VisionService extends Service {
                 }
 
                 faceProfiles.set(person.id, profileId);
+                const profile = faceRecognition.getFaceProfile(profileId);
+                recognizedFaces.push({
+                  label: profile?.name ?? profileId,
+                  bbox: {
+                    x: Math.round(faceBox.x),
+                    y: Math.round(faceBox.y),
+                    width: Math.round(faceBox.width),
+                    height: Math.round(faceBox.height),
+                  },
+                });
                 break;
               }
             }
@@ -937,6 +987,22 @@ export class VisionService extends Service {
         } catch (faceError) {
           logger.error("[VisionService] Face recognition error:", faceError);
         }
+      }
+
+      // VLM scene description runs after detection so the success path can
+      // feed the model the freshly-computed YOLO objects + recognized faces
+      // as additional context alongside the image.
+      if (shouldUpdateVlm) {
+        description = await this.describeSceneWithVLM(
+          imageUrl,
+          detectedObjects,
+          recognizedFaces,
+        );
+        this.lastVlmUpdateTime = currentTime;
+        this.lastTfDescription = description;
+        logger.debug(
+          `[VisionService] VLM updated: ${timeSinceVlmUpdate}ms since last update, ${changePercentage.toFixed(1)}% change`,
+        );
       }
 
       // Update entity tracker
@@ -1063,19 +1129,30 @@ export class VisionService extends Service {
     return text.length > 0 ? text : null;
   }
 
-  private async describeSceneWithVLM(imageUrl: string): Promise<string> {
+  private async describeSceneWithVLM(
+    imageUrl: string,
+    detectedObjects: DetectedObject[] = [],
+    recognizedFaces: RecognizedFace[] = [],
+  ): Promise<string> {
     return withStandaloneTrajectory(
       this.runtime,
       {
         source: "plugin-vision:scene-description",
         metadata: { modelType: ModelType.IMAGE_DESCRIPTION },
       },
-      () => this.describeSceneWithVLMInTrajectory(imageUrl),
+      () =>
+        this.describeSceneWithVLMInTrajectory(
+          imageUrl,
+          detectedObjects,
+          recognizedFaces,
+        ),
     );
   }
 
   private async describeSceneWithVLMInTrajectory(
     imageUrl: string,
+    detectedObjects: DetectedObject[],
+    recognizedFaces: RecognizedFace[],
   ): Promise<string> {
     try {
       try {
@@ -1097,6 +1174,8 @@ export class VisionService extends Service {
       const prompt = buildSceneDescriptionPrompt(
         sceneContext,
         this.collectCurrentOcrTextForPrompt(),
+        detectedObjects,
+        recognizedFaces,
       );
       try {
         const result = await this.runtime.useModel(
