@@ -29,7 +29,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 310
     estimated_prefill_tps: 11000
-    notes: "Smallest/entry active Qwen3.5 local tier; smoke/default fallback."
+    notes: "Smallest/entry active Gemma 4 local tier; smoke/default fallback."
   eliza-1-4b:
     n_gpu_layers: -1
     ctx_size: 65536
@@ -41,7 +41,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 175
     estimated_prefill_tps: 6800
-    notes: "Balanced Qwen3.5 tier with Ada tensor-core KV path."
+    notes: "Balanced Gemma 4 tier with Ada tensor-core KV path."
   eliza-1-9b:
     n_gpu_layers: -1
     ctx_size: 65536
@@ -53,7 +53,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 110
     estimated_prefill_tps: 4600
-    notes: "High-quality Qwen3.5 tier that leaves comfortable 24 GiB headroom."
+    notes: "High-quality Gemma 4 tier that leaves comfortable 24 GiB headroom."
   eliza-1-27b:
     n_gpu_layers: -1
     ctx_size: 131072

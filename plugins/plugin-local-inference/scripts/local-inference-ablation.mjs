@@ -42,17 +42,17 @@ const DEFAULT_VARIANTS = [
   },
   {
     name: "mtp_only",
-    label: "MTP, f16 KV",
+    label: "draft-MTP, f16 KV",
     needsDrafter: true,
-    args: ["--spec-type", "mtp"],
+    args: ["--spec-type", "draft-mtp"],
   },
   {
     name: "mtp_turbo4_polar",
-    label: "MTP + Turbo/Polar KV turbo4",
+    label: "draft-MTP + Turbo/Polar KV turbo4",
     needsDrafter: true,
     args: [
       "--spec-type",
-      "mtp",
+      "draft-mtp",
       "--cache-type-k",
       "tbq4_0",
       "--cache-type-v",
@@ -65,11 +65,11 @@ const DEFAULT_VARIANTS = [
   },
   {
     name: "all_mtp_qjl_tcq",
-    label: "MTP + QJL K + TBQ3 V",
+    label: "draft-MTP + QJL K + TBQ3 V",
     needsDrafter: true,
     args: [
       "--spec-type",
-      "mtp",
+      "draft-mtp",
       "--cache-type-k",
       "qjl1_256",
       "--cache-type-v",
@@ -183,7 +183,8 @@ function variantRequiredKernels(variant) {
     const arg = argv[i];
     if (arg === "--spec-type" || arg.startsWith("--spec-type=")) {
       const parsed = optionValue(argv, i);
-      if (parsed.value && normalizeKernelArg(parsed.value) === "mtp") {
+      const specType = parsed.value ? normalizeKernelArg(parsed.value) : "";
+      if (specType === "mtp" || specType === "draft_mtp") {
         required.add("mtp");
       }
       i += parsed.consumed;
@@ -219,6 +220,10 @@ function missingVariantKernels(variant, capabilities) {
 
 function defaultModelPath(name) {
   return path.join(stateDir(), "local-inference", "models", name);
+}
+
+function defaultBundlePath(tierSlug, ...parts) {
+  return defaultModelPath(path.join(`eliza-1-${tierSlug}.bundle`, ...parts));
 }
 
 const QUICK_VARIANTS = [
@@ -270,8 +275,8 @@ function defaultArgsForBackend(backend) {
   return {
     backend,
     binary: null,
-    model: defaultModelPath("eliza-1-2b.gguf"),
-    drafter: defaultModelPath("eliza-1-2b-drafter-q4.repaired.gguf"),
+    model: defaultBundlePath("2b", "text", "eliza-1-2b-128k.gguf"),
+    drafter: defaultBundlePath("2b", "mtp", "drafter-2b.gguf"),
     runs: 3,
     warmupTokens: 32,
     maxTokens: 256,
