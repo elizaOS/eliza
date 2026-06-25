@@ -80,10 +80,10 @@ describe("buildOpencodeSpawnConfig", () => {
     const result = buildOpencodeSpawnConfig(runtime(), {
       ELIZA_OPENCODE_LOCAL: "1",
       ELIZA_OPENCODE_BASE_URL: "http://localhost:11434/v1",
-      ELIZA_OPENCODE_MODEL_POWERFUL: "qwen2.5-coder",
+      ELIZA_OPENCODE_MODEL_POWERFUL: "eliza-1-4b",
     });
     expect(result?.providerId).toBe("eliza-local");
-    expect(result?.model).toBe("eliza-local/qwen2.5-coder");
+    expect(result?.model).toBe("eliza-local/eliza-1-4b");
     const config = JSON.parse(result?.configContent ?? "{}");
     expect(config.provider["eliza-local"].options.baseURL).toBe(
       "http://localhost:11434/v1",
