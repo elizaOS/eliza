@@ -2811,6 +2811,18 @@ export const INVALID_TRACER_PROVIDER = {};
       "date-fns-jalali/locale",
       // Resolvable via the resolve.alias above (transitive through @elizaos/core).
       "@opentelemetry/api",
+      // Pre-bundle the feross `buffer` so the dev server serves it as ESM with a
+      // named `Buffer` export. `noDiscovery` is on, so without this the
+      // `resolve.alias` (buffer/node:buffer → the raw `.bun/buffer/index.js`)
+      // serves untransformed CommonJS; a workspace source's
+      // `import { Buffer } from "node:buffer"` (e.g. core's documents/utils, in
+      // BOTH core barrels and therefore eager) then throws "does not provide an
+      // export named 'Buffer'" at module-eval and blanks the whole app — only in
+      // the vite dev server (`bun run dev`), which is why the dev-smoke lane is
+      // red while production rollup builds are fine. esbuild's CJS interop on
+      // the pre-bundle exposes the static `exports.Buffer = Buffer` as a named
+      // ESM export. See #9452.
+      ...(bufferEntry ? ["buffer", "node:buffer"] : []),
     ],
     // Remap node: builtins to npm polyfills during dep optimization so
     // Rolldown doesn't externalize them as browser-incompatible node:* imports.
