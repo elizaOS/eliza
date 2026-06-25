@@ -242,10 +242,10 @@ function createAuthenticatedFetchForAgent(
   };
 
   // Bun may expose a non-standard `fetch.preconnect`; preserve it when present.
-  const maybePreconnect = (fetch as unknown as { preconnect?: unknown })
+  const maybePreconnect = (fetch as { preconnect?: unknown })
     .preconnect;
   if (maybePreconnect) {
-    (customFetch as unknown as { preconnect?: unknown }).preconnect =
+    (customFetch as { preconnect?: unknown }).preconnect =
       maybePreconnect;
   }
 

@@ -324,7 +324,7 @@ export class MultiStepExecutor {
       const autonomy = (runtime.character as unknown as Record<string, unknown>)
         ?.feed
         ? (
-            (runtime.character as unknown as Record<string, unknown>).feed as {
+            (runtime.character as Record<string, unknown>).feed as {
               autonomy?: {
                 trading: boolean;
                 posting: boolean;

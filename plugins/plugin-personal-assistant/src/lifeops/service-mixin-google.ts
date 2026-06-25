@@ -455,7 +455,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         provider: "google",
         side: requestedSide,
         mode: "local",
-        requestedCapabilities,
+        requestedCapabilities: requestedCapabilities ?? [],
         redirectUri: flow.redirectUri ?? redirectUri,
         authUrl: flow.authUrl ?? "",
       };

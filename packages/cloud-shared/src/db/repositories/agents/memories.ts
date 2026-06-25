@@ -413,7 +413,7 @@ export class MemoriesRepository {
       })
       // Drizzle's .returning() infers the insert model type, not InferSelectModel.
       // The DB returns all columns; the cast to MemoryRow is safe.
-      .returning()) as unknown as MemoryRow[];
+      .returning()) as MemoryRow[];
     const memoryResult = memoryResults[0];
 
     if (!memoryResult) {
