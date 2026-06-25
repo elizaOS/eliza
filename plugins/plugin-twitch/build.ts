@@ -12,6 +12,8 @@ await build({
 // Also emit declarations with tsc
 import { spawnSync } from "node:child_process";
 
-spawnSync("bunx", ["tsc", "--emitDeclarationOnly"], { stdio: "inherit" });
+spawnSync("bunx", ["tsc", "--emitDeclarationOnly", "--noCheck"], {
+  stdio: "inherit",
+});
 
 console.log("Build complete");

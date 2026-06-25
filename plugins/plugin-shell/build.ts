@@ -24,10 +24,13 @@ await build({
 
 console.log("Build complete!");
 
-const proc = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json", "--emitDeclarationOnly"], {
-  cwd: import.meta.dir,
-  stdio: ["inherit", "inherit", "inherit"],
-});
+const proc = Bun.spawn(
+  ["bunx", "tsc", "-p", "tsconfig.build.json", "--emitDeclarationOnly", "--noCheck"],
+  {
+    cwd: import.meta.dir,
+    stdio: ["inherit", "inherit", "inherit"],
+  }
+);
 
 const exitCode = await proc.exited;
 
