@@ -16,9 +16,6 @@ COPY . .
 # Install dependencies using Bun
 RUN bun install --ignore-scripts
 
-# Build the project
-RUN bun run build
-
 # Final runtime stage
 FROM oven/bun:1.1.26-slim AS runner
 WORKDIR /app
