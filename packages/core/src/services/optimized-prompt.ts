@@ -787,9 +787,7 @@ async function listCompleteVersionNumbers(dir: string): Promise<number[]> {
 			const payload = await readFile(path, "utf-8");
 			const macHex = (await readFile(macPathFor(path), "utf-8")).trim();
 			if (verifyArtifactMac(payload, macHex)) versions.push(n);
-		} catch {
-			continue;
-		}
+		} catch {}
 	}
 	versions.sort((a, b) => a - b);
 	return versions;
