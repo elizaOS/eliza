@@ -100,6 +100,78 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     expect(prompt.detectedText).toBe("Save\nProject settings\nDeploy now");
   });
 
+  // Token-budget guards (#9105): OCR text fused into the IMAGE_DESCRIPTION prompt
+  // is cheap vs re-describing, but must not blow the budget — service.ts clamps
+  // it to SCENE_DESCRIPTION_OCR_LINE_LIMIT (40 lines) and
+  // SCENE_DESCRIPTION_OCR_TEXT_LIMIT (2000 chars) in normalizeOcrTextForPrompt.
+  function sceneWithOcr(service: VisionService, fullScreenOCR: string): void {
+    Object.defineProperty(service, "lastEnhancedScene", {
+      configurable: true,
+      value: {
+        timestamp: Date.now(),
+        description: "",
+        objects: [],
+        people: [],
+        sceneChanged: true,
+        changePercentage: 0,
+        screenAnalysis: {
+          fullScreenOCR,
+          activeTile: { timestamp: Date.now(), text: "" },
+        },
+      },
+    });
+  }
+
+  it("clamps the prompt OCR to the 40-line token-budget limit", async () => {
+    const { runtime, useModel } = createRuntime({
+      imageDescriptionResult: { description: "A long list." },
+    });
+    const service = new VisionService(runtime);
+    // 60 distinct short lines; without the cap the prompt would carry all 60.
+    sceneWithOcr(
+      service,
+      Array.from({ length: 60 }, (_, i) => `row ${i}`).join("\n"),
+    );
+    const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
+      imageUrl: string,
+    ) => Promise<string>;
+    await describeFn.call(
+      service,
+      `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
+    );
+    const prompt = JSON.parse(
+      (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt,
+    ) as { detectedText?: string };
+    expect(prompt.detectedText).toBeTruthy();
+    expect((prompt.detectedText ?? "").split("\n")).toHaveLength(40);
+  });
+
+  it("clamps the prompt OCR to the 2000-char token-budget limit", async () => {
+    const { runtime, useModel } = createRuntime({
+      imageDescriptionResult: { description: "A wall of text." },
+    });
+    const service = new VisionService(runtime);
+    // Three distinct ~1000-char lines (~3000 chars total) — under the 40-line
+    // cap but well over the 2000-char cap; without the slice it would be ~3000.
+    sceneWithOcr(
+      service,
+      [0, 1, 2].map((i) => `${i} ${"x".repeat(1000)}`).join("\n"),
+    );
+    const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
+      imageUrl: string,
+    ) => Promise<string>;
+    await describeFn.call(
+      service,
+      `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
+    );
+    const prompt = JSON.parse(
+      (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt,
+    ) as { detectedText?: string };
+    expect(prompt.detectedText).toBeTruthy();
+    expect((prompt.detectedText ?? "").length).toBeLessThanOrEqual(2000);
+    expect((prompt.detectedText ?? "").length).toBeGreaterThan(1900);
+  });
+
   it("falls through to detected-objects synthesis when IMAGE_DESCRIPTION returns the unhelpful sentinel", async () => {
     const { runtime } = createRuntime({
       imageDescriptionResult: { description: "I'm unable to analyze images" },
