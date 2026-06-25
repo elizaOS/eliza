@@ -14,7 +14,7 @@ Usage:
     python scripts/run_shared_model_rl.py --bridge-url http://localhost:3001 --ticks 100
 
     # Custom configuration
-    python scripts/run_shared_model_rl.py --model Qwen/Qwen3-4B --agents-per-team 15 \\
+    python scripts/run_shared_model_rl.py --model google/gemma-4-E4B --agents-per-team 15 \\
         --kondo-rate 0.03 --ticks 200 --mock
 """
 
@@ -353,7 +353,11 @@ def main():
         description="Shared-model continuous RL training",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--model", default="google/gemma-4-12B", help="Model name (9B for Nebius H100)")
+    parser.add_argument(
+        "--model",
+        default="google/gemma-4-12B",
+        help="Model name (Gemma 4 12B / Eliza-1 9B tier for Nebius H100)",
+    )
     parser.add_argument("--device", default="cuda", help="Device (cuda/cpu)")
     parser.add_argument("--agents-per-team", type=int, default=10, help="Agents per team")
     parser.add_argument("--optimizer", default="apollo", choices=["apollo", "adamw"])

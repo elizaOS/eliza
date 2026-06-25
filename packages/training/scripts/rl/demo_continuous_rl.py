@@ -13,7 +13,7 @@ Demonstrates:
 
 Usage:
     python scripts/demo_continuous_rl.py
-    python scripts/demo_continuous_rl.py --num-agents 2 --ticks 30 --model Qwen/Qwen3-0.6B
+    python scripts/demo_continuous_rl.py --num-agents 2 --ticks 30 --model google/gemma-4-E2B
 """
 
 from __future__ import annotations
@@ -548,7 +548,7 @@ async def run_demo(args: argparse.Namespace) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Multi-agent continuous RL demo")
-    parser.add_argument("--model", default="Qwen/Qwen3-0.6B")
+    parser.add_argument("--model", default="google/gemma-4-E2B")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--num-agents", type=int, default=2)
     parser.add_argument("--ticks", type=int, default=20)

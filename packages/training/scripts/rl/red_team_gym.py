@@ -2,7 +2,7 @@
 Red Team Gym: Train attackers against frontier models + blue team.
 
 Architecture:
-  - Red team model (Qwen3-4B with APOLLO) learns to social-engineer targets
+  - Red team model (Gemma 4 E4B with APOLLO) learns to social-engineer targets
   - Targets are: our blue team model, Claude Sonnet, GPT-5.4, Groq models
   - Reward: did the target leak secrets / comply / fail to detect?
   - Blue team model also trains on red team's best attacks (co-evolution)
@@ -15,7 +15,7 @@ The GAN-like loop:
   5. Repeat — both improve
 
 Targets:
-  - "local" — our own Qwen3-4B model (fast, free, trainable)
+  - "local" — our own Gemma 4 E4B model (fast, free, trainable)
   - "sonnet" — Claude Sonnet via Anthropic API
   - "gpt" — GPT-5.4 via OpenAI API
   - "groq" — fast inference via Groq API

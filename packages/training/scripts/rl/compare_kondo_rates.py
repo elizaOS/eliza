@@ -16,7 +16,7 @@ Then compares: reward trajectory, delight distribution, compute savings.
 
 Usage:
     python scripts/compare_kondo_rates.py --mock --ticks 30
-    python scripts/compare_kondo_rates.py --mock --model Qwen/Qwen3-4B --ticks 50
+    python scripts/compare_kondo_rates.py --mock --model google/gemma-4-E4B --ticks 50
 """
 
 from __future__ import annotations
@@ -278,7 +278,7 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Compare Kondo gate rates")
-    parser.add_argument("--model", default="Qwen/Qwen3-4B")
+    parser.add_argument("--model", default="google/gemma-4-E4B")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--agents-per-team", type=int, default=5)
     parser.add_argument("--ticks", type=int, default=30)

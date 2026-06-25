@@ -7,7 +7,7 @@ Usage:
     from training.ab_testing import ABTestRunner
 
     runner = ABTestRunner(
-        model_a="Qwen/Qwen3-30B",  # Baseline
+        model_a="google/gemma-4-31B",  # Baseline
         model_b="./trained_models/final_model",  # Trained
         scenarios=EVAL_SCENARIOS,
     )

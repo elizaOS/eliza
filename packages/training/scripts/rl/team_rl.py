@@ -175,7 +175,7 @@ class TeamConfig:
 class TeamRLConfig:
     """Configuration for the full team-based training run."""
 
-    model_name: str = "Qwen/Qwen3-4B"
+    model_name: str = "google/gemma-4-E4B"
     device: str = "cuda"
 
     teams: list[TeamConfig] = field(

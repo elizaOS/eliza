@@ -112,7 +112,7 @@ class FeedHybridEnv(BaseEnv):
     def config_init(cls) -> tuple[FeedHybridEnvConfig, list[APIServerConfig]]:
         """Create default config"""
         env_config = FeedHybridEnvConfig(
-            tokenizer_name="Qwen/Qwen2.5-3B-Instruct",
+            tokenizer_name="google/gemma-4-E2B",
             rollout_server_url="http://localhost:8000",
             total_steps=1000,
             batch_size=16,
@@ -124,7 +124,7 @@ class FeedHybridEnv(BaseEnv):
 
         server_configs = [
             APIServerConfig(
-                model_name="Qwen/Qwen2.5-3B-Instruct",
+                model_name="google/gemma-4-E2B",
                 base_url="http://localhost:9001/v1",
             )
         ]
