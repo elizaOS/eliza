@@ -61,6 +61,7 @@ export const OPTIMIZED_PROMPT_PREVIOUS2_LINK = "previous2";
 export const OPTIMIZED_PROMPT_RETAIN_VERSIONS = 5;
 
 const VERSION_FILE_PATTERN = /^v(\d+)\.json$/;
+const VERSION_CLAIM_PATTERN = /^\.v(\d+)\.json\.claim$/;
 
 export const OPTIMIZED_PROMPT_SERVICE = "optimized_prompt";
 
@@ -575,36 +576,49 @@ export class OptimizedPromptService extends Service {
 		// calls for the same task (e.g. basicServices + plugin-training, or a
 		// CLI/trigger train) read the same version list and would otherwise
 		// both target the same vN — clobbering one artifact and/or leaving a
-		// vN.json without a matching .mac. Claiming the filename with O_EXCL
-		// ('wx') serializes the race: the loser gets EEXIST, re-reads the
-		// directory, and bumps to the next free version.
-		const { nextVersion, finalPath } = await claimNextVersionPath(dir);
+		// vN.json without a matching .mac. Claiming a hidden lock filename with
+		// O_EXCL ('wx') serializes the race without exposing a final-looking
+		// artifact before the payload and MAC are both durable.
+		const { nextVersion, finalPath, claimPath } =
+			await claimNextVersionPath(dir);
 
-		// The slot is reserved (empty vN.json exists). Write the payload to a
-		// temp file and rename over the reserved name for write durability —
-		// the rename target equals the reserved path, so no other claimant can
-		// own it.
-		const tempPath = `${finalPath}.tmp-${uniqueTempSuffix()}`;
-		await writeFile(tempPath, payload, "utf-8");
-		await rename(tempPath, finalPath);
-
-		// SOC2 CC6.8: persist HMAC sidecar so getPrompt() can detect
-		// tampering. The MAC covers the on-disk payload bytes verbatim.
 		const macPath = macPathFor(finalPath);
+		const tempPath = `${finalPath}.tmp-${uniqueTempSuffix()}`;
 		const macTemp = `${macPath}.tmp-${uniqueTempSuffix()}`;
-		await writeFile(macTemp, `${macHex}\n`, "utf-8");
-		await rename(macTemp, macPath);
+		try {
+			await writeFile(tempPath, payload, "utf-8");
 
-		// Repoint symlinks: current → vN, previous → vN-1, previous2 → vN-2.
-		// Re-scan the directory: concurrent claims may have created versions
-		// between our claim and now, so the on-disk list is authoritative.
-		const allVersions = listVersionNumbers(dir);
-		await repointVersionLinks(dir, allVersions);
+			// SOC2 CC6.8: persist HMAC sidecar so getPrompt() can detect
+			// tampering. The MAC covers the on-disk payload bytes verbatim.
+			await writeFile(macTemp, `${macHex}\n`, "utf-8");
+			await rename(macTemp, macPath);
 
-		// Prune older artifacts beyond the retention window. Done after the
-		// symlinks are repointed so we never delete a file the symlinks
-		// still reference.
-		await pruneOldVersions(dir, allVersions);
+			// Publish the payload only after its matching MAC is already in place.
+			// A crash before this point leaves at most hidden/temp files; a crash
+			// after this point leaves a complete MAC-valid artifact.
+			await rename(tempPath, finalPath);
+
+			// Repoint symlinks: current → vN, previous → vN-1, previous2 → vN-2.
+			// Re-scan the directory and include only complete MAC-valid artifacts:
+			// concurrent claims and stale crashed writes must never become live.
+			const allVersions = await listCompleteVersionNumbers(dir);
+			await repointVersionLinks(dir, allVersions);
+
+			// Prune older artifacts beyond the retention window. Done after the
+			// symlinks are repointed so we never delete a file the symlinks
+			// still reference.
+			await pruneOldVersions(dir, allVersions);
+		} catch (err) {
+			await Promise.all([
+				removeFileBestEffort(tempPath),
+				removeFileBestEffort(macTemp),
+				removeFileBestEffort(finalPath),
+				removeFileBestEffort(macPath),
+			]);
+			throw err;
+		} finally {
+			await removeFileBestEffort(claimPath);
+		}
 
 		this.cache[task] = { artifact, loadedAt: Date.now() };
 		logger.info(
@@ -756,19 +770,49 @@ export class OptimizedPromptService extends Service {
 
 /**
  * Return the sorted ascending list of version numbers (`v1`, `v2`, ...)
- * present in `dir`. Files that don't match the `vN.json` pattern are ignored.
+ * that are complete and MAC-valid. Files that don't match the `vN.json`
+ * pattern, hidden claim files, temp files, missing MACs, and corrupt MACs are
+ * ignored.
  */
-function listVersionNumbers(dir: string): number[] {
+async function listCompleteVersionNumbers(dir: string): Promise<number[]> {
 	if (!existsSync(dir)) return [];
 	const versions: number[] = [];
 	for (const name of readdirSync(dir)) {
 		const match = VERSION_FILE_PATTERN.exec(name);
 		if (!match) continue;
 		const n = Number.parseInt(match[1] ?? "", 10);
-		if (Number.isFinite(n)) versions.push(n);
+		if (!Number.isFinite(n)) continue;
+		const path = join(dir, name);
+		try {
+			const payload = await readFile(path, "utf-8");
+			const macHex = (await readFile(macPathFor(path), "utf-8")).trim();
+			if (verifyArtifactMac(payload, macHex)) versions.push(n);
+		} catch {
+			continue;
+		}
 	}
 	versions.sort((a, b) => a - b);
 	return versions;
+}
+
+/**
+ * Return all version numbers that are already claimed, whether by a complete
+ * artifact (`vN.json`), an incomplete legacy artifact, or a hidden in-flight
+ * claim (`.vN.json.claim`). This is deliberately broader than
+ * {@link listCompleteVersionNumbers}; its job is only to choose a never-used
+ * slot for the next write.
+ */
+function listClaimedVersionNumbers(dir: string): number[] {
+	if (!existsSync(dir)) return [];
+	const versions = new Set<number>();
+	for (const name of readdirSync(dir)) {
+		const match =
+			VERSION_FILE_PATTERN.exec(name) ?? VERSION_CLAIM_PATTERN.exec(name);
+		if (!match) continue;
+		const n = Number.parseInt(match[1] ?? "", 10);
+		if (Number.isFinite(n)) versions.add(n);
+	}
+	return [...versions].sort((a, b) => a - b);
 }
 
 /**
@@ -782,28 +826,28 @@ function listVersionNumbers(dir: string): number[] {
 const VERSION_CLAIM_MAX_ATTEMPTS = 64;
 
 /**
- * Atomically reserve the next free `vN.json` slot in `dir`. Reads the current
- * version list, then tries to create `v(last+1).json` with `O_EXCL` ('wx') so
- * exactly one concurrent caller can own a given version. On `EEXIST` (another
- * setPrompt claimed it first) re-read the directory and bump. Returns the
- * claimed version number and its absolute path; the empty file now exists on
- * disk and the caller overwrites it via temp-then-rename.
+ * Atomically reserve the next free `vN.json` slot in `dir`. Reads every claimed
+ * version, then tries to create a hidden `.vN.json.claim` file with `O_EXCL`
+ * ('wx') so exactly one concurrent caller can own a given version. On `EEXIST`
+ * (another setPrompt claimed it first) re-read the directory and bump. Returns
+ * the claimed version number, final artifact path, and claim path.
  */
 async function claimNextVersionPath(
 	dir: string,
-): Promise<{ nextVersion: number; finalPath: string }> {
-	let candidate = (listVersionNumbers(dir).at(-1) ?? 0) + 1;
+): Promise<{ nextVersion: number; finalPath: string; claimPath: string }> {
+	let candidate = (listClaimedVersionNumbers(dir).at(-1) ?? 0) + 1;
 	for (let attempt = 0; attempt < VERSION_CLAIM_MAX_ATTEMPTS; attempt += 1) {
 		const finalPath = join(dir, `v${candidate}.json`);
+		const claimPath = join(dir, `.v${candidate}.json.claim`);
 		try {
-			const handle = await open(finalPath, "wx");
+			const handle = await open(claimPath, "wx");
 			await handle.close();
-			return { nextVersion: candidate, finalPath };
+			return { nextVersion: candidate, finalPath, claimPath };
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
 			// Lost the claim race: re-read the directory and target the next
 			// free version above whatever the winner(s) just wrote.
-			const highest = listVersionNumbers(dir).at(-1) ?? 0;
+			const highest = listClaimedVersionNumbers(dir).at(-1) ?? 0;
 			candidate = Math.max(candidate + 1, highest + 1);
 		}
 	}
@@ -863,6 +907,7 @@ async function pruneOldVersions(
 	for (const version of obsolete) {
 		const path = join(dir, `v${version}.json`);
 		await rm(path, { force: true });
+		await rm(macPathFor(path), { force: true });
 	}
 }
 
@@ -884,6 +929,14 @@ async function removeIfExists(path: string): Promise<void> {
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
 		throw err;
+	}
+}
+
+async function removeFileBestEffort(path: string): Promise<void> {
+	try {
+		await rm(path, { force: true });
+	} catch {
+		// Cleanup must not mask the original write failure.
 	}
 }
 

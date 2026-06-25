@@ -469,6 +469,54 @@ describe("OptimizedPromptService — concurrent setPrompt version claims (#8795)
 		expect(service.getPrompt("action_planner")).not.toBeNull();
 	}
 
+	it("links only complete MAC-valid versions when stale incomplete files exist", async () => {
+		const dir = join(storeRoot, "action_planner");
+		mkdirSync(dir, { recursive: true });
+
+		// Simulate a crashed legacy writer: a final-looking artifact exists but
+		// its MAC never landed. It must reserve the old version number without
+		// becoming current/previous history.
+		writeFileSync(
+			join(dir, "v1.json"),
+			`${JSON.stringify(makeArtifact(1), null, 2)}\n`,
+			"utf-8",
+		);
+		writeArtifactWithMac(
+			join(dir, "v2.json"),
+			`${JSON.stringify(makeArtifact(2), null, 2)}\n`,
+		);
+
+		const path = await service.setPrompt("action_planner", makeArtifact(3));
+		expect(path).toBe(join(dir, "v3.json"));
+		expect(readlinkSync(join(dir, OPTIMIZED_PROMPT_CURRENT_LINK))).toBe(
+			"v3.json",
+		);
+		expect(readlinkSync(join(dir, OPTIMIZED_PROMPT_PREVIOUS_LINK))).toBe(
+			"v2.json",
+		);
+		expect(existsSync(join(dir, OPTIMIZED_PROMPT_PREVIOUS2_LINK))).toBe(false);
+
+		await service.refresh();
+		expect(service.getPrompt("action_planner")?.prompt).toBe(
+			"optimized prompt v3",
+		);
+	});
+
+	it("does not leave a visible artifact or claim file when publishing fails after slot claim", async () => {
+		const dir = join(storeRoot, "action_planner");
+		mkdirSync(join(dir, "v1.json.mac"), { recursive: true });
+
+		await expect(
+			service.setPrompt("action_planner", makeArtifact(1)),
+		).rejects.toThrow();
+
+		const entries = await readdir(dir);
+		expect(entries).not.toContain("v1.json");
+		expect(entries.some((name) => name.includes(".tmp-"))).toBe(false);
+		expect(entries.some((name) => name.endsWith(".claim"))).toBe(false);
+		expect(existsSync(join(dir, OPTIMIZED_PROMPT_CURRENT_LINK))).toBe(false);
+	});
+
 	// Run several times for stability — a claim race is nondeterministic, so a
 	// single green run isn't proof. beforeEach gives each `it` a fresh dir.
 	for (let run = 1; run <= 8; run += 1) {

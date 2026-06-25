@@ -39,17 +39,6 @@ bun packages/benchmarks/voice/test-speaker-encoder.mjs
 # Kokoro agent voice + ASR roundtrip
 bun packages/benchmarks/voice/verify-kokoro-agent-voice.mjs
 
-# Real-WAV speaker separation via WeSpeaker encoder
-bun packages/benchmarks/voice/verify-real-voice-separation.mjs
-
-# Real diarization on a live OmniVoice-generated stream
-bun packages/benchmarks/voice/verify-real-diarization.mjs
-
-# Enrollment attribution pipeline
-bun packages/benchmarks/voice/verify-enrollment-attribution.mjs
-
-# GGML native library availability check
-bun packages/benchmarks/voice/verify-native-ggml.mjs
 ```
 
 ## Smoke test (no TTS/ASR models)
@@ -81,16 +70,14 @@ count and exits 1 on any failure.
 | `test-diarizer.mjs` | Diarizer GGUF smoke test; falls back to pure-JS classifyFramesToSegments |
 | `test-speaker-encoder.mjs` | WeSpeaker encoder smoke test; falls back to pure-JS cosine pipeline |
 | `verify-kokoro-agent-voice.mjs` | Kokoro ONNX TTS + ASR roundtrip |
-| `verify-real-voice-separation.mjs` | Real encoder on OmniVoice WAVs — same-voice vs cross-voice cosine |
-| `verify-real-diarization.mjs` | Real pyannote diarization on a live OmniVoice-generated stream |
-| `verify-enrollment-attribution.mjs` | Enrollment + nearest-centroid re-ID pipeline |
-| `verify-native-ggml.mjs` | Checks that libvoice_classifier.dylib is loadable |
 | `reports/` | JSON + Markdown reports written by scripts at runtime (not committed) |
 
 ## Notes
 
-- Full E2E requires the eliza-1-2b.bundle at `~/.eliza/local-inference/models/`
-  and the compiled `libvoice_classifier.dylib` + `omnivoice-tts` binary.
+- The retired standalone `libvoice_classifier` scripts were removed after the
+  direct GGML encoder/diarizer exports were retired. Use `local-acoustic-eval.mjs`
+  for local real-audio diarizer/encoder checks, or `voice-real-ci-matrix.mjs`
+  for the provisioned fused-library CI lane.
 - Reports write to `packages/benchmarks/voice/reports/` at runtime (not in git).
 - Not registered in `registry/commands.py` — no orchestrator `--benchmarks` ID.
 - The pure-JS fallback paths in `test-diarizer.mjs` and `test-speaker-encoder.mjs`
