@@ -182,7 +182,24 @@ describe("browser workspace HTTP routes", () => {
 
     expect(res.statusCode).toBe(503);
     expect(res.body).toEqual({
+      code: "desktop_only",
       error: expect.stringContaining("browser workspace desktop bridge"),
+    });
+  });
+
+  it("returns structured browser workspace error codes from command failures", async () => {
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/browser-workspace/command",
+      body: { subaction: "navigate", url: "about:blank" },
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      code: "target_missing",
+      error: expect.stringContaining("requires a current tab"),
     });
   });
 

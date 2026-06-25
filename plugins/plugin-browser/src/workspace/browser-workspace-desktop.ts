@@ -1,3 +1,4 @@
+import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
   assertBrowserWorkspaceUserScriptAllowed,
@@ -74,7 +75,11 @@ export async function requestBrowserWorkspace<T>(
 ): Promise<T> {
   const config = resolveBrowserWorkspaceBridgeConfig(env);
   if (!config) {
-    throw new Error(getBrowserWorkspaceUnavailableMessage());
+    throw createBrowserWorkspaceError(
+      "desktop_only",
+      "desktop_bridge",
+      getBrowserWorkspaceUnavailableMessage(),
+    );
   }
 
   const headers = new Headers(init?.headers ?? {});
@@ -94,8 +99,12 @@ export async function requestBrowserWorkspace<T>(
 
   if (!response.ok) {
     const details = await readErrorBody(response);
-    throw new Error(
-      `Browser workspace request failed (${response.status})${details ? `: ${details}` : ""}`,
+    const message = `Browser workspace request failed (${response.status})${details ? `: ${details}` : ""}`;
+    throw createBrowserWorkspaceError(
+      response.status === 404 ? "tab_not_found" : "command_failed",
+      path,
+      message,
+      details || undefined,
     );
   }
 
@@ -107,7 +116,9 @@ export async function evaluateBrowserWorkspaceTab(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<unknown> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
-    throw new Error(
+    throw createBrowserWorkspaceError(
+      "desktop_only",
+      "eval",
       "Eliza browser workspace eval is only available in the desktop app.",
     );
   }
@@ -135,7 +146,9 @@ export async function snapshotBrowserWorkspaceTab(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ data: string }> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
-    throw new Error(
+    throw createBrowserWorkspaceError(
+      "desktop_only",
+      "snapshot",
       "Eliza browser workspace snapshot is only available in the desktop app.",
     );
   }

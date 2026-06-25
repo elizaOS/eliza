@@ -1,19 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
-  assertBrowserWorkspaceConnectorSecretsNotExported,
-  assertBrowserWorkspaceUrl,
-  createBrowserWorkspaceCommandTargetError,
-  createBrowserWorkspaceDesktopOnlyMessage,
-  createBrowserWorkspaceJsdomScriptExecutionError,
-  createBrowserWorkspaceNotFoundError,
-} from "../browser-workspace-helpers.ts";
-import {
   type BrowserWorkspaceErrorCode,
   classifyBrowserWorkspaceErrorCode,
   createBrowserWorkspaceError,
   isBrowserWorkspaceError,
   tagBrowserWorkspaceError,
 } from "../browser-workspace-errors.ts";
+import {
+  assertBrowserWorkspaceConnectorSecretsNotExported,
+  assertBrowserWorkspaceUrl,
+  createBrowserWorkspaceCommandTargetError,
+  createBrowserWorkspaceDesktopOnlyMessage,
+  createBrowserWorkspaceJsdomScriptExecutionError,
+  createBrowserWorkspaceNotFoundError,
+  resolveBrowserWorkspaceCommandElementRefs,
+} from "../browser-workspace-helpers.ts";
 
 /** Capture the Error thrown by a thunk. */
 function thrown(fn: () => unknown): unknown {
@@ -23,6 +24,19 @@ function thrown(fn: () => unknown): unknown {
     return e;
   }
   throw new Error("expected the thunk to throw");
+}
+
+function expectBrowserWorkspaceError(
+  error: unknown,
+  code: BrowserWorkspaceErrorCode,
+  operation: string,
+): void {
+  expect(isBrowserWorkspaceError(error)).toBe(true);
+  if (!isBrowserWorkspaceError(error)) {
+    throw new Error("expected BrowserWorkspaceError");
+  }
+  expect(error.browserWorkspaceErrorCode).toBe(code);
+  expect(error.operation).toBe(operation);
 }
 
 describe("classifyBrowserWorkspaceErrorCode", () => {
@@ -72,7 +86,9 @@ describe("classifyBrowserWorkspaceErrorCode", () => {
 
 describe("tagBrowserWorkspaceError", () => {
   it("annotates an existing Error in place, preserving message + identity", () => {
-    const original = createBrowserWorkspaceNotFoundError("tab-9");
+    const original = new Error(
+      "Browser workspace request failed (404): Tab tab-9 was not found.",
+    );
     const tagged = tagBrowserWorkspaceError(original, "navigate");
     expect(tagged).toBe(original); // same object
     expect(tagged.message).toBe(original.message); // message preserved
@@ -109,5 +125,51 @@ describe("tagBrowserWorkspaceError", () => {
     expect(e.browserWorkspaceErrorCode).toBe("timeout");
     expect(e.operation).toBe("wait");
     expect(e.details).toBe("underlying");
+  });
+});
+
+describe("helper-created BrowserWorkspaceError values", () => {
+  it("creates typed errors at helper boundaries", () => {
+    expectBrowserWorkspaceError(
+      thrown(() => assertBrowserWorkspaceUrl("ftp://x.test")),
+      "invalid_url",
+      "url_validation",
+    );
+    expectBrowserWorkspaceError(
+      createBrowserWorkspaceNotFoundError("tab-1"),
+      "tab_not_found",
+      "tab_lookup",
+    );
+    expectBrowserWorkspaceError(
+      createBrowserWorkspaceCommandTargetError("navigate"),
+      "target_missing",
+      "navigate",
+    );
+    expectBrowserWorkspaceError(
+      createBrowserWorkspaceJsdomScriptExecutionError("eval"),
+      "script_forbidden",
+      "eval",
+    );
+    expectBrowserWorkspaceError(
+      thrown(() =>
+        assertBrowserWorkspaceConnectorSecretsNotExported(
+          "persist:connector-gmail",
+          "export-cookies",
+        ),
+      ),
+      "connector_secret_export_forbidden",
+      "export-cookies",
+    );
+    expectBrowserWorkspaceError(
+      thrown(() =>
+        resolveBrowserWorkspaceCommandElementRefs(
+          { selector: "@e7", subaction: "click" },
+          "web",
+          "tab-1",
+        ),
+      ),
+      "unknown_element_ref",
+      "element_ref",
+    );
   });
 });
