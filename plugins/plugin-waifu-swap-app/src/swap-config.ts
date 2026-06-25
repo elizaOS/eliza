@@ -82,10 +82,15 @@ function readInjectedGlobal(): InjectedConfig | null {
   return raw as InjectedConfig;
 }
 
+function readImportMetaEnv(): Record<string, unknown> | null {
+  const env = Reflect.get(import.meta, "env");
+  if (!env || typeof env !== "object") return null;
+  return env as Record<string, unknown>;
+}
+
 function readEnv(key: string): string | null {
   // import.meta.env is baked at bundle build; guard for non-Vite hosts.
-  const env = (import.meta as unknown as { env?: Record<string, unknown> }).env;
-  const value = env?.[key];
+  const value = readImportMetaEnv()?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
