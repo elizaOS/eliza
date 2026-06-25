@@ -175,12 +175,7 @@
     {
       "includes": [
         "packages/**/src/**/*.ts",
-        "!packages/benchmarks/**",
-        "!packages/cloud-shared/**",
-        "!packages/examples/**",
-        "!packages/os/**",
-        "!packages/robot/**",
-        "!packages/ui/**"
+        "!packages/cloud-shared/**"
       ],
       "linter": {
         "rules": {
