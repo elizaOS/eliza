@@ -124,6 +124,31 @@ describe("WidgetHost", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("shows the fallback when resolved widgets all self-hide (render nothing)", () => {
+    // A widget that resolves but renders null (no data) — the host container is
+    // present but paints nothing, so the fallback must still show.
+    resolveWidgetsForSlotMock.mockReturnValue([
+      {
+        declaration: {
+          id: "empty-widget",
+          pluginId: "spec-plugin",
+          slot: "chat-sidebar",
+          label: "Empty",
+        },
+        Component: () => null,
+      },
+    ]);
+    render(
+      <WidgetHost
+        slot="chat-sidebar"
+        fallback={<div data-testid="hw-fallback">defaults</div>}
+      />,
+    );
+    const host = screen.getByTestId("widget-host-chat-sidebar");
+    expect(host.childElementCount).toBe(0); // widget painted nothing
+    expect(screen.getByTestId("hw-fallback")).toBeTruthy(); // fallback shows
+  });
+
   it("renders uiSpec widgets and dispatches their actions", () => {
     const seen: unknown[] = [];
     window.addEventListener(WIDGET_UI_ACTION_EVENT, (event) => {

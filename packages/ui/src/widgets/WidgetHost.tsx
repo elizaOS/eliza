@@ -16,8 +16,10 @@ import {
   Component,
   type ErrorInfo,
   type ReactNode,
+  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
@@ -327,8 +329,22 @@ export function WidgetHost({
     [displayed, widgetPropsBase, pluginById],
   );
 
-  // Nothing to show: render the caller's fallback (the home's default
-  // clock/date/calendar widgets) so a dashboard is never blank, or hide.
+  // Whether the resolved widgets actually rendered any visible DOM. `children`
+  // counts RESOLVED widget elements, but each data widget self-hides (renders
+  // `null`) when it has nothing to show — so the home can resolve the
+  // always-visible cards (notifications, needs-response, …) yet paint nothing.
+  // We measure the real rendered child count after layout and, when a `fallback`
+  // is supplied (the home's default clock/calendar), show it whenever the
+  // widgets painted nothing. Only meaningful when a fallback exists.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [renderedEmpty, setRenderedEmpty] = useState(false);
+  useLayoutEffect(() => {
+    if (fallback == null) return;
+    const el = containerRef.current;
+    setRenderedEmpty(el == null || el.childElementCount === 0);
+  });
+
+  // No widget even resolved → render the fallback directly (or hide).
   if (children.length === 0 && hideWhenEmpty) {
     return fallback ?? null;
   }
@@ -338,18 +354,27 @@ export function WidgetHost({
       ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
       : "flex flex-col gap-3";
 
+  const showFallback = fallback != null && renderedEmpty;
+
   return (
-    <div
-      // `contain: layout` (CSS containment): a widget reorder/resize repaints
-      // within this host and never reflows the surrounding page, so a ranking
-      // change doesn't jump the whole home (#9304).
-      className={`${layoutClass} ${className ?? ""}`}
-      style={{ contain: "layout" }}
-      data-testid={`widget-host-${slot}`}
-      data-layout={layout}
-      data-slot={slot}
-    >
-      {children}
-    </div>
+    <>
+      <div
+        ref={containerRef}
+        // `contain: layout` (CSS containment): a widget reorder/resize repaints
+        // within this host and never reflows the surrounding page, so a ranking
+        // change doesn't jump the whole home (#9304).
+        className={`${layoutClass} ${className ?? ""}`}
+        style={{ contain: "layout" }}
+        data-testid={`widget-host-${slot}`}
+        data-layout={layout}
+        data-slot={slot}
+      >
+        {children}
+      </div>
+      {/* The widgets resolved but all self-hid (no data) → show the default
+          widgets so the dashboard is never blank. The empty container above has
+          zero height, so visually only the fallback shows. */}
+      {showFallback ? fallback : null}
+    </>
   );
 }
