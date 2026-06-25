@@ -4232,6 +4232,7 @@ export async function startEliza(
       `[eliza] Roles capability pre-registration failed: ${formatError(err)}`,
     );
   }
+  bootTimer.lap("svc:roles-register");
 
   const warmAgentSkillsService = async (): Promise<void> => {
     // Let runtime startup complete first; this warm-up runs asynchronously
