@@ -46,6 +46,7 @@ except ModuleNotFoundError:  # pragma: no cover - env-only path
 try:
     from .eliza1_manifest import (
         ELIZA_1_HF_REPO,
+        ELIZA_1_TIERS,
         VOICE_BACKENDS_BY_TIER,
         VOICE_QUANT_BY_TIER,
         VOICE_QUANT_LADDER_BY_TIER,
@@ -54,6 +55,7 @@ try:
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
         ELIZA_1_HF_REPO,
+        ELIZA_1_TIERS,
         VOICE_BACKENDS_BY_TIER,
         VOICE_QUANT_BY_TIER,
         VOICE_QUANT_LADDER_BY_TIER,
@@ -64,11 +66,11 @@ VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
 VAD_NATIVE_REPO: Final[str] = ELIZA_1_HF_REPO
 VAD_ONNX_REPO: Final[str] = "onnx-community/silero-vad"
 RETIRED_QWEN_ASR_REPO_BY_TIER: Final[dict[str, str]] = {
-    "0_8b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "2b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "4b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "9b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
     "27b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+    "27b-256k": "ggml-org/Qwen3-ASR-1.7B-GGUF",
 }
 GEMMA_ASR_REQUIRED_MESSAGE: Final[str] = (
     "Gemma ASR artifacts are not configured for Eliza-1 staging. "
@@ -80,15 +82,15 @@ GEMMA_ASR_REQUIRED_MESSAGE: Final[str] = (
 # is the default ship target; `latishab/turnsense` is the Apache-2.0 fallback
 # routed via `--turn-license=apache`. Per-tier revision matches the runtime
 # resolver in `plugins/plugin-local-inference/src/services/voice/eot-classifier.ts`
-# (`turnDetectorRevisionForTier`): EN-only SmolLM2 distill on `0_8b` / `2b`,
+# (`turnDetectorRevisionForTier`): EN-only SmolLM2 distill on `2b`,
 # multilingual pruned Qwen2.5 elsewhere.
 TURN_DETECTOR_LIVEKIT_REPO: Final[str] = "livekit/turn-detector"
 TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER: Final[dict[str, str]] = {
-    "0_8b": "v1.2.2-en",
     "2b": "v1.2.2-en",
     "4b": "v0.4.1-intl",
     "9b": "v0.4.1-intl",
     "27b": "v0.4.1-intl",
+    "27b-256k": "v0.4.1-intl",
 }
 TURN_DETECTOR_TURNSENSE_REPO: Final[str] = "latishab/turnsense"
 TURN_DETECTOR_LIVEKIT_ONNX_REMOTE: Final[str] = "onnx/model_q8.onnx"
@@ -579,7 +581,7 @@ def stage_turn_detector(
     fold into manifest/lineage/release-evidence.
 
     ``license="livekit"`` ships ``livekit/turn-detector`` at the tier-matched
-    revision (``v1.2.2-en`` for 0_8b/2b, ``v0.4.1-intl`` elsewhere).
+    revision (``v1.2.2-en`` for 2b, ``v0.4.1-intl`` elsewhere).
     ``license="apache"`` ships the Apache-2.0 ``latishab/turnsense`` fallback
     (English-only binary classifier; same bundle path so the runtime resolver
     is license-agnostic).
@@ -810,7 +812,7 @@ def write_license_notes(
     if turn_license == "livekit":
         licenses["LICENSE.turn"] = (
             "Turn-detector ONNX staged from livekit/turn-detector (HF revision "
-            "v1.2.2-en for 0_8b/2b tiers, v0.4.1-intl elsewhere).\n"
+            "v1.2.2-en for the 2b tier, v0.4.1-intl elsewhere).\n"
             "Declared upstream license: LiveKit Model License "
             "(https://huggingface.co/livekit/turn-detector/blob/main/LICENSE).\n"
             "Use --turn-license=apache to ship latishab/turnsense (Apache-2.0).\n"
@@ -1209,7 +1211,7 @@ def upload_assets(args: argparse.Namespace) -> None:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tier", required=True, choices=tuple(VOICE_QUANT_BY_TIER))
+    ap.add_argument("--tier", required=True, choices=ELIZA_1_TIERS)
     ap.add_argument("--bundle-dir", required=True, type=Path)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument(

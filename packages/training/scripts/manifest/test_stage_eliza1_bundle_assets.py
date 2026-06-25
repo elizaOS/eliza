@@ -15,6 +15,7 @@ if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.manifest import stage_eliza1_bundle_assets as stage  # noqa: E402
+from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
 
 
 class FakeHfApi:
@@ -38,6 +39,17 @@ class FakeHfApi:
         if repo_id == stage.ELIZA_1_HF_REPO:
             return ["voice/vad/silero-vad-v5.gguf"]
         return []
+
+
+def test_retired_qwen_and_turn_detector_maps_match_active_tiers() -> None:
+    active = set(ELIZA_1_TIERS)
+    assert set(stage.RETIRED_QWEN_ASR_REPO_BY_TIER) == active
+    assert set(stage.TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER) == active
+    assert "0_8b" not in stage.RETIRED_QWEN_ASR_REPO_BY_TIER
+    assert "0_8b" not in stage.TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER
+    assert stage.TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER["2b"] == "v1.2.2-en"
+    for tier in active - {"2b"}:
+        assert stage.TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER[tier] == "v0.4.1-intl"
 
 
 def _args(tmp_path: Path, tier: str) -> argparse.Namespace:

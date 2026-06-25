@@ -33,14 +33,14 @@ from scripts.turn_detector import finetune_turn_detector as fld
 @pytest.mark.parametrize(
     ("tier", "expected"),
     [
-        ("0_8b", "v1.2.2-en"),
         ("2b", "v1.2.2-en"),
-        ("eliza-1-0_8b", "v1.2.2-en"),
         ("eliza-1-2b", "v1.2.2-en"),
         ("4b", "v0.4.1-intl"),
         ("9b", "v0.4.1-intl"),
         ("27b", "v0.4.1-intl"),
+        ("27b-256k", "v0.4.1-intl"),
         ("eliza-1-4b", "v0.4.1-intl"),
+        ("eliza-1-27b-256k", "v0.4.1-intl"),
     ],
 )
 def test_default_revision_for_tier(tier: str, expected: str) -> None:
