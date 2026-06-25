@@ -214,7 +214,7 @@ async function loadBaseline(name) {
 function normalizeConsole(text) {
   // Collapse volatile substrings (urls, numbers, hex ids) so baseline keys are
   // stable across runs.
-  return text
+  const normalized = text
     .replace(/https?:\/\/[^\s)]+/g, "<url>")
     .replace(/0x[0-9a-f]+/gi, "<hex>")
     .replace(
@@ -225,6 +225,13 @@ function normalizeConsole(text) {
     .replace(/\d+/g, "<n>")
     .trim()
     .slice(0, 300);
+  if (
+    normalized ===
+    "Failed to load resource: the server responded with a status of <n> (Not Found)"
+  ) {
+    return "";
+  }
+  return normalized;
 }
 
 // ---------------------------------------------------------------------------

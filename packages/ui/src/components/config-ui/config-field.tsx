@@ -106,7 +106,7 @@ export function ConfigField({
           >
             {renderProps.hint.help ?? renderProps.schema.description}
             {renderProps.schema.default != null && (
-              <span className="opacity-70">
+              <span className="opacity-90">
                 {" "}
                 {t("common.default", { defaultValue: "Default" })}{" "}
                 {String(renderProps.schema.default)})
