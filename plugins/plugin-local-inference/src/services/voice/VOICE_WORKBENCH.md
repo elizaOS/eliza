@@ -102,7 +102,7 @@ The workbench is the convergence point for these previously-disjoint harnesses:
 | `e2e-harness.ts:wordErrorRate` + `voice-selftest-harness.ts:wordErrorRate` | **Done** — one `@elizaos/shared/voice-wer`. |
 | Pure scoring lib (`e2e-harness.ts`) | **Promoted** to the single metric module (EOT/diarization/respond/entity scorers added). |
 | `packages/app-core/scripts/voice-duet.mjs` (`voice:duet`), `voice-e2e-hardware.ts`, `voice-vad-smoke.ts`, `voice-attribution-smoke.ts`, `lib/duet-bridge.mjs` | Feed measurements into the shared scorers + report (planned absorb). |
-| `packages/benchmarks/voice/three-voice-scenario.mjs`, `three-voice-e2e-real.mjs` | Corpus-generation precedent the `VoiceScenario` corpus generator extends (planned). |
+| `packages/benchmarks/voice/three-voice-scenario.mjs` | Corpus-generation precedent the `VoiceScenario` corpus generator extends (planned). |
 | `packages/benchmarks/voicebench/` (TS latency p95/p99) | The report layer mirrors its p95/p99 shape; remains a research bench linked from the workbench. |
 | Per-spec inline `tinyWav()` fixtures (`packages/app/test/ui-smoke/voice-*.spec.ts`) | Replaced by the versioned corpus (planned). |
 
