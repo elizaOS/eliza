@@ -105,18 +105,18 @@ function statusFromBrowserWorkspaceError(
   error: unknown,
   message: string,
 ): number {
-  if (isBrowserWorkspaceError(error)) {
-    return statusFromBrowserWorkspaceErrorCode(
-      error.browserWorkspaceErrorCode,
-      message,
-    );
-  }
   if (
     error instanceof Error &&
     "status" in error &&
     typeof error.status === "number"
   ) {
     return error.status;
+  }
+  if (isBrowserWorkspaceError(error)) {
+    return statusFromBrowserWorkspaceErrorCode(
+      error.browserWorkspaceErrorCode,
+      message,
+    );
   }
   if (message.includes(getBrowserWorkspaceUnavailableMessage())) {
     return 503;

@@ -1,7 +1,7 @@
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,
   executeBrowserWorkspaceCommand,
@@ -51,8 +51,19 @@ function buildCtx(args: {
 }
 
 describe("browser workspace HTTP routes", () => {
+  const originalWorkspaceUrl = process.env.ELIZA_BROWSER_WORKSPACE_URL;
+
   beforeEach(async () => {
     await __resetBrowserWorkspaceStateForTests();
+  });
+
+  afterEach(() => {
+    if (originalWorkspaceUrl === undefined) {
+      delete process.env.ELIZA_BROWSER_WORKSPACE_URL;
+    } else {
+      process.env.ELIZA_BROWSER_WORKSPACE_URL = originalWorkspaceUrl;
+    }
+    vi.unstubAllGlobals();
   });
 
   it("returns the workspace snapshot", async () => {
@@ -184,6 +195,27 @@ describe("browser workspace HTTP routes", () => {
     expect(res.body).toEqual({
       code: "desktop_only",
       error: expect.stringContaining("browser workspace desktop bridge"),
+    });
+  });
+
+  it("preserves desktop bridge HTTP statuses on structured errors", async () => {
+    process.env.ELIZA_BROWSER_WORKSPACE_URL = "http://workspace-bridge.test";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("locked", { status: 409 })),
+    );
+    const { ctx, res } = buildCtx({
+      method: "GET",
+      pathname: "/api/browser-workspace/events",
+      url: new URL("http://local/api/browser-workspace/events?after=1"),
+    });
+
+    await expect(handleBrowserWorkspaceRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      code: "command_failed",
+      error: expect.stringContaining("failed (409): locked"),
     });
   });
 

@@ -105,6 +105,7 @@ export async function requestBrowserWorkspace<T>(
       path,
       message,
       details || undefined,
+      response.status,
     );
   }
 

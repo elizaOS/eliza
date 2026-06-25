@@ -43,6 +43,8 @@ export interface BrowserWorkspaceError extends Error {
   readonly operation: string;
   /** Underlying message, when this wraps a lower-level failure. */
   readonly details?: string;
+  /** HTTP status from an upstream workspace bridge, when available. */
+  readonly status?: number;
 }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
@@ -67,12 +69,14 @@ export function createBrowserWorkspaceError(
   operation: string,
   message: string,
   details?: string,
+  status?: number,
 ): BrowserWorkspaceError {
   const error = new Error(message) as Mutable<BrowserWorkspaceError>;
   error.name = "BrowserWorkspaceError";
   error.browserWorkspaceErrorCode = code;
   error.operation = operation;
   if (details !== undefined) error.details = details;
+  if (status !== undefined) error.status = status;
   return error;
 }
 
