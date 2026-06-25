@@ -1,11 +1,7 @@
 import type http from "node:http";
-import { createMockRuntime } from "@elizaos/core/testing";
-import type {
-  PendingUserAction,
-  Task,
-  UUID,
-} from "@elizaos/core";
+import type { PendingUserAction, Task, UUID } from "@elizaos/core";
 import { ApprovalService, ServiceType } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import { APPROVAL_SERVICE } from "../services/approval/service.ts";
 import type {
