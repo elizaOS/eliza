@@ -18,6 +18,8 @@
         "index.browser.ts",
         "build.ts",
         "build.mjs",
+        "build.config.ts",
+        "scripts/**",
         "tsup.config.ts",
         "tsup.config.*.ts",
         "tsdown.config.ts",
@@ -44,7 +46,7 @@
     },
     "@elizaos/example-clone-ur-crush#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "outputs": [".next/**", "!.next/cache/**"]
     },
     "@elizaos/ios-native-deps#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
