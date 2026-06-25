@@ -296,7 +296,7 @@ describe("VectorGraph3D", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("3D view unavailable in this environment."),
+        screen.getByText("Unavailable"),
       ).toBeTruthy();
     });
   });

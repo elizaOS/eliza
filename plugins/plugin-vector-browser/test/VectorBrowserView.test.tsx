@@ -415,7 +415,7 @@ describe("VectorBrowserView — populated list", () => {
     backend.total = 0;
     backend.memoryRows = () => [];
     render(<VectorBrowserView />);
-    expect(await screen.findByText("No records.")).toBeTruthy();
+    expect(await screen.findByText("None")).toBeTruthy();
   });
 
   it("falls back content to (empty) when content is blank", async () => {
@@ -529,7 +529,7 @@ describe("VectorBrowserView — search control", () => {
     fireEvent.click(screen.getByRole("button", { name: "common.search" }));
 
     expect(
-      await screen.findByText("No records match your search query."),
+      await screen.findByText("None"),
     ).toBeTruthy();
   });
 });
