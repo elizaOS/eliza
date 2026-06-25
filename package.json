@@ -447,6 +447,7 @@
     "esbuild",
     "keccak",
     "node-llama-cpp",
+    "node-gyp-build",
     "nx",
     "protobufjs",
     "secp256k1",
