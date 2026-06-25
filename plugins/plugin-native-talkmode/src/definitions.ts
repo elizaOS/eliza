@@ -139,11 +139,11 @@ export interface TalkModeConfig {
   sessionKey?: string;
   /** TTS configuration */
   tts?: TTSConfig;
-  /** STT configuration (desktop whisper/web) */
+  /** STT configuration (platform recognizer/Web Speech) */
   stt?: {
     /** STT engine preference */
-    engine?: "whisper" | "web";
-    /** Whisper model size */
+    engine?: "native" | "web";
+    /** Legacy compatibility field; ignored by current recognizers */
     modelSize?: "tiny" | "base" | "small" | "medium" | "large";
     /** Language code (e.g., "en", "es") */
     language?: string;
