@@ -14,11 +14,15 @@ standard/        MMLU / HumanEval / GSM8K / MT-Bench adapters (dispatched by run
 viewer/          Static results UI
 tests/           Suite-level tests (registry, scoring, normalization, acceptance gate)
 *-adapter/       Agent harness bridges: eliza / hermes / openclaw / smithers
-*_matrix/ app_eval/  Code-agent comparison adapters (driven by orchestrator/code_agent_matrix.py)
-loadperf/ memperf/ mobile-resource/  Direct resource/load KPI harnesses with their own CI lanes, not orchestrator adapters
+agentbench_matrix/  Code-agent comparison adapter (driven by orchestrator/code_agent_matrix.py); the duplicate *_matrix/ + app_eval/ import-shim variants were removed in #9475
+loadperf/ memperf/ mobile-resource/  Resource/device KPI harnesses (infra/CPU/memory/battery), NOT agent benchmarks — own CI lanes, not orchestrator adapters
 <benchmark>/     One self-contained benchmark per directory
 benchmark_results/   Generated run output — GITIGNORED, never commit
 ```
+
+`orchestrator/ci_coverage.py` classifies every registered benchmark's CI lane
+(scheduled / smoke / manual), and `tests/test_ci_coverage.py` keeps that mapping
+1:1 with the registry.
 
 ## Run a benchmark
 

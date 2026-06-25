@@ -42,7 +42,7 @@ python3 packages/benchmarks/app-eval/evaluate.py \
 bun run packages/benchmarks/app-eval/run-benchmarks.ts --dry-run
 
 # Code-agent coding module mock mode (no agent, no API keys)
-PYTHONPATH=packages python3 -m benchmarks.app_eval.code_agent_coding \
+python3 packages/benchmarks/app-eval/code_agent_coding.py \
     --task-agent elizaos --mock --max-tasks 1 --json
 ```
 
@@ -78,10 +78,16 @@ bun test packages/benchmarks/app-eval/evaluate.real.test.ts
 ## Notes
 
 - Results write to `results/<ISO-timestamp>/` with a `latest` symlink. Gitignored.
-- Scores are 0-10 per task; deterministic — no LLM evaluation calls.
+- Scores are 0-10 per task; deterministic by default (keyword/structure/depth
+  — reproducible, no API key). An OPT-IN LLM judge (#9475) augments it: set
+  `APP_EVAL_LLM_JUDGE=1` plus `APP_EVAL_JUDGE_API_KEY`/`APP_EVAL_JUDGE_MODEL`
+  (or `OPENAI_*`) to blend an LLM judge's 0-10 rating into the score
+  (`APP_EVAL_LLM_JUDGE_WEIGHT`, default 0.5). See `llm_judge.py` / `test_llm_judge.py`.
 - `adapter.py` exposes `APP_EVAL_ADAPTER` for integration with the benchmarks
   orchestrator's adapter discovery path; set `ELIZA_APP_ROOT` before use.
-- `code_agent_coding.py` is the matrix-comparison path for coding tasks; it
-  lives under `benchmarks/app_eval/` (underscore) as a Python package and
-  imports `benchmarks.nl2repo.adapter_matrix` for token metrics.
+- `code_agent_coding.py` is the matrix-comparison path for coding tasks. Run it
+  by file path (`python3 packages/benchmarks/app-eval/code_agent_coding.py …`)
+  with `packages/` on `PYTHONPATH`; it imports `benchmarks.nl2repo.adapter_matrix`
+  for token metrics. (The `benchmarks/app_eval/` underscore import shim was
+  removed in #9475.)
 - Full task format and scoring breakdown: [README.md](README.md).

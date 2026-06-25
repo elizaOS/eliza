@@ -32,7 +32,7 @@ infrastructure that is not present:
 **No — the asymmetry runs the other way.** At the registration level eliza,
 hermes, and openclaw are symmetric (48 each, no eliza-only and no
 hermes-XOR-openclaw benchmarks). At the *factory* level eliza is the **superset**:
-it has per-benchmark adapters for the full suite (osworld, evm, hyperliquid,
+it has per-benchmark adapters for the full suite (osworld, hyperliquid,
 social_alpha, vending, visualwebbench, mmau, …), whereas hermes/openclaw only
 implement the ~13 tool-calling / agentic benchmarks:
 
@@ -55,15 +55,21 @@ So the real parity gaps are:
 
 ## Open items found
 
-- **Duplicate hyphen/underscore directories.** Several benchmarks exist as both
+- **Duplicate hyphen/underscore directories.** Several benchmarks existed as both
   a hyphenated dir and an underscore "matrix" sibling:
   `app-eval` / `app_eval`, `openclaw-benchmark` / `openclaw_benchmark`,
   plus `*_matrix` dirs (`agentbench_matrix`, `clawbench_matrix`,
   `claw_eval_matrix`, `qwen_claw_bench_matrix`, `swe_bench_pro_matrix`). The
-  underscore/`_matrix` variants are explicitly listed in
-  `IGNORED_BENCHMARK_DIRS`, i.e. they are not discovered as benchmarks. They
-  look like matrix-run scratch dirs; worth confirming they are intended and not
-  half-migrated leftovers.
+  underscore/`_matrix` variants were explicitly listed in
+  `IGNORED_BENCHMARK_DIRS`, i.e. they were not discovered as benchmarks. They
+  looked like matrix-run scratch dirs.
+
+  **Update (#9475):** the duplicate/import-shim dirs were deleted — `app_eval`,
+  `openclaw_benchmark`, and the `*_matrix` dups `clawbench_matrix`,
+  `claw_eval_matrix`, `qwen_claw_bench_matrix`, `swe_bench_pro_matrix`. Only
+  `agentbench_matrix` is kept as the remaining code-agent matrix adapter
+  (driven by `orchestrator/code_agent_matrix.py`); the hyphenated `app-eval` and
+  `openclaw-benchmark` dirs remain.
 - **Pricing was Cerebras-only.** `lib/pricing.py` priced only `gpt-oss-120b`;
   Anthropic Opus pricing has been added (`ANTHROPIC_PRICING`, `ALL_PRICING`) so
   Opus run-cost projections are possible (see `scripts/compute_costs.py`).

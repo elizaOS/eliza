@@ -1,41 +1,41 @@
 # `packages/benchmarks`
 
-The elizaOS evaluation suite — 40+ benchmark harness directories spanning agent
-autonomy, tool-call correctness, long-horizon reasoning, voice/vision multimodal,
-embodied control, onchain trading, and adversarial robustness.
+The elizaOS evaluation suite — **43 registered benchmarks** (the canonical set in
+`registry/commands.py`) spanning agent autonomy, tool-call correctness,
+long-horizon reasoning, voice/vision multimodal, embodied control, onchain
+trading, and adversarial robustness, plus shared agent-harness adapters.
 
 Primarily Python, with several TypeScript/Bun and Rust harnesses. Lives outside
 the TypeScript workspace; not an npm package. Each benchmark is self-contained in
 its own directory and carries `README.md` + `AGENTS.md` + `CLAUDE.md`.
 
-> **"Integrated" is not uniform across these directories** (#9475). The "40+"
-> counts harness *directories present in the tree*, which is larger than the set
-> that actually benchmark Eliza against a live runtime today. The honest
-> breakdown:
+> **Honest coverage breakdown (#9475).** "Registered" does not mean "runs in CI
+> on a real model." The de-larp pass (#9475) deleted the directories that never
+> benchmarked Eliza (no `@elizaos` wiring, no registry entry): the vendored
+> upstreams `claw-eval` / `qwen-claw-bench` / `swe-bench-pro` /
+> `swe-bench-multilingual` / `loca-bench`, the `qwen-web-bench` stub, the
+> compactor-strategy harness `compactbench`, the abandoned `evm`, and the
+> import-shim / dup matrix adapters (`app_eval`, `clawbench_matrix`,
+> `claw_eval_matrix`, `qwen_claw_bench_matrix`, `swe_bench_pro_matrix`,
+> `openclaw_benchmark`). What remains is classified explicitly:
 >
-> - **Bridge-wired & real** — route through the `eliza-adapter` (which boots a
->   real `AgentRuntime` + real model plugins and serves `/api/benchmark/message`)
->   or a `_matrix`/extra adapter that imports `ElizaClient` / `ElizaServerManager`:
->   the registry's bridge benchmarks plus the code-agent `_matrix` wrappers
->   (`clawbench_matrix`, `claw_eval_matrix`, `qwen_claw_bench_matrix`,
->   `swe_bench_pro_matrix`, `openclaw_benchmark`) and the runtime adapters
->   `loca-bench`, `compactbench`, `evm`.
-> - **Vendored task/dataset directories** consumed *by* those bridges but with no
->   Eliza code inside them (`claw-eval`, `qwen-claw-bench`, `swe-bench-pro`,
->   `swe-bench-multilingual`).
-> - **Vendored-but-not-yet-integrated** — present and registry/coverage-tracked or
->   skip-listed, but with no working adapter yet; see its `INTEGRATION.md`
->   (`qwen-web-bench`).
-> - **Runs in CI** — only a small subset has its own scheduled/gated lane
->   (`memperf`, `lifeops-bench`, `hyperliquid-bench-live`, voice, mobile-resource).
->   The registry-driven orchestrator suite as a whole is **not** scheduled against
->   real models — `python -m benchmarks.orchestrator run` is invoked from CI only
->   by `hyperliquid-bench-live.yml` (one benchmark). Closing that gap (a scheduled
->   orchestrator lane over a core subset) is the main open de-larp task in #9475.
+> - **Registered** — 43 benchmarks in `registry/commands.py`.
+> - **Bridge-wired & real** — ~25 route through the `eliza-adapter` (which boots
+>   a real `AgentRuntime` + real model plugins and serves
+>   `/api/benchmark/message`) on their default/real path.
+> - **CI lane** — every registered benchmark now carries an explicit CI lane in
+>   `orchestrator/ci_coverage.py` (`tests/test_ci_coverage.py` keeps it 1:1 with
+>   the registry, so no benchmark silently has zero coverage):
+>   - `scheduled` — a core real-model subset (`bfcl`, `action-calling`,
+>     `agentbench`, `tau_bench`, `mint`, `context_bench`) runs weekly via
+>     `.github/workflows/benchmark-orchestrator-scheduled.yml`; `hyperliquid_bench`
+>     and `lifeops_bench` have their own dedicated live lanes.
+>   - `smoke` — has a no-key mock/sample path exercisable in CI.
+>   - `manual` — live-gated / Docker / sandbox / real-audio; run on demand
+>     (`workflow_dispatch` / operator runbook), never silently.
 >
-> Treat "40+" as the count of vendored harness directories, several deferred or
-> integration-pending rather than wired end-to-end. Update this when adapters are
-> added or vendored snapshots are dropped.
+> Keep this section and `orchestrator/ci_coverage.py` in sync when adapters are
+> added or benchmarks are dropped.
 
 ## How it fits together
 
@@ -45,7 +45,7 @@ its own directory and carries `README.md` + `AGENTS.md` + `CLAUDE.md`.
 | `orchestrator/` | Runs benchmarks from the registry, normalizes results into SQLite/JSON, computes calibration/readiness/leaderboards, serves the viewer. |
 | `<benchmark>/` | One directory per benchmark — harness code, data, tests, and docs. |
 | `*-adapter/` | Harness bridges (`eliza`, `hermes`, `openclaw`, `smithers`) that let one benchmark run against different agent backends. |
-| `*_matrix/`, `app_eval/` | Per-benchmark code-agent comparison adapters, driven dynamically by `orchestrator/code_agent_matrix.py`. |
+| `agentbench_matrix/` | Code-agent comparison adapter for the real `agentbench`, driven by `orchestrator/code_agent_matrix.py`. (The dup `*_matrix` / import-shim variants for vendored sources were removed in #9475.) |
 | `loadperf/`, `memperf/`, `mobile-resource/` | Direct resource/load KPI workbenches with their own CI lanes; not suite-orchestrator adapters. |
 | `framework/`, `lib/`, `standard/` | Shared harness framework, helpers, and the standard academic adapters (MMLU, HumanEval, GSM8K, MT-Bench, dispatched by `run.py`). |
 | `viewer/` | Static browser UI for inspecting normalized results. |
@@ -104,7 +104,9 @@ python -m benchmarks.orchestrator serve-viewer
 1. Create `<your-benchmark>/` with the harness, tests, and the three docs.
 2. Register it in `registry/commands.py` (id, `build_command`, `locate_result`,
    `requirements`) and add a scorer in `registry/scores.py`.
-3. Confirm it appears in `python -m benchmarks.orchestrator list-benchmarks`.
+3. Classify its CI lane in `orchestrator/ci_coverage.py` (`scheduled` / `smoke`
+   / `manual`) — `tests/test_ci_coverage.py` fails until you do (#9475).
+4. Confirm it appears in `python -m benchmarks.orchestrator list-benchmarks`.
 
 ## Docs
 

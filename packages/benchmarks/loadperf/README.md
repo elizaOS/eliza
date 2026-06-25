@@ -1,5 +1,9 @@
 # Load / Perf KPI Harness
 
+> **What this measures:** app/server load & throughput KPIs (infra
+> performance) — **not** agent task quality. This is a direct KPI harness, not
+> an orchestrator benchmark adapter.
+
 Zero-build performance KPI suite for the app. Each KPI is a standalone Node ESM
 script that measures one dimension, compares against `budgets.json`, records a
 timestamped JSON result under `results/<kpi>/`, and exits non-zero when a hard

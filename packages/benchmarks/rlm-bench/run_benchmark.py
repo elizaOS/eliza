@@ -192,8 +192,12 @@ Examples:
     parser.add_argument(
         "--mode",
         choices=["stub", "rlm", "eliza", "custom"],
-        default="stub",
-        help="Execution mode (default: stub)",
+        default="rlm",
+        help=(
+            "Execution mode (default: rlm — real RLM-plugin inference). "
+            "Use --mode eliza for the full Eliza agent loop, or --mode stub "
+            "for the heuristic mock (testing only)."
+        ),
     )
 
     parser.add_argument(

@@ -1,5 +1,10 @@
 # Standard Academic Benchmarks
 
+> **What this measures:** these are RAW-MODEL academic evals — the underlying
+> model answering questions directly — **not** Eliza-agent evals. They do not
+> exercise the AgentRuntime, plugins, or the agent loop. They are kept as
+> model-quality baselines.
+
 Self-contained adapters for four widely-used academic benchmarks — MMLU, HumanEval,
 GSM8K, and MT-Bench — each speaking directly to any OpenAI-compatible inference
 endpoint. Adapters share a common CLI scaffolding (`_cli.py`, `_base.py`) and are

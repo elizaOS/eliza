@@ -35,7 +35,10 @@ interface Args {
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { mode: "scripted", judge: false };
+  // Default to a real-model mode (#9475): "cerebras" exercises a live model.
+  // "scripted" is the deterministic no-model smoke and must be requested with
+  // --mode=scripted; "harness" routes through the Eliza/Hermes/OpenClaw bridge.
+  const args: Args = { mode: "cerebras", judge: false };
   for (const a of argv) {
     if (a === "--mode=cerebras" || a === "--cerebras") args.mode = "cerebras";
     else if (a.startsWith("--mode=")) {
