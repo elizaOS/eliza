@@ -13,6 +13,7 @@ import { searchIssuesTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearSearchFilters, SearchIssuesParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { describeError, getMessageSource } from "./message-source";
 import {
   getBooleanValue,
   getNumberValue,
@@ -126,7 +127,7 @@ export const searchIssuesAction: Action = {
         const errorMessage = "Please provide search criteria for issues.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -225,7 +226,7 @@ export const searchIssuesAction: Action = {
               }
             });
           } catch (parseError) {
-            logger.error("Failed to parse search filters:", parseError);
+            logger.error("Failed to parse search filters:", describeError(parseError));
             // Fallback to simple search
             filters = { query: content };
           }
@@ -258,7 +259,7 @@ export const searchIssuesAction: Action = {
         const noResultsMessage = "No issues found matching your search criteria.";
         await callback?.({
           text: noResultsMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: noResultsMessage,
@@ -287,7 +288,7 @@ export const searchIssuesAction: Action = {
       const resultMessage = `📋 Found ${issues.length} issue${issues.length === 1 ? "" : "s"}:\n\n${issueText}`;
       await callback?.({
         text: resultMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
 
       return {
@@ -322,11 +323,11 @@ export const searchIssuesAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to search issues:", error);
+      logger.error("Failed to search issues:", describeError(error));
       const errorMessage = `❌ Failed to search issues: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,

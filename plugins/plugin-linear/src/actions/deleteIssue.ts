@@ -14,6 +14,7 @@ import { deleteIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { DeleteIssueParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { describeError, getMessageSource } from "./message-source";
 import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
@@ -116,7 +117,7 @@ export const deleteIssueAction: Action = {
         const errorMessage = "Please specify which issue to delete.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -159,14 +160,17 @@ export const deleteIssueAction: Action = {
             throw new Error("Issue ID not found in parsed response");
           }
         } catch (parseError) {
-          logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError);
+          logger.warn(
+            "Failed to parse LLM response, falling back to regex parsing:",
+            describeError(parseError)
+          );
 
           const issueMatch = content.match(/(\w+-\d+)/);
           if (!issueMatch) {
             const errorMessage = "Please specify an issue ID (e.g., ENG-123) to delete.";
             await callback?.({
               text: errorMessage,
-              source: message.content.source,
+              source: getMessageSource(message),
             });
             return {
               text: errorMessage,
@@ -201,7 +205,7 @@ export const deleteIssueAction: Action = {
       }
       if (decision.status === "cancelled") {
         const cancelMessage = `Archive of ${issueIdentifier} cancelled.`;
-        await callback?.({ text: cancelMessage, source: message.content.source });
+        await callback?.({ text: cancelMessage, source: getMessageSource(message) });
         return {
           text: cancelMessage,
           success: true,
@@ -216,7 +220,7 @@ export const deleteIssueAction: Action = {
       const successMessage = `✅ Successfully archived issue ${issueIdentifier}: "${issueTitle}"\n\nThe issue has been moved to the archived state and will no longer appear in active views.`;
       await callback?.({
         text: successMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
 
       return {
@@ -231,11 +235,11 @@ export const deleteIssueAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to delete issue:", error);
+      logger.error("Failed to delete issue:", describeError(error));
       const errorMessage = `❌ Failed to delete issue: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,

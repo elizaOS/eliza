@@ -10,6 +10,7 @@ import {
 import type { LinearService } from "../services/linear";
 import type { UpdateCommentParameters } from "../types/index.js";
 import { getLinearAccountId } from "./account-options";
+import { describeError, getMessageSource } from "./message-source";
 
 export async function handleUpdateComment(
   runtime: IAgentRuntime,
@@ -31,23 +32,23 @@ export async function handleUpdateComment(
 
     if (!commentId || !body) {
       const errorMessage = "Please provide both commentId and body to update a comment.";
-      await callback?.({ text: errorMessage, source: message.content.source });
+      await callback?.({ text: errorMessage, source: getMessageSource(message) });
       return { text: errorMessage, success: false };
     }
 
     const comment = await linearService.updateComment(commentId, body, accountId);
 
     const successMessage = `Updated comment ${commentId}.`;
-    await callback?.({ text: successMessage, source: message.content.source });
+    await callback?.({ text: successMessage, source: getMessageSource(message) });
     return {
       text: successMessage,
       success: true,
       data: { commentId: comment.id, accountId },
     };
   } catch (error) {
-    logger.error("Failed to update comment:", error);
+    logger.error("Failed to update comment:", describeError(error));
     const errorMessage = `Failed to update comment: ${error instanceof Error ? error.message : "Unknown error"}`;
-    await callback?.({ text: errorMessage, source: message.content.source });
+    await callback?.({ text: errorMessage, source: getMessageSource(message) });
     return { text: errorMessage, success: false };
   }
 }

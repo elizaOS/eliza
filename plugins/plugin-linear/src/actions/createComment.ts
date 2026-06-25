@@ -13,6 +13,7 @@ import { createCommentTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { CreateCommentParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { describeError, getMessageSource } from "./message-source";
 import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
@@ -118,7 +119,7 @@ export const createCommentAction: Action = {
         const errorMessage = "Please provide a message with the issue and comment content.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -182,7 +183,7 @@ export const createCommentAction: Action = {
                 const errorMessage = `No issues found matching "${issueDescription}". Please provide a specific issue ID.`;
                 await callback?.({
                   text: errorMessage,
-                  source: message.content.source,
+                  source: getMessageSource(message),
                 });
                 return {
                   text: errorMessage,
@@ -204,7 +205,7 @@ export const createCommentAction: Action = {
                 const clarifyMessage = `Found multiple issues matching "${issueDescription}":\n${issueList.join("\n")}\n\nPlease specify which issue to comment on by its ID.`;
                 await callback?.({
                   text: clarifyMessage,
-                  source: message.content.source,
+                  source: getMessageSource(message),
                 });
 
                 return {
@@ -230,7 +231,10 @@ export const createCommentAction: Action = {
               commentBody = `[${commentType.toUpperCase()}] ${commentBody}`;
             }
           } catch (parseError) {
-            logger.warn("Failed to parse LLM response, falling back to regex:", parseError);
+            logger.warn(
+              "Failed to parse LLM response, falling back to regex:",
+              describeError(parseError)
+            );
             const issueMatch = content.match(
               /(?:comment on|add.*comment.*to|reply to|tell)\s+(\w+-\d+):?\s*(.*)/i
             );
@@ -240,7 +244,7 @@ export const createCommentAction: Action = {
                 'Please specify the issue ID and comment content. Example: "Comment on ENG-123: This looks good"';
               await callback?.({
                 text: errorMessage,
-                source: message.content.source,
+                source: getMessageSource(message),
               });
               return {
                 text: errorMessage,
@@ -258,7 +262,7 @@ export const createCommentAction: Action = {
         const errorMessage = "Please provide the comment content.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -279,7 +283,7 @@ export const createCommentAction: Action = {
       const successMessage = `✅ Comment added to issue ${issue.identifier}: "${commentBody}"`;
       await callback?.({
         text: successMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
 
       return {
@@ -296,11 +300,11 @@ export const createCommentAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to create comment:", error);
+      logger.error("Failed to create comment:", describeError(error));
       const errorMessage = `❌ Failed to create comment: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,
