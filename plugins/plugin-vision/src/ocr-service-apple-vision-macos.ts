@@ -22,7 +22,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
@@ -41,26 +41,62 @@ interface MacosVisionRaw {
   fullText: string;
 }
 
+interface MacosVisionAvailabilityOptions {
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  pathExists?: (candidate: string) => boolean;
+  executableExists?: (name: string, env: NodeJS.ProcessEnv) => boolean;
+}
+
 /**
  * Resolve the bundled Swift helper. Works from both the dev tree (`src/`) and
  * the published build (`dist/`) — the `native/` directory sits alongside both,
  * at the package root. `ELIZA_MACOS_VISION_OCR_SCRIPT` overrides for tests.
  */
-function resolveScriptPath(): string | null {
-  const override = process.env.ELIZA_MACOS_VISION_OCR_SCRIPT;
-  if (override) return existsSync(override) ? override : null;
+function resolveScriptPath(
+  env: NodeJS.ProcessEnv = process.env,
+  pathExists: (candidate: string) => boolean = existsSync,
+): string | null {
+  const override = env.ELIZA_MACOS_VISION_OCR_SCRIPT;
+  if (override) return pathExists(override) ? override : null;
   const candidates = [
     path.join(__dirname, "..", "native", "macos-vision-ocr.swift"),
     path.join(__dirname, "..", "..", "native", "macos-vision-ocr.swift"),
   ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  return candidates.find((candidate) => pathExists(candidate)) ?? null;
+}
+
+function isExecutableFile(candidate: string): boolean {
+  try {
+    accessSync(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasExecutableOnPath(
+  name: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const pathValue = env.PATH ?? "";
+  return pathValue
+    .split(path.delimiter)
+    .filter((segment) => segment.length > 0)
+    .some((segment) => isExecutableFile(path.join(segment, name)));
 }
 
 /** True when running on macOS with the `swift` toolchain and the helper present. */
-function macosVisionAvailable(): boolean {
-  if (process.platform !== "darwin") return false;
-  if (process.env.ELIZA_DISABLE_APPLE_VISION === "1") return false;
-  return resolveScriptPath() !== null;
+function macosVisionAvailable(
+  options: MacosVisionAvailabilityOptions = {},
+): boolean {
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+  if (platform !== "darwin") return false;
+  if (env.ELIZA_DISABLE_APPLE_VISION === "1") return false;
+  const scriptPath = resolveScriptPath(env, options.pathExists ?? existsSync);
+  if (!scriptPath) return false;
+  return (options.executableExists ?? hasExecutableOnPath)("swift", env);
 }
 
 function runSwiftOcr(scriptPath: string, png: Uint8Array): Promise<string> {
@@ -138,3 +174,8 @@ export function createMacosVisionOcrProvider(): AppleVisionOcrProvider {
 export function isMacosVisionOcrAvailable(): boolean {
   return macosVisionAvailable();
 }
+
+export const __test__ = {
+  macosVisionAvailable,
+  resolveScriptPath,
+};
