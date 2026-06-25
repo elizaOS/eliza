@@ -23,14 +23,17 @@ def reg_ops():
     if "new_ones" not in _TORCH_OPS_REGISTRY.name_to_func_mapping:
         @register_torch_op
         def new_ones(context, node):
-            inputs = _get_inputs(context, node); shape = inputs[1]
-            if isinstance(shape, list): shape = mb.concat(values=shape, axis=0)
+            inputs = _get_inputs(context, node)
+            shape = inputs[1]
+            if isinstance(shape, list):
+                shape = mb.concat(values=shape, axis=0)
             shape = mb.cast(x=shape, dtype="int32")
             context.add(mb.fill(shape=shape, value=1.0, name=node.name))
     @register_torch_op(torch_alias=["and"], override=True)
     def bitwise_and(context, node):
         a, b = _get_inputs(context, node, expected=2)
-        a = mb.cast(x=a, dtype="bool"); b = mb.cast(x=b, dtype="bool")
+        a = mb.cast(x=a, dtype="bool")
+        b = mb.cast(x=b, dtype="bool")
         context.add(mb.logical_and(x=a, y=b, name=node.name))
 
 def main():
@@ -39,16 +42,19 @@ def main():
     voice = json.loads((OUT / "kokoro-coreml/voices/af_heart.json").read_text())["embedding"]
     ps = "həlˈoʊ, ðɪs ɪz ɪlˈaɪzə spˈiːkɪŋ ɑn dəvˈaɪs."
     ids = [0] + [vocab[c] for c in ps if c in vocab] + [0]
-    n = len(ids); ids = ids + [0] * (128 - n)
+    n = len(ids)
+    ids = ids + [0] * (128 - n)
     ids_t = torch.tensor([ids], dtype=torch.int32)
-    mask = torch.zeros(1, 128, dtype=torch.int32); mask[0, :n] = 1
+    mask = torch.zeros(1, 128, dtype=torch.int32)
+    mask[0, :n] = 1
     ref_s = torch.tensor(voice, dtype=torch.float32).view(1, 256)
     phases = torch.rand(1, 9, generator=torch.Generator().manual_seed(7), dtype=torch.float32)
     speed = torch.tensor([1.0], dtype=torch.float32)
 
     m = E.load_model()
     e2e = E.KokoroE2E(m, BUCKET).eval()
-    for mod in e2e.modules(): mod.eval()
+    for mod in e2e.modules():
+        mod.eval()
     e2e._diag = True
     with torch.no_grad():
         a_t, alen_t, pdur_t, f0_t, har_t = e2e(ids_t, mask, ref_s, phases, speed)
@@ -73,8 +79,10 @@ def main():
     pred = ml.predict({"input_ids": ids_t.numpy(), "attention_mask": mask.numpy(),
                        "ref_s": ref_s.numpy(), "random_phases": phases.numpy(), "speed": speed.numpy()})
     def corr(a, b):
-        a = np.asarray(a).reshape(-1).astype(np.float64); b = np.asarray(b).reshape(-1).astype(np.float64)
-        k = min(len(a), len(b)); a, b = a[:k], b[:k]
+        a = np.asarray(a).reshape(-1).astype(np.float64)
+        b = np.asarray(b).reshape(-1).astype(np.float64)
+        k = min(len(a), len(b))
+        a, b = a[:k], b[:k]
         return float(np.corrcoef(a, b)[0, 1]) if k > 1 else 0.0
     f0c = corr(pred["F0_pred"], f0_t.numpy())
     harc = corr(pred["har_source"], har_t.numpy())

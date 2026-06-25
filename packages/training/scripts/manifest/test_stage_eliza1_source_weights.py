@@ -138,7 +138,7 @@ def test_27b_class_tiers_use_gemma4_31b_source(
                 "kind": "mtp",
                 "repo": "google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
                 "filename": "model.safetensors",
-                "destination": f"source/mtp/gemma4-31b-assistant.safetensors",
+                "destination": "source/mtp/gemma4-31b-assistant.safetensors",
                 "license": "gemma",
                 "status": "source-safetensors",
                 "notes": tuple(stage.DRAFTER_SOURCES[tier].notes),
@@ -146,7 +146,7 @@ def test_27b_class_tiers_use_gemma4_31b_source(
                 "path": str(
                     tmp_path
                     / f"eliza-1-{tier}.bundle"
-                    / f"source/mtp/gemma4-31b-assistant.safetensors"
+                    / "source/mtp/gemma4-31b-assistant.safetensors"
                 ),
                 "dryRun": True,
             }

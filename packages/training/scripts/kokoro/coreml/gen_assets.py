@@ -8,7 +8,9 @@ Voice embedding = mean of the first N ref_s rows of the Kokoro voice pack
 ([510,1,256]); a single stable speaker vector since the Swift engine uses one
 fixed ref_s per voice across all chunk lengths.
 """
-import json, os, sys
+import json
+import os
+import sys
 from pathlib import Path
 import torch
 
@@ -18,7 +20,8 @@ STYLE_DIM = 256
 N_AVG = 64
 
 def main(out_dir):
-    out = Path(out_dir); (out / "voices").mkdir(parents=True, exist_ok=True)
+    out = Path(out_dir)
+    (out / "voices").mkdir(parents=True, exist_ok=True)
     cfg = json.loads((REF / "checkpoints/config.json").read_text())
     vocab = cfg["vocab"]
     (out / "vocab_index.json").write_text(json.dumps({"vocab": vocab}, ensure_ascii=False))
