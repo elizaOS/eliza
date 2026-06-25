@@ -36,7 +36,10 @@ import {
 	handleLiveVoiceAttribution,
 } from "../../runtime/voice-entity-binding.js";
 import type { VoiceTurnSignal } from "./eot-classifier.js";
-import { NlmsEchoCanceller } from "./nlms-echo-canceller.js";
+import {
+	NlmsEchoCanceller,
+	type ResidualSuppressionOptions,
+} from "./nlms-echo-canceller.js";
 import type {
 	VoiceAttributionOutput,
 	VoiceAttributionPipeline,
@@ -271,6 +274,12 @@ export interface AudioFrameConsumerConfig {
 	 * out of the attribution buffer. Default 0.3 s.
 	 */
 	preRollSeconds?: number;
+	/**
+	 * Opt-in nonlinear residual-echo suppressor forwarded to the NLMS canceller
+	 * (#9583/#9649). Default-off; only meaningful when an `echoReference` is wired
+	 * (no canceller exists otherwise). See {@link NlmsEchoCancellerOptions.residualSuppression}.
+	 */
+	residualSuppression?: boolean | ResidualSuppressionOptions;
 }
 
 /** A finalized, attributed turn the consumer surfaces to its caller. */
@@ -343,7 +352,13 @@ export class AudioFrameConsumer {
 		this.transcribe = deps.transcribe ?? null;
 		this.resolveSelfVoiceSimilarity = deps.resolveSelfVoiceSimilarity ?? null;
 		this.echoReference = deps.echoReference ?? null;
-		this.echoCanceller = this.echoReference ? new NlmsEchoCanceller() : null;
+		this.echoCanceller = this.echoReference
+			? new NlmsEchoCanceller(
+					config.residualSuppression
+						? { residualSuppression: config.residualSuppression }
+						: {},
+				)
+			: null;
 		this.source = config.source;
 		this.attributionOptions = config.attributionOptions ?? {};
 		const sr = AUDIO_FRAME_PIPELINE_SAMPLE_RATE;
