@@ -17,7 +17,6 @@ OUT = Path("/tmp/kokoro-coreml-work/out")
 BUCKET = 160
 
 def reg_ops():
-    import coremltools as ct
     from coremltools.converters.mil.frontend.torch.ops import _get_inputs, logical_and as _la  # noqa
     from coremltools.converters.mil.frontend.torch.torch_op_registry import register_torch_op, _TORCH_OPS_REGISTRY
     from coremltools.converters.mil import Builder as mb
