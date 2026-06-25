@@ -233,7 +233,7 @@ final class ElizaVoiceNative {
 
     /**
      * Transcribe {@code pcm} (16 kHz mono fp32) → UTF-8 transcript via the fused
-     * Qwen3-ASR head ({@code eliza_inference_asr_transcribe}). VAD-free: the
+     * local ASR head ({@code eliza_inference_asr_transcribe}). VAD-free: the
      * resident context mmap-acquires the {@code asr/} weights on first use. The
      * bionic host's op="asr" calls this so the agent TRANSCRIPTION delegate gets
      * a real on-device transcript without the full attribution pipeline.
