@@ -39,6 +39,8 @@ const SAMPLE_RATE = 16_000;
 const EOT_COMMIT_THRESHOLD = 0.5;
 const DEFAULT_OWNER_THRESHOLD = 0.78;
 const MAX_AGENT_TTS_SECONDS = 12;
+const SPEAKER_ENROLLMENT_PHRASE =
+	"This is my voice enrollment sample for reliable speaker recognition.";
 
 const ELEVENLABS_MODEL_ID = "eleven_turbo_v2_5";
 const ELEVENLABS_VOICE_IDS = [
@@ -351,31 +353,27 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		this.profiles.clear();
 		this.selfVoiceEmbeddings.length = 0;
 
-		const embeddingsBySpeaker = new Map<string, Float32Array[]>();
-		for (const label of args.corpus.groundTruth.turns) {
-			const audio = args.corpus.pcm.subarray(
-				label.speechStartSample,
-				label.speechEndSample,
-			);
-			const embedding = await this.encoder.encode(
-				ensureMinSpeakerSamples(audio),
-			);
-			if (label.isAgentEcho) {
-				continue;
-			}
-			const list = embeddingsBySpeaker.get(label.speaker) ?? [];
-			list.push(embedding);
-			embeddingsBySpeaker.set(label.speaker, list);
-		}
-
+		// Build speaker profiles from held-out enrollment audio, never from the
+		// scored scenario turns. Otherwise the DER gate can match a turn against
+		// an embedding extracted from that same turn and false-green.
 		for (const participant of args.corpus.groundTruth.participants) {
-			const embeddings = embeddingsBySpeaker.get(participant.label);
-			if (!embeddings?.length) continue;
+			const enrollment = await elevenLabsPcm({
+				text: SPEAKER_ENROLLMENT_PHRASE,
+				voiceId: this.resolveElevenLabsVoiceId(
+					participant.ttsVoiceId,
+					participant.label,
+				),
+				apiKey: this.apiKey,
+				sampleRate: SAMPLE_RATE,
+			});
+			const embedding = await this.encoder.encode(
+				ensureMinSpeakerSamples(enrollment),
+			);
 			this.profiles.set(participant.label, {
 				label: participant.label,
 				entityId: participant.entityId ?? null,
 				isOwner: participant.isOwner === true,
-				centroid: averageEmbeddings(embeddings),
+				centroid: embedding,
 			});
 		}
 	}

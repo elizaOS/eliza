@@ -30,7 +30,7 @@ const REPORT_DIR =
 
 const thresholds = {
   maxDer: numberEnv("ELIZA_VOICE_REAL_MAX_DER", 0.6),
-  maxWer: numberEnv("ELIZA_VOICE_REAL_MAX_WER", 1.0),
+  maxWer: numberEnv("ELIZA_VOICE_REAL_MAX_WER", 0.35),
   minSelfVoiceMargin: numberEnv("ELIZA_VOICE_REAL_MIN_SELF_MARGIN", 0.1),
   ownerAcceptThreshold: numberEnv("ELIZA_VOICE_OWNER_ACCEPT_THRESHOLD", 0.78),
   minOwnerAccuracy: numberEnv("ELIZA_VOICE_REAL_MIN_OWNER_ACCURACY", 1),

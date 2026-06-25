@@ -26,6 +26,7 @@ import {
   type RunningHetznerMock,
   startHetznerMock,
 } from "@elizaos/cloud-test-mocks/hetzner";
+import { type RunningMockLlm, startMockLlm } from "./mock-llm";
 
 import { buildSharedEnv } from "./env";
 
@@ -65,6 +66,8 @@ export interface StackHandle {
     hetzner: string;
     controlPlane: string;
     pglite: string;
+    /** Mock LLM `/v1` base URL — present only when started with `mockLlm`. */
+    mockLlm?: string;
   };
   /**
    * True when the frontend Vite dev was NOT booted (API-only stacks started
@@ -78,6 +81,7 @@ export interface StackHandle {
   mocks: {
     hetzner: RunningHetznerMock;
     controlPlane: RunningControlPlaneMock;
+    mockLlm?: RunningMockLlm;
   };
   dataDir: string;
   logDir: string;
@@ -245,6 +249,13 @@ export interface StartCloudStackOptions {
    * — skips the Vite spawn + health wait, and leaves `urls.frontend` empty.
    */
   frontend?: boolean;
+  /**
+   * Boot an in-process OpenAI-compatible mock LLM and point the worker's
+   * `OPENAI_BASE_URL` / `OPENAI_API_KEY` at it. Lets `POST /api/v1/messages`
+   * run the real billing/markup/earnings seam against an `openai/<model>` id
+   * with no paid provider key. Defaults to false.
+   */
+  mockLlm?: boolean;
 }
 
 /**
@@ -274,6 +285,13 @@ export async function startCloudStack(
     hetznerUrl: hetzner.url,
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });
+  const mockLlm = opts.mockLlm ? await startMockLlm() : undefined;
+  const mockLlmEnv: Record<string, string> = mockLlm
+    ? {
+        OPENAI_API_KEY: "mock-llm-key",
+        OPENAI_BASE_URL: mockLlm.url,
+      }
+    : {};
 
   const sharedEnv = buildSharedEnv(
     {
@@ -324,6 +342,10 @@ export async function startCloudStack(
     ...sharedEnv,
     DATABASE_URL: databaseUrl,
     TEST_DATABASE_URL: databaseUrl,
+    // Provider override → the cloud-api dev wrapper syncs OPENAI_API_KEY/
+    // OPENAI_BASE_URL into .dev.vars (providerOverrideKeys), so the worker's
+    // getOpenAIClient() targets the in-process mock for `openai/<model>` ids.
+    ...mockLlmEnv,
   };
   const previousDatabaseUrl = process.env.DATABASE_URL;
   const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -449,6 +471,7 @@ export async function startCloudStack(
     }
     await controlPlane.stop().catch(() => undefined);
     await hetzner.stop().catch(() => undefined);
+    await mockLlm?.stop().catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
     if (dbCloseError) {
       throw dbCloseError;
@@ -470,10 +493,11 @@ export async function startCloudStack(
       hetzner: hetzner.url,
       controlPlane: controlPlane.url,
       pglite: `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`,
+      ...(mockLlm ? { mockLlm: mockLlm.url } : {}),
     },
     frontendSkipped: frontendSkipReason !== undefined,
     frontendSkipReason,
-    mocks: { hetzner, controlPlane },
+    mocks: { hetzner, controlPlane, ...(mockLlm ? { mockLlm } : {}) },
     dataDir,
     logDir: LOG_DIR,
   };
