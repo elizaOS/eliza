@@ -1213,31 +1213,76 @@ function deriveBionicBundleDir(modelPath: string): string {
 	return "";
 }
 
-/** ChatML fallback prompt for legacy bionic paths built without device-bridge templating. */
-function buildChatMlPrompt(params: GenerateTextParams): string {
-	// If the caller already handed us a complete ChatML prompt — e.g. the Android
-	// direct-chat fast path, whose prompt ends with an `<|im_start|>assistant`
-	// turn — use it VERBATIM. Re-wrapping it in another
-	// <|im_start|>user/…/assistant turn double-nests the markers AND drops the
-	// caller's generation prefill, so the short-reply fast path can return empty
-	// and fall through to a second cold prefill. Pass it through verbatim.
-	if (
-		typeof params.prompt === "string" &&
-		params.prompt.includes("<|im_start|>assistant")
-	) {
-		return params.prompt;
+function roleForGemmaPrompt(role: string): "system" | "user" | "model" {
+	if (role === "assistant") return "model";
+	if (role === "system") return "system";
+	return "user";
+}
+
+function collectChatMlPromptMessages(
+	prompt: string,
+	system?: string,
+): { role: string; content: string }[] | null {
+	const headerPattern = /<\|im_start\|>(system|user|assistant)(?:\n|$)/g;
+	const headers: Array<{ index: number; role: string; bodyStart: number }> = [];
+	let match = headerPattern.exec(prompt);
+	while (match !== null) {
+		headers.push({
+			index: match.index,
+			role: match[1],
+			bodyStart: match.index + match[0].length,
+		});
+		match = headerPattern.exec(prompt);
 	}
-	const msgs = collectMessagesForNativeTemplate(params);
-	if (!msgs || msgs.length === 0) {
-		return `<|im_start|>user\n${flattenChatParamsForPrompt(params)}<|im_end|>\n<|im_start|>assistant\n`;
+	if (headers.length === 0) return null;
+
+	const result: { role: string; content: string }[] = [];
+	if (system?.trim() && headers[0]?.role !== "system") {
+		result.push({ role: "system", content: system.trim() });
 	}
+	for (let i = 0; i < headers.length; i += 1) {
+		const current = headers[i];
+		const next = headers[i + 1];
+		const rawContent = prompt
+			.slice(current.bodyStart, next ? next.index : prompt.length)
+			.replace(/<\|im_end\|>\s*$/g, "")
+			.trim();
+		if (!rawContent) continue;
+		result.push({ role: current.role, content: rawContent });
+	}
+	return result.length > 0 ? result : null;
+}
+
+function renderGemmaPromptMessages(
+	messages: Array<{ role: string; content: string }>,
+): string {
 	let out = "";
-	for (const m of msgs) {
-		const role =
-			m.role === "assistant" || m.role === "system" ? m.role : "user";
-		out += `<|im_start|>${role}\n${m.content}<|im_end|>\n`;
+	for (const m of messages) {
+		const content = m.content.trim();
+		if (!content) continue;
+		out += `<start_of_turn>${roleForGemmaPrompt(m.role)}\n${content}<end_of_turn>\n`;
 	}
-	return `${out}<|im_start|>assistant\n`;
+	return `${out}<start_of_turn>model\n`;
+}
+
+/** Gemma fallback prompt for bionic paths built without device-bridge templating. */
+export function buildGemmaBionicPrompt(params: GenerateTextParams): string {
+	const prompt = typeof params.prompt === "string" ? params.prompt : "";
+	const trimmedPrompt = prompt.trimEnd();
+	// If the caller already handed us a complete Gemma prompt, use it verbatim.
+	if (
+		trimmedPrompt.includes("<start_of_turn>") &&
+		trimmedPrompt.includes("<start_of_turn>model")
+	) {
+		return trimmedPrompt;
+	}
+	const msgs = prompt.includes("<|im_start|>")
+		? collectChatMlPromptMessages(prompt, params.system)
+		: collectMessagesForNativeTemplate(params);
+	if (!msgs || msgs.length === 0) {
+		return `<start_of_turn>user\n${flattenChatParamsForPrompt(params).trim()}<end_of_turn>\n<start_of_turn>model\n`;
+	}
+	return renderGemmaPromptMessages(msgs);
 }
 
 function bionicHostGenerate(
@@ -1403,7 +1448,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			const baseRequest = {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
 				drafterPath: installed?.draftModelPath ?? "",
-				prompt: buildChatMlPrompt(params),
+				prompt: buildGemmaBionicPrompt(params),
 				maxTokens: params.maxTokens ?? 256,
 			};
 			// When the runtime wants streaming (chat SSE / voice), server-push the

@@ -33,14 +33,14 @@ describe("Eliza-1 benchmark recipe", () => {
   });
 
   it("normalizes common release and provider tier aliases", () => {
-    expect(normalizeElizaOneBenchmarkTier("qwen3.5-2b")).toBe("2b");
+    expect(normalizeElizaOneBenchmarkTier("gemma4-e2b")).toBe("2b");
     expect(normalizeElizaOneBenchmarkTier("2B")).toBe("2b");
     expect(normalizeElizaOneBenchmarkTier("eliza-1-27b-trained")).toBe("27b");
   });
 
   it("builds default base/trained model IDs and pair records", () => {
     expect(elizaOneBenchmarkModelId("2b", "base")).toBe("eliza-1-2b-base");
-    expect(elizaOneBenchmarkModelId("qwen3.5-2b", "base")).toBe(
+    expect(elizaOneBenchmarkModelId("gemma4-e2b", "base")).toBe(
       "eliza-1-2b-base",
     );
     expect(elizaOneBenchmarkModelId("27b", "trained")).toBe(

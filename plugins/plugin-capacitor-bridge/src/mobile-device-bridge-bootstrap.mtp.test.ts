@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildLoadArgsFromRegistryModel } from "./mobile-device-bridge-bootstrap";
+import {
+	buildGemmaBionicPrompt,
+	buildLoadArgsFromRegistryModel,
+} from "./mobile-device-bridge-bootstrap";
 
 function withTempBundle<T>(fn: (root: string) => T): T {
 	const root = path.join(
@@ -97,5 +100,36 @@ describe("buildLoadArgsFromRegistryModel — Gemma separate-drafter MTP", () => 
 		expect(args.draftMin).toBeUndefined();
 		expect(args.draftMax).toBeUndefined();
 		expect(args.mobileSpeculative).toBeUndefined();
+	});
+});
+
+describe("buildGemmaBionicPrompt", () => {
+	it("renders messages with the Gemma chat turn markers", () => {
+		expect(
+			buildGemmaBionicPrompt({
+				system: "Reply tersely.",
+				messages: [
+					{ role: "user", content: "hi" },
+					{ role: "assistant", content: "hello" },
+					{ role: "user", content: "next" },
+				],
+			} as never),
+		).toBe(
+			[
+				"<start_of_turn>system\nReply tersely.<end_of_turn>",
+				"<start_of_turn>user\nhi<end_of_turn>",
+				"<start_of_turn>model\nhello<end_of_turn>",
+				"<start_of_turn>user\nnext<end_of_turn>",
+				"<start_of_turn>model\n",
+			].join("\n"),
+		);
+	});
+
+	it("converts legacy ChatML fast-path prompts before sending to Gemma", () => {
+		expect(
+			buildGemmaBionicPrompt({
+				prompt: "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n",
+			} as never),
+		).toBe("<start_of_turn>user\nhello<end_of_turn>\n<start_of_turn>model\n");
 	});
 });
