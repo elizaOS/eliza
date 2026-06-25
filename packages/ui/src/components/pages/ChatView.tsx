@@ -18,7 +18,7 @@ import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-m
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
@@ -270,13 +270,19 @@ export function ChatView({
     if (isGameModal || typeof window === "undefined") return;
 
     const consumeLaunchPayload = () => {
-      void consumeAssistantLaunchPayloadFromHash(window.location.hash, {
-        allowedRoutes: ["chat"],
-        onSendFailure: (payload) => {
-          setChatInput(payload.text);
+      // Prefill the composer instead of auto-sending. An assistant-launch /
+      // deep-link / shortcut `text` is attacker-authorable (a crafted link can
+      // set it), so it must NOT be sent to the agent without the user reviewing
+      // it and pressing send. claim* dedupes by launchId and clears the hash.
+      const payload = claimAssistantLaunchPayloadFromHash(
+        window.location.hash,
+        {
+          allowedRoutes: ["chat"],
         },
-        sendText: sendChatText,
-      });
+      );
+      if (payload) {
+        setChatInput(payload.text);
+      }
     };
 
     consumeLaunchPayload();
@@ -284,7 +290,7 @@ export function ChatView({
     return () => {
       window.removeEventListener("hashchange", consumeLaunchPayload);
     };
-  }, [isGameModal, sendChatText, setChatInput]);
+  }, [isGameModal, setChatInput]);
 
   const focusTerminalSession = useCallback(
     (sessionId: string) => {
