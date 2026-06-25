@@ -11,6 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { AudioFrameEvent } from "./audio-frame-consumer.js";
+import { platformPlaybackDelaySamples } from "./echo-delay.js";
 import {
 	LiveDiarizationSession,
 	type RuntimeEventSink,
@@ -152,5 +153,34 @@ describe("LiveDiarizationSession echo reference", () => {
 		expect(state.calibrated).toBe(true);
 		expect(Math.abs(state.delaySamples - delaySamples)).toBeLessThanOrEqual(1);
 		expect(state.confidence).toBeGreaterThan(0.95);
+	});
+
+	it("seeds the echo delay from the platform default when ELIZA_VOICE_ECHO_DELAY_MS=auto", () => {
+		const prev = process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+		process.env.ELIZA_VOICE_ECHO_DELAY_MS = "auto";
+		try {
+			const session = new LiveDiarizationSession(fakeRuntime());
+			// Seed comes straight from the per-platform table (#9583); runtime
+			// calibration would refine it later, but at construction it equals the
+			// platform default for the host the test runs on.
+			expect(session.aecDelayState().delaySamples).toBe(
+				platformPlaybackDelaySamples(process.platform, SAMPLE_RATE),
+			);
+		} finally {
+			if (prev === undefined) delete process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+			else process.env.ELIZA_VOICE_ECHO_DELAY_MS = prev;
+		}
+	});
+
+	it("defaults the echo delay seed to 0 when no override is set", () => {
+		const prev = process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+		delete process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+		try {
+			const session = new LiveDiarizationSession(fakeRuntime());
+			expect(session.aecDelayState().delaySamples).toBe(0);
+		} finally {
+			if (prev === undefined) delete process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+			else process.env.ELIZA_VOICE_ECHO_DELAY_MS = prev;
+		}
 	});
 });
