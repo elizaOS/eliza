@@ -16,7 +16,7 @@ reference implementation ships as the `apollo-torch` PyPI package
 redistributing optimizer code).
 
 We use APOLLO as the default optimizer because it lets us **full-fine-tune**
-Qwen at sizes that would otherwise need LoRA on the same VRAM budget. LoRA
+Gemma at sizes that would otherwise need LoRA on the same VRAM budget. LoRA
 caps how much we can teach the model; APOLLO doesn't.
 
 ### Two recipes
