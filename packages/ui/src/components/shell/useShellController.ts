@@ -153,10 +153,8 @@ export interface ShellController {
   stop: () => void;
   /** Horizontal-swipe navigation between conversations (sheet-open only). */
   conversationNav: ConversationNav;
-  /** True while a conversation switch or clear is fetching messages that aren't
-   *  yet cached — drives the chat's in-thread loading spinner so an empty thread
-   *  reads as "loading," not "broken." Cache-hit swipes paint instantly and
-   *  never trip this. */
+  /** True while a conversation switch or clear is fetching messages. The overlay
+   *  only renders the spinner when the visible thread is empty. */
   conversationLoading?: boolean;
 }
 
