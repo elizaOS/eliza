@@ -1,6 +1,11 @@
 import type http from "node:http";
-import type { PendingUserAction, Task, UUID } from "@elizaos/core";
-import { ServiceType } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  PendingUserAction,
+  Task,
+  UUID,
+} from "@elizaos/core";
+import { ApprovalService, ServiceType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { APPROVAL_SERVICE } from "../services/approval/service.ts";
 import type {
@@ -13,6 +18,7 @@ import {
   handleApprovalRoute,
 } from "./approval-routes.ts";
 
+const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const req = (url: string) => ({ url }) as http.IncomingMessage;
 const res = {} as http.ServerResponse;
 
@@ -60,10 +66,36 @@ function approvalTask(patch: Partial<Task> & { id: string }): Task {
   };
 }
 
+async function makeRuntimeWithApprovalService(tasks: Task[]): Promise<{
+  runtime: { getService: (type: string) => unknown };
+}> {
+  const baseRuntime = {
+    agentId: AGENT_ID,
+    getTasks: vi.fn(
+      async (params: { tags?: string[]; agentIds: UUID[] }): Promise<Task[]> => {
+        if (!params.agentIds.includes(AGENT_ID)) return [];
+        const wanted = new Set(params.tags ?? []);
+        return tasks.filter((task) =>
+          [...wanted].every((tag) => task.tags?.includes(tag)),
+        );
+      },
+    ),
+  } as unknown as IAgentRuntime;
+  const service = (await ApprovalService.start(
+    baseRuntime,
+  )) as ApprovalService;
+  return {
+    runtime: {
+      getService: (type: string) =>
+        type === ServiceType.APPROVAL ? service : null,
+    },
+  };
+}
+
 function runtimeWithApprovals(args: {
   queueApprovals?: ApprovalRequest[];
   serviceActions?: PendingUserAction[];
-  taskApprovals?: Task[];
+  taskRows?: Task[];
   promptActions?: PendingUserAction[];
 }) {
   const queueList = vi.fn(async () => args.queueApprovals ?? []);
@@ -75,8 +107,8 @@ function runtimeWithApprovals(args: {
         if (type === APPROVAL_SERVICE) return { getQueue: () => queue };
         if (type === ServiceType.APPROVAL) {
           return {
+            getAllPendingApprovals: () => args.taskRows ?? [],
             listPendingUserActions: () => args.serviceActions ?? [],
-            getAllPendingApprovals: async () => args.taskApprovals ?? [],
           };
         }
         if (type === PENDING_PROMPTS_SERVICE) {
@@ -106,19 +138,17 @@ describe("approvalTaskToPendingAction", () => {
         },
       }),
     );
-    expect(action).not.toBeNull();
-    expect(action?.kind).toBe("task_approval");
-    expect(action?.source).toBe("approval-service");
-    expect(action?.title).toBe("Post this tweet?");
-    expect(action?.createdAt).toBe(4_242);
-    expect(action?.resolution).toEqual({
-      target: "approval_service",
-      requestId: "aaaaaaaa-0000-0000-0000-000000000001",
+    expect(action).toMatchObject({
+      id: "aaaaaaaa-0000-0000-0000-000000000001",
+      kind: "task_approval",
+      source: "approval-service",
+      title: "Post this tweet?",
+      createdAt: 4_242,
+      options: [
+        { id: "approve", label: "Approve the request" },
+        { id: "deny", label: "Deny", isCancel: true },
+      ],
     });
-    expect(action?.options).toEqual([
-      { id: "approve", label: "Approve the request" },
-      { id: "deny", label: "Deny", isCancel: true },
-    ]);
   });
 
   it("drops a malformed task missing id or roomId", () => {
@@ -159,13 +189,13 @@ describe("handleApprovalRoute", () => {
     expect(handled).toBe(false);
   });
 
-  it("GET aggregates approval rows, task approvals, and prompts newest-first", async () => {
+  it("GET returns approval rows plus canonical pending user actions", async () => {
     const serviceAction: PendingUserAction = {
-      id: "task-approval-1",
+      id: "service-approval-1",
       kind: "task_approval",
       source: "approval-service",
       title: "Allow shell command?",
-      createdAt: Date.parse("2026-06-24T18:04:00.000Z"),
+      createdAt: Date.parse("2026-06-24T18:02:00.000Z"),
     };
     const promptAction: PendingUserAction = {
       id: "prompt-1",
@@ -175,16 +205,15 @@ describe("handleApprovalRoute", () => {
       expectedReplyKind: "yes_no",
       createdAt: Date.parse("2026-06-24T18:03:00.000Z"),
     };
+    const taskRow = approvalTask({
+      id: "aaaaaaaa-0000-0000-0000-000000000004",
+      description: "Task-row approval",
+      createdAt: Date.parse("2026-06-24T18:04:00.000Z"),
+    });
     const { runtime, queueList } = runtimeWithApprovals({
       queueApprovals: [approval()],
       serviceActions: [serviceAction],
-      taskApprovals: [
-        approvalTask({
-          id: "aaaaaaaa-0000-0000-0000-000000000010",
-          description: "Persisted approval",
-          createdAt: Date.parse("2026-06-24T18:02:00.000Z"),
-        }),
-      ],
+      taskRows: [taskRow],
       promptActions: [promptAction],
     });
     const helpers = makeHelpers();
@@ -215,46 +244,65 @@ describe("handleApprovalRoute", () => {
         createdAt: "2026-06-24T18:00:00.000Z",
       }),
     ]);
-    expect(payload.pending.map((action) => action.id)).toEqual([
-      "task-approval-1",
-      "prompt-1",
-      "aaaaaaaa-0000-0000-0000-000000000010",
-      "approval-1",
+    expect(payload.pending.map((action) => action.title)).toEqual([
+      "Task-row approval",
+      "Did you take meds?",
+      "Allow shell command?",
+      "Send this reply?",
     ]);
     expect(payload.pendingUserActions).toBe(payload.pending);
-    expect(payload.pending).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "approval-1",
-          kind: "approval",
-          title: "Send this reply?",
-          resolution: {
-            target: "approval_service",
-            requestId: "approval-1",
-          },
-        }),
-        promptAction,
-      ]),
-    );
   });
 
-  it("dedupes actions returned by both live and persisted approval surfaces", async () => {
+  it("reads task-store approvals newest-first through ApprovalService", async () => {
+    const { runtime } = await makeRuntimeWithApprovalService([
+      approvalTask({
+        id: "aaaaaaaa-0000-0000-0000-000000000010",
+        description: "Older request",
+        createdAt: 1_000,
+      }),
+      approvalTask({
+        id: "aaaaaaaa-0000-0000-0000-000000000011",
+        description: "Newer request",
+        createdAt: 5_000,
+        metadata: { approvalRequest: { createdAt: 5_000 } },
+      }),
+      approvalTask({
+        id: "aaaaaaaa-0000-0000-0000-000000000012",
+        description: "unrelated",
+        tags: ["SOME_OTHER_TAG"],
+      }),
+    ]);
+    const helpers = makeHelpers();
+
+    await handleApprovalRoute(
+      req("/api/approvals"),
+      res,
+      "/api/approvals",
+      "GET",
+      { runtime },
+      helpers,
+    );
+
+    const payload = helpers.json.mock.calls[0][1] as {
+      pending: PendingUserAction[];
+    };
+    expect(payload.pending.map((action) => action.title)).toEqual([
+      "Newer request",
+      "Older request",
+    ]);
+  });
+
+  it("deduplicates pending actions by id", async () => {
     const duplicate: PendingUserAction = {
-      id: "aaaaaaaa-0000-0000-0000-000000000010",
+      id: "same",
       kind: "task_approval",
       source: "approval-service",
-      title: "Live approval",
-      createdAt: 10,
+      title: "Service wins",
+      createdAt: 2,
     };
     const { runtime } = runtimeWithApprovals({
       serviceActions: [duplicate],
-      taskApprovals: [
-        approvalTask({
-          id: duplicate.id,
-          description: "Persisted approval",
-          createdAt: 5,
-        }),
-      ],
+      promptActions: [{ ...duplicate, title: "Duplicate prompt", createdAt: 3 }],
     });
     const helpers = makeHelpers();
 
