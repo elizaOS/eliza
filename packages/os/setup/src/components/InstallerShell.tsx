@@ -40,7 +40,7 @@ interface ElectrobunWindowGlobal {
 }
 
 function openExternal(url: string): void {
-  const w = window as unknown as ElectrobunWindowGlobal;
+  const w = window as ElectrobunWindowGlobal;
   const shell = w.electrobun?.shell;
   if (shell?.openExternal) {
     shell.openExternal(url);
@@ -50,7 +50,7 @@ function openExternal(url: string): void {
 }
 
 function tryLaunchPackagedUsbInstaller(): boolean {
-  const w = window as unknown as ElectrobunWindowGlobal;
+  const w = window as ElectrobunWindowGlobal;
   const shell = w.electrobun?.shell;
   if (!shell?.openItem) return false;
   try {
@@ -63,7 +63,7 @@ function tryLaunchPackagedUsbInstaller(): boolean {
 
 function isDev(): boolean {
   try {
-    const meta = import.meta as unknown as { env?: { DEV?: boolean } };
+    const meta = import.meta as { env?: { DEV?: boolean } };
     return meta.env?.DEV === true;
   } catch {
     return false;

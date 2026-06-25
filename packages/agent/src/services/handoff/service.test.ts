@@ -8,6 +8,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it } from "vitest";
 import {
   HANDOFF_SERVICE,
@@ -72,9 +73,9 @@ describe("HandoffService", () => {
   });
 
   it("resolveHandoffService returns null when unregistered", () => {
-    const runtime = {
+    const runtime = createMockRuntime({
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    });
     expect(resolveHandoffService(runtime)).toBeNull();
   });
 });

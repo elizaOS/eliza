@@ -18,7 +18,7 @@ export async function prewarmLocalVoiceStackForModel(
 
 	const started = Date.now();
 	const promise = (async () => {
-		await localInferenceEngine.ensureActiveBundleVoiceReady();
+		await localInferenceEngine.ensureActiveBundleAsrReady();
 		await localInferenceEngine.transcribePcm({
 			pcm: new Float32Array(4000),
 			sampleRate: 16_000,

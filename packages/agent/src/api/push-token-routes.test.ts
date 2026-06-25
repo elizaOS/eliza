@@ -1,4 +1,5 @@
 import type http from "node:http";
+import { createMockRuntime } from "@elizaos/core/testing";
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
@@ -10,7 +11,7 @@ async function makeRuntimeWithService(): Promise<{
   registry: PushTokenRegistry;
 }> {
   const cache = new Map<string, unknown>();
-  const baseRuntime = {
+  const baseRuntime = createMockRuntime({
     agentId: "00000000-0000-0000-0000-0000000000aa",
     getCache: async <T>(key: string): Promise<T | undefined> =>
       cache.get(key) as T | undefined,
@@ -21,7 +22,7 @@ async function makeRuntimeWithService(): Promise<{
     deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
     // No AGENT_EVENT bus → the service starts dormant (fine for route tests).
     getService: () => null,
-  } as unknown as IAgentRuntime;
+  });
   const service = (await NotificationPushService.start(
     baseRuntime,
   )) as NotificationPushService;

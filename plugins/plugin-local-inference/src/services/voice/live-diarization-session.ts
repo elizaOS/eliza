@@ -40,7 +40,10 @@ import {
 	type TurnTranscriber,
 	type VadSegmenter,
 } from "./audio-frame-consumer.js";
-import { estimateEchoDelaySamples } from "./echo-delay.js";
+import {
+	estimateEchoDelaySamples,
+	platformPlaybackDelaySamples,
+} from "./echo-delay.js";
 import { EchoReferenceBuffer } from "./echo-reference-buffer.js";
 import type {
 	ElizaInferenceContextHandle,
@@ -204,13 +207,26 @@ function concatFloat32(chunks: Float32Array[]): Float32Array {
 
 /**
  * Playback→mic transport delay used to time-align the far-end echo reference,
- * in samples @ 16 kHz. Device-tunable via `ELIZA_VOICE_ECHO_DELAY_MS`; the
- * on-device calibration (`estimateEchoDelaySamples`, #9586) is the device-side
- * follow-up. Default 0 — the canceller aligns to the most-recently-rendered
- * playback and the NLMS filter adapts the residual.
+ * in samples @ 16 kHz. Device-tunable via `ELIZA_VOICE_ECHO_DELAY_MS`:
+ *   - a positive number → that many milliseconds, exactly;
+ *   - the literal `"auto"` → seed from a per-platform default
+ *     (`platformPlaybackDelaySamples`, #9583), useful on iOS/macOS where the
+ *     CoreAudio / AVAudioEngine transport delay is small but non-zero;
+ *   - unset / anything else → 0 (the default — the canceller aligns to the
+ *     most-recently-rendered playback and the NLMS filter adapts the residual).
+ *
+ * Either way the on-device calibration (`estimateEchoDelaySamples`, #9586)
+ * refines this seed at runtime once enough correlated echo is observed.
  */
 function resolveEchoDelaySamples(): number {
-	const ms = Number(process.env.ELIZA_VOICE_ECHO_DELAY_MS);
+	const raw = process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+	if (raw && raw.trim().toLowerCase() === "auto") {
+		return platformPlaybackDelaySamples(
+			process.platform,
+			AUDIO_FRAME_SAMPLE_RATE,
+		);
+	}
+	const ms = Number(raw);
 	if (!Number.isFinite(ms) || ms <= 0) return 0;
 	return Math.round((ms / 1000) * AUDIO_FRAME_SAMPLE_RATE);
 }

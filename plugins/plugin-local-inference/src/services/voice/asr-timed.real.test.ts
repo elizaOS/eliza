@@ -19,12 +19,10 @@
  * Runs via `bun test` (the post-merge lane runner — bun:ffi + `globalThis.Bun`);
  * `*.real.test.ts` is excluded from the default `vitest.config.ts` lane.
  *
- * Reproduce locally (verified on this host):
- *   B=~/.eliza/local-inference/models/eliza-1-asr-q8.bundle
- *   hf download ggml-org/Qwen3-ASR-0.6B-GGUF Qwen3-ASR-0.6B-Q8_0.gguf --local-dir "$B/asr"
- *   hf download ggml-org/Qwen3-ASR-0.6B-GGUF mmproj-Qwen3-ASR-0.6B-Q8_0.gguf --local-dir "$B/asr"
- *   mv "$B/asr/Qwen3-ASR-0.6B-Q8_0.gguf" "$B/asr/eliza-1-asr.gguf"
- *   mv "$B/asr/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf" "$B/asr/eliza-1-asr-mmproj.gguf"
+ * Reproduce locally once Gemma ASR artifacts are staged:
+ *   B=~/.eliza/local-inference/models/eliza-1-gemma-asr.bundle
+ *   mkdir -p "$B/asr"
+ *   # Place the built or downloaded Gemma ASR runtime artifacts under "$B/asr".
  *   ELIZA_ASR_BUNDLE="$B" ELIZA_INFERENCE_LIBRARY=<built libelizainference.so> \
  *     bun test src/services/voice/asr-timed.real.test.ts
  * The fused `eliza_pick_asr_files` resolves an ASR-only bundle from

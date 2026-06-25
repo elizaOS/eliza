@@ -8,6 +8,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it } from "vitest";
 import {
   PENDING_PROMPTS_SERVICE,
@@ -159,9 +160,9 @@ describe("PendingPromptsService", () => {
   });
 
   it("resolvePendingPromptsService returns null when unregistered", () => {
-    const runtime = {
+    const runtime = createMockRuntime({
       getService: () => null,
-    } as unknown as IAgentRuntime;
+    });
     expect(resolvePendingPromptsService(runtime)).toBeNull();
   });
 });

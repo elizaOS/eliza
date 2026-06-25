@@ -33,7 +33,7 @@ interface ImportMetaEnvLike {
 
 function readEnv(): ImportMetaEnvLike | undefined {
   try {
-    const meta = import.meta as unknown as { env?: ImportMetaEnvLike };
+    const meta = import.meta as { env?: ImportMetaEnvLike };
     return meta.env;
   } catch {
     return undefined;

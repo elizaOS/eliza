@@ -16,6 +16,7 @@ const engineState = vi.hoisted(() => ({
 	available: vi.fn(async () => true),
 	conversation: vi.fn(() => null),
 	currentModelPath: vi.fn(() => null),
+	ensureActiveBundleAsrReady: vi.fn(async () => undefined),
 	ensureActiveBundleVoiceReady: vi.fn(async () => undefined),
 	generate: vi.fn(async () => "ok"),
 	generateInConversation: vi.fn(async () => ({
@@ -548,7 +549,8 @@ describe("ensureLocalInferenceHandler", () => {
 			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
 		).resolves.toBe("transcribed");
 
-		expect(engineState.ensureActiveBundleVoiceReady).toHaveBeenCalledTimes(1);
+		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
+		expect(engineState.ensureActiveBundleVoiceReady).not.toHaveBeenCalled();
 		expect(engineState.transcribePcm).toHaveBeenCalledWith(
 			{ pcm: new Float32Array([0]), sampleRate: 16_000 },
 			undefined,
@@ -560,7 +562,7 @@ describe("ensureLocalInferenceHandler", () => {
 		// The fused libelizainference ASR runtime is the sole on-device
 		// transcriber. A startup failure must propagate (AGENTS.md §3) — there is
 		// no whisper.cpp second attempt and no silent empty transcript.
-		engineState.ensureActiveBundleVoiceReady.mockRejectedValueOnce(
+		engineState.ensureActiveBundleAsrReady.mockRejectedValueOnce(
 			new VoiceStartupError("missing-bundle-root", "no bundle"),
 		);
 		const { registrations, runtime } = makeRuntime();
@@ -581,6 +583,7 @@ describe("ensureLocalInferenceHandler", () => {
 			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
 		).rejects.toThrow(VoiceStartupError);
 
+		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		expect(engineState.transcribePcm).not.toHaveBeenCalled();
 	});
 

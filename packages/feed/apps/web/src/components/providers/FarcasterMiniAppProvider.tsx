@@ -126,7 +126,7 @@ export function FarcasterMiniAppProvider({
 
       // quickAuth.getToken() returns a Farcaster-signed JWT containing the FID
       const quickAuthResult = await (
-        sdk as unknown as {
+        sdk as {
           quickAuth: { getToken(): Promise<{ token: string }> };
         }
       ).quickAuth.getToken();

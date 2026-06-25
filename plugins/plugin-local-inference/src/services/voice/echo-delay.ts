@@ -80,3 +80,53 @@ export function estimateEchoDelaySamples(
 		confidence: bestCorr === -Infinity ? 0 : Math.max(0, Math.min(1, bestCorr)),
 	};
 }
+
+/**
+ * Per-platform SEED playback→mic delay, in milliseconds. This is the initial
+ * pre-alignment applied *before* any echo has been observed; the adaptive
+ * {@link estimateEchoDelaySamples} cross-correlation refines it at runtime once
+ * enough playback-active audio is seen. Until then a platform-appropriate seed
+ * converges faster than starting from zero — most visibly on iOS/macOS, where
+ * the CoreAudio / AVAudioEngine transport delay is small but non-zero and a
+ * 0-sample seed leaves the first barge-in's echo un-aligned.
+ *
+ * These are conservative starting points (they still benefit from per-device
+ * tuning); the goal is only to put the adaptive filter in the right ballpark on
+ * the first turn, not to be exact.
+ */
+export const PLATFORM_PLAYBACK_DELAY_DEFAULTS: Readonly<Record<string, number>> =
+	{
+		/** macOS CoreAudio — low, stable hardware path. */
+		darwin: 20,
+		/** iOS AVAudioEngine (when its voice-processing IO AEC is not the source). */
+		ios: 25,
+		/** Android AudioTrack/AudioRecord — variable; a mid seed. */
+		android: 45,
+		/** Windows WASAPI shared-mode. */
+		win32: 30,
+		/** Desktop Linux ALSA/PulseAudio/PipeWire. */
+		linux: 30,
+	};
+
+/** Fallback seed (ms) for an unrecognized platform id. */
+export const DEFAULT_PLAYBACK_DELAY_MS = 25;
+
+/**
+ * Seed playback→mic delay in milliseconds for a platform id (e.g.
+ * `process.platform`, or the `"ios"` / `"android"` ids the mobile shells
+ * report). Unknown ids fall back to {@link DEFAULT_PLAYBACK_DELAY_MS}.
+ */
+export function platformPlaybackDelayMs(platform: string): number {
+	return PLATFORM_PLAYBACK_DELAY_DEFAULTS[platform] ?? DEFAULT_PLAYBACK_DELAY_MS;
+}
+
+/**
+ * Seed playback→mic delay in samples for a platform id. `sampleRate` defaults to
+ * the 16 kHz voice-pipeline rate.
+ */
+export function platformPlaybackDelaySamples(
+	platform: string,
+	sampleRate = 16_000,
+): number {
+	return Math.round((platformPlaybackDelayMs(platform) / 1000) * sampleRate);
+}

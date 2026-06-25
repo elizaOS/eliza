@@ -15,6 +15,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
   APPROVAL_SERVICE,
@@ -257,7 +258,7 @@ describe("ApprovalService", () => {
   });
 
   it("resolveApprovalService returns null when unregistered", () => {
-    const runtime = { getService: () => null } as unknown as IAgentRuntime;
+    const runtime = createMockRuntime({ getService: () => null });
     expect(resolveApprovalService(runtime)).toBeNull();
   });
 
