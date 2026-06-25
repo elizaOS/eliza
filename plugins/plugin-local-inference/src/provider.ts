@@ -17,7 +17,6 @@ import {
 
 import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
-import { augmentVisionRequest } from "./services/vision/augmenter.js";
 import {
 	startTranscriptionAction,
 	stopTranscriptionAction,
@@ -25,6 +24,7 @@ import {
 import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
+import { augmentVisionRequest } from "./services/vision/augmenter.js";
 
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
 export const LOCAL_INFERENCE_PRIORITY = -100;
