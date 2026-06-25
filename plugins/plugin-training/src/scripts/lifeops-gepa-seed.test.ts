@@ -118,34 +118,35 @@ describe("lifeops-gepa-seed", () => {
     ).toEqual([]);
   });
 
-  it("uses the live Gmail planner baseline and line-shaped examples", () => {
+  it("uses the live inbox classifier baseline and category-shaped examples", () => {
     const seed = SEED_TASKS.inbox_triage;
-    expect(seed.baseline).toContain("Plan the Gmail/inbox triage action");
-    expect(seed.baseline).toContain("subaction");
-    expect(seed.baseline).toContain("queries");
+    expect(seed.baseline).toContain(
+      "Classify each message into one of these categories",
+    );
+    expect(seed.baseline).toContain("needs_reply");
+    expect(seed.baseline).toContain("suggestedResponse");
 
     expect(seed.dataset.length).toBeGreaterThanOrEqual(6);
     expect(
       seed.dataset.some((example) =>
-        example.expectedOutput.includes("subaction: needs_response"),
+        example.expectedOutput.includes('"category":"needs_reply"'),
       ),
     ).toBe(true);
     expect(
       seed.dataset.some((example) =>
-        example.expectedOutput.includes("subaction: draft_reply"),
+        example.expectedOutput.includes('"category":"urgent"'),
       ),
     ).toBe(true);
     expect(
       seed.dataset.some((example) =>
-        example.expectedOutput.includes("shouldAct: false"),
+        example.expectedOutput.includes('"category":"ignore"'),
       ),
     ).toBe(true);
 
     for (const example of seed.dataset) {
-      expect(example.input.user).toContain("Current request:");
-      expect(example.expectedOutput).toMatch(/shouldAct: (true|false)/);
-      expect(example.expectedOutput).not.toContain("{");
-      expect(example.expectedOutput).not.toContain("}");
+      expect(example.input.user).toContain("Messages:");
+      expect(example.expectedOutput).toMatch(/"category":"[^"]+"/);
+      expect(example.expectedOutput).toMatch(/"urgency":"(low|medium|high)"/);
     }
   });
 
@@ -209,10 +210,10 @@ describe("lifeops-gepa-seed", () => {
     const seed = SEED_TASKS.inbox_triage;
     const malformed = validatePersistableResult(
       seed,
-      makeResult("Return fields for subaction and shouldAct.", 0.9, 0.1),
+      makeResult("Return fields for category and urgency.", 0.9, 0.1),
     );
     expect(malformed).toEqual(
-      expect.arrayContaining([expect.stringContaining('"queries"')]),
+      expect.arrayContaining([expect.stringContaining('"needs_reply"')]),
     );
 
     expect(

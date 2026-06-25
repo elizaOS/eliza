@@ -309,18 +309,19 @@ rules:
 return:
 JSON object only: { shouldFire (boolean), channel, message }.`;
 
-const INBOX_TRIAGE_BASELINE = `task: Triage one inbox item for the owner.
+const INBOX_TRIAGE_BASELINE = `task: Classify one inbox message for the owner.
 
-item:
-{{item}}
+message:
+{{message}}
 
 rules:
-- classify priority as high/normal/low based on sender, deadline, and ask
-- set needsResponse true only when the owner must personally reply
-- pick the single best category; do not invent categories
+- category must be one of ignore, info, notify, needs_reply, urgent
+- urgency must be low, medium, or high
+- use needs_reply when someone asks a question or expects a response
+- use urgent only for time-sensitive or critical owner attention
 
 return:
-JSON object only: { priority, needsResponse (boolean), category, summary }.`;
+JSON object only: { category, urgency, confidence, reasoning, suggestedResponse }.`;
 
 const MEETING_PREP_BASELINE = `task: Produce a concise prebrief for an upcoming meeting.
 
@@ -492,9 +493,9 @@ async function loadLiveLifeOpsBaseline(
       );
     case "inbox_triage":
       return loadFirstStringExport(
-        "@elizaos/plugin-personal-assistant/lifeops/optimized-prompt-instructions",
-        ["GMAIL_PLAN_INSTRUCTIONS"],
-        "../../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts",
+        "@elizaos/plugin-inbox/inbox/triage-classifier",
+        ["INBOX_TRIAGE_INSTRUCTIONS"],
+        "../../../plugin-inbox/src/inbox/triage-classifier.ts",
       );
     case "meeting_prep":
       return loadFirstStringExport(
