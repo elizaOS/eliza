@@ -1030,7 +1030,7 @@ def test_final_release_state_requires_hf_upload_evidence(tmp_path: Path) -> None
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
+def test_base_v1_release_evidence_rejects_retired_qwen_asr_provenance(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
@@ -1043,16 +1043,7 @@ def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
-    assert rc == EXIT_OK
-    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["provenance"]["releaseState"] == "base-v1"
-    assert manifest["provenance"]["finetuned"] is False
-    assert manifest["provenance"]["sourceModels"]["text"]["repo"] == (
-        "unsloth/gemma-4-E4B-GGUF"
-    )
-    assert manifest["provenance"]["sourceModels"]["vision"]["repo"] == (
-        "unsloth/gemma-4-E4B-GGUF"
-    )
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
 def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None:
@@ -1069,7 +1060,7 @@ def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_base_v1_release_evidence_rejects_fake_qwen_component_repos(
+def test_base_v1_release_evidence_rejects_qwen_component_repos(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
@@ -1359,7 +1350,7 @@ def test_finalize_release_evidence_sets_size_first_from_upload_evidence(
     assert release["final"]["sizeFirstRepoIds"] is True
 
 
-def test_real_base_v1_publish_preserves_release_state(
+def test_real_base_v1_publish_rejects_retired_qwen_asr_provenance(
     tmp_path: Path, monkeypatch
 ) -> None:
     import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
@@ -1395,11 +1386,7 @@ def test_real_base_v1_publish_preserves_release_state(
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
 
-    assert rc == EXIT_OK
-    release = json.loads((bundle / "evidence" / "release.json").read_text())
-    assert release["releaseState"] == "base-v1"
-    assert release["hf"]["status"] == "uploaded"
-    assert release["hf"]["uploadEvidence"]["commit"] == "basev1"
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
 # ---------------------------------------------------------------------------

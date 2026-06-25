@@ -124,8 +124,8 @@ def test_readiness_mentions_vad_native_gguf_caveat() -> None:
     assert "Gemma 4 E2B (`2b`)" in text
     assert "Gemma 4 E4B (`4b`)" in text
     assert "Gemma 4 12B (`9b`)" in text
-    assert "published Qwen3-ASR 0.6B / 1.7B GGUF repos" in text
-    assert "Qwen3-Embedding 0.6B / 4B / 8B GGUF repos" in text
+    assert "Qwen3-ASR and Qwen3-Embedding are retired" in text
+    assert "Base-v1 release readiness remains blocked" in text
     assert "not evaluated in plan-only mode" in text
     assert "VAD latency/boundary/endpoint/false-barge-in" in text
     assert "Release evidence must use real final hashes" in text
@@ -175,7 +175,7 @@ def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -
     assert "Publish-blocking status:" in text
 
 
-def test_release_status_blockers_accept_base_v1_uploaded_evidence(
+def test_release_status_blockers_reject_base_v1_retired_qwen_sources(
     tmp_path: Path,
 ) -> None:
     """A `base-v1` bundle (upstream base models, GGUF + fully optimized,
@@ -245,7 +245,10 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
         )
     )
     blockers = release_status_blockers(tmp_path / "bundles", plan)
-    assert blockers["2b"] == []
+    assert any("retired Qwen asr provenance" in item for item in blockers["2b"])
+    assert any(
+        "retired Qwen embedding provenance" in item for item in blockers["2b"]
+    )
 
 
 def test_release_status_blockers_rejects_incomplete_uploaded_paths(
@@ -361,7 +364,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
     assert any("hf.uploadEvidence missing" in item for item in blockers["2b"])
 
 
-def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
+def test_release_status_blockers_base_v1_rejects_qwen_component_repos(
     tmp_path: Path,
 ) -> None:
     plan = build_plan()
@@ -399,8 +402,10 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
 
     blockers = release_status_blockers(tmp_path / "bundles", plan)
 
-    assert any("Qwen3-ASR-2B-GGUF" in item for item in blockers["2b"])
-    assert any("Qwen3-Embedding-2B-GGUF" in item for item in blockers["2b"])
+    assert any("retired Qwen asr provenance" in item for item in blockers["2b"])
+    assert any(
+        "retired Qwen embedding provenance" in item for item in blockers["2b"]
+    )
 
 
 def test_release_status_blockers_base_v1_requires_finetuned_false(

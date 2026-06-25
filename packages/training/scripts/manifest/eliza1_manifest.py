@@ -121,18 +121,18 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
     "vision",
     "drafter",
 )
-QWEN3_ASR_GGUF_REPOS: Final[tuple[str, ...]] = (
+RETIRED_QWEN3_ASR_GGUF_REPOS: Final[tuple[str, ...]] = (
     "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "ggml-org/Qwen3-ASR-1.7B-GGUF",
 )
-QWEN3_EMBEDDING_GGUF_REPOS: Final[tuple[str, ...]] = (
+RETIRED_QWEN3_EMBEDDING_GGUF_REPOS: Final[tuple[str, ...]] = (
     "Qwen/Qwen3-Embedding-0.6B-GGUF",
     "Qwen/Qwen3-Embedding-4B-GGUF",
     "Qwen/Qwen3-Embedding-8B-GGUF",
 )
-QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
-    "asr": QWEN3_ASR_GGUF_REPOS,
-    "embedding": QWEN3_EMBEDDING_GGUF_REPOS,
+RETIRED_QWEN3_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
+    "asr": RETIRED_QWEN3_ASR_GGUF_REPOS,
+    "embedding": RETIRED_QWEN3_EMBEDDING_GGUF_REPOS,
 }
 CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "2b": (
@@ -1445,16 +1445,30 @@ def canonical_source_repo_error(
 ) -> str | None:
     """Return an error for non-canonical base-v1 source repositories.
 
-    All text tiers (2b/4b/9b/27b) are Gemma 4. ASR and embedding are separate
-    Qwen3 components with their own published GGUF repos. The release pipeline
-    must not invent matching Gemma 4 ASR/embedding names.
+    All text tiers (2b/4b/9b/27b) are Gemma 4. ASR and dedicated embedding
+    release sources are deliberately fail-closed until verified
+    Gemma-compatible GGUF artifacts are configured.
     """
 
     if slot == "text" and isinstance(tier, str):
         allowed = CANONICAL_TEXT_SOURCE_REPOS_BY_TIER.get(tier)
     else:
-        allowed = QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT.get(slot)
+        allowed = None
     if allowed is None or repo in allowed:
+        if slot in RETIRED_QWEN3_SOURCE_REPOS_BY_SLOT:
+            retired = RETIRED_QWEN3_SOURCE_REPOS_BY_SLOT[slot]
+            if repo in retired or "qwen" in repo.lower():
+                retired_list = ", ".join(retired)
+                return (
+                    f"uses retired Qwen {slot} provenance [{retired_list}], "
+                    f"got {repo!r}; active Gemma base-v1 releases require a "
+                    "verified Gemma-compatible source"
+                )
+            return (
+                f"has no canonical Gemma-compatible {slot} source configured "
+                f"yet, got {repo!r}; keep this bundle as base-v1-candidate "
+                "until release-shaped artifacts are hosted and verified"
+            )
         return None
     allowed_list = ", ".join(allowed)
     return (
