@@ -86,7 +86,7 @@ export const zaiPlugin: Plugin = {
     ZAI_THINKING_TYPE: env.ZAI_THINKING_TYPE ?? null,
   },
 
-  async init(config, runtime) {
+  async init(config: Record<string, string>, runtime: IAgentRuntime) {
     initializeZai(config as PluginConfig, runtime);
   },
 
