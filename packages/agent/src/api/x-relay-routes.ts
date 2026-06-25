@@ -59,7 +59,7 @@ function getCloudHelpers(): Promise<CloudHelperModule> {
   if (!cloudHelpersPromise) {
     cloudHelpersPromise = import(
       "@elizaos/plugin-elizacloud"
-    ) as unknown as Promise<CloudHelperModule>;
+    ) as Promise<CloudHelperModule>;
   }
   return cloudHelpersPromise;
 }
