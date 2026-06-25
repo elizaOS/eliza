@@ -474,10 +474,10 @@ export function Springboard({
               onEdgeSwipeRight?.();
             }
           }}
-          className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 py-6"
+          className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pt-2 pb-8"
         >
           {loading && entries.length === 0 ? (
-            <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5">
+            <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
               {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
                 <div
                   key={id}
@@ -493,7 +493,7 @@ export function Springboard({
               axis="y"
               values={pages[clampedPage] ?? []}
               onReorder={(next) => handleReorder(clampedPage, next as string[])}
-              className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-5"
+              className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5"
             >
               {(pages[clampedPage] ?? []).map((id) => {
                 const entry = byId.get(id);
