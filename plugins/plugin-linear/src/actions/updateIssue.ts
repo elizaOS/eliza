@@ -13,6 +13,7 @@ import { updateIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearIssueInput } from "../types";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import {
   getPriorityNumberValue,
   getRecordValue,
@@ -44,7 +45,7 @@ export async function handleUpdateIssue(
       const errorMessage = "Please provide update instructions for the issue.";
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,
@@ -177,14 +178,17 @@ export async function handleUpdateIssue(
         updates.labelIds = labelIds;
       }
     } catch (parseError) {
-      logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError instanceof Error ? parseError.message : String(parseError));
+      logger.warn(
+        "Failed to parse LLM response, falling back to regex parsing:",
+        formatUnknownError(parseError)
+      );
 
       const issueMatch = content.match(/(\w+-\d+)/);
       if (!issueMatch) {
         const errorMessage = "Please specify an issue ID (e.g., ENG-123) to update.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -220,7 +224,7 @@ export async function handleUpdateIssue(
         "No valid updates found. Please specify what to update (e.g., \"Update issue ENG-123 title to 'New Title'\")";
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,
@@ -242,7 +246,7 @@ export async function handleUpdateIssue(
     const successMessage = `✅ Updated issue ${updatedIssue.identifier}: ${updateSummary.join(", ")}\n\nView it at: ${updatedIssue.url}`;
     await callback?.({
       text: successMessage,
-      source: message.content.source,
+      source: getMessageSource(message),
     });
 
     return {
@@ -264,11 +268,11 @@ export async function handleUpdateIssue(
       },
     };
   } catch (error) {
-    logger.error("Failed to update issue:", error instanceof Error ? error.message : String(error));
+    logger.error("Failed to update issue:", formatUnknownError(error));
     const errorMessage = `❌ Failed to update issue: ${error instanceof Error ? error.message : "Unknown error"}`;
     await callback?.({
       text: errorMessage,
-      source: message.content.source,
+      source: getMessageSource(message),
     });
     return {
       text: errorMessage,
