@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
 }));
 
-vi.mock("@elizaos/agent", () => ({
+// inbox-triage.ts imports hasOwnerAccess from the @elizaos/agent/security/access
+// subpath (the barrel does not re-export it); mock that exact specifier or the
+// real owner check runs, the provider returns early, and counts come back 0.
+vi.mock("@elizaos/agent/security/access", () => ({
   hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
