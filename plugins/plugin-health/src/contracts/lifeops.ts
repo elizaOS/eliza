@@ -273,6 +273,7 @@ export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "signal",
   "whatsapp",
   "imessage",
+  "apple_calendar",
   "strava",
   "fitbit",
   "withings",
