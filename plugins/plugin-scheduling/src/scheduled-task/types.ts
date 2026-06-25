@@ -321,6 +321,10 @@ export interface OwnerFactsView {
   eveningWindow?: { start?: string; end?: string };
   quietHours?: { start: string; end: string; tz: string };
   travelActive?: boolean;
+  personalBaseline?: {
+    sampleCount?: number;
+    windowDays?: number;
+  };
 }
 
 /**

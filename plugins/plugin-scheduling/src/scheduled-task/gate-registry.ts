@@ -269,17 +269,35 @@ const noRecentUserMessageInGate = makeWarnOnceFallthroughGate(
   "Register a message-activity-aware contribution via TaskGateRegistry.register, or remove this gate from default packs.",
 );
 
-// `personal_baseline_sufficient` is referenced by plugin-health's
-// `sleep-recap` default pack (minSamples: 5) but the concrete data reader —
-// the sealed sleep-episode / baseline sample count exposed through the
-// circadian/sleep contract seam (`CircadianInsightContract`) — is not yet
-// wired into the runner. Until a caller registers a real contribution
-// (overwriting this), the gate falls through to `allow` and warns once so the
-// pack stops being permanently skipped as an UNKNOWN gate kind. Loud > silent.
-const personalBaselineSufficientGate = makeWarnOnceFallthroughGate(
-  "personal_baseline_sufficient",
-  "Register a baseline-sample-count-aware contribution (sleep-sample-count via the circadian/sleep contract seam) via TaskGateRegistry.register before plugin-health default packs load, or remove this gate from those packs.",
-);
+interface PersonalBaselineSufficientParams {
+  minSamples?: number;
+}
+
+const personalBaselineSufficientGate: TaskGateContribution = {
+  kind: "personal_baseline_sufficient",
+  evaluate(_task, context): GateDecision {
+    const params = (context.task.shouldFire?.gates.find(
+      (g) => g.kind === "personal_baseline_sufficient",
+    )?.params ?? {}) as PersonalBaselineSufficientParams;
+    const minSamples = intInRange(params.minSamples ?? 1, 1, 10_000)
+      ? (params.minSamples ?? 1)
+      : 1;
+    const sampleCount = context.ownerFacts.personalBaseline?.sampleCount;
+    if (typeof sampleCount !== "number" || !Number.isFinite(sampleCount)) {
+      return {
+        kind: "deny",
+        reason: "personal_baseline_sufficient: sample count unavailable",
+      };
+    }
+    if (sampleCount >= minSamples) {
+      return { kind: "allow" };
+    }
+    return {
+      kind: "deny",
+      reason: `personal_baseline_sufficient: sample count ${sampleCount} < ${minSamples}`,
+    };
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Registry
