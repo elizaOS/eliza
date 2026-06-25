@@ -1,0 +1,129 @@
+{
+  "name": "@elizaos/plugin-embeddings",
+  "version": "2.0.3-beta.2",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/node/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "plugins/plugin-embeddings"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "embedding"
+      ]
+    }
+  },
+  "sideEffects": false,
+  "dependencies": {},
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^25.0.3",
+    "bun-types": "^1.3.12",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit --noCheck -p tsconfig.json",
+    "test": "vitest run --config ./vitest.config.ts __tests__/",
+    "test:unit": "vitest run --config ./vitest.config.ts __tests__/",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "EMBEDDING_BASE_URL": {
+        "type": "string",
+        "description": "Base URL of an OpenAI-compatible /embeddings endpoint (e.g. https://api.openai.com/v1, an Eliza Cloud URL, a Voyage proxy, or a local TEI/Infinity/vLLM server). Setting this (or EMBEDDING_API_KEY) is what activates the plugin.",
+        "required": false,
+        "sensitive": false
+      },
+      "EMBEDDING_API_KEY": {
+        "type": "string",
+        "description": "Bearer token for the embedding endpoint. Setting this (or EMBEDDING_BASE_URL) is what activates the plugin. Omit for local servers that need no auth.",
+        "required": false,
+        "sensitive": true
+      },
+      "EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Embedding model identifier sent as the request `model` field.",
+        "required": false,
+        "default": "text-embedding-3-small",
+        "sensitive": false
+      },
+      "EMBEDDING_DIMENSIONS": {
+        "type": "string",
+        "description": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
+        "required": false,
+        "default": "1536",
+        "sensitive": false
+      },
+      "EMBEDDING_BROWSER_URL": {
+        "type": "string",
+        "description": "Browser-only server-side proxy URL for /embeddings. In a browser build the Authorization header is never sent unless this is set, so the API key stays server-side.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
+}

@@ -3,12 +3,8 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2023",
-      "DOM"
-    ],
+    "lib": ["ES2022", "DOM"],
     "strict": true,
-    "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -21,30 +17,19 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": false,
+    "exactOptionalPropertyTypes": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "paths": {
-      "@elizaos/core": [
-        "../../node_modules/@elizaos/core/dist/index.d.ts"
-      ]
-    },
-    "types": [
-      "node",
-      "bun-types"
-    ]
+    "types": ["node", "bun-types"]
   },
-  "include": [
-    "./**/*.ts"
-  ],
+  "include": ["./**/*.ts"],
   "exclude": [
     "node_modules",
     "dist",
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",
-    "**/*.e2e.test.ts",
-    "vitest.harness.config.ts"
+    "**/*.e2e.test.ts"
   ]
 }

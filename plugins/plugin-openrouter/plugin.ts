@@ -186,15 +186,14 @@ export const openrouterPlugin: Plugin = {
           name: "openrouter_test_structured_output_via_text_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
-              const runModel = runtime.useModel.bind(runtime);
-              const result = await runModel(ModelType.TEXT_LARGE, {
+              const result = await runtime.useModel(ModelType.TEXT_LARGE, {
                 prompt: "Create a simple JSON object with a message field saying hello",
                 responseSchema: {
                   type: "object",
                   properties: { message: { type: "string" } },
                   required: ["message"],
                 },
-              } as Parameters<typeof runModel>[1]);
+              });
               logger.log({ result }, "Generated structured output via TEXT_LARGE");
               if (!result) {
                 throw new Error("Failed to generate structured output");

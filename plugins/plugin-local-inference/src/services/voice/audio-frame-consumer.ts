@@ -41,6 +41,10 @@ import type {
 	VoiceAttributionPipeline,
 } from "./speaker/attribution-pipeline.js";
 import type { PcmFrame, VadEvent, VoiceInputSource } from "./types.js";
+import { NlmsEchoCanceller } from "./nlms-echo-canceller.js";
+
+/** Shared empty reference — agent silent → echo canceller passes the mic through. */
+const NO_ECHO_REFERENCE = new Float32Array(0);
 
 // ---------------------------------------------------------------------------
 // Wire format → Float32 boundary
@@ -222,7 +226,26 @@ export interface AudioFrameConsumerDeps {
 	 * forwards the resulting cosine into the ambient gate.
 	 */
 	resolveSelfVoiceSimilarity?: SelfVoiceSimilarityResolver;
+	/**
+	 * Optional agent-playback (far-end) reference for acoustic echo cancellation
+	 * (#9455). Given a mic frame's clock timestamp and sample count, returns the
+	 * agent's TTS playback PCM for that exact window (Float32 16 kHz), or null
+	 * when the agent is not playing. When wired, the consumer runs an NLMS echo
+	 * canceller on every mic frame BEFORE VAD/attribution so the agent never
+	 * transcribes its own TTS. Absent → no AEC (unchanged behavior). The caller
+	 * owns the playback capture + the playback→mic delay calibration.
+	 */
+	echoReference?: EchoReferenceProvider;
 }
+
+/**
+ * Returns the agent's TTS playback PCM (the far-end echo reference) aligned to a
+ * mic frame's time window, or null when the agent is silent. See #9455.
+ */
+export type EchoReferenceProvider = (
+	timestampMs: number,
+	samples: number,
+) => Float32Array | null;
 
 export interface AudioFrameConsumerConfig {
 	/** Source metadata stamped onto every attributed turn. */
@@ -272,6 +295,9 @@ export class AudioFrameConsumer {
 	private readonly runtime: RuntimeEventSink;
 	private readonly transcribe: TurnTranscriber | null;
 	private readonly resolveSelfVoiceSimilarity: SelfVoiceSimilarityResolver | null;
+	private readonly echoReference: EchoReferenceProvider | null;
+	/** NLMS echo canceller, instantiated only when an `echoReference` is wired. */
+	private readonly echoCanceller: NlmsEchoCanceller | null;
 	private readonly source: VoiceInputSource | undefined;
 	private readonly attributionOptions: HandleLiveVoiceAttributionOptions;
 	private readonly maxTurnSamples: number;
@@ -309,6 +335,8 @@ export class AudioFrameConsumer {
 		this.runtime = deps.runtime;
 		this.transcribe = deps.transcribe ?? null;
 		this.resolveSelfVoiceSimilarity = deps.resolveSelfVoiceSimilarity ?? null;
+		this.echoReference = deps.echoReference ?? null;
+		this.echoCanceller = this.echoReference ? new NlmsEchoCanceller() : null;
 		this.source = config.source;
 		this.attributionOptions = config.attributionOptions ?? {};
 		const sr = AUDIO_FRAME_PIPELINE_SAMPLE_RATE;
@@ -370,15 +398,25 @@ export class AudioFrameConsumer {
 		timestampMs: number,
 	): Promise<void> {
 		if (this.closed) return;
+		// #9455: cancel the agent's TTS echo before VAD/attribution so the agent
+		// never transcribes its own playback. Passthrough (out == in) when the
+		// agent is silent — verified by nlms-echo-canceller.test.ts.
+		const micPcm =
+			this.echoCanceller && this.echoReference
+				? this.echoCanceller.process(
+						pcm,
+						this.echoReference(timestampMs, pcm.length) ?? NO_ECHO_REFERENCE,
+					)
+				: pcm;
 		this.lastFrameEndMs =
-			timestampMs + (pcm.length / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) * 1000;
+			timestampMs + (micPcm.length / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) * 1000;
 		if (this.capturing) {
-			this.appendTurnChunk(pcm);
+			this.appendTurnChunk(micPcm);
 		} else {
-			this.appendPreRoll(pcm);
+			this.appendPreRoll(micPcm);
 		}
 		await this.vad.pushFrame({
-			pcm,
+			pcm: micPcm,
 			sampleRate: AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
 			timestampMs,
 		});

@@ -143,15 +143,20 @@ function renderOutput(id: string, value: unknown): void {
     durationMs?: number;
   };
   const output = data.ok ? data.output : data.error;
+  // escapeHtml the provider-supplied contentType / base64 / image URL before they
+  // enter innerHTML: an unescaped value could break out of the src attribute and
+  // inject an active element (XSS). Mirrors plugins/app-model-tester/src/routes.ts.
   const audio =
     data.ok && id === "text-to-speech" && output && typeof output === "object"
-      ? `<audio controls src="data:${(output as { contentType?: string }).contentType ?? "audio/wav"};base64,${(output as { base64?: string }).base64 ?? ""}"></audio>`
+      ? `<audio controls src="data:${escapeHtml((output as { contentType?: string }).contentType ?? "audio/wav")};base64,${escapeHtml((output as { base64?: string }).base64 ?? "")}"></audio>`
       : "";
   const images =
     data.ok && id === "image" && output && typeof output === "object"
       ? ((output as { images?: Array<{ url?: string }> }).images ?? [])
           .map((img) =>
-            img.url ? `<img class="preview" src="${img.url}" alt="">` : "",
+            img.url
+              ? `<img class="preview" src="${escapeHtml(img.url)}" alt="">`
+              : "",
           )
           .join("")
       : "";

@@ -86,7 +86,7 @@ function detectBufferFormat(buffer: Buffer): string {
   if (buffer.length >= 3 && buffer.toString("ascii", 0, 3) === "ID3") {
     return "mp3";
   }
-  if (buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0) {
+  if (buffer.length >= 2 && buffer[0] === 0xff && ((buffer[1] ?? 0) & 0xe0) === 0xe0) {
     return "mp3";
   }
   return "webm";
