@@ -55,7 +55,7 @@ function isProvisioningWorkerRequired(): boolean {
 }
 
 function getRedis(): CompatibleRedis | null {
-  const env = getCloudAwareEnv() as unknown as RedisFactoryEnv;
+  const env = getCloudAwareEnv() as RedisFactoryEnv;
   return buildRedisClient(env);
 }
 
