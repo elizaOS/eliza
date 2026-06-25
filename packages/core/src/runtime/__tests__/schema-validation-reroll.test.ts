@@ -18,8 +18,8 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../../testing/mock-runtime";
 import type { JsonSchema } from "../../actions/validate-tool-args";
+import { createMockRuntime } from "../../testing/mock-runtime";
 import type { ModelHandler } from "../../types/model";
 import { ModelType } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";

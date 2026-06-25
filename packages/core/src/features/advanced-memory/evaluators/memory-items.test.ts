@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMockRuntime } from "../../../testing/mock-runtime";
-import type {
-	EvaluatorRunOptions,
-	IAgentRuntime,
-	Memory,
-	State,
-} from "../../../types";
+import type { EvaluatorRunOptions, Memory, State } from "../../../types";
 import { type SummaryPrepared, summaryEvaluator } from "./memory-items";
 
 const runtime = createMockRuntime({

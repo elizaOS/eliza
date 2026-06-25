@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../../../testing/mock-runtime";
 import { ChannelTopicsService } from "../../../services/channel-topics";
+import { createMockRuntime } from "../../../testing/mock-runtime";
 import type {
 	IAgentRuntime,
 	Memory,
