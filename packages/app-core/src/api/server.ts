@@ -342,7 +342,7 @@ async function clearCompatPgliteDataDir(
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     try {
       await Promise.race([
-        Promise.resolve(runtime.stop()),
+        Promise.resolve(runtime.stop({ fast: true })),
         new Promise<void>((resolve) => {
           timeoutHandle = setTimeout(() => {
             stopTimedOut = true;

@@ -128,6 +128,15 @@ export type PostConnectorCapability =
 	| "search_posts"
 	| (string & {});
 
+/** Options for bounded runtime shutdown. */
+export interface RuntimeStopOptions {
+	/**
+	 * Skip waiting for unresolved service starts and cap service teardown. Intended
+	 * for signal handlers, reset/restart paths, and development shutdown.
+	 */
+	fast?: boolean;
+}
+
 export const ConnectorAccountPurpose = {
 	MESSAGING: "messaging",
 	POSTING: "posting",
@@ -1045,7 +1054,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	/** Resolved `OPTIMIZATION_DIR` (see `getOptimizationRootDir`). */
 	getOptimizationDir(): string;
 
-	stop(): Promise<void>;
+	stop(options?: RuntimeStopOptions): Promise<void>;
 
 	addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 

@@ -154,6 +154,7 @@ import {
 	type Route,
 	type RuntimeEventStorage,
 	type RuntimeSettings,
+	type RuntimeStopOptions,
 	type SendHandlerFunction,
 	type Service,
 	type ServiceClass,
@@ -244,6 +245,8 @@ const RUNTIME_TEMPLATE_CACHE = new Map<
 	Handlebars.TemplateDelegate<Record<string, unknown>>
 >();
 const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
+const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
+const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 // stateCache holds up to 2 entries per message (base State + `${id}_action_results`).
 // Previously it was never unconditionally evicted at end-of-turn, so a long-lived
 // runtime accumulated one State per processed message for its lifetime (~4.7 KB/msg,
@@ -732,6 +735,20 @@ function isMessagingAdapter(
 		typeof candidate.createChannel === "function" &&
 		typeof candidate.createMessage === "function"
 	);
+}
+
+function resolveShutdownTimeoutMs(envName: string, fallbackMs: number): number {
+	const raw = process.env[envName];
+	const parsed = Number(raw);
+	if (raw?.trim() === "0") return 0;
+	if (Number.isFinite(parsed) && parsed > 0) return parsed;
+	return fallbackMs;
+}
+
+function timeoutAfter(ms: number): Promise<"timeout"> {
+	return new Promise((resolve) => {
+		setTimeout(() => resolve("timeout"), ms);
+	});
 }
 
 export class AgentRuntime implements IAgentRuntime {
@@ -1917,7 +1934,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Stops all started services and clears runtime caches/handlers.
 	 * For full teardown (including DB/adapter connection), call close() after stop().
 	 */
-	async stop() {
+	async stop(options?: RuntimeStopOptions): Promise<void> {
 		if (this.stopped) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
@@ -1925,58 +1942,111 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
+		const fast = options?.fast === true;
+		const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
+		if (fast) {
+			process.env.ELIZA_FAST_SHUTDOWN = "1";
+		}
+		try {
+			await this._stopServices({ fast });
+		} finally {
+			if (fast) {
+				if (previousFastShutdown === undefined) {
+					delete process.env.ELIZA_FAST_SHUTDOWN;
+				} else {
+					process.env.ELIZA_FAST_SHUTDOWN = previousFastShutdown;
+				}
+			}
+		}
+	}
+
+	private async _stopServices({ fast }: { fast: boolean }): Promise<void> {
 		this.stopped = true;
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId },
+			{ src: "agent", agentId: this.agentId, fast },
 			"Stopping runtime",
 		);
 
-		// Wait for any in-flight service starts so we don't leave services running
-		const inFlight = Array.from(this.startingServices.values());
+		const inFlightEntries = Array.from(this.startingServices.entries());
+		const inFlight = inFlightEntries.map(([, promise]) => promise);
 		if (inFlight.length > 0) {
-			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, count: inFlight.length },
-				"Waiting for in-flight service starts before stopping",
-			);
-			await Promise.all(inFlight);
+			const serviceTypes = inFlightEntries.map(([serviceType]) => serviceType);
+			if (fast) {
+				this.logger.info(
+					{ src: "agent", agentId: this.agentId, serviceTypes },
+					"Fast shutdown: skipping wait for in-flight service starts",
+				);
+				this.startingServices.clear();
+			} else {
+				const timeoutMs = resolveShutdownTimeoutMs(
+					"ELIZA_SHUTDOWN_SERVICE_START_TIMEOUT_MS",
+					DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS,
+				);
+				if (timeoutMs === 0) {
+					this.logger.info(
+						{ src: "agent", agentId: this.agentId, serviceTypes },
+						"Skipping wait for in-flight service starts",
+					);
+					this.startingServices.clear();
+				} else {
+					this.logger.info(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							count: inFlight.length,
+							serviceTypes,
+							timeoutMs,
+						},
+						"Waiting for in-flight service starts before stopping",
+					);
+					const result = await Promise.race([
+						Promise.allSettled(inFlight).then(() => "settled" as const),
+						timeoutAfter(timeoutMs),
+					]);
+					if (result === "timeout" && this.startingServices.size > 0) {
+						this.logger.warn(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								serviceTypes,
+								timeoutMs,
+							},
+							"Timed out waiting for in-flight service starts; proceeding with shutdown",
+						);
+						this.startingServices.clear();
+					}
+				}
+			}
 		}
 
+		const fastStopTasks: Promise<void>[] = [];
 		for (const [serviceType, services] of this.services) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, serviceType },
 				"Stopping service",
 			);
 			for (const service of services) {
-				const maybe = service as { stop?: () => Promise<void> } | null;
-				// A null/undefined service entry must not throw "null is not an
-				// object" and abort the whole stop loop (this breaks agent reset).
-				if (maybe && typeof maybe.stop === "function") {
-					// Isolate each service's stop() — one failing service should not
-					// prevent the rest from stopping (also critical for reset).
-					try {
-						await maybe.stop();
-					} catch (err) {
-						this.logger.warn(
-							{
-								src: "agent",
-								agentId: this.agentId,
-								serviceType,
-								error: err instanceof Error ? err.message : String(err),
-							},
-							"Service stop() threw; continuing",
-						);
-					}
-				} else if (!maybe) {
-					this.logger.warn(
-						{ src: "agent", agentId: this.agentId, serviceType },
-						"Null service instance during stop; skipping",
+				if (fast) {
+					fastStopTasks.push(
+						this._stopServiceInstance(serviceType, service, "fast shutdown"),
 					);
 				} else {
-					this.logger.warn(
-						{ src: "agent", agentId: this.agentId, serviceType },
-						"Service instance is missing stop(); skipping",
-					);
+					await this._stopServiceInstance(serviceType, service, "shutdown");
 				}
+			}
+		}
+		if (fast && fastStopTasks.length > 0) {
+			const timeoutMs = resolveShutdownTimeoutMs(
+				"ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS",
+				DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS,
+			);
+			if (timeoutMs > 0) {
+				await Promise.race([
+					Promise.allSettled(fastStopTasks),
+					timeoutAfter(timeoutMs),
+				]);
+			} else {
+				await Promise.allSettled(fastStopTasks);
 			}
 		}
 
@@ -2000,6 +2070,40 @@ export class AgentRuntime implements IAgentRuntime {
 		this.servicePromises.clear();
 		this.servicePromiseHandlers.clear();
 		this.startingServices.clear();
+	}
+
+	private async _stopServiceInstance(
+		serviceType: string,
+		service: Service | null | undefined,
+		reason: string,
+	): Promise<void> {
+		const maybe = service as { stop?: () => Promise<void> | void } | null;
+		if (maybe && typeof maybe.stop === "function") {
+			try {
+				await Promise.resolve().then(() => maybe.stop?.());
+			} catch (err) {
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						serviceType,
+						reason,
+						error: err instanceof Error ? err.message : String(err),
+					},
+					"Service stop() threw; continuing",
+				);
+			}
+		} else if (!maybe) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, serviceType, reason },
+				"Null service instance during stop; skipping",
+			);
+		} else {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, serviceType, reason },
+				"Service instance is missing stop(); skipping",
+			);
+		}
 	}
 
 	/**
@@ -3951,8 +4055,21 @@ export class AgentRuntime implements IAgentRuntime {
 			return null;
 		}
 		try {
+			if (this.stopped) {
+				this.serviceRegistrationStatus.set(key, "failed");
+				return null;
+			}
 			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
+				this.serviceRegistrationStatus.set(key, "failed");
+				return null;
+			}
+			if (this.stopped) {
+				await this._stopServiceInstance(
+					key,
+					serviceInstance,
+					"late service start after runtime stop",
+				);
 				this.serviceRegistrationStatus.set(key, "failed");
 				return null;
 			}

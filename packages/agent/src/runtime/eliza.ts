@@ -1328,7 +1328,7 @@ export async function shutdownRuntime(
   let firstError: unknown = null;
 
   try {
-    await runtime.stop();
+    await runtime.stop({ fast: true });
   } catch (err) {
     firstError = err;
     logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
