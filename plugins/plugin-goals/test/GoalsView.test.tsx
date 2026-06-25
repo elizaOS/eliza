@@ -176,7 +176,12 @@ describe("GoalsView — spatial GUI/XR wrapper", () => {
         fetchers={makeFetchers({ fetchGoals: async () => ({ goals: [] }) })}
       />,
     );
-    await screen.findByText("No goals yet");
+    // #9486 'declutter plugin app views' replaced the "No goals yet" empty-state
+    // copy with a bold "None" + the set-a-goal affordance; wait on the affordance
+    // (data-agent-id="new", unique to the empty state) instead of the removed text.
+    await waitFor(() => {
+      expect(queryAgent("new")).not.toBeNull();
+    });
     expect(queryAgent("filter:active")).toBeNull();
   });
 
@@ -186,7 +191,12 @@ describe("GoalsView — spatial GUI/XR wrapper", () => {
         fetchers={makeFetchers({ fetchGoals: async () => ({ goals: [] }) })}
       />,
     );
-    await screen.findByText("No goals yet");
+    // #9486 'declutter plugin app views' replaced the "No goals yet" empty-state
+    // copy with a bold "None" + the set-a-goal affordance; wait on the affordance
+    // (data-agent-id="new", unique to the empty state) instead of the removed text.
+    await waitFor(() => {
+      expect(queryAgent("new")).not.toBeNull();
+    });
     fireEvent.click(agent("new"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
