@@ -50,11 +50,6 @@ export {
 	mergeContext,
 } from "./eager-context-builder";
 export {
-	computeErle,
-	NlmsEchoCanceller,
-	type NlmsEchoCancellerConfig,
-} from "./echo-canceller";
-export {
 	type EchoDelayEstimate,
 	type EchoDelayOptions,
 	estimateEchoDelaySamples,
