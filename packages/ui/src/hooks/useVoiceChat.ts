@@ -765,7 +765,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       }
       // Defer to the next backend (talk-mode / browser) when the server can't
       // transcribe right now — capturing here would only 502 at stop() with no
-      // recoverable fallback (no whisper model / native adapter installed).
+      // recoverable fallback (no local ASR assets / native adapter installed).
       if (!(await isLocalInferenceAsrReady())) {
         return false;
       }
