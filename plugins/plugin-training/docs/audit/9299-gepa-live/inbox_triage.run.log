@@ -1,0 +1,40 @@
+[gepa-seed] task=inbox_triage dataset=8 model=openai/gpt-oss-120b (cerebras) generations=2 population=4
+
+[gepa-seed] RESULT task=inbox_triage baseline=0.625 optimized=0.667 delta=0.042
+
+[gepa-seed] baseline prompt:
+Plan the Gmail/inbox triage action for this request.
+The user may speak in any language.
+Use only Gmail/inbox actions. Do not plan calendar, reminder, or document work here.
+Return line-based fields only:
+subaction: triage | needs_response | search | read | draft_reply | send_reply
+shouldAct: true | false
+response: null or a short clarification
+queries: up to 3 concise Gmail search queries separated by ||
+
+Choose triage for broad inbox cleanup or priority review.
+Choose needs_response when the owner asks what needs a reply.
+Choose search/read when the owner asks for specific messages.
+Choose draft_reply or send_reply only when the owner explicitly asks to respond.
+Set shouldAct=false when the request is too vague to choose safely.
+
+[gepa-seed] optimized prompt:
+Plan the Gmail/inbox triage action for this request.
+The user may speak in any language.
+Use only Gmail/inbox actions. Do not plan calendar, reminder, or document work here.
+Return line-based fields only:
+subaction: triage | needs_response | search | read | draft_reply | send_reply
+shouldAct: true | false
+response: null or a short clarification
+queries: up to 3 concise Gmail search queries separated by ||
+
+Only output **subaction** and **shouldAct** unless the request explicitly asks for a search or reply; omit **response** and **queries** otherwise.
+
+Choose triage for broad inbox cleanup or priority review.
+Choose needs_response when the owner asks what needs a reply.
+Choose search/read when the owner asks for specific messages.
+Choose draft_reply or send_reply only when the owner explicitly asks to respond.
+Set shouldAct=false when the request is too vague to choose safely.
+ Info       [SERVICE:OPTIMIZED_PROMPT] Persisted optimized prompt artifact (task=inbox_triage, optimizer=gepa, score=0.6666666666666666, baselineScore=0.625, path=/Users/shawwalters/.local/state/eliza/optimized-prompts/inbox_triage/v1.json, version=1)
+
+[gepa-seed] persisted optimized artifact -> /Users/shawwalters/.local/state/eliza/optimized-prompts/inbox_triage/v1.json
