@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -223,7 +224,12 @@ describe("action benchmark runner", () => {
       variant: "base",
     });
 
-    expect(result.workspaceRoot).toContain("eliza");
+    // Verify discovery found the real workspace root structurally, not by
+    // assuming the checkout dir is named "eliza" (false in a /tmp worktree,
+    // a fork, or any renamed CI checkout).
+    expect(existsSync(join(result.workspaceRoot, "packages", "app-core"))).toBe(
+      true,
+    );
     expect(result.appCoreRoot).toBe(
       join(result.workspaceRoot, "packages", "app-core"),
     );
