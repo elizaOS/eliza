@@ -7,8 +7,10 @@ HumanEval/Chen-2021 unbiased estimator.
 Score formula:
     STATIC mode: 0.5 * state_hash_match + 0.4 * action_score
                  + 0.1 * mean(output_substring_matches)
-    LIVE  mode: 0.7 * state_hash_match
-                 + 0.3 * mean(output_substring_matches)
+    LIVE  mode: gated on terminated_reason == "satisfied", then
+                 0.7 * (world was mutated) + 0.3 * mean(output_substring_matches).
+      LIVE has no ground-truth actions, so an unchanged world hashes equal to
+      the seed; crediting state_hash_match there rewards inaction (#8795).
 
 PerfectAgent must produce 1.0 on every supported scenario.
 WrongAgent must produce 0.0 on every scenario.
@@ -1157,8 +1159,28 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
       penalizing wrong reads — 0.35 state_hash + 0.5 action_score +
       0.15 substring_score.
 
-    LIVE weighting (no GT actions, judged by world hash + judge):
-          0.7 state_hash + 0.3 substring_score.
+    LIVE weighting (no GT actions, judged by the simulated user + judge):
+          gated on terminated_reason == "satisfied", then
+          0.7 mutation_component + 0.3 substring_score.
+
+      LIVE scenarios carry no ground-truth actions, so `_replay_ground_truth`
+      replays an empty action list and returns the UNCHANGED seed hash. That
+      makes `state_hash_match` True exactly when the agent left the world
+      untouched — i.e. the raw state-hash signal rewards inaction. A
+      do-nothing agent that the judge nonetheless marks "satisfied" would
+      score the full state bonus (1.0) while a correct world-mutating agent
+      (whose final hash differs from the seed, so `state_hash_match` is False)
+      would lose it (0.3). That inversion is the #8795 bug.
+
+      Conservative fix: for LIVE, the state component is INVERTED into a
+      `mutation_component` — a *changed* world earns the bonus, an unchanged
+      world does not. The judge `satisfied` gate remains the authoritative
+      pass/fail; the mutation term simply stops paying out the state bonus for
+      a world the agent never touched, so a correct mutation always scores
+      strictly above a do-nothing run. Parsing `world_assertions` into
+      per-scenario checkable predicates (so LIVE *read* tasks can keep crediting
+      a legitimately-unchanged world) is the documented option (b) future
+      enhancement — see #8795.
 
     Errors / timeouts / cost overruns force 0.
     """
@@ -1241,7 +1263,15 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
 
     if result.terminated_reason != "satisfied":
         return 0.0
-    return 0.7 * state_component + 0.3 * substring_component
+    # LIVE scenarios have no ground-truth actions, so the replayed expected
+    # hash equals the seed and `state_hash_match` is True exactly when the
+    # agent left the world UNCHANGED. Crediting that rewards inaction (#8795):
+    # a do-nothing "satisfied" run would score the full state bonus while a
+    # correct world-mutating run would lose it. Invert the term so the bonus
+    # accrues to a *changed* world, guaranteeing a correct mutation scores
+    # strictly above a do-nothing run.
+    mutation_component = 0.0 if result.state_hash_match else 1.0
+    return 0.7 * mutation_component + 0.3 * substring_component
 
 
 def pass_at_k(c: int, n: int, k: int) -> float:
