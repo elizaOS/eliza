@@ -58,6 +58,11 @@ let host: ChildProcessWithoutNullStreams | null = null;
 let starting: Promise<void> | null = null;
 let startFailures = 0;
 let loopScriptPath: string | null = null;
+// Gate against respawning after an owner-initiated dispose. `shutdownPsHost()`
+// (timeout / test cleanup) leaves this true so the next call can respawn;
+// `disposePsHost()` (service stop) sets it false so a fire-and-forget warm
+// continuation can't resurrect a host after the service has stopped.
+let spawnAllowed = true;
 let stdoutBuf = "";
 let stderrRing = "";
 let pending: {
@@ -169,6 +174,9 @@ export function shutdownPsHost(): void {
 
 async function ensureHost(): Promise<void> {
   if (host) return;
+  // Owner disposed the host (service stopped); refuse to resurrect it from a
+  // late fire-and-forget continuation. Callers fall back to one-shot spawns.
+  if (!spawnAllowed) throw new Error("ps-host disposed");
   if (starting) return starting;
   starting = (async () => {
     // Write the server loop to disk and run it with `-File` so stdin stays free
@@ -199,8 +207,20 @@ async function ensureHost(): Promise<void> {
     child.stderr.on("data", (c: Buffer) => {
       stderrRing = (stderrRing + c.toString("utf8")).slice(-2048);
     });
-    child.once("exit", onExit);
-    child.once("error", onExit);
+    // Swallow stdin pipe errors (EPIPE when the host dies between requests).
+    // Without this listener Node throws the 'error' as an uncaught exception
+    // and crashes the whole process — defeating the transparent-fallback
+    // contract. The dead pipe surfaces via onExit → a normal rejection instead.
+    child.stdin.on("error", () => {});
+    // Bind exit/error to THIS child: a previously-killed host's late 'exit'
+    // event must not tear down a freshly respawned host or reject its pending
+    // request. Stale events are ignored.
+    const onChildGone = () => {
+      if (host !== child) return;
+      onExit();
+    };
+    child.once("exit", onChildGone);
+    child.once("error", onChildGone);
     host = child;
     // Warmup ping — proves the loop is reading and the process is hot.
     await sendRaw("$null", STARTUP_TIMEOUT_MS);
@@ -239,7 +259,16 @@ function sendRaw(script: string, timeoutMs: number): Promise<string> {
       );
     }, timeoutMs);
     pending = { token, resolve, reject, timer };
-    host.stdin.write(`${token} ${b64}\n`);
+    try {
+      host.stdin.write(`${token} ${b64}\n`);
+    } catch (err) {
+      // Synchronous write failure (e.g. dead pipe). Surface as a rejection so
+      // the caller falls back, and tear the host down so the next call respawns.
+      clearTimeout(timer);
+      pending = null;
+      shutdownPsHost();
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
   });
 }
 
@@ -269,11 +298,26 @@ export function runPsHost(script: string, timeoutMs: number): Promise<string> {
  * start, callers transparently fall back to one-shot spawns.
  */
 export function warmPsHost(): Promise<void> {
+  // Re-enable spawning: an explicit warm is a fresh intent to use the host
+  // (e.g. a service (re)start after a prior dispose).
+  spawnAllowed = true;
   if (!psHostAvailable()) return Promise.resolve();
   return runPsHost("$null", STARTUP_TIMEOUT_MS).then(
     () => {},
     () => {},
   );
+}
+
+/**
+ * Owner-initiated dispose (service stop). Unlike {@link shutdownPsHost} (which
+ * leaves the host respawnable for the next call — used by the timeout path),
+ * this latches spawning OFF so an in-flight fire-and-forget warm continuation
+ * cannot resurrect a powershell.exe after the service has stopped. A later
+ * {@link warmPsHost} re-enables it.
+ */
+export function disposePsHost(): void {
+  spawnAllowed = false;
+  shutdownPsHost();
 }
 
 /** Test-only: reset failure latch so a fresh attempt can be made. */
