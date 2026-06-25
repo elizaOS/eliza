@@ -18,7 +18,12 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { commandExists, currentPlatform } from "./helpers.js";
 
-const CLIPBOARD_TIMEOUT_MS = 5_000;
+// 15s to match the capture/screenshot spawn budgets. On Defender-heavy Windows
+// hosts a cold `powershell.exe` 5.1 spawn (Set-Clipboard/Get-Clipboard) can take
+// >5s under real-time AV scanning (measured ~11s on a build box), which made the
+// previous 5s budget false-fail the clipboard round-trip while the capability
+// itself was fine. See #9581 (Windows on-device CUA verification).
+const CLIPBOARD_TIMEOUT_MS = 15_000;
 const CLIPBOARD_MAX_BYTES = 10 * 1024 * 1024; // 10 MiB cap
 
 export class ClipboardUnavailableError extends Error {
