@@ -208,21 +208,20 @@ async function resolveGoogleConnectorAccount(args: {
 
 function requireGoogleWorkspaceService(
   runtime: IAgentRuntime,
-): IGoogleWorkspaceService {
+): Record<string, unknown> {
   const service = runtime.getService("google");
-  if (!service || typeof service !== "object") {
+  if (!isRecord(service)) {
     fail(
       503,
       "Google Workspace service is not registered. Enable @elizaos/plugin-google before using inbox Gmail features.",
     );
   }
-  return service as unknown as IGoogleWorkspaceService;
+  return service;
 }
 
-function requireGoogleServiceMethod<K extends keyof IGoogleWorkspaceService>(
-  runtime: IAgentRuntime,
-  method: K,
-): IGoogleWorkspaceService[K] {
+function requireGoogleServiceMethod<
+  K extends keyof IGoogleWorkspaceService & string,
+>(runtime: IAgentRuntime, method: K): IGoogleWorkspaceService[K] {
   const service = requireGoogleWorkspaceService(runtime);
   const fn = service[method];
   if (typeof fn !== "function") {
