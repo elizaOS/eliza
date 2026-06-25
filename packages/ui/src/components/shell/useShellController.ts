@@ -157,7 +157,7 @@ export interface ShellController {
    *  yet cached — drives the chat's in-thread loading spinner so an empty thread
    *  reads as "loading," not "broken." Cache-hit swipes paint instantly and
    *  never trip this. */
-  conversationLoading: boolean;
+  conversationLoading?: boolean;
 }
 
 /** Adjacent-conversation navigation for the overlay's horizontal swipe. */
@@ -280,11 +280,10 @@ export function useShellController(): ShellController {
     dispatchHomeSpringboardNavigation("springboard");
   }, [setTab]);
 
-  // True while a clear or a (non-cached) swipe is fetching the next thread, so
-  // the overlay can show an in-thread spinner instead of an empty sheet. A
-  // cache-hit swipe paints synchronously inside handleSelectConversation, so the
-  // thread is non-empty before this even matters — the spinner only shows on a
-  // genuine network wait (clear's greeting, or a swipe past the prefetch window).
+  // True while a clear or conversation switch is fetching the next thread, so
+  // the overlay can show an in-thread spinner instead of an empty sheet. Cache
+  // hits paint synchronously inside handleSelectConversation; the overlay only
+  // renders the spinner when the visible thread is still empty.
   const [conversationLoading, setConversationLoading] = React.useState(false);
   const conversationLoadingSeqRef = React.useRef(0);
 
