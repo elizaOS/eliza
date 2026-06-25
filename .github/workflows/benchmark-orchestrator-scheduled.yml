@@ -109,15 +109,12 @@ jobs:
       # The orchestrator package is `benchmarks` under `packages/`, so the
       # module is invoked as `python -m benchmarks.orchestrator` with
       # `PYTHONPATH=packages` from the repo root.
+      #
+      # NOTE: `validate-runtime-gates` is intentionally NOT run here — it checks
+      # ALL live gates globally (Hyperliquid key, Docker backends, …) and exits
+      # non-zero when any is unavailable, which is unrelated to this LLM-only core
+      # subset. The subset-scoped publishability gate below is the relevant check.
       # ------------------------------------------------------------------
-      - name: Validate runtime gates
-        if: steps.gate.outputs.skip != 'true'
-        env:
-          PYTHONUNBUFFERED: "1"
-        run: |
-          set -e
-          PYTHONPATH=packages python -m benchmarks.orchestrator validate-runtime-gates --json
-
       - name: Run core registry subset on a real model
         if: steps.gate.outputs.skip != 'true'
         id: run
