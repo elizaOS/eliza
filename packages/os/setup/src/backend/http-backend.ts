@@ -54,7 +54,15 @@ function validateConnectedDevice(v: unknown): ConnectedDevice {
   if (!isString(v.codename))
     throw new Error("device.codename must be a string");
   if (!isString(v.state)) throw new Error("device.state must be a string");
-  return v as unknown as ConnectedDevice;
+  return {
+    serial: v.serial,
+    model: v.model,
+    codename: v.codename,
+    state: v.state as ConnectedDevice["state"],
+    bootloaderUnlocked: isBoolean(v.bootloaderUnlocked)
+      ? v.bootloaderUnlocked
+      : null,
+  };
 }
 
 function validateDeviceSpecs(v: unknown): DeviceSpecs {
@@ -68,7 +76,17 @@ function validateDeviceSpecs(v: unknown): DeviceSpecs {
   if (!isString(v.abi)) throw new Error("specs.abi must be a string");
   if (!isBoolean(v.supportedByElizaOs))
     throw new Error("specs.supportedByElizaOs must be a boolean");
-  return v as unknown as DeviceSpecs;
+  return {
+    storageAvailableBytes: v.storageAvailableBytes,
+    storageTotalBytes: v.storageTotalBytes,
+    androidVersion: v.androidVersion,
+    abi: v.abi,
+    supportedByElizaOs: v.supportedByElizaOs,
+    bootloaderLocked: isBoolean(v.bootloaderLocked) ? v.bootloaderLocked : null,
+    supportedBuildCodename: isString(v.supportedBuildCodename)
+      ? v.supportedBuildCodename
+      : null,
+  };
 }
 
 function validateBuild(v: unknown): AospBuild {
