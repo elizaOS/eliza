@@ -8,11 +8,14 @@ import type { StartupShellProps } from "./startup-shell-types";
 
 const FONT = "'Poppins', Arial, system-ui, sans-serif";
 
-// Brand surface for the startup splash: the active theme's accent (the
-// elizaOS accent by default) with its readable foreground. Whitelabel seam —
-// no hardcoded brand color.
+// Surface for the startup splash. It must match the default home background
+// orange (#ef5a1f = DEFAULT_BACKGROUND_COLOR in state/ui-preferences.ts), NOT
+// the brand accent, so the boot/loading shell flows seamlessly into the home
+// ShaderBackground with no orange→orange flash (issue #9565). Whitelabel seam:
+// hosts override `--launch-bg` / `--launch-foreground`; the literal fallbacks
+// are the elizaOS defaults.
 const BRAND_SURFACE =
-  "bg-[var(--accent,#FF5800)] text-[var(--accent-foreground,#fff)]";
+  "bg-[var(--launch-bg,#ef5a1f)] text-[var(--launch-foreground,#fff)]";
 
 function brandName(): string {
   return getBootConfig().branding?.appName ?? "elizaOS";
