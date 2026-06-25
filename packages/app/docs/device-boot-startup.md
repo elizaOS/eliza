@@ -170,15 +170,22 @@ shares a single id end to end:
 - Electrobun's static-server HTML path now injects that startup-trace
   `session_id` through `apiBaseOwner.injectIntoHtml`, so desktop renderer marks
   adopt the host id before module evaluation.
+- Android's Capacitor host now exposes a process-local startup trace id through
+  the synchronous `window.ElizaNative.getStartupTraceId()` bridge and passes the
+  same value into the local agent as `ELIZA_STARTUP_TRACE_ID`, so renderer marks,
+  restart events, and `<stateDir>/telemetry/boot/latest.json` can be correlated
+  on Android device boots.
 - The renderer reads it (`initStartupTrace()` →
-  `STARTUP_TRACE_ID_WINDOW_KEY`); absent an injected id it derives a
+  `STARTUP_TRACE_ID_WINDOW_KEY`, then Android's bridge fallback); absent an
+  injected/native id it derives a
   renderer-local id and still records `timeOrigin` (epoch ms), so traces can be
   aligned by wall-clock even before the id seam is wired.
 
 > Wiring status: renderer adoption and Electrobun injection now ship together.
-> The remaining host-specific follow-up is the Capacitor/native mobile injection
-> path, so iOS/Android local runtime traces can adopt the same id before
-> renderer module evaluation.
+> Android also shares the id through the synchronous native bridge + agent env.
+> The remaining host-specific follow-up is the iOS Capacitor/native injection
+> path, so iOS local runtime traces can adopt the same id before renderer module
+> evaluation.
 
 ---
 
