@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { SHARE_TARGET_EVENT } from "../../events";
+import { useFrameBudgetMonitor, useLayoutShiftMonitor } from "../../hooks";
 import { PerfOverlay } from "../../perf/PerfOverlay";
+import { bootPerfHud, installPerfHudHotkey } from "../../perf/perf-hud-control";
 import type { ShareTargetPayload } from "../../platform/init";
 
 import { TOAST_TTL_MS } from "../../state/action-notice";
@@ -59,6 +61,14 @@ export function ShellOverlays({
   const tab = useAppSelector(selectTab);
   const setState = useAppSelector(selectSetState);
   const setActionNotice = useAppSelector(selectSetActionNotice);
+
+  useLayoutShiftMonitor();
+  useFrameBudgetMonitor();
+
+  useEffect(() => {
+    bootPerfHud();
+    return installPerfHudHotkey();
+  }, []);
 
   useEffect(() => {
     const handlePayload = (payload: ShareTargetPayload) => {

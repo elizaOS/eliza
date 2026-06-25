@@ -480,6 +480,13 @@ export {
   startFrameBudgetMonitor,
   useFrameBudgetMonitor,
 } from "./hooks/useFrameBudgetMonitor";
+export {
+  DEFAULT_CLS_BUDGET,
+  type LayoutShiftMonitorOptions,
+  type LayoutShiftTelemetryEvent,
+  startLayoutShiftMonitor,
+  useLayoutShiftMonitor,
+} from "./hooks/useLayoutShiftMonitor";
 export { useMediaQuery } from "./hooks/useMediaQuery";
 export {
   type AnyRenderTelemetryEvent,

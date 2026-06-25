@@ -14,6 +14,7 @@ export * from "./useDocumentVisibility";
 export * from "./useFetchData";
 export * from "./useFrameBudgetMonitor";
 export { COMMON_SHORTCUTS } from "./useKeyboardShortcuts";
+export * from "./useLayoutShiftMonitor";
 export * from "./useLinkedSidebarSelection";
 export * from "./useMediaQuery";
 export * from "./useModalState";

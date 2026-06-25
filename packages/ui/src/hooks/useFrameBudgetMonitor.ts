@@ -11,6 +11,7 @@
 // browser glue and is intentionally thin.
 
 import { useEffect } from "react";
+import { PERF_TOGGLE_EVENT } from "../perf/perf-hud-control";
 import {
   DEFAULT_FRAME_BUDGET,
   type FrameBudget,
@@ -124,7 +125,20 @@ export function useFrameBudgetMonitor(
   options: FrameBudgetMonitorOptions = {},
 ): void {
   // The monitor reads option values once at start; callers that want to change
-  // budget/window should remount. Intentionally a stable empty dep set.
+  // budget/window should remount. It restarts on PERF_TOGGLE_EVENT so the perf
+  // HUD hotkey turns the rAF sampler on/off live without a remount.
   // biome-ignore lint/correctness/useExhaustiveDependencies: options are read once at start
-  useEffect(() => startFrameBudgetMonitor(options), []);
+  useEffect(() => {
+    let stop = startFrameBudgetMonitor(options);
+    if (typeof window === "undefined") return stop;
+    const onToggle = () => {
+      stop();
+      stop = startFrameBudgetMonitor(options);
+    };
+    window.addEventListener(PERF_TOGGLE_EVENT, onToggle);
+    return () => {
+      window.removeEventListener(PERF_TOGGLE_EVENT, onToggle);
+      stop();
+    };
+  }, []);
 }

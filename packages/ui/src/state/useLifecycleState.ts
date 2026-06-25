@@ -375,7 +375,7 @@ export function useLifecycleState(): LifecycleStateHook {
     (
       text: string,
       tone: ActionTone = "info",
-      ttlMs = TOAST_TTL_MS.default,
+      ttlMs: number = TOAST_TTL_MS.default,
       once = false,
       busy = false,
     ) => {
