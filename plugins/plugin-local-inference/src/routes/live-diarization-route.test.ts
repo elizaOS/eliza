@@ -17,6 +17,7 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
+import { buildLiveDiarizationConsumerDeps } from "../services/voice/live-diarization-session.js";
 import type { CompatRuntimeState } from "./compat-helpers.js";
 import {
 	handleLiveDiarizationRoute,
@@ -90,6 +91,34 @@ afterEach(async () => {
 });
 
 describe("handleLiveDiarizationRoute", () => {
+	it("builds AudioFrameConsumer deps with an optional echoReference provider", () => {
+		const echoReference = () => new Float32Array(320);
+		const deps = buildLiveDiarizationConsumerDeps({
+			vad: {
+				inSpeech: false,
+				onVadEvent: () => () => {},
+				pushFrame: async () => {},
+				flush: async () => {},
+				reset: () => {},
+			},
+			pipeline: {
+				attribute: async () => {
+					throw new Error("not used");
+				},
+			},
+			runtime: { emitEvent: async () => {} },
+			echoReference,
+		});
+		expect(deps.echoReference).toBe(echoReference);
+		expect(
+			buildLiveDiarizationConsumerDeps({
+				vad: deps.vad,
+				pipeline: deps.pipeline,
+				runtime: deps.runtime,
+			}),
+		).not.toHaveProperty("echoReference");
+	});
+
 	it("returns false for an unrelated path (passes through)", async () => {
 		const res = new FakeRes();
 		const handled = await handleLiveDiarizationRoute(
@@ -132,6 +161,7 @@ describe("handleLiveDiarizationRoute", () => {
 			models: { dir: string };
 			framesReceived: number;
 			turnsObserved: number;
+			aec: { echoReferenceWired: boolean };
 			error?: string;
 		};
 		// On CI/host there is no fused libelizainference, so readiness fails with
@@ -142,11 +172,33 @@ describe("handleLiveDiarizationRoute", () => {
 		expect("fusedInference" in status.libs).toBe(true);
 		expect(status.framesReceived).toBe(0);
 		expect(status.turnsObserved).toBe(0);
+		expect(status.aec.echoReferenceWired).toBe(false);
 		if (!status.ready) {
 			expect(status.error).toMatch(
 				/fused libelizainference|ABI|FFI|libelizainference/i,
 			);
 		}
+	});
+
+	it("threads a runtime echoReference provider into live AEC status", async () => {
+		const res = new FakeRes();
+		const echoReference = () => new Float32Array(320);
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({ method: "GET", url: "/api/voice/audio-frames/status" }),
+			res as unknown as http.ServerResponse,
+			{
+				current: {
+					emitEvent: async () => {},
+					voiceEchoReferenceProvider: echoReference,
+				} as never,
+			},
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(200);
+		const status = res.json() as {
+			aec: { echoReferenceWired: boolean };
+		};
+		expect(status.aec.echoReferenceWired).toBe(true);
 	});
 
 	it("rejects a malformed frame batch with 400", async () => {
@@ -244,6 +296,22 @@ describe("handleLiveDiarizationRoute", () => {
 		expect(handled).toBe(true);
 		expect(res.statusCode).toBe(200);
 		expect(res.json()).toMatchObject({ ok: true, framesPushed: 0 });
+	});
+
+	it("resets stale playback before accepting a fresh playback batch", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "POST",
+				url: "/api/voice/playback-frames",
+				body: { reset: true, frames: [silentFrame(0)] },
+			}),
+			res as unknown as http.ServerResponse,
+			runtimeState(),
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toMatchObject({ ok: true, framesPushed: 1 });
 	});
 
 	it("rejects malformed playback frames with 400", async () => {

@@ -21,25 +21,51 @@ export interface EchoReferenceBufferOptions {
 	 * `maxDelaySamples + frameLength`. Default 24000 (1.5 s @ 16 kHz).
 	 */
 	capacitySamples?: number;
+	/** Sample rate for timestamp-based push/read helpers. Default 16000. */
+	sampleRateHz?: number;
 }
 
 export class EchoReferenceBuffer {
 	private readonly buffer: Float32Array;
+	private readonly valid: Uint8Array;
 	private readonly capacity: number;
+	private readonly sampleRateHz: number;
 	/** Total samples ever pushed (monotonic); the logical "now" cursor. */
 	private pushed = 0;
+	/** Timestamp mapped to absolute sample 0 for timestamp-aware playback. */
+	private originMs: number | null = null;
 
 	constructor(options: EchoReferenceBufferOptions = {}) {
 		this.capacity = Math.max(1, Math.floor(options.capacitySamples ?? 24000));
+		this.sampleRateHz = Math.max(1, Math.floor(options.sampleRateHz ?? 16_000));
 		this.buffer = new Float32Array(this.capacity);
+		this.valid = new Uint8Array(this.capacity);
 	}
 
 	/** Append rendered playback (far-end) PCM as it is produced. */
 	push(playback: Float32Array): void {
-		for (let i = 0; i < playback.length; i++) {
-			this.buffer[(this.pushed + i) % this.capacity] = playback[i];
-		}
+		this.writeAt(this.pushed, playback);
 		this.pushed += playback.length;
+	}
+
+	/**
+	 * Store rendered playback at its capture/render timestamp. This preserves
+	 * real gaps between playback bursts instead of treating chunks as contiguous.
+	 */
+	pushAt(timestampMs: number, playback: Float32Array): void {
+		if (!Number.isFinite(timestampMs)) {
+			this.push(playback);
+			return;
+		}
+		if (this.originMs === null) this.originMs = timestampMs;
+		let start = this.sampleIndexFor(timestampMs);
+		if (start < 0) {
+			this.reset();
+			this.originMs = timestampMs;
+			start = 0;
+		}
+		this.writeAt(start, playback);
+		this.pushed = Math.max(this.pushed, start + playback.length);
 	}
 
 	/**
@@ -54,15 +80,25 @@ export class EchoReferenceBuffer {
 		const delay = Math.max(0, Math.floor(delaySamples));
 		// Absolute index (in the monotonic stream) of the first output sample.
 		const start = this.pushed - delay - out.length;
-		const oldest = Math.max(0, this.pushed - this.capacity);
-		for (let i = 0; i < out.length; i++) {
-			const abs = start + i;
-			// Available only if within [oldest, pushed) — else leave the 0 fill.
-			if (abs >= oldest && abs >= 0 && abs < this.pushed) {
-				out[i] = this.buffer[abs % this.capacity];
-			}
+		return this.readWindow(start, out.length);
+	}
+
+	/**
+	 * Reference aligned to a mic frame starting at `timestampMs`.
+	 * Returns playback `[timestampMs - delay, timestampMs - delay + length)`.
+	 */
+	referenceAt(
+		timestampMs: number,
+		length: number,
+		delaySamples: number,
+	): Float32Array {
+		const outLength = Math.max(0, Math.floor(length));
+		if (this.originMs === null || !Number.isFinite(timestampMs)) {
+			return new Float32Array(outLength);
 		}
-		return out;
+		const delay = Math.max(0, Math.floor(delaySamples));
+		const start = this.sampleIndexFor(timestampMs) - delay;
+		return this.readWindow(start, outLength);
 	}
 
 	/** Samples pushed so far (the monotonic stream position). */
@@ -73,6 +109,57 @@ export class EchoReferenceBuffer {
 	/** Drop all buffered playback (e.g. on a new turn / barge-in flush). */
 	reset(): void {
 		this.buffer.fill(0);
+		this.valid.fill(0);
 		this.pushed = 0;
+		this.originMs = null;
+	}
+
+	private sampleIndexFor(timestampMs: number): number {
+		if (this.originMs === null) return 0;
+		return Math.round(
+			((timestampMs - this.originMs) / 1000) * this.sampleRateHz,
+		);
+	}
+
+	private writeAt(start: number, playback: Float32Array): void {
+		const safeStart = Math.max(0, Math.floor(start));
+		const end = safeStart + playback.length;
+		if (safeStart > this.pushed) this.clearRange(this.pushed, safeStart);
+		const oldest = Math.max(0, this.pushed - this.capacity);
+		if (end <= oldest) return;
+		for (let i = 0; i < playback.length; i++) {
+			const abs = safeStart + i;
+			if (abs < oldest) continue;
+			const slot = abs % this.capacity;
+			this.buffer[slot] = playback[i] ?? 0;
+			this.valid[slot] = 1;
+		}
+	}
+
+	private clearRange(from: number, to: number): void {
+		if (to <= from) return;
+		if (to - from >= this.capacity) {
+			this.buffer.fill(0);
+			this.valid.fill(0);
+			return;
+		}
+		for (let abs = Math.max(0, Math.floor(from)); abs < to; abs++) {
+			const slot = abs % this.capacity;
+			this.buffer[slot] = 0;
+			this.valid[slot] = 0;
+		}
+	}
+
+	private readWindow(start: number, length: number): Float32Array {
+		const out = new Float32Array(length);
+		const oldest = Math.max(0, this.pushed - this.capacity);
+		for (let i = 0; i < out.length; i++) {
+			const abs = start + i;
+			if (abs >= oldest && abs >= 0 && abs < this.pushed) {
+				const slot = abs % this.capacity;
+				if (this.valid[slot] === 1) out[i] = this.buffer[slot];
+			}
+		}
+		return out;
 	}
 }

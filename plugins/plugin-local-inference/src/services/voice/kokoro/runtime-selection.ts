@@ -52,7 +52,7 @@ export function selectVoiceBackend(
 ): VoiceBackendDecision {
 	if (!inputs.kokoroAvailable) {
 		throw new Error(
-			"[voice] Kokoro model artifacts are not present on disk; Kokoro is the only on-device TTS backend (install an Eliza-1 bundle or stage the Kokoro ONNX + at least one voice .bin).",
+			"[voice] Kokoro model artifacts are not present on disk; Kokoro is the only on-device TTS backend (install an Eliza-1 bundle or stage the Kokoro GGUF + at least one voice .bin).",
 		);
 	}
 	return {
