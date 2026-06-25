@@ -23,7 +23,7 @@ function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
   ) {
     throw new TypeError("Polymarket routes require a Node HTTP request");
   }
-  return req as unknown as http.IncomingMessage;
+  return req as http.IncomingMessage;
 }
 
 function toHttpServerResponse(res: RouteResponse): http.ServerResponse {

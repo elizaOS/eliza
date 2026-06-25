@@ -14,7 +14,7 @@ export type HyperliquidClient = ElizaClient & {
 };
 
 const elizaClientPrototype =
-  ElizaClient.prototype as unknown as HyperliquidClient;
+  ElizaClient.prototype as HyperliquidClient;
 
 elizaClientPrototype.hyperliquidStatus = async function () {
   return this.fetch("/api/hyperliquid/status");

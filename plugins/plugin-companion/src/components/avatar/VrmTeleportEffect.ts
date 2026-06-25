@@ -112,7 +112,7 @@ export class VrmTeleportEffect {
     let appliedNodeDissolve = false;
 
     try {
-      const tsl = (await import("three/tsl")) as unknown as TslModule;
+      const tsl = (await import("three/tsl")) as TslModule;
       const uProgress = tsl.uniform(0.0);
       this.progressUniform = uProgress;
 

@@ -33,7 +33,7 @@ const POLYMARKET_READ_COMPAT_NAME = "POLYMARKET_READ";
 const POLYMARKET_PLACE_ORDER_COMPAT_NAME = "POLYMARKET_PLACE_ORDER";
 
 function toCallbackData(data: ProviderDataRecord): Content["data"] {
-  return data as unknown as Content["data"];
+  return data as Content["data"];
 }
 const POLYMARKET_READ_KEYWORDS = [
   "polymarket",
