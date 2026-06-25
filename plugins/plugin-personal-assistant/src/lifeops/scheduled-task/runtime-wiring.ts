@@ -154,7 +154,7 @@ function defaultOwnerFactsProvider(
       if (typeof sampleCount === "number" && Number.isFinite(sampleCount)) {
         view.personalBaseline = {
           sampleCount,
-          windowDays: effective.baseline?.windowDays,
+          windowDays: effective?.baseline?.windowDays,
         };
       }
     } catch (error) {
