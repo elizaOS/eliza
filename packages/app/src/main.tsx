@@ -116,6 +116,11 @@ import {
   resolveUiTheme,
 } from "@elizaos/ui/state/persistence";
 import { initScreenCaptureBridge } from "@elizaos/ui/state/screen-capture-bridge";
+import {
+  initStartupTrace,
+  markStartup,
+  measureStartup,
+} from "@elizaos/ui/state/startup-telemetry";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
@@ -156,6 +161,14 @@ declare global {
 
 const appModuleCache = new Map<string, Promise<unknown>>();
 const { createRoot } = ReactDomClient;
+
+// Renderer cold-start telemetry (#9565). The trace adopts a native-host-injected
+// id when present (Electrobun/Capacitor) so one device launch shares a single
+// id across the native host trace + this renderer trace + backend boot
+// telemetry; otherwise it derives a renderer-local id. `module-eval` is the
+// earliest renderer-JS checkpoint after the import graph evaluates.
+initStartupTrace();
+markStartup("module-eval", { platform: Capacitor.getPlatform() });
 
 function cachedDynamicImport<T>(
   key: string,
@@ -2055,6 +2068,7 @@ function mountReactApp(): void {
       </AppProvider>
     );
 
+  markStartup("react-mount:start");
   createRoot(rootEl).render(
     <ErrorBoundary>
       <StrictMode>
@@ -2066,6 +2080,8 @@ function mountReactApp(): void {
       </StrictMode>
     </ErrorBoundary>,
   );
+  markStartup("react-mount:end");
+  measureStartup("react-mount", "react-mount:start", "react-mount:end");
 }
 
 function isPopoutWindow(): boolean {
@@ -2643,6 +2659,7 @@ function applyStoredDetachedShellTheme(): void {
 }
 
 async function main(): Promise<void> {
+  markStartup("main-start");
   registerViewServiceWorker();
 
   const appWindowSlug = window.location.pathname.startsWith("/apps/")
@@ -2665,7 +2682,10 @@ async function main(): Promise<void> {
     );
   }
 
+  markStartup("app-modules:start");
   await initializeAppModules();
+  markStartup("app-modules:end");
+  measureStartup("app-modules", "app-modules:start", "app-modules:end");
   setupPlatformStyles();
   applyBuildTimeIosConnection();
 
@@ -2715,6 +2735,7 @@ async function main(): Promise<void> {
     return;
   }
 
+  markStartup("bridges:start", { platform });
   await initializeStorageBridge();
   if (isIOS) {
     initializeCapacitorBridge();
@@ -2743,6 +2764,8 @@ async function main(): Promise<void> {
     installDiarizationPumpHarness();
     installJniVoiceHarness();
   }
+  markStartup("bridges:end", { platform });
+  measureStartup("bridges", "bridges:start", "bridges:end");
   mountReactApp();
   await initializePlatform();
 }
