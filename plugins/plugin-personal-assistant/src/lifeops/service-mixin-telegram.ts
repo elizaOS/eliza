@@ -325,7 +325,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(409, TELEGRAM_PLUGIN_SETUP_MESSAGE);
       }
 
-      let read = {
+      let read: VerifyLifeOpsTelegramConnectorResponse["read"] = {
         ok: false,
         error: "Telegram plugin is missing read permission.",
         dialogCount: 0,
@@ -354,7 +354,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
         }
       }
 
-      let send = {
+      let send: VerifyLifeOpsTelegramConnectorResponse["send"] = {
         ok: true,
         error: null,
         target: request.sendTarget ?? "",
