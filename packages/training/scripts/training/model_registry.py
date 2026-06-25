@@ -459,6 +459,8 @@ REGISTRY: dict[str, ModelEntry] = {
 
 ELIZA_1_27B_VARIANT_ALIASES: dict[str, str] = {
     "27b": "gemma4-31b",
+    "27b-256k": "gemma4-31b",
+    "eliza-1-27b-256k": "gemma4-31b",
 }
 
 # Map the size-first eliza-1 tier ids (and common Gemma 4 base spellings) onto

@@ -29,6 +29,17 @@ def test_resolve_model_spec_accepts_alias_and_model_id():
 def test_slugify_model_name_prefers_canonical_gemma_slug():
     assert slugify_model_name("google/gemma-4-31B") == "gemma4-31b"
     assert slugify_model_name("9B") == "gemma4-12b"
+    assert slugify_model_name("27b-256k") == "gemma4-31b"
+
+
+def test_resolve_model_spec_accepts_active_27b_256k_tier_alias():
+    variant = resolve_model_spec("27b-256k")
+    public_name = resolve_model_spec("eliza-1-27b-256k")
+
+    assert variant is not None
+    assert public_name is not None
+    assert variant.key == "gemma4_31b"
+    assert public_name.key == variant.key
 
 
 def test_parse_context_length_supports_k_suffix():
