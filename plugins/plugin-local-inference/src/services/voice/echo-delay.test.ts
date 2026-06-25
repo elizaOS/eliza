@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { estimateEchoDelaySamples } from "./echo-delay.ts";
+import {
+	DEFAULT_PLAYBACK_DELAY_MS,
+	estimateEchoDelaySamples,
+	PLATFORM_PLAYBACK_DELAY_DEFAULTS,
+	platformPlaybackDelayMs,
+	platformPlaybackDelaySamples,
+} from "./echo-delay.ts";
 
 /** Deterministic PRNG so fixtures are reproducible across runs/CI. */
 function mulberry32(seed: number): () => number {
@@ -74,5 +80,39 @@ describe("estimateEchoDelaySamples (#9583)", () => {
 			maxLagSamples: 400,
 		});
 		expect(est.lagSamples).toBeGreaterThanOrEqual(100);
+	});
+});
+
+describe("platformPlaybackDelaySamples seed (#9583)", () => {
+	it("maps known platforms to their seed delay (ms)", () => {
+		expect(platformPlaybackDelayMs("darwin")).toBe(20);
+		expect(platformPlaybackDelayMs("ios")).toBe(25);
+		expect(platformPlaybackDelayMs("android")).toBe(45);
+		expect(platformPlaybackDelayMs("win32")).toBe(30);
+		expect(platformPlaybackDelayMs("linux")).toBe(30);
+	});
+
+	it("falls back to the default seed for an unrecognized platform", () => {
+		expect(platformPlaybackDelayMs("haiku")).toBe(DEFAULT_PLAYBACK_DELAY_MS);
+		// The table must not accidentally carry the unknown key.
+		expect("haiku" in PLATFORM_PLAYBACK_DELAY_DEFAULTS).toBe(false);
+	});
+
+	it("converts the seed to samples at 16 kHz by default", () => {
+		// 20 ms * 16000 / 1000 = 320 samples
+		expect(platformPlaybackDelaySamples("darwin")).toBe(320);
+		// unknown → 25 ms default → 400 samples
+		expect(platformPlaybackDelaySamples("unknown")).toBe(400);
+	});
+
+	it("honours a custom sample rate", () => {
+		// 30 ms * 48000 / 1000 = 1440 samples
+		expect(platformPlaybackDelaySamples("win32", 48_000)).toBe(1440);
+	});
+
+	it("never returns a negative seed", () => {
+		for (const p of ["darwin", "ios", "android", "win32", "linux", "??"]) {
+			expect(platformPlaybackDelaySamples(p)).toBeGreaterThanOrEqual(0);
+		}
 	});
 });
