@@ -5,7 +5,7 @@
  * Send a voice message, get a voice response back — the full optimized
  * voice-assistant loop the W1–W13 swarm landed, run interactively:
  *
- *   mic → VAD (RMS + Silero v5 GGUF) → streaming ASR (fused Qwen3-ASR)
+ *   mic → VAD (RMS + Silero v5 GGUF) → streaming local ASR
  *      → turn controller (prewarm-on-speech-start, speculative-on-pause,
  *        abort-on-resume, promote-or-rerun on speech-end)
  *      → runtime message handler (Stage-1 forced-JSON grammar, streamed)
@@ -281,12 +281,12 @@ async function inspectActiveOptimizations(args) {
     active.push({
       name: "streaming OmniVoice TTS",
       on: true,
-      detail: `fused libelizainference at ${ttsLibPath} (OmniVoice TTS + Qwen3-ASR); streaming LLM→TTS via the voice scheduler. On macOS-Metal this is the full graph; on a CPU fused build it runs but slower.`,
+      detail: `fused libelizainference at ${ttsLibPath} (OmniVoice TTS + local ASR); streaming LLM→TTS via the voice scheduler. On macOS-Metal this is the full graph; on a CPU fused build it runs but slower.`,
     });
   } else {
     missing.push({
       what: "no real TTS backend — interactive voice needs the fused libelizainference build (the stub backend emits silence and is rejected)",
-      fix: "build it: see packages/app-core/scripts/omnivoice-merged/README.md (the fused build ships real OmniVoice TTS + Qwen3-ASR on macOS-Metal; stub elsewhere)",
+      fix: "build it: see packages/app-core/scripts/omnivoice-merged/README.md (the fused build ships real OmniVoice TTS + local ASR on macOS-Metal; stub elsewhere)",
     });
     active.push({
       name: "streaming OmniVoice TTS",
@@ -296,17 +296,17 @@ async function inspectActiveOptimizations(args) {
     });
   }
 
-  // ── ASR backend (fused Qwen3-ASR via libelizainference only) ───────────
+  // ── ASR backend (eligible local ASR via libelizainference only) ─────────
   let asrBackend = null;
   if (bundleRoot && existsSync(path.join(bundleRoot, "asr"))) {
-    asrBackend = "fused (Qwen3-ASR region in the bundle)";
+    asrBackend = "fused (local ASR region in the bundle)";
   }
   if (asrBackend) {
     active.push({ name: "streaming ASR", on: true, detail: asrBackend });
   } else {
     missing.push({
-      what: "no ASR backend (no fused Qwen3-ASR region in the bundle)",
-      fix: "rebuild or download a libelizainference bundle that ships the Qwen3-ASR region (asr/ subdirectory).",
+      what: "no ASR backend (no fused local ASR region in the bundle)",
+      fix: "rebuild or download a libelizainference bundle that ships an eligible local ASR region (asr/ subdirectory).",
     });
   }
 
@@ -637,7 +637,7 @@ const PLATFORM_MATRIX = [
           "sox/play — or ffplay — (afplay needs a file, not used) — or renderer AudioContext",
         vad: "fused libelizainference Silero v5 (arm64)",
         ttsAsr:
-          "fused libelizainference.dylib (real OmniVoice TTS + Qwen3-ASR, full graph)",
+          "fused libelizainference.dylib (real OmniVoice TTS + local ASR, full graph)",
         verified:
           "Metal kernels hardware-verified on M4 Max; needs a macOS arm64 host to build",
       },
