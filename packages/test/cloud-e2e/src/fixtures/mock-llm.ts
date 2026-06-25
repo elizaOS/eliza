@@ -16,7 +16,7 @@
  * `generateText`, which never opens an SSE stream to the upstream.
  */
 
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
 export interface RunningMockLlm {
@@ -50,9 +50,7 @@ function estimatePromptTokens(body: ChatCompletionRequestBody): number {
   return Math.max(8, Math.ceil(text.length / 4));
 }
 
-async function readBody(
-  req: Parameters<Parameters<typeof createServer>[1]>[0],
-): Promise<string> {
+async function readBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(chunk as Buffer);
