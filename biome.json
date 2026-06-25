@@ -1,7 +1,13 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
   "root": true,
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -173,13 +179,67 @@
       }
     },
     {
-      "includes": [
-        "packages/**/src/**/*.ts"
-      ],
+      "includes": ["packages/**/src/**/*.ts"],
       "linter": {
         "rules": {
           "suspicious": {
             "noExplicitAny": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "plugins/**/src/**/*.ts",
+        "!plugins/plugin-ainex/**",
+        "!plugins/plugin-anthropic-proxy/**",
+        "!plugins/plugin-aosp-local-inference/**",
+        "!plugins/plugin-computeruse/**",
+        "!plugins/plugin-facewear/**",
+        "!plugins/plugin-form/**",
+        "!plugins/plugin-inbox/**",
+        "!plugins/plugin-lmstudio/**",
+        "!plugins/plugin-native-llama/**",
+        "!plugins/plugin-native-macosalarm/**",
+        "!plugins/plugin-personal-assistant/**",
+        "!plugins/plugin-sql/**",
+        "!plugins/plugin-todos/**",
+        "!plugins/plugin-training/**",
+        "!plugins/plugin-undesirables/**",
+        "!plugins/plugin-vision/**",
+        "!plugins/plugin-xr/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/**/src/**/*.ts",
+        "!packages/agent/**",
+        "!packages/app-core/**",
+        "!packages/benchmarks/**",
+        "!packages/cloud-api/**",
+        "!packages/cloud-shared/**",
+        "!packages/examples/**",
+        "!packages/os/**",
+        "!packages/robot/**",
+        "!packages/scenario-runner/**",
+        "!packages/scripts/**",
+        "!packages/security/**",
+        "!packages/soc2-verify/**",
+        "!packages/test/**",
+        "!packages/tui/**",
+        "!packages/ui/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "error"
           }
         }
       }
