@@ -1,7 +1,7 @@
 <div align="center">
   <img src="packages/shared/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
   <h1>elizaOS</h1>
-  <p><strong>The agentic operating system. For devices that run themselves.</strong></p>
+  <p><strong>Your agentic operating system.</strong></p>
   <p>
     <a href="https://eliza.app">Get the app</a> ·
     <a href="https://os.elizacloud.ai">Install the OS</a> ·
