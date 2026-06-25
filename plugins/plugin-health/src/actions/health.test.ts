@@ -1,10 +1,28 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+
+// The health planner routes its instructions through
+// `resolveOptimizedPromptForRuntime`. Pin it to the identity (return the
+// baseline) so this unit test of the trajectory `purpose` tag is hermetic and
+// does not depend on the OptimizedPromptService resolution in the test env.
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    resolveOptimizedPromptForRuntime: (
+      _runtime: unknown,
+      _task: unknown,
+      baseline: string,
+    ) => baseline,
+  };
+});
+
 import {
   createHealthActionRunner,
   createOwnerHealthAction,
   HEALTH_PARAMETERS,
   HEALTH_SIMILES,
+  type HealthActionRunJsonModelArgs,
   type HealthActionService,
 } from "./health.js";
 
@@ -65,6 +83,72 @@ describe("health action runner", () => {
     });
     expect(validate).toHaveBeenCalled();
     expect(handler).toHaveBeenCalled();
+  });
+
+  it("tags the planner LLM call with the health_checkin trajectory purpose (#8795)", async () => {
+    // A natural-language health request with NO explicit subaction routes
+    // through resolveHealthPlanWithLlm → runJsonModel. The trajectory purpose
+    // must be "health_checkin" (not the generic "planner") so it buckets into
+    // the health_checkin training dataset that feeds the optimization loop —
+    // matching the resolveOptimizedPromptForRuntime("health_checkin", ...) call.
+    const runJsonModel = vi.fn(
+      async (
+        _args: HealthActionRunJsonModelArgs,
+      ): Promise<{ parsed: Record<string, unknown> }> => ({
+        parsed: {
+          subaction: "status",
+          metric: null,
+          days: null,
+          shouldAct: true,
+        },
+      }),
+    );
+    const runner = createHealthActionRunner({
+      hasAccess: async () => true,
+      createService: () => ({
+        getHealthConnectorStatus: vi.fn(async () => ({
+          available: false,
+          backend: "none" as const,
+        })),
+        getHealthSummary: vi.fn(async () => ({
+          providers: [],
+          summaries: [],
+          samples: [],
+          workouts: [],
+          sleepEpisodes: [],
+          syncedAt: "2026-05-30T12:00:00.000Z",
+        })),
+        getHealthTrend: vi.fn(),
+        getHealthDataPoints: vi.fn(),
+        getHealthDailySummary: vi.fn(),
+      }),
+      messageText: (m) =>
+        typeof m.content.text === "string" ? m.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      recentConversationTexts: async () => [],
+      runJsonModel,
+    });
+
+    // resolveHealthPlanWithLlm short-circuits unless runtime.useModel exists.
+    const plannerRuntime = {
+      logger: { warn: vi.fn() },
+      useModel: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    // No `subaction` in options → the planner LLM call fires.
+    await runner(
+      plannerRuntime,
+      { content: { text: "how have i been sleeping lately" } } as Memory,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(runJsonModel.mock.calls[0][0]).toMatchObject({
+      purpose: "health_checkin",
+      actionType: "HEALTH.plan",
+    });
   });
 
   it("runs status through injected service and renderer adapters", async () => {
