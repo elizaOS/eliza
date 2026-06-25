@@ -36,15 +36,15 @@ import {
 	handleLiveVoiceAttribution,
 } from "../../runtime/voice-entity-binding.js";
 import type { VoiceTurnSignal } from "./eot-classifier.js";
+import {
+	NlmsEchoCanceller,
+	type NlmsEchoCancellerOptions,
+} from "./nlms-echo-canceller.js";
 import type {
 	VoiceAttributionOutput,
 	VoiceAttributionPipeline,
 } from "./speaker/attribution-pipeline.js";
 import type { PcmFrame, VadEvent, VoiceInputSource } from "./types.js";
-import { NlmsEchoCanceller } from "./nlms-echo-canceller.js";
-
-/** Shared empty reference — agent silent → echo canceller passes the mic through. */
-const NO_ECHO_REFERENCE = new Float32Array(0);
 
 // ---------------------------------------------------------------------------
 // Wire format → Float32 boundary
@@ -236,6 +236,14 @@ export interface AudioFrameConsumerDeps {
 	 * owns the playback capture + the playback→mic delay calibration.
 	 */
 	echoReference?: EchoReferenceProvider;
+	/**
+	 * Tuning for the NLMS echo canceller (#9583). Only consulted when
+	 * `echoReference` is also wired. Lets the caller set the residual-impulse
+	 * filter span / step size and enable the optional residual-echo suppressor.
+	 * The bulk playback→mic delay is applied caller-side in the `echoReference`
+	 * provider, so `delaySamples` here normally stays 0.
+	 */
+	echoCancellerOptions?: NlmsEchoCancellerOptions;
 }
 
 /**
@@ -326,6 +334,10 @@ export class AudioFrameConsumer {
 	 *  turn rather than dropping the diarized turn). */
 	transcriptionErrors = 0;
 
+	/** Count of mic frames the echo canceller actually processed (agent was
+	 *  playing). Stays 0 when no `echoReference` is wired or the agent is silent. */
+	echoFramesCancelled = 0;
+
 	constructor(
 		deps: AudioFrameConsumerDeps,
 		config: AudioFrameConsumerConfig = {},
@@ -336,7 +348,9 @@ export class AudioFrameConsumer {
 		this.transcribe = deps.transcribe ?? null;
 		this.resolveSelfVoiceSimilarity = deps.resolveSelfVoiceSimilarity ?? null;
 		this.echoReference = deps.echoReference ?? null;
-		this.echoCanceller = this.echoReference ? new NlmsEchoCanceller() : null;
+		this.echoCanceller = this.echoReference
+			? new NlmsEchoCanceller(deps.echoCancellerOptions ?? {})
+			: null;
 		this.source = config.source;
 		this.attributionOptions = config.attributionOptions ?? {};
 		const sr = AUDIO_FRAME_PIPELINE_SAMPLE_RATE;
@@ -398,16 +412,12 @@ export class AudioFrameConsumer {
 		timestampMs: number,
 	): Promise<void> {
 		if (this.closed) return;
-		// #9455: cancel the agent's TTS echo before VAD/attribution so the agent
-		// never transcribes its own playback. Passthrough (out == in) when the
-		// agent is silent — verified by nlms-echo-canceller.test.ts.
-		const micPcm =
-			this.echoCanceller && this.echoReference
-				? this.echoCanceller.process(
-						pcm,
-						this.echoReference(timestampMs, pcm.length) ?? NO_ECHO_REFERENCE,
-					)
-				: pcm;
+		// #9455/#9583: cancel the agent's TTS echo before VAD/attribution so the
+		// agent never transcribes its own playback. When the reference provider
+		// returns null the agent is silent — skip the canceller entirely so AEC is
+		// zero-cost on the common (no-playback) path, exactly passing the mic
+		// through (verified by nlms-echo-canceller.test.ts).
+		const micPcm = this.cancelEcho(pcm, timestampMs);
 		this.lastFrameEndMs =
 			timestampMs + (micPcm.length / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) * 1000;
 		if (this.capturing) {
@@ -420,6 +430,27 @@ export class AudioFrameConsumer {
 			sampleRate: AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
 			timestampMs,
 		});
+	}
+
+	/**
+	 * Run the echo canceller on one mic frame when (and only when) the agent is
+	 * playing. The reference provider returns null while the agent is silent, in
+	 * which case the mic is passed through verbatim and the canceller is not
+	 * invoked at all (zero idle cost). Returns the echo-cancelled (or untouched)
+	 * mic frame.
+	 */
+	private cancelEcho(pcm: Float32Array, timestampMs: number): Float32Array {
+		if (!this.echoCanceller || !this.echoReference) return pcm;
+		const reference = this.echoReference(timestampMs, pcm.length);
+		if (!reference || reference.length === 0) return pcm;
+		this.echoFramesCancelled += 1;
+		return this.echoCanceller.process(pcm, reference);
+	}
+
+	/** Echo-return-loss-enhancement (dB) over the last cancelled frame, or 0 when
+	 *  AEC is not wired or the agent is currently silent. */
+	get lastEchoErleDb(): number {
+		return this.echoCanceller?.lastErleDb ?? 0;
 	}
 
 	/**

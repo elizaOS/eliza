@@ -12,6 +12,9 @@
  *   POST /api/voice/audio-frames        body: { frames: AudioFrameEvent[],
  *                                               flush?: boolean }
  *                                       → { ok, framesReceived, turnsObserved }
+ *   POST /api/voice/audio-frames/playback  body: { frames: AudioFrameEvent[] }
+ *                                       → { ok, playbackFramesReceived } — the
+ *                                         agent-TTS far-end echo reference (#9583)
  *   GET  /api/voice/audio-frames/status → LiveDiarizationStatus (device evidence)
  *
  * Auth follows the compat pattern: trusted-loopback OR the compat API token.
@@ -80,6 +83,41 @@ export async function handleLiveDiarizationRoute(
 			return true;
 		}
 		sendJson(res, 200, await current.status());
+		return true;
+	}
+
+	if (
+		url.pathname === "/api/voice/audio-frames/playback" &&
+		method === "POST"
+	) {
+		if (!ensureCompatApiAuthorized(req, res)) return true;
+		const current = getSession(state);
+		if (!current) {
+			sendJsonError(res, 503, "Runtime not ready");
+			return true;
+		}
+		const body = await readCompatJsonBody(req, res);
+		if (!body) return true;
+		const rawFrames = body.frames;
+		if (!Array.isArray(rawFrames)) {
+			sendJsonError(res, 400, "Expected { frames: AudioFrameEvent[] }");
+			return true;
+		}
+		const frames = rawFrames.filter(isAudioFrameEvent);
+		if (frames.length !== rawFrames.length) {
+			sendJsonError(
+				res,
+				400,
+				`Malformed frame(s): ${rawFrames.length - frames.length} of ${rawFrames.length} did not match AudioFrameEvent`,
+			);
+			return true;
+		}
+		await current.ingestPlayback(frames);
+		const status = await current.status();
+		sendJson(res, 200, {
+			ok: true,
+			playbackFramesReceived: status.aec.playbackFramesReceived,
+		});
 		return true;
 	}
 

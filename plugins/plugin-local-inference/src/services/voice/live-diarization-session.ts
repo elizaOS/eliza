@@ -32,14 +32,23 @@ import {
 	AudioFrameConsumer,
 	type AudioFrameConsumerConfig,
 	type AudioFrameEvent,
+	decodeAudioFramePcm,
 	type RuntimeEventSink,
 	type TurnTranscriber,
 } from "./audio-frame-consumer.js";
+import {
+	estimatePlaybackDelaySamples,
+	platformPlaybackDelaySamples,
+} from "./echo-delay-calibrator.js";
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
 } from "./ffi-bindings.js";
 import { loadElizaInferenceFfi } from "./ffi-bindings.js";
+import {
+	createEchoReferenceProvider,
+	PlaybackReferenceBuffer,
+} from "./playback-reference-buffer.js";
 import { VoiceProfileStore } from "./profile-store.js";
 import { VoiceAttributionPipeline } from "./speaker/attribution-pipeline.js";
 import { FusedDiarizer } from "./speaker/diarizer-fused.js";
@@ -102,8 +111,30 @@ export interface LiveDiarizationStatus {
 	turnsObserved: number;
 	/** The most recent attributed turns (capped), for device-evidence reads. */
 	recentTurns: LiveDiarizationTurnSummary[];
+	/** Acoustic-echo-cancellation state (#9583). */
+	aec: LiveDiarizationAecStatus;
 	/** Populated only when readiness failed — the precise blocker. */
 	error?: string;
+}
+
+/** AEC wiring + live calibration state for the device-evidence read (#9583). */
+export interface LiveDiarizationAecStatus {
+	/** True once an echoReference is wired to the consumer. */
+	enabled: boolean;
+	/** Active bulk playback→mic delay (samples) the reference is aligned by. */
+	delaySamples: number;
+	/** Same delay in ms. */
+	delayMs: number;
+	/** True once an on-device echo-only window refined the delay past the seed. */
+	calibrated: boolean;
+	/** Cross-correlation confidence [0,1] of the last calibration attempt. */
+	lastCalibrationConfidence: number;
+	/** Far-end (agent TTS) playback frames received from the device. */
+	playbackFramesReceived: number;
+	/** Far-end samples currently buffered for mic-frame alignment. */
+	bufferedReferenceSamples: number;
+	/** Mic frames the canceller actually processed (agent was playing). */
+	framesCancelled: number;
 }
 
 /** A compact, JSON-safe summary of one attributed turn (no PCM/embeddings). */
@@ -122,6 +153,32 @@ export interface LiveDiarizationTurnSummary {
 }
 
 const MAX_RECENT_TURNS = 20;
+
+/** Echo-only audio needed before a delay calibration is attempted (~0.5 s @ 16 kHz). */
+const CALIBRATION_WINDOW_SAMPLES = 8_000;
+/** Minimum cross-correlation confidence before the measured delay replaces the seed. */
+const AEC_CALIBRATION_MIN_CONFIDENCE = 0.3;
+
+/** Truthy-env check for opt-in flags (`1`/`true`/`yes`/`on`, case-insensitive). */
+function isTruthyEnv(value: string | undefined): boolean {
+	if (!value) return false;
+	const v = value.trim().toLowerCase();
+	return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+/** Concatenate Float32 chunks into one buffer of known total length. */
+function concatPcm(
+	chunks: readonly Float32Array[],
+	total: number,
+): Float32Array {
+	const out = new Float32Array(total);
+	let cursor = 0;
+	for (const c of chunks) {
+		out.set(c, cursor);
+		cursor += c.length;
+	}
+	return out;
+}
 
 /**
  * Owns the single live diarization consumer for the agent process. Built
@@ -142,6 +199,21 @@ export class LiveDiarizationSession {
 	private buildError: string | null = null;
 	/** True once the fused ASR region is mmap-acquired for per-turn transcribe. */
 	private asrRegionAcquired = false;
+
+	// ---- AEC (#9583): far-end playback reference + live delay calibration ----
+	/** Timestamped agent-TTS playback ring the echo canceller aligns against. */
+	private readonly playbackRef = new PlaybackReferenceBuffer();
+	/** Active bulk playback→mic delay (samples). Seeded per-platform, then
+	 *  refined on-device by cross-correlation when an echo-only window appears. */
+	private aecDelaySamples = platformPlaybackDelaySamples(process.platform);
+	private playbackFramesReceived = 0;
+	private aecCalibrated = false;
+	private aecLastConfidence = 0;
+	/** Rolling raw (un-cancelled) mic + far pairs accumulated while the agent is
+	 *  playing and the delay is not yet calibrated; consumed by calibration. */
+	private calibMic: Float32Array[] = [];
+	private calibFar: Float32Array[] = [];
+	private calibSamples = 0;
 
 	constructor(private readonly runtime: RuntimeEventSink) {}
 
@@ -219,12 +291,28 @@ export class LiveDiarizationSession {
 		// on VOICE_TURN_OBSERVED (#8786). Null when the fused build has no ASR
 		// decoder — the path then stays diarization-only, as before.
 		const transcribe = this.buildTurnTranscriber(ffi, ctx);
+		// #9583: wire the far-end echo reference on the live device path. The
+		// provider reads the agent's TTS playback (fed via `ingestPlayback`)
+		// aligned to each mic frame, offset by the live `aecDelaySamples`. When no
+		// playback has arrived for a window it returns null and the consumer passes
+		// the mic through untouched. Residual-echo suppression is opt-in per device
+		// via $ELIZA_VOICE_AEC_RESIDUAL_SUPPRESSION (default off).
+		const echoReference = createEchoReferenceProvider(this.playbackRef, () => ({
+			delaySamples: this.aecDelaySamples,
+		}));
+		const residualSuppression = isTruthyEnv(
+			process.env.ELIZA_VOICE_AEC_RESIDUAL_SUPPRESSION,
+		);
 		const consumer = new AudioFrameConsumer(
 			{
 				vad: detector,
 				pipeline,
 				runtime: this.runtime,
 				...(transcribe ? { transcribe } : {}),
+				echoReference,
+				...(residualSuppression
+					? { echoCancellerOptions: { residualSuppression: true } }
+					: {}),
 			},
 			config,
 		);
@@ -285,7 +373,65 @@ export class LiveDiarizationSession {
 		for (const frame of frames) {
 			this.framesReceived += 1;
 			await this.consumer.onAudioFrame(frame);
+			if (!this.aecCalibrated) this.accumulateCalibration(frame);
 		}
+	}
+
+	/**
+	 * Feed a batch of agent-TTS playback frames (the far-end echo reference)
+	 * captured on the device, time-stamped in the SAME mic clock as
+	 * {@link ingest}'s frames (#9583). Wiring this is what makes the live echo
+	 * canceller actually cancel: until playback arrives the reference provider
+	 * returns null and the mic passes through untouched. Does not require the
+	 * fused voice models — playback can be buffered before the first mic frame.
+	 */
+	async ingestPlayback(frames: AudioFrameEvent[]): Promise<void> {
+		for (const frame of frames) {
+			const pcm = decodeAudioFramePcm(frame);
+			this.playbackRef.write(pcm, frame.timestamp);
+			this.playbackFramesReceived += 1;
+		}
+	}
+
+	/**
+	 * While the playback→mic delay is not yet calibrated, accumulate the raw mic
+	 * (with echo) against the playback aligned to the same nominal window. Once a
+	 * contiguous echo-only burst is long enough, cross-correlate to measure the
+	 * real bulk delay and lock it in. A silence gap resets the accumulation so we
+	 * only ever correlate one continuous agent-playing burst.
+	 */
+	private accumulateCalibration(frame: AudioFrameEvent): void {
+		const far = this.playbackRef.read(frame.timestamp, frame.samples);
+		if (!far) {
+			this.resetCalibAccum();
+			return;
+		}
+		// The consumer already decoded this frame without throwing, so decoding the
+		// raw mic here for calibration cannot fail.
+		const mic = decodeAudioFramePcm(frame);
+		this.calibMic.push(mic);
+		this.calibFar.push(far);
+		this.calibSamples += mic.length;
+		if (this.calibSamples >= CALIBRATION_WINDOW_SAMPLES) this.runCalibration();
+	}
+
+	private runCalibration(): void {
+		const mic = concatPcm(this.calibMic, this.calibSamples);
+		const far = concatPcm(this.calibFar, this.calibSamples);
+		const result = estimatePlaybackDelaySamples(mic, far);
+		this.aecLastConfidence = result.confidence;
+		if (result.confidence >= AEC_CALIBRATION_MIN_CONFIDENCE) {
+			this.aecDelaySamples = result.delaySamples;
+			this.aecCalibrated = true;
+		}
+		this.resetCalibAccum();
+	}
+
+	private resetCalibAccum(): void {
+		if (this.calibSamples === 0) return;
+		this.calibMic = [];
+		this.calibFar = [];
+		this.calibSamples = 0;
 	}
 
 	/** Flush any open segment (call on stopAudioFrames) and await attribution. */
@@ -308,6 +454,16 @@ export class LiveDiarizationSession {
 			framesDropped: this.consumer?.droppedFrames ?? 0,
 			turnsObserved: this.turnsObserved,
 			recentTurns: [...this.recentTurns],
+			aec: {
+				enabled: this.consumer != null,
+				delaySamples: this.aecDelaySamples,
+				delayMs: Math.round((this.aecDelaySamples / 16_000) * 1000),
+				calibrated: this.aecCalibrated,
+				lastCalibrationConfidence: this.aecLastConfidence,
+				playbackFramesReceived: this.playbackFramesReceived,
+				bufferedReferenceSamples: this.playbackRef.bufferedSamples,
+				framesCancelled: this.consumer?.echoFramesCancelled ?? 0,
+			},
 			...(this.buildError ? { error: this.buildError } : {}),
 		};
 	}
@@ -331,5 +487,7 @@ export class LiveDiarizationSession {
 		this.consumer = null;
 		this.ffi = null;
 		this.ctx = null;
+		this.playbackRef.clear();
+		this.resetCalibAccum();
 	}
 }

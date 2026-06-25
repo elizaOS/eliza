@@ -159,6 +159,7 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `ELIZA_NETWORK_POLICY` | No | Network access policy override for inference routing |
 | `ELIZA_VOICE_EOT_BACKEND` | No | End-of-turn detector backend selection for voice pipeline |
 | `ELIZA_VOICE_UPDATE_INTERVAL_MS` | No | Polling interval (ms) for voice model update checks |
+| `ELIZA_VOICE_AEC_RESIDUAL_SUPPRESSION` | No | Set truthy (`1`/`true`/`yes`/`on`) to enable the opt-in AEC3-class residual-echo suppressor on the live diarization path (#9583). Default off. Only attenuates echo-only frames; never touches double-talk. |
 | `SD_CPP_BIN` | No | Absolute path to sd.cpp binary |
 | `MFLUX_BIN` | No | Absolute path to mflux binary |
 | `IMAGEGEN_TRT_BIN` | No | Absolute path to TensorRT image-gen binary |
