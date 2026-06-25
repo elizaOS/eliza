@@ -1,6 +1,7 @@
 import type {
 	Content,
 	UUID as CoreUUID,
+	HandlerCallback,
 	IAgentRuntime,
 	Memory,
 	MetadataValue,
@@ -1044,9 +1045,6 @@ export interface ICommunityInvestorService {
 export interface MessageReceivedHandlerParams {
 	runtime: IAgentRuntime;
 	message: Memory;
-	callback: (
-		response: string | Record<string, unknown>,
-		metadata?: Record<string, unknown>,
-	) => Promise<void>;
+	callback?: HandlerCallback;
 	onComplete?: () => void;
 }
