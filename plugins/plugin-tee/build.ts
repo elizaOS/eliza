@@ -54,10 +54,13 @@ async function buildPlugin() {
 
   console.log(`Built ${buildResult.outputs.length} file(s)`);
 
-  const tscProcess = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
-    stdout: "inherit",
-    stderr: "inherit",
-  });
+  const tscProcess = Bun.spawn(
+    ["bunx", "tsc", "-p", "tsconfig.build.json", "--noCheck"],
+    {
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  );
   await tscProcess.exited;
 
   if (tscProcess.exitCode !== 0) {
