@@ -80,6 +80,12 @@ def main() -> int:
         help="Path to the .pt checkpoint. Defaults to '<variant>.pt' "
         "(ultralytics auto-downloads it if absent).",
     )
+    parser.add_argument(
+        "--trust-checkpoint",
+        action="store_true",
+        help="Allow the torch.load(weights_only=False) fallback when the "
+        "Ultralytics YOLO import fails. Only use with trusted checkpoints.",
+    )
     args = parser.parse_args()
 
     try:
@@ -108,9 +114,24 @@ def main() -> int:
     try:
         from ultralytics import YOLO
     except Exception as exc:  # noqa: BLE001 - torchvision registration can fail here
+        if isinstance(exc, ModuleNotFoundError) and exc.name == "ultralytics":
+            print("ultralytics not installed. pip install ultralytics", file=sys.stderr)
+            return 2
+        trust_checkpoint = args.trust_checkpoint or os.environ.get(
+            "ELIZA_YOLO_TRUST_CHECKPOINT"
+        ) in {"1", "true", "yes"}
+        if not trust_checkpoint:
+            print(
+                f"[convert] ultralytics import failed ({exc}). Direct "
+                "torch.load fallback requires --trust-checkpoint or "
+                "ELIZA_YOLO_TRUST_CHECKPOINT=1 because PyTorch checkpoint "
+                "unpickling can execute code.",
+                file=sys.stderr,
+            )
+            return 2
         print(
             f"[convert] ultralytics unavailable ({exc}); "
-            "loading DetectionModel directly from checkpoint",
+            "loading trusted DetectionModel directly from checkpoint",
             file=sys.stderr,
         )
         try:
@@ -125,9 +146,20 @@ def main() -> int:
         except Exception as load_exc:
             print(f"torch.load failed for {weights}: {load_exc}", file=sys.stderr)
             return 2
-        model = checkpoint.get("model") if isinstance(checkpoint, dict) else None
-        if model is None:
-            print(f"checkpoint {weights} does not contain a 'model' entry", file=sys.stderr)
+        if isinstance(checkpoint, dict):
+            model = checkpoint.get("ema")
+            if model is None:
+                model = checkpoint.get("model")
+        elif isinstance(checkpoint, nn.Module):
+            model = checkpoint
+        else:
+            model = None
+        if not isinstance(model, nn.Module):
+            print(
+                f"checkpoint {weights} does not contain a recoverable nn.Module "
+                "in 'ema' or 'model'",
+                file=sys.stderr,
+            )
             return 2
     else:
         model = YOLO(weights).model  # DetectionModel (nn.Module)
