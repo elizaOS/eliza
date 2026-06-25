@@ -70,6 +70,19 @@ describe("cross-platform computer-use capabilities", () => {
     });
   });
 
+  it("falls back to ffmpeg x11grab for screenshots when no dedicated tool is present (#9105)", () => {
+    const caps = detectFor("linux", ["ffmpeg"]);
+    expect(caps.screenshot).toMatchObject({
+      available: true,
+      tool: "ffmpeg x11grab",
+    });
+  });
+
+  it("reports no screenshot tool when none of import/scrot/gnome/ffmpeg exist", () => {
+    const caps = detectFor("linux", []);
+    expect(caps.screenshot.available).toBe(false);
+  });
+
   it("reports Windows desktop control through built-in PowerShell capabilities", () => {
     const caps = detectFor("win32", [], false);
 
@@ -98,7 +111,7 @@ describe("cross-platform computer-use capabilities", () => {
 
     expect(caps.screenshot).toMatchObject({
       available: false,
-      tool: "none (install ImageMagick, scrot, or gnome-screenshot)",
+      tool: "none (install ImageMagick, scrot, gnome-screenshot, or ffmpeg)",
     });
     expect(caps.computerUse).toMatchObject({
       available: false,

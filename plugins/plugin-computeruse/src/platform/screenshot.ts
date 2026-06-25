@@ -143,11 +143,37 @@ function captureLinux(tmpFile: string, region?: ScreenRegion): void {
     runCommandBuffer("scrot", [tmpFile], 10000);
   } else if (commandExists("gnome-screenshot")) {
     runCommandBuffer("gnome-screenshot", ["-f", tmpFile], 10000);
+  } else if (commandExists("ffmpeg")) {
+    // x11grab fallback for X11 hosts that ship ffmpeg but none of the dedicated
+    // screenshot tools (common on dev/server boxes). Writes a single PNG frame.
+    const display = process.env.DISPLAY || ":0";
+    const size = region
+      ? `${region.width}x${region.height}`
+      : detectX11ScreenSize();
+    const input = region ? `${display}+${region.x},${region.y}` : display;
+    runCommandBuffer(
+      "ffmpeg",
+      [
+        "-y",
+        "-loglevel",
+        "error",
+        "-f",
+        "x11grab",
+        "-video_size",
+        size,
+        "-i",
+        input,
+        "-frames:v",
+        "1",
+        tmpFile,
+      ],
+      10000,
+    );
   } else {
     throw new Error(
       isWaylandSession()
-        ? "No screenshot tool available. Install xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, or gnome-screenshot for X11 fallback."
-        : "No screenshot tool available. Install ImageMagick (import), scrot, or gnome-screenshot.",
+        ? "No screenshot tool available. Install xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, gnome-screenshot, or ffmpeg for X11 fallback."
+        : "No screenshot tool available. Install ImageMagick (import), scrot, gnome-screenshot, or ffmpeg.",
     );
   }
 }
@@ -161,6 +187,18 @@ function tryCaptureWaylandPortal(tmpFile: string): boolean {
     if (isPermissionDeniedError(error)) throw error;
     return false;
   }
+}
+
+/** Full X11 screen size ("WxH") from xdpyinfo; a sane default if unavailable. */
+function detectX11ScreenSize(): string {
+  try {
+    const out = execSync("xdpyinfo", { encoding: "utf8", timeout: 5000 });
+    const m = out.match(/dimensions:\s+(\d+)x(\d+)/);
+    if (m) return `${m[1]}x${m[2]}`;
+  } catch {
+    // fall through to the default below
+  }
+  return "1920x1080";
 }
 
 // ── Windows ─────────────────────────────────────────────────────────────────
