@@ -7,8 +7,8 @@
  * can fall back to a URL attachment.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { ContentType, type Media } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOutboundDiscordAttachment } from "../utils.ts";
 
 function media(overrides: Partial<Media>): Media {
@@ -50,9 +50,9 @@ describe("buildOutboundDiscordAttachment", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		const url = "http://127.0.0.1:8080/v1/media/x/content";
-		await expect(buildOutboundDiscordAttachment(media({ url }))).rejects.toThrow(
-			"HTTP 502",
-		);
+		await expect(
+			buildOutboundDiscordAttachment(media({ url })),
+		).rejects.toThrow("HTTP 502");
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
@@ -61,9 +61,9 @@ describe("buildOutboundDiscordAttachment", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		const url = "http://127.0.0.1:8080/v1/media/y/content";
-		await expect(buildOutboundDiscordAttachment(media({ url }))).rejects.toThrow(
-			"ECONNREFUSED",
-		);
+		await expect(
+			buildOutboundDiscordAttachment(media({ url })),
+		).rejects.toThrow("ECONNREFUSED");
 	});
 
 	it("does not byte-fetch non-video/audio media (e.g. IMAGE)", async () => {
