@@ -1,11 +1,11 @@
 import {
 	type IAgentRuntime,
+	type IMessageService,
 	logger,
 	type Media,
 	ModelType,
 	type ReplyToMode,
 	trimTokens,
-	IMessageService,
 } from "@elizaos/core";
 import {
 	ActionRowBuilder,

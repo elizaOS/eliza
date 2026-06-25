@@ -236,7 +236,8 @@ describe("Fitbit connector — recorded real API contract", () => {
   it("ignores extra Fitbit distance breakdown rows when the total row is present", async () => {
     vi.stubGlobal("fetch", async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes("/activities/heart/")) return jsonResponse(recorded.heart);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
       if (url.includes("/activities/date/")) {
         return jsonResponse({
           summary: {
@@ -250,7 +251,8 @@ describe("Fitbit connector — recorded real API contract", () => {
         });
       }
       if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
-      if (url.includes("/body/log/weight/")) return jsonResponse(recorded.weight);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
       if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
       throw new Error(`unexpected Fitbit fetch: ${url}`);
     });
@@ -262,7 +264,9 @@ describe("Fitbit connector — recorded real API contract", () => {
       endDate: "2026-05-01",
     });
 
-    const distance = payload.samples.find((s) => s.metric === "distance_meters");
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
     expect(distance?.value).toBeCloseTo(8.52 * 1000, 5);
     expect(distance?.unit).toBe("m");
   });
@@ -270,7 +274,8 @@ describe("Fitbit connector — recorded real API contract", () => {
   it("falls back to the largest single Fitbit distance row when no total row is present", async () => {
     vi.stubGlobal("fetch", async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes("/activities/heart/")) return jsonResponse(recorded.heart);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
       if (url.includes("/activities/date/")) {
         return jsonResponse({
           summary: {
@@ -282,7 +287,8 @@ describe("Fitbit connector — recorded real API contract", () => {
         });
       }
       if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
-      if (url.includes("/body/log/weight/")) return jsonResponse(recorded.weight);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
       if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
       throw new Error(`unexpected Fitbit fetch: ${url}`);
     });
@@ -294,7 +300,9 @@ describe("Fitbit connector — recorded real API contract", () => {
       endDate: "2026-05-01",
     });
 
-    const distance = payload.samples.find((s) => s.metric === "distance_meters");
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
     expect(distance?.value).toBeCloseTo(8.52 * 1000, 5);
     expect(distance?.unit).toBe("m");
   });
