@@ -27,7 +27,15 @@ export * from "./model";
 export * from "./notification";
 export * from "./pairing";
 export * from "./payment";
-export * from "./pending-user-action";
+export {
+	PENDING_USER_ACTION_WEIGHT,
+	type PendingUserAction,
+	type PendingUserActionKind,
+	type PendingUserActionOption,
+	type PendingUserActionResolution,
+	type PendingUserActionResolutionTarget,
+	type RequiresUserResponse,
+} from "./pending-user-action";
 export * from "./pipeline-hooks";
 export * from "./plugin";
 export * from "./plugin-store";

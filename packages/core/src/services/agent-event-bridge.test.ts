@@ -11,11 +11,13 @@ import { ServiceType } from "../types/service.ts";
 import {
 	bridgeActionCompletedToStreams,
 	bridgeActionStartedToStreams,
+	bridgeConnectorMessageReceivedToStreams,
 	bridgeEvaluatorCompletedToStreams,
 	bridgeEvaluatorStartedToStreams,
 	bridgeMessageReceivedToStreams,
 	bridgeRunEndedToStreams,
 	bridgeRunStartedToStreams,
+	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
 } from "./agent-event-bridge.ts";
 import { AgentEventService } from "./agentEvent.ts";
 
@@ -318,6 +320,60 @@ describe("agent-event-bridge", () => {
 
 		expect(events.filter((e) => e.stream === "message")).toHaveLength(2);
 		expect(notifications).toHaveLength(0);
+	});
+
+	it("bridges raw connector message events that lack canonical Memory payloads", async () => {
+		expect(CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES).toContain(
+			"TWITCH_MESSAGE_RECEIVED",
+		);
+
+		const { runtime, events, notifications } = await createCtx();
+		await bridgeConnectorMessageReceivedToStreams("TWITCH_MESSAGE_RECEIVED", {
+			runtime,
+			accountId: "main",
+			message: {
+				id: "twitch-message-1",
+				channel: "ops",
+				text: "Check the stream health",
+				user: {
+					userId: "twitch-user-1",
+					displayName: "Alice",
+				},
+				timestamp: new Date("2026-06-24T12:00:00.000Z"),
+			},
+		});
+
+		const messageEvent = events.find((e) => e.stream === "message");
+		expect(messageEvent).toMatchObject({
+			runId: "twitch-message-1",
+			sessionKey: "twitch:ops",
+			data: {
+				type: "received",
+				channel: "ops",
+				userId: "twitch-user-1",
+				roomId: "ops",
+				content: "Check the stream health",
+				hasAttachments: false,
+				deliveredAt: Date.parse("2026-06-24T12:00:00.000Z"),
+			},
+		});
+
+		expect(notifications).toHaveLength(1);
+		expect(notifications[0]).toMatchObject({
+			title: "New ops message from Alice",
+			body: "Check the stream health",
+			category: "message",
+			priority: "normal",
+			source: "twitch",
+			groupKey: "message:twitch:ops",
+			data: {
+				source: "twitch",
+				messageId: "twitch-message-1",
+				roomId: "ops",
+				entityId: "twitch-user-1",
+				accountId: "main",
+			},
+		});
 	});
 
 	it("is a no-op (never throws) when AgentEventService is absent", async () => {

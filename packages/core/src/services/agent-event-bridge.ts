@@ -20,6 +20,7 @@
  */
 
 import { logger } from "../logger.ts";
+import type { MessageEventData } from "../types/agentEvent.ts";
 import type {
 	ActionEventPayload,
 	EvaluatorEventPayload,
@@ -36,6 +37,20 @@ interface NotificationServiceLike {
 	notify: (input: NotificationInput) => Promise<unknown> | unknown;
 }
 
+export const CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES = [
+	"line:message_received",
+	"GOOGLE_CHAT_MESSAGE_RECEIVED",
+	"TWITCH_MESSAGE_RECEIVED",
+	"NOSTR_MESSAGE_RECEIVED",
+] as const;
+
+const CONNECTOR_EVENT_SOURCES: Readonly<Record<string, string>> = {
+	"line:message_received": "line",
+	GOOGLE_CHAT_MESSAGE_RECEIVED: "google-chat",
+	TWITCH_MESSAGE_RECEIVED: "twitch",
+	NOSTR_MESSAGE_RECEIVED: "nostr",
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -46,6 +61,44 @@ function readString(value: unknown): string | undefined {
 
 function readBoolean(value: unknown): boolean | undefined {
 	return typeof value === "boolean" ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+	return isRecord(value) ? value : {};
+}
+
+function readRuntime(value: unknown): IAgentRuntime | null {
+	if (
+		isRecord(value) &&
+		typeof value.agentId === "string" &&
+		typeof value.getService === "function"
+	) {
+		return value as unknown as IAgentRuntime;
+	}
+	return null;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+	for (const value of values) {
+		const string = readString(value);
+		if (string) return string;
+	}
+	return undefined;
+}
+
+function readAttachments(value: unknown): boolean {
+	const record = readRecord(value);
+	return (
+		(Array.isArray(record.attachments) && record.attachments.length > 0) ||
+		(Array.isArray(record.attachment) && record.attachment.length > 0) ||
+		(Array.isArray(record.files) && record.files.length > 0)
+	);
 }
 
 /**
@@ -231,13 +284,25 @@ function hasAttachments(payload: MessagePayload): boolean {
 	return Array.isArray(attachments) && attachments.length > 0;
 }
 
-function resolveMessageRunId(payload: MessagePayload): string | null {
+function resolveMessageRunId(
+	payload: MessagePayload,
+	source: string,
+): string | null {
 	const metadata = messageMetadata(payload);
+	const explicitRunId = readString(metadata.trajectoryId);
+	if (explicitRunId) {
+		return resolveRunId(payload.runtime, explicitRunId);
+	}
+	if (shouldNotifyForInboundMessage(payload, source)) {
+		return (
+			readString(payload.message.id) ??
+			resolveRunId(payload.runtime) ??
+			readString(payload.message.roomId) ??
+			null
+		);
+	}
 	return (
-		resolveRunId(
-			payload.runtime,
-			readString(metadata.trajectoryId) ?? readString(payload.message.id),
-		) ??
+		resolveRunId(payload.runtime) ??
 		readString(payload.message.id) ??
 		readString(payload.message.roomId) ??
 		null
@@ -254,6 +319,218 @@ function notificationData(
 		roomId: payload.message.roomId,
 		entityId: payload.message.entityId,
 	};
+}
+
+interface RawConnectorMessageSummary {
+	runtime: IAgentRuntime;
+	source: string;
+	channel: string;
+	messageId?: string;
+	roomId?: string;
+	senderId?: string;
+	senderName?: string;
+	content?: string;
+	hasAttachments: boolean;
+	deliveredAt?: number;
+	accountId?: string;
+}
+
+function normalizeRawConnectorMessage(
+	eventType: string,
+	payload: unknown,
+): RawConnectorMessageSummary | null {
+	const root = readRecord(payload);
+	const runtime = readRuntime(root.runtime);
+	if (!runtime) return null;
+
+	const message = readRecord(root.message);
+	const event = readRecord(root.event);
+	const eventMessage = readRecord(event.message);
+	const lineSource = readRecord(root.lineSource);
+	const space = readRecord(root.space ?? message.space ?? event.space);
+	const user = readRecord(root.user ?? message.user ?? message.sender);
+	const twitchUser = readRecord(message.user);
+
+	const source =
+		firstString(root.source, CONNECTOR_EVENT_SOURCES[eventType]) ?? "connector";
+	const channel = firstString(
+		message.channel,
+		lineSource.type,
+		space.type,
+		space.displayName,
+		source,
+	);
+	const content = firstString(
+		message.content,
+		message.text,
+		message.argumentText,
+		message.altText,
+		eventMessage.text,
+		eventMessage.argumentText,
+		root.text,
+	);
+	const messageId = firstString(
+		message.id,
+		message.messageId,
+		message.name,
+		eventMessage.name,
+		root.eventId,
+		root.messageId,
+	);
+	const roomId = firstString(
+		message.roomId,
+		message.groupId,
+		message.channel,
+		lineSource.groupId,
+		lineSource.roomId,
+		lineSource.userId,
+		space.name,
+	);
+	const senderId = firstString(
+		message.entityId,
+		message.senderId,
+		message.userId,
+		lineSource.userId,
+		user.name,
+		twitchUser.userId,
+		root.from,
+	);
+	const senderName = firstString(
+		message.name,
+		message.displayName,
+		user.displayName,
+		twitchUser.displayName,
+		twitchUser.username,
+		root.from,
+	);
+	const deliveredAt =
+		readNumber(message.timestamp) ??
+		readNumber(root.createdAt) ??
+		(typeof message.timestamp === "object" && message.timestamp instanceof Date
+			? message.timestamp.getTime()
+			: undefined);
+
+	return {
+		runtime,
+		source,
+		channel: channel ?? source,
+		...(messageId ? { messageId } : {}),
+		...(roomId ? { roomId } : {}),
+		...(senderId ? { senderId } : {}),
+		...(senderName ? { senderName } : {}),
+		...(content ? { content } : {}),
+		hasAttachments:
+			readAttachments(message) ||
+			readAttachments(eventMessage) ||
+			readAttachments(root),
+		...(deliveredAt !== undefined ? { deliveredAt } : {}),
+		...(readString(root.accountId)
+			? { accountId: readString(root.accountId) }
+			: {}),
+	};
+}
+
+function rawConnectorNotificationData(
+	message: RawConnectorMessageSummary,
+): Record<string, JsonValue> {
+	return {
+		source: message.source,
+		messageId: message.messageId ?? null,
+		roomId: message.roomId ?? null,
+		entityId: message.senderId ?? null,
+		accountId: message.accountId ?? null,
+	};
+}
+
+function messageEventData(
+	message: RawConnectorMessageSummary,
+): MessageEventData {
+	return {
+		type: "received",
+		...(message.messageId
+			? { messageId: message.messageId as MessageEventData["messageId"] }
+			: {}),
+		channel: message.channel,
+		...(message.senderId
+			? { userId: message.senderId as MessageEventData["userId"] }
+			: {}),
+		...(message.roomId
+			? { roomId: message.roomId as MessageEventData["roomId"] }
+			: {}),
+		...(message.content ? { content: message.content } : {}),
+		hasAttachments: message.hasAttachments,
+		...(message.deliveredAt !== undefined
+			? { deliveredAt: message.deliveredAt }
+			: {}),
+	};
+}
+
+/**
+ * Bridge connector-specific inbound message events that do not yet emit the
+ * canonical `EventType.MESSAGE_RECEIVED` payload. This is intentionally
+ * activity/notification-only: it never runs the message loop or sends replies.
+ */
+export async function bridgeConnectorMessageReceivedToStreams(
+	eventType: string,
+	payload: unknown,
+): Promise<void> {
+	const message = normalizeRawConnectorMessage(eventType, payload);
+	if (!message) return;
+
+	const runId =
+		message.messageId ??
+		message.roomId ??
+		`${message.source}:${message.senderId ?? message.channel}`;
+	const sessionKey = message.roomId
+		? `${message.source}:${message.roomId}`
+		: undefined;
+
+	const agentEvents = resolveAgentEventService(message.runtime);
+	if (agentEvents) {
+		try {
+			agentEvents.emitMessage(runId, messageEventData(message), sessionKey);
+		} catch (err) {
+			logger.debug(
+				{
+					src: "agent-event-bridge",
+					eventType,
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"Failed to bridge connector message event to AgentEventService",
+			);
+		}
+	}
+
+	const notifications = resolveNotificationService(message.runtime);
+	if (!notifications) return;
+
+	try {
+		await notifications.notify({
+			title: message.senderName
+				? `New ${message.channel} message from ${message.senderName}`
+				: `New ${message.channel} message`,
+			body:
+				message.content ||
+				(message.hasAttachments ? "Message includes attachments" : undefined),
+			category: "message",
+			priority: "normal",
+			source: message.source,
+			groupKey: `message:${message.source}:${
+				message.roomId ?? message.senderId ?? message.channel
+			}`,
+			data: rawConnectorNotificationData(message),
+			agentId: message.runtime.agentId,
+		});
+	} catch (err) {
+		logger.debug(
+			{
+				src: "agent-event-bridge",
+				eventType,
+				err: err instanceof Error ? err.message : String(err),
+			},
+			"Failed to create connector-message notification",
+		);
+	}
 }
 
 function isSuccessfulActionStatus(payload: ActionEventPayload): boolean {
@@ -273,7 +550,7 @@ export async function bridgeMessageReceivedToStreams(
 	const source = resolveMessageSource(payload);
 	const channel = resolveMessageChannel(payload, source);
 	const sessionKey = resolveMessageSessionKey(payload);
-	const runId = resolveMessageRunId(payload);
+	const runId = resolveMessageRunId(payload, source);
 	const content = readString(payload.message.content.text);
 	const attachments = hasAttachments(payload);
 
@@ -531,52 +808,6 @@ export function bridgeEvaluatorCompletedToStreams(
 				err: err instanceof Error ? err.message : String(err),
 			},
 			"Failed to bridge EVALUATOR_COMPLETED to AgentEventService",
-		);
-	}
-}
-
-/**
- * Bridge `MESSAGE_RECEIVED` → AgentEventService `message` stream (#9449).
- *
- * Every connector's inbound path emits `MESSAGE_RECEIVED` (via the shared
- * message pipeline), but nothing translated it into the user-facing activity
- * stream — so the home activity rail only ever saw orchestrator tasks, never
- * the agent fielding a message from Discord/Telegram/etc. One central bridge
- * here covers all connectors at once (no per-connector boilerplate). The
- * `message` stream is already in `AGENT_EVENT_ALLOWED_STREAMS`, so the client
- * `useActivityEvents` rail renders it via `activityEventToPlaintext`.
- *
- * `MESSAGE_RECEIVED` fires before a run id exists, so we correlate by the
- * current run when present and fall back to the message id otherwise.
- */
-export function bridgeMessageReceivedToStreams(payload: MessagePayload): void {
-	const runtime = payload.runtime;
-	const service = resolveAgentEventService(runtime);
-	if (!service) {
-		return;
-	}
-	const message = payload.message;
-	const runId = resolveRunId(runtime) ?? message?.id;
-	if (!runId) {
-		return;
-	}
-	const text = message?.content?.text;
-	const attachments = message?.content?.attachments;
-	try {
-		service.emitMessageReceived(runId, {
-			messageId: message?.id,
-			roomId: message?.roomId,
-			userId: message?.entityId,
-			content: typeof text === "string" ? text : undefined,
-			hasAttachments: Array.isArray(attachments) && attachments.length > 0,
-		});
-	} catch (err) {
-		logger.debug(
-			{
-				src: "agent-event-bridge",
-				err: err instanceof Error ? err.message : String(err),
-			},
-			"Failed to bridge MESSAGE_RECEIVED to AgentEventService",
 		);
 	}
 }
