@@ -227,7 +227,11 @@ describe("NlmsEchoCanceller", () => {
 		it("is off by default (no residualSuppression option ⇒ no extra attenuation)", () => {
 			const far = signal(SR, 5);
 			const near = echoOf(far);
-			const a = runBlocks(new NlmsEchoCanceller({ filterTaps: 128 }), near, far);
+			const a = runBlocks(
+				new NlmsEchoCanceller({ filterTaps: 128 }),
+				near,
+				far,
+			);
 			const b = runBlocks(
 				new NlmsEchoCanceller({ filterTaps: 128, residualSuppression: false }),
 				near,
