@@ -275,4 +275,90 @@ describe("CreditsService.reconcile", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "refund branch: actualCost 0 refunds the ENTIRE reservation (request-failure path)",
+    async () => {
+      if (!pgliteReady) return;
+
+      // The live request-failure path settles a reservation against actualCost 0
+      // (reservation.reconcile(0)): the request was reserved but produced no
+      // billable cost, so the FULL reserved amount must come back. difference =
+      // reservedAmount - 0 = reservedAmount, which is positive and well above
+      // EPSILON, so this drives the difference > 0 refund branch with the maximum
+      // possible refund. The existing refund test only exercises a partial refund
+      // (actualCost 0.4), so this pins the full-refund edge the failure path hits.
+      const result = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 1.0,
+        actualCost: 0,
+        description: "reconcile full-refund case",
+        metadata: { user_id: USER_ID },
+      });
+
+      expect(result.adjustmentType).toBe("refund");
+      expect(result.settlementTransactionIds.length).toBe(1);
+
+      // The entire reservation comes back: 10.0 + (1.0 - 0) = 11.00.
+      expect(await getBalance()).toBeCloseTo(11.0, 6);
+
+      // Exactly one refund row, for the FULL reserved amount, and its id is the
+      // returned settlement id.
+      expect(await countByType("refund")).toBe(1);
+      expect(await countTransactions()).toBe(1);
+      const refundRow = await dbWrite.execute(
+        `SELECT id, amount FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'refund';`,
+      );
+      expect(Number((refundRow.rows[0] as { amount: string }).amount)).toBeCloseTo(1.0, 6);
+      expect((refundRow.rows[0] as { id: string }).id).toBe(result.settlementTransactionIds[0]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "overage retry/catch fallback: deductCredits that always THROWS exhausts all retries and reports an uncollected overage without a debit",
+    async () => {
+      if (!pgliteReady) return;
+
+      // Distinct from the uncollectable case above: there, deductCredits returns
+      // success:false (a clean refusal). Here we force the THROW path — every
+      // deductCredits attempt raises — so reconcile exhausts all 3 retries and
+      // hits the terminal catch fallback. For an overage (difference < 0) that
+      // fallback must report "uncollected_overage" and, critically, write NO
+      // debit row (no money silently lost or double-charged). This is the only
+      // case that drives reconcile()'s catch arm; no existing test forces
+      // deductCredits to throw.
+      const original = creditsService.deductCredits;
+      let attempts = 0;
+      creditsService.deductCredits = async () => {
+        attempts += 1;
+        throw new Error("simulated transient deduct failure");
+      };
+
+      try {
+        const result = await creditsService.reconcile({
+          organizationId: ORG_ID,
+          reservedAmount: 0.4,
+          actualCost: 1.0,
+          description: "reconcile throwing-overage case",
+          metadata: { user_id: USER_ID },
+        });
+
+        // All 3 attempts ran (MAX_RETRIES) and then the terminal fallback fired.
+        expect(attempts).toBe(3);
+        expect(result.adjustmentType).toBe("uncollected_overage");
+        expect(result.settlementTransactionIds).toEqual([]);
+      } finally {
+        // Restore so the throwing override never bleeds into other tests.
+        creditsService.deductCredits = original;
+      }
+
+      // The fallback wrote nothing: balance untouched at the seeded 10.0 and no
+      // debit row exists.
+      expect(await getBalance()).toBeCloseTo(10.0, 6);
+      expect(await countByType("debit")).toBe(0);
+      expect(await countTransactions()).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
 });

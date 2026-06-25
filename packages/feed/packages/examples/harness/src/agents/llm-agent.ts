@@ -424,7 +424,7 @@ export class LLMAgent implements TrainableAgent {
           return {
             success: true,
             action,
-            data: trade as unknown as Record<string, unknown>,
+            data: JSON.parse(JSON.stringify(trade)) as Record<string, unknown>,
           };
         }
 
@@ -445,7 +445,7 @@ export class LLMAgent implements TrainableAgent {
           return {
             success: true,
             action,
-            data: trade as unknown as Record<string, unknown>,
+            data: JSON.parse(JSON.stringify(trade)) as Record<string, unknown>,
           };
         }
 
@@ -457,7 +457,7 @@ export class LLMAgent implements TrainableAgent {
           return {
             success: true,
             action,
-            data: post as unknown as Record<string, unknown>,
+            data: JSON.parse(JSON.stringify(post)) as Record<string, unknown>,
           };
         }
 

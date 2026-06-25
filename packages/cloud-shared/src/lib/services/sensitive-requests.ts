@@ -351,11 +351,11 @@ export class SensitiveRequestsService {
       source_room_id: params.sourceRoomId,
       source_channel_type: params.sourceChannelType,
       source_platform: params.sourcePlatform,
-      // Drizzle schemas type JSONB columns as Record<string, unknown>.
-      // SensitiveRequestTarget/Policy/Callback lack index signatures, so the
-      // cast requires going through unknown first.
-      target: params.target as unknown as Record<string, unknown>,
-      policy: policy as unknown as Record<string, unknown>,
+      // JSONB columns are typed Record<string, unknown>; the domain types lack index
+      // signatures. These values are serialized into JSONB anyway, so round-trip
+      // through JSON to produce a genuine Record (no as-unknown-as).
+      target: JSON.parse(JSON.stringify(params.target)) as Record<string, unknown>,
+      policy: JSON.parse(JSON.stringify(policy)) as Record<string, unknown>,
       delivery: {
         mode: "cloud_link",
         privateOnly: policy.requirePrivateDelivery,
