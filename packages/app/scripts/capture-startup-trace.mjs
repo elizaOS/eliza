@@ -121,7 +121,11 @@ function printRun(run) {
     return;
   }
   console.log(`\n[run ${run.run}] traceId=${run.traceId}`);
-  console.log("  checkpoint".padEnd(36), "at(ms)".padStart(8), "Δ(ms)".padStart(8));
+  console.log(
+    "  checkpoint".padEnd(36),
+    "at(ms)".padStart(8),
+    "Δ(ms)".padStart(8),
+  );
   for (const row of run.timeline) {
     console.log(
       `  ${row.name}`.padEnd(36),

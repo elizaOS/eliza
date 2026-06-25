@@ -648,7 +648,10 @@ function buildAppBootConfig({
 // import if idle work has not run yet, so no surface can be missed.
 const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
   [
-    { key: "@elizaos/plugin-personal-assistant", load: importPersonalAssistant },
+    {
+      key: "@elizaos/plugin-personal-assistant",
+      load: importPersonalAssistant,
+    },
     { key: "@elizaos/plugin-vincent", load: importAppVincent },
     { key: "@elizaos/plugin-task-coordinator", load: importAppTaskCoordinator },
     {

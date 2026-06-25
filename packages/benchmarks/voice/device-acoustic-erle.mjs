@@ -229,17 +229,23 @@ async function main() {
   const chirpN = Math.floor(CHIRP_SEC * SR);
   const refChirp = far.subarray(silenceN, silenceN + chirpN);
   const { lag, score } = estimateDelaySamples(near, refChirp, near.length);
-  // far index i ↔ near index i + offset; the playback→mic delay is the part of
-  // `offset` beyond the silence lead-in we already injected.
+  // far index i ↔ near index (i + offset). offset = (chirp position in near) −
+  // (chirp position in far). NB: afplay (render) and ffmpeg (capture) run on
+  // independent, unsynchronised clocks and ffmpeg drops a variable capture
+  // prefix, so this offset folds the true acoustic transport delay together
+  // with the process-start skew — it is the *alignment* offset, not a clean
+  // hardware transport-delay measurement (that needs a single render+capture
+  // clock, which the on-device CoreAudio/AAudio tap provides).
   const offset = lag - silenceN;
-  const delayMs = (offset / SR) * 1000;
+  const alignMs = (offset / SR) * 1000;
   console.log(
-    `[device-aec] chirp found at near sample ${lag}; far→near offset=${offset} (playback→mic ${delayMs.toFixed(1)} ms), corr peak=${score.toFixed(3)}`,
+    `[device-aec] chirp locked at near sample ${lag}; far→near alignment offset=${offset} (${alignMs.toFixed(1)} ms, incl. capture-start skew), corr peak=${score.toFixed(3)}`,
   );
 
-  if (score < 0.15 || offset < 0) {
+  const LOCK = 0.12; // pure-noise correlation sat at ~0.04-0.05; 0.12 is a clear lock
+  if (score < LOCK) {
     console.log(
-      "\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (corr < 0.15).",
+      `\n[device-aec] RESULT: NO ACOUSTIC COUPLING DETECTED (corr < ${LOCK}).`,
     );
     console.log(
       "  The mic did not capture the playback — output muted/headphones, mic muted, or wrong device.",
@@ -252,12 +258,24 @@ async function main() {
   }
 
   // --- Align near to far by the measured offset, then run the SHIPPED
-  // canceller. Echo region = the speech bursts after the chirp.
-  const aligned = near.subarray(offset);
+  // canceller. Echo region = the speech bursts after the chirp. far[i] ↔
+  // near[i + offset]; offset may be negative (capture dropped its prefix), so
+  // index near directly rather than slicing from a negative start.
   const speechStart = silenceN + chirpN;
-  const usable = Math.min(far.length, aligned.length) - speechStart;
+  const nearStart = speechStart + offset;
+  const usable = Math.min(
+    far.length - speechStart,
+    near.length - nearStart,
+  );
+  if (usable < SR) {
+    console.log(
+      `\n[device-aec] RESULT: aligned overlap too short (${usable} samples) — re-run.`,
+    );
+    process.exitCode = 2;
+    return;
+  }
   const farSpeech = far.subarray(speechStart, speechStart + usable);
-  const nearSpeech = aligned.subarray(speechStart, speechStart + usable);
+  const nearSpeech = near.subarray(nearStart, nearStart + usable);
 
   // delaySamples=0: we pre-aligned, so the adaptive taps model only the room
   // impulse. filterTaps=512 ≈ 32 ms tail (matches the live default scale).
