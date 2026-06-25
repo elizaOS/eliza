@@ -167,15 +167,18 @@ shares a single id end to end:
   `window.__ELIZA_STARTUP_TRACE_ID__` ahead of renderer JS (same mechanism as
   `window.__ELIZA_APP_API_BASE__`, `apiBaseOwner.injectIntoHtml`). The value
   should be the host startup-trace `session_id`.
+- Electrobun's static-server HTML path now injects that startup-trace
+  `session_id` through `apiBaseOwner.injectIntoHtml`, so desktop renderer marks
+  adopt the host id before module evaluation.
 - The renderer reads it (`initStartupTrace()` →
   `STARTUP_TRACE_ID_WINDOW_KEY`); absent an injected id it derives a
   renderer-local id and still records `timeOrigin` (epoch ms), so traces can be
   aligned by wall-clock even before the id seam is wired.
 
-> Wiring status: the renderer side and the adoption seam ship now. Injecting the
-> host `session_id` at `injectIntoHtml` is a one-line follow-up in
-> `electrobun/src/index.ts` (and the Capacitor equivalent) — tracked as the next
-> step on #9565, kept out of this change to avoid touching the volatile host.
+> Wiring status: renderer adoption and Electrobun injection now ship together.
+> The remaining host-specific follow-up is the Capacitor/native mobile injection
+> path, so iOS/Android local runtime traces can adopt the same id before
+> renderer module evaluation.
 
 ---
 
