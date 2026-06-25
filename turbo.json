@@ -53,7 +53,29 @@
     },
     "@elizaos/ios-native-deps#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
+      "env": [
+        "DEVELOPER_DIR",
+        "ELIZA_IOS_MIN_VERSION",
+        "ELIZA_LLAMA_BUILD_IOS",
+        "ELIZA_LLAMA_FORCE_REBUILD",
+        "ELIZA_LLAMA_SIM_METAL",
+        "ELIZA_SQLITE_VEC_BUILD_IOS",
+        "ELIZA_SQLITE_VEC_FORCE_REBUILD",
+        "LLAMA_CPP_REPO",
+        "SQLITE_VEC_REPO"
+      ],
+      "inputs": [
+        "package.json",
+        "VERSIONS",
+        "llama.cpp/build-ios.sh",
+        "llama.cpp/shim/**",
+        "sqlite-vec/build-ios.sh"
+      ],
+      "outputs": [
+        ".turbo/native-deps-build/**",
+        "llama.cpp/dist/**",
+        "sqlite-vec/dist/**"
+      ]
     },
     "@elizaos/prompts#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],

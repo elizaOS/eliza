@@ -31,7 +31,8 @@
     "build:sqlite-vec:device": "bash sqlite-vec/build-ios.sh device",
     "build:sqlite-vec:simulator": "bash sqlite-vec/build-ios.sh simulator",
     "clean:sqlite-vec": "bash sqlite-vec/build-ios.sh clean",
-    "build": "bun run build:llama-cpp && bun run build:sqlite-vec"
+    "build:stamp": "node -e \"const fs=require('node:fs'); fs.mkdirSync('.turbo/native-deps-build', { recursive: true }); fs.writeFileSync('.turbo/native-deps-build/stamp', 'ok\\n');\"",
+    "build": "bun run build:llama-cpp && bun run build:sqlite-vec && bun run build:stamp"
   },
   "files": [
     "VERSIONS",
