@@ -2533,7 +2533,7 @@ function removeStaleAndroidJavaSourceRoots(
       shouldRemoveAndroidJavaSourceRoot(candidate, dstJava, protectedRoots) &&
       fs.existsSync(candidate)
     ) {
-      fs.rmSync(candidate, { recursive: true, force: true });
+      rmRecursive(candidate);
     }
   }
 }
@@ -3055,7 +3055,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
           protectedJavaRoots,
         )
       ) {
-        fs.rmSync(staleJava, { recursive: true, force: true });
+        rmRecursive(staleJava);
       }
     }
     fs.mkdirSync(dstJava, { recursive: true });
@@ -3132,7 +3132,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       path.resolve(srcJava) !== path.resolve(templateJava) &&
       path.resolve(srcJava) !== path.resolve(dstJava)
     ) {
-      fs.rmSync(srcJava, { recursive: true, force: true });
+      rmRecursive(srcJava);
     }
     console.log("[mobile-build] Overlaid Android Java sources.");
   }
