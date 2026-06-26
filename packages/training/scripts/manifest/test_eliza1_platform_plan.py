@@ -64,6 +64,15 @@ def test_mtp_required_files_match_bundle_layout() -> None:
     assert "licenses/LICENSE.mtp" in small_plan.required_files
 
 
+def test_gemma_quantization_sidecars_follow_required_kernels() -> None:
+    plan = build_plan()
+    for tier_plan in plan.values():
+        assert "quantization/turboquant.json" in tier_plan.required_files
+        assert "quantization/fused_turboquant.json" in tier_plan.required_files
+        assert "quantization/qjl_config.json" not in tier_plan.required_files
+        assert "quantization/polarquant_config.json" not in tier_plan.required_files
+
+
 def test_text_contexts_ship_half_and_native_contexts() -> None:
     plan = build_plan()
     for tier in ("2b", "4b", "9b", "27b"):

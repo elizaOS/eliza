@@ -376,7 +376,7 @@ def _build_fixture_bundle(
             }
         ),
     )
-    graph_kernel_set = ["turbo3", "turbo4", "turbo3_tcq", "qjl", "polar"]
+    graph_kernel_set = ["turbo3_tcq"]
     for backend in ("metal", "vulkan", "cuda", "rocm", "cpu"):
         _write(
             bundle / "evals" / f"{backend}_dispatch.json",
@@ -914,12 +914,16 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
     assert rc == EXIT_USAGE
 
 
-def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
+def test_gemma_bundle_does_not_require_legacy_qjl_or_polar_sidecars(
+    tmp_path: Path,
+) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "quantization" / "qjl_config.json").unlink()
+    (bundle / "quantization" / "polarquant_config.json").unlink()
+    _write_checksums(bundle)
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
-    assert rc == EXIT_MISSING_FILE
+    assert rc == EXIT_OK
 
 
 def test_missing_fused_turboquant_sidecar_fails(tmp_path: Path) -> None:
@@ -1143,6 +1147,21 @@ def test_runtime_dispatch_report_requires_graph_evidence(tmp_path: Path) -> None
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_runtime_dispatch_report_requires_gemma_cache_family(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "evals" / "metal_dispatch.json"
+    report = json.loads(report_path.read_text())
+    report["kernelSet"] = []
+    report["graphDispatch"]["cacheFamilies"] = []
+    report_path.write_text(json.dumps(report, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
