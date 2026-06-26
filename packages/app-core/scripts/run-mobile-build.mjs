@@ -5163,7 +5163,7 @@ async function ensureIosLlamaCppVendoredFramework({
   await ensureMtpIosTarget(simulatorTarget);
 
   fs.mkdirSync(xcframeworksDir, { recursive: true });
-  fs.rmSync(xcframeworkDir, { recursive: true, force: true });
+  rmRecursive(xcframeworkDir);
   await run("node", [
     IOS_XCFRAMEWORK_BUILD_SCRIPT,
     "--output",
@@ -5194,7 +5194,7 @@ async function ensureIosLlamaCppVendoredFramework({
       "ios",
       `.${path.basename(stale, ".framework")}-stock-archive`,
     );
-    fs.rmSync(archived, { recursive: true, force: true });
+    rmRecursive(archived);
     fs.renameSync(stale, archived);
     console.log(
       `[mobile-build] Archived stock npm framework: ${stale} -> ${archived} ` +
