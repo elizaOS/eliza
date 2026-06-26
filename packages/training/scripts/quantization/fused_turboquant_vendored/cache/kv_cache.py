@@ -3,7 +3,7 @@ TurboQuant-compressed KV cache for HuggingFace transformers.
 
 Patches a standard DynamicCache to transparently compress key/value tensors
 on every cache.update() call. Works with any model that uses DynamicCache,
-including Qwen3.5's hybrid attention layers.
+including hybrid decoder layers with a standard full-attention KV cache.
 
 Two integration strategies:
 1. Full compression: store compressed, decompress on read (real memory savings)
@@ -26,9 +26,9 @@ class TurboQuantKVCache:
     Stores keys and values in compressed form (uint8 indices + fp32 norms)
     and decompresses on-the-fly when attention reads them.
 
-    For active Qwen3.5 models, only full_attention layers use this cache.
-    Linear attention (DeltaNet) layers have a different state representation
-    and are not affected.
+    For hybrid decoder models, only full_attention layers use this cache.
+    Recurrent/state-space layers have a different state representation and
+    are not affected.
 
     Usage:
         cache = TurboQuantKVCache(head_dim=256, num_layers=8, bits=4, device="cuda")
