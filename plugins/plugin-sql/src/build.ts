@@ -1,12 +1,31 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
 import { build } from "bun";
 
 const ROOT = resolve(dirname(import.meta.path));
 const DIST = join(ROOT, "dist");
+const RM_RECURSIVE_SCRIPT = join(
+  ROOT,
+  "..",
+  "..",
+  "..",
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs"
+);
+
+function rmRecursive(targetPath: string) {
+  const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`failed to remove generated plugin-sql build output ${targetPath}`);
+  }
+}
 
 function listDeclarationFiles(dir: string): string[] {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -58,7 +77,7 @@ async function normalizeDeclarationSpecifiers(filePath: string): Promise<void> {
 }
 
 if (existsSync(DIST)) {
-  rmSync(DIST, { recursive: true, force: true });
+  rmRecursive(DIST);
 }
 mkdirSync(DIST, { recursive: true });
 mkdirSync(join(DIST, "node"), { recursive: true });
