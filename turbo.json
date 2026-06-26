@@ -463,6 +463,10 @@
       ],
       "outputs": []
     },
+    "@elizaos/plugin-discord#typecheck": {
+      "dependsOn": ["@elizaos/plugin-sql#build", "^build"],
+      "outputs": []
+    },
     "@elizaos/plugin-contacts#typecheck": {
       "dependsOn": [
         "@elizaos/capacitor-contacts#build",
