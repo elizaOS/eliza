@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  __copyStaticFunctionPropertiesForTests,
   __shouldSkipServerSideWebSearchForTests,
   isServerSideWebSearchEnabled,
 } from "./web-search-tools";
@@ -52,5 +53,37 @@ describe("server-side web search injection policy", () => {
         responseFormat: { type: "text" },
       }),
     ).toBe(false);
+  });
+
+  it("copies static SDK function properties onto patched wrappers", () => {
+    const original = Object.assign(
+      function originalSdkCall() {
+        return "original";
+      },
+      {
+        extra: { enabled: true },
+      },
+    );
+    Object.defineProperty(original, "readOnly", {
+      value: "locked",
+      writable: false,
+      configurable: true,
+    });
+    Object.defineProperty(original, "computed", {
+      get: () => "computed-value",
+      configurable: true,
+    });
+    const wrapped = function wrappedSdkCall() {
+      return "wrapped";
+    };
+
+    __copyStaticFunctionPropertiesForTests(original, wrapped);
+
+    expect(Reflect.get(wrapped, "extra")).toEqual({ enabled: true });
+    expect(Reflect.get(wrapped, "readOnly")).toBe("locked");
+    expect(Reflect.get(wrapped, "computed")).toBe("computed-value");
+    expect(Object.getOwnPropertyDescriptor(wrapped, "readOnly")?.writable).toBe(
+      false,
+    );
   });
 });
