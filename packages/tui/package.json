@@ -17,7 +17,8 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json --noCheck",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json",
     "dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "vitest run test/",
     "prepublishOnly": "bun run clean && bun run build"

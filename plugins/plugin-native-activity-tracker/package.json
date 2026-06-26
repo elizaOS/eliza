@@ -22,7 +22,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.json",
+    "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.json --noCheck",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "build:swift": "swiftc -O native/macos/activity-collector.swift -o native/macos/activity-collector",
     "test": "vitest run"
   },
@@ -43,8 +44,8 @@
     "runtime": "native",
     "platformDetails": {
       "darwin": "NSWorkspace app-focus collector via Swift helper.",
-      "linux": "Not available — macOS-only collector.",
-      "win32": "Not available — macOS-only collector."
+      "linux": "Not available \u2014 macOS-only collector.",
+      "win32": "Not available \u2014 macOS-only collector."
     }
   }
 }
