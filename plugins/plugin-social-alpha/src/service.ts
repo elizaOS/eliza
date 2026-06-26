@@ -2808,15 +2808,8 @@ ${report.tokenReports.join("\n")}
 				return null;
 			}
 
-			// This check is now effectively handled by returning null in the SOLANA block if all sources fail.
-			// if (chain === SupportedChain.SOLANA && Object.keys(tokenData).length === 0) {
-			//   logger.debug(`[CommunityInvestorService] TokenData for SOLANA token ${address} is empty after all attempts, returning null.`);
-			//   return null;
-			// }
-
-			// Set defaults for missing values if tokenData was populated by non-SOLANA chain logic or partially by SOLANA.
+			// Fill in derived defaults when at least one source populated tokenData.
 			if (Object.keys(tokenData).length > 0) {
-				// Ensure tokenData is not empty before defaulting
 				if (!tokenData.ath && tokenData.currentPrice) {
 					tokenData.ath = tokenData.currentPrice * 1.1; // Assume current price is close to ATH if unknown
 				}
