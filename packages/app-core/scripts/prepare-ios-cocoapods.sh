@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+RM_PATH_RECURSIVE="${REPO_ROOT}/packages/scripts/rm-path-recursive.mjs"
+
 resolve_pod() {
   if command -v pod >/dev/null 2>&1; then
     return 0
@@ -57,7 +61,7 @@ fi
 
 if [ -e "${TRUNK_REPO_DIR}" ]; then
   echo "Removing partial CocoaPods trunk repo at ${TRUNK_REPO_DIR}"
-  rm -rf "${TRUNK_REPO_DIR}"
+  node "${RM_PATH_RECURSIVE}" "${TRUNK_REPO_DIR}"
 fi
 
 echo "Adding CocoaPods trunk repo from ${TRUNK_REPO_URL}"
