@@ -250,9 +250,9 @@ def main() -> int:
         "--micro-batch", type=int, default=0,
         help="Per-device micro-batch size for SFT (forwarded to "
              "train_local.py --batch-size). 0 = use the registry default for "
-             "the tier. Per benchmarks/APOLLO_TUNING.md, --micro-batch 2 "
-             "--grad-accum 4 keeps the 0.6B GPU occupied at zero quality cost "
-             "(same effective batch); validate VRAM with memory_calc.py first.",
+             "the tier. For Gemma E2B/E4B overrides, keep the effective batch "
+             "stable with --grad-accum and validate VRAM with memory_calc.py "
+             "first.",
     )
     ap.add_argument(
         "--grad-accum", type=int, default=0,
