@@ -247,13 +247,13 @@ def score_with_livekit_gguf(
         ) from exc
 
     model = Llama(model_path=str(gguf_path), n_ctx=2048, verbose=False, logits_all=False)
-    # Find the <|im_end|> token id.
-    im_end_tokens = model.tokenize("<|im_end|>".encode("utf-8"), add_bos=False)
-    if len(im_end_tokens) != 1:
+    # Find the Gemma <end_of_turn> token id.
+    eot_tokens = model.tokenize("<end_of_turn>".encode("utf-8"), add_bos=False)
+    if len(eot_tokens) != 1:
         raise RuntimeError(
-            f"expected <|im_end|> to be 1 token in this GGUF, got {len(im_end_tokens)}"
+            f"expected <end_of_turn> to be 1 token in this GGUF, got {len(eot_tokens)}"
         )
-    im_end_id = im_end_tokens[0]
+    eot_id = eot_tokens[0]
 
     scores: list[float] = []
     latencies: list[float] = []
@@ -263,13 +263,13 @@ def score_with_livekit_gguf(
         model.reset()
         model.eval(tokens)
         logits = model.scores[len(tokens) - 1]  # last-position logits
-        # Softmax just over the relevant slice to get P(im_end).
+        # Softmax just over the relevant slice to get P(end_of_turn).
         import math
 
         max_logit = max(logits)
         exp_logits = [math.exp(x - max_logit) for x in logits]
         denom = sum(exp_logits)
-        scores.append(exp_logits[im_end_id] / denom)
+        scores.append(exp_logits[eot_id] / denom)
         latencies.append((time.perf_counter() - start) * 1000)
     return scores, latencies
 
