@@ -21,8 +21,13 @@
 # WS lib (lazy require -> graceful fallback to no compression).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
+PACKAGES_DIR="$(cd "$HERE/../.." && pwd)"
+CLEANUP_HELPER="$PACKAGES_DIR/scripts/rm-path-recursive.mjs"
 STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
+cleanup_stage() {
+  node "$CLEANUP_HELPER" "$STAGE"
+}
+trap cleanup_stage EXIT
 
 echo "[deploy] building self-contained bundle from $HERE ..."
 ( cd "$HERE" && bun build src/index.ts --outdir "$STAGE/dist" --target node --external zlib-sync )
