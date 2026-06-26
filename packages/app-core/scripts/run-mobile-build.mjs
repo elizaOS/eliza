@@ -6114,7 +6114,7 @@ export function removeInactiveAndroidJavaSourceRoots(javaRoots, activeRoot) {
     if (resolved === active || seen.has(resolved)) continue;
     seen.add(resolved);
     if (!fs.existsSync(root)) continue;
-    fs.rmSync(root, { recursive: true, force: true });
+    rmRecursive(root);
     removed += 1;
   }
   return removed;
@@ -6124,7 +6124,7 @@ function removeCloudNativeArtifacts() {
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
   const stagedAgentAssets = path.join(assetsRoot, "agent");
   if (fs.existsSync(stagedAgentAssets)) {
-    fs.rmSync(stagedAgentAssets, { recursive: true, force: true });
+    rmRecursive(stagedAgentAssets);
     console.log(
       "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
     );
