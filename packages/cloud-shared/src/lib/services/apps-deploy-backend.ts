@@ -52,11 +52,12 @@ export interface AppsDeployBackendConfig {
   registry?: string;
   /**
    * Exec seam for the image builder — SSH to a builder node. When omitted, the
-   * deploy uses the PREBUILT-image path: the runner resolves the image from
-   * `app.metadata.imageTag` then `APP_DEFAULT_IMAGE`, with no build step. This is
-   * the path proven on staging (a pushed/known image), so the daemon can be armed
-   * without standing up a builder; pass `buildExec` (+ `registry`) to enable
-   * build-from-repo.
+   * deploy uses the PREBUILT-image path, with no build step. Repo-backed apps
+   * need an operator prebuilt map entry or explicit `app.metadata.imageTag`;
+   * non-repo legacy/smoke apps may still fall through to `APP_DEFAULT_IMAGE`.
+   * This is the path proven on staging (a pushed/known image), so the daemon can
+   * be armed without standing up a builder; pass `buildExec` (+ `registry`) to
+   * enable build-from-repo.
    */
   buildExec?: BuildExec;
   /** Dockerfile path within each app's repo. Default: `Dockerfile`. Only used with `buildExec`. */
