@@ -165,7 +165,8 @@ export interface CloudRouterShellProps {
  * their real runtime, so they fall through untouched.
  */
 const APEX_UI_CONTROL_PLANE_HOSTS = new Set(
-  [...ELIZA_CLOUD_CONTROL_PLANE_HOSTS].filter((h) => h !== "api.elizacloud.ai"),
+  // Exclude the API origins (api. / api-staging.) — they never serve this shell.
+  [...ELIZA_CLOUD_CONTROL_PLANE_HOSTS].filter((h) => !/^api[.-]/.test(h)),
 );
 
 function isApexControlPlaneHost(): boolean {
