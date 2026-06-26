@@ -761,11 +761,7 @@ function isInternalStructuredStreamPayload(value: unknown): boolean {
   if (!record) return false;
 
   const type = typeof record.type === "string" ? record.type : "";
-  if (
-    type === "tool_call" ||
-    type === "tool_result" ||
-    type === "tool_error"
-  ) {
+  if (type === "tool_call" || type === "tool_result" || type === "tool_error") {
     return true;
   }
 

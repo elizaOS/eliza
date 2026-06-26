@@ -216,7 +216,10 @@ const bufferEntry: string | undefined = (() => {
   }
   return undefined;
 })();
-const bufferBase64JsEntry = resolveBunStorePackageEntry("base64-js", "index.js");
+const bufferBase64JsEntry = resolveBunStorePackageEntry(
+  "base64-js",
+  "index.js",
+);
 const bufferIeee754Entry = resolveBunStorePackageEntry("ieee754", "index.js");
 const BUFFER_ESM_SHIM_ID = "virtual:eliza-buffer-esm-shim";
 const BUFFER_ESM_SHIM_RESOLVED = `\0${BUFFER_ESM_SHIM_ID}`;

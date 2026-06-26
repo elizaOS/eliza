@@ -1325,13 +1325,11 @@ export class DockerSandboxProvider implements SandboxProvider {
       // rollback best-effort (we are already failing and about to rethrow), but
       // surface the leak so it is observable instead of a mysteriously-full node.
       if (dbNode) {
-        await dockerNodesRepository
-          .decrementAllocated(nodeId)
-          .catch((rollbackErr) => {
-            logger.error(
-              `[docker-sandbox] Failed to roll back allocation for node ${nodeId}; capacity slot leaked: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
-            );
-          });
+        await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
+          logger.error(
+            `[docker-sandbox] Failed to roll back allocation for node ${nodeId}; capacity slot leaked: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+          );
+        });
       }
       // Clean up Headscale pre-auth key if VPN was prepared
       if (headscaleEnabled) {

@@ -32,10 +32,7 @@ export const agentTable = pgTable("agents", {
     .default(sql`'[]'::jsonb`)
     .notNull(),
   plugins: jsonb("plugins").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
-  settings: jsonb("settings")
-    .$type<CharacterSettings>()
-    .default(sql`'{}'::jsonb`)
-    .notNull(),
+  settings: jsonb("settings").$type<CharacterSettings>().default(sql`'{}'::jsonb`).notNull(),
   style: jsonb("style")
     .$type<{
       all?: string[];

@@ -611,7 +611,10 @@ export class SlackService extends Service implements ISlackService {
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        reactHandler: (handlerRuntime, params: ConnectorMessageMutationParams) =>
+        reactHandler: (
+          handlerRuntime,
+          params: ConnectorMessageMutationParams,
+        ) =>
           serviceInstance.reactConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId
@@ -625,7 +628,10 @@ export class SlackService extends Service implements ISlackService {
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        deleteHandler: (handlerRuntime, params: ConnectorMessageMutationParams) =>
+        deleteHandler: (
+          handlerRuntime,
+          params: ConnectorMessageMutationParams,
+        ) =>
           serviceInstance.deleteConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId

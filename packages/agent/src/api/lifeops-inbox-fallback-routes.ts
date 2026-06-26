@@ -30,20 +30,19 @@ function emptyChannelCounts(): Record<
   { total: number; unread: number }
 > {
   return Object.fromEntries(
-    LIFEOPS_INBOX_CHANNELS.map((channel) => [
-      channel,
-      { total: 0, unread: 0 },
-    ]),
+    LIFEOPS_INBOX_CHANNELS.map((channel) => [channel, { total: 0, unread: 0 }]),
   ) as Record<LifeOpsInboxChannel, { total: number; unread: number }>;
 }
 
-function parseChannels(raw: string | null): {
-  ok: true;
-  channels: LifeOpsInboxChannel[] | undefined;
-} | {
-  ok: false;
-  message: string;
-} {
+function parseChannels(raw: string | null):
+  | {
+      ok: true;
+      channels: LifeOpsInboxChannel[] | undefined;
+    }
+  | {
+      ok: false;
+      message: string;
+    } {
   if (raw === null || raw.trim().length === 0) {
     return { ok: true, channels: undefined };
   }
@@ -80,10 +79,7 @@ export function tryHandleLifeOpsInboxFallback(options: {
   url: URL;
   res: ServerResponse;
 }): boolean {
-  if (
-    options.method !== "GET" ||
-    options.pathname !== "/api/lifeops/inbox"
-  ) {
+  if (options.method !== "GET" || options.pathname !== "/api/lifeops/inbox") {
     return false;
   }
 

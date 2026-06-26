@@ -368,9 +368,8 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
       );
     }
     if (packageName === "@elizaos/plugin-simple-views") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-simple-views/plugin"
-      );
+      const simpleViewsPackageName = packageName;
+      return await import(/* @vite-ignore */ simpleViewsPackageName);
     }
     if (packageName === "@elizaos/plugin-anthropic") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-anthropic");

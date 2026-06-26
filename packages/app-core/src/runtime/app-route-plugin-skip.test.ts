@@ -144,8 +144,9 @@ describe("__loadAppRoutePluginFromSpecifierForTest", () => {
     );
 
     expect(plugin.name).toBe("@elizaos/plugin-agent-orchestrator-routes");
-    expect(plugin.routes?.some((route) => route.path === "/api/coding-agents"))
-      .toBe(true);
+    expect(
+      plugin.routes?.some((route) => route.path === "/api/coding-agents"),
+    ).toBe(true);
     expect(
       plugin.routes?.some((route) => route.path === "/api/orchestrator/status"),
     ).toBe(true);

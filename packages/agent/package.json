@@ -302,6 +302,7 @@
     "@elizaos/plugin-remote-manifest": "workspace:*",
     "@elizaos/security": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
+    "@elizaos/plugin-simple-views": "workspace:*",
     "@elizaos/plugin-worker-runtime": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
