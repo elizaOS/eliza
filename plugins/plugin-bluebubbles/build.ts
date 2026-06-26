@@ -1,11 +1,29 @@
-import { execSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { execSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 
 const distDir = join(import.meta.dirname, "dist");
+const rmRecursiveScript = join(
+	import.meta.dirname,
+	"..",
+	"..",
+	"packages",
+	"scripts",
+	"rm-path-recursive.mjs",
+);
+
+function rmRecursive(targetPath: string) {
+	const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+		stdio: "inherit",
+	});
+	if (result.status !== 0) {
+		throw new Error(
+			`failed to remove generated BlueBubbles build output ${targetPath}`,
+		);
+	}
+}
 
 // Clean
-rmSync(distDir, { recursive: true, force: true });
+rmRecursive(distDir);
 
 // Build
 execSync("bunx tsc -p tsconfig.json --noCheck", {
