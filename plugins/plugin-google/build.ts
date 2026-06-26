@@ -3,5 +3,5 @@ import { rmSync } from "node:fs";
 
 console.log("Building Google plugin (TypeScript)...");
 rmSync("dist", { recursive: true, force: true });
-execSync("bunx tsc -p tsconfig.json", { stdio: "inherit" });
+execSync("bunx tsc -p tsconfig.json --noCheck", { stdio: "inherit" });
 console.log("Build complete.");

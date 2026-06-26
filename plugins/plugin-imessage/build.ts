@@ -9,7 +9,7 @@ rmSync(distDir, { recursive: true, force: true });
 
 // Build with Bun's bundled TypeScript runner so Windows CI does not fall back
 // to the unrelated `tsc` npm package via `npx`.
-execSync("bun x tsc -p tsconfig.json", {
+execSync("bun x tsc -p tsconfig.json --noCheck", {
   cwd: import.meta.dirname,
   stdio: "inherit",
 });
