@@ -35,6 +35,7 @@ const UPDATE_BASELINE = args.has("--update-baseline");
 const KIND_LABELS = {
   asUnknownAs: "as unknown as",
   asAny: "as any",
+  explicitAny: "explicit `: any` annotation",
   tsSuppress: "@ts-expect-error / @ts-ignore",
   nonNullAssertion: "non-null assertion (!)",
 };
@@ -196,6 +197,20 @@ function collectUnsafeCasts(sourceText, relPath) {
       record("nonNullAssertion", node);
     }
 
+    // Explicit `any` *type annotation* (a `: any` param/var/return type, a
+    // generic argument like `Array<any>`, an `any[]` element type, etc.) — the
+    // same surface biome's `noExplicitAny` flags. The `as any` *cast* form is a
+    // separate AsExpression counted above; its AnyKeyword is the AsExpression's
+    // `.type`, so we skip that case to avoid double-counting it as both.
+    if (node.kind === ts.SyntaxKind.AnyKeyword) {
+      const parent = node.parent;
+      const isAsAnyType =
+        parent && ts.isAsExpression(parent) && parent.type === node;
+      if (!isAsAnyType) {
+        record("explicitAny", node);
+      }
+    }
+
     ts.forEachChild(node, visit);
   }
 
@@ -224,6 +239,7 @@ function summarize(findings) {
   const counts = {
     asUnknownAs: 0,
     asAny: 0,
+    explicitAny: 0,
     tsSuppress: 0,
     nonNullAssertion: 0,
   };
@@ -402,11 +418,15 @@ function runSelfTest() {
     const nine = "// @ts-ignore inside a string is not a directive";
     const ten = (value as Result)!;
     let eleven!: Result;
+    const twelve: any = value;
   `;
   const counts = summarize(collectUnsafeCasts(sample, "sample.ts"));
   if (
     counts.asUnknownAs !== 2 ||
     counts.asAny !== 1 ||
+    // `twelve: any` is one explicit type-position any; the `value as any` above
+    // is the cast form (asAny), not double-counted here.
+    counts.explicitAny !== 1 ||
     counts.tsSuppress !== 2 ||
     // `ten` is a NonNullExpression; `eleven!` is a definite-assignment
     // assertion (not counted), so exactly one non-null assertion is expected.
