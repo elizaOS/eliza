@@ -33,8 +33,9 @@
  * Build the static catalog first: `bun run build-storybook --output-dir storybook-static`.
  */
 
+import { spawnSync } from "node:child_process";
 import { createReadStream, existsSync, readdirSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
@@ -44,6 +45,7 @@ import { determinismShim, FROZEN_EPOCH_MS } from "./determinism-shim.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(here, "../..");
+const rmRecursiveScript = resolve(pkgRoot, "../scripts/rm-path-recursive.mjs");
 
 // ---------------------------------------------------------------------------
 // args
@@ -208,6 +210,17 @@ async function loadBaseline(name) {
     return JSON.parse(await readFile(join(baselineDir, name), "utf8"));
   } catch {
     return {};
+  }
+}
+
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `failed to remove generated story-gate output ${targetPath} (exit ${result.status})`,
+    );
   }
 }
 
@@ -477,7 +490,7 @@ async function main() {
   const enforceConsole = Object.keys(consoleBaseline).length > 0;
   const enforceA11y = Object.keys(a11yBaseline).length > 0;
 
-  await rm(outDir, { recursive: true, force: true });
+  rmRecursive(outDir);
   await mkdir(outDir, { recursive: true });
 
   const server = await startStaticServer(staticDir);
