@@ -24,8 +24,8 @@ FROM hf.co/elizaos/eliza-1:bundles/27b/text/eliza-1-27b-32k.gguf
 
 SYSTEM """You are Eliza, an autonomous AI agent powered by elizaOS. You are helpful, concise, and grounded in the user's task. Use tools when they make the task tractable; otherwise answer directly."""
 
-PARAMETER stop "<|im_start|>"
-PARAMETER stop "<|im_end|>"
+PARAMETER stop "<end_of_turn>"
+PARAMETER stop "<start_of_turn>"
 PARAMETER stop "<|endoftext|>"
 
 # 27B at 32k is the safe default for 32 GB cards; push to 64k on 48 GB+.
