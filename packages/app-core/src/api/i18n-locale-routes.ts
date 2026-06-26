@@ -25,7 +25,7 @@ function parseAcceptLanguage(value: string | string[] | undefined): string[] {
       return { index, q, tag };
     })
     .filter((candidate): candidate is LanguageCandidate => candidate != null)
-    .toSorted((left, right) => right.q - left.q || left.index - right.index)
+    .sort((left, right) => right.q - left.q || left.index - right.index)
     .map((candidate) => candidate.tag);
 }
 

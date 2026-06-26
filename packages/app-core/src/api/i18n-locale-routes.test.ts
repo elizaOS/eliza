@@ -20,9 +20,7 @@ function fakeReq(opts: {
   req.url = opts.pathname ?? "/api/i18n/locale";
   req.headers = {
     host: "localhost:2138",
-    ...(opts.acceptLanguage
-      ? { "accept-language": opts.acceptLanguage }
-      : {}),
+    ...(opts.acceptLanguage ? { "accept-language": opts.acceptLanguage } : {}),
   };
   return req;
 }

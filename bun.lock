@@ -127,6 +127,7 @@
         "@elizaos/plugin-remote-manifest": "workspace:*",
         "@elizaos/plugin-shell": "workspace:*",
         "@elizaos/plugin-signal": "workspace:*",
+        "@elizaos/plugin-simple-views": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-streaming": "workspace:*",
         "@elizaos/plugin-task-coordinator": "workspace:*",

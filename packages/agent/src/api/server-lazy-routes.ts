@@ -478,7 +478,9 @@ export async function tryHandleMusicPlayerStatusFallbackLazy(
 type LifeOpsInboxFallbackModule =
   typeof import("./lifeops-inbox-fallback-routes.ts");
 export async function tryHandleLifeOpsInboxFallbackLazy(
-  ...args: Parameters<LifeOpsInboxFallbackModule["tryHandleLifeOpsInboxFallback"]>
+  ...args: Parameters<
+    LifeOpsInboxFallbackModule["tryHandleLifeOpsInboxFallback"]
+  >
 ): Promise<boolean> {
   const options = args[0] as { pathname?: string } | undefined;
   if (options?.pathname !== "/api/lifeops/inbox") return false;
