@@ -646,6 +646,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "plugin-agentscoin": {
+      "git": {
+        "repo": "axiosdevs/plugin-agentscoin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-agentscoin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Give your elizaOS agent an AgentsCoin wallet: create wallet, mine AGENT, check balance, send.",
+      "homepage": "https://agents-coin.com",
+      "topics": [
+        "crypto",
+        "wallet",
+        "ai-agents",
+        "agentic-payments",
+        "evm",
+        "mcp"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-raven-verify": {
       "git": {
         "repo": "billybotticelli4u-collab/plugin-raven-verify",
