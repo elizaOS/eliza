@@ -14,7 +14,7 @@ describe("local model hub compatibility search", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(searchHuggingFaceGguf("qwen", 4)).resolves.toEqual([]);
+    await expect(searchHuggingFaceGguf("custom-model", 4)).resolves.toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -22,7 +22,7 @@ describe("local model hub compatibility search", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(searchModelScopeGguf("qwen", 4)).resolves.toEqual([]);
+    await expect(searchModelScopeGguf("custom-model", 4)).resolves.toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -30,12 +30,12 @@ describe("local model hub compatibility search", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(searchModelHubGguf("qwen", "huggingface", 4)).resolves.toEqual(
-      [],
-    );
-    await expect(searchModelHubGguf("qwen", "modelscope", 4)).resolves.toEqual(
-      [],
-    );
+    await expect(
+      searchModelHubGguf("custom-model", "huggingface", 4),
+    ).resolves.toEqual([]);
+    await expect(
+      searchModelHubGguf("custom-model", "modelscope", 4),
+    ).resolves.toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

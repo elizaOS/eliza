@@ -118,9 +118,9 @@ const runningApps: AppRunSummary[] = [
 
 const installedModels: InstalledModel[] = [
   {
-    id: "qwen3-4b-instruct-q4",
-    displayName: "Qwen3 4B Instruct Q4",
-    path: "/models/qwen3-4b-instruct-q4.gguf",
+    id: "eliza-1-4b",
+    displayName: "eliza-1-4B",
+    path: "/models/eliza-1-4b.gguf",
     sizeBytes: 2_680_000_000,
     installedAt: "2026-06-01T08:00:00.000Z",
     lastUsedAt: "2026-06-03T11:55:00.000Z",
@@ -129,14 +129,14 @@ const installedModels: InstalledModel[] = [
 ];
 
 const activeModel: ActiveModelState = {
-  modelId: "qwen3-4b-instruct-q4",
+  modelId: "eliza-1-4b",
   loadedAt: "2026-06-03T11:55:00.000Z",
   status: "ready",
 };
 
 const downloadJob: DownloadJob = {
-  jobId: "job-qwen3",
-  modelId: "qwen3-8b-instruct-q4",
+  jobId: "job-eliza-1-9b",
+  modelId: "eliza-1-9b",
   state: "downloading",
   received: 1_740_000_000,
   total: 4_200_000_000,
