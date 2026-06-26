@@ -4,9 +4,7 @@ import {
   logger,
   type Plugin,
 } from "@elizaos/core";
-import {
-  createXConnectorAccountProvider,
-} from "./connector-account-provider.js";
+import { createXConnectorAccountProvider } from "./connector-account-provider.js";
 
 export { XDmAdapter } from "./lifeops-message-adapter.js";
 
