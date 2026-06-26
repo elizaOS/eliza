@@ -1,9 +1,9 @@
 /**
  * WS7 — Brain (full-screen reasoning).
  *
- * Sends one image per display (each downscaled to ~1.3 MP, the OS-Atlas /
- * Qwen3-VL `max_pixels` convention) to `runtime.useModel(IMAGE_DESCRIPTION,
- * ...)`. The model is prompted to emit a JSON `BrainOutput` describing:
+ * Sends one image per display (each downscaled to ~1.3 MP, the local Gemma
+ * vision / OS-Atlas image budget) to `runtime.useModel(IMAGE_DESCRIPTION, ...)`.
+ * The model is prompted to emit a JSON `BrainOutput` describing:
  *   - the scene in one paragraph,
  *   - which display to act on,
  *   - up to N ROIs the Actor should zoom into,
@@ -65,9 +65,9 @@ export const BRAIN_DHASH_CACHE_MAX = 16;
  */
 export const BRAIN_DHASH_HAMMING_THRESHOLD = 5;
 /**
- * Image-token estimate per source pixel for a vision model with the Qwen3-VL /
- * OS-Atlas `max_pixels` convention: one visual token ≈ a 28×28 (≈750 px) patch.
- * Used only to quantify the saving when a frame is *not* attached (#9105).
+ * Image-token estimate per source pixel for the local Gemma vision / OS-Atlas
+ * budget: one visual token ≈ a 28×28 (≈750 px) patch. Used only to quantify
+ * the saving when a frame is *not* attached (#9105).
  */
 export const BRAIN_PIXELS_PER_IMAGE_TOKEN = 750;
 
@@ -327,11 +327,7 @@ export class Brain {
     // plan, skip the (possibly remote) IMAGE_DESCRIPTION call. Tolerant to a few
     // dHash bits so cosmetic churn (cursor, caret, anti-aliasing) still hits.
     const sceneSignature = sceneCacheSignature(input.scene);
-    const key = this.cacheKey(
-      targetCapture.frame,
-      input.goal,
-      sceneSignature,
-    );
+    const key = this.cacheKey(targetCapture.frame, input.goal, sceneSignature);
     if (key) {
       const cached = this.findCached(key.dh, key.goal, key.sceneSignature);
       if (cached) {

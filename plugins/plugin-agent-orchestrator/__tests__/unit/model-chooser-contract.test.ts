@@ -287,12 +287,12 @@ describe("model-chooser contract: opencode provider/model resolution (pure)", ()
     const config = buildOpencodeSpawnConfig(settingsRuntime(), {
       ELIZA_OPENCODE_LOCAL: "1",
       ELIZA_OPENCODE_BASE_URL: "http://localhost:11434/v1",
-      ELIZA_OPENCODE_MODEL_POWERFUL: "qwen2.5-coder",
+      ELIZA_OPENCODE_MODEL_POWERFUL: "eliza-1-4b",
     });
     expect({
       provider: config?.providerId,
       model: config?.model,
-    }).toEqual({ provider: "eliza-local", model: "eliza-local/qwen2.5-coder" });
+    }).toEqual({ provider: "eliza-local", model: "eliza-local/eliza-1-4b" });
     const parsed = JSON.parse(config?.configContent ?? "{}");
     expect(parsed.provider["eliza-local"].npm).toBe(
       "@ai-sdk/openai-compatible",
