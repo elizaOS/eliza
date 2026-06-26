@@ -207,6 +207,7 @@ else
 fi
 APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
 AGENT_DIR="$PACKAGES_DIR/agent"
+RM_PATH_RECURSIVE=(node "$PACKAGES_DIR/scripts/rm-path-recursive.mjs")
 # @elizaos/core source lives under packages/core (current) or packages/typescript
 # (legacy). Prefer the current name; fall back to the legacy path so older branches
 # still work.
@@ -668,7 +669,7 @@ if [[ -f packages/contracts/package.json ]] && jq -e '.scripts.build' packages/c
   "$BUN_BIN" run build
   popd >/dev/null
   mkdir -p node_modules/@elizaos
-  rm -rf node_modules/@elizaos/contracts
+  "${RM_PATH_RECURSIVE[@]}" node_modules/@elizaos/contracts
   ln -s ../../packages/contracts node_modules/@elizaos/contracts
 fi
 
@@ -682,7 +683,7 @@ if [[ -f packages/logger/package.json ]] && jq -e '.scripts.build' packages/logg
   "$BUN_BIN" run build
   popd >/dev/null
   mkdir -p node_modules/@elizaos
-  rm -rf node_modules/@elizaos/logger
+  "${RM_PATH_RECURSIVE[@]}" node_modules/@elizaos/logger
   ln -s ../../packages/logger node_modules/@elizaos/logger
 fi
 
@@ -693,7 +694,7 @@ if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   popd >/dev/null
   node packages/scripts/prepare-package-dist.mjs "$TYPESCRIPT_DIR"
   CORE_NODE_MODULE="node_modules/@elizaos/core"
-  rm -rf "$CORE_NODE_MODULE"
+  "${RM_PATH_RECURSIVE[@]}" "$CORE_NODE_MODULE"
   mkdir -p "$(dirname "$CORE_NODE_MODULE")"
   ln -s "../../$TYPESCRIPT_DIR" "$CORE_NODE_MODULE"
   node packages/scripts/patch-nested-core-dist.mjs || true
@@ -713,7 +714,7 @@ for package_dir in packages/shared packages/cloud-sdk packages/cloud-routing pac
   fi
 done
 mkdir -p node_modules/@elizaos
-rm -rf node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing node_modules/@elizaos/skills
+"${RM_PATH_RECURSIVE[@]}" node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing node_modules/@elizaos/skills
 ln -s ../../packages/shared node_modules/@elizaos/shared
 ln -s ../../packages/cloud-sdk node_modules/@elizaos/cloud-sdk
 ln -s ../../packages/cloud-routing node_modules/@elizaos/cloud-routing
@@ -802,7 +803,7 @@ popd >/dev/null
 
 if [[ -n "${CORE_NODE_MODULE:-}" && -f "$TYPESCRIPT_DIR/dist/package.json" ]]; then
   log "Relinking @elizaos/core to built dist for Docker runtime"
-  rm -rf "$CORE_NODE_MODULE"
+  "${RM_PATH_RECURSIVE[@]}" "$CORE_NODE_MODULE"
   mkdir -p "$(dirname "$CORE_NODE_MODULE")"
   ln -s "../../$TYPESCRIPT_DIR/dist" "$CORE_NODE_MODULE"
 fi
