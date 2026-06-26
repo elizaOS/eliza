@@ -5,7 +5,7 @@ import { mkdir } from "node:fs/promises";
 
 async function build() {
   if (existsSync("dist")) {
-    await Bun.$`rm -rf dist`;
+    await Bun.$`node ../scripts/rm-path-recursive.mjs dist`;
   }
   await mkdir("dist", { recursive: true });
 
