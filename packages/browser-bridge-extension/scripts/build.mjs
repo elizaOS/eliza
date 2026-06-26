@@ -6,6 +6,7 @@ import {
   buildChromeExtensionVersion,
   resolveBrowserBridgeReleaseVersion,
 } from "./release-version.mjs";
+import { run } from "./script-utils.mjs";
 
 // SOC2 L-4: explicit host allowlist replacing the legacy `<all_urls>` grant.
 // Documented in README.md. Hosts beyond this list require runtime opt-in
@@ -23,6 +24,12 @@ const extensionRoot = path.resolve(
   "..",
 );
 const publicDir = path.join(extensionRoot, "public");
+const cleanupHelper = path.resolve(
+  extensionRoot,
+  "..",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const release = resolveBrowserBridgeReleaseVersion();
 const extensionVersion = buildChromeExtensionVersion(release);
 
@@ -38,7 +45,7 @@ export function resolveBrowserBridgeIconSources(root = extensionRoot) {
 export async function buildBrowserBridgeExtension(kind = browserKind) {
   const outputDir = path.join(extensionRoot, "dist", kind);
 
-  await fs.rm(outputDir, { recursive: true, force: true });
+  await run("node", [cleanupHelper, outputDir], { cwd: extensionRoot });
   await fs.mkdir(outputDir, { recursive: true });
 
   const walletShimTemplatePath = path.resolve(
