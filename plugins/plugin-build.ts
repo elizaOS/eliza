@@ -59,6 +59,12 @@ export interface BuildPluginConfig {
   targets: readonly BuildTarget[];
   /** tsconfig project passed to `tsc` for declaration emit. */
   dtsProject?: string;
+  /**
+   * Tolerate a failed `tsc` declaration emit (warn + continue with JS-only
+   * outputs) instead of aborting. Mirrors the per-package fallback some plugins
+   * carried; default false (fail loud).
+   */
+  dtsTolerant?: boolean;
   /** Declaration-alias shim files to write after tsc. */
   dtsShims?: readonly DtsShim[];
 }
@@ -124,7 +130,17 @@ export async function buildPlugin(config: BuildPluginConfig): Promise<void> {
   if (config.dtsProject) {
     console.log("📝 Generating TypeScript declarations…");
     const project = config.dtsProject;
-    await Bun.$`tsc --project ${project} --noCheck`;
+    if (config.dtsTolerant) {
+      try {
+        await Bun.$`tsc --project ${project} --noCheck`;
+      } catch {
+        console.warn(
+          "Warning: TypeScript declaration generation failed; continuing with bundled JS outputs only.",
+        );
+      }
+    } else {
+      await Bun.$`tsc --project ${project} --noCheck`;
+    }
   }
 
   for (const shim of config.dtsShims ?? []) {

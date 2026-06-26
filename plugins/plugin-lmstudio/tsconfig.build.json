@@ -28,5 +28,5 @@
     }
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "build.ts", "__tests__", "**/*.test.ts"]
 }
