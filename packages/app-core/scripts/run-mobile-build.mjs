@@ -5529,7 +5529,7 @@ function stageIosFullBunEngineForPodspec(framework) {
   console.log(
     `[mobile-build] staging external iOS full Bun engine for CocoaPods: ${resolved} -> ${defaultIosBunEngineXcframework}`,
   );
-  fs.rmSync(defaultIosBunEngineXcframework, { recursive: true, force: true });
+  rmRecursive(defaultIosBunEngineXcframework);
   fs.mkdirSync(path.dirname(defaultIosBunEngineXcframework), {
     recursive: true,
   });
