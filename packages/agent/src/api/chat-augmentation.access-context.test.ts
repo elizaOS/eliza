@@ -198,6 +198,32 @@ describe("chat augmentation honors the requester's AccessContext", () => {
     expect(unfiltered.map((h) => h.content.text)).toContain(SECRET_TEXT);
   });
 
+  it("an unauthenticated turn (blank entityId) is fail-closed on the full path", async () => {
+    // A message with a blank entityId is coerced to a self-read inside
+    // chat-augmentation (searchMessage.entityId becomes the agentId), which
+    // disables the documents service's own per-document gate (it allow-alls
+    // every agent self-read). The scope-read filter is therefore the SOLE
+    // enforcement here: it must still strip the owner-private fragment so an
+    // unauthenticated turn cannot surface the secret. This is the full path,
+    // not the primitive in isolation — remove the filter and the secret leaks.
+    const fragments = [ownerPrivateFragment()];
+    const { runtime } = makeRuntime(fragments);
+
+    const blankRequester = {
+      ...chatMessage(USER_ENTITY),
+      entityId: "   ",
+    } as unknown as ReturnType<typeof createMessageMemory>;
+
+    const result = await maybeAugmentChatMessageWithDocuments(
+      runtime,
+      blankRequester,
+    );
+    const text = (result.content as { text?: string }).text ?? "";
+    expect(text).not.toContain(SECRET_TEXT);
+    expect(text).not.toContain("<contextual_documents>");
+    expect(result).toBe(blankRequester);
+  });
+
   it("filterByAccessContext is the primitive doing the work", () => {
     const fragments = [ownerPrivateFragment()];
     const ownerView = filterByAccessContext(

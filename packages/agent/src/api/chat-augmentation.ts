@@ -86,6 +86,13 @@ const MAX_CHAT_DOCUMENTS_LOOKUP_TIMEOUT_MS = 30_000;
 const MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS = 30_000;
 const CHAT_DOCUMENTS_RECOVERY_MODEL = "TEXT_LARGE";
 
+// Sentinel requester id for an unresolved/unauthenticated chat turn. It is the
+// nil UUID — guaranteed to be neither the agent nor any real owner — so the
+// scope-read filter resolves it to a least-privileged USER and strips every
+// non-global fragment rather than failing open.
+const UNRESOLVED_REQUESTER_ENTITY_ID =
+  "00000000-0000-0000-0000-000000000000" as UUID;
+
 export interface ChatDocumentAugmentationOptions {
   signal?: AbortSignal;
   lookupTimeoutMs?: number;
@@ -210,19 +217,26 @@ export async function maybeAugmentChatMessageWithDocuments(
   const agentId = runtime.agentId as UUID;
 
   // Build the requester's AccessContext from the ORIGINAL message — who is
-  // asking, in which world, with what role — BEFORE the searchMessage below
-  // coerces an empty entityId to the agentId. Threading this into
-  // searchDocuments makes the documents service apply the scope-read filter
-  // (filterByAccessContext) as a non-bypassable post-filter, so retrieval
-  // returns only fragments this requester is permitted to see. A failure to
-  // resolve a world leaves role/worldId undefined, which the filter treats as
-  // "no elevated access" (least-privileged USER) rather than unrestricted.
+  // asking and with what role (resolved against the message's world) — BEFORE
+  // the searchMessage below coerces an empty entityId to the agentId. The
+  // worldId is carried only to resolve that role; the scope-read filter gates
+  // on metadata.scope, NOT worldId, so cross-tenant isolation still comes from
+  // filterScope / Postgres RLS, not from this gate. We ALWAYS thread a context into
+  // searchDocuments so filterByAccessContext is the enforcement layer on this
+  // path, not a redundant second copy of the service's per-document gate: the
+  // service short-circuits its own gate to allow-all whenever the search runs
+  // as the agent (which the empty-entityId coercion below forces), and the
+  // scope-read filter is what keeps owner/agent/user-private fragments out of
+  // that allow-all result. A failure to resolve a world leaves role/worldId
+  // undefined, which the filter treats as least-privileged USER, not
+  // unrestricted.
   let accessContext: AccessContext | undefined;
-  if (
-    typeof message.entityId === "string" &&
-    message.entityId.length > 0 &&
-    message.entityId !== agentId
-  ) {
+  const trimmedEntityId =
+    typeof message.entityId === "string" ? message.entityId.trim() : "";
+  if (trimmedEntityId.length > 0 && trimmedEntityId !== agentId) {
+    // A real, non-agent requester: resolve their role within the message's
+    // world so the filter can let an OWNER through and hold a USER back.
+    const requesterEntityId = trimmedEntityId as UUID;
     try {
       accessContext = await buildAccessContext(runtime, message as Memory);
     } catch (error) {
@@ -236,8 +250,18 @@ export async function maybeAugmentChatMessageWithDocuments(
         },
         "Access-context resolution failed; falling back to requester-only scope",
       );
-      accessContext = { requesterEntityId: message.entityId as UUID };
+      accessContext = { requesterEntityId };
     }
+  } else if (trimmedEntityId.length === 0) {
+    // No requester at all (missing/blank entityId). The searchMessage below
+    // coerces this to a self-read, which disables the service's per-document
+    // gate (it allow-alls every agent self-read). Pin the context to the nil
+    // UUID — never the agent — so actorFromAccessContext resolves to USER and
+    // the scope-read filter still strips every non-global fragment. The gate
+    // fails CLOSED here instead of surfacing private fragments to an
+    // unauthenticated turn. A genuine agent self-read (entityId === agentId)
+    // is left with no context, preserving the prior unfiltered self-read.
+    accessContext = { requesterEntityId: UNRESOLVED_REQUESTER_ENTITY_ID };
   }
 
   const roomId =
