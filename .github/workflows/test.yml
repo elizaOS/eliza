@@ -566,7 +566,7 @@ jobs:
 
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: rm -rf reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-orchestrator reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
+        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-orchestrator reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
   zero-key-e2e:
     name: Zero-Key Deterministic E2E

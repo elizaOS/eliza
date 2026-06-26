@@ -205,7 +205,7 @@ jobs:
 
       - name: Prune deterministic E2E scratch output
         if: always()
-        run: rm -rf reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-orchestrator reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
+        run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-orchestrator reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
   # Lint and format job
   lint-and-format:
