@@ -76,6 +76,11 @@ if [ -z "$NODE_BIN" ]; then
     echo "[build-riscv64-artifacts] node not on PATH. Install node 20+." >&2
     exit 2
 fi
+RM_PATH_RECURSIVE="$repo_root/packages/scripts/rm-path-recursive.mjs"
+
+remove_path_recursive() {
+    "$NODE_BIN" "$RM_PATH_RECURSIVE" "$@"
+}
 
 echo "[build-riscv64-artifacts] zig=$ZIG_VERSION  cmake=$(cmake --version | head -1)  node=$($NODE_BIN --version)"
 echo "[build-riscv64-artifacts] jobs=$JOBS  force=$FORCE"
@@ -123,7 +128,7 @@ build_native_plugin() {
     esac
     if ! should_build "$sentinel_a"; then return; fi
     echo "→ Building $pkg (riscv64) …"
-    rm -rf "$builddir"
+    remove_path_recursive "$builddir"
     mkdir -p "$builddir"
     local config_log="$builddir.config.log"
     local build_log="$builddir.build.log"
