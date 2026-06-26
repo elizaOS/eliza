@@ -37,7 +37,8 @@
     "test": "bun test ./test",
     "prepublishOnly": "bun run clean && bun run build",
     "lint": "bunx @biomejs/biome check --write ./src",
-    "lint:check": "bunx @biomejs/biome check ./src"
+    "lint:check": "bunx @biomejs/biome check ./src",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json"
   },
   "files": [
     "dist",

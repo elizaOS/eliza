@@ -39,7 +39,8 @@
     "build": "tsc --noCheck -p tsconfig.json",
     "test": "vitest run",
     "clean": "rm -rf dist",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
