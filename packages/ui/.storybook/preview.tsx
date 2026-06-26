@@ -1,9 +1,9 @@
 import { TooltipProvider } from "@elizaos/ui/components/ui/tooltip";
-import { TranslationProvider } from "@elizaos/ui/state";
 import { withThemeByClassName } from "@storybook/addon-themes";
 import type { Preview } from "@storybook/react";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { MockTranslationProvider } from "../src/storybook/mock-providers";
 
 // The bundled UI stylesheets (tokens, base, brand) — the renderer entry, so the
 // catalog looks exactly like the app.
@@ -82,12 +82,15 @@ const preview: Preview = {
   },
   decorators: [
     (Story, context) => (
-      // TranslationProvider so stories whose components call useTranslation()
+      // MockTranslationProvider so stories whose components call useTranslation()
       // (e.g. MessageAttachments' PdfDownloadFallback) render in the browser
       // Story Gate. useTranslation only returns a test fallback under
-      // NODE_ENV=test (the jsdom story-smoke), and THROWS "must be used within
-      // TranslationProvider" in the real browser — which crashed those stories.
-      <TranslationProvider>
+      // NODE_ENV=test (the jsdom story-smoke) and THROWS in the real browser —
+      // which crashed those stories. The MOCK provides the same `en` context
+      // with NO network sync; the production TranslationProvider fires
+      // fetchSuggestedLanguage()/updateConfig() on mount, which would be failing
+      // calls on every story in the headless gate.
+      <MockTranslationProvider>
         <TooltipProvider delayDuration={200} skipDelayDuration={100}>
           <StorybookThemeSurface
             theme={resolveStorybookTheme(context.globals.theme)}
@@ -95,7 +98,7 @@ const preview: Preview = {
             <Story />
           </StorybookThemeSurface>
         </TooltipProvider>
-      </TranslationProvider>
+      </MockTranslationProvider>
     ),
     // Light/dark by toggling the `dark` class on the preview root — matches how
     // the app themes (the design tokens key off it).
