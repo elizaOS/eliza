@@ -179,6 +179,18 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     timeoutMs: 60_000,
   },
   {
+    name: "notes",
+    path: "/notes",
+    readyChecks: [{ selector: '[data-testid="simple-notes-view"]' }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "simple calendar",
+    path: "/simple-calendar",
+    readyChecks: [{ selector: '[data-testid="simple-calendar-view"]' }],
+    timeoutMs: 60_000,
+  },
+  {
     name: "stream",
     path: "/stream",
     readyChecks: [{ selector: "#root" }],
