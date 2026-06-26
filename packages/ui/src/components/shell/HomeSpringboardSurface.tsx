@@ -105,7 +105,7 @@ export function HomeSpringboardSurface({
       <div
         ref={pager.railRef}
         data-testid="home-springboard-rail"
-        className="absolute inset-0 flex w-[200%] will-change-transform motion-reduce:transition-none"
+        className="absolute inset-0 flex w-[200%] motion-reduce:transition-none"
       >
         <div
           data-testid="home-springboard-home-page"

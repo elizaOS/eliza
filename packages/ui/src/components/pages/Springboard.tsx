@@ -467,7 +467,7 @@ export function Springboard({
           <div
             ref={pager.railRef}
             data-testid="springboard-page-rail"
-            className="flex h-full min-h-0 w-full will-change-transform motion-reduce:transition-none"
+            className="flex h-full min-h-0 w-full motion-reduce:transition-none"
           >
             {loading && entries.length === 0 ? (
               <div className="flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
