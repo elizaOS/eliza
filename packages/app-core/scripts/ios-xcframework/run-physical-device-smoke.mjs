@@ -26,7 +26,7 @@
  * real Eliza-1 bundle smoke can run.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -38,6 +38,12 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const APP_DIR = path.join(REPO_ROOT, "packages", "app");
 const XCFRAMEWORK_BUILD_SCRIPT = path.join(__dirname, "build-xcframework.mjs");
+const RECURSIVE_CLEANUP_SCRIPT = path.join(
+  REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 const LLAMA_SYMBOLS = [
   "llama_init_context",
@@ -1712,6 +1718,20 @@ function writeReport(reportPath, report) {
   );
 }
 
+function removeDirectoryRecursive(targetPath) {
+  try {
+    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(detail || error?.message || String(error), {
+      cause: error,
+    });
+  }
+}
+
 function hasXcodebuildArg(args, flag) {
   return args.xcodebuildArgs.includes(flag);
 }
@@ -1826,7 +1846,7 @@ async function main() {
     };
     writeReport(args.report, report);
     if (tempDir && !args.keepTemp) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      removeDirectoryRecursive(tempDir);
     }
     process.stderr.write(`${report.error}\n`);
     process.exit(signal === "SIGINT" ? 130 : 143);
@@ -2006,7 +2026,7 @@ async function main() {
     process.off("SIGINT", signalHandler);
     process.off("SIGTERM", signalHandler);
     if (tempDir && !args.keepTemp) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      removeDirectoryRecursive(tempDir);
     } else if (tempDir) {
       console.log(`[ios-smoke] kept temp package at ${tempDir}`);
     }
