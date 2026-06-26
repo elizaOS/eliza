@@ -438,7 +438,7 @@ def _cerebras_assistant_and_refusals(client, n_batches: int, per_batch: int) -> 
 #    "contexts":[...],"contextSlices":[...],"candidateActions":[...],
 #    "parentActionHints":[...],"requiresTool":<bool>,"extract":{...}}
 # On the direct (DM/API/voice) path the same keys minus ``shouldRespond``,
-# starting at ``{"thought":...}``. These rows teach the 0.8b base to emit a
+# starting at ``{"thought":...}``. These rows teach the 2B base to emit a
 # well-formed envelope so the ``format_ok`` gate stops measuring 0%. They are
 # shaped to match the runtime grammar's fixed key order and value kinds. (A
 # byte-exact generator that calls ``buildResponseGrammar``+``compilePrefillPlan``

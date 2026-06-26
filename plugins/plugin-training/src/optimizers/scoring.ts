@@ -218,7 +218,7 @@ export function extractPlannerView(text: string): string | null {
  * navigation target), a matching action alone is NOT full credit — the view has
  * to match too. Without this the optimizer can never learn correct view
  * selection, because every `VIEWS/<anything>` would score 1.0 against a
- * `VIEWS/calendar` reference (the exact gap that made the 0.8B's wrong-view
+ * `VIEWS/calendar` reference (the exact gap that made entry-tier wrong-view
  * outputs look perfect). Partial credit (right action, wrong/missing view =
  * 0.5) keeps a usable gradient for the optimizer. Expected outputs without a
  * view (every non-navigation action) are scored action-only, unchanged.

@@ -361,7 +361,7 @@ describe("view switching — VIEWS action resolver", () => {
 	});
 
 	describe("model param hallucination — user's words win over a wrong view param", () => {
-		// A weak/local planner (the 0.8B) frequently emits VIEWS with a WRONG view
+		// A weak local planner can emit VIEWS with a WRONG view
 		// param (e.g. view:"wallet" for "open my calendar"). The user's own words
 		// are authoritative when they name a registered domain surface, so the
 		// hallucinated param must not mis-navigate. This is the "structured
