@@ -15,7 +15,6 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
-    "noImplicitAny": false,
     "allowJs": true,
     "checkJs": false,
     "noEmitOnError": false,

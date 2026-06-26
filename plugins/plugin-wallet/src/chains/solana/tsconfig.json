@@ -17,7 +17,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitReturns": false,
-    "noImplicitAny": false,
     "types": ["node", "bun-types"],
     "allowImportingTsExtensions": true
   },

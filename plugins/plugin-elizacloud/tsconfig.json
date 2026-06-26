@@ -17,7 +17,6 @@
     "rootDir": "../..",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "bun-types"],
-    "noImplicitAny": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,

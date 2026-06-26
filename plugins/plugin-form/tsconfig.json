@@ -5,7 +5,6 @@
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
-    "noImplicitAny": false,
     "strictNullChecks": true,
     "noUncheckedIndexedAccess": false,
     "skipLibCheck": true,
