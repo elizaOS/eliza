@@ -1,8 +1,8 @@
 /**
  * Refusal-suppression regression for `parseMessageHandlerOutput`.
  *
- * The fix for elizaOS/eliza#7620 — Cerebras-hosted `gpt-oss-120b` and
- * `qwen-3-235b-a22b-instruct-2507` emit identical refusal text in Stage-1
+ * The fix for elizaOS/eliza#7620 — Cerebras-hosted `gpt-oss-120b` and other
+ * safety-tuned hosted models emit identical refusal text in Stage-1
  * `replyText` even on turns whose `contexts` / `candidateActions` route to
  * the planner. The runtime previously shipped that refusal to the user. We
  * blank `plan.reply` when:

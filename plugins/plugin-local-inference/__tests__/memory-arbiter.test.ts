@@ -104,7 +104,7 @@ function makeArbiter(opts: { capacitorBridge?: ReturnType<typeof capacitorPressu
 describe("MemoryArbiter — registration and acquire", () => {
 	it("rejects acquire when no capability is registered", async () => {
 		const { arbiter } = makeArbiter();
-		await expect(arbiter.acquire("vision-describe", "qwen3-vl-4b")).rejects.toThrow(
+		await expect(arbiter.acquire("vision-describe", "gemma-vl-4b")).rejects.toThrow(
 			/no capability registered/,
 		);
 	});
@@ -209,7 +209,7 @@ describe("MemoryArbiter — swap on conflicting role", () => {
 		arbiter.registerCapability(text.registration);
 		arbiter.registerCapability(vision.registration);
 		const t = await arbiter.acquire<FakeBackend>("text", "tier-2b");
-		const v = await arbiter.acquire<FakeBackend>("vision-describe", "qwen3-vl-4b");
+		const v = await arbiter.acquire<FakeBackend>("vision-describe", "gemma-vl-4b");
 		expect(text.unloaded).toEqual([]);
 		expect(vision.unloaded).toEqual([]);
 		await t.release();
@@ -232,7 +232,7 @@ describe("MemoryArbiter — memory pressure", () => {
 		arbiter.registerCapability(text.registration);
 		arbiter.registerCapability(vision.registration);
 		const t = await arbiter.acquire<FakeBackend>("text", "tier-2b");
-		const v = await arbiter.acquire<FakeBackend>("vision-describe", "qwen3-vl-4b");
+		const v = await arbiter.acquire<FakeBackend>("vision-describe", "gemma-vl-4b");
 		await t.release();
 		await v.release();
 		// Vision is priority 20 (cheaper) than text-target (100); pressure
@@ -240,7 +240,7 @@ describe("MemoryArbiter — memory pressure", () => {
 		bridge.dispatch("low");
 		// Allow the async handler to drain.
 		await new Promise<void>((r) => setTimeout(r, 5));
-		expect(vision.unloaded).toEqual(["qwen3-vl-4b"]);
+		expect(vision.unloaded).toEqual(["gemma-vl-4b"]);
 		expect(text.unloaded).toEqual([]);
 		const pressureEvents = events.filter((e) => e.type === "memory_pressure");
 		expect(pressureEvents.at(-1)?.level).toBe("low");
@@ -261,14 +261,14 @@ describe("MemoryArbiter — memory pressure", () => {
 		arbiter.registerCapability(vision.registration);
 		arbiter.registerCapability(embedding.registration);
 		const t = await arbiter.acquire<FakeBackend>("text", "tier-2b");
-		const v = await arbiter.acquire<FakeBackend>("vision-describe", "qwen3-vl-4b");
+		const v = await arbiter.acquire<FakeBackend>("vision-describe", "gemma-vl-4b");
 		const e = await arbiter.acquire<FakeBackend>("embedding", "embedding-small");
 		await t.release();
 		await v.release();
 		await e.release();
 		bridge.dispatch("critical");
 		await new Promise<void>((r) => setTimeout(r, 5));
-		expect(vision.unloaded).toEqual(["qwen3-vl-4b"]);
+		expect(vision.unloaded).toEqual(["gemma-vl-4b"]);
 		expect(embedding.unloaded).toEqual(["embedding-small"]);
 		// text-target survives critical
 		expect(text.unloaded).toEqual([]);
@@ -284,7 +284,7 @@ describe("MemoryArbiter — memory pressure", () => {
 		bridge.dispatch("critical");
 		await new Promise<void>((r) => setTimeout(r, 5));
 		await expect(
-			arbiter.acquire<FakeBackend>("vision-describe", "qwen3-vl-4b"),
+			arbiter.acquire<FakeBackend>("vision-describe", "gemma-vl-4b"),
 		).rejects.toThrow(/critical/);
 	});
 
@@ -309,7 +309,7 @@ describe("MemoryArbiter — memory pressure", () => {
 		arbiter.registerCapability(text.registration);
 		arbiter.registerCapability(vision.registration);
 		const t = await arbiter.acquire<FakeBackend>("text", "tier-2b");
-		const v = await arbiter.acquire<FakeBackend>("vision-describe", "qwen3-vl-4b");
+		const v = await arbiter.acquire<FakeBackend>("vision-describe", "gemma-vl-4b");
 		// Hold onto vision (refcount=1)
 		await t.release();
 		bridge.dispatch("critical");
@@ -530,13 +530,13 @@ describe("MemoryArbiter — concurrency edge cases", () => {
 				payload: { x: "slow" },
 			}),
 			arbiter.requestVisionDescribe<{ x: string }, string>({
-				modelKey: "qwen3-vl-4b",
+				modelKey: "gemma-vl-4b",
 				payload: { x: "fast" },
 			}),
 		]);
 		const elapsed = Date.now() - start;
 		expect(t).toBe("tier-2b:slow");
-		expect(v).toBe("qwen3-vl-4b:fast");
+		expect(v).toBe("gemma-vl-4b:fast");
 		// If queues were shared, total would be ~30ms (text) + ~0ms (vision) =
 		// 30ms. With separate queues we expect at most max(loadtimes)+max(runtimes),
 		// still bounded — assert specifically that vision did not block on text.
@@ -554,13 +554,13 @@ describe("MemoryArbiter — concurrency edge cases", () => {
 		arbiter.registerCapability(text.registration);
 		arbiter.registerCapability(vision.registration);
 		// Start a slow vision load.
-		const visionAcquire = arbiter.acquire<FakeBackend>("vision-describe", "qwen3-vl-4b");
+		const visionAcquire = arbiter.acquire<FakeBackend>("vision-describe", "gemma-vl-4b");
 		// While it's mid-flight, dispatch low pressure. The arbiter should
 		// process the event without crashing the load.
 		bridge.dispatch("low");
 		await new Promise<void>((r) => setTimeout(r, 5));
 		const handle = await visionAcquire;
-		expect(handle.backend.id).toBe("qwen3-vl-4b");
+		expect(handle.backend.id).toBe("gemma-vl-4b");
 		await handle.release();
 	});
 
@@ -602,12 +602,12 @@ describe("MemoryArbiter — shutdown", () => {
 		arbiter.registerCapability(text.registration);
 		arbiter.registerCapability(vision.registration);
 		const t = await arbiter.acquire<FakeBackend>("text", "tier-2b");
-		const v = await arbiter.acquire<FakeBackend>("vision-describe", "qwen3-vl-4b");
+		const v = await arbiter.acquire<FakeBackend>("vision-describe", "gemma-vl-4b");
 		await t.release();
 		await v.release();
 		await arbiter.shutdown();
 		expect(text.unloaded).toContain("tier-2b");
-		expect(vision.unloaded).toContain("qwen3-vl-4b");
+		expect(vision.unloaded).toContain("gemma-vl-4b");
 		await expect(arbiter.acquire("text", "tier-2b")).rejects.toThrow(/shutting down/);
 	});
 });

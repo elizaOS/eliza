@@ -17,10 +17,10 @@
  *     `/completion` payload shape.
  *
  * On-device GPU validation notes (not exercised here; no GPU on this host):
- *   - Metal:  load qwen3-vl-2b on M-series mac; the encode path goes
+ *   - Metal:  load gemma-vl-2b on M-series mac; the encode path goes
  *     through `mtmd_encode_chunks` and lands on the Metal compute
  *     encoder. Validate: a 1024×1024 frame describes in <1.5s end-to-end.
- *   - CUDA:   load qwen3-vl-9b on RTX 3090; same path through cuBLAS.
+ *   - CUDA:   load gemma-vl-9b on RTX 3090; same path through cuBLAS.
  *     Validate: a 1024×1024 frame describes in <0.8s end-to-end.
  *   - QNN:    on Snapdragon 8 Gen 3, validate that
  *     `eliza_llama_mtmd_describe` succeeds with the Q4_K_M 0.8B mmproj,
@@ -109,14 +109,14 @@ function newArbiter(): MemoryArbiter {
 describe("vision/hash", () => {
 	it("hashes the same bytes deterministically", () => {
 		const bytes = tinyPngBytes();
-		const a = hashImageBytes(bytes, "qwen3-vl");
-		const b = hashImageBytes(bytes, "qwen3-vl");
+		const a = hashImageBytes(bytes, "gemma-vl");
+		const b = hashImageBytes(bytes, "gemma-vl");
 		expect(a).toBe(b);
 	});
 
 	it("namespaces by model family", () => {
 		const bytes = tinyPngBytes();
-		const a = hashImageBytes(bytes, "qwen3-vl");
+		const a = hashImageBytes(bytes, "gemma-vl");
 		const b = hashImageBytes(bytes, "florence-2");
 		expect(a).not.toBe(b);
 	});
@@ -125,14 +125,14 @@ describe("vision/hash", () => {
 		const bytes = tinyPngBytes();
 		const base64 = Buffer.from(bytes).toString("base64");
 		const dataUrl = `data:image/png;base64,${base64}`;
-		const fromBytes = hashVisionInput({ kind: "bytes", bytes }, "qwen3-vl");
+		const fromBytes = hashVisionInput({ kind: "bytes", bytes }, "gemma-vl");
 		const fromBase64 = hashVisionInput(
 			{ kind: "base64", base64 },
-			"qwen3-vl",
+			"gemma-vl",
 		);
 		const fromDataUrl = hashVisionInput(
 			{ kind: "dataUrl", dataUrl },
-			"qwen3-vl",
+			"gemma-vl",
 		);
 		expect(fromBase64).toBe(fromBytes);
 		expect(fromDataUrl).toBe(fromBytes);
@@ -183,13 +183,13 @@ describe("vision/capability registration", () => {
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			payload: {
 				image: { kind: "bytes", bytes: tinyPngBytes() },
 				prompt: "what",
 			},
 		});
-		expect(state.loaded).toEqual(["qwen3-vl"]);
+		expect(state.loaded).toEqual(["gemma-vl"]);
 		expect(state.described).toBe(1);
 		expect(state.receivedProjected[0]).toBe(false);
 		expect(result.description).toBe("described what");
@@ -229,7 +229,7 @@ describe("vision/capability registration", () => {
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			payload: {
 				image: { kind: "bytes", bytes },
 				prompt: "what",
@@ -260,7 +260,7 @@ describe("vision/capability registration", () => {
 		);
 		await expect(
 			arbiter.requestVisionDescribe<VisionDescribeRequest, VisionDescribeResult>({
-				modelKey: "qwen3-vl",
+				modelKey: "gemma-vl",
 				payload: {
 					image: { kind: "bytes", bytes: tinyPngBytes() },
 					prompt: "boom",
@@ -289,7 +289,7 @@ describe("vision/capability registration", () => {
 			>,
 		);
 		await arbiter.requestVisionDescribe<VisionDescribeRequest, VisionDescribeResult>({
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			payload: {
 				image: { kind: "bytes", bytes: tinyPngBytes() },
 			},
@@ -329,7 +329,7 @@ describe("vision/capability registration", () => {
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			payload: { image: { kind: "bytes", bytes }, prompt: "frame" },
 		});
 		expect(r1.cacheHit).toBe(false);
@@ -349,7 +349,7 @@ describe("vision/capability registration", () => {
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			payload: { image: { kind: "bytes", bytes }, prompt: "frame" },
 		});
 		expect(r2.cacheHit).toBe(true);

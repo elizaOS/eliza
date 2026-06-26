@@ -16,8 +16,8 @@ const execAsync = promisify(exec);
 
 // `tileSize` in VisionConfig is the legacy fixed-grid edge. The new tiler
 // treats it as `maxEdge` — the largest dimension a single tile may have. The
-// tiler's defaults are tuned for Qwen3.5-VL; respect the config override only
-// when it stays in the model-sweet-spot range.
+// tiler's defaults target local Gemma vision OCR detail; respect the config
+// override only when it stays in a practical local-VLM range.
 const MIN_TILER_EDGE = 64;
 const SINGLE_DISPLAY_ID = "primary";
 
@@ -161,8 +161,8 @@ export class ScreenCaptureService {
       const width = metadata.width || 1920;
       const height = metadata.height || 1080;
 
-      // Hand layout to the overlap-aware tiler. It sizes tiles to the model
-      // sweet spot (Qwen3.5-VL) and seams them with overlap so glyphs that
+      // Hand layout to the overlap-aware tiler. It sizes tiles to the local
+      // Gemma vision budget and seams them with overlap so glyphs that
       // straddle a boundary still appear intact in at least one tile.
       const maxEdge = Math.max(
         MIN_TILER_EDGE,
