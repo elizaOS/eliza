@@ -65,6 +65,12 @@
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
+      "@elizaos/plugin-scheduling": [
+        "../../plugins/plugin-scheduling/src/index.ts"
+      ],
+      "@elizaos/plugin-scheduling/*": [
+        "../../plugins/plugin-scheduling/src/*"
+      ],
       "@elizaos/plugin-phone": [
         "../../plugins/plugin-phone/src/index.ts"
       ],

@@ -25,8 +25,8 @@ import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
 import { handleRelationshipRoutes } from "./relationships.js";
 import {
+  DEV_REGISTRIES_ROUTE_PATHS,
   makeScheduledTasksRouteHandler,
-  SCHEDULED_TASKS_ROUTE_PATHS,
 } from "./scheduled-tasks.js";
 import { handleSleepRoutes } from "./sleep-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
@@ -726,7 +726,10 @@ const lifeOpsPluginRoutes: Route[] = [
   ),
   ...buildRawRoutes(LIFEOPS_STATIC_ROUTES, lifeOpsRouteHandler()),
   ...buildRawRoutes(LIFEOPS_DYNAMIC_ROUTES, lifeOpsRouteHandler()),
-  ...buildRawRoutes(SCHEDULED_TASKS_ROUTE_PATHS, scheduledTasksRouteHandler()),
+  // Only the PA-specific dev `/registries` composite stays here; the generic
+  // scheduled-task CRUD + history + dev-log + spine-registry routes are served
+  // by the always-loaded @elizaos/plugin-scheduling on every platform.
+  ...buildRawRoutes(DEV_REGISTRIES_ROUTE_PATHS, scheduledTasksRouteHandler()),
   ...buildRawRoutes(LIFEOPS_SLEEP_ROUTES, sleepRouteHandler()),
   ...buildRawRoutes(WEBSITE_BLOCKER_ROUTES, websiteBlockerRouteHandler()),
 ];

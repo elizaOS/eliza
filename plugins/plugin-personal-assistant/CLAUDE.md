@@ -72,7 +72,8 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 | `website_blocker` | `WebsiteBlockerService` | `src/website-blocker/service.ts` | Hosts-file blocking (SelfControl) lifecycle |
 | `activity_tracker` | `ActivityTrackerService` | `src/activity-profile/activity-tracker-service.ts` | Legacy activity projection for assistant context; health/screen-time domain logic belongs in `@elizaos/plugin-health` |
 | `presence_signal_bridge` | `PresenceSignalBridgeService` | `src/activity-profile/presence-signal-bridge-service.ts` | Device presence signal forwarding |
-| `lifeops_scheduled_task_runner` | `ScheduledTaskRunnerService` | `src/lifeops/scheduled-task/service.ts` | Scheduled-task execution engine |
+
+The `lifeops_scheduled_task_runner` service (`ScheduledTaskRunnerService`) is now **registered by the always-loaded `@elizaos/plugin-scheduling`**, not PA. PA is a consumer: `init()` injects its production deps (DB-backed store, production dispatcher, owner-facts / channel-keys / host-capability probes, anchor registry) via `registerLifeOpsScheduledTaskRunnerDeps(runtime)` (see `src/lifeops/scheduled-task/runtime-wiring.ts`). `src/lifeops/scheduled-task/service.ts` is a back-compat re-export of the moved service.
 
 ### Evaluators
 

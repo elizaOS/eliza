@@ -65,6 +65,29 @@ export {
   TestNoopScheduledTaskDispatcher,
 } from "./runner.js";
 export {
+  type GetScheduledTaskRunnerOptions,
+  getScheduledTaskRunner,
+  getScheduledTaskRunnerDeps,
+  registerScheduledTaskRunnerDeps,
+  type ScheduledTaskRunnerDepsBundle,
+  type ScheduledTaskRunnerDepsProvider,
+  ScheduledTaskRunnerService,
+} from "./runner-service.js";
+export {
+  scheduledTaskFilterSchema,
+  scheduledTaskInputSchema,
+  scheduledTaskSchema,
+  scheduledTaskSnoozePayloadSchema,
+  scheduledTaskStateSchema,
+  scheduledTaskVerbSchema,
+} from "./schema.js";
+export {
+  type DefaultTaskPack,
+  getDefaultTaskPacks,
+  registerDefaultTaskPack,
+  seedRegisteredTaskPacks,
+} from "./seed-registry.js";
+export {
   createInMemoryScheduledTaskLogStore,
   createStateLogger,
   type ScheduledTaskLogStore,
@@ -93,6 +116,7 @@ export type {
   ScheduledTaskEscalation,
   ScheduledTaskFilter,
   ScheduledTaskGateRef,
+  ScheduledTaskInput,
   ScheduledTaskKind,
   ScheduledTaskLogEntry,
   ScheduledTaskLogTransition,

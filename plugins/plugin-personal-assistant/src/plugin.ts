@@ -124,10 +124,8 @@ import {
   LIFEOPS_TASK_NAME,
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
-import {
-  getScheduledTaskRunner as getProductionScheduledTaskRunner,
-  ScheduledTaskRunnerService,
-} from "./lifeops/scheduled-task/service.js";
+import { registerLifeOpsScheduledTaskRunnerDeps } from "./lifeops/scheduled-task/runtime-wiring.js";
+import { getScheduledTaskRunner as getProductionScheduledTaskRunner } from "./lifeops/scheduled-task/service.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
 import {
   createSendPolicyRegistry,
@@ -762,7 +760,11 @@ const rawPersonalAssistantPlugin: Plugin = {
   name: "@elizaos/plugin-personal-assistant",
   description:
     "Personal assistant workspace: executive workflows, owner approvals, scheduled tasks, calendar, inbox, documents, reminders, money admin, and focused owner-operation views.",
-  dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
+  // @elizaos/plugin-scheduling hosts the ScheduledTaskRunnerService + the
+  // generic scheduled-task route; PA injects its production deps into it. It is
+  // always-loaded (CORE + MOBILE), but declaring the dependency guarantees the
+  // runner host is registered before PA's init injects deps + seeds.
+  dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE, "@elizaos/plugin-scheduling"],
   schema: lifeOpsSchema,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
@@ -814,7 +816,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     BrowserBridgePluginService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
-    ScheduledTaskRunnerService,
+    // The ScheduledTaskRunnerService is now registered by the always-loaded
+    // @elizaos/plugin-scheduling. PA injects its production deps via
+    // registerLifeOpsScheduledTaskRunnerDeps(runtime) in init() instead, so
+    // there is exactly one runner service per runtime.
   ],
   responseHandlerEvaluators: [ownerProfileExtractionEvaluator],
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
@@ -886,6 +891,14 @@ const rawPersonalAssistantPlugin: Plugin = {
     (
       runtime as IAgentRuntime & { channelRegistry?: typeof channelRegistry }
     ).channelRegistry = channelRegistry;
+
+    // Inject PA's production scheduled-task deps into the always-loaded
+    // @elizaos/plugin-scheduling runner host. The runner service itself lives
+    // in plugin-scheduling now; this binds it to LifeOps's DB-backed store,
+    // production dispatcher, owner-facts / channel-keys / host-capability
+    // probes, and anchor registry. First-wins, so this stays authoritative for
+    // the lifetime of the runtime once registered.
+    registerLifeOpsScheduledTaskRunnerDeps(runtime);
 
     const sendPolicyRegistry = createSendPolicyRegistry();
     registerSendPolicyRegistry(runtime, sendPolicyRegistry);
