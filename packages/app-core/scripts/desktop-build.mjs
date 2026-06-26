@@ -94,16 +94,12 @@ function isProcessAlive(pid) {
   }
 }
 
-function removeDesktopBuildLockDir() {
-  const result = spawnSync(
-    "node",
-    [CLEANUP_HELPER_SCRIPT, DESKTOP_BUILD_LOCK_DIR],
-    {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: "pipe",
-    },
-  );
+function removePathRecursive(targetPath, label = "path cleanup") {
+  const result = spawnSync("node", [CLEANUP_HELPER_SCRIPT, targetPath], {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
 
   if (result.error) {
     throw result.error;
@@ -114,11 +110,15 @@ function removeDesktopBuildLockDir() {
       .join("\n")
       .trim();
     throw new Error(
-      `desktop build lock cleanup failed with exit code ${result.status ?? 1}${
+      `${label} failed with exit code ${result.status ?? 1}${
         detail ? `: ${detail}` : ""
       }`,
     );
   }
+}
+
+function removeDesktopBuildLockDir() {
+  removePathRecursive(DESKTOP_BUILD_LOCK_DIR, "desktop build lock cleanup");
 }
 
 function withDesktopBuildLock(run) {
@@ -1500,7 +1500,7 @@ function mirrorTreePreservingSymlinks(src, dst) {
     if (dstLstat) {
       try {
         if (dstLstat.isDirectory() && !dstLstat.isSymbolicLink()) {
-          fs.rmSync(dst, { force: true, recursive: true });
+          removePathRecursive(dst, "desktop mirror directory cleanup");
         } else {
           fs.unlinkSync(dst);
         }
