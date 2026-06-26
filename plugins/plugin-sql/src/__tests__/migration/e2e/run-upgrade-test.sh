@@ -14,6 +14,7 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEST_PROJECT_DIR="$SCRIPT_DIR/test-agent"
 ELIZA_REPO_DIR="$(cd "$SCRIPT_DIR/../../../../../.." && pwd)"
+CLEANUP_HELPER="$ELIZA_REPO_DIR/packages/scripts/rm-path-recursive.mjs"
 POSTGRES_URL="postgresql://postgres:postgres@localhost:5433/migration_test"
 STATE_BEFORE_FILE="$SCRIPT_DIR/.state_before.txt"
 STATE_AFTER_FILE="$SCRIPT_DIR/.state_after.txt"
@@ -129,7 +130,7 @@ done
 
 # Step 2: Create test project directory
 echo -e "\n${YELLOW}▶ Step 2: Creating test project...${NC}"
-rm -rf "$TEST_PROJECT_DIR"
+node "$CLEANUP_HELPER" "$TEST_PROJECT_DIR"
 mkdir -p "$TEST_PROJECT_DIR"
 
 # Step 3: Setup source version environment
@@ -831,4 +832,4 @@ rm -f "$STATE_BEFORE_FILE" "$STATE_AFTER_FILE"
 
 echo -e "\n${YELLOW}To cleanup:${NC}"
 echo "  cd $SCRIPT_DIR && docker compose down -v"
-echo "  rm -rf $TEST_PROJECT_DIR"
+echo "  node \"$CLEANUP_HELPER\" \"$TEST_PROJECT_DIR\""
