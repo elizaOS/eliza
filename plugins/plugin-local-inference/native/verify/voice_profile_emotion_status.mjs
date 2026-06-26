@@ -62,7 +62,7 @@ const REQUIRED_RUNTIME_SYMBOLS = [
 function parseArgs(argv) {
 	const date = new Date().toISOString().slice(0, 10);
 	const args = {
-		tier: process.env.ELIZA_VOICE_READINESS_TIER || "0_8b",
+		tier: process.env.ELIZA_VOICE_READINESS_TIER || "2b",
 		bundle: process.env.ELIZA_VOICE_READINESS_BUNDLE || null,
 		runtime: process.env.ELIZA_INFERENCE_LIBRARY || null,
 		out: null,
@@ -107,7 +107,7 @@ function printUsage() {
 		[
 			"Usage: node plugins/plugin-local-inference/native/verify/voice_profile_emotion_status.mjs [options]",
 			"",
-			"  --tier TIER       Eliza-1 tier slug, default 0_8b.",
+			"  --tier TIER       Eliza-1 tier slug, default 2b.",
 			"  --bundle PATH     Installed bundle root.",
 			"  --runtime PATH    libelizainference shared library.",
 			"  --out PATH        Output JSON path.",

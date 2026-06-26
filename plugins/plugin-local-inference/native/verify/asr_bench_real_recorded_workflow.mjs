@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * No-model helper for the 0_8b real-recorded ASR WER gate.
+ * No-model helper for the 2b real-recorded ASR WER gate.
  *
  * This does not run ASR and never treats generated/synthetic audio as publish
  * evidence. It creates a tiny deterministic non-speech fixture corpus for
@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = findRepoRoot(__dirname);
 const VERIFY_ROOT = __dirname;
 const REPORTS_ROOT = path.join(VERIFY_ROOT, "reports");
-const DEFAULT_TIER = "0_8b";
+const DEFAULT_TIER = "2b";
 const DEFAULT_MIN_UTTERANCES = 5;
 const DEFAULT_FIXTURE_DIR = path.join(
   VERIFY_ROOT,
@@ -28,7 +28,7 @@ const DEFAULT_REPORT_DATE = "2026-05-16";
 const DEFAULT_REPORT = path.join(
   REPORTS_ROOT,
   DEFAULT_REPORT_DATE,
-  "asr-wer-real-recorded-0_8b-needs-corpus-20260516.json",
+  "asr-wer-real-recorded-2b-needs-corpus-20260516.json",
 );
 
 const FIXTURE_UTTERANCES = [
@@ -59,7 +59,7 @@ function findRepoRoot(startDir) {
 function parseArgs(argv) {
   const args = {
     tier: DEFAULT_TIER,
-    bundle: "~/.eliza/local-inference/models/eliza-1-0_8b.bundle",
+    bundle: "~/.eliza/local-inference/models/eliza-1-2b.bundle",
     wavDir: "",
     fixtureDir: DEFAULT_FIXTURE_DIR,
     out: DEFAULT_REPORT,
@@ -107,11 +107,11 @@ function printHelp() {
   console.log(`Usage:
   node plugins/plugin-local-inference/native/verify/asr_bench_real_recorded_workflow.mjs \\
     --init-fixture \\
-    --out plugins/plugin-local-inference/native/reports/local-e2e/2026-05-16/asr-wer-real-recorded-0_8b-needs-corpus-20260516.json
+    --out plugins/plugin-local-inference/native/reports/local-e2e/2026-05-16/asr-wer-real-recorded-2b-needs-corpus-20260516.json
 
   # After recording real microphone/field audio:
   bun plugins/plugin-local-inference/native/verify/asr_bench.ts \\
-    --bundle ~/.eliza/local-inference/models/eliza-1-0_8b.bundle \\
+    --bundle ~/.eliza/local-inference/models/eliza-1-2b.bundle \\
     --wav-dir <real-recorded-wav-txt-dir> \\
     --real-recorded \\
     --min-real-recorded-utterances 5 \\
@@ -203,13 +203,13 @@ The WAV files are short generated tones, not speech and not TTS. They only prove
 that five WAV+.txt pairs can be carried through scripts without downloading
 models.
 
-Do not use this directory as publish evidence. The 0_8b ASR WER publish gate
+Do not use this directory as publish evidence. The 2b ASR WER publish gate
 requires at least five explicit real microphone or field recordings with matching
 transcripts, run through:
 
 \`\`\`sh
 bun plugins/plugin-local-inference/native/verify/asr_bench.ts \\
-  --bundle ~/.eliza/local-inference/models/eliza-1-0_8b.bundle \\
+  --bundle ~/.eliza/local-inference/models/eliza-1-2b.bundle \\
   --wav-dir <real-recorded-wav-txt-dir> \\
   --real-recorded \\
   --min-real-recorded-utterances 5
@@ -356,12 +356,12 @@ function buildReport(args, fixtureManifest) {
 
   const runRealRecordedWer = [
     "bun plugins/plugin-local-inference/native/verify/asr_bench.ts",
-    "--bundle ~/.eliza/local-inference/models/eliza-1-0_8b.bundle",
+    "--bundle ~/.eliza/local-inference/models/eliza-1-2b.bundle",
     `--wav-dir ${args.realRecorded ? rel(candidateDir) : "<real-recorded-wav-txt-dir>"}`,
     "--real-recorded",
     `--min-real-recorded-utterances ${args.minUtterances}`,
-    "--out plugins/plugin-local-inference/native/verify/reports/asr-bench-real-recorded-0_8b-<date>.json",
-    "--eval-out plugins/plugin-local-inference/native/verify/reports/asr-wer-real-recorded-0_8b-<date>.json",
+    "--out plugins/plugin-local-inference/native/verify/reports/asr-bench-real-recorded-2b-<date>.json",
+    "--eval-out plugins/plugin-local-inference/native/verify/reports/asr-wer-real-recorded-2b-<date>.json",
   ].join(" ");
 
   return {

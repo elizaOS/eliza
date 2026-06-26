@@ -59,7 +59,7 @@ test("bundle asset inspection accepts the canonical Silero GGUF VAD artifact", (
 		);
 		const result = inspectBundleAssets({
 			bundleRoot: dir,
-			tier: "0_8b",
+			tier: "2b",
 			runtimePath: join(dir, "lib", "libelizainference.dylib"),
 		});
 		const vad = result.requirements.find((req) => req.key === "sileroVad");

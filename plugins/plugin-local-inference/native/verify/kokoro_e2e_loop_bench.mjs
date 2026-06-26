@@ -3,7 +3,7 @@
  * kokoro_e2e_loop_bench.mjs - small-tier Eliza-1 Kokoro voice-loop harness.
  *
  * This is intentionally separate from e2e_loop_bench.mjs, which drives the
- * fused OmniVoice TTS HTTP route. The small tiers (0_8b, 2b, 4b) are Kokoro
+ * fused OmniVoice TTS HTTP route. The small tiers (2b, 4b) are Kokoro
  * TTS tiers, so this harness measures the real path:
  *
  *   WAV mic input -> fused ASR FFI -> llama-server text generation
@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const SMALL_TIERS = new Set(["0_8b", "2b", "4b"]);
+const SMALL_TIERS = new Set(["2b", "4b"]);
 const DEFAULT_PHRASES = [
   "hello there",
   "what is the capital of france",
@@ -52,7 +52,7 @@ const REPORTS_ROOT = path.join(__dirname, "..", "reports");
 function parseArgs(argv) {
   const defaultBackend = process.platform === "darwin" ? "metal" : "cpu";
   const args = {
-    tier: process.env.ELIZA_KOKORO_E2E_TIER || "0_8b",
+    tier: process.env.ELIZA_KOKORO_E2E_TIER || "2b",
     bundle: process.env.ELIZA_KOKORO_E2E_BUNDLE || "",
     backend: process.env.ELIZA_KOKORO_E2E_BACKEND || defaultBackend,
     binDir: process.env.ELIZA_KOKORO_E2E_BIN_DIR || "",
@@ -129,7 +129,7 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage:
   bun plugins/plugin-local-inference/native/verify/kokoro_e2e_loop_bench.mjs \\
-    --tier 0_8b|2b|4b [--bundle <eliza-1-tier.bundle>] [--backend metal|cpu|vulkan|cuda]
+    --tier 2b|4b [--bundle <eliza-1-tier.bundle>] [--backend metal|cpu|vulkan|cuda]
 
 Options:
   --wav a.wav[,b.wav]     External mic WAV(s). Pair with --ref "text|text".

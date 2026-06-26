@@ -23,8 +23,9 @@
  *   - CUDA:   load gemma-vl-9b on RTX 3090; same path through cuBLAS.
  *     Validate: a 1024×1024 frame describes in <0.8s end-to-end.
  *   - QNN:    on Snapdragon 8 Gen 3, validate that
- *     `eliza_llama_mtmd_describe` succeeds with the Q4_K_M 0.8B mmproj,
- *     and that text+vision co-resident memory stays under 3.5 GB.
+ *     `eliza_llama_mtmd_describe` succeeds with the Q4_K_M 2B mmproj,
+ *     and that text+vision co-resident memory stays inside the active
+ *     mobile budget.
  */
 
 import { describe, expect, it, vi } from "vitest";

@@ -9,9 +9,9 @@ import {
 
 function args(overrides = {}) {
   return {
-    tier: "0_8b",
+    tier: "2b",
     backend: "metal",
-    bundle: "/tmp/eliza-1-0_8b.bundle",
+    bundle: "/tmp/eliza-1-2b.bundle",
     maxCancelMs: 80,
     turns: 30,
     rssGrowthMb: 64,
@@ -31,13 +31,13 @@ function kokoroRun(overrides = {}) {
     e2eLoopOk: true,
     thirtyTurnOk: true,
     request: {
-      tier: "0_8b",
+      tier: "2b",
       backend: "metal",
       turns: 30,
     },
     bundle: {
-      dir: "/tmp/eliza-1-0_8b.bundle",
-      tier: "0_8b",
+      dir: "/tmp/eliza-1-2b.bundle",
+      tier: "2b",
     },
     voiceLoop: {
       backend: "kokoro",
@@ -70,7 +70,7 @@ function kokoroRun(overrides = {}) {
   };
 }
 
-test("records Kokoro 0_8b barge-in latency when MTP is disabled by policy", () => {
+test("records Kokoro 2B barge-in latency when MTP is disabled by policy", () => {
   const report = buildBargeInReportFromE2e({
     args: args(),
     e2eReport: kokoroRun(),
@@ -115,7 +115,7 @@ test("fails closed when a Kokoro barge-in run has no cancel metric", () => {
   );
 });
 
-test("records Kokoro 0_8b thirty-turn evidence without requiring a drafter", () => {
+test("records Kokoro 2B thirty-turn evidence when MTP is disabled by policy", () => {
   const report = buildThirtyTurnReportFromE2e({
     args: args(),
     e2eReport: kokoroRun(),

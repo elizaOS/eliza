@@ -478,10 +478,10 @@ if (
   );
 }
 
-// 1_7b. Metal dispatch-ready capability bits must not be satisfied by shipped
-// symbols. The build script intentionally forces every non-runtime-ready Metal
-// kernel false until the evidence file records a numeric built-fork graph
-// dispatch smoke.
+// Metal dispatch-ready capability bits must not be satisfied by shipped symbols.
+// The build script intentionally forces every non-runtime-ready Metal kernel
+// false until the evidence file records a numeric built-fork graph dispatch
+// smoke.
 const metalHonestyMarker = "Honesty gate: Metal/Vulkan/CUDA standalone shaders";
 const metalHonestyIndex = buildScript.indexOf(metalHonestyMarker);
 const metalProbeMarker = 'if (backend === "metal")';
