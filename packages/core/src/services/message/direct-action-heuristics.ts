@@ -248,7 +248,10 @@ export function findWebLookupActionNames(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 ): string[] {
 	const fetchAction = findAvailableActionName(actions, WEB_FETCH_ACTION_NAMES);
-	const searchAction = findAvailableActionName(actions, WEB_SEARCH_ACTION_NAMES);
+	const searchAction = findAvailableActionName(
+		actions,
+		WEB_SEARCH_ACTION_NAMES,
+	);
 	const names: string[] = [];
 	if (fetchAction) names.push(fetchAction);
 	if (searchAction && searchAction !== fetchAction) names.push(searchAction);
