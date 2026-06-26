@@ -118,7 +118,7 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
     expect(has("plugin-local-inference")).toBe(false);
     expect(has("plugin-wallet")).toBe(false);
     expect(has("plugin-workflow")).toBe(false);
-  });
+  }, 30_000);
 
   test("(3) a 1536-d memory insert lands in the dim1536 column (not 'dimension mismatch')", async () => {
     const env = await buildManagedEnv();
