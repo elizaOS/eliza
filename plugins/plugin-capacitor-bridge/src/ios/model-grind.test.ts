@@ -122,6 +122,26 @@ describe("runModelGrind", () => {
 		expect(report.models.find((m) => m.model === "tts")?.ok).toBe(true);
 	});
 
+	it("sends Gemma turn tokens to the native text smoke", async () => {
+		let request: Record<string, unknown> | null = null;
+		await runModelGrind(
+			baseDeps({
+				callIosHost: async (_method, payload) => {
+					request = payload;
+					return { text: "hello there", outputTokens: 12 };
+				},
+			}),
+		);
+		expect(request?.prompt).toBe(
+			"<start_of_turn>user\nSay hello in one short sentence.<end_of_turn>\n<start_of_turn>model\n",
+		);
+		expect(request?.stop).toEqual([
+			"<end_of_turn>",
+			"<start_of_turn>",
+			"<endoftext>",
+		]);
+	});
+
 	it("marks asr failed (and reports) when TTS throws", async () => {
 		const report = await runModelGrind(
 			baseDeps({
