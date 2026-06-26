@@ -52,6 +52,12 @@ const TRACKED_PACKAGE_CACHE = path.join(
   os.tmpdir(),
   "eliza-tracked-package-cache",
 );
+const RM_PATH_RECURSIVE_SCRIPT = path.join(
+  ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const PUBLISHED_PACKAGE_FETCH_TIMEOUT_MS = 10_000;
 const ALLOW_REGISTRY_FETCH =
   process.env.ELIZA_RUNTIME_COPY_ALLOW_REGISTRY_FETCH === "1";
@@ -208,29 +214,11 @@ function readJson<T>(filePath: string): T {
   return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
 }
 
-function sleepSync(ms: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
 function isEnoentError(error: unknown): boolean {
   return Boolean(
     error &&
       typeof error === "object" &&
       (error as { code?: string }).code === "ENOENT",
-  );
-}
-
-function isRetryableRemoveError(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-  const code = (error as { code?: string }).code;
-  return (
-    code === "EBUSY" ||
-    code === "EMFILE" ||
-    code === "ENFILE" ||
-    code === "ENOTEMPTY" ||
-    code === "EPERM"
   );
 }
 
@@ -259,55 +247,72 @@ function readRuntimeCopyLockOwnerPid(lockDir: string): number | null {
   }
 }
 
-function rmRecursive(pathToRemove: string): void {
-  const maxAttempts = 8;
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      fs.rmSync(pathToRemove, {
-        force: true,
-        maxRetries: 5,
-        recursive: true,
-        retryDelay: 100,
-      });
-      return;
-    } catch (error) {
-      if (!isRetryableRemoveError(error)) {
-        throw error;
-      }
-      if (attempt === maxAttempts - 1) break;
-      sleepSync(100 * (attempt + 1));
-    }
+function recursiveRemoveErrorDetail(error: unknown): string {
+  if (error && typeof error === "object") {
+    const output = error as {
+      message?: string;
+      stderr?: unknown;
+      stdout?: unknown;
+    };
+    const detail = [output.stdout, output.stderr]
+      .filter(
+        (chunk): chunk is Buffer | string =>
+          Buffer.isBuffer(chunk) || typeof chunk === "string",
+      )
+      .map((chunk) => chunk.toString().trim())
+      .filter(Boolean)
+      .join("\n");
+    if (detail) return detail;
+    if (typeof output.message === "string") return output.message;
   }
+  return String(error);
+}
 
-  if (!fs.existsSync(pathToRemove)) {
-    return;
-  }
-
-  const parentDir = path.dirname(pathToRemove);
-  const tombstone = path.join(
-    parentDir,
-    `.${path.basename(pathToRemove)}.delete-${process.pid}-${Date.now()}`,
-  );
+function runSharedRecursiveRemove(pathToRemove: string): void {
   try {
-    fs.renameSync(pathToRemove, tombstone);
+    execFileSync(
+      "node",
+      [RM_PATH_RECURSIVE_SCRIPT, path.resolve(pathToRemove)],
+      {
+        encoding: "utf8",
+        stdio: "pipe",
+      },
+    );
+  } catch (error) {
+    throw new Error(recursiveRemoveErrorDetail(error), { cause: error });
+  }
+}
+
+function rmRecursive(pathToRemove: string): void {
+  try {
+    runSharedRecursiveRemove(pathToRemove);
+    return;
   } catch (error) {
     if (!fs.existsSync(pathToRemove)) {
       return;
     }
-    throw error;
-  }
 
-  try {
-    fs.rmSync(tombstone, {
-      force: true,
-      maxRetries: 10,
-      recursive: true,
-      retryDelay: 100,
-    });
-  } catch (error) {
-    console.warn(
-      `[runtime-copy] warning: moved retry-resistant path aside but could not fully remove ${tombstone}: ${error instanceof Error ? error.message : String(error)}`,
+    const parentDir = path.dirname(pathToRemove);
+    const tombstone = path.join(
+      parentDir,
+      `.${path.basename(pathToRemove)}.delete-${process.pid}-${Date.now()}`,
     );
+    try {
+      fs.renameSync(pathToRemove, tombstone);
+    } catch {
+      if (!fs.existsSync(pathToRemove)) {
+        return;
+      }
+      throw error;
+    }
+
+    try {
+      runSharedRecursiveRemove(tombstone);
+    } catch (tombstoneError) {
+      console.warn(
+        `[runtime-copy] warning: moved retry-resistant path aside but could not fully remove ${tombstone}: ${recursiveRemoveErrorDetail(tombstoneError)}`,
+      );
+    }
   }
 }
 
@@ -331,7 +336,7 @@ function acquireRuntimeCopyLock(targetDist: string): () => void {
         )}\n`,
       );
       return () => {
-        fs.rmSync(lockDir, { force: true, recursive: true });
+        rmRecursive(lockDir);
       };
     } catch (error) {
       if (
@@ -877,7 +882,7 @@ function pruneCopiedPackageDir(name: string, packageDir: string): void {
       const relativePath = path.relative(packageDir, entryPath);
 
       if (shouldPrunePackageRelativePath(name, relativePath)) {
-        fs.rmSync(entryPath, { recursive: true, force: true });
+        rmRecursive(entryPath);
         continue;
       }
 
@@ -887,7 +892,7 @@ function pruneCopiedPackageDir(name: string, packageDir: string): void {
           !isRequiredRuntimeDocDirectory(entryPath) &&
           !shouldPreservePrunedPackageEntry(name, packageDir, entryPath))
       ) {
-        fs.rmSync(entryPath, { recursive: true, force: true });
+        rmRecursive(entryPath);
         continue;
       }
 
@@ -908,7 +913,7 @@ function pruneCopiedPackageDir(name: string, packageDir: string): void {
           name,
         )
       ) {
-        fs.rmSync(entryPath, { recursive: true, force: true });
+        rmRecursive(entryPath);
         continue;
       }
 
@@ -1489,7 +1494,7 @@ function patchCopiedElevenLabsTarSafePaths(
 function patchCopiedAiSdkProviderRuntimeSurface(packageDir: string): void {
   const distIndex = path.join(packageDir, "dist", "index.js");
   if (fs.existsSync(distIndex)) {
-    fs.rmSync(path.join(packageDir, "src"), { recursive: true, force: true });
+    rmRecursive(path.join(packageDir, "src"));
   }
 }
 
@@ -1686,7 +1691,7 @@ function fetchPublishedPackage(
     return resolved;
   }
 
-  fs.rmSync(cacheDir, { recursive: true, force: true });
+  rmRecursive(cacheDir);
   fs.mkdirSync(cacheDir, { recursive: true });
 
   try {
@@ -1742,7 +1747,7 @@ function materializeTrackedWorkspacePackage(
     return resolved;
   }
 
-  fs.rmSync(cacheDir, { recursive: true, force: true });
+  rmRecursive(cacheDir);
   fs.mkdirSync(cacheDir, { recursive: true });
 
   try {
