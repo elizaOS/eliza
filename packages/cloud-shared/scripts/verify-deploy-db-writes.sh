@@ -6,12 +6,15 @@
 # Requires: bun. Run from packages/cloud-shared/.
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+RM_PATH_RECURSIVE=(node "$REPO_ROOT/packages/scripts/rm-path-recursive.mjs")
 STORE="/tmp/apps-deploy-db-$$"
-cleanup() { rm -rf "$STORE"; }
+cleanup() { "${RM_PATH_RECURSIVE[@]}" "$STORE"; }
 trap cleanup EXIT
 
 echo "=== migrate the REAL schema into a throwaway PGlite store ==="
-rm -rf "$STORE"; mkdir -p "$STORE"
+"${RM_PATH_RECURSIVE[@]}" "$STORE"; mkdir -p "$STORE"
 DATABASE_URL="pglite://$STORE" bun run db:migrate 2>&1 | tail -2
 
 echo
