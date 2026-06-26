@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-);
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
+const RM_RECURSIVE_SCRIPT = path.join(SCRIPT_DIR, "rm-path-recursive.mjs");
 const DEFAULT_REPORT_DIR = path.join(
   REPO_ROOT,
   "reports",
@@ -75,7 +74,8 @@ const CATEGORY_DISPOSITIONS = {
   },
   timeout: {
     disposition: "runtime-fix",
-    nextAction: "Rerun with a bounded smaller shard or inspect the specific long-running scenario.",
+    nextAction:
+      "Rerun with a bounded smaller shard or inspect the specific long-running scenario.",
   },
   other: {
     disposition: "needs-manual-triage",
@@ -105,30 +105,45 @@ function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
 }
 
+function rmRecursive(targetPath) {
+  execFileSync("node", [RM_RECURSIVE_SCRIPT, targetPath], {
+    cwd: REPO_ROOT,
+    stdio: "inherit",
+  });
+}
+
 function rel(target, from) {
   return path.relative(from, target).replaceAll(path.sep, "/");
 }
 
 function compact(value, max = 260) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const text = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
   return text.length > max ? `${text.slice(0, max - 1)}...` : text;
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[char]);
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char],
+  );
 }
 
 function pathSegment(value) {
-  return String(value || "unknown")
-    .replace(/[^a-zA-Z0-9_.-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 140) || "unknown";
+  return (
+    String(value || "unknown")
+      .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 140) || "unknown"
+  );
 }
 
 function detailsForScenario(scenario) {
@@ -157,13 +172,17 @@ function detailsForScenario(scenario) {
       }
     }
     if (actionNames.size > 0) {
-      details.push(`Failed with actions called: ${[...actionNames].join(", ")}`);
+      details.push(
+        `Failed with actions called: ${[...actionNames].join(", ")}`,
+      );
     }
   }
   if (details.length === 0 && Array.isArray(scenario.trajectories)) {
     const first = scenario.trajectories[0];
     if (first?.rootMessage) {
-      details.push(`Reconstructed partial failure; root message: ${first.rootMessage}`);
+      details.push(
+        `Reconstructed partial failure; root message: ${first.rootMessage}`,
+      );
     }
   }
   return details;
@@ -171,16 +190,26 @@ function detailsForScenario(scenario) {
 
 function categoryFor(details, scenario) {
   const text = `${scenario.id} ${scenario.domain || ""} ${details.join(" ")}`;
-  if (/Expected .* via|selectedAction|instead of expected|no selected action|Expected action|actionCalled|expected .* result data|Expected .* to fire|Expected .* payload|result payload missing|saw 0\. Called: REPLY/i.test(text)) {
+  if (
+    /Expected .* via|selectedAction|instead of expected|no selected action|Expected action|actionCalled|expected .* result data|Expected .* to fire|Expected .* payload|result payload missing|saw 0\. Called: REPLY/i.test(
+      text,
+    )
+  ) {
     return "wrong-or-missing-action";
   }
-  if (/responseJudge|rubric|score\s+0|expected .*mentioned|No .*mentioned|responseIncludesAny|response missing|expected responseText|saw ".*"/i.test(text)) {
+  if (
+    /responseJudge|rubric|score\s+0|expected .*mentioned|No .*mentioned|responseIncludesAny|response missing|expected responseText|saw ".*"/i.test(
+      text,
+    )
+  ) {
     return "response-rubric";
   }
   if (/no handler registered|turn kind .* not supported/i.test(text)) {
     return "scenario-runner-coverage";
   }
-  if (/expectedStatus: expected \d+, saw \d+|saw 404|route|endpoint/i.test(text)) {
+  if (
+    /expectedStatus: expected \d+, saw \d+|saw 404|route|endpoint/i.test(text)
+  ) {
     return "http-or-route-missing";
   }
   if (/seed .* threw|Failed query: INSERT|fixture|setup/i.test(text)) {
@@ -198,7 +227,10 @@ function categoryFor(details, scenario) {
   if (/connector|draft|calendar|discord|gmail|notification|inbox/i.test(text)) {
     return "connector-behavior";
   }
-  if (details.length === 0 || /failed without structured assertion detail/i.test(text)) {
+  if (
+    details.length === 0 ||
+    /failed without structured assertion detail/i.test(text)
+  ) {
     return "failed-without-structured-detail";
   }
   return "other";
@@ -225,20 +257,33 @@ function collectRun(runName) {
       tags: Array.isArray(scenario.tags) ? scenario.tags : [],
       durationMs: scenario.durationMs,
       category: categoryFor(details, scenario),
-      detail: compact(details[0] || "failed without structured assertion detail"),
+      detail: compact(
+        details[0] || "failed without structured assertion detail",
+      ),
       detailCount: details.length,
     };
   });
   return {
     name: runName,
     matrixPath,
-    viewer: path.join(REPO_ROOT, "reports", "scenarios", runName, "viewer", "index.html"),
+    viewer: path.join(
+      REPO_ROOT,
+      "reports",
+      "scenarios",
+      runName,
+      "viewer",
+      "index.html",
+    ),
     partial: Boolean(matrix.partial),
     timedOut: Boolean(matrix.timedOut),
     totalCount: matrix.totalCount ?? scenarios.length,
-    passedCount: matrix.passedCount ?? scenarios.filter((scenario) => scenario.status === "passed").length,
+    passedCount:
+      matrix.passedCount ??
+      scenarios.filter((scenario) => scenario.status === "passed").length,
     failedCount: matrix.failedCount ?? failed.length,
-    skippedCount: matrix.skippedCount ?? scenarios.filter((scenario) => scenario.status === "skipped").length,
+    skippedCount:
+      matrix.skippedCount ??
+      scenarios.filter((scenario) => scenario.status === "skipped").length,
     providerName: matrix.providerName || "",
     failures,
   };
@@ -331,7 +376,7 @@ function categoryPageHtml(category, failures) {
 
 function writeCategoryPages(payload, reportDir) {
   const dir = path.join(reportDir, "categories");
-  rmSync(dir, { recursive: true, force: true });
+  rmRecursive(dir);
   mkdirSync(dir, { recursive: true });
   for (const category of payload.categories || []) {
     const pageHref = `categories/${pathSegment(category.key)}.html`;
@@ -449,13 +494,25 @@ function renderMarkdown(payload) {
       `| ${category.key} | ${category.count} | ${category.disposition} | ${category.nextAction.replaceAll("|", "\\|")} | ${category.pageHref || ""} |`,
     );
   }
-  lines.push("", "## Runs", "", "| run | provider | result | partial/timed out |", "|---|---|---:|---:|");
+  lines.push(
+    "",
+    "## Runs",
+    "",
+    "| run | provider | result | partial/timed out |",
+    "|---|---|---:|---:|",
+  );
   for (const run of payload.runs) {
     lines.push(
       `| \`${run.name}\` | ${run.providerName || ""} | ${run.passedCount}/${run.totalCount} passed, ${run.failedCount} failed | ${run.partial || run.timedOut ? "yes" : "no"} |`,
     );
   }
-  lines.push("", "## Sample Failures", "", "| run | scenario | category | detail |", "|---|---|---|---|");
+  lines.push(
+    "",
+    "## Sample Failures",
+    "",
+    "| run | scenario | category | detail |",
+    "|---|---|---|---|",
+  );
   for (const failure of payload.failures.slice(0, 80)) {
     lines.push(
       `| \`${failure.run}\` | \`${failure.id}\` | ${failure.category} | ${failure.detail.replaceAll("|", "\\|")} |`,
@@ -488,7 +545,8 @@ function main() {
       passedScenarios: runs.reduce((sum, run) => sum + run.passedCount, 0),
       failedScenarios: runs.reduce((sum, run) => sum + run.failedCount, 0),
       skippedScenarios: runs.reduce((sum, run) => sum + run.skippedCount, 0),
-      partialOrTimedOutRuns: runs.filter((run) => run.partial || run.timedOut).length,
+      partialOrTimedOutRuns: runs.filter((run) => run.partial || run.timedOut)
+        .length,
     },
     categories: countBy(failures, (failure) => failure.category),
     domains: countBy(failures, (failure) => failure.domain),
@@ -508,13 +566,17 @@ function main() {
   );
   writeFileSync(
     path.join(options.reportDir, "failure-analysis.json"),
-    JSON.stringify(payload, null, 2) + "\n",
+    `${JSON.stringify(payload, null, 2)}\n`,
     "utf8",
   );
-  writeFileSync(path.join(options.reportDir, "README.md"), renderMarkdown(payload), "utf8");
+  writeFileSync(
+    path.join(options.reportDir, "README.md"),
+    renderMarkdown(payload),
+    "utf8",
+  );
   writeFileSync(path.join(options.reportDir, "index.html"), html(), "utf8");
   if (options.json) {
-    process.stdout.write(JSON.stringify(payload.summary, null, 2) + "\n");
+    process.stdout.write(`${JSON.stringify(payload.summary, null, 2)}\n`);
   } else {
     process.stdout.write(`scenario failure analysis ${payload.viewerIndex}\n`);
   }
