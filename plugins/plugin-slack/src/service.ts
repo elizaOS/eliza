@@ -597,42 +597,42 @@ export class SlackService extends Service implements ISlackService {
           serviceInstance.listConnectorRooms(withContextAccount(context)),
         listServers: (context) =>
           serviceInstance.listConnectorServers(withContextAccount(context)),
-        fetchMessages: (context, params) =>
+        fetchMessages: (context, params: ConnectorFetchMessagesParams) =>
           serviceInstance.fetchConnectorMessages(withContextAccount(context), {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        searchMessages: (context, params) =>
+        searchMessages: (context, params: ConnectorSearchMessagesParams) =>
           serviceInstance.searchConnectorMessages(withContextAccount(context), {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        reactHandler: (handlerRuntime, params) =>
+        reactHandler: (handlerRuntime, params: ConnectorMessageMutationParams) =>
           serviceInstance.reactConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        editHandler: (handlerRuntime, params) =>
+        editHandler: (handlerRuntime, params: ConnectorMessageMutationParams) =>
           serviceInstance.editConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        deleteHandler: (handlerRuntime, params) =>
+        deleteHandler: (handlerRuntime, params: ConnectorMessageMutationParams) =>
           serviceInstance.deleteConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        pinHandler: (handlerRuntime, params) =>
+        pinHandler: (handlerRuntime, params: ConnectorMessageMutationParams) =>
           serviceInstance.pinConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId

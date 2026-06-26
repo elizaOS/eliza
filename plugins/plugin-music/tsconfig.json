@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "../..",
+    "noEmit": true,
     "lib": ["ESNext", "dom"],
     "target": "ESNext",
     "module": "Preserve",
@@ -15,7 +16,9 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
-    "noImplicitAny": false,
+    "paths": {
+      "@elizaos/plugin-suno": ["../plugin-suno/src/index.ts"]
+    },
     "allowJs": true,
     "checkJs": false,
     "noEmitOnError": false,

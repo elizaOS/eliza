@@ -1,4 +1,4 @@
-import type { MessageExample } from "@elizaos/core";
+import type { CharacterSettings, MessageExample } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { boolean, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
@@ -33,10 +33,7 @@ export const agentTable = pgTable("agents", {
     .notNull(),
   plugins: jsonb("plugins").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   settings: jsonb("settings")
-    .$type<{
-      secrets?: { [key: string]: string | boolean | number };
-      [key: string]: string | boolean | number | Record<string, unknown> | undefined;
-    }>()
+    .$type<CharacterSettings>()
     .default(sql`'{}'::jsonb`)
     .notNull(),
   style: jsonb("style")

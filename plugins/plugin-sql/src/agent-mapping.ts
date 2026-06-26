@@ -23,6 +23,14 @@ export function messageExamplesFromDb(
   return [];
 }
 
+/** Maps Agent's MessageExampleGroup[] back to the DB's legacy nested-array column shape. */
+export function messageExamplesToDb(
+  groups: readonly MessageExampleGroup[] | null | undefined
+): MessageExample[][] {
+  if (!groups || groups.length === 0) return [];
+  return groups.map((group) => group.examples);
+}
+
 /** Maps legacy Agent document/knowledge entries to protobuf-shaped DocumentSourceItem. */
 export function documentsFromDb(raw: readonly unknown[] | null | undefined): DocumentSourceItem[] {
   if (!raw || raw.length === 0) return [];
@@ -30,6 +38,26 @@ export function documentsFromDb(raw: readonly unknown[] | null | undefined): Doc
   for (const entry of raw) {
     const n = normalizeLegacyDocumentEntry(entry);
     if (n) out.push(n);
+  }
+  return out;
+}
+
+/** Maps Agent's protobuf-shaped DocumentSourceItem entries to the DB knowledge column shape. */
+export function documentsToDb(
+  documents: readonly DocumentSourceItem[] | null | undefined
+): (string | { path: string; shared?: boolean })[] {
+  if (!documents || documents.length === 0) return [];
+  const out: (string | { path: string; shared?: boolean })[] = [];
+  for (const document of documents) {
+    if (document.item.case === "path") {
+      out.push(document.item.value);
+    } else if (document.item.case === "directory") {
+      const { path, directory, shared } = document.item.value;
+      const resolvedPath = path ?? directory;
+      if (typeof resolvedPath === "string") {
+        out.push({ path: resolvedPath, shared });
+      }
+    }
   }
   return out;
 }

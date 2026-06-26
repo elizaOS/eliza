@@ -146,7 +146,7 @@ export async function loadDoctrBindings(): Promise<DocTRBindings | null> {
       // but their `_run` functions return DOCTR_ERR_BACKEND. The TS adapter
       // converts that to a thrown Error so the OCR service falls through to
       // its next backend (apple-vision on darwin) or throws to the caller.
-      let lib;
+      let lib: ReturnType<BunFFIModule["dlopen"]>;
       try {
         lib = dlopen(libPath, {
           doctr_det_init: { args: [FFIType.cstring], returns: FFIType.pointer },

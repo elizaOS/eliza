@@ -104,7 +104,7 @@ export async function loadYoloBindings(): Promise<YoloBindings | null> {
 
       const { dlopen, FFIType, ptr, CString } = bunFFI;
 
-      let lib;
+      let lib: ReturnType<BunFFIModule["dlopen"]>;
       try {
         lib = dlopen(libPath, {
           yolo_init: { args: [FFIType.cstring], returns: FFIType.pointer },

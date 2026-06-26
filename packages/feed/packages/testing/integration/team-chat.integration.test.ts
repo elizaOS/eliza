@@ -11,7 +11,9 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
+import type { TeamChatInfo } from "@feed/agents";
 import { teamChatService } from "@feed/agents";
+import type { User } from "@feed/db";
 import {
   chatParticipants,
   chats,
@@ -198,7 +200,7 @@ describe("TeamChatService", () => {
       ]);
 
       // All should return the same chat
-      const ids = new Set(results.map((r) => r.id));
+      const ids = new Set(results.map((r: TeamChatInfo) => r.id));
       expect(ids.size).toBe(1);
 
       // Track for cleanup (only one unique)
@@ -291,7 +293,7 @@ describe("TeamChatService", () => {
     test("throws error when adding non-existent agent", async () => {
       const user = await createTestUser("add-noagent");
       const fakeAgentId = await generateSnowflakeId();
-      await teamChatService.ensureTeamChat(user.id).then((tc) => {
+      await teamChatService.ensureTeamChat(user.id).then((tc: TeamChatInfo) => {
         testCleanup.groupIds.push(tc.groupId);
         testCleanup.chatIds.push(tc.chatId);
       });
@@ -304,7 +306,7 @@ describe("TeamChatService", () => {
     test("throws error when adding user who is not an agent", async () => {
       const user = await createTestUser("add-notag");
       const otherUser = await createTestUser("add-notag-other");
-      await teamChatService.ensureTeamChat(user.id).then((tc) => {
+      await teamChatService.ensureTeamChat(user.id).then((tc: TeamChatInfo) => {
         testCleanup.groupIds.push(tc.groupId);
         testCleanup.chatIds.push(tc.chatId);
       });
@@ -318,7 +320,7 @@ describe("TeamChatService", () => {
       const user1 = await createTestUser("add-wrong-1");
       const user2 = await createTestUser("add-wrong-2");
       const agent = await createTestAgent(user2.id, "add-wrong");
-      await teamChatService.ensureTeamChat(user1.id).then((tc) => {
+      await teamChatService.ensureTeamChat(user1.id).then((tc: TeamChatInfo) => {
         testCleanup.groupIds.push(tc.groupId);
         testCleanup.chatIds.push(tc.chatId);
       });
@@ -420,7 +422,7 @@ describe("TeamChatService", () => {
       const agents = await teamChatService.getTeamChatAgents(user.id);
 
       expect(agents.length).toBe(3);
-      const agentIds = agents.map((a) => a.id);
+      const agentIds = agents.map((a: User) => a.id);
       expect(agentIds).toContain(agent1.id);
       expect(agentIds).toContain(agent2.id);
       expect(agentIds).toContain(agent3.id);
@@ -717,7 +719,7 @@ describe("syncExistingAgents", () => {
 
     const afterSync = await teamChatService.getTeamChatAgents(user.id);
     expect(afterSync.length).toBe(2);
-    const agentIds = afterSync.map((a) => a.id);
+    const agentIds = afterSync.map((a: User) => a.id);
     expect(agentIds).toContain(agent1.id);
     expect(agentIds).toContain(agent2.id);
   });

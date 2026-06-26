@@ -18,7 +18,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitReturns": false,
-    "noImplicitAny": false,
     "strictPropertyInitialization": false,
     "useUnknownInCatchVariables": false,
     "types": ["node", "bun-types"]
