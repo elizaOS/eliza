@@ -12,7 +12,7 @@ async function build(): Promise<void> {
   const distDir = join(process.cwd(), "dist");
 
   if (existsSync(distDir)) {
-    await Bun.$`rm -rf ${distDir}`;
+    await Bun.$`node ../../packages/scripts/rm-path-recursive.mjs ${distDir}`;
   }
   await mkdir(distDir, { recursive: true });
 
