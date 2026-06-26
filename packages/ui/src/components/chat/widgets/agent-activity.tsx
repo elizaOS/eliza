@@ -6,10 +6,14 @@ import { client } from "../../../api";
 //   - FeedActivityItem: { id, type, timestamp, summary?, contentPreview?, ticker?, … }
 //   - FeedActivityFeed: { items: FeedActivityItem[]; total: number }
 import type { FeedActivityItem } from "../../../api/client-types-feed";
+import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";
 import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const ACTIVITY_FETCH_LIMIT = 5;
+// Bound the bridge call so a hung agent channel settles the tile (empty) rather
+// than spinning on "Loading…" forever (the reported stuck-loading bug).
+const ACTIVITY_TIMEOUT_MS = 6_000;
 
 interface AgentActivityState {
   items: FeedActivityItem[];
@@ -76,9 +80,10 @@ export function AgentActivityWidget({
 
   const load = useCallback(async (signal: { cancelled: boolean }) => {
     try {
-      const feed = await client.getFeedAgentActivity({
-        limit: ACTIVITY_FETCH_LIMIT,
-      });
+      const feed = await withTimeout(
+        client.getFeedAgentActivity({ limit: ACTIVITY_FETCH_LIMIT }),
+        ACTIVITY_TIMEOUT_MS,
+      );
       if (signal.cancelled) return;
       const items = activityItemsFrom(feed?.items);
       const total =

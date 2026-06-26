@@ -2,6 +2,7 @@ import { CalendarClock, CalendarPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { withTimeout } from "../../../utils/with-timeout";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -10,6 +11,10 @@ import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 const CALENDAR_WIDGET_KEY = "calendar/calendar.upcoming";
 const GOOGLE_PROVIDER = "google";
 const DEFAULT_SPAN = "col-span-2 row-span-1";
+// Bound the bridge/feed calls so a hung agent channel settles the tile (connect
+// CTA / "No events today") instead of spinning on "Loading…" forever.
+const PROBE_TIMEOUT_MS = 6_000;
+const FEED_TIMEOUT_MS = 8_000;
 
 // The home glanceable widget refreshes on a calm 60s cadence — the calendar
 // feed is far less volatile than the todo list.
@@ -125,7 +130,10 @@ export function CalendarUpcomingWidget({
 
   const probeConnection = useCallback(async () => {
     try {
-      const res = await client.listConnectorAccounts(GOOGLE_PROVIDER);
+      const res = await withTimeout(
+        client.listConnectorAccounts(GOOGLE_PROVIDER),
+        PROBE_TIMEOUT_MS,
+      );
       // Linked ONLY when an account is actually connected — a "needs-reauth" /
       // "pending" account is NOT usable, and treating it as linked left the tile
       // stuck on "Loading…" forever (the feed never returns), instead of showing
@@ -136,8 +144,10 @@ export function CalendarUpcomingWidget({
       setConnection(linked ? "connected" : "disconnected");
       return linked;
     } catch {
-      // A probe failure is treated as "not yet known" rather than disconnected,
-      // so a transient error doesn't flip a working widget to the connect CTA.
+      // A probe failure must SETTLE the widget (show the connect affordance),
+      // never leave it on "unknown" → a permanent "Loading…" tile (the reported
+      // stuck-loading bug: listConnectorAccounts failing/timing out on device).
+      setConnection("disconnected");
       return false;
     }
   }, []);
@@ -154,14 +164,20 @@ export function CalendarUpcomingWidget({
       timeZone,
     });
     try {
-      const res = await fetch(
-        `${client.getBaseUrl()}/api/lifeops/calendar/feed?${params.toString()}`,
+      const res = await withTimeout(
+        fetch(
+          `${client.getBaseUrl()}/api/lifeops/calendar/feed?${params.toString()}`,
+        ),
+        FEED_TIMEOUT_MS,
       );
       if (!res.ok) return;
       const json: unknown = await res.json();
       const next = parseCalendarFeed(json);
       // Skip the state update (and the re-render) when the poll is unchanged.
       setEvents((prev) => (eventsEqual(prev, next) ? prev : next));
+    } catch {
+      // Timeout / network — settle via the finally so the tile shows
+      // "No events today" instead of spinning on "Loading…".
     } finally {
       setFeedLoaded(true);
     }
