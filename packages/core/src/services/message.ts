@@ -3088,19 +3088,52 @@ function isRequestedTerseLiteralReply(args: {
 	return reply === stripIncidentalTerminalPeriod(requested);
 }
 
+/**
+ * Recognize a simple imperative to emit ONE specific literal token, e.g.
+ * "Say PONG", "say pong", "please say PONG", "can you say PONG", "reply with OK",
+ * "respond with the word HELLO", "output PONG!". The lightweight sibling of
+ * {@link parseExactWordsInstruction} (which requires the explicit
+ * "...with exactly N words: ..." form). Anchored to the whole message and a
+ * single word, so it only fires on a clear "say <token>" request — not
+ * "say something nice about cats". Returns the requested literal or null.
+ */
+function parseSayLiteralInstruction(
+	text: string | null | undefined,
+): string | null {
+	const input = text?.trim();
+	if (!input) return null;
+	const match = input.match(
+		/^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|the\s+word|the\s+phrase)){0,2}\s*:?\s*["'“”‘’]?([\p{L}\p{N}]{1,40})["'“”‘’]?\s*[.!?]*$/iu,
+	);
+	return match ? match[1] : null;
+}
+
 function isTerseReplyWorthKeeping(args: {
 	reply: string | undefined;
 	messageText?: string | null;
 }): boolean {
 	const reply = args.reply;
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
-	return (
-		/^\d+$/.test(trimmed) ||
-		isRequestedTerseLiteralReply({
-			reply,
-			messageText: args.messageText,
-		})
-	);
+	if (/^\d+$/.test(trimmed)) return true;
+	if (isRequestedTerseLiteralReply({ reply, messageText: args.messageText })) {
+		return true;
+	}
+	// The user explicitly asked the agent to say a specific token and it did
+	// (case-insensitive) — that reply is intentional, not the enum/scaffold
+	// leakage isUnusableStage1Reply guards against. Keep it instead of deferring,
+	// so "Say PONG"/"Say HELLO" don't dead-end into "I'm not sure how to answer
+	// that." just because the reply is an all-caps short word.
+	const requested = parseSayLiteralInstruction(args.messageText);
+	if (requested && trimmed) {
+		const norm = (s: string) =>
+			s
+				.trim()
+				.replace(/[.!?]+$/, "")
+				.trim()
+				.toLowerCase();
+		if (norm(trimmed) === norm(requested)) return true;
+	}
+	return false;
 }
 
 /**
