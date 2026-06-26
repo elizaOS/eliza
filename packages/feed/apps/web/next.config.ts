@@ -71,7 +71,7 @@ const nextConfig: NextConfig = {
     // Run webpack in a worker to lower main process memory (can help with 14GB+ builds)
     webpackBuildWorker: true,
     // Cap parallelism to avoid dozens of jest-worker children and load average 200+
-    cpus: 4,
+    cpus: 1,
     // Disable parallel worker threads so we don't spawn 50+ jest-worker processes (slower build, sane load)
     workerThreads: false,
   },
