@@ -4,10 +4,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const args = new Set(process.argv.slice(2));
 const json = args.has("--json");
 const strict = args.has("--strict");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const packageRoot = path.resolve(__dirname, "..");
+const rmPathRecursiveScript = path.resolve(
+  packageRoot,
+  "..",
+  "..",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const npmExecPath =
   process.env.npm_execpath && /(^|[/\\])bun(x)?$/.test(process.env.npm_execpath)
     ? process.env.npm_execpath
@@ -29,6 +39,23 @@ function run(command, commandArgs) {
   };
 }
 
+function rmRecursive(pathToRemove) {
+  const result = run(process.execPath, [
+    rmPathRecursiveScript,
+    path.resolve(pathToRemove),
+  ]);
+  if (result.status !== 0) {
+    const reason =
+      result.stderr.trim() ||
+      result.stdout.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    throw new Error(
+      `[bun-ios-runtime] failed to recursively remove ${pathToRemove}: ${reason}`,
+    );
+  }
+}
+
 function probeCompileTarget(target) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-bun-ios-target-"));
   const input = path.join(tmp, "index.ts");
@@ -42,7 +69,7 @@ function probeCompileTarget(target) {
     "--outfile",
     output,
   ]);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  rmRecursive(tmp);
   return {
     target,
     ok: result.status === 0,
