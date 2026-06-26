@@ -10,15 +10,35 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const rels = process.argv.slice(2);
 if (rels.length === 0) {
-  console.error("usage: node packages/scripts/rm-path-recursive.mjs <path> [path...]");
+  console.error(
+    "usage: node packages/scripts/rm-path-recursive.mjs <path> [path...]",
+  );
   process.exit(1);
 }
 const retryableCodes = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
 
 const maxAttempts = 10;
+const cwd = process.cwd();
 
-async function removePath(rel) {
-  const target = path.resolve(process.cwd(), rel);
+function resolveTarget(rel) {
+  if (rel.length === 0) {
+    throw new Error("Refusing to remove an empty path argument.");
+  }
+
+  const target = path.resolve(cwd, rel);
+  if (target === cwd) {
+    throw new Error(`Refusing to remove the current working directory: ${rel}`);
+  }
+  if (target === path.parse(target).root) {
+    throw new Error(`Refusing to remove a filesystem root: ${rel}`);
+  }
+
+  return target;
+}
+
+const targets = rels.map(resolveTarget);
+
+async function removePath(target) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       rmSync(target, {
@@ -29,7 +49,8 @@ async function removePath(rel) {
       });
       return;
     } catch (e) {
-      const code = e && typeof e === "object" && "code" in e ? e.code : undefined;
+      const code =
+        e && typeof e === "object" && "code" in e ? e.code : undefined;
       if (code === "ENOENT") {
         return;
       }
@@ -46,6 +67,6 @@ async function removePath(rel) {
   }
 }
 
-for (const rel of rels) {
-  await removePath(rel);
+for (const target of targets) {
+  await removePath(target);
 }
