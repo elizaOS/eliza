@@ -446,23 +446,26 @@ def test_pipeline_card_mentions_companion_repos(publish_pipeline):
     assert "uv sync --extra train" in card
     # Vast bootstrap instructions present
     assert "hf download" in card
+    assert "  - gemma\n" in card
+    assert "  - qwen\n" not in card
 
 
 def test_dataset_card_includes_license(publish_dataset):
     spec = publish_dataset._spec_training()
     assert "license: cc-by-4.0" in spec.card.lower()
     assert "manifest.json" in spec.card
-    assert "eliza-1-0_8b" in spec.card
     assert "eliza-1-2b" in spec.card
     assert "eliza-1-4b" in spec.card
     assert "eliza-1-9b" in spec.card
     assert "eliza-1-27b" in spec.card
     assert "eliza-1-27b-256k" in spec.card
-    assert "0.8B-27B" in spec.card
+    assert "2B-27B" in spec.card
     stale_small_tier = "eliza-1-0_" + "6b"
+    stale_qwen_small_tier = "eliza-1-0_" + "8b"
     stale_mobile_tier = "eliza-1-1_" + "7b"
     stale_long_context_tier = "27B-" + "1M"
     assert stale_small_tier not in spec.card
+    assert stale_qwen_small_tier not in spec.card
     assert stale_mobile_tier not in spec.card
     assert stale_long_context_tier not in spec.card
 
@@ -531,7 +534,7 @@ def _make_eliza1_bundle(
             "name": "gemma4-e4b",
             "displayName": "Gemma 4 E4B",
             "params": "4B",
-            "tokenizerFamily": "qwen3",
+            "tokenizerFamily": "gemma4",
             "contextLength": 131072,
         },
         "gguf": {
