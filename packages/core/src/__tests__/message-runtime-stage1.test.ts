@@ -412,6 +412,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			["Say PONG", "PONG"],
 			["say HELLO", "HELLO"],
 			["please respond with the word PING", "PING"],
+			// mention-prefixed (Discord/Telegram render the mention into the text)
+			["remilio (@1490833425802854491) Say PONG", "PONG"],
+			["<@1490833425802854491> say HELLO", "HELLO"],
 		] as const) {
 			const runtime = makeRuntime([
 				stage1Response({ contexts: ["simple"], replyText: want }),
