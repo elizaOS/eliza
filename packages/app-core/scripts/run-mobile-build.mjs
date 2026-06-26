@@ -1469,7 +1469,7 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
   if (hasSyncedPublic && !sameTree) {
     fs.mkdirSync(targetAssets, { recursive: true });
-    fs.rmSync(targetPublic, { recursive: true, force: true });
+    rmRecursive(targetPublic);
     fs.cpSync(syncedPublic, targetPublic, { recursive: true });
     for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
       const src = path.join(syncedAssets, cfg);
@@ -1508,10 +1508,7 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     fs.existsSync(targetAssets)
   ) {
     fs.mkdirSync(targetPublic, { recursive: true });
-    fs.rmSync(path.join(targetPublic, "assets"), {
-      recursive: true,
-      force: true,
-    });
+    rmRecursive(path.join(targetPublic, "assets"));
     fs.cpSync(freshWeb, targetPublic, { recursive: true });
     console.log(
       `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
@@ -2536,7 +2533,7 @@ function removeStaleAndroidJavaSourceRoots(
       shouldRemoveAndroidJavaSourceRoot(candidate, dstJava, protectedRoots) &&
       fs.existsSync(candidate)
     ) {
-      fs.rmSync(candidate, { recursive: true, force: true });
+      rmRecursive(candidate);
     }
   }
 }
@@ -3058,7 +3055,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
           protectedJavaRoots,
         )
       ) {
-        fs.rmSync(staleJava, { recursive: true, force: true });
+        rmRecursive(staleJava);
       }
     }
     fs.mkdirSync(dstJava, { recursive: true });
@@ -3135,7 +3132,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       path.resolve(srcJava) !== path.resolve(templateJava) &&
       path.resolve(srcJava) !== path.resolve(dstJava)
     ) {
-      fs.rmSync(srcJava, { recursive: true, force: true });
+      rmRecursive(srcJava);
     }
     console.log("[mobile-build] Overlaid Android Java sources.");
   }
