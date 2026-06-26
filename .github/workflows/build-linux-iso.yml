@@ -294,7 +294,7 @@ jobs:
             echo "::notice::SBOM contains $COUNT packages"
           fi
           # Best-effort cleanup; do not fail the job if the temp dir is gone.
-          rm -rf "${{ steps.sbom-extract.outputs.root }}" || true
+          node "$GITHUB_WORKSPACE/packages/scripts/rm-path-recursive.mjs" "${{ steps.sbom-extract.outputs.root }}" || true
 
 
       - name: Upload ISO artifact
