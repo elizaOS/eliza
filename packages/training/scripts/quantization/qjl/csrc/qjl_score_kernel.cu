@@ -6,7 +6,7 @@
 #define WARPS_PER_BLOCK 8
 // EMB_DIM is a compile-time template parameter on the kernel and host
 // wrapper. Upstream hard-coded EMB_DIM=128. We instantiate {128, 256}
-// to support active Qwen3.5 text models (head_dim=256) alongside the legacy
+// to support Gemma-era 256-dim text-decoder validation alongside the legacy
 // 128-dim head path.
 #define FULL_MASK 0xffffffff
 
@@ -217,7 +217,7 @@ torch::Tensor QJLScoreCudaTemplate(
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    // EMB_DIM=128 (Llama/Qwen3 sub-9B, Qwen2/2.5)
+    // EMB_DIM=128 (Llama-style dense attention)
     m.def("qjl_score_cuda_half_half_h128", &QJLScoreCudaTemplate<c10::Half, c10::Half, 128>, "Cuda kernel to calculate scores fully parallel using Half precision (head_dim=128)",
           py::arg("key_quant"),
           py::arg("key_outlier_quant"),
@@ -268,7 +268,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           py::arg("query_states"),
           py::arg("rand_prj"));
 
-    // EMB_DIM=256 (active Qwen3.5 text head_dim=256)
+    // EMB_DIM=256 (Gemma-era text-decoder validation)
     m.def("qjl_score_cuda_half_half_h256", &QJLScoreCudaTemplate<c10::Half, c10::Half, 256>, "Cuda kernel to calculate scores fully parallel using Half precision (head_dim=256)",
           py::arg("key_quant"),
           py::arg("key_outlier_quant"),

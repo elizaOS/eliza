@@ -18,7 +18,7 @@ PolarQuant author Caio Vicentino. Upstream details:
 As of the pinned commit the upstream repository ships **no LICENSE file** and
 GitHub's license API returns `false`. We have not received an explicit grant
 from the author. We vendor these two source files for the limited purpose of
-running PolarQuant on our own fine-tuned Qwen checkpoints inside this
+running PolarQuant on our own fine-tuned Eliza-1/Gemma checkpoints inside this
 research training pipeline, and we cite the upstream source and authors here
 and in `polar_quant.py`'s module docstring.
 

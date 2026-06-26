@@ -1,8 +1,8 @@
 # fused_turboquant vendor notice
 
 This directory vendors the upstream `fused-turboquant` package so we can
-patch it in-place to support active Qwen3.5 gated attention without
-waiting on an upstream release.
+patch it in-place for Eliza-1 training experiments while preserving the
+old Qwen3.5 gated-attention compatibility work for legacy reproduction.
 
 ## Source
 
@@ -36,7 +36,7 @@ Per Apache 2.0 §4(b), the changes made on top of upstream `0.1.0` are:
 
 * **`hf/fused_cache.py` — gated-attention support.** The upstream
   `make_fused_attention_forward` assumes a vanilla `q_proj` of shape
-  `num_heads * head_dim`. Active Qwen3.5 models use a gated variant:
+  `num_heads * head_dim`. The retired Qwen3.5 line used a gated variant:
   `q_proj.out_features == 2 * num_heads * head_dim` (chunked along the
   last dim into `(query, gate)`) and the post-attention output is
   multiplied by `sigmoid(gate)` before `o_proj`. Three changes:
@@ -58,20 +58,22 @@ Per Apache 2.0 §4(b), the changes made on top of upstream `0.1.0` are:
            `sigmoid(gate)` (reshaped to `(B, T, n_heads*head_dim)`)
            before `o_proj`.
          - When non-gated: behavior unchanged.
-    3. `KNOWN_COMPATIBLE` now includes the hybrid Qwen3.5
-       text decoders (`Qwen3_5ForCausalLM`, `Qwen3_5MoeForCausalLM`,
-       `Qwen3_5ForConditionalGeneration`).
+    3. The Gemma cutover narrowed `KNOWN_COMPATIBLE` back to the
+       Gemma-era decoder families endorsed by the training wrappers.
+       The gated branch remains in code for explicit legacy reproduction,
+       but the retired Qwen3.5 classes are no longer advertised as
+       known-compatible release targets.
 
   The K/V projection paths are untouched — gating affects only Q in the
-  Qwen3.5 layout, and `cache.store_compressed_key` /
+  retired Qwen3.5 layout, and `cache.store_compressed_key` /
   `cache.store_compressed_value` operate on K/V which retain their
   vanilla `(B, T, n_kv_heads * head_dim)` shape.
 
-* **`hf/fused_cache.py` — partial-rotary RoPE.** Qwen3.5 uses partial
+* **`hf/fused_cache.py` — partial-rotary RoPE.** The retired Qwen3.5 line uses partial
   rotary embeddings (only the first `cos.shape[-1]` coordinates of each
   head are rotated, the rest pass through). The upstream
   `_apply_rotary_pos_emb` assumed full-head RoPE and crashed with a
-  shape mismatch on Qwen3.5 (`rotary_dim=64` vs `head_dim=256`). The
+  shape mismatch on that layout (`rotary_dim=64` vs `head_dim=256`). The
   vendored version now branches: if `cos.shape[-1] == q.shape[-1]` the
   fast path is unchanged; otherwise it splits Q/K into `(rot, pass)`,
   rotates only the leading slice, and concatenates them back. This

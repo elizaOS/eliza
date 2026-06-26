@@ -5,8 +5,8 @@
 #define WARP_SIZE 32
 #define WARPS_PER_BLOCK 32
 // EMB_DIM is a compile-time template parameter on the kernel and the
-// host wrapper below. Upstream hard-coded EMB_DIM=128. Active Qwen3.5
-// text models use head_dim=256, so we instantiate {128, 256}.
+// host wrapper below. Upstream hard-coded EMB_DIM=128. Gemma-era
+// validation also needs head_dim=256, so we instantiate {128, 256}.
 
 template <typename T>
 __device__ float convert_to_float(T value) {
@@ -262,7 +262,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> QJLQuantCudaTemplate(
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    // EMB_DIM=128 (Llama/Qwen3 sub-9B, Qwen2/2.5)
+    // EMB_DIM=128 (Llama-style dense attention)
     m.def("qjl_quant_half_half_h128", &QJLQuantCudaTemplate<c10::Half, c10::Half, 128>, "Quantize using Half precision (head_dim=128)",
     py::arg("key_states"),
     py::arg("outlier_indices"),
@@ -293,7 +293,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::arg("rand_prj"),
     py::arg("outlier_sketch_dim"));
 
-    // EMB_DIM=256 (active Qwen3.5 text head_dim=256)
+    // EMB_DIM=256 (Gemma-era text-decoder validation)
     m.def("qjl_quant_half_half_h256", &QJLQuantCudaTemplate<c10::Half, c10::Half, 256>, "Quantize using Half precision (head_dim=256)",
     py::arg("key_states"),
     py::arg("outlier_indices"),
