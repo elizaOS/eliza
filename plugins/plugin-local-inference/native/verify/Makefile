@@ -126,6 +126,24 @@ VULKAN_BENCH_JSON ?=
 vulkan-bench: vulkan_bench vulkan-spirv
 	MESA_SHADER_CACHE_DISABLE=1 ./vulkan_bench $(if $(VULKAN_BENCH_JSON),--json $(VULKAN_BENCH_JSON),)
 
+# mul_mm GEMM micro-benchmark (#9584/#9715): scalar vs shared-mem-tiled vs
+# register-blocked, the cooperative-matrix-free prefill mul_mat study. Same
+# header/lib resolution as vulkan_bench. On Mali-G715 the register-blocked
+# variant is the only one that beats scalar (~1.4-2.3x); naive tiling loses.
+mul_mm_bench: mul_mm_bench.cpp
+ifdef VULKAN_SDK
+	$(CXX) $(CXXFLAGS) -I$(VULKAN_SDK)/include -I. mul_mm_bench.cpp -L$(VULKAN_SDK)/lib -lvulkan -lm -o mul_mm_bench
+else ifneq ($(strip $(HOMEBREW_VULKAN_HEADERS)$(HOMEBREW_VULKAN_LIB)),)
+	$(CXX) $(CXXFLAGS) -I/opt/homebrew/include -I. mul_mm_bench.cpp -L/opt/homebrew/opt/vulkan-loader/lib -lvulkan -lm -o mul_mm_bench
+else ifneq ($(SYSTEM_LIBVULKAN),)
+	$(CXX) $(CXXFLAGS) -I$(ELIZA_MTP_VULKAN_HEADERS_DIR) -I. mul_mm_bench.cpp $(SYSTEM_LIBVULKAN) -lm -o mul_mm_bench
+else
+	@echo "mul_mm_bench needs Vulkan headers + libvulkan (VULKAN_SDK / brew / system)."; false
+endif
+
+mul_mm-bench: mul_mm_bench vulkan-spirv
+	MESA_SHADER_CACHE_DISABLE=1 ./mul_mm_bench --spv-dir ../vulkan
+
 # Run vulkan_verify against the QJL + Polar fixtures (needs a Vulkan-capable
 # host — fails cleanly with "no Vulkan devices" on machines without an ICD).
 # Requires the SPIR-V artifacts under ../vulkan/*.spv: build them with
@@ -520,7 +538,10 @@ VULKAN_SHADERS = \
     ../vulkan/turbo3_tcq_multi.spv \
     ../vulkan/qjl_multi.spv \
     ../vulkan/fused_attn_qjl_tbq.spv \
-    ../vulkan/fused_attn_qjl_polar.spv
+    ../vulkan/fused_attn_qjl_polar.spv \
+    ../vulkan/mul_mm_scalar.spv \
+    ../vulkan/mul_mm_tiled.spv \
+    ../vulkan/mul_mm_reg.spv
 
 vulkan-spirv: $(VULKAN_SHADERS)
 

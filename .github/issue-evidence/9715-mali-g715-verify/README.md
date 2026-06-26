@@ -54,3 +54,33 @@ $TC/bin/aarch64-linux-android28-clang++ -O2 -std=c++17 -I../reference -I. vulkan
 # push vulkan_verify.arm64 + ../vulkan/*.spv + verify/fixtures/*.json + libc++_shared.so to /data/local/tmp,
 # then: LD_LIBRARY_PATH=. ./vulkan_verify vulkan/<kernel>.spv fixtures/<fixture>.json
 ```
+
+## mul_mm prefill optimization R&D — register blocking is the Mali win
+
+`mul_mm_bench` (new, `native/verify/`) measures three cooperative-matrix-free
+mul_mm variants vs the C-reference-checked scalar baseline, GPU-timed via VK
+timestamps. Shaders: `native/vulkan/mul_mm_{scalar,tiled,reg}.comp`.
+
+**Mali-G715 (`mali-g715-mul_mm-bench.log`)** — all variants bit-correct:
+
+| shape | scalar | shared-tiled | **register-blocked** |
+|---|---|---|---|
+| 512³ | 31.0 GF/s | 0.91–1.20× | **2.25×** (69.8 GF/s) |
+| 1024³ | 81.9 GF/s | 0.76× | **1.45×** (118.6 GF/s) |
+| prefill-FFN 256×2048×2048 | 78.5 GF/s | 0.80× | **1.43×** (112.2 GF/s) |
+| proj 2048×2048×256 | 80.5 GF/s | 0.76× | **1.72×** (138.8 GF/s) |
+
+**Finding:** naive shared-memory tiling *regresses* on Mali (barriers + staging
+cost > bandwidth saved; same arithmetic intensity as scalar, which Mali's UMA
+cache already serves). **Register blocking** (4×4 per-thread micro-tile, 64×64
+workgroup tile) is the real win — 8× the arithmetic intensity per shared load —
+raising the mul_mat-bound prefill ceiling **1.4–2.3×** on the actual device.
+
+**Per-platform, confirmed (`host-rtx5080-mul_mm-bench.log`):** the same
+register-blocked kernel is *catastrophic* on the RTX 5080 (0.02–0.32× — register
+spill; NVIDIA's scalar path hits 485 GF/s and the real backend uses
+cooperative-matrix). So a register-blocked mul_mm must be **Mali-gated**, not a
+universal path — exactly the "per-platform GPU optimization" #9584 is about. The
+actionable next step is porting the register-blocked tiling into ggml-vulkan's
+`mul_mm` behind a Mali/no-coopmat guard (further Mali tuning — larger micro-tiles,
+f16 operands — is incremental on top of the 1.4–2.3× already shown).
