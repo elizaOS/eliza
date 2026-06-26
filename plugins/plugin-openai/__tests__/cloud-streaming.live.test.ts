@@ -10,8 +10,8 @@ import { openaiPlugin } from "../index";
  * firing `params.onStreamChunk` once per decoded chunk as it is generated.
  *
  * Run against any OpenAI-compatible endpoint by setting `OPENAI_BASE_URL`,
- * `OPENAI_API_KEY`, and `OPENAI_SMALL_MODEL` (e.g. Together AI +
- * `Qwen/Qwen2.5-7B-Instruct-Turbo`). Skips with a warning when unset.
+ * `OPENAI_API_KEY`, and `OPENAI_SMALL_MODEL` to a compatible chat model.
+ * Skips with a warning when unset.
  */
 describeLive(
   "Cloud token-by-token streaming (#9174)",

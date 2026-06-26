@@ -249,14 +249,14 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
  * Forward `OPENAI_REASONING_EFFORT` (runtime setting / process.env) as
  * `reasoning_effort` on the outbound chat completions request. This is
  * the OpenAI-spec knob for reasoning-capable models (`o1-*`, `o3-*`,
- * `gpt-oss-*`, `deepseek-r1`, `qwen-3-thinking`, etc.) — including
+ * `gpt-oss-*`, `deepseek-r1`, and similar families) — including
  * Cerebras and OpenRouter, which honor the same field. `"low"` keeps
  * reasoning short enough that visible content always fits inside
  * `max_tokens`, which is the failure mode on Cerebras gpt-oss-120b when
  * left unset.
  *
  * In Cerebras mode the field defaults to `"low"` when unset, but ONLY for
- * reasoning-capable models (e.g. gpt-oss-*, deepseek-r1, qwen-3-thinking):
+ * reasoning-capable models (e.g. gpt-oss-* and deepseek-r1):
  * gpt-oss-120b emits a separate reasoning channel and, left unbounded, spends
  * the whole token budget reasoning — returning empty visible content, which
  * makes the agent fall back to "I don't have a reply for that". `"low"` keeps
@@ -510,7 +510,7 @@ function normalizeNativeMessage(message: unknown): ModelMessage {
  * Strip reasoning-only parts from outbound assistant content.
  *
  * OpenAI-spec reasoning models (Cerebras gpt-oss-120b, OpenAI o1/o3,
- * DeepSeek R1, Qwen-3-thinking, etc.) return reasoning in the assistant
+ * DeepSeek R1, and similar families) return reasoning in the assistant
  * response — either as a separate `reasoning` / `reasoning_content`
  * field, or as content parts with `type: "reasoning"`. Echoing those
  * back to the next turn is wrong on both ends:
