@@ -33,6 +33,7 @@ import { warnMissingUpstash as warnMissingUpstashImpl } from "./bootstrap-warn-m
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const cloudRoot = resolve(scriptDir, "..", "..");
 const repoRoot = resolve(cloudRoot, "..");
+const rmRecursiveScript = join(cloudRoot, "rm-path-recursive.mjs");
 
 const { values } = parseArgs({
   options: {
@@ -179,6 +180,21 @@ function readFirstEnv(...keys) {
     if (value) return value;
   }
   return undefined;
+}
+
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    cwd: cloudRoot,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `[bootstrap-provisioning-worker-host] recursive cleanup failed for ${targetPath} with exit code ${result.status ?? "unknown"}`,
+    );
+  }
 }
 
 function validateRuntimeEnv(env) {
@@ -358,7 +374,7 @@ async function writeRemoteEnv(host) {
       ].join("\n"),
     );
   } finally {
-    rmSync(tmp, { force: true, recursive: true });
+    rmRecursive(tmp);
   }
 
   return "/opt/eliza/cloud/.env.local";
