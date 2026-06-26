@@ -200,7 +200,7 @@ runs:
             exit "$install_status"
           fi
           echo "Dependency install failed; retrying once after cleaning Bun's install cache."
-          rm -rf ~/.bun/install/cache
+          node packages/scripts/rm-path-recursive.mjs ~/.bun/install/cache
           sleep 5
         done
       env:
