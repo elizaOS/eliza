@@ -31,8 +31,8 @@ Known remaining blockers:
 - CUDA/ROCm backend verification for larger tiers.
 - CUDA imagegen stable-diffusion.cpp runtime smoke.
 - Required iOS, Android, Linux, and Windows platform evidence.
-- Active `0_8b` fine-tuned artifact plus baseline-vs-finetuned comparison
-  reports.
+- Active Gemma fine-tuned artifacts plus baseline-vs-finetuned comparison
+  reports for the release tiers.
 - MTP drafter validation, acceptance, and speedup evidence for `2b`, `4b`,
   `9b`, `27b`, and `27b-256k`.
 - Final release evidence promotion after the above gates pass.
