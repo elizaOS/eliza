@@ -30,16 +30,16 @@ from scripts.eval import eliza1_eval_suite as suite
 
 
 def _make_standin_bundle(root: Path) -> Path:
-    bundle = root / "eliza-1-0_8b.bundle"
+    bundle = root / "eliza-1-2b.bundle"
     for sub in ("text", "tts", "asr", "vad", "mtp", "cache", "evals"):
         (bundle / sub).mkdir(parents=True, exist_ok=True)
     # Tiny stand-in artifacts (NOT real GGUFs).
-    (bundle / "text" / "eliza-1-0_8b-32k.gguf").write_text("standin")
+    (bundle / "text" / "eliza-1-2b-32k.gguf").write_text("standin")
     (bundle / "tts" / "omnivoice-base.gguf").write_text("standin")
     (bundle / "tts" / "omnivoice-tokenizer.gguf").write_text("standin")
     (bundle / "asr" / "asr.gguf").write_text("standin")
     (bundle / "vad" / "silero-vad.onnx").write_text("standin")
-    (bundle / "mtp" / "drafter-0_8b.gguf").write_text("standin")
+    (bundle / "mtp" / "drafter-2b.gguf").write_text("standin")
     (bundle / "cache" / "voice-preset-default.bin").write_text("standin")
     return bundle
 
@@ -61,7 +61,7 @@ def _run(bundle: Path, monkeypatch, *, text_eval_model: Path | None = None):
     )
     args = suite.argparse.Namespace(
         bundle_dir=bundle,
-        tier="0_8b",
+        tier="2b",
         backend=None,
         text_eval_model=text_eval_model,
         text_corpus=None,
@@ -90,7 +90,7 @@ def test_writes_all_eval_blobs(tmp_path: Path, monkeypatch) -> None:
         "aggregate.json",
     ):
         assert (evals / name).is_file(), f"missing {name}"
-    assert agg["tier"] == "0_8b"
+    assert agg["tier"] == "2b"
     assert agg["mode"] == "full"
     assert "results" in agg
     assert agg["bundleIsLocalStandin"] is True
@@ -113,7 +113,7 @@ def test_run_suite_writes_backend_verify_alias_for_metal(tmp_path: Path, monkeyp
     )
     args = suite.argparse.Namespace(
         bundle_dir=bundle,
-        tier="0_8b",
+        tier="2b",
         backend="metal",
         text_eval_model=None,
         text_corpus=None,
@@ -174,8 +174,8 @@ def test_find_verify_dir_prefers_native_plugin_verify() -> None:
 
 
 def test_e2e_harness_selection_routes_small_tiers_to_kokoro() -> None:
-    assert suite._uses_kokoro_e2e_harness("0_8b") is True
     assert suite._uses_kokoro_e2e_harness("2b") is True
+    assert suite._uses_kokoro_e2e_harness("eliza-1-2b") is True
     assert suite._uses_kokoro_e2e_harness("4b") is True
     assert suite._uses_kokoro_e2e_harness("9b") is False
     assert suite._uses_kokoro_e2e_harness("27b-256k") is False
@@ -227,7 +227,7 @@ def test_e2e_bench_guard_records_not_run_before_launch(tmp_path: Path, monkeypat
     bundle = _make_real_bundle(tmp_path)
     ctx = suite.EvalContext(
         bundle_dir=bundle,
-        tier="0_8b",
+        tier="2b",
         engine=_fake_engine(tmp_path / "bin"),
         text_model=None,
         text_eval_model=None,
@@ -311,8 +311,8 @@ def test_aggregate_is_consumable_by_gate_engine(tmp_path: Path, monkeypatch) -> 
     agg = _run(bundle, monkeypatch)
     from benchmarks.eliza1_gates import apply_gates
 
-    rep = apply_gates(agg, "0_8b", mode="full")
-    assert rep.tier == "0_8b"
+    rep = apply_gates(agg, "2b", mode="full")
+    assert rep.tier == "2b"
     assert rep.passed is False  # stand-in bundle never passes
 
 
@@ -323,17 +323,17 @@ def _make_real_bundle(root: Path) -> Path:
     discovery + the e2e bench bridge, so no real runtime is invoked. They only
     exercise the not-run-vs-ok branching of the bench-bridge runners.
     """
-    bundle = root / "eliza-1-0_8b.bundle"
+    bundle = root / "eliza-1-2b.bundle"
     for sub in ("text", "tts", "asr", "vad", "mtp", "cache", "evals"):
         (bundle / sub).mkdir(parents=True, exist_ok=True)
     big = b"GGUF" + b"\0" * (2 * 1024 * 1024)
     drafter_big = b"GGUF" + b"\0" * (12 * 1024 * 1024)
-    (bundle / "text" / "eliza-1-0_8b-32k.gguf").write_bytes(big)
+    (bundle / "text" / "eliza-1-2b-32k.gguf").write_bytes(big)
     (bundle / "tts" / "omnivoice-base-Q4_K_M.gguf").write_bytes(big)
     (bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf").write_bytes(big)
     (bundle / "asr" / "eliza-1-asr.gguf").write_bytes(big)
     (bundle / "vad" / "silero-vad-v5.gguf").write_bytes(big)
-    (bundle / "mtp" / "drafter-0_8b.gguf").write_bytes(drafter_big)
+    (bundle / "mtp" / "drafter-2b.gguf").write_bytes(drafter_big)
     (bundle / "cache" / "voice-preset-default.bin").write_text("standin")
     return bundle
 
@@ -372,7 +372,7 @@ def _run_real(bundle: Path, monkeypatch, *, bench_report: dict | None, bench_rep
         return (bench_report_30 if (turns >= 8 and bench_report_30 is not None) else bench_report)
 
     monkeypatch.setattr(suite, "_run_e2e_loop_bench", _fake_bench)
-    args = suite.argparse.Namespace(bundle_dir=bundle, tier="0_8b", backend=None, text_eval_model=None, text_corpus=None, threads=2, timeout=30)
+    args = suite.argparse.Namespace(bundle_dir=bundle, tier="2b", backend=None, text_eval_model=None, text_corpus=None, threads=2, timeout=30)
     ctx = suite.build_context(args)
     return suite.run_suite(ctx)
 
@@ -449,7 +449,7 @@ def test_precomputed_e2e_reports_feed_eval_blobs(tmp_path: Path, monkeypatch) ->
     monkeypatch.setattr(suite, "eval_vad", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "vad_latency_ms", "op": "<=", "status": "not-run", "median": None, "passed": None, "reason": "skipped in test"})
     monkeypatch.setattr(suite, "_BUN", "/bin/false")
     monkeypatch.setattr(suite.subprocess, "run", _no_bench)
-    args = suite.argparse.Namespace(bundle_dir=bundle, tier="0_8b", backend=None, text_eval_model=None, text_corpus=None, threads=2, timeout=30)
+    args = suite.argparse.Namespace(bundle_dir=bundle, tier="2b", backend=None, text_eval_model=None, text_corpus=None, threads=2, timeout=30)
     agg = suite.run_suite(suite.build_context(args))
 
     e2e = json.loads((bundle / "evals" / "e2e-loop.json").read_text())
@@ -477,14 +477,14 @@ def test_bench_bridge_runners_record_not_run_when_bench_fails(tmp_path: Path, mo
 
 
 def test_real_text_model_override_produces_real_score(tmp_path: Path, monkeypatch) -> None:
-    """If a real Qwen3 GGUF is on disk, the text eval produces a real 0..1 score."""
+    """If a real Gemma GGUF is on disk, the text eval produces a real 0..1 score."""
     candidates = [
-        Path("/tmp/eliza1-eval-models/Qwen3-0.8B-Q8_0.gguf"),
-        Path("/tmp/eliza1-eval-models/Qwen3-2B-Q8_0.gguf"),
+        Path("/tmp/eliza1-eval-models/gemma-2b-Q8_0.gguf"),
+        Path("/tmp/eliza1-eval-models/gemma-4b-Q8_0.gguf"),
     ]
     model = next((p for p in candidates if suite._is_real_gguf(p)), None)
     if model is None:
-        pytest.skip("no real Qwen3 GGUF on disk; run the suite live to exercise this path")
+        pytest.skip("no real Gemma GGUF on disk; run the suite live to exercise this path")
     try:
         import llama_cpp  # noqa: F401
     except ImportError:
