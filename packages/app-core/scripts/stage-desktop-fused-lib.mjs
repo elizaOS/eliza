@@ -48,6 +48,12 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const forkSrc = path.join(
   repoRoot,
   "plugins/plugin-local-inference/native/llama.cpp",
@@ -65,6 +71,25 @@ function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, { stdio: "inherit", ...opts });
   if (res.status !== 0) {
     die(`${cmd} exited ${res.status ?? res.signal}`);
+  }
+}
+function removePathRecursive(targetPath) {
+  const res = spawnSync(
+    "node",
+    [cleanupHelperScript, path.relative(repoRoot, targetPath)],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (res.error) throw res.error;
+  if (res.status !== 0) {
+    die(
+      [`failed to remove ${targetPath}`, res.stdout.trim(), res.stderr.trim()]
+        .filter(Boolean)
+        .join("\n"),
+    );
   }
 }
 function have(cmd, args = ["--version"]) {
@@ -261,7 +286,7 @@ const outDir =
   outOverride || path.join(resolveStateDir(), "local-inference", "lib");
 
 if (force && existsSync(buildDir)) {
-  rmSync(buildDir, { recursive: true, force: true });
+  removePathRecursive(buildDir);
 }
 mkdirSync(buildDir, { recursive: true });
 mkdirSync(outDir, { recursive: true });
