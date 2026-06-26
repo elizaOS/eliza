@@ -33,9 +33,15 @@ const HIDDEN_SPRINGBOARD_VIEW_IDS = new Set([
   "character",
   "character-select",
   "voice",
+  "background",
 ]);
 
-const HIDDEN_SPRINGBOARD_PATHS = new Set(["/chat", "/views", "/apps"]);
+const HIDDEN_SPRINGBOARD_PATHS = new Set([
+  "/chat",
+  "/views",
+  "/apps",
+  "/background",
+]);
 
 const SPRINGBOARD_SYSTEM_ENTRY_IDS = new Set([
   "settings",
@@ -55,7 +61,6 @@ const SPRINGBOARD_SYSTEM_ENTRY_IDS = new Set([
   "runtime",
   "database",
   "logs",
-  "background",
   "stream",
   "desktop",
 ]);
@@ -327,7 +332,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
             <label className="grid gap-1 text-xs font-medium">
               Dynamic view ID
               <input
-                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent"
+                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none"
                 value={dynamicViewForm.id}
                 onChange={(event) =>
                   updateDynamicField("id", event.currentTarget.value)
@@ -337,7 +342,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
             <label className="grid gap-1 text-xs font-medium">
               Dynamic view title
               <input
-                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent"
+                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none"
                 value={dynamicViewForm.title}
                 onChange={(event) =>
                   updateDynamicField("title", event.currentTarget.value)
@@ -347,7 +352,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
             <label className="grid gap-1 text-xs font-medium">
               Dynamic view entrypoint
               <input
-                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent"
+                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none"
                 value={dynamicViewForm.entrypoint}
                 onChange={(event) =>
                   updateDynamicField("entrypoint", event.currentTarget.value)
@@ -357,7 +362,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
             <label className="grid gap-1 text-xs font-medium">
               Dynamic view description
               <input
-                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent"
+                className="h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none"
                 value={dynamicViewForm.description}
                 onChange={(event) =>
                   updateDynamicField("description", event.currentTarget.value)

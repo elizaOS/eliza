@@ -42,4 +42,16 @@ describe("wallet optimized-deps chunk matcher", () => {
       ),
     ).toBe(true);
   });
+
+  it("matches virtual wallet helper facades that lack a node_modules prefix", () => {
+    const facadeIds = [
+      "\0useWalletModal.js?commonjs-entry",
+      "\0commonjs-proxy:/repo/node_modules/@solana/wallet-adapter-react-ui/lib/esm/useWalletModal.js",
+      "/repo/.vite/generated/useWalletModal-GR6cQmcn.js",
+    ];
+
+    for (const id of facadeIds) {
+      expect(VENDOR_OPTIMIZED_WALLET_TEST.test(id), id).toBe(true);
+    }
+  });
 });

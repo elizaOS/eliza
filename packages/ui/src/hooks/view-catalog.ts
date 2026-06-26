@@ -61,10 +61,9 @@ export interface ViewEntry {
   /** Real preview image URL, or undefined when only a generated fallback exists. */
   heroUrl?: string;
   /**
-   * Always-available preview image URL. Real plugin art wins when present;
-   * otherwise this is a deterministic branded SVG data URI. Use this (not
-   * {@link heroUrl}) when every entry must show an image, e.g. Springboard
-   * tiles.
+   * Always-available preview image URL. Real plugin art wins only when the
+   * registry says that asset exists; otherwise this is a deterministic branded
+   * SVG data URI, not a backend hero endpoint probe.
    */
   imageUrl?: string;
   /** Deterministic branded image used when a real preview image fails to load. */
@@ -118,12 +117,10 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     description: view.description,
     icon: view.icon,
     heroUrl: hasHero ? view.heroImageUrl : undefined,
-    // `imageUrl` ALWAYS resolves to a real/branded image so a Springboard tile
-    // is never a bare glyph. A real plugin hero (`heroImageUrl`) wins; otherwise
-    // we generate the branded hero CLIENT-SIDE (an inline data URI) rather than
-    // pointing at the `/api/views/:id/hero` endpoint, which 404s offline / on
-    // cloud builds — so the tiles show images everywhere, no agent required.
-    imageUrl: view.heroImageUrl ?? generatedHero,
+    // Use a registry hero only when it is declared as real. Otherwise generate
+    // the branded fallback client-side so static/mobile shells avoid backend
+    // `/api/views/:id/hero` probes for icon-only views.
+    imageUrl: hasHero ? view.heroImageUrl : generatedHero,
     fallbackImageUrl: generatedHero,
     hasHero,
     modality: view.viewType ?? "gui",

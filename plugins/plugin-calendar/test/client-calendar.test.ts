@@ -38,12 +38,14 @@ beforeEach(() => {
 describe("calendar client methods", () => {
   it("getLifeOpsCalendarFeed builds the feed path with a query", async () => {
     await client.getLifeOpsCalendarFeed({
+      side: "owner",
       timeMin: "2026-05-12T00:00:00.000Z",
       timeMax: "2026-05-13T00:00:00.000Z",
       grantId: "g1",
     });
     const path = client.fetch.mock.calls[0][0] as string;
     expect(path).toContain("/api/lifeops/calendar/feed?");
+    expect(path).toContain("side=owner");
     expect(path).toContain("timeMin=");
     expect(path).toContain("grantId=g1");
   });

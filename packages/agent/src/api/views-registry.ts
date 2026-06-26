@@ -353,9 +353,9 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
   const loadedAt = Date.now();
   const pluginName = "@elizaos/builtin";
   const registered: ViewRegistryEntry[] = [];
-  for (const view of BUILTIN_VIEWS) {
-    for (const modality of getViewModalities(view)) {
-      const viewType = normalizeViewType(modality);
+  for (const sourceView of BUILTIN_VIEWS) {
+    for (const viewType of getViewModalities(sourceView)) {
+      const view = { ...sourceView, viewType };
       const key = viewRegistryKey(view.id, viewType);
       if (registry.has(key)) {
         // Already registered (e.g. called twice at startup). Skip silently.
@@ -382,7 +382,9 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
         pluginDir,
         bundleUrl: undefined,
         bundleUrlVersioned: undefined,
-        heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero${query ? `?${query}` : ""}`,
+        heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero${
+          query ? `?${query}` : ""
+        }`,
         hasHeroImage,
         available: true,
         loadedAt,

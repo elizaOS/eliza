@@ -877,9 +877,13 @@ async function launch() {
     ...apiEmbeddingWarmupPolicy.env,
   };
   const apiWatchEnabled = envFlagEnabled("ELIZA_DESKTOP_API_WATCH");
+  // Runtime startup must never mutate dependencies. Optional plugin imports
+  // should fail fast when a package is absent instead of letting Bun auto-install
+  // transitive native packages inside the desktop app process.
+  const apiSourceConditionArgs = ["--no-install", "--conditions=eliza-source"];
   const apiArgs = apiWatchEnabled
-    ? ["--watch", devServerEntry]
-    : [devServerEntry];
+    ? [...apiSourceConditionArgs, "--watch", devServerEntry]
+    : [...apiSourceConditionArgs, devServerEntry];
   if (!apiWatchEnabled) {
     console.log(
       "[eliza] API file watcher disabled (set ELIZA_DESKTOP_API_WATCH=1 to enable).",

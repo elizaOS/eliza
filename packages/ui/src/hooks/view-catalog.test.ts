@@ -6,6 +6,7 @@ import {
   mergeViewCatalog,
   type ViewEntry,
   type ViewModality,
+  viewToEntry,
 } from "./view-catalog";
 
 function makeView(
@@ -42,6 +43,49 @@ function merge(
     enabledKinds: opts.enabledKinds ?? { developer: false, preview: false },
   });
 }
+
+describe("viewToEntry", () => {
+  it("uses generated local art for icon-only loaded views", () => {
+    const entry = viewToEntry(
+      makeView("notes", {
+        icon: "StickyNote",
+        hasHeroImage: false,
+      }),
+    );
+    expect(entry.hasHero).toBe(false);
+    expect(entry.imageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(entry.fallbackImageUrl).toBe(entry.imageUrl);
+    expect(entry.icon).toBe("StickyNote");
+  });
+
+  it("does not render backend hero URLs without a declared real hero asset", () => {
+    const entry = viewToEntry(
+      makeView("notes", {
+        icon: "StickyNote",
+        heroImageUrl: "/api/views/notes/hero",
+        hasHeroImage: false,
+      }),
+    );
+    expect(entry.hasHero).toBe(false);
+    expect(entry.heroUrl).toBeUndefined();
+    expect(entry.imageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(entry.imageUrl).not.toBe("/api/views/notes/hero");
+    expect(entry.fallbackImageUrl).toBe(entry.imageUrl);
+    expect(entry.icon).toBe("StickyNote");
+  });
+
+  it("uses concrete registry hero URLs when a loaded view provides one", () => {
+    const entry = viewToEntry(
+      makeView("notes", {
+        heroImageUrl: "/api/views/notes/hero",
+        hasHeroImage: true,
+      }),
+    );
+    expect(entry.hasHero).toBe(true);
+    expect(entry.heroUrl).toBe("/api/views/notes/hero");
+    expect(entry.imageUrl).toBe("/api/views/notes/hero");
+  });
+});
 
 describe("mergeViewCatalog", () => {
   it("marks loaded views as Open (loaded) and not-loaded catalog apps as Get (available)", () => {

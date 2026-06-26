@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -9,9 +9,9 @@ import {
  * Interaction-level coverage for the iOS-like view catalog (Springboard, #8796).
  *
  * Unlike builtin-views-visual.spec (which only asserts each view boots without
- * crashing), this drives the catalog's actual controls — Edit mode, the
- * favorite/pin badge, page navigation, and tap-to-launch — against a live app
- * boot. Run with E2E_RECORD=1 to capture a video walkthrough.
+ * crashing), this drives the catalog's actual controls — long-press edit mode,
+ * the favorite/pin badge, page navigation, and tap-to-launch — against a live
+ * app boot. Run with E2E_RECORD=1 to capture a video walkthrough.
  */
 test.describe("springboard catalog interactions", () => {
   test.beforeEach(async ({ page }) => {
@@ -20,7 +20,17 @@ test.describe("springboard catalog interactions", () => {
     await installDefaultAppRoutes(page);
   });
 
-  test("renders the springboard with names-only tiles and a chat composer", async ({
+  async function longPressTile(page: Page, tile: Locator): Promise<void> {
+    const button = tile.locator("button").first();
+    const box = await button.boundingBox();
+    if (!box) throw new Error("springboard tile button is not laid out");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(500);
+    await page.mouse.up();
+  }
+
+  test("renders the springboard with visual tiles and a chat composer", async ({
     page,
   }) => {
     const pageErrors: string[] = [];
@@ -35,11 +45,13 @@ test.describe("springboard catalog interactions", () => {
       page.locator('[data-testid^="springboard-tile-"]').first(),
     ).toBeVisible();
     // The floating chat composer sits at the bottom (the single chat surface).
-    await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
+    await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Done" })).toHaveCount(0);
     expect(pageErrors).toEqual([]);
   });
 
-  test("Edit mode reveals favorite badges; favoriting fills the dock", async ({
+  test("long-press edit mode reveals favorite badges; favoriting fills the dock", async ({
     page,
   }) => {
     await openAppPath(page, "/views");
@@ -55,17 +67,13 @@ test.describe("springboard catalog interactions", () => {
     const viewId = (tileId ?? "").replace("springboard-tile-", "");
 
     // Enter edit mode → the per-tile favorite badge appears.
-    await page.getByRole("button", { name: "Edit" }).click();
+    await longPressTile(page, firstTile);
     const favBadge = page.getByTestId(`springboard-fav-${viewId}`);
     await expect(favBadge).toBeVisible();
 
     // Favorite the view → it surfaces in the dock.
     await favBadge.click();
     await expect(page.getByTestId("springboard-dock")).toBeVisible();
-
-    // Leave edit mode.
-    await page.getByRole("button", { name: "Done" }).click();
-    await expect(page.getByTestId(`springboard-fav-${viewId}`)).toHaveCount(0);
   });
 
   test("paging dots switch the visible page when present", async ({ page }) => {

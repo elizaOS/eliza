@@ -13,6 +13,7 @@ import {
   SPRINGBOARD_DOCK_LIMIT,
   SPRINGBOARD_STORAGE_KEY,
 } from "../../state/springboard-layout";
+import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
 import { Springboard } from "./Springboard";
 
 function entry(id: string, label: string): ViewEntry {
@@ -53,7 +54,11 @@ function longPressToEdit(label: string): void {
 }
 
 beforeEach(() => window.localStorage.clear());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("Springboard", () => {
   it("renders every view as a names-only icon tile", () => {
@@ -110,9 +115,59 @@ describe("Springboard", () => {
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
     // Page 1 shows the first page's views, not the 21st.
-    expect(screen.queryByTestId("springboard-tile-v20")).toBeNull();
+    expect(
+      within(screen.getByTestId("springboard-page-0")).queryByTestId(
+        "springboard-tile-v20",
+      ),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
-    expect(screen.getByTestId("springboard-tile-v20")).toBeTruthy();
+    const secondPage = screen.getByTestId("springboard-page-1");
+    expect(secondPage.getAttribute("aria-hidden")).toBe("false");
+    expect(within(secondPage).getByTestId("springboard-tile-v20")).toBeTruthy();
+  });
+
+  it("slides adjacent pages with the finger before committing a page swipe", () => {
+    runAnimationFramesImmediately();
+    const many = Array.from({ length: 25 }, (_, i) =>
+      entry(`v${i}`, `View ${i}`),
+    );
+    render(<Springboard entries={many} onLaunch={() => {}} />);
+
+    const pageWindow = screen.getByTestId("springboard-page-window");
+    Object.defineProperty(pageWindow, "clientWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const rail = screen.getByTestId("springboard-page-rail");
+    fireEvent.pointerDown(pageWindow, {
+      isPrimary: true,
+      pointerId: 3,
+      clientX: 320,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(pageWindow, {
+      isPrimary: true,
+      pointerId: 3,
+      clientX: 220,
+      clientY: 304,
+    });
+
+    expect(rail.style.transform).toContain("-100px");
+    expect(rail.style.transition).toBe("none");
+
+    fireEvent.pointerUp(pageWindow, {
+      isPrimary: true,
+      pointerId: 3,
+      clientX: 170,
+      clientY: 304,
+    });
+
+    expect(
+      screen
+        .getByRole("button", { name: "Page 2" })
+        .getAttribute("aria-current"),
+    ).toBe("true");
+    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
   });
 
   it("drops views that are no longer available on re-render", () => {
@@ -142,36 +197,25 @@ describe("Springboard", () => {
 });
 
 describe("Springboard image tiles", () => {
-  it("renders the view's hero image as the tile when imageUrl is set", () => {
-    render(
-      <Springboard
-        entries={[imageEntry("notes", "Notes", "/api/views/notes/hero")]}
-        onLaunch={() => {}}
-      />,
-    );
-    const img = screen.getByTestId("springboard-image-notes");
-    expect(img.getAttribute("src")).toBe("/api/views/notes/hero");
-    // The launch button is still labelled for a11y + tap.
-    expect(screen.getByRole("button", { name: "Notes" })).toBeTruthy();
-  });
-
-  it("falls back to the icon glyph when the hero image fails to load", () => {
+  it("renders a compact app icon instead of a preview hero when imageUrl is set", () => {
     const { container } = render(
       <Springboard
         entries={[imageEntry("notes", "Notes", "/api/views/notes/hero")]}
         onLaunch={() => {}}
       />,
     );
-    const img = screen.getByTestId("springboard-image-notes");
-    act(() => {
-      fireEvent.error(img);
-    });
-    // Image is gone; the Lucide fallback glyph renders so the tile is never blank.
     expect(screen.queryByTestId("springboard-image-notes")).toBeNull();
-    expect(container.querySelector("svg")).toBeTruthy();
+    const visual = container.querySelector<HTMLElement>(
+      '[data-view-visual="notes"]',
+    );
+    expect(visual).toBeTruthy();
+    expect(visual?.getAttribute("style")).toContain("linear-gradient");
+    expect(visual?.querySelector("svg")).toBeTruthy();
+    // The launch button is still labelled for a11y + tap.
+    expect(screen.getByRole("button", { name: "Notes" })).toBeTruthy();
   });
 
-  it("renders the icon glyph (no image) when imageUrl is absent", () => {
+  it("renders the icon glyph when imageUrl is absent", () => {
     const { container } = render(
       <Springboard entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
     );

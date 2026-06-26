@@ -412,6 +412,35 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(navigated).toEqual([]);
 		});
 
+		it("does not fall back to Knowledge/Documents for standalone notes when no notes view is registered", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "open notes");
+			expect(result?.success).toBe(false);
+			expect(result?.text).toContain('No view matches "notes"');
+			expect(navigated).toEqual([]);
+		});
+
+		it("opens a registered notes view for standalone notes requests", async () => {
+			const withNotes: ViewSummary[] = [
+				...REGISTRY,
+				{
+					id: "notes",
+					label: "Notes",
+					description: "Simple notes",
+					path: "/notes",
+					pluginName: "@elizaos/plugin-simple-views",
+					available: true,
+					viewType: "gui",
+					tags: ["notes"],
+					visibleInManager: true,
+				},
+			];
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(withNotes, "open notes");
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["notes"]);
+		});
+
 		it("asks which one when a target is genuinely ambiguous", async () => {
 			const ambiguousRegistry: ViewSummary[] = [
 				{
@@ -759,7 +788,6 @@ describe("resolveIntentView — expanded surfaces + multilingual", () => {
 			["what's on my to-do list", "todos"],
 			["my tasks", "todos"],
 			["pull up my documents", "documents"],
-			["my notes", "documents"],
 			["who do I know at Acme", "relationships"],
 			["my contacts", "relationships"],
 			["I want to add a new feature to my app", "task-coordinator"],
@@ -767,6 +795,11 @@ describe("resolveIntentView — expanded surfaces + multilingual", () => {
 		];
 		it.each(EN_CASES)('"%s" -> %s', (phrase, viewId) => {
 			expect(resolveIntentView(phrase)).toBe(viewId);
+		});
+
+		it("routes notes to the Notes view instead of Knowledge/Documents", () => {
+			expect(resolveIntentView("my notes")).toBe("notes");
+			expect(resolveIntentView("pull up my notes")).toBe("notes");
 		});
 	});
 

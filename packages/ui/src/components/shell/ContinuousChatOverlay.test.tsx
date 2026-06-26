@@ -31,6 +31,14 @@ vi.mock("../../utils/clipboard", () => ({
 
 import type { Conversation } from "../../api/client-types-chat";
 import { CHAT_PREFILL_EVENT } from "../../events";
+import {
+  LAYOUT_SHIFT_INTENT_ATTR,
+  LAYOUT_SHIFT_INTENT_TRANSIENT,
+} from "../../hooks/useLayoutShiftMonitor";
+import {
+  getShellSurface,
+  resetShellSurfaceForTests,
+} from "../../state/shell-surface-store";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import {
@@ -44,7 +52,10 @@ beforeAll(() => {
 });
 
 // Unmount between tests so renders don't accumulate in the shared document.
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetShellSurfaceForTests();
+});
 
 function makeController(
   overrides: Partial<ShellController> = {},
@@ -245,6 +256,48 @@ describe("ContinuousChatOverlay", () => {
     expect(document.activeElement).toBe(composer);
   });
 
+  it("does not route soft-keyboard visualViewport resize through the drag-settle handler", () => {
+    const originalVisualViewport = window.visualViewport;
+    const fakeVisualViewport = {
+      height: 700,
+      offsetTop: 0,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: fakeVisualViewport as unknown as VisualViewport,
+    });
+    const windowAdd = vi.spyOn(window, "addEventListener");
+    try {
+      render(<ContinuousChatOverlay controller={makeController()} />);
+
+      const windowResizeHandler = windowAdd.mock.calls.find(
+        ([type]) => type === "resize",
+      )?.[1];
+      const visualResizeHandler =
+        fakeVisualViewport.addEventListener.mock.calls.find(
+          ([type]) => type === "resize",
+        )?.[1];
+      const visualScrollHandler =
+        fakeVisualViewport.addEventListener.mock.calls.find(
+          ([type]) => type === "scroll",
+        )?.[1];
+
+      expect(typeof windowResizeHandler).toBe("function");
+      expect(typeof visualResizeHandler).toBe("function");
+      expect(typeof visualScrollHandler).toBe("function");
+      expect(visualResizeHandler).toBe(visualScrollHandler);
+      expect(visualResizeHandler).not.toBe(windowResizeHandler);
+    } finally {
+      windowAdd.mockRestore();
+      Object.defineProperty(window, "visualViewport", {
+        configurable: true,
+        value: originalVisualViewport,
+      });
+    }
+  });
+
   it("opens the sheet on a pull-up drag of the grabber", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -255,6 +308,34 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("routes a horizontal swipe on the collapsed grabber to the launcher rail instead of opening chat", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    expect(getShellSurface().page).toBe("home");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+
+    fireEvent.pointerDown(grabber, {
+      clientX: 260,
+      clientY: 420,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(grabber, {
+      clientX: 120,
+      clientY: 414,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(grabber, {
+      clientX: 120,
+      clientY: 414,
+      pointerId: 1,
+    });
+
+    expect(getShellSurface().page).toBe("springboard");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
   // Regression guard for #9142: the grabber bar was hardcoded `opacity-0`
@@ -299,6 +380,19 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
+  it("lands full when a collapsed drag is released above the half threshold", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    fireEvent.pointerDown(grabber, { clientY: 700, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 80, pointerId: 1 });
+
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+  });
+
   it("cancels delayed header navigation when unmounted before the close animation finishes", () => {
     vi.useFakeTimers();
     try {
@@ -341,6 +435,46 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 405, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 405, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("half");
+  });
+
+  it("springs back to the input when a slow downward drift stays above the pill threshold", () => {
+    const now = vi.spyOn(performance, "now");
+    try {
+      render(<ContinuousChatOverlay controller={makeController()} />);
+      const sheet = screen.getByTestId("chat-sheet");
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      now.mockReturnValue(0);
+      fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+      fireEvent.pointerMove(grabber, { clientY: 450, pointerId: 1 });
+      now.mockReturnValue(800);
+      fireEvent.pointerUp(grabber, { clientY: 450, pointerId: 1 });
+
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("collapses to the pill when a slow downward drag crosses the pill threshold", () => {
+    const now = vi.spyOn(performance, "now");
+    try {
+      render(<ContinuousChatOverlay controller={makeController()} />);
+      const sheet = screen.getByTestId("chat-sheet");
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      now.mockReturnValue(0);
+      fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+      fireEvent.pointerMove(grabber, { clientY: 500, pointerId: 1 });
+      now.mockReturnValue(800);
+      fireEvent.pointerUp(grabber, { clientY: 500, pointerId: 1 });
+
+      expect(sheet.getAttribute("data-detent")).toBe("pill");
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("opens to HALF when sending (conversation above the keyboard, not a full-screen takeover)", () => {
@@ -402,6 +536,7 @@ describe("ContinuousChatOverlay", () => {
         controller={makeController({ phase: "responding", responding: true })}
       />,
     );
+    fireEvent.focus(screen.getByLabelText("message"));
     // The dots sit inside a left-aligned, full-width assistant row.
     const row = screen.getByTestId("typing-dots").closest(".w-full");
     expect(row?.className).toContain("w-full");
@@ -477,7 +612,7 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("renders the full thread as one always-mounted scroll log", () => {
+  it("renders the full thread as one scroll log when the sheet is open", () => {
     const controller = makeController({
       messages: [
         { id: "a", role: "assistant", content: "one", createdAt: 1 },
@@ -486,13 +621,48 @@ describe("ContinuousChatOverlay", () => {
       ],
     } as unknown as Partial<ShellController>);
     render(<ContinuousChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
 
-    // The full transcript is always mounted; the thread is a vertical scroll
-    // region whose height collapses to 0 when closed (the outer wrapper clips).
+    // The full transcript is one vertical scroll region while open.
     const log = document.getElementById("continuous-thread");
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(3);
     expect(log?.className).toContain("overflow-y-auto");
     expect(log?.textContent).toContain("one");
+  });
+
+  it("does not mount hidden header or transcript layers while collapsed", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-revealed")).toBe("false");
+    expect(sheet.getAttribute("data-header-shown")).toBe("false");
+    expect(document.getElementById("continuous-thread")).toBeNull();
+    expect(screen.queryByTestId("chat-thread")).toBeNull();
+    expect(screen.queryByTestId("chat-full-springboard")).toBeNull();
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    expect(grabber.className).toContain("before:-top-4");
+    expect(grabber.className).not.toContain("before:-top-16");
+  });
+
+  it("mounts an inert transcript preview during an upward drag before release", async () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(screen.queryByTestId("chat-thread")).toBeNull();
+
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 340, pointerId: 1 });
+
+    const thread = await waitFor(() => screen.getByTestId("chat-thread"));
+    const log = document.getElementById("continuous-thread");
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-revealed")).toBe("true");
+    expect(thread).toBeTruthy();
+    expect(log?.getAttribute("aria-hidden")).toBe("true");
+    expect(log?.getAttribute("tabindex")).toBe("-1");
   });
 
   it("shows the attach (+) control", () => {
@@ -641,6 +811,49 @@ describe("ContinuousChatOverlay", () => {
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
+  it("marks chat transcript changes as transient layout motion", () => {
+    vi.useFakeTimers();
+    try {
+      const base = [
+        { id: "a", role: "assistant", content: "hi", createdAt: 1 },
+      ];
+      const { rerender } = render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            messages: base,
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+      const root = screen.getByTestId("continuous-chat-overlay");
+
+      act(() => {
+        vi.advanceTimersByTime(181);
+      });
+      expect(root.getAttribute(LAYOUT_SHIFT_INTENT_ATTR)).toBeNull();
+
+      rerender(
+        <ContinuousChatOverlay
+          controller={makeController({
+            messages: [
+              ...base,
+              { id: "b", role: "user", content: "new line", createdAt: 2 },
+            ],
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+
+      expect(root.getAttribute(LAYOUT_SHIFT_INTENT_ATTR)).toBe(
+        LAYOUT_SHIFT_INTENT_TRANSIENT,
+      );
+      act(() => {
+        vi.advanceTimersByTime(181);
+      });
+      expect(root.getAttribute(LAYOUT_SHIFT_INTENT_ATTR)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does NOT close on an outside pointer-down while the keyboard is DOWN", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -717,6 +930,7 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
+    fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.getByText("Connect a provider to chat")).toBeTruthy();
     const cta = screen.getByTestId("chat-no-provider-settings");
     fireEvent.click(cta);
@@ -741,6 +955,7 @@ describe("ContinuousChatOverlay", () => {
           } as unknown as Partial<ShellController>)}
         />,
       );
+      fireEvent.focus(screen.getByLabelText("message"));
       const bubble = screen
         .getByText("the answer is 42")
         .closest('[data-testid="thread-line"]')
@@ -777,6 +992,7 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
+    fireEvent.focus(screen.getByLabelText("message"));
 
     for (const text of ["copy my question", "copy my answer"]) {
       const textNode = screen.getByText(text);
@@ -803,6 +1019,7 @@ describe("ContinuousChatOverlay", () => {
           } as unknown as Partial<ShellController>)}
         />,
       );
+      fireEvent.focus(screen.getByLabelText("message"));
       const bubble = screen
         .getByText("tap me")
         .closest('[data-testid="thread-line"]')
@@ -983,6 +1200,7 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
+    fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
   });
@@ -1139,6 +1357,7 @@ describe("ContinuousChatOverlay", () => {
         } as Partial<ShellController>)}
       />,
     );
+    openSheetToHalf();
 
     const springboard = screen.getByTestId("chat-full-springboard");
     expect((springboard as HTMLButtonElement).disabled).toBe(false);
@@ -1180,7 +1399,7 @@ describe("ContinuousChatOverlay", () => {
 
   // ── Rich turn-status indicator (#8813) ──────────────────────────────────
   describe("turn status indicator", () => {
-    it("renders the phase label beside the breathing dots while thinking", () => {
+    it("renders breathing dots without a text label while thinking", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -1190,13 +1409,12 @@ describe("ContinuousChatOverlay", () => {
           } as Partial<ShellController>)}
         />,
       );
+      fireEvent.focus(screen.getByLabelText("message"));
       const indicator = screen.getByTestId("turn-status-indicator");
       expect(indicator.getAttribute("data-status-kind")).toBe("thinking");
       expect(indicator.getAttribute("role")).toBe("status");
       expect(indicator.getAttribute("aria-live")).toBe("polite");
-      expect(screen.getByTestId("turn-status-label").textContent).toBe(
-        "Thinking",
-      );
+      expect(screen.queryByTestId("turn-status-label")).toBeNull();
       // The dots still animate within the indicator.
       expect(screen.getByTestId("typing-dots")).toBeTruthy();
     });
@@ -1211,6 +1429,7 @@ describe("ContinuousChatOverlay", () => {
           } as Partial<ShellController>)}
         />,
       );
+      fireEvent.focus(screen.getByLabelText("message"));
       expect(screen.getByTestId("turn-status-label").textContent).toBe(
         "Running Send message",
       );
@@ -1231,6 +1450,7 @@ describe("ContinuousChatOverlay", () => {
           } as Partial<ShellController>)}
         />,
       );
+      fireEvent.focus(screen.getByLabelText("message"));
       // Exactly one indicator (no double-up between the bubble + standalone row).
       const indicators = screen.getAllByTestId("turn-status-indicator");
       expect(indicators).toHaveLength(1);
@@ -1238,6 +1458,59 @@ describe("ContinuousChatOverlay", () => {
       expect(screen.getByTestId("turn-status-label").textContent).toBe(
         "Waking the agent",
       );
+    });
+
+    it("hides reasoning disclosure while the latest assistant turn is streaming", () => {
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            phase: "responding",
+            responding: true,
+            messages: [
+              { id: "u", role: "user", content: "explain it", createdAt: 1 },
+              {
+                id: "a",
+                role: "assistant",
+                content: "Draft answer",
+                reasoning: "private chain of thought",
+                createdAt: 2,
+              },
+            ],
+            turnStatus: { kind: "running_action", actionName: "OPEN_VIEW" },
+          } as Partial<ShellController>)}
+        />,
+      );
+      fireEvent.focus(screen.getByLabelText("message"));
+
+      expect(screen.getByText("Draft answer")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
+      expect(screen.getByTestId("turn-status-label").textContent).toBe(
+        "Running Open view",
+      );
+    });
+
+    it("shows reasoning disclosure after the assistant turn settles", () => {
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            phase: "idle",
+            responding: false,
+            messages: [
+              { id: "u", role: "user", content: "explain it", createdAt: 1 },
+              {
+                id: "a",
+                role: "assistant",
+                content: "Final answer",
+                reasoning: "compact reasoning summary",
+                createdAt: 2,
+              },
+            ],
+          } as Partial<ShellController>)}
+        />,
+      );
+
+      fireEvent.focus(screen.getByLabelText("message"));
+      expect(screen.getByRole("button", { name: /thinking/i })).toBeTruthy();
     });
 
     it("holds the first label through a fast phase change (min-dwell, no flicker)", () => {
@@ -1252,11 +1525,10 @@ describe("ContinuousChatOverlay", () => {
             } as Partial<ShellController>)}
           />,
         );
-        expect(screen.getByTestId("turn-status-label").textContent).toBe(
-          "Thinking",
-        );
+        fireEvent.focus(screen.getByLabelText("message"));
+        expect(screen.queryByTestId("turn-status-label")).toBeNull();
         // A near-instant change to running_action must NOT flip the label yet —
-        // it is held for the min dwell so the words don't strobe.
+        // the thinking status is held for the min dwell so words don't strobe in.
         rerender(
           <ContinuousChatOverlay
             controller={makeController({
@@ -1269,9 +1541,7 @@ describe("ContinuousChatOverlay", () => {
             } as Partial<ShellController>)}
           />,
         );
-        expect(screen.getByTestId("turn-status-label").textContent).toBe(
-          "Thinking",
-        );
+        expect(screen.queryByTestId("turn-status-label")).toBeNull();
         // After the dwell window elapses the new phase is shown.
         act(() => {
           vi.advanceTimersByTime(400);
@@ -1403,13 +1673,9 @@ describe("ContinuousChatOverlay swipe-nav", () => {
     const { controller, onSelect } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
 
-    // No openSheet(): the thread region exists but the gesture is unbound, so a
-    // swipe is a no-op (the conversation only changes via the sheet-open swipe).
-    const el = thread();
-    fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 5 });
-    fireEvent.pointerMove(el, { clientX: 280, clientY: 302, pointerId: 5 });
-    fireEvent.pointerUp(el, { clientX: 180, clientY: 302, pointerId: 5 });
-
+    // No openSheet(): the transcript target is not mounted while collapsed, so
+    // there is nothing to bind and no hidden layer can catch a swipe.
+    expect(document.getElementById("continuous-thread")).toBeNull();
     expect(onSelect).not.toHaveBeenCalled();
   });
 });

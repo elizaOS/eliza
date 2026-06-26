@@ -256,6 +256,31 @@ test.beforeEach(async ({ page }) => {
   await installConversationStore(page, store);
 });
 
+test("collapsed chat grabber horizontal swipe opens the springboard rail without opening chat", async ({
+  page,
+}, testInfo) => {
+  await openAppPath(page, "/chat");
+  const overlay = page.getByTestId("continuous-chat-overlay");
+  await expect(overlay).toBeVisible({ timeout: 60_000 });
+
+  const surface = page.getByTestId("home-springboard-surface");
+  await expect(surface).toHaveAttribute("data-page", "home", {
+    timeout: 15_000,
+  });
+  await expect(overlay).not.toHaveAttribute("data-open", "true");
+
+  await pointerDrag(page, '[data-testid="chat-sheet-grabber"]', -180, -6, 12);
+
+  await expect(surface).toHaveAttribute("data-page", "springboard", {
+    timeout: 10_000,
+  });
+  await expect(overlay).not.toHaveAttribute("data-open", "true");
+  await expect(
+    page.getByTestId("home-springboard-springboard-page"),
+  ).toBeVisible();
+  await expectNoPageDiagnostics(page, testInfo.title);
+});
+
 test("swipe navigates conversations; clear lands on a fresh greeted chat with no undo toast", async ({
   page,
 }, testInfo) => {

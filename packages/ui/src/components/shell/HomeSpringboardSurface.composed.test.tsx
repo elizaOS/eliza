@@ -20,6 +20,7 @@ import { useRoutableViews } from "../../hooks/useAvailableViews";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
 import { SpringboardSurface } from "../pages/SpringboardSurface";
 import { HomeSpringboardSurface } from "./HomeSpringboardSurface";
 
@@ -73,7 +74,13 @@ const DOCK_VIEWS = [
 const PAGE_VIEWS = Array.from({ length: 24 }, (_, i) =>
   view(`app${i}`, `App ${i}`, `/apps/app${i}`),
 );
-const ALL_VIEWS = [...DOCK_VIEWS, ...PAGE_VIEWS];
+const HIDDEN_VIEWS = [
+  view("background", "Background", "/background", {
+    icon: "Image",
+    viewKind: "system",
+  }),
+];
+const ALL_VIEWS = [...DOCK_VIEWS, ...PAGE_VIEWS, ...HIDDEN_VIEWS];
 
 beforeEach(() => {
   resetShellSurfaceForTests();
@@ -98,6 +105,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetShellSurfaceForTests();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -114,14 +122,21 @@ function renderComposed() {
 
 function flick(testid: string, dx: number, dy = 4): void {
   const el = screen.getByTestId(testid);
-  fireEvent.pointerDown(el, { isPrimary: true, clientX: 260, clientY: 300 });
+  fireEvent.pointerDown(el, {
+    isPrimary: true,
+    pointerId: 1,
+    clientX: 260,
+    clientY: 300,
+  });
   fireEvent.pointerMove(el, {
     isPrimary: true,
+    pointerId: 1,
     clientX: 260 + dx,
     clientY: 300 + dy,
   });
   fireEvent.pointerUp(el, {
     isPrimary: true,
+    pointerId: 1,
     clientX: 260 + dx,
     clientY: 300 + dy,
   });
@@ -131,6 +146,43 @@ const openSpringboard = () => flick("home-springboard-home-page", -140);
 const swipeBackHome = () => flick("home-springboard-springboard-page", 140);
 
 describe("Home ↔ Springboard composed surface", () => {
+  it("tracks the rail with the finger before committing a home ↔ springboard swipe", () => {
+    runAnimationFramesImmediately();
+    const surface = renderComposed();
+    Object.defineProperty(surface, "clientWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const homePage = screen.getByTestId("home-springboard-home-page");
+    const rail = screen.getByTestId("home-springboard-rail");
+
+    fireEvent.pointerDown(homePage, {
+      isPrimary: true,
+      pointerId: 2,
+      clientX: 260,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(homePage, {
+      isPrimary: true,
+      pointerId: 2,
+      clientX: 170,
+      clientY: 304,
+    });
+
+    expect(rail.style.transform).toContain("-90px");
+    expect(rail.style.transition).toBe("none");
+
+    fireEvent.pointerUp(homePage, {
+      isPrimary: true,
+      pointerId: 2,
+      clientX: 120,
+      clientY: 304,
+    });
+
+    expect(surface.getAttribute("data-page")).toBe("springboard");
+    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
+  });
+
   it("renders exactly ONE page-indicator strip — no stacked dot rows (#4)", () => {
     const surface = renderComposed();
     openSpringboard();
@@ -210,6 +262,14 @@ describe("Home ↔ Springboard composed surface", () => {
     expect(screen.getByTestId("springboard-fav-app1")).toBeTruthy();
   });
 
+  it("does not render a Background tile because backgrounds live in Settings", () => {
+    renderComposed();
+    openSpringboard();
+
+    expect(screen.queryByTestId("springboard-tile-background")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Background" })).toBeNull();
+  });
+
   it("tapping a rail dot jumps directly to that surface", () => {
     const surface = renderComposed();
     openSpringboard();
@@ -225,31 +285,27 @@ describe("Home ↔ Springboard composed surface", () => {
     expect(surface.getAttribute("data-page")).toBe("home");
   });
 
-  it("dock tiles render DISTINCT per-view visuals, with distinct glyph fallback (#5)", () => {
+  it("springboard tiles render DISTINCT app-icon glyphs without hero probes (#5)", () => {
     renderComposed();
     openSpringboard();
 
-    const settingsImage = screen.getByTestId(
-      "springboard-image-settings",
-    ) as HTMLImageElement;
-    const filesImage = screen.getByTestId(
-      "springboard-image-files",
-    ) as HTMLImageElement;
-    expect(settingsImage.getAttribute("src")).toMatch(/^data:image\/svg\+xml,/);
-    expect(filesImage.getAttribute("src")).toMatch(/^data:image\/svg\+xml,/);
-    expect(settingsImage.getAttribute("src")).not.toBe(
-      filesImage.getAttribute("src"),
+    const settingsVisual = document.querySelector<HTMLElement>(
+      '[data-view-visual="settings"]',
     );
+    const filesVisual = document.querySelector<HTMLElement>(
+      '[data-view-visual="files"]',
+    );
+    expect(settingsVisual).toBeTruthy();
+    expect(filesVisual).toBeTruthy();
+    expect(settingsVisual?.querySelector("img")).toBeNull();
+    expect(filesVisual?.querySelector("img")).toBeNull();
+    expect(settingsVisual?.getAttribute("style")).toContain("linear-gradient");
+    expect(filesVisual?.getAttribute("style")).toContain("linear-gradient");
 
-    fireEvent.error(settingsImage);
-    fireEvent.error(filesImage);
-
-    const settingsGlyph = document
-      .querySelector('[data-view-visual="settings"] svg')
+    const settingsGlyph = settingsVisual
+      ?.querySelector("svg")
       ?.getAttribute("class");
-    const filesGlyph = document
-      .querySelector('[data-view-visual="files"] svg')
-      ?.getAttribute("class");
+    const filesGlyph = filesVisual?.querySelector("svg")?.getAttribute("class");
     expect(settingsGlyph).toContain("lucide-settings");
     expect(filesGlyph).toContain("lucide-folder-closed");
     expect(settingsGlyph).not.toBe(filesGlyph);

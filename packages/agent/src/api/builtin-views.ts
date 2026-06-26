@@ -92,7 +92,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     heroImagePath: "assets/view-heroes/character.png",
     path: "/character/documents",
     order: 51,
-    tags: ["documents", "notes", "knowledge", "files", "uploads", "retrieval"],
+    tags: ["documents", "knowledge", "files", "uploads", "retrieval"],
     visibleInManager: true,
     desktopTabEnabled: true,
   },

@@ -257,7 +257,8 @@ describe("ContinuousChatOverlay slash commands", () => {
         { id: "u1", role: "user", content: "/help me out", createdAt: 1 },
       ],
     });
-    renderOverlay(makeSlash(), controller);
+    const { input } = renderOverlay(makeSlash(), controller);
+    fireEvent.focus(input);
     const tokens = screen.getAllByTestId("slash-command-token");
     expect(tokens.length).toBeGreaterThan(0);
     expect(tokens[0].textContent).toBe("/help");

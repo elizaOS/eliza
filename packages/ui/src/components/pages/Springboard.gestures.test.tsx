@@ -101,6 +101,28 @@ function actions(): ViewInteractionAction[] {
   return readViewInteractions().map((e) => e.action);
 }
 
+function horizontalSwipe(dx: number): void {
+  const pageWindow = screen.getByTestId("springboard-page-window");
+  fireEvent.pointerDown(pageWindow, {
+    pointerId: 1,
+    clientX: 500,
+    clientY: 100,
+    isPrimary: true,
+  });
+  fireEvent.pointerMove(pageWindow, {
+    pointerId: 1,
+    clientX: 500 + dx,
+    clientY: 102,
+    isPrimary: true,
+  });
+  fireEvent.pointerUp(pageWindow, {
+    pointerId: 1,
+    clientX: 500 + dx,
+    clientY: 102,
+    isPrimary: true,
+  });
+}
+
 const PAGE2 = Array.from({ length: 25 }, (_, i) => entry(`v${i}`, `View ${i}`));
 
 beforeEach(() => {
@@ -115,6 +137,7 @@ afterEach(() => cleanup());
 describe("Springboard drag-reorder bridge", () => {
   it("persists a reordered page through moveIcon and emits a reorder event", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
+    longPressTile("View 0");
     // Page 0 holds the first 20 ids; move the first to the end.
     expect(bus.values.slice(0, 3)).toEqual(["v0", "v1", "v2"]);
     const reordered = [...bus.values.slice(1), bus.values[0]];
@@ -138,21 +161,30 @@ describe("Springboard drag-reorder bridge", () => {
 describe("Springboard swipe paging (onDragEnd)", () => {
   it("advances a page past the swipe threshold and emits page-swipe", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
-    expect(screen.queryByTestId("springboard-tile-v20")).toBeNull();
+    expect(
+      screen.getByTestId("springboard-page-0").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(
+      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+    ).toBe("true");
     act(() => {
-      bus.onDragEnd?.({}, { offset: { x: -70, y: 0 } });
+      horizontalSwipe(-300);
     });
     // Page 1 now shows v20..v24.
-    expect(screen.getByTestId("springboard-tile-v20")).toBeTruthy();
+    expect(
+      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+    ).toBe("false");
     expect(actions()).toContain("page-swipe");
   });
 
   it("ignores a drag below the threshold", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
     act(() => {
-      bus.onDragEnd?.({}, { offset: { x: -30, y: 0 } });
+      horizontalSwipe(-30);
     });
-    expect(screen.queryByTestId("springboard-tile-v20")).toBeNull();
+    expect(
+      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+    ).toBe("true");
     expect(actions()).not.toContain("page-swipe");
   });
 
@@ -160,7 +192,7 @@ describe("Springboard swipe paging (onDragEnd)", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
     // Already on page 0; a rightward swipe would go to -1 → clamped, no event.
     act(() => {
-      bus.onDragEnd?.({}, { offset: { x: 80, y: 0 } });
+      horizontalSwipe(300);
     });
     expect(actions()).not.toContain("page-swipe");
   });
@@ -169,9 +201,11 @@ describe("Springboard swipe paging (onDragEnd)", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
     longPressTile("View 0");
     act(() => {
-      bus.onDragEnd?.({}, { offset: { x: -80, y: 0 } });
+      horizontalSwipe(-300);
     });
-    expect(screen.queryByTestId("springboard-tile-v20")).toBeNull();
+    expect(
+      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+    ).toBe("true");
     expect(actions()).not.toContain("page-swipe");
   });
 });

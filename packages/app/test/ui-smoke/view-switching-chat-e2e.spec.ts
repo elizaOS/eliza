@@ -66,6 +66,18 @@ const CHAT_SEND_SELECTOR =
   '[data-testid="chat-composer-action"], button[aria-label="Send"], button[aria-label="Send message"]';
 const VIEW_SWITCH_URL_TIMEOUT_MS = LIVE_STACK ? 90_000 : 30_000;
 
+function calendarView(page: Page): Locator {
+  return page.getByText("Design sync").first();
+}
+
+function inboxView(page: Page): Locator {
+  return page.getByText(/Invoice #?42 overdue/i).first();
+}
+
+function todosView(page: Page): Locator {
+  return page.getByText(/Today \(\d+\)/).first();
+}
+
 // The exact `eliza:navigate:view` detail the renderer's WS handler emits for a
 // plain `show`/navigate frame (startup-phase-hydrate.ts:417-442): a navigate
 // frame with no `action` and no `alwaysOnTop` normalizes to action:undefined,
@@ -132,11 +144,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "go to my email",
     view: { id: "inbox", path: "/inbox", label: "Inbox" },
     expectedPath: "/inbox",
-    onView: (page) =>
-      page
-        .getByRole("heading", { name: "Inbox" })
-        .first()
-        .or(page.locator('section[aria-label="Inbox"]').first()),
+    onView: inboxView,
   },
   {
     name: 'ACTIVE: "open settings" opens the settings view',
@@ -165,9 +173,8 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
     // The registered calendar view (CalendarView.tsx) marks its container with
-    // data-testid="calendar-view" (it renders the month label + segmented
-    // control, not a literal "Calendar" heading).
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    // stable period controls and agenda text rather than a literal heading.
+    onView: calendarView,
   },
   {
     name: 'PASSIVE: "check my messages" opens the inbox',
@@ -175,11 +182,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "check my messages",
     view: { id: "inbox", path: "/inbox", label: "Inbox" },
     expectedPath: "/inbox",
-    onView: (page) =>
-      page
-        .getByRole("heading", { name: "Inbox" })
-        .first()
-        .or(page.locator('section[aria-label="Inbox"]').first()),
+    onView: inboxView,
   },
   {
     name: 'PASSIVE: "I want to add a new feature to my app" opens the coding (task-coordinator) view',
@@ -196,9 +199,9 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     expectedPath: "/task-coordinator",
   },
   {
-    name: 'PASSIVE: "show my notes" opens the documents/notes view',
+    name: 'PASSIVE: "show my documents" opens the Knowledge/Documents view',
     kind: "passive",
-    command: "show my notes",
+    command: "show my documents",
     view: {
       id: "documents",
       path: "/character/documents",
@@ -216,9 +219,8 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
     // The registered calendar view (CalendarView.tsx) marks its container with
-    // data-testid="calendar-view" (it renders the month label + segmented
-    // control, not a literal "Calendar" heading).
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    // stable period controls and agenda text rather than a literal heading.
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (fr): "montre-moi mon portefeuille" opens the wallet view',
@@ -238,11 +240,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "revisa mi correo",
     view: { id: "inbox", path: "/inbox", label: "Inbox" },
     expectedPath: "/inbox",
-    onView: (page) =>
-      page
-        .getByRole("heading", { name: "Inbox" })
-        .first()
-        .or(page.locator('section[aria-label="Inbox"]').first()),
+    onView: inboxView,
   },
   {
     name: 'PASSIVE (zh): "我的待办事项" opens the todos view',
@@ -250,11 +248,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "我的待办事项",
     view: { id: "todos", path: "/todos", label: "Todos" },
     expectedPath: "/todos",
-    onView: (page) =>
-      page
-        .getByRole("heading", { name: "Todos" })
-        .first()
-        .or(page.locator('section[aria-label="Todos"]').first()),
+    onView: todosView,
   },
   // --- Wider language matrix (deterministic tier): the navigate→render pipeline
   // must hold for the full set of matcher languages, not just the es/fr/zh
@@ -270,7 +264,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "abra meu calendário",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (de): "öffne meinen kalender" opens the calendar view',
@@ -278,7 +272,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "öffne meinen kalender",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (ja): "カレンダーを開いて" opens the calendar view',
@@ -286,7 +280,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "カレンダーを開いて",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (ko): "캘린더 열어" opens the calendar view',
@@ -294,7 +288,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "캘린더 열어",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (vi): "mở lịch" opens the calendar view',
@@ -302,7 +296,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "mở lịch",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (tl): "buksan ang calendar" opens the calendar view',
@@ -310,7 +304,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "buksan ang calendar",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (pt): "abra minha carteira" opens the wallet view',
@@ -654,7 +648,7 @@ test("agent close-view navigate returns to chat", async ({ page }) => {
   await expect(chatComposer(page)).toBeVisible({ timeout: 30_000 });
 });
 
-test("agent split-view navigate renders notes and calendar layout", async ({
+test("agent split-view navigate renders documents and calendar layout", async ({
   page,
 }) => {
   test.skip(
@@ -662,7 +656,7 @@ test("agent split-view navigate renders notes and calendar layout", async ({
     "split-layout resolution is covered by VIEWS action tests; this guards the renderer contract",
   );
   await openAppPath(page, "/chat");
-  await sendChatCommand(page, "split notes and calendar side by side");
+  await sendChatCommand(page, "split documents and calendar side by side");
 
   await deliverAgentNavigate(page, {
     action: "split-view",
@@ -691,7 +685,7 @@ test("agent split-view navigate renders notes and calendar layout", async ({
   await expect(documentsPane.getByTestId("documents-view")).toBeVisible({
     timeout: 30_000,
   });
-  await expect(calendarPane.getByTestId("calendar-view")).toBeVisible({
+  await expect(calendarPane.getByText("Design sync").first()).toBeVisible({
     timeout: 30_000,
   });
 });
