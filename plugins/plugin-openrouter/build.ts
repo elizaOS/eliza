@@ -1,12 +1,25 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { build } from "bun";
 
 const ROOT = resolve(dirname(import.meta.path));
 const DIST = join(ROOT, "dist");
+const rmRecursiveScript = resolve(ROOT, "..", "..", "packages", "scripts", "rm-path-recursive.mjs");
+
+function rmRecursive(targetPath: string) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `failed to remove generated OpenRouter build output ${targetPath} (exit ${result.status})`
+    );
+  }
+}
 
 if (existsSync(DIST)) {
-  rmSync(DIST, { recursive: true });
+  rmRecursive(DIST);
 }
 mkdirSync(DIST, { recursive: true });
 mkdirSync(join(DIST, "node"), { recursive: true });
