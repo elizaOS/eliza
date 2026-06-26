@@ -32,6 +32,7 @@ export {
 import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { AgentActivityWidget } from "../components/chat/widgets/agent-activity";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
+import { AGENT_PROVISIONING_HOME_WIDGET } from "../components/chat/widgets/agent-provisioning";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
 import { FINANCES_HOME_WIDGET } from "../components/chat/widgets/finances-alerts";
@@ -39,6 +40,7 @@ import { GOALS_HOME_WIDGET } from "../components/chat/widgets/goals-attention";
 import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
 import { INBOX_HOME_WIDGET } from "../components/chat/widgets/inbox-unread";
 import { MessagesWidget } from "../components/chat/widgets/messages";
+import { MODEL_DOWNLOAD_HOME_WIDGET } from "../components/chat/widgets/model-download";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-attention";
 import { NotificationsWidget } from "../components/chat/widgets/notifications";
@@ -82,6 +84,21 @@ registerWidgetComponent("wallet", "wallet.balance", WalletBalanceWidget);
 // surface (system automations + active user workflows), so it is always-visible
 // and self-hides when nothing is running.
 registerWidgetComponent("workflow", "workflow.running", WorkflowsWidget);
+// Setup-progress home tiles: the local model download (LOCAL mode, backed by the
+// local-inference hub) and the cloud-agent provisioning handoff (CLOUD mode,
+// backed by the cloud handoff phase event). Neither is a loadable plugin, so
+// both are always-visible and self-hide when there's nothing in flight — the
+// recommended model finishes downloading, or the dedicated cloud agent attaches.
+registerWidgetComponent(
+  MODEL_DOWNLOAD_HOME_WIDGET.pluginId,
+  MODEL_DOWNLOAD_HOME_WIDGET.id,
+  MODEL_DOWNLOAD_HOME_WIDGET.Component,
+);
+registerWidgetComponent(
+  AGENT_PROVISIONING_HOME_WIDGET.pluginId,
+  AGENT_PROVISIONING_HOME_WIDGET.id,
+  AGENT_PROVISIONING_HOME_WIDGET.Component,
+);
 
 // Per-plugin frontpage widgets (#9143): each surfaces a compact, attention-
 // ranked slice of its plugin's own state on the home grid (a step up from the
@@ -443,6 +460,36 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   // Recent conversations, agent activity, wallet, and running workflows. Each is
   // backed by a core API surface and renders populated data, a connected-but-
   // empty state, or self-hides when empty.
+  // Local model download (LOCAL mode): surfaces the recommended on-device text
+  // model downloading — queued / %-progress / loading / failed-with-retry — so a
+  // fresh "This device" agent shows progress instead of a dead chat. Self-hides
+  // when no local model is required (cloud/remote) or every slot is ready.
+  {
+    id: MODEL_DOWNLOAD_HOME_WIDGET.id,
+    pluginId: MODEL_DOWNLOAD_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Local model",
+    icon: "Download",
+    order: MODEL_DOWNLOAD_HOME_WIDGET.order,
+    defaultEnabled: true,
+    signalKinds: MODEL_DOWNLOAD_HOME_WIDGET.signalKinds,
+    size: { cols: 2, rows: 1 },
+  },
+  // Cloud-agent provisioning (CLOUD mode): while a freshly-provisioned dedicated
+  // cloud agent boots, the user already chats on the shared agent and this tile
+  // shows the background setup plus a Retry control. Self-hides once the
+  // dedicated agent attaches or for a pure-local runtime.
+  {
+    id: AGENT_PROVISIONING_HOME_WIDGET.id,
+    pluginId: AGENT_PROVISIONING_HOME_WIDGET.pluginId,
+    slot: "home",
+    label: "Cloud agent",
+    icon: "CloudCog",
+    order: AGENT_PROVISIONING_HOME_WIDGET.order,
+    defaultEnabled: true,
+    signalKinds: AGENT_PROVISIONING_HOME_WIDGET.signalKinds,
+    size: { cols: 2, rows: 1 },
+  },
   {
     id: "messages.recent",
     pluginId: "messages",
@@ -605,6 +652,13 @@ const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   // active user workflows); always-visible since it self-hides when nothing is
   // running. `workflow` matches @elizaos/plugin-workflow (default-enabled).
   "workflow",
+  // Setup-progress tiles backed by core surfaces, not loadable plugins: the
+  // local model download (local-inference hub) and the cloud-agent provisioning
+  // handoff (cloud handoff phase). Must render regardless of the plugin snapshot
+  // so a fresh local/cloud agent watches setup on the home grid; each self-hides
+  // when there's nothing in flight (model ready / dedicated agent attached).
+  "local-inference",
+  "cloud-agent",
 ]);
 
 export interface ResolvedWidget {

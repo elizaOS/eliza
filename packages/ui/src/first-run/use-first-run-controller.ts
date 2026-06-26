@@ -778,20 +778,25 @@ export function useFirstRunController(): FirstRunController {
           : {}),
       });
       persistMobileRuntimeModeForServerTarget("elizacloud");
-      setBusyText("Saving first-run profile");
-      // A shared-runtime cloud agent has no agent server, so POST /api/first-run
-      // (submitFirstRun) 404s — there is no per-agent first-run config store to
-      // write to, and the agent is already provisioned + named cloud-side. Don't
-      // let that 404 throw and strand onboarding before completeFirstRun() runs;
-      // tolerate it for a shared-agent base and finish the transition to chat.
-      try {
-        await client.submitFirstRun(plan.payload);
-      } catch (err) {
-        if (!isDirectCloudSharedAgentBase(client.getBaseUrl())) throw err;
-      }
+
+      // Land the user in chat NOW. The agent record exists and the shared REST
+      // adapter base is already bound + persisted above, so the user can chat on
+      // the shared agent immediately — onboarding must not block on the
+      // first-run-profile write or the dedicated-container boot. Everything that
+      // remains (the best-effort profile write, the shared→dedicated handoff) is
+      // a background step surfaced post-onboarding by AgentProvisioningWidget +
+      // CloudHandoffBanner, both retryable. (PART B: non-blocking provisioning.)
       clearPersistedFirstRunState();
       setBusyText(null);
       completeFirstRun("chat", { launchCompanionOverlay: true });
+
+      // A shared-runtime cloud agent has no agent server, so POST /api/first-run
+      // (submitFirstRun) 404s — there is no per-agent first-run config store to
+      // write to, and the agent is already provisioned + named cloud-side. Fire
+      // it un-awaited after navigation: on a real (non-shared) base it still
+      // persists the profile; a shared-base 404 (or any failure) is swallowed so
+      // it can never strand the post-onboarding chat the user is already in.
+      void client.submitFirstRun(plan.payload).catch(() => {});
 
       // Seamless shared→personal handoff. A freshly created cloud agent serves
       // the user from the shared REST adapter while its dedicated container
