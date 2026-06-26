@@ -42,7 +42,7 @@
  *   ELIZA_MTP_FORCE_REBUILD=1       ignore a cached slice and rebuild
  */
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -52,6 +52,19 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 // packages/app-core/scripts → repo root
 const repoRoot = path.resolve(here, "..", "..", "..");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 // ── State dir — MUST mirror run-mobile-build.mjs elizaStateDirForBuild() and
 //    ios-xcframework/build-xcframework.mjs elizaStateDir() EXACTLY, otherwise
@@ -207,7 +220,7 @@ function requiredKernelsMissing(symbolsText) {
 
 function copyHeaders(srcDir, outDir) {
   const incOut = path.join(outDir, "include");
-  fs.rmSync(incOut, { recursive: true, force: true });
+  removePathRecursive(incOut);
   fs.mkdirSync(incOut, { recursive: true });
   for (const incDir of [
     path.join(srcDir, "include"),
@@ -294,7 +307,7 @@ function buildTarget(target) {
 
   const buildDir = path.join(STATE_DIR, "local-inference", "mtp-build", target);
   if (process.env.ELIZA_MTP_FORCE_REBUILD === "1") {
-    fs.rmSync(buildDir, { recursive: true, force: true });
+    removePathRecursive(buildDir);
   }
   fs.mkdirSync(buildDir, { recursive: true });
   fs.mkdirSync(outDir, { recursive: true });
