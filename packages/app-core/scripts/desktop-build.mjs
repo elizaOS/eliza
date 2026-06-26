@@ -1569,8 +1569,16 @@ function packageDesktopBuild() {
       : "Packaging Electrobun app",
   });
 
-  mirrorCanonicalToLegacy("build");
-  mirrorCanonicalToLegacy("artifacts");
+  // The legacy compatibility path (APP_DIR/electrobun) is not read by any
+  // production code — only docs and this mirror fn reference it (the inno
+  // installer takes BuildDir as a param; copy-runtime-node-modules reads the
+  // canonical platforms/electrobun path). Mirroring the entire ~2.3 GB /
+  // ~110k-file build tree on every package build is pure waste, so make it
+  // opt-in (default off). Set ELIZA_ELECTROBUN_MIRROR_LEGACY=1 to restore it.
+  if (process.env.ELIZA_ELECTROBUN_MIRROR_LEGACY === "1") {
+    mirrorCanonicalToLegacy("build");
+    mirrorCanonicalToLegacy("artifacts");
+  }
 
   // Electrobun's built-in rcedit call references a CI-local D:\ path that
   // doesn't exist on developer machines. Re-embed the icon from a locally
