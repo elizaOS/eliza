@@ -60,7 +60,7 @@ async function build() {
 			// Task 2: Generate TypeScript declarations
 			(async () => {
 				console.log("📝 Generating TypeScript declarations...");
-				await $`tsc --emitDeclarationOnly --incremental --project ./tsconfig.build.json`.quiet();
+				await $`tsc --emitDeclarationOnly --incremental --noCheck --project ./tsconfig.build.json`.quiet();
 				console.log("✓ TypeScript declarations generated");
 				return { success: true };
 			})(),
