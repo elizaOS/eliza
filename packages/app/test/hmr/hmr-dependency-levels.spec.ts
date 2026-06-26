@@ -94,6 +94,14 @@ const LEVELS = [
     file: "plugins/plugin-shopify-ui/src/ShopifyAppView.tsx",
   },
   {
+    name: "plugin view notes",
+    file: "plugins/plugin-simple-views/src/ui.tsx",
+  },
+  {
+    name: "plugin view simple-calendar",
+    file: "plugins/plugin-simple-views/src/ui.tsx",
+  },
+  {
     name: "plugin view steward",
     file: "plugins/plugin-steward-app/src/StewardView.tsx",
   },
@@ -200,6 +208,8 @@ const VIEWS_NOT_IN_ROOT_GRAPH = new Set<string>([
   "plugin view messages",
   "plugin view polymarket",
   "plugin view shopify",
+  "plugin view notes",
+  "plugin view simple-calendar",
   "plugin view vector-browser",
   "plugin view manager",
   "plugin view screenshare",

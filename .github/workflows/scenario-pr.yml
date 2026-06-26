@@ -551,7 +551,7 @@ jobs:
       - app-browser-ratcheted
       - app-diagnostics
       - scenario-runner-e2e
-    if: always() && needs.changes.outputs.run_scenario_pr == 'true'
+    if: ${{ !cancelled() && always() && needs.changes.outputs.run_scenario_pr == 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Check deterministic E2E slices

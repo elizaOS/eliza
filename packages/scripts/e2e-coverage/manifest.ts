@@ -150,6 +150,9 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-browser": existing(
     "plugins/plugin-browser/src/routes/workspace-routes.test.ts",
   ),
+  "plugin-calendar": existing(
+    "plugins/plugin-calendar/test/calendar-routes.test.ts",
+  ),
   "plugin-documents": existing("plugins/plugin-documents/test/routes.test.ts"),
   "plugin-elizacloud": existing(
     "plugins/plugin-elizacloud/__tests__/cloud-billing-routes.test.ts",
@@ -165,6 +168,9 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   ),
   "plugin-shopify-ui": existing(
     "plugins/plugin-shopify-ui/src/routes.contract.test.ts",
+  ),
+  "plugin-simple-views": coveredByHono(
+    "plugins/plugin-simple-views/src/routes-e2e.test.ts",
   ),
   "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
   "plugin-social-alpha": existing(

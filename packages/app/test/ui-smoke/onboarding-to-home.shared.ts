@@ -582,8 +582,10 @@ export async function completeOnboardingToHome(
 /**
  * Swipe-left on the home page → the rail pans to the springboard, then assert a
  * real launcher tile. Uses a real left-flick that moves past the 72px
- * RAIL_FLICK_THRESHOLD. Touch-capable mobile contexts drive the gesture through
- * Chromium's touch-input path; desktop contexts use a mouse pointer drag.
+ * RAIL_FLICK_THRESHOLD. Touch-capable mobile contexts try Chromium's
+ * touch-input path first, then fall back to the component's touch-typed
+ * pointer contract if CI does not synthesize pointer events from that touch
+ * stream. Desktop contexts use a mouse pointer drag.
  */
 export async function swipeLeftToSpringboard(
   page: Page,
@@ -622,6 +624,36 @@ export async function swipeLeftToSpringboard(
       });
     } finally {
       await client.detach().catch(() => undefined);
+    }
+    await page.waitForTimeout(250);
+    if ((await surface.getAttribute("data-page")) !== "springboard") {
+      await homePage.evaluate(
+        (element, coordinates) => {
+          const dispatchPointer = (type: string, x: number) => {
+            element.dispatchEvent(
+              new PointerEvent(type, {
+                bubbles: true,
+                button: 0,
+                buttons: type === "pointerup" ? 0 : 1,
+                cancelable: true,
+                clientX: x,
+                clientY: coordinates.midY,
+                composed: true,
+                isPrimary: true,
+                pointerId: 1,
+                pointerType: "touch",
+              }),
+            );
+          };
+
+          dispatchPointer("pointerdown", coordinates.startX);
+          for (let i = 1; i <= 6; i++) {
+            dispatchPointer("pointermove", coordinates.startX - i * 40);
+          }
+          dispatchPointer("pointerup", coordinates.startX - 240);
+        },
+        { startX, midY },
+      );
     }
   } else {
     await page.mouse.move(startX, midY);
