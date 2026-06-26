@@ -24,7 +24,11 @@ const ALLOW = {
 	// @elizaos/core: build uses tsconfig.build.json but typecheck uses
 	// tsconfig.json — a possible coverage delta; converting needs a deliberate
 	// framework decision, not a blind --noCheck (issue #9626).
-	doubleCheck: new Set(["@elizaos/core"]),
+	// @elizaos/plugin-streaming: under --noCheck, tsc reorders an inferred
+	// union member in services/stream-manager.d.ts (functionally identical but
+	// not byte-identical), so its declaration emit deliberately keeps the full
+	// check to preserve byte-stable published types (#9626).
+	doubleCheck: new Set(["@elizaos/core", "@elizaos/plugin-streaming"]),
 	// These packages currently fail `tsgo` (it flags errors `tsc` does not);
 	// kept on `tsc` until those are resolved.
 	tscTypecheck: new Set([
@@ -75,7 +79,11 @@ function isFullTscEmit(script) {
 	const emits = /--emitDeclarationOnly|--declaration\b|-p\s+tsconfig|--project\s+tsconfig/.test(script);
 	if (!emits) return false;
 	if (/--noCheck/.test(script)) return false;
-	if (/--noEmit/.test(script)) return false; // that's a check, not an emit
+	// `--noEmit` means a pure check (no emit) — UNLESS it's `--noEmit false`,
+	// which re-enables emit to override a tsconfig `noEmit: true`. So
+	// `tsc --emitDeclarationOnly --noEmit false` (no --noCheck) is still a full
+	// type-check that emits, and must be flagged.
+	if (/--noEmit\b(?!\s+false)/.test(script)) return false;
 	return true;
 }
 

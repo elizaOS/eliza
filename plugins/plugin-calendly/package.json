@@ -33,7 +33,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --clean && tsc --declaration --emitDeclarationOnly --noEmit false",
+    "build": "tsup src/index.ts --format esm --clean && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo"
