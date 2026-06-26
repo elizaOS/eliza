@@ -28,6 +28,7 @@ import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import { getSetting } from "../utils/settings";
+import { materializeEnvAccountIfMissing } from "../connector-account-provider.js";
 import { TwitterPostService } from "./PostService";
 
 const X_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -303,6 +304,13 @@ export class XService extends Service {
     service.runtime = runtime;
 
     try {
+      const authMode = (
+        getSetting(runtime, "TWITTER_AUTH_MODE") || "env"
+      ).toLowerCase();
+      if (authMode === "env") {
+        await materializeEnvAccountIfMissing(runtime);
+      }
+
       const defaultState = await resolveTwitterAccountConfig(runtime);
       await validateTwitterConfig(runtime, defaultState);
       service.defaultAccountId = resolveDefaultXAccountId(
