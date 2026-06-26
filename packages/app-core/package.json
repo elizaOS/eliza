@@ -238,6 +238,7 @@
 		"@capacitor/preferences": "^8.0.1",
 		"@capacitor/push-notifications": "^8.0.0",
 		"@clack/prompts": "^1.0.0",
+		"@elizaos/agent": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-anthropic": "workspace:*",
 		"@elizaos/plugin-browser": "workspace:*",
