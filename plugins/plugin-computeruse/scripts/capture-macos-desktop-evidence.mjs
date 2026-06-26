@@ -224,6 +224,29 @@ function newCheck(id) {
   };
 }
 
+export function isMacosAccessibilityEvidenceBlocker(message) {
+  const normalized = String(message ?? "").toLowerCase();
+  return [
+    "accessibility permission",
+    "assistive access",
+    "system events",
+    "placeholder window metadata",
+    "could not read textedit bounds",
+    "listwindows could not resolve the textedit window",
+    "spawnsync osascript etimedout",
+  ].some((needle) => normalized.includes(needle));
+}
+
+function macosAccessibilityEvidence(id, message) {
+  if (!isMacosAccessibilityEvidenceBlocker(message)) return null;
+  return {
+    status: "requires_device_evidence",
+    requiredEvidence: [
+      `${id} requires rerun with macOS Accessibility permission granted: ${message}`,
+    ],
+  };
+}
+
 function setCheck(checks, details, id, status, requiredEvidence, extra = {}) {
   checks.set(id, {
     id,
@@ -238,7 +261,7 @@ function setCheck(checks, details, id, status, requiredEvidence, extra = {}) {
   };
 }
 
-async function runCheck(checks, details, id, fn) {
+async function runCheck(checks, details, id, fn, options = {}) {
   try {
     const result = await fn();
     setCheck(
@@ -250,14 +273,14 @@ async function runCheck(checks, details, id, fn) {
       result.details ? { details: result.details } : {},
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const classified = options.classifyError?.(message, error);
     setCheck(
       checks,
       details,
       id,
-      "failed",
-      [
-        `${id} failed: ${error instanceof Error ? error.message : String(error)}`,
-      ],
+      classified?.status ?? "failed",
+      classified?.requiredEvidence ?? [`${id} failed: ${message}`],
       {
         error:
           error instanceof Error
@@ -703,57 +726,68 @@ async function main() {
       };
     });
 
-    await runCheck(checks, details, "windowListFocus", async () => {
-      const list = await service.executeCommand("list_windows");
-      if (!list.success || !Array.isArray(list.windows)) {
-        throw new Error(`list_windows failed: ${list.error ?? "unknown"}`);
-      }
-      const usableWindows = list.windows.filter(usableWindow);
-      if (list.windows.length === 0) {
-        throw new Error(
-          "list_windows returned no visible windows; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
-        );
-      }
-      if (usableWindows.length === 0) {
-        throw new Error(
-          "list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
-        );
-      }
-      const focusableWindows = usableWindows.filter(focusableWindow);
-      if (focusableWindows.length === 0) {
-        throw new Error(
-          "list_windows returned windows without focusable application names; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
-        );
-      }
-      const active = await service.executeWindowAction({
-        action: "get_current_window_id",
-      });
-      const target =
-        active?.window && focusableWindow(active.window)
-          ? (focusableWindows.find(
-              (windowInfo) => windowInfo.id === active.window.id,
-            ) ?? focusableWindows[0])
-          : focusableWindows[0];
-      if (!target) throw new Error("no visible window available to focus");
-      const focus = await service.executeCommand("switch_to_window", {
-        windowId: target.id,
-      });
-      if (!focus.success) {
-        throw new Error(`switch_to_window failed: ${focus.error ?? "unknown"}`);
-      }
-      return {
-        status: "passed",
-        requiredEvidence: [
-          `listWindows returned ${list.windows.length} visible window(s)`,
-          `focusWindow/switchWindow succeeded for ${target.app ?? "unknown"}:${target.id}`,
-          "window operation errors retain permission guidance through service failure results",
-        ],
-        details: {
-          focusedWindow: target,
-          sampleWindows: list.windows.slice(0, 5),
-        },
-      };
-    });
+    await runCheck(
+      checks,
+      details,
+      "windowListFocus",
+      async () => {
+        const list = await service.executeCommand("list_windows");
+        if (!list.success || !Array.isArray(list.windows)) {
+          throw new Error(`list_windows failed: ${list.error ?? "unknown"}`);
+        }
+        const usableWindows = list.windows.filter(usableWindow);
+        if (list.windows.length === 0) {
+          throw new Error(
+            "list_windows returned no visible windows; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
+          );
+        }
+        if (usableWindows.length === 0) {
+          throw new Error(
+            "list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
+          );
+        }
+        const focusableWindows = usableWindows.filter(focusableWindow);
+        if (focusableWindows.length === 0) {
+          throw new Error(
+            "list_windows returned windows without focusable application names; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry",
+          );
+        }
+        const active = await service.executeWindowAction({
+          action: "get_current_window_id",
+        });
+        const target =
+          active?.window && focusableWindow(active.window)
+            ? (focusableWindows.find(
+                (windowInfo) => windowInfo.id === active.window.id,
+              ) ?? focusableWindows[0])
+            : focusableWindows[0];
+        if (!target) throw new Error("no visible window available to focus");
+        const focus = await service.executeCommand("switch_to_window", {
+          windowId: target.id,
+        });
+        if (!focus.success) {
+          throw new Error(
+            `switch_to_window failed: ${focus.error ?? "unknown"}`,
+          );
+        }
+        return {
+          status: "passed",
+          requiredEvidence: [
+            `listWindows returned ${list.windows.length} visible window(s)`,
+            `focusWindow/switchWindow succeeded for ${target.app ?? "unknown"}:${target.id}`,
+            "window operation errors retain permission guidance through service failure results",
+          ],
+          details: {
+            focusedWindow: target,
+            sampleWindows: list.windows.slice(0, 5),
+          },
+        };
+      },
+      {
+        classifyError: (message) =>
+          macosAccessibilityEvidence("windowListFocus", message),
+      },
+    );
 
     if (options.skipInput) {
       setCheck(
@@ -799,12 +833,32 @@ async function main() {
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        setCheck(checks, details, "mouseKeyboardInput", "failed", [
-          `controlled TextEdit input proof failed: ${message}`,
-        ]);
-        setCheck(checks, details, "accessibilityPermission", "failed", [
-          `Accessibility-gated input/window proof failed: ${message}`,
-        ]);
+        const inputBlocker = macosAccessibilityEvidence(
+          "controlled TextEdit input proof",
+          message,
+        );
+        const accessibilityBlocker = macosAccessibilityEvidence(
+          "Accessibility-gated input/window proof",
+          message,
+        );
+        setCheck(
+          checks,
+          details,
+          "mouseKeyboardInput",
+          inputBlocker?.status ?? "failed",
+          inputBlocker?.requiredEvidence ?? [
+            `controlled TextEdit input proof failed: ${message}`,
+          ],
+        );
+        setCheck(
+          checks,
+          details,
+          "accessibilityPermission",
+          accessibilityBlocker?.status ?? "failed",
+          accessibilityBlocker?.requiredEvidence ?? [
+            `Accessibility-gated input/window proof failed: ${message}`,
+          ],
+        );
       }
     }
 
@@ -980,4 +1034,6 @@ async function main() {
   }
 }
 
-await preserveApprovalConfig(main);
+if (import.meta.main) {
+  await preserveApprovalConfig(main);
+}

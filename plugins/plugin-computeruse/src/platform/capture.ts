@@ -216,10 +216,32 @@ function captureDisplayLinux(tmpFile: string, display: DisplayInfo): void {
     runCommandBuffer("gnome-screenshot", ["-f", tmpFile], 10000);
     return;
   }
+  if (commandExists("ffmpeg")) {
+    const displayEnv = process.env.DISPLAY || ":0";
+    runCommandBuffer(
+      "ffmpeg",
+      [
+        "-y",
+        "-loglevel",
+        "error",
+        "-f",
+        "x11grab",
+        "-video_size",
+        `${w}x${h}`,
+        "-i",
+        `${displayEnv}+${x},${y}`,
+        "-frames:v",
+        "1",
+        tmpFile,
+      ],
+      10000,
+    );
+    return;
+  }
   throw new Error(
     isWaylandSession()
-      ? "No screenshot tool available. Install xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, or gnome-screenshot for X11 fallback."
-      : "No screenshot tool available. Install ImageMagick (import), scrot, or gnome-screenshot.",
+      ? "No screenshot tool available. Install xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, gnome-screenshot, or ffmpeg for X11 fallback."
+      : "No screenshot tool available. Install ImageMagick (import), scrot, gnome-screenshot, or ffmpeg.",
   );
 }
 
@@ -244,6 +266,28 @@ function captureRegionLinux(tmpFile: string, region: ScreenRegion): void {
       [
         "-a",
         `${region.x},${region.y},${region.width},${region.height}`,
+        tmpFile,
+      ],
+      10000,
+    );
+    return;
+  }
+  if (commandExists("ffmpeg")) {
+    const display = process.env.DISPLAY || ":0";
+    runCommandBuffer(
+      "ffmpeg",
+      [
+        "-y",
+        "-loglevel",
+        "error",
+        "-f",
+        "x11grab",
+        "-video_size",
+        `${region.width}x${region.height}`,
+        "-i",
+        `${display}+${region.x},${region.y}`,
+        "-frames:v",
+        "1",
         tmpFile,
       ],
       10000,
