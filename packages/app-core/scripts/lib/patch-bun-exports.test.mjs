@@ -1,10 +1,5 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,6 +7,22 @@ import {
   applyEsmDynamicRequireCompat,
   patchGitWorkspaceServiceEsmRequireCompat,
 } from "./patch-bun-exports.mjs";
+import { resolveRepoRootFromImportMeta } from "./repo-root.mjs";
+
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 describe("patch-bun-exports", () => {
   it("applyEsmDynamicRequireCompat replaces generated require shims", () => {
@@ -40,7 +51,7 @@ describe("patch-bun-exports", () => {
       );
       expect(updated).not.toContain("Dynamic require of");
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      removePathRecursive(tmp);
     }
   });
 
@@ -73,7 +84,7 @@ describe("patch-bun-exports", () => {
       expect(logs).toHaveLength(1);
       expect(logs[0]).toContain("git-workspace-service");
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      removePathRecursive(tmp);
     }
   });
 });
