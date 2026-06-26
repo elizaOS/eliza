@@ -33,7 +33,16 @@ const coreMock = vi.hoisted(() => ({
 		error instanceof Error ? error.message : String(error),
 }));
 
-vi.mock("@elizaos/core", () => coreMock);
+// views-show.ts (loaded via ./views.js and the direct resolveIntentView import)
+// pulls getUserMessageText from @elizaos/core, so the mock must carry the real
+// implementation — keep the rest of core mocked. Mirrors views-management.test.ts.
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return {
+		...coreMock,
+		getUserMessageText: actual.getUserMessageText,
+	};
+});
 
 function message(text: string, roomId = "room-1") {
 	return {
