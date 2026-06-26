@@ -69,16 +69,18 @@ const TRAINING_TIER_KEYS: Record<string, string> = {
   "google-gemma-4-e4b": "gemma4-e4b",
   "google-gemma-4-12b": "gemma4-12b",
   "google-gemma-4-31b": "gemma4-31b",
-  "qwen3.5-2b": "gemma4-e2b",
-  "qwen3.5-4b": "gemma4-e4b",
-  "qwen3.5-9b": "gemma4-12b",
-  "qwen3.5-27b": "gemma4-31b",
-  "qwen3.6-27b": "gemma4-31b",
 };
+
+const RETIRED_QWEN_TIER_ALIAS_RE = /\bqwen(?:\d+(?:\.\d+)?)?\b/i;
 
 function normalizeTrainingTierKey(value: string): string {
   const trimmed = value.trim();
   const key = trimmed.toLowerCase().replace(/_/g, "-");
+  if (RETIRED_QWEN_TIER_ALIAS_RE.test(key)) {
+    throw new Error(
+      `Qwen tier aliases are retired; use an active Gemma 4 tier key instead (${ELIZA_ONE_BENCHMARK_TIER_LIST}).`,
+    );
+  }
   return (
     TRAINING_TIER_KEYS[key] ??
     TRAINING_TIER_KEYS[key.replace(/\//g, "-")] ??

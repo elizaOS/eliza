@@ -84,6 +84,11 @@ describe("benchmark_vs_cerebras runner", () => {
     expect(benchmarkVsCerebrasTierList("google/gemma-4-E2B")).toBe(
       "gemma4-e2b",
     );
-    expect(benchmarkVsCerebrasTierList("qwen3.5-2b")).toBe("gemma4-e2b");
+  });
+
+  it("rejects retired Qwen tier aliases instead of remapping them", () => {
+    expect(() => benchmarkVsCerebrasTierList("qwen3.5-2b")).toThrow(
+      /Qwen tier aliases are retired/,
+    );
   });
 });

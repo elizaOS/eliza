@@ -128,7 +128,7 @@ describe("scorePlannerAction — view-aware (the fix)", () => {
   });
 
   it("gives partial credit (0.5) for the right action but the wrong view", () => {
-    // This is the gap that made the 0.8B's wrong-view output look perfect.
+    // This is the gap that made entry-tier wrong-view output look perfect.
     expect(
       scorePlannerAction(
         '{"action":"VIEWS","parameters":{"view":"wallet"}}',
