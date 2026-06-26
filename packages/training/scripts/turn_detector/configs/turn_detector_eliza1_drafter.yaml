@@ -3,7 +3,7 @@
 # Trains a LoRA adapter on top of the eliza-1 drafter (the same model
 # MTP already keeps warm for speculative decoding). The runtime
 # layers the resulting adapter onto a dedicated EOT context at voice
-# session start and reads P(`<|im_end|>`) directly off the live model —
+# session start and reads P(`<end_of_turn>`) directly off the live model —
 # see `plugins/plugin-local-inference/src/services/voice/eliza1-eot-scorer.ts`.
 #
 # Compared with the LiveKit/Turnsense configs in this directory the

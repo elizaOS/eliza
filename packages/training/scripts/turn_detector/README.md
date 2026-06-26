@@ -78,7 +78,7 @@ slot the runtime validator enforces.
 of the eliza-1 drafter (the small model MTP already keeps warm for
 speculative decoding) instead of a standalone ONNX. The runtime layers
 the adapter onto a dedicated EOT context at voice-session start and
-reads P(`<|im_end|>`) directly off the live model — see
+reads P(`<end_of_turn>`) directly off the live model — see
 [`plugins/plugin-local-inference/src/services/voice/eliza1-eot-scorer.ts`](../../../../plugins/plugin-local-inference/src/services/voice/eliza1-eot-scorer.ts).
 
 ```bash
