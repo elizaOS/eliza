@@ -1,13 +1,22 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
   resolveAndroidNdkHostDir,
   resolveDefaultAndroidAssetsDir,
   resolveHomebrewFormulaIncludeDirs,
 } from "./compile-libllama-paths.mjs";
 
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const tmpDirs = [];
 
 function makeTmpDir() {
@@ -16,9 +25,16 @@ function makeTmpDir() {
   return dir;
 }
 
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
+
 afterEach(() => {
   while (tmpDirs.length > 0) {
-    fs.rmSync(tmpDirs.pop(), { recursive: true, force: true });
+    removePathRecursive(tmpDirs.pop());
   }
 });
 
