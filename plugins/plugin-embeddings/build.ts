@@ -1,11 +1,22 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { build } from "bun";
 
 const ROOT = resolve(dirname(import.meta.path));
 const DIST = join(ROOT, "dist");
+const RM_RECURSIVE_SCRIPT = join(ROOT, "..", "..", "packages", "scripts", "rm-path-recursive.mjs");
 
-rmSync(DIST, { recursive: true, force: true });
+function rmRecursive(targetPath: string) {
+  const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`failed to remove generated plugin-embeddings build output ${targetPath}`);
+  }
+}
+
+rmRecursive(DIST);
 mkdirSync(DIST, { recursive: true });
 mkdirSync(join(DIST, "node"), { recursive: true });
 mkdirSync(join(DIST, "browser"), { recursive: true });
