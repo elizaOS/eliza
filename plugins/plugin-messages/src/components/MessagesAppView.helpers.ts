@@ -5,7 +5,11 @@
 
 import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
-import { System, type SystemStatus } from "@elizaos/capacitor-system";
+import {
+  type AndroidRoleStatus,
+  System,
+  type SystemStatus,
+} from "@elizaos/capacitor-system";
 
 export type ThreadSummary = {
   id: string;
@@ -44,7 +48,9 @@ export function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
 }
 
 export function smsRole(status: SystemStatus | null) {
-  return status?.roles.find((role) => role.role === "sms") ?? null;
+  return (
+    status?.roles.find((role: AndroidRoleStatus) => role.role === "sms") ?? null
+  );
 }
 
 export function normalizeMessagesLimit(value: unknown, fallback = 200): number {

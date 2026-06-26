@@ -42,13 +42,13 @@
         "../../packages/contracts/src/*"
       ],
       "@elizaos/ui": [
-        "./src/ui-shims.ts"
+        "../../packages/ui/dist/index.d.ts"
       ],
       "@elizaos/ui/agent-surface": [
-        "./src/ui-shims.ts"
+        "../../packages/ui/dist/agent-surface/index.d.ts"
       ],
       "@elizaos/ui/app-shell-registry": [
-        "./src/ui-shims.ts"
+        "../../packages/ui/dist/app-shell-registry.d.ts"
       ],
       "@elizaos/ui/spatial/tui": [
         "../../packages/ui/dist/spatial/tui/index.d.ts"
@@ -57,7 +57,7 @@
         "../../packages/ui/dist/spatial/index.d.ts"
       ],
       "@elizaos/ui/*": [
-        "./src/ui-shims.ts"
+        "../../packages/ui/dist/*"
       ],
       "react": [
         "./node_modules/@types/react"

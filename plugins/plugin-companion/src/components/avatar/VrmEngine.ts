@@ -1,9 +1,3 @@
-declare global {
-  interface Navigator {
-    readonly gpu?: unknown;
-  }
-}
-
 import { resolveAppAssetUrl } from "@elizaos/ui/utils";
 import {
   MToonMaterialLoaderPlugin,

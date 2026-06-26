@@ -131,12 +131,22 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         );
         return 1;
       }
+      // The eval helper lives in plugin-personal-assistant's test tree, which is
+      // outside this package's emit rootDir. Declare the single export's real
+      // signature locally so the dynamic import stays fully typed without a
+      // static `typeof import()` reference dragging an out-of-rootDir file into
+      // the build program (TS6059).
+      interface LifeOpsEvalModelModule {
+        getTrainingUseModelAdapter(): (input: {
+          prompt: string;
+          temperature?: number;
+          maxTokens?: number;
+        }) => Promise<string>;
+      }
       const helperPath =
         "../../../plugin-personal-assistant/test/helpers/lifeops-eval-model.ts";
-      const { getTrainingUseModelAdapter } = (await import(
-        helperPath
-      )) as typeof import("../../../plugin-personal-assistant/test/helpers/lifeops-eval-model.ts");
-      const useModel = getTrainingUseModelAdapter();
+      const helperModule: LifeOpsEvalModelModule = await import(helperPath);
+      const useModel = helperModule.getTrainingUseModelAdapter();
       const adapter = {
         async complete(input: {
           system?: string;

@@ -1,7 +1,7 @@
 {
 	"extends": "../tsconfig.build.shared.json",
 	"compilerOptions": {
-		"baseUrl": "..",
+		"strict": true,
 		"outDir": "dist",
 		"rootDir": "./src"
 	},

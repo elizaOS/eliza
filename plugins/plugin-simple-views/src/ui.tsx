@@ -617,7 +617,7 @@ function eventsForDate(
 ): SimpleCalendarEvent[] {
   return events
     .filter((event) => event.date === date)
-    .toSorted((a, b) =>
+    .sort((a: SimpleCalendarEvent, b: SimpleCalendarEvent) =>
       `${a.time} ${a.title}`.localeCompare(`${b.time} ${b.title}`),
     );
 }

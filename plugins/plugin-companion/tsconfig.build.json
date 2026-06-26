@@ -2,7 +2,17 @@
   "extends": "../tsconfig.build.shared.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "paths": {
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../packages/core/dist/*"],
+      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
+      "@elizaos/plugin-wallet-ui": ["../plugin-wallet-ui/dist/index.d.ts"],
+      "@elizaos/plugin-wallet-ui/*": ["../plugin-wallet-ui/dist/*"]
+    }
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]

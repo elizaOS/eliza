@@ -53,7 +53,7 @@ function renderToken(token: Token, key: string): ReactNode {
         </blockquote>
       );
     case "list": {
-      const items = token.items.map((item, index) => {
+      const items = token.items.map((item: Tokens.ListItem, index: number) => {
         // Composite path key (parent path + position): stable across this
         // immutable, fully-recomputed AST render, and unique among siblings.
         const itemKey = `${key}.${index}`;
@@ -92,7 +92,7 @@ function renderToken(token: Token, key: string): ReactNode {
           <table className="w-full border-collapse text-2xs">
             <thead>
               <tr>
-                {token.header.map((cell, index) => {
+                {token.header.map((cell: Tokens.TableCell, index: number) => {
                   const cellKey = `${key}.h${index}`;
                   return (
                     <th
@@ -107,11 +107,11 @@ function renderToken(token: Token, key: string): ReactNode {
               </tr>
             </thead>
             <tbody>
-              {token.rows.map((row, rowIndex) => {
+              {token.rows.map((row: Tokens.TableCell[], rowIndex: number) => {
                 const rowKey = `${key}.r${rowIndex}`;
                 return (
                   <tr key={rowKey}>
-                    {row.map((cell, cellIndex) => {
+                    {row.map((cell: Tokens.TableCell, cellIndex: number) => {
                       const cellKey = `${rowKey}c${cellIndex}`;
                       return (
                         <td
