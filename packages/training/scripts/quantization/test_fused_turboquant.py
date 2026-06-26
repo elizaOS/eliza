@@ -1,4 +1,4 @@
-"""End-to-end validation of fused-TurboQuant on a real Qwen model on the local 5080.
+"""End-to-end validation of fused-TurboQuant on a real Gemma model on the local 5080.
 
 Three measurements on identical prompts, identical lengths:
 

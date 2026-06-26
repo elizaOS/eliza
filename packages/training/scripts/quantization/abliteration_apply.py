@@ -131,7 +131,7 @@ def _load_jsonl_prompts(path: Path, limit: int) -> list[str]:
 
 
 def _resolve_decoder_layers(model: nn.Module) -> nn.ModuleList:
-    """Find the ``ModuleList`` of transformer blocks (Llama / Qwen layout)."""
+    """Find the ``ModuleList`` of transformer blocks in common decoder layouts."""
     candidate_paths = (
         ("model", "layers"),
         ("language_model", "model", "layers"),
