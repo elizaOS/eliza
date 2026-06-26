@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """Train an eliza-1 EOT LoRA adapter.
 
-Tiny LoRA (rank 8, alpha 16) on the eliza-1 chat target. The adapter
-hot-swaps onto the already-loaded chat model at runtime via llama.cpp's
-`--lora` flag; zero extra weights, zero extra RAM, zero extra download.
+Tiny LoRA (rank 8, alpha 16) on active Gemma 4 eliza-1 chat targets.
+The adapter hot-swaps onto the already-loaded chat model at runtime via
+llama.cpp's `--lora` flag; zero extra weights, zero extra RAM, zero extra
+download.
 
 Loss:
   - positive examples (label=1): cross-entropy maximizing the next-token
-    probability of `<|im_end|>` after the chat-template-formatted user
+    probability of `<end_of_turn>` after the chat-template-formatted user
     turn (= P(turn complete | transcript)).
-  - negative examples (label=0): cross-entropy minimizing P(<|im_end|>)
-    by maximizing the probability of any non-`<|im_end|>` continuation
+  - negative examples (label=0): cross-entropy minimizing P(<end_of_turn>)
+    by maximizing the probability of any non-`<end_of_turn>` continuation
     token. Implemented as cross-entropy against a uniform distribution
     over the non-eot logits (smoothed).
 
-Optimizer choice — APOLLO vs 8-bit AdamW:
+Optimizer choice — APOLLO vs plain AdamW:
 
   CLAUDE.md mandates APOLLO for training. APOLLO's win is memory:
   it stores low-rank projected optimizer state in place of the full
@@ -24,14 +25,13 @@ Optimizer choice — APOLLO vs 8-bit AdamW:
   for those params is also tiny, and APOLLO's projection overhead
   outweighs the memory saving.
 
-  Decision: use 8-bit AdamW for LoRA training. APOLLO is the right
+  Decision: use plain AdamW for LoRA training. APOLLO is the right
   call when --apollo is passed explicitly (preserved for benchmarking
-  / for future full-param fine-tunes). Default is 8-bit AdamW.
+  / for future full-param fine-tunes). Default is plain AdamW.
 
-Memory budget at default settings (rank 8, batch 4, seq 512):
-  - eliza-1-0_8b: ~6 GB VRAM
+Memory budget at default settings (rank 8, tier-default batch, seq 512):
   - eliza-1-2b:   ~12 GB VRAM
-  - eliza-1-4b:   ~20 GB VRAM (fits 24 GB consumer GPU)
+  - eliza-1-4b:   ~20 GB VRAM (fits 24 GB consumer GPU at batch 2)
 
 For 16 GB cards, drop `--batch-size 2` and `--gradient-accumulation 2`.
 """
@@ -47,6 +47,12 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger("eot.train_eot_lora")
+
+SCRIPTS_DIR = Path(__file__).resolve().parents[2]
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from training.model_registry import get as get_model_entry  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Target tier registry
@@ -70,22 +76,16 @@ class TierSpec:
 
 
 TIER_REGISTRY: dict[str, TierSpec] = {
-    "0_8b": TierSpec(
-        tier="0_8b",
-        base_id="Qwen/Qwen3.5-0.8B-Base",
-        default_batch_size=8,
-        default_seq_len=512,
-    ),
     "2b": TierSpec(
         tier="2b",
-        base_id="Qwen/Qwen3.5-2B-Base",
+        base_id=get_model_entry("eliza-1-2b").hf_id,
         default_batch_size=4,
         default_seq_len=512,
     ),
     "4b": TierSpec(
         tier="4b",
-        base_id="Qwen/Qwen3.5-4B-Base",
-        default_batch_size=4,
+        base_id=get_model_entry("eliza-1-4b").hf_id,
+        default_batch_size=2,
         default_seq_len=512,
     ),
 }
@@ -151,7 +151,7 @@ class TrainingConfig:
 
 def eot_loss_weights(
     label: int,
-    im_end_token_id: int,
+    eot_token_id: int,
     vocab_size: int,
 ) -> dict[str, float]:
     """Compute per-token weight scheme for the EOT objective.
@@ -160,23 +160,23 @@ def eot_loss_weights(
     example. Pure function — no torch import here so it can run in the
     pytest CPU lane.
 
-    For label=1 (positive): full weight on `im_end_token_id`. The
-    cross-entropy loss is `-log P(im_end_token_id | context)`.
+    For label=1 (positive): full weight on `eot_token_id`. The
+    cross-entropy loss is `-log P(eot_token_id | context)`.
 
-    For label=0 (negative): zero weight on `im_end_token_id` plus
+    For label=0 (negative): zero weight on `eot_token_id` plus
     uniform weight `1/(vocab_size-1)` over every other token. The
-    cross-entropy loss is `-mean log P(non-im-end | context)`, which
-    pushes probability mass away from `<|im_end|>`.
+    cross-entropy loss is `-mean log P(non-EOT | context)`, which
+    pushes probability mass away from `<end_of_turn>`.
     """
     if label not in (0, 1):
         raise ValueError(f"label must be 0 or 1, got {label}")
-    if im_end_token_id < 0 or im_end_token_id >= vocab_size:
+    if eot_token_id < 0 or eot_token_id >= vocab_size:
         raise ValueError(
-            f"im_end_token_id={im_end_token_id} out of range for vocab_size={vocab_size}"
+            f"eot_token_id={eot_token_id} out of range for vocab_size={vocab_size}"
         )
     if label == 1:
-        return {"target_token": float(im_end_token_id), "weight": 1.0, "mode": "positive"}
-    # Negative: smear over non-im-end vocabulary.
+        return {"target_token": float(eot_token_id), "weight": 1.0, "mode": "positive"}
+    # Negative: smear over non-EOT vocabulary.
     return {
         "target_token": -1.0,  # sentinel: not a single-token target
         "weight": 1.0 / (vocab_size - 1),
@@ -189,19 +189,19 @@ def eot_loss_weights(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_im_end_token_id(tokenizer) -> int:
-    """Find the `<|im_end|>` token id in the loaded tokenizer."""
-    for candidate in ("<|im_end|>", "&lt;|im_end|&gt;"):
+def _resolve_eot_token_id(tokenizer) -> int:
+    """Find the Gemma `<end_of_turn>` token id in the loaded tokenizer."""
+    for candidate in ("<end_of_turn>", "&lt;end_of_turn&gt;"):
         ids = tokenizer.convert_tokens_to_ids(candidate)
         if isinstance(ids, int) and ids >= 0:
             return ids
     # Fall back to the chat-template-specific encoding.
-    encoded = tokenizer.encode("<|im_end|>", add_special_tokens=False)
+    encoded = tokenizer.encode("<end_of_turn>", add_special_tokens=False)
     if encoded and len(encoded) == 1:
         return encoded[0]
     raise RuntimeError(
-        "could not resolve <|im_end|> in tokenizer; ensure the base "
-        "model uses the Qwen chat template (Qwen3.5 family)."
+        "could not resolve <end_of_turn> in tokenizer; ensure the base "
+        "model uses the Gemma chat template."
     )
 
 
@@ -262,9 +262,9 @@ def train(config: TrainingConfig) -> Path:
         trust_remote_code=False,
     ).to(device)
 
-    im_end_id = _resolve_im_end_token_id(tokenizer)
+    eot_id = _resolve_eot_token_id(tokenizer)
     vocab_size = int(model.config.vocab_size)
-    logger.info("<|im_end|> token id=%d vocab=%d", im_end_id, vocab_size)
+    logger.info("<end_of_turn> token id=%d vocab=%d", eot_id, vocab_size)
 
     lora_cfg = PeftLoraConfig(
         r=config.lora.rank,
@@ -316,7 +316,7 @@ def train(config: TrainingConfig) -> Path:
                 logits=logits,
                 last_token_idx=last_token_idx,
                 labels=labels,
-                im_end_id=im_end_id,
+                eot_id=eot_id,
                 vocab_size=vocab_size,
                 device=model.device,
             )
@@ -390,7 +390,7 @@ def _iter_batches(records, batch_size, tokenizer, seq_len):
         }
 
 
-def _eot_batch_loss(logits, last_token_idx, labels, im_end_id, vocab_size, device):
+def _eot_batch_loss(logits, last_token_idx, labels, eot_id, vocab_size, device):
     """Compute the EOT loss across a batch.
 
     bf16 logits can produce inf/nan through log_softmax — we cast to fp32
@@ -410,16 +410,16 @@ def _eot_batch_loss(logits, last_token_idx, labels, im_end_id, vocab_size, devic
     losses = []
     for i in range(batch_size):
         if labels[i].item() == 1:
-            # Positive: maximize log P(im_end). Clamp to avoid -inf when
+            # Positive: maximize log P(EOT). Clamp to avoid -inf when
             # the model assigns vanishing mass.
-            log_p_im_end = log_probs[i, im_end_id].clamp(min=-30.0)
-            losses.append(-log_p_im_end)
+            log_p_eot = log_probs[i, eot_id].clamp(min=-30.0)
+            losses.append(-log_p_eot)
         else:
-            # Negative: minimize P(im_end) by maximizing log P(not im_end).
-            #   log P(not im_end) = log(1 - exp(log_probs[im_end]))
-            log_p_im_end = log_probs[i, im_end_id].clamp(min=-30.0, max=-1e-6)
-            log_p_not_im_end = torch.log1p(-torch.exp(log_p_im_end).clamp(max=0.999999))
-            losses.append(-log_p_not_im_end)
+            # Negative: minimize P(EOT) by maximizing log P(not EOT).
+            #   log P(not EOT) = log(1 - exp(log_probs[EOT]))
+            log_p_eot = log_probs[i, eot_id].clamp(min=-30.0, max=-1e-6)
+            log_p_not_eot = torch.log1p(-torch.exp(log_p_eot).clamp(max=0.999999))
+            losses.append(-log_p_not_eot)
 
     stacked = torch.stack(losses)
     # Filter per-example non-finite losses; mean over the survivors.
@@ -497,7 +497,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "batch_size": config.batch_size,
         "learning_rate": config.learning_rate,
         "seed": config.seed,
-        "optimizer": "APOLLOAdamW" if config.use_apollo else "AdamW8bit",
+        "optimizer": "APOLLOAdamW" if config.use_apollo else "AdamW",
     }
     (checkpoint / "eot_lora_manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
