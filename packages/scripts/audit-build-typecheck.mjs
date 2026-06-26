@@ -95,6 +95,25 @@ for (const dir of listPackageDirs()) {
 
 	if (isFullTscEmit(build) && hasSeparateTypecheck && !ALLOW.doubleCheck.has(name)) {
 		violations.push(`${name}: build double-type-checks (add --noCheck to its tsc emit) — ${build.trim()}`);
+	} else if (hasSeparateTypecheck && !ALLOW.doubleCheck.has(name)) {
+		// The build script may delegate to a build.ts/build.mjs that runs tsc
+		// internally — inspect those files for a tsc emit without --noCheck.
+		for (const buildFile of ["build.ts", "build.mjs"]) {
+			if (!new RegExp(`\\b${buildFile.replace(".", "\\.")}\\b`).test(build)) continue;
+			let body;
+			try {
+				body = readFileSync(path.join(dir, buildFile), "utf8");
+			} catch {
+				continue;
+			}
+			for (const line of body.split("\n")) {
+				if (/^\s*(\/\/|\*)/.test(line)) continue; // skip comments
+				if (isFullTscEmit(line)) {
+					violations.push(`${name}: ${buildFile} runs a full tsc type-check (add --noCheck) — ${line.trim()}`);
+					break;
+				}
+			}
+		}
 	}
 	if (/\btsc --noEmit\b/.test(typecheck) && /--noCheck/.test(typecheck)) {
 		violations.push(`${name}: typecheck is a no-op (\`tsc --noEmit --noCheck\` checks nothing)`);
