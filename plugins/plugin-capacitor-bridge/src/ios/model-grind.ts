@@ -238,12 +238,13 @@ export async function runModelGrind(
 				"llama_generate",
 				{
 					context_id: contextId,
-					prompt: "User: Say hello in one short sentence.\nAssistant:",
+					prompt:
+						"<start_of_turn>user\nSay hello in one short sentence.<end_of_turn>\n<start_of_turn>model\n",
 					max_tokens: 48,
 					temperature: 0.7,
 					top_p: 0.9,
 					top_k: 40,
-					stop: ["<|im_end|>", "<|endoftext|>", "\nUser:"],
+					stop: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
 				},
 				120_000,
 			)) as Record<string, unknown>;
