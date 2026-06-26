@@ -102,16 +102,18 @@ describe("J2 — spine + first-run integration", () => {
     // Step 2: provide wake time → completes.
     const done = await service.runDefaultsPath({ wakeTime: "6:30am" });
     expect(done.status).toBe("ok");
-    expect(done.scheduledTasks.length).toBe(4);
+    expect(done.scheduledTasks.length).toBe(5);
 
     const cached = await readFallbackScheduledTasks(runtime);
-    expect(cached.length).toBe(4);
+    expect(cached.length).toBe(5);
     const slots = new Set(
       cached
         .map((t) => t.input.metadata?.slot)
         .filter((s): s is string => typeof s === "string"),
     );
-    expect(slots).toEqual(new Set(["gm", "gn", "checkin", "morningBrief"]));
+    expect(slots).toEqual(
+      new Set(["gm", "gn", "checkin", "morningBrief", "weeklyReview"]),
+    );
 
     // Step 3: pipe the cached inputs into a fresh in-memory runner — this
     // models what the production runner does when it loads cached tasks
@@ -125,7 +127,7 @@ describe("J2 — spine + first-run integration", () => {
       const t = await runner.schedule(cachedRec.input);
       scheduled.push(t);
     }
-    expect(scheduled.length).toBe(4);
+    expect(scheduled.length).toBe(5);
     expect(scheduled.every((t) => t.state.status === "scheduled")).toBe(true);
 
     // Step 4: apply lifecycle verbs across the seeded tasks.

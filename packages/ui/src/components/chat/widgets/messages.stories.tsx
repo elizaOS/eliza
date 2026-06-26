@@ -1,15 +1,21 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import type { Conversation } from "../../../api/client-types-chat";
+import type { Decorator, Meta, StoryObj } from "@storybook/react";
+import { client } from "../../../api/client";
+import type {
+  Conversation,
+  ConversationMessage,
+} from "../../../api/client-types-chat";
 import { mockApp } from "../../../storybook/mock-providers.helpers";
 import { MessagesWidget } from "./messages";
 
 /**
- * The frontpage Messages widget (#9143) reads `state.conversations` directly via
- * `useAppSelector`, so every story seeds the mock app store with a realistic
- * conversation list through the `mockApp({ conversations })` decorator. The
- * widget renders nothing until there is at least one conversation (the #9226
- * "no empty placeholder" contract), so there is no blank/empty story — the
- * meaningful renders are populated, long titles, and unicode titles.
+ * The frontpage Messages widget (#9143) reads `state.conversations` via
+ * `useAppSelector`, then fetches each conversation's messages with
+ * `client.getConversationMessages(id)` to keep only NAMED conversations the
+ * agent has actually responded in (a real user→assistant exchange — never empty
+ * drafts or greeting-only conversations). There is no backend in Storybook, so
+ * a `respondsToEach` decorator stubs `getConversationMessages` to return a real
+ * exchange for every conversation; the widget renders nothing until at least one
+ * qualifies (the #9226 "no empty placeholder" contract).
  *
  * Relative timestamps are rendered via `formatRelativeTime` (Date.now-based);
  * the story-gate's frozen clock keeps these byte-stable across runs.
@@ -23,6 +29,27 @@ function conversation(
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-01T00:00:00.000Z",
     ...over,
+  };
+}
+
+function exchange(userText: string): ConversationMessage[] {
+  return [
+    { id: "u", role: "user", text: userText, timestamp: 1 },
+    { id: "a", role: "assistant", text: "Sure — here you go.", timestamp: 2 },
+  ];
+}
+
+// The widget renders nothing synchronously, then resolves qualification in an
+// effect (after the decorator returns). The stub must therefore stay installed
+// for the render lifetime; each story installs its own before rendering.
+
+/** Every conversation reports a real exchange (so each one qualifies). */
+function respondsToEach(messagesById?: Record<string, string>): Decorator {
+  return (Story) => {
+    client.getConversationMessages = async (id: string) => ({
+      messages: exchange(messagesById?.[id] ?? "Can you help me with this?"),
+    });
+    return <Story />;
   };
 }
 
@@ -59,19 +86,41 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Several recent conversations with mixed relative timestamps. */
+/** Several recent, answered conversations with mixed relative timestamps. */
 export const Populated: Story = {
-  decorators: [mockApp({ conversations: recent })],
+  decorators: [respondsToEach(), mockApp({ conversations: recent })],
 };
 
-/** A single conversation — the smallest non-empty render. */
+/** A single answered conversation — the smallest non-empty render. */
 export const SingleConversation: Story = {
-  decorators: [mockApp({ conversations: [recent[0]] })],
+  decorators: [respondsToEach(), mockApp({ conversations: [recent[0]] })],
+};
+
+/**
+ * A conversation the agent answered but whose title is a server default
+ * ("New Chat") — the name is derived from its latest user message instead.
+ */
+export const DerivedName: Story = {
+  decorators: [
+    respondsToEach({
+      derived: "Help me outline the launch announcement for next week",
+    }),
+    mockApp({
+      conversations: [
+        conversation({
+          id: "derived",
+          title: "New Chat",
+          updatedAt: "2024-01-08T11:00:00.000Z",
+        }),
+      ],
+    }),
+  ],
 };
 
 /** Long titles must truncate cleanly without breaking the row layout. */
 export const LongTitles: Story = {
   decorators: [
+    respondsToEach(),
     mockApp({
       conversations: [
         conversation({
@@ -94,6 +143,7 @@ export const LongTitles: Story = {
 /** Non-ASCII titles (RTL, CJK, emoji) must render without mojibake. */
 export const UnicodeTitles: Story = {
   decorators: [
+    respondsToEach(),
     mockApp({
       conversations: [
         conversation({

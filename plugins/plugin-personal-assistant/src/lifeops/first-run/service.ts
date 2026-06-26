@@ -535,7 +535,7 @@ export class FirstRunService {
   }
 
   private formatDefaultsCompleteMessage(taskCount: number): string {
-    return `Defaults applied — ${taskCount} reminders scheduled (gm, gn, daily check-in, morning brief).`;
+    return `Defaults applied — ${taskCount} routines set up (gm, gn, daily check-in, morning brief, plus a paused weekly review you can turn on anytime).`;
   }
 
   private formatCustomizeCompleteMessage(

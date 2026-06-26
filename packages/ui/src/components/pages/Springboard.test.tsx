@@ -105,13 +105,42 @@ describe("Springboard", () => {
     expect(classes.size).toBe(1);
   });
 
-  it("shows page dots when there is more than one page", () => {
+  it("shows page dots when there is more than one page (>24 views)", () => {
+    // 25 views overflow the 24-tile (4×6) page, so a second page appears.
     const many = Array.from({ length: 25 }, (_, i) =>
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
     expect(screen.getByRole("button", { name: "Page 1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Page 2" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Page 3" })).toBeNull();
+  });
+
+  it("keeps a single page (no dots) when views fit within 24", () => {
+    const exactly = Array.from({ length: 24 }, (_, i) =>
+      entry(`v${i}`, `View ${i}`),
+    );
+    render(<Springboard entries={exactly} onLaunch={() => {}} />);
+    // 24 views fit one 4×6 page — no second page, so no page dots.
+    expect(screen.queryByRole("button", { name: "Page 1" })).toBeNull();
+    expect(screen.getByTestId("springboard-page-0")).toBeTruthy();
+    expect(screen.queryByTestId("springboard-page-1")).toBeNull();
+  });
+
+  it("renders every page as a carousel track and marks only the active one", () => {
+    // The carousel keeps every page mounted (it translates the whole track), so
+    // both pages — and all 25 tiles — are in the DOM; only the committed page is
+    // visible (the rest are aria-hidden).
+    const many = Array.from({ length: 25 }, (_, i) =>
+      entry(`v${i}`, `View ${i}`),
+    );
+    render(<Springboard entries={many} onLaunch={() => {}} />);
+    const page0 = screen.getByTestId("springboard-page-0");
+    const page1 = screen.getByTestId("springboard-page-1");
+    // v24 (the 25th view, sole tile of page 1) is mounted even on page 0.
+    expect(screen.getByTestId("springboard-tile-v24")).toBeTruthy();
+    expect(page0.getAttribute("aria-hidden")).toBe("false");
+    expect(page1.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("navigates pages via the page dots", () => {
@@ -119,10 +148,18 @@ describe("Springboard", () => {
       entry(`v${i}`, `View ${i}`),
     );
     render(<Springboard entries={many} onLaunch={() => {}} />);
-    // Page 1 shows the first page's views, not the 21st.
-    expect(screen.queryByTestId("springboard-tile-v20")).toBeNull();
+    // Page 1 is the active page; the second page is hidden.
+    expect(
+      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+    ).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
-    expect(screen.getByTestId("springboard-tile-v20")).toBeTruthy();
+    // The second page becomes the active (visible) one.
+    expect(
+      screen.getByTestId("springboard-page-1").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(
+      screen.getByTestId("springboard-page-0").getAttribute("aria-hidden"),
+    ).toBe("true");
   });
 
   it("drops views that are no longer available on re-render", () => {

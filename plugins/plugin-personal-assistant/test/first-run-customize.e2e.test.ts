@@ -56,7 +56,7 @@ describe("first-run customize e2e", () => {
     expect(res.status).toBe("ok");
     expect(res.warnings.length).toBeGreaterThanOrEqual(1);
     expect(res.warnings[0]).toMatch(/fall back/i);
-    expect(res.scheduledTasks.length).toBe(4);
+    expect(res.scheduledTasks.length).toBe(5);
   });
 
   it("asks Q5 when categories include follow-ups", async () => {
@@ -84,6 +84,6 @@ describe("first-run customize e2e", () => {
     expect(res.status).toBe("ok");
     expect(res.facts.preferredName).toBe("Pat");
     const tasks = await readFallbackScheduledTasks(runtime);
-    expect(tasks.length).toBe(4);
+    expect(tasks.length).toBe(5);
   });
 });

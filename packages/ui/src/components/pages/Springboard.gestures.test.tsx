@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 //
 // Gesture-layer + telemetry coverage for the Springboard. motion/react is mocked
-// so the test can drive the Reorder.Group onReorder bridge and the swipe-paging
-// motion.div onDragEnd directly (jsdom can't perform a real pointer drag). The
+// so the test can drive the Reorder.Group onReorder bridge directly and so the
+// page track renders as a plain div (jsdom can't run a real spring). Swipe paging
+// is exercised through the real pointer handlers on the carousel viewport. The
 // real-motion render path (page dots, favorites, image tiles) is covered by the
 // sibling Springboard.test.tsx, which does NOT mock motion.
 
@@ -22,36 +23,70 @@ import {
   type ViewInteractionAction,
 } from "../../view-telemetry";
 
-// Captures the latest gesture callbacks the Springboard hands to motion/react.
+// Captures the Reorder bridge for every page group the Springboard renders. The
+// carousel mounts one Reorder.Group per page (all pages stay mounted), so the
+// bus keeps them keyed by the page's first view id — tests target the page they
+// mean. Each render re-registers (overwrites) its page, so the latest callback
+// always wins.
 const bus = vi.hoisted(() => ({
-  onDragEnd: null as
-    | null
-    | ((e: unknown, info: { offset: { x: number; y: number } }) => void),
-  onReorder: null as null | ((next: string[]) => void),
-  values: [] as string[],
+  groups: new Map<
+    string,
+    { onReorder: ((next: string[]) => void) | null; values: string[] }
+  >(),
+  /** The group whose page starts with `firstId` (e.g. "v0" = page 0). */
+  group(firstId: string) {
+    const found = this.groups.get(firstId);
+    if (!found) throw new Error(`No Reorder group starting with ${firstId}`);
+    return found;
+  },
 }));
 
 vi.mock("motion/react", () => ({
-  // Any motion.* element renders its children and records onDragEnd.
+  // Any motion.* element renders its children as a plain div, preserving the
+  // dom-affecting props (className / data-testid / style) the carousel relies on.
   motion: new Proxy(
     {},
     {
-      get: () => (props: { children?: ReactNode; onDragEnd?: unknown }) => {
-        if (props.onDragEnd) {
-          bus.onDragEnd = props.onDragEnd as typeof bus.onDragEnd;
-        }
-        return props.children ?? null;
-      },
+      get:
+        () =>
+        ({
+          children,
+          // `x` lives on the motion `style` and isn't a valid DOM style key, so
+          // strip it; everything else (className, data-testid, aria-*) passes
+          // through onto a real div the tests can query.
+          style: _style,
+          ...rest
+        }: {
+          children?: ReactNode;
+          style?: unknown;
+          [key: string]: unknown;
+        }) => (
+          // biome-ignore lint/suspicious/noExplicitAny: forwarding arbitrary motion props to a plain div in tests.
+          <div {...(rest as any)}>{children}</div>
+        ),
     },
   ),
+  // A motion value is just a mutable get/set holder in the mock.
+  useMotionValue: (initial: number) => {
+    let current = initial;
+    return {
+      get: () => current,
+      set: (next: number) => {
+        current = next;
+      },
+    };
+  },
+  // animate() resolves synchronously in the mock (no spring); return a stoppable.
+  animate: () => ({ stop: () => {} }),
   Reorder: {
     Group: (props: {
       children?: ReactNode;
       onReorder?: (next: string[]) => void;
       values?: string[];
     }) => {
-      bus.onReorder = props.onReorder ?? null;
-      bus.values = props.values ?? [];
+      const values = props.values ?? [];
+      const key = values[0] ?? "empty";
+      bus.groups.set(key, { onReorder: props.onReorder ?? null, values });
       return props.children ?? null;
     },
     Item: (props: { children?: ReactNode }) => props.children ?? null,
@@ -106,20 +141,64 @@ const PAGE2 = Array.from({ length: 25 }, (_, i) => entry(`v${i}`, `View ${i}`));
 beforeEach(() => {
   window.localStorage.clear();
   clearTelemetry();
-  bus.onDragEnd = null;
-  bus.onReorder = null;
-  bus.values = [];
+  bus.groups.clear();
 });
 afterEach(() => cleanup());
+
+/** Whether a page element is the visible (committed) one. */
+function pageVisible(index: number): boolean {
+  return (
+    screen
+      .getByTestId(`springboard-page-${index}`)
+      .getAttribute("aria-hidden") === "false"
+  );
+}
+
+/**
+ * Drive a real horizontal carousel drag on the viewport: down, a series of
+ * moves so the axis lock decides "x", then up. dx is the net horizontal travel;
+ * dy stays 0 so the move locks horizontal. jsdom reports a 0-width viewport, so
+ * the live translate can't be asserted, but the axis-lock + commit-threshold
+ * logic (which is what these tests cover) runs on the raw deltas.
+ */
+function swipe(dx: number, dy = 0): void {
+  const viewport = screen.getByTestId("springboard-pager-viewport");
+  fireEvent.pointerDown(viewport, {
+    isPrimary: true,
+    pointerId: 1,
+    clientX: 200,
+    clientY: 300,
+  });
+  // First move past the slop to lock the axis — keep the dx:dy RATIO of the full
+  // gesture so the axis lock decides on the real direction. Then the final pos.
+  const mag = Math.hypot(dx, dy) || 1;
+  const scale = 16 / mag;
+  fireEvent.pointerMove(viewport, {
+    pointerId: 1,
+    clientX: 200 + dx * scale,
+    clientY: 300 + dy * scale,
+  });
+  fireEvent.pointerMove(viewport, {
+    pointerId: 1,
+    clientX: 200 + dx,
+    clientY: 300 + dy,
+  });
+  fireEvent.pointerUp(viewport, {
+    pointerId: 1,
+    clientX: 200 + dx,
+    clientY: 300 + dy,
+  });
+}
 
 describe("Springboard drag-reorder bridge", () => {
   it("persists a reordered page through moveIcon and emits a reorder event", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
-    // Page 0 holds the first 20 ids; move the first to the end.
-    expect(bus.values.slice(0, 3)).toEqual(["v0", "v1", "v2"]);
-    const reordered = [...bus.values.slice(1), bus.values[0]];
+    // Page 0 holds the first 24 ids; move the first to the end of page 0.
+    const page0 = bus.group("v0");
+    expect(page0.values.slice(0, 3)).toEqual(["v0", "v1", "v2"]);
+    const reordered = [...page0.values.slice(1), page0.values[0]];
     act(() => {
-      bus.onReorder?.(reordered);
+      page0.onReorder?.(reordered);
     });
 
     const stored = JSON.parse(
@@ -135,24 +214,27 @@ describe("Springboard drag-reorder bridge", () => {
   });
 });
 
-describe("Springboard swipe paging (onDragEnd)", () => {
+describe("Springboard carousel paging (pointer drag)", () => {
   it("advances a page past the swipe threshold and emits page-swipe", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
-    expect(screen.queryByTestId("springboard-tile-v20")).toBeNull();
+    // Page 0 is committed at first.
+    expect(pageVisible(0)).toBe(true);
+    expect(pageVisible(1)).toBe(false);
     act(() => {
-      bus.onDragEnd?.({}, { offset: { x: -70, y: 0 } });
+      swipe(-70);
     });
-    // Page 1 now shows v20..v24.
-    expect(screen.getByTestId("springboard-tile-v20")).toBeTruthy();
+    // The track settles to page 1 — the second page becomes visible.
+    expect(pageVisible(1)).toBe(true);
+    expect(pageVisible(0)).toBe(false);
     expect(actions()).toContain("page-swipe");
   });
 
-  it("ignores a drag below the threshold", () => {
+  it("ignores a horizontal drag below the threshold", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
     act(() => {
-      bus.onDragEnd?.({}, { offset: { x: -30, y: 0 } });
+      swipe(-30);
     });
-    expect(screen.queryByTestId("springboard-tile-v20")).toBeNull();
+    expect(pageVisible(0)).toBe(true);
     expect(actions()).not.toContain("page-swipe");
   });
 
@@ -160,8 +242,19 @@ describe("Springboard swipe paging (onDragEnd)", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
     // Already on page 0; a rightward swipe would go to -1 → clamped, no event.
     act(() => {
-      bus.onDragEnd?.({}, { offset: { x: 80, y: 0 } });
+      swipe(80);
     });
+    expect(pageVisible(0)).toBe(true);
+    expect(actions()).not.toContain("page-swipe");
+  });
+
+  it("does not commit a page on a vertical drag (axis lock yields to scroll)", () => {
+    render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
+    // A mostly-vertical gesture locks to the y axis and never pages.
+    act(() => {
+      swipe(20, 120);
+    });
+    expect(pageVisible(0)).toBe(true);
     expect(actions()).not.toContain("page-swipe");
   });
 
@@ -169,9 +262,9 @@ describe("Springboard swipe paging (onDragEnd)", () => {
     render(<Springboard entries={PAGE2} onLaunch={() => {}} />);
     longPressTile("View 0");
     act(() => {
-      bus.onDragEnd?.({}, { offset: { x: -80, y: 0 } });
+      swipe(-80);
     });
-    expect(screen.queryByTestId("springboard-tile-v20")).toBeNull();
+    expect(pageVisible(0)).toBe(true);
     expect(actions()).not.toContain("page-swipe");
   });
 });

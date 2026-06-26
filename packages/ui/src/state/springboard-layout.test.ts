@@ -8,6 +8,7 @@ import {
   readSpringboardLayout,
   reconcileLayout,
   SPRINGBOARD_DOCK_LIMIT,
+  SPRINGBOARD_PAGE_SIZE,
   SPRINGBOARD_STORAGE_KEY,
   type SpringboardLayout,
   toggleFavorite,
@@ -19,6 +20,27 @@ describe("springboard-layout reconcile", () => {
     const out = reconcileLayout(emptyLayout(), ["a", "b", "c"], 2);
     expect(out.pages).toEqual([["a", "b"], ["c"]]);
     expect(out.favorites).toEqual([]);
+  });
+
+  it("uses a 4×6 = 24-tile default page size", () => {
+    expect(SPRINGBOARD_PAGE_SIZE).toBe(24);
+  });
+
+  it("splits views into pages of 24 by default (4 columns × 6 rows)", () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `v${i}`);
+    const out = reconcileLayout(emptyLayout(), ids);
+    // 50 ids → 24 + 24 + 2 across three pages.
+    expect(out.pages).toHaveLength(3);
+    expect(out.pages[0]).toHaveLength(24);
+    expect(out.pages[1]).toHaveLength(24);
+    expect(out.pages[2]).toHaveLength(2);
+  });
+
+  it("keeps a single page when views fit within 24", () => {
+    const ids = Array.from({ length: 24 }, (_, i) => `v${i}`);
+    const out = reconcileLayout(emptyLayout(), ids);
+    expect(out.pages).toHaveLength(1);
+    expect(out.pages[0]).toHaveLength(24);
   });
 
   it("drops ids that are no longer available", () => {

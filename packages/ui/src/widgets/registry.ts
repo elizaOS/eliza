@@ -34,8 +34,6 @@ import { AgentActivityWidget } from "../components/chat/widgets/agent-activity";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
-import { ConnectorsStatusWidget } from "../components/chat/widgets/connectors-status";
-import { DiscordRecentWidget } from "../components/chat/widgets/discord-recent";
 import { FINANCES_HOME_WIDGET } from "../components/chat/widgets/finances-alerts";
 import { GOALS_HOME_WIDGET } from "../components/chat/widgets/goals-attention";
 import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
@@ -47,6 +45,7 @@ import { NotificationsWidget } from "../components/chat/widgets/notifications";
 import { RELATIONSHIPS_HOME_WIDGET } from "../components/chat/widgets/relationships-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import { WalletBalanceWidget } from "../components/chat/widgets/wallet-balance";
+import { WorkflowsWidget } from "../components/chat/widgets/workflows";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
@@ -71,17 +70,18 @@ registerWidgetComponent(
 // Messages (recent conversations) is likewise a core surface — always-visible.
 registerWidgetComponent("messages", "messages.recent", MessagesWidget);
 // Curated home-grid widgets backed by core API surfaces (conversations, agent
-// activity, connector status, discord, wallet). Each renders populated data, a
-// connected-but-empty state, or a connect affordance — always-visible so the
-// home grid is populated even before the runtime plugin snapshot arrives.
+// activity, wallet, running workflows). Each renders populated data, a
+// connected-but-empty state, or self-hides — always-visible so the home grid is
+// populated even before the runtime plugin snapshot arrives. The connector
+// status strip and discord recent tiles were intentionally dropped from the
+// home surface: they surfaced connector warn/error chips and a "Connect Discord"
+// affordance that crowded the naked home grid with setup noise.
 registerWidgetComponent("feed", "feed.agent-activity", AgentActivityWidget);
-registerWidgetComponent(
-  "connectors",
-  "connectors.status",
-  ConnectorsStatusWidget,
-);
-registerWidgetComponent("discord", "discord.recent", DiscordRecentWidget);
 registerWidgetComponent("wallet", "wallet.balance", WalletBalanceWidget);
+// Running workflows tile (ITEM 5): backed by the core GET /api/automations
+// surface (system automations + active user workflows), so it is always-visible
+// and self-hides when nothing is running.
+registerWidgetComponent("workflow", "workflow.running", WorkflowsWidget);
 
 // Per-plugin frontpage widgets (#9143): each surfaces a compact, attention-
 // ranked slice of its plugin's own state on the home grid (a step up from the
@@ -440,9 +440,9 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     size: { cols: 2, rows: 1 },
   },
   // -- Curated home-grid widgets (4-col grid `size`) -------------------------
-  // Recent conversations, agent activity, discord, wallet, and the full-width
-  // connectors status strip. Each is backed by a core API surface and renders
-  // populated data, a connected-but-empty state, or a connect affordance.
+  // Recent conversations, agent activity, wallet, and running workflows. Each is
+  // backed by a core API surface and renders populated data, a connected-but-
+  // empty state, or self-hides when empty.
   {
     id: "messages.recent",
     pluginId: "messages",
@@ -466,17 +466,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     size: { cols: 2, rows: 1 },
   },
   {
-    id: "discord.recent",
-    pluginId: "discord",
-    slot: "home",
-    label: "Discord",
-    icon: "MessageCircle",
-    order: 130,
-    defaultEnabled: true,
-    signalKinds: ["message"],
-    size: { cols: 2, rows: 1 },
-  },
-  {
     id: "wallet.balance",
     pluginId: "wallet",
     slot: "home",
@@ -487,17 +476,19 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     signalKinds: ["activity"],
     size: { cols: 2, rows: 1 },
   },
-  // Full-width connector status strip — ordered last on the home grid.
+  // Running workflows tile — surfaces the agent's currently-running automations
+  // (system automations + active user workflows) from GET /api/automations.
+  // Self-hides when nothing is running.
   {
-    id: "connectors.status",
-    pluginId: "connectors",
+    id: "workflow.running",
+    pluginId: "workflow",
     slot: "home",
-    label: "Connectors",
-    icon: "Cable",
-    order: 200,
+    label: "Workflows",
+    icon: "Workflow",
+    order: 130,
     defaultEnabled: true,
-    signalKinds: ["activity"],
-    size: { cols: 4, rows: 1 },
+    signalKinds: ["workflow", "activity"],
+    size: { cols: 2, rows: 1 },
   },
   {
     id: GOALS_HOME_WIDGET.id,
@@ -603,14 +594,16 @@ const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   // Curated home-grid widgets backed by core API surfaces, not loadable
   // plugins. They must render regardless of the plugin snapshot so the home
   // grid is populated on first paint; each shows populated data, a
-  // connected-but-empty state, or a connect affordance.
+  // connected-but-empty state, or self-hides when empty.
   "messages",
   "feed",
-  "discord",
   "wallet",
-  "connectors",
   "calendar",
   "relationships",
+  // Running-workflows tile backed by GET /api/automations (system automations +
+  // active user workflows); always-visible since it self-hides when nothing is
+  // running. `workflow` matches @elizaos/plugin-workflow (default-enabled).
+  "workflow",
 ]);
 
 export interface ResolvedWidget {

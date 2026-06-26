@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe("DefaultHomeWidgets", () => {
-  it("renders the clock, date, week strip, and the weather tile once the clock is live", () => {
+  it("renders the clock, date, and the weather tile once the clock is live", () => {
     vi.useFakeTimers();
     // 2026-06-25 is a Thursday; tests run with TZ=UTC, so 14:30Z → 2:30 PM.
     vi.setSystemTime(new Date("2026-06-25T14:30:00Z"));
@@ -40,10 +40,6 @@ describe("DefaultHomeWidgets", () => {
     expect(root.textContent).toContain("PM");
     expect(root.textContent).toContain("Thursday");
     expect(root.textContent).toContain("June");
-
-    // The week strip renders all 7 day-number cells, with today (25) present.
-    const dayCells = root.querySelectorAll(".grid-cols-7 > div");
-    expect(dayCells).toHaveLength(7);
     expect(root.textContent).toContain("25");
 
     // Weather tile renders its reading next to the time.

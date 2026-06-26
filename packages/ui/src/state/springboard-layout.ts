@@ -19,12 +19,13 @@
 export const SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
 
 /**
- * Icons per springboard page (4 columns × 5 rows, iOS-like). Now that the top
+ * Icons per springboard page (4 columns × 6 rows, iOS-like). Now that the top
  * double safe-area gap is gone and the page indicator clears the chat composer,
- * a full 5-row page fits a normal phone; smaller phones scroll the grid. The
- * grid is `overflow-y-auto`, so overflow scrolls rather than clipping.
+ * a full 6-row page fits a normal phone; smaller phones scroll the grid. The
+ * grid is `overflow-y-auto`, so overflow scrolls rather than clipping. The
+ * Springboard renders a fixed 4-column grid, so this is `4 × 6 = 24`.
  */
-export const SPRINGBOARD_PAGE_SIZE = 20;
+export const SPRINGBOARD_PAGE_SIZE = 24;
 /**
  * Pin cap reused by the desktop-tab pinning model (`useDesktopTabs`). The
  * mobile Springboard no longer has a favorites dock, but the desktop tab rail

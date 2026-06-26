@@ -14,11 +14,11 @@ import { cn } from "../../lib/utils";
 
 /**
  * The home dashboard's always-on base widgets: a sized grid with the time and
- * weather as 2×2 neighbours, plus a glanceable week strip. They have no card —
- * white text sits directly on the ambient orange field with a soft shadow for
- * legibility ("background gone" per the home redesign). The time + week need
- * only the device clock (offline-safe); weather fetches current conditions from
- * Open-Meteo + device location (see {@link useWeather}) and degrades gracefully.
+ * weather as 2×2 neighbours. They have no card — white text sits directly on the
+ * ambient orange field with a soft shadow for legibility ("background gone" per
+ * the home redesign). The time needs only the device clock (offline-safe);
+ * weather fetches current conditions from Open-Meteo + device location (see
+ * {@link useWeather}) and degrades gracefully.
  *
  * Always rendered as the base of the home surface — the data-driven WidgetHost
  * cards flow in below it, so the dashboard is never bare.
@@ -27,7 +27,6 @@ import { cn } from "../../lib/utils";
 // White text legibility over the bright orange field, no card behind it.
 const FLOAT_SHADOW = "[text-shadow:0_1px_3px_rgba(0,0,0,0.38)]";
 
-const WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"] as const;
 const WEEKDAYS_LONG = [
   "Sunday",
   "Monday",
@@ -51,8 +50,6 @@ const MONTHS = [
   "November",
   "December",
 ] as const;
-
-const DAY_MS = 86_400_000;
 
 const WEATHER_ICON: Record<WeatherKind, LucideIcon> = {
   clear: Sun,
@@ -96,12 +93,14 @@ function WeatherTile(): React.JSX.Element {
         </>
       ) : (
         <>
-          <Icon className="h-9 w-9 text-white" aria-hidden />
-          <div className="text-[2.75rem] font-semibold leading-none tabular-nums tracking-tight">
-            {weather.temp}
-            <span className="align-top text-lg font-medium text-white/70">
-              {weather.unit}
-            </span>
+          <div className="flex items-center justify-center gap-2">
+            <div className="text-[2.75rem] font-semibold leading-none tabular-nums tracking-tight">
+              {weather.temp}
+              <span className="align-top text-lg font-medium text-white/70">
+                {weather.unit}
+              </span>
+            </div>
+            <Icon className="h-9 w-9 text-white" aria-hidden />
           </div>
           <div className="text-sm font-medium text-white/85">
             {weather.condition}
@@ -132,14 +131,6 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
   const time = `${hour12}:${String(minutes).padStart(2, "0")}`;
   const dateLabel = `${WEEKDAYS_LONG[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 
-  // The current week (Sunday-start), today highlighted — a glanceable calendar.
-  const weekStart = now - d.getDay() * DAY_MS;
-  const todayDate = d.getDate();
-  const week = Array.from(
-    { length: 7 },
-    (_, i) => new Date(weekStart + i * DAY_MS),
-  );
-
   return (
     <div
       data-testid="default-home-widgets"
@@ -166,34 +157,6 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
 
       {/* Weather — naked 2×2 tile next to the time */}
       <WeatherTile />
-
-      {/* This week — full-width strip, white text, no card */}
-      <div className={cn("col-span-4 grid grid-cols-7 gap-1", FLOAT_SHADOW)}>
-        {week.map((day) => {
-          const isToday =
-            day.getDate() === todayDate && day.getMonth() === d.getMonth();
-          return (
-            <div
-              key={day.getTime()}
-              className="flex flex-col items-center gap-1"
-            >
-              <span className="text-[10px] font-medium uppercase text-white/55">
-                {WEEKDAYS_SHORT[day.getDay()]}
-              </span>
-              <span
-                className={cn(
-                  "grid h-7 w-7 place-items-center rounded-full text-xs tabular-nums",
-                  isToday
-                    ? "bg-white font-bold text-[#d2691e] [text-shadow:none]"
-                    : "font-medium text-white/85",
-                )}
-              >
-                {day.getDate()}
-              </span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

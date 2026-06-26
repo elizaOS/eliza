@@ -16,8 +16,17 @@
  */
 
 import { Pencil, Trash2 } from "lucide-react";
-import { motion, Reorder } from "motion/react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { animate, motion, Reorder, useMotionValue } from "motion/react";
+import {
+  memo,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import {
@@ -83,6 +92,19 @@ const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_SLOP = 10;
 /** Horizontal drag distance (px) needed to flip to the adjacent page. */
 const SWIPE_THRESHOLD = 60;
+/**
+ * Horizontal travel must beat vertical by this ratio before the pager claims the
+ * gesture — below it the move is a vertical scroll of the tile grid and the
+ * carousel stays put, so scrolling a long page never drifts the track sideways.
+ */
+const PAGER_ANGLE_RATIO = 1.2;
+/** Settle animation for the page track when a drag releases (iOS-like ease-out). */
+const PAGER_SETTLE_TRANSITION = {
+  type: "spring",
+  stiffness: 420,
+  damping: 40,
+  mass: 0.9,
+} as const;
 
 // Memoized so a layout reconcile (install/uninstall/sort) re-renders only the
 // tiles whose props actually changed, not all ~20 on a page.
@@ -352,53 +374,163 @@ export function Springboard({
     ],
   );
 
+  // Live carousel paging. The whole paged track (every page side-by-side)
+  // follows the finger 1:1 during a horizontal drag (`trackX`), then animates to
+  // the committed page on release — an iOS pager, not a half-move-then-snap. The
+  // committed resting offset is `-clampedPage * pageWidth`; the drag adds the raw
+  // finger delta on top. Vertical scroll is preserved by an axis lock: until a
+  // gesture proves horizontal it is left to the per-page `overflow-y-auto`.
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [pageWidth, setPageWidth] = useState(0);
+  const trackX = useMotionValue(0);
+  const drag = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    baseX: number;
+    axis: "undecided" | "x" | "y";
+  } | null>(null);
+
+  // Measure the viewport so the track translates in real pixels (1:1 with the
+  // finger) instead of percentages, which a live drag can't track precisely.
+  useLayoutEffect(() => {
+    const node = viewportRef.current;
+    if (!node || typeof ResizeObserver === "undefined") {
+      if (node) setPageWidth(node.clientWidth);
+      return;
+    }
+    setPageWidth(node.clientWidth);
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (typeof width === "number") setPageWidth(width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  // Resting offset for the committed page. While a drag is in flight the pointer
+  // handlers own `trackX`; otherwise settle to (or animate toward) the committed
+  // page so a page change from the dots / store glides instead of jumping.
+  useEffect(() => {
+    if (drag.current) return;
+    const target = -clampedPage * pageWidth;
+    const controls = animate(trackX, target, PAGER_SETTLE_TRANSITION);
+    return () => controls.stop();
+  }, [clampedPage, pageWidth, trackX]);
+
+  const settleToPage = useCallback(
+    (next: number) => {
+      const target = -next * pageWidth;
+      animate(trackX, target, PAGER_SETTLE_TRANSITION);
+    },
+    [pageWidth, trackX],
+  );
+
+  const handlePagerPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (editing || !event.isPrimary || pages.length <= 1) return;
+      drag.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        baseX: -clampedPage * pageWidth,
+        axis: "undecided",
+      };
+    },
+    [editing, pages.length, clampedPage, pageWidth],
+  );
+
+  const handlePagerPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const state = drag.current;
+      if (!state || event.pointerId !== state.pointerId) return;
+      const dx = event.clientX - state.startX;
+      const dy = event.clientY - state.startY;
+      if (state.axis === "undecided") {
+        if (Math.hypot(dx, dy) < LONG_PRESS_MOVE_SLOP) return;
+        // Lock to whichever axis the finger committed to first: horizontal pans
+        // the carousel; vertical yields to the per-page scroll and never drifts
+        // the track sideways.
+        state.axis =
+          Math.abs(dx) > Math.abs(dy) * PAGER_ANGLE_RATIO ? "x" : "y";
+        if (state.axis === "y") {
+          drag.current = null;
+          return;
+        }
+        // Capture so the drag keeps tracking even if the finger slides off the
+        // viewport. Guarded: not every environment implements pointer capture.
+        event.currentTarget.setPointerCapture?.(state.pointerId);
+      }
+      if (state.axis !== "x") return;
+      // Resist past the first / last page so the edge has the same rubber-band
+      // give as an iOS pager rather than tearing off into empty space.
+      const atStart = clampedPage === 0 && dx > 0;
+      const atEnd = clampedPage === pages.length - 1 && dx < 0;
+      const applied = atStart || atEnd ? dx * 0.3 : dx;
+      trackX.set(state.baseX + applied);
+    },
+    [clampedPage, pages.length, trackX],
+  );
+
+  const finishPagerDrag = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const state = drag.current;
+      if (!state || event.pointerId !== state.pointerId) return;
+      drag.current = null;
+      if (state.axis !== "x") return;
+      const dx = event.clientX - state.startX;
+      if (dx < -SWIPE_THRESHOLD && clampedPage < pages.length - 1) {
+        const next = clampedPage + 1;
+        settleToPage(next);
+        setActivePage(next);
+        emitViewInteraction({
+          source: "springboard",
+          action: "page-swipe",
+          count: next,
+        });
+      } else if (dx > SWIPE_THRESHOLD && clampedPage > 0) {
+        const next = clampedPage - 1;
+        settleToPage(next);
+        setActivePage(next);
+        emitViewInteraction({
+          source: "springboard",
+          action: "page-swipe",
+          count: next,
+        });
+      } else {
+        // Under threshold (or edge-bounce): glide back to the current page.
+        settleToPage(clampedPage);
+        if (dx > SWIPE_THRESHOLD && clampedPage === 0) onEdgeSwipeRight?.();
+      }
+    },
+    [clampedPage, pages.length, settleToPage, setActivePage, onEdgeSwipeRight],
+  );
+
   return (
     <div
       className={cn("flex min-h-0 flex-1 flex-col", className)}
       data-testid="springboard"
     >
-      {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
-          never fights the in-tile drag-to-reorder gesture. */}
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        <motion.div
-          // A stable identity (NOT `key={clampedPage}`): keying on the page
-          // index forced a full unmount/remount of the page — Reorder.Group and
-          // every tile — on each swipe, which janks the paging. The page content
-          // already swaps via `pages[clampedPage]`, and `dragSnapToOrigin`
-          // animates the drag back to origin, so the swap is smooth without a
-          // remount (#9304).
-          key="springboard-page"
-          drag={editing ? false : "x"}
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.2}
-          dragSnapToOrigin
-          onDragEnd={(_event, info) => {
-            if (editing) return;
-            if (
-              info.offset.x < -SWIPE_THRESHOLD &&
-              clampedPage < pages.length - 1
-            ) {
-              setActivePage(clampedPage + 1);
-              emitViewInteraction({
-                source: "springboard",
-                action: "page-swipe",
-                count: clampedPage + 1,
-              });
-            } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage > 0) {
-              setActivePage(clampedPage - 1);
-              emitViewInteraction({
-                source: "springboard",
-                action: "page-swipe",
-                count: clampedPage - 1,
-              });
-            } else if (info.offset.x > SWIPE_THRESHOLD && clampedPage === 0) {
-              onEdgeSwipeRight?.();
-            }
-          }}
-          className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pt-2 pb-8"
-        >
-          {loading && entries.length === 0 ? (
-            <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
+      {/* Carousel viewport. The track holds every page side-by-side and the
+          pointer handlers translate it 1:1 with the finger (`trackX`), settling
+          to the committed page on release. Paging is active only outside edit
+          mode, so it never fights the in-tile drag-to-reorder gesture. */}
+      <div
+        ref={viewportRef}
+        // `touch-pan-y`: hand vertical drags to the browser (the per-page grid
+        // scrolls) and claim horizontal drags for the carousel. The axis lock in
+        // the move handler makes this precise even where touch-action isn't
+        // honored (desktop pointer / tests).
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden touch-pan-y"
+        onPointerDown={handlePagerPointerDown}
+        onPointerMove={handlePagerPointerMove}
+        onPointerUp={finishPagerDrag}
+        onPointerCancel={finishPagerDrag}
+        data-testid="springboard-pager-viewport"
+      >
+        {loading && entries.length === 0 ? (
+          <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
+            <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5">
               {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
                 <div
                   key={id}
@@ -409,31 +541,58 @@ export function Springboard({
                 </div>
               ))}
             </div>
-          ) : (
-            <Reorder.Group
-              axis="y"
-              values={pages[clampedPage] ?? []}
-              onReorder={(next) => handleReorder(clampedPage, next as string[])}
-              className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5"
-            >
-              {(pages[clampedPage] ?? []).map((id) => {
-                const entry = byId.get(id);
-                if (!entry) return null;
-                return (
-                  <Reorder.Item
-                    key={id}
-                    value={id}
-                    drag={editing}
-                    dragListener={editing}
-                    className="flex justify-center"
-                  >
-                    {renderTile(entry)}
-                  </Reorder.Item>
-                );
-              })}
-            </Reorder.Group>
-          )}
-        </motion.div>
+          </div>
+        ) : (
+          <motion.div
+            data-testid="springboard-pager-track"
+            // The whole multi-page track translates as one element: a stable
+            // identity (no `key={clampedPage}`) keeps Reorder.Group + every tile
+            // mounted across swipes, so paging never janks via remount (#9304).
+            // Each page is exactly the measured viewport width, so the pixel
+            // translate (`trackX`) tracks the finger 1:1.
+            className="flex min-h-0 flex-1 items-stretch"
+            style={{ x: trackX }}
+          >
+            {pages.map((pageIds, pageIndex) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: pages have no stable id; index is the page identity.
+                key={`page-${pageIndex}-${pageIds[0] ?? "empty"}`}
+                data-testid={`springboard-page-${pageIndex}`}
+                // Off-screen pages are hidden from AT/tab order; only the
+                // committed page is reachable, even though every page stays
+                // mounted in the carousel track.
+                aria-hidden={pageIndex !== clampedPage}
+                className="flex min-h-0 shrink-0 items-start justify-center overflow-y-auto px-6 pt-2 pb-8"
+                style={pageWidth > 0 ? { width: pageWidth } : { width: "100%" }}
+              >
+                <Reorder.Group
+                  axis="y"
+                  values={pageIds}
+                  onReorder={(next) =>
+                    handleReorder(pageIndex, next as string[])
+                  }
+                  className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5"
+                >
+                  {pageIds.map((id) => {
+                    const entry = byId.get(id);
+                    if (!entry) return null;
+                    return (
+                      <Reorder.Item
+                        key={id}
+                        value={id}
+                        drag={editing}
+                        dragListener={editing}
+                        className="flex justify-center"
+                      >
+                        {renderTile(entry)}
+                      </Reorder.Item>
+                    );
+                  })}
+                </Reorder.Group>
+              </div>
+            ))}
+          </motion.div>
+        )}
 
         {/* Page dots — rendered only for STANDALONE usage. When nested in the
             home/springboard rail, `showPageDots` is false and the rail owns the
