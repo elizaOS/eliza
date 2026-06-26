@@ -9,7 +9,7 @@ plugin uses to acquire, run, and release a model.
 This document is the integration contract for the plugins that will wire
 into the arbiter in WS2–WS8:
 
-- `plugin-vision` (WS2 — Qwen3-VL vision-describe)
+- `plugin-vision` (WS2 — Eliza-1 vision-describe)
 - `plugin-image-gen` (WS3 — image generation; future plugin)
 - `plugin-aosp-local-inference` (WS8 — AOSP bun:ffi backend)
 - `plugin-computeruse` (WS9 — screen + OCR pipelines that may share the
@@ -64,8 +64,8 @@ Before WS1, every plugin loaded its own models with no shared budget:
 
 - `plugin-local-inference` owns text + voice GGUFs through
   `LocalInferenceEngine` + `SharedResourceRegistry`.
-- `plugin-vision` loads its own TF.js / face-api models with no shared
-  budget.
+- `plugin-vision` loads native vision/OCR helpers and VLM describers with
+  no shared budget.
 - `plugin-aosp-local-inference` runs its bun:ffi llama.cpp binding in
   its own world, no shared budget.
 
@@ -119,7 +119,8 @@ arbiter.registerCapability({
   residentRole: "vision",                // RESIDENT_ROLE_PRIORITY[vision] = 20
   estimatedMb: 2_400,                    // best-effort; telemetry only
   async load(modelKey) {
-    return await loadQwen3VL(modelKey);  // expensive — happens once per (capability, modelKey)
+    // Expensive — happens once per (capability, modelKey).
+    return await loadEliza1Vision(modelKey);
   },
   async unload(handle) {
     await handle.dispose();              // free GPU/VRAM and JS refs
@@ -151,8 +152,11 @@ Two ways to use the arbiter — pick the right one for your callsite:
 queue, run, release.
 
 ```ts
-const result = await arbiter.requestVisionDescribe<VisionDescribeRequest, VisionDescribeResult>({
-  modelKey: "qwen3-vl-4b",
+const result = await arbiter.requestVisionDescribe<
+  VisionDescribeRequest,
+  VisionDescribeResult
+>({
+  modelKey: "eliza-1-2b",
   payload: { imageBytes, prompt: "What's in this image?" },
 });
 ```
@@ -162,7 +166,10 @@ conversations, or anything that needs the same handle across multiple
 calls.
 
 ```ts
-const handle = await arbiter.acquire<Qwen3VLBackend>("vision-describe", "qwen3-vl-4b");
+const handle = await arbiter.acquire<Eliza1VisionBackend>(
+  "vision-describe",
+  "eliza-1-2b",
+);
 try {
   for await (const chunk of handle.backend.stream(request)) {
     yield chunk;
@@ -280,12 +287,17 @@ function hashFrame(bytes: Uint8Array, modelFamily: string): string {
 }
 
 async function describeImage(req: VisionDescribeRequest): Promise<VisionDescribeResult> {
-  const hash = hashFrame(req.imageBytes, "qwen3-vl");
+  const hash = hashFrame(req.imageBytes, "eliza-1-vision");
   let projected = arbiter.getCachedVisionEmbedding(hash);
   if (!projected) {
     const tokens = await projector.run(req.imageBytes);
     arbiter.setCachedVisionEmbedding(hash, tokens);
-    projected = { tokens: tokens.tokens, tokenCount: tokens.tokenCount, hiddenSize: tokens.hiddenSize, live: true };
+    projected = {
+      tokens: tokens.tokens,
+      tokenCount: tokens.tokenCount,
+      hiddenSize: tokens.hiddenSize,
+      live: true,
+    };
   }
   return await decoder.runWithProjectedTokens(projected, req.prompt);
 }
@@ -332,7 +344,7 @@ async function describeImage(req: VisionDescribeRequest): Promise<VisionDescribe
 - Apple Metal / CUDA GPU paths are **not validated on this host** (no
   NVIDIA GPU, no Apple Silicon). The arbiter does not contain any
   backend-specific code, so this is a downstream concern for the
-  loader plugins (WS2 = Qwen3-VL, WS3 = image gen). When wiring those
+  loader plugins (WS2 = Eliza-1 vision, WS3 = image gen). When wiring those
   loaders, validate on a real GPU host that:
   - Loading a vision model evicts the text model gracefully (not
     via an OOM kill).
