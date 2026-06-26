@@ -110,15 +110,26 @@ export function toNewContainer(row: NewAppContainerRow): NewContainer {
   };
 }
 
-async function resolveImageRef(
+export async function resolveImageRef(
   deps: AppDeployRunnerDeps,
   app: { id: string; name: string; metadata: Record<string, unknown>; repoUrl?: string },
 ): Promise<string> {
   const fromResolver = deps.resolveImage ? await deps.resolveImage(app) : undefined;
   const fromMetadata =
     typeof app.metadata?.imageTag === "string" ? (app.metadata.imageTag as string) : undefined;
-  const fromEnv = process.env.APP_DEFAULT_IMAGE;
-  const image = fromResolver ?? fromMetadata ?? fromEnv;
+  // A repo-configured app whose build-from-repo is disabled (no resolver wired,
+  // i.e. APPS_IMAGE_REGISTRY unset) must NOT silently fall back to
+  // APP_DEFAULT_IMAGE — that would deploy a default/smoke image in place of the
+  // user's code (a silent wrong deploy). Require an explicit prebuilt image
+  // instead. (build-from-repo is intentionally deferred — prebuilt-image only.)
+  if (app.repoUrl && !fromResolver && !fromMetadata) {
+    throw new Error(
+      `App ${app.id} builds from a git repo, but build-from-repo is disabled ` +
+        `(no APPS_IMAGE_REGISTRY). Set a prebuilt image via metadata.imageTag, ` +
+        `or enable build-from-repo.`,
+    );
+  }
+  const image = fromResolver ?? fromMetadata ?? process.env.APP_DEFAULT_IMAGE;
   if (!image) {
     throw new Error(
       `No image to deploy for app ${app.id}: pass resolveImage, set app.metadata.imageTag, or APP_DEFAULT_IMAGE`,
