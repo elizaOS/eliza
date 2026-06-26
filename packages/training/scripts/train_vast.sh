@@ -623,7 +623,7 @@ sync_tree() {
   # don't ship every old run to the remote. If RESUME_FROM_CHECKPOINT is set,
   # ship ONLY that one checkpoint dir on top so HF Trainer can pick it up via
   # --resume-from-checkpoint. The path is interpreted RELATIVE to packages/training/
-  # (e.g. checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/checkpoint-1000).
+  # (e.g. checkpoints/eliza-1-2b-apollo-fullcorpus-h200-1778619044/checkpoint-1000).
   if [ -n "${RESUME_FROM_CHECKPOINT:-}" ]; then
     local _resume_local="$ROOT/$RESUME_FROM_CHECKPOINT"
     if [ ! -d "$_resume_local" ]; then
