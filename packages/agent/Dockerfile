@@ -24,4 +24,4 @@ COPY --from=builder /app /app
 
 EXPOSE 3000
 
-CMD ["sh","-c","echo Starting SkunkScanAI && bun run start -- --character characters/skunkscan.character.json"]
+CMD ["sh","-c","echo Starting Eliza && bun run start"]
