@@ -14,7 +14,11 @@ import type {
 	Memory,
 	ViewType,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import {
+	getUserMessageText,
+	logger,
+	resolveServerOnlyPort,
+} from "@elizaos/core";
 import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
@@ -85,7 +89,7 @@ function extractViewTarget(
 		readStringOpt(options, "name");
 	if (explicit) return explicit;
 
-	const text = message?.content?.text ?? "";
+	const text = getUserMessageText(message);
 
 	const match = SHOW_VERB_PATTERN.exec(text);
 	if (match) {
@@ -380,7 +384,7 @@ export async function runViewsShow({
 	viewType,
 	callback,
 }: RunViewsShowInput): Promise<ActionResult> {
-	const messageText = message?.content?.text ?? "";
+	const messageText = getUserMessageText(message);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
 	// no explicit view name, so the verb scan yields nothing — the domain intent
 	// supplies the view id. Either source is enough to proceed.

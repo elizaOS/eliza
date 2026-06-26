@@ -131,6 +131,9 @@ export function usePullGesture(
 
   const hasSwipe =
     swipeEnabled && Boolean(onSwipeLeft || onSwipeRight || onDragX);
+  const hasVerticalPull = Boolean(
+    onDrag || onPullUp || onPullDown || onSettleFree,
+  );
 
   const start = React.useRef<{
     x: number;
@@ -199,10 +202,11 @@ export function usePullGesture(
         pointerId: event.pointerId,
       };
       axis.current = null;
-      // When horizontal swipes are possible we DEFER capture until the gesture
-      // commits to an axis, so a vertical scroll inside the panel still scrolls
-      // natively. Pure-vertical consumers (the drag handle) capture immediately.
-      if (!hasSwipe) {
+      // Pure horizontal swipe surfaces defer capture until axis commit so native
+      // vertical scrolling still works. A vertical pull handle captures
+      // immediately even when it also supports horizontal swipes; otherwise a
+      // mouse/finger can leave the small handle before the first committed move.
+      if (!hasSwipe || hasVerticalPull) {
         try {
           event.currentTarget.setPointerCapture(event.pointerId);
         } catch {
@@ -210,7 +214,7 @@ export function usePullGesture(
         }
       }
     },
-    [hasSwipe],
+    [hasSwipe, hasVerticalPull],
   );
 
   const onPointerMove = React.useCallback(
@@ -226,7 +230,7 @@ export function usePullGesture(
         if (Math.max(ax, ay) >= AXIS_COMMIT_SLOP) {
           axis.current = ax > ay ? "x" : "y";
           // Take over the pointer now that intent is clear (deferred-capture path).
-          if (hasSwipe) {
+          if (hasSwipe && !hasVerticalPull) {
             try {
               event.currentTarget.setPointerCapture(event.pointerId);
             } catch {
@@ -260,7 +264,7 @@ export function usePullGesture(
         scheduleDrag("y", dy); // pre-commit: drive the vertical sheet
       }
     },
-    [hasSwipe, onDragReset, onDragX, scheduleDrag, cancelDrag],
+    [hasSwipe, hasVerticalPull, onDragReset, onDragX, scheduleDrag, cancelDrag],
   );
 
   const finish = React.useCallback(

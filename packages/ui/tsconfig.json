@@ -58,6 +58,8 @@
         "../../plugins/plugin-app-manager/src/*"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/agent": ["./src/platform/empty-node-module.ts"],
       "@elizaos/app-core": ["./src/platform/empty-node-module.ts"],
       "@elizaos/app-core/*": ["./src/platform/empty-node-module.ts"],

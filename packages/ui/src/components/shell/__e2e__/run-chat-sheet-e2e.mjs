@@ -161,6 +161,15 @@ const panelTop = (p) =>
       document.querySelector('[data-testid="chat-sheet"]')?.getBoundingClientRect()
         .top ?? 0,
   );
+const panelRadii = (p) =>
+  p.evaluate(() => {
+    const panel = document.querySelector('[data-testid="chat-sheet"]');
+    const surface = panel?.firstElementChild;
+    const content = document.querySelector('[data-testid="chat-content"]');
+    const read = (el) =>
+      el ? Number.parseFloat(getComputedStyle(el).borderTopLeftRadius) : -1;
+    return { surface: read(surface), content: read(content) };
+  });
 const SHEET_TOP_MARGIN = 72;
 const grabberBox = (p) => p.getByTestId("chat-sheet-grabber").boundingBox();
 
@@ -1557,9 +1566,20 @@ try {
     await gesture(p, 80, {
       pointer: "mouse",
       slow: true,
+      hold: true,
       steps: 10,
       target: "chat-pill",
     });
+    const heldRadii = await panelRadii(p);
+    assert(
+      near(heldRadii.surface, heldRadii.content, 0.5),
+      `PILL-INPUT: held drag keeps glass/content radii in sync (surface ${heldRadii.surface}, content ${heldRadii.content})`,
+    );
+    assert(
+      heldRadii.surface > 0 && heldRadii.surface <= 40,
+      `PILL-INPUT: held drag uses a real capsule radius, not a huge clamped radius (${heldRadii.surface})`,
+    );
+    await p.mouse.up();
     await p.waitForTimeout(SETTLE);
     const st = await chatState(p);
     assert(

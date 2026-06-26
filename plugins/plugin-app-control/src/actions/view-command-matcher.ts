@@ -27,6 +27,7 @@
 const NAV_VERBS = [
 	// en
 	"open",
+	"go",
 	"go to",
 	"goto",
 	"show me",
@@ -48,6 +49,8 @@ const NAV_VERBS = [
 	"display",
 	"launch",
 	"back to",
+	"return to",
+	"return",
 	// es
 	"abre",
 	"abrir",
@@ -616,6 +619,16 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 		"nguoi dong hanh",
 	],
 	chat: [
+		"home",
+		"home screen",
+		"home page",
+		"home dashboard",
+		"dashboard",
+		"main screen",
+		"main page",
+		"main chat",
+		"start screen",
+		"landing page",
 		"chat",
 		"conversation",
 		"chatear",
