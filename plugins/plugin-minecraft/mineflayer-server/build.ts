@@ -15,7 +15,7 @@ const externalDeps = [
 ];
 
 async function build(): Promise<void> {
-  await $`rm -rf dist`;
+  await $`node ../../../packages/scripts/rm-path-recursive.mjs dist`;
   const result = await Bun.build({
     entrypoints: ["./src/index.ts"],
     outdir: "./dist",

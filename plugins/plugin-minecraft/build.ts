@@ -17,7 +17,7 @@ const NODE_BUILTINS = [
 ] as const;
 
 async function build(): Promise<void> {
-  await $`rm -rf dist`;
+  await $`node ../../packages/scripts/rm-path-recursive.mjs dist`;
 
   const external = await externalsFromPackageJson("./package.json", {
     extra: NODE_BUILTINS,
