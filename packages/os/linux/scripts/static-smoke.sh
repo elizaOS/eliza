@@ -141,6 +141,7 @@ bash -n build.sh build-iso.sh tails/auto/build \
     scripts/dev-sign-update-manifest.sh \
     scripts/usb-write.sh \
     scripts/generate-elizaos-brand-assets.sh \
+    scripts/run-cool-build.sh \
     scripts/submodule-checkout.sh \
     scripts/security-smoke.sh
 grep -Fq 'if [ -f "${SRC}/binary.iso" ]' build-iso.sh
@@ -238,6 +239,7 @@ for executable in \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager \
     scripts/dev-sign-update-manifest.sh \
+    scripts/run-cool-build.sh \
     scripts/usb-write.sh \
     scripts/security-smoke.sh \
     scripts/sync-runtime-to-chroot.sh
