@@ -206,6 +206,19 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  it("does not move the overlay bottom padding just because the composer is focused", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    const initialPadding = overlay.style.paddingBottom;
+
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-variant")).toBe(
+      "open",
+    );
+    expect(overlay.style.paddingBottom).toBe(initialPadding);
+  });
+
   it("blurs the focused composer when the active view leaves chat (drops the iOS accessory bar)", () => {
     const { rerender } = render(
       <ContinuousChatOverlay
@@ -308,6 +321,46 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("toggles the sheet open and closed on repeated grabber taps", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+  });
+
+  it("opens a loading conversation on the first grabber tap", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [],
+          conversationLoading: true,
+        })}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(screen.getByTestId("chat-thread-loading")).toBeTruthy();
+
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
   it("routes a horizontal swipe on the collapsed grabber to the launcher rail instead of opening chat", () => {

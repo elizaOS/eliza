@@ -49,7 +49,13 @@ const coreMock = vi.hoisted(() => ({
 	hasOwnerAccess: vi.fn(async () => true),
 }));
 
-vi.mock("@elizaos/core", () => coreMock);
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return {
+		...coreMock,
+		getUserMessageText: actual.getUserMessageText,
+	};
+});
 
 type RuntimeTask = {
 	id: string;
@@ -1805,6 +1811,12 @@ describe("view management actions", () => {
 						path: "/calendar",
 						tags: ["calendar", "calender"],
 					}),
+					view({
+						id: "chat",
+						label: "Chat",
+						path: "/chat",
+						tags: ["chat", "home"],
+					}),
 				]),
 				getCurrentView: vi.fn(async () => null),
 			},
@@ -1831,6 +1843,13 @@ describe("view management actions", () => {
 			undefined,
 			callback,
 		);
+		const homeResult = await action.handler(
+			runtime as never,
+			message(composedViewPrompt("go home")) as never,
+			undefined,
+			{ action: "show", mode: "simple" },
+			callback,
+		);
 
 		expect(notesResult?.success).toBe(true);
 		expect(notesResult?.values).toMatchObject({
@@ -1842,12 +1861,21 @@ describe("view management actions", () => {
 			mode: "show",
 			viewId: "calendar",
 		});
+		expect(homeResult?.success).toBe(true);
+		expect(homeResult?.values).toMatchObject({
+			mode: "show",
+			viewId: "chat",
+		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/navigate",
 			expect.objectContaining({ method: "POST" }),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/calendar/navigate",
+			expect.objectContaining({ method: "POST" }),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/chat/navigate",
 			expect.objectContaining({ method: "POST" }),
 		);
 	});

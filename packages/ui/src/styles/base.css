@@ -84,9 +84,9 @@
   --scrollbar-thumb-start: rgba(0, 0, 0, 0.22);
   --scrollbar-thumb-mid: rgba(0, 0, 0, 0.3);
   --scrollbar-thumb-end: rgba(0, 0, 0, 0.36);
-  --scrollbar-thumb-hover-start: rgba(255, 88, 0, 0.56);
-  --scrollbar-thumb-hover-mid: rgba(255, 88, 0, 0.7);
-  --scrollbar-thumb-hover-end: rgba(255, 88, 0, 0.78);
+  --scrollbar-thumb-hover-start: rgba(0, 0, 0, 0.34);
+  --scrollbar-thumb-hover-mid: rgba(0, 0, 0, 0.44);
+  --scrollbar-thumb-hover-end: rgba(0, 0, 0, 0.52);
   --scrollbar-thumb-edge: rgba(0, 0, 0, 0.1);
 
   /* Header */
@@ -223,9 +223,9 @@
   --scrollbar-thumb-start: rgba(255, 255, 255, 0.32);
   --scrollbar-thumb-mid: rgba(255, 255, 255, 0.24);
   --scrollbar-thumb-end: rgba(255, 255, 255, 0.28);
-  --scrollbar-thumb-hover-start: rgba(255, 88, 0, 0.94);
-  --scrollbar-thumb-hover-mid: rgba(255, 88, 0, 0.82);
-  --scrollbar-thumb-hover-end: rgba(255, 88, 0, 0.88);
+  --scrollbar-thumb-hover-start: rgba(255, 255, 255, 0.46);
+  --scrollbar-thumb-hover-mid: rgba(255, 255, 255, 0.38);
+  --scrollbar-thumb-hover-end: rgba(255, 255, 255, 0.42);
   --scrollbar-thumb-edge: rgba(255, 255, 255, 0.12);
 
   --header-bar-bg: var(--brand-black);

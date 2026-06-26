@@ -10,7 +10,11 @@ import {
   type VoiceControlEventDetail,
 } from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
-import { useChatTurnStatus, useConversationMessages } from "../../state";
+import {
+  useChatComposer,
+  useChatTurnStatus,
+  useConversationMessages,
+} from "../../state";
 import { useAppSelectorShallow } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import {
@@ -227,7 +231,6 @@ function sameStringList(a?: string[], b?: string[]): boolean {
 // below but not selected here is a compile error, so this stays value-equivalent.
 const selectShellController = (s: AppContextValue) => ({
   tab: s.tab,
-  chatSending: s.chatSending,
   chatFirstTokenReceived: s.chatFirstTokenReceived,
   sendChatText: s.sendChatText,
   agentStatus: s.agentStatus,
@@ -244,7 +247,6 @@ const selectShellController = (s: AppContextValue) => ({
 export function useShellController(): ShellController {
   const {
     tab,
-    chatSending,
     chatFirstTokenReceived,
     sendChatText,
     agentStatus,
@@ -260,6 +262,9 @@ export function useShellController(): ShellController {
   // Read per-token streaming messages from the isolated context so token updates
   // don't depend on the giant AppContext value identity.
   const { conversationMessages } = useConversationMessages();
+  // chatSending lives in ChatComposerContext; the AppContext copy is intentionally
+  // stale so send/typing churn does not fan out through the whole app.
+  const { chatSending } = useChatComposer();
   // Live server-reported phase of the in-flight turn (from the chat-send SSE),
   // read from its dedicated context so status events re-render only chat surfaces.
   const { serverTurnStatus } = useChatTurnStatus();
@@ -1112,6 +1117,8 @@ export function useShellController(): ShellController {
     currentTab: tab,
     stop: stopTurn,
     conversationNav,
-    conversationLoading,
+    conversationLoading:
+      conversationLoading ||
+      (activeConversationId != null && conversationMessages.length === 0),
   };
 }

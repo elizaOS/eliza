@@ -55,16 +55,21 @@ describe("resolveSwipe", () => {
 });
 
 describe("usePullGesture rAF coalescing (#9141)", () => {
-  function pointer(x: number, y: number, pointerId = 1): React.PointerEvent {
+  function pointer(
+    x: number,
+    y: number,
+    pointerId = 1,
+    currentTarget = {
+      setPointerCapture() {},
+      releasePointerCapture() {},
+    },
+  ): React.PointerEvent {
     return {
       clientX: x,
       clientY: y,
       pointerId,
       isPrimary: true,
-      currentTarget: {
-        setPointerCapture() {},
-        releasePointerCapture() {},
-      },
+      currentTarget,
     } as unknown as React.PointerEvent;
   }
 
@@ -104,6 +109,25 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     // make us run the fan-out more than once per painted frame).
     expect(onDrag).toHaveBeenCalledTimes(1);
     expect(onDrag).toHaveBeenCalledWith(50);
+  });
+
+  it("captures immediately for a vertical pull handle that also supports swipes", () => {
+    const setPointerCapture = vi.fn();
+    const currentTarget = {
+      setPointerCapture,
+      releasePointerCapture() {},
+    };
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onPullUp: vi.fn(),
+        onSwipeLeft: vi.fn(),
+      }),
+    );
+
+    result.current.onPointerDown(pointer(100, 300, 1, currentTarget));
+
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
   });
 
   it("flushes the latest coalesced drag before free-settle release", () => {
