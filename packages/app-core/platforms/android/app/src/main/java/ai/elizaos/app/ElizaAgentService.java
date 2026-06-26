@@ -1589,7 +1589,7 @@ public class ElizaAgentService extends Service {
 
                 // Keep decode chunks bounded for stock APK runs while avoiding
                 // unnecessary multi-chunk prompt prefill. Pixel validation on
-                // eliza-1-0_8b showed 256-token chunks reduce native prefill
+                // eliza-1-2b showed 256-token chunks reduce native prefill
                 // time versus the older 64-token default, without blocking
                 // health/startup probes because the HTTP server binds after
                 // model prewarm. Branded AOSP keeps the historical 512-token

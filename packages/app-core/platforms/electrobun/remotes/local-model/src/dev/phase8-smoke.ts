@@ -4,8 +4,6 @@ import { ModelRemoteService } from "../bun/model-service.ts";
 process.env.ELIZA_MODEL_HF_DISABLE_NETWORK ??= "1";
 
 const REQUIRED_TIERS = [
-  "0_6b",
-  "1_7b",
   "2b",
   "4b",
   "9b",
