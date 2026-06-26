@@ -8,9 +8,9 @@ export const VECTOR_DIMS = {
   LARGE: 768,
   XL: 1024,
   XXL: 1536,
-  // 2048: native embedding width of the on-device eliza-1-2b model (qwen3.5
-  // n_embd=2048). Without this column the 2b's embeddings have no storable
-  // dimension and are silently dropped (broken on-device memory/RAG).
+  // 2048: retained for local Eliza-1 pooled-text embeddings and other
+  // 2048-wide local providers. Without this column those embeddings have no
+  // storable dimension and are silently dropped (broken on-device memory/RAG).
   XXL2: 2048,
   XXXL: 3072,
 } as const;
