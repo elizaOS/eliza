@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "vitest";
@@ -10,6 +11,22 @@ import {
   scanAppleAppBundleForNativeRuntimeSignals,
   validateEntitlementsAgainstTarget,
 } from "./apple-entitlement-audit.mjs";
+import { resolveRepoRootFromImportMeta } from "./repo-root.mjs";
+
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 describe("apple entitlement audit", () => {
   it("accepts the reviewed App Store entitlement sources", () => {
@@ -121,7 +138,7 @@ describe("apple entitlement audit", () => {
         }),
       );
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      removePathRecursive(tmp);
     }
   });
 
