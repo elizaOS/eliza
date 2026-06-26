@@ -257,7 +257,7 @@ jobs:
       - name: Prune cargo cache payload
         if: always()
         run: |
-          rm -rf \
+          node packages/scripts/rm-path-recursive.mjs \
             "${CARGO_TARGET_DIR}/debug/incremental" \
             "${CARGO_TARGET_DIR}/debug/.fingerprint" \
             "${CARGO_TARGET_DIR}/debug/build" \
