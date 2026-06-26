@@ -41,7 +41,8 @@ export const simpleViewsRoutes: Route[] = [
     type: "POST",
     name: "simple-views-interact",
     path: "/api/simple-views/interact",
-    public: true,
+    // Auth required: this is a state-mutating write. (The GET /state read above
+    // stays public.) An unauthenticated POST must not mutate server state.
     rawPath: true,
     routeHandler: async ({ body }) => {
       const record = requestBodyRecord(body);
