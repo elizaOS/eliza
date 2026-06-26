@@ -44,7 +44,7 @@
     "build.config.ts"
   ],
   "scripts": {
-    "build": "tsdown --config build.config.ts",
+    "build": "bun run build.ts",
     "clean": "rm -rf dist .turbo",
     "lint": "bunx @biomejs/biome check --write ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
@@ -64,7 +64,6 @@
     "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.3.5",
     "@types/node": "^25.0.3",
-    "tsdown": "^0.22.0",
     "typescript": "^6.0.3",
     "unrun": "^0.3.0",
     "vitest": "^4.1.4"
