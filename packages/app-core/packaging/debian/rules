@@ -40,5 +40,5 @@ override_dh_auto_test:
 	true
 
 override_dh_auto_clean:
-	rm -rf dist/ node_modules/
+	node ../scripts/rm-path-recursive.mjs dist node_modules
 	dh_auto_clean
