@@ -69,7 +69,7 @@ export interface AppBootConfig {
 
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
-  cloudApiBase: "https://www.elizacloud.ai",
+  cloudApiBase: "https://elizacloud.ai",
 };
 
 const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");
