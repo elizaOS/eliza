@@ -40,6 +40,7 @@ TAILS_WORKAROUNDS_URL="${TAILS_WORKAROUNDS_URL:-https://gitlab.tails.boum.org/ta
 TAILS_WORKAROUNDS_REF="${TAILS_WORKAROUNDS_REF:-6701bfe3c41f4a676262a00b0e79d480d403caa1}"
 TAILS_TORBROWSER_LAUNCHER_URL="${TAILS_TORBROWSER_LAUNCHER_URL:-https://gitlab.tails.boum.org/tails/torbrowser-launcher.git}"
 TAILS_TORBROWSER_LAUNCHER_REF="${TAILS_TORBROWSER_LAUNCHER_REF:-9d2ea22d21f653e29169bb68ad250c674f533042}"
+source "${ELIZAOS_LIVE_SCRIPT_LIB:-/usr/local/lib/elizaos-live}/submodule-checkout.sh"
 
 cleanup() {
     if [ -n "${ACNG_PID}" ]; then
@@ -83,23 +84,15 @@ cleanup() {
     rm -rf "${SRC}/tmp" 2>/dev/null || true
 }
 
-ensure_submodule_checkout() {
+ensure_generated_submodule_checkout() {
     local path="$1"
     local url="$2"
     local ref="$3"
 
-    if [ -d "${path}" ] && find "${path}" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
-        return
+    ensure_submodule_checkout "${path}" "${url}" "${ref}"
+    if [ "${elizaos_submodule_checkout_fetched}" = "1" ]; then
+        GENERATED_SUBMODULES+=("${path}")
     fi
-
-    echo "missing ${path} — fetching ${ref} from ${url}"
-    rm -rf "${path}"
-    mkdir -p "$(dirname "${path}")"
-    git init -q "${path}"
-    git -C "${path}" remote add origin "${url}"
-    git -C "${path}" fetch --depth 1 origin "${ref}"
-    git -C "${path}" checkout -q FETCH_HEAD
-    GENERATED_SUBMODULES+=("${path}")
 }
 
 trap cleanup EXIT
@@ -240,11 +233,11 @@ fi
 export PATH="${SRC}/auto/scripts:${SRC}/bin:${PATH}"
 
 if [ "${STAGE}" = "build" ]; then
-    ensure_submodule_checkout \
+    ensure_generated_submodule_checkout \
         submodules/tails-workarounds \
         "${TAILS_WORKAROUNDS_URL}" \
         "${TAILS_WORKAROUNDS_REF}"
-    ensure_submodule_checkout \
+    ensure_generated_submodule_checkout \
         submodules/torbrowser-launcher \
         "${TAILS_TORBROWSER_LAUNCHER_URL}" \
         "${TAILS_TORBROWSER_LAUNCHER_REF}"

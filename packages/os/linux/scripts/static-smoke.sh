@@ -141,6 +141,7 @@ bash -n build.sh build-iso.sh tails/auto/build \
     scripts/dev-sign-update-manifest.sh \
     scripts/usb-write.sh \
     scripts/generate-elizaos-brand-assets.sh \
+    scripts/submodule-checkout.sh \
     scripts/security-smoke.sh
 grep -Fq 'if [ -f "${SRC}/binary.iso" ]' build-iso.sh
 grep -Fq 'find "${SRC}" -maxdepth 1 -name' build-iso.sh

@@ -28,6 +28,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${HERE}/scripts/submodule-checkout.sh"
 TAILS_SRC="${TAILS_SRC:-${HERE}/tails}"
 OUT="${HERE}/out"
 # Target architecture for the ISO. Default amd64 keeps every existing
@@ -84,17 +85,11 @@ echo "=== building image ${IMAGE} ==="
 # Tails tree may omit submodule checkouts, so clone the pinned revision
 # when tails/submodules/live-build is absent.
 trap 'rm -rf "${HERE}/tails-live-build"' EXIT
-rm -rf "${HERE}/tails-live-build"
-if [ -d "${TAILS_SRC}/submodules/live-build" ] \
-    && find "${TAILS_SRC}/submodules/live-build" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
-    cp -r "${TAILS_SRC}/submodules/live-build" "${HERE}/tails-live-build"
-else
-    echo "no ${TAILS_SRC}/submodules/live-build — fetching ${LIVE_BUILD_REF}"
-    git init -q "${HERE}/tails-live-build"
-    git -C "${HERE}/tails-live-build" remote add origin "${LIVE_BUILD_URL}"
-    git -C "${HERE}/tails-live-build" fetch --depth 1 origin "${LIVE_BUILD_REF}"
-    git -C "${HERE}/tails-live-build" checkout -q FETCH_HEAD
-fi
+materialize_submodule_checkout \
+    "${TAILS_SRC}/submodules/live-build" \
+    "${HERE}/tails-live-build" \
+    "${LIVE_BUILD_URL}" \
+    "${LIVE_BUILD_REF}"
 # Pin the build platform so the Dockerfile pulls the matching debian
 # base image and resolves arch-specific apt packages. For amd64 this
 # also prevents Apple Silicon hosts (default arm64) from pulling the
