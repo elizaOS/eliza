@@ -306,18 +306,19 @@ fi
 # StartupShell is a SHARED app-shell component (@elizaos/ui), and the elizaOS OS
 # ISO bundles it verbatim — there is no downstream OS theme override for the
 # boot splash. Per the per-surface accent system, the *app* surface owns the
-# splash and it is intentionally orange (#FF5800), while the OS chrome
-# (greeter, dashboard metadata, failure/first-run shells below) stays on the
-# blue/white palette. So this gate asserts the splash's current intentional
-# orange palette and the neutral bootstrap-gate surface, and only rejects the
-# genuinely-stale dark/gradient/glow styling from the pre-redesign shell.
+# splash and it uses the launch token with the current home-shader fallback
+# (#ef5a1f). OS chrome such as the greeter/dashboard metadata/failure shell
+# stays on the blue/white palette; first-run stays inside the launch surface.
+# So this gate asserts the splash's current intentional launch token and the
+# neutral bootstrap-gate surface, and only rejects the genuinely-stale
+# dark/gradient/glow styling from the pre-redesign shell.
 if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
 then
     echo "Startup shell must not reintroduce the old dark/gradient splash." >&2
     exit 1
 fi
-grep -q 'bg-\[#FF5800\]' \
+grep -Fq 'bg-[var(--launch-bg,#ef5a1f)]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
 grep -q 'bg-\[#F7F6F4\]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
@@ -327,18 +328,19 @@ then
     echo "Startup failure shell must stay on the clean elizaOS white/blue surface." >&2
     exit 1
 fi
-grep -q 'bg-\[#F7F9FF\]' \
+grep -q 'bg-bg' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
-grep -q 'text-\[#0B35F1\]' \
+grep -q 'text-txt' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
-grep -q 'data-testid="first-run-shell"' \
-    "${REPO_ROOT}/packages/ui/src/components/shell/FirstRunShell.tsx"
-grep -q 'bg-\[#F7F9FF\]' \
-    "${REPO_ROOT}/packages/ui/src/components/shell/FirstRunShell.tsx"
-if rg -n 'bg-bg|bg-card|text-accent|bg-accent|text-warn|text-ok|text-danger|#FF5800|#ff5800|#ffe600|#f0b90b' \
-    "${REPO_ROOT}/packages/ui/src/components/shell/FirstRunShell.tsx"
+grep -q 'text-destructive' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
+first_run_shell="${REPO_ROOT}/packages/ui/src/first-run/CompactOnboarding.tsx"
+grep -q 'className="first-run-screen' "${first_run_shell}"
+grep -q 'text-white' "${first_run_shell}"
+if rg -n 'bg-\[#08080a\]|bg-\[#0a0a0a\]|radial-gradient|blur-\[' \
+    "${first_run_shell}"
 then
-    echo "First-run onboarding must stay on the clean elizaOS white/blue surface." >&2
+    echo "First-run onboarding must not reintroduce the old dark/gradient shell." >&2
     exit 1
 fi
 onboarding_states_css="${REPO_ROOT}/packages/ui/src/components/onboarding/states/onboarding.css"

@@ -88,6 +88,9 @@ jobs:
           key: elizaos-iso-${{ matrix.arch }}-${{ hashFiles('packages/os/linux/tails/auto/config', 'packages/os/linux/tails/config/chroot_local-packageslists/**', 'packages/os/linux/Dockerfile') }}
           restore-keys: elizaos-iso-${{ matrix.arch }}-
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5
+
       - name: Detect KVM acceleration
         id: kvm
         run: |
@@ -138,6 +141,8 @@ jobs:
         # OOMs on the renderer step (observed locally on a 30 GB host).
         env:
           ELIZAOS_BUILD_APP: 1
+          ELIZAOS_DOCKER_BUILDX_GHA_CACHE: 1
+          ELIZAOS_DOCKER_BUILDX_CACHE_SCOPE: elizaos-linux-iso-${{ matrix.arch }}
           NODE_OPTIONS: --max-old-space-size=12288
         run: just build
         timeout-minutes: 180

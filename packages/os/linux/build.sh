@@ -103,7 +103,26 @@ fi
 # registered (Docker Desktop ships this; on bare Linux,
 # `apt-get install qemu-user-static binfmt-support` then `docker run
 # --rm --privileged tonistiigi/binfmt --install all`).
-docker build --platform "linux/${ARCH}" --build-arg "TARGETARCH=${ARCH}" -t "${IMAGE}" "${HERE}"
+docker_build_args=(
+    --platform "linux/${ARCH}"
+    --build-arg "TARGETARCH=${ARCH}"
+    -t "${IMAGE}"
+)
+if [ "${ELIZAOS_DOCKER_BUILDX_GHA_CACHE:-0}" = "1" ]; then
+    if ! docker buildx version >/dev/null 2>&1; then
+        echo "ERROR: ELIZAOS_DOCKER_BUILDX_GHA_CACHE=1 requires docker buildx." >&2
+        exit 1
+    fi
+    CACHE_SCOPE="${ELIZAOS_DOCKER_BUILDX_CACHE_SCOPE:-elizaos-linux-iso-${ARCH}}"
+    docker buildx build \
+        "${docker_build_args[@]}" \
+        --load \
+        --cache-from "type=gha,scope=${CACHE_SCOPE}" \
+        --cache-to "type=gha,scope=${CACHE_SCOPE},mode=max" \
+        "${HERE}"
+else
+    docker build "${docker_build_args[@]}" "${HERE}"
+fi
 rm -rf "${HERE}/tails-live-build"
 
 # Create the apt-cacher-ng cache volume on first run.
