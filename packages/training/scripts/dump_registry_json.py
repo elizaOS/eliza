@@ -3,7 +3,7 @@
 Imports ``model_registry`` (which has no torch/transformers deps) and writes
 the canonical fields the TypeScript runtime resolver mirrors. Keyed by the
 ``eliza_short_name`` so the consumer doesn't need to know our internal
-``qwenX.Y-Nb`` keys.
+``gemma4-*`` registry keys.
 
 Usage (from training/):
     uv run python scripts/dump_registry_json.py
