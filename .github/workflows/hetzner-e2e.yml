@@ -5,6 +5,8 @@ name: Hetzner Agent E2E
 # staging API, runs a single bridge-ping healthcheck, then tears
 # everything down. Gracefully skips when the required secrets are
 # unset (so this workflow can land on develop and be activated later).
+# Once secrets are configured, bad cloud auth must fail loudly; otherwise the
+# launch-critical provision path can silently stop exercising Headscale.
 #
 # Required secrets / config (GitHub environment: ci-hetzner-e2e):
 #   HCLOUD_TOKEN_CI        - Hetzner Cloud API token (CI-scoped project)
@@ -142,18 +144,17 @@ jobs:
           status_code="$(printf '%s' "$response" | bun -e 'const chunks=[]; for await (const chunk of Bun.stdin.stream()) chunks.push(Buffer.from(chunk)); const data = JSON.parse(Buffer.concat(chunks).toString() || "{}"); console.log(data.status ?? "");')"
           if [ "$status_code" = "401" ] || [ "$status_code" = "403" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Cloud API rejected CLOUD_E2E_API_KEY with HTTP $status_code; skipping Hetzner E2E before provisioning."
+            echo "::error::Cloud API rejected CLOUD_E2E_API_KEY with HTTP $status_code; Hetzner E2E is configured but cannot provision."
             {
-              echo "### Hetzner E2E skipped"
+              echo "### Hetzner E2E failed before provisioning"
               echo ""
               echo "Cloud API rejected \`CLOUD_E2E_API_KEY\` with HTTP \`$status_code\` before provisioning Hetzner capacity."
               echo ""
-              echo "Refresh the \`CLOUD_E2E_API_KEY\` / \`ELIZACLOUD_API_KEY\` secret in the \`ci-hetzner-e2e\` environment, or check the staging API-key lookup path."
+              echo "The \`ci-hetzner-e2e\` environment is configured, so this is a real gate failure rather than an intentional skip."
+              echo ""
+              echo "Refresh the \`CLOUD_E2E_API_KEY\` / \`ELIZACLOUD_API_KEY\` secret with a staging key that can list and provision agents, or check the staging API-key lookup path."
             } >> "$GITHUB_STEP_SUMMARY"
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              exit 1
-            fi
-            exit 0
+            exit 1
           fi
 
           if [ "${status_code#2}" != "$status_code" ]; then
