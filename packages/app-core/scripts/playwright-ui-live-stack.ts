@@ -1,5 +1,9 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import {
+  type ChildProcessWithoutNullStreams,
+  execFileSync,
+  spawn,
+} from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   access,
   cp,
@@ -38,6 +42,12 @@ import {
 } from "./lib/websocket-pending-queue.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
+const CLEANUP_HELPER_SCRIPT = path.join(
+  REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const APP_DIR = resolveMainAppDir(REPO_ROOT, "app");
 const APP_DIST_DIR = path.join(APP_DIR, "dist");
 const COMPANION_PUBLIC_DIR = path.join(
@@ -143,7 +153,10 @@ function cleanupKnownStateDirsSync(): void {
   ownedStateDirs.clear();
   for (const stateDir of stateDirs) {
     try {
-      rmSync(stateDir, { force: true, recursive: true });
+      execFileSync(process.execPath, [CLEANUP_HELPER_SCRIPT, stateDir], {
+        cwd: REPO_ROOT,
+        stdio: "ignore",
+      });
     } catch {
       // Best effort during process teardown.
     }
