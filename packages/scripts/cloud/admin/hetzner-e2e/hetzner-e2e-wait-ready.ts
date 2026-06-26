@@ -6,10 +6,20 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readState } from "./state-file";
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const rmRecursiveScript = resolve(
+  scriptDir,
+  "..",
+  "..",
+  "..",
+  "rm-path-recursive.mjs",
+);
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -22,6 +32,20 @@ function requireEnv(name: string): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function rmRecursive(targetPath: string): void {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `[hetzner-e2e-wait-ready] recursive cleanup failed for ${targetPath} with exit code ${result.status ?? "unknown"}`,
+    );
+  }
 }
 
 async function main(): Promise<void> {
@@ -76,7 +100,7 @@ async function main(): Promise<void> {
     }
     throw new Error(`Timed out waiting for ${state.ip}: ${lastErr}`);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmRecursive(dir);
   }
 }
 
