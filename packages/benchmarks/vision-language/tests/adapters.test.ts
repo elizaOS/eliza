@@ -84,6 +84,30 @@ describe("ScreenSpotAdapter", () => {
     const missing = adapter.scoreOne(sample, { latencyMs: 1 });
     expect(missing.score).toBe(0);
   });
+  it("scores valid bbox predictions and ignores malformed regions", async () => {
+    const adapter = new ScreenSpotAdapter();
+    const [sample] = await adapter.loadSamples(1, { smoke: true });
+    const [x1, y1, x2, y2] = sample.payload.bbox;
+
+    const matchingRegion = adapter.scoreOne(sample, {
+      bbox: [x1, y1, x2, y2],
+      latencyMs: 1,
+    });
+    expect(matchingRegion.score).toBe(1);
+    expect(matchingRegion.detail).toEqual({
+      predictedBBox: [x1, y1, x2, y2],
+      targetBBox: sample.payload.bbox,
+    });
+
+    const malformedRegion = adapter.scoreOne(sample, {
+      bbox: [x1, y1, Number.NaN, y2],
+      latencyMs: 1,
+    });
+    expect(malformedRegion).toEqual({
+      score: 0,
+      detail: { reason: "no click or bbox in prediction" },
+    });
+  });
   it("parseClickFromText accepts CSV and JSON forms", () => {
     expect(parseClickFromText("100, 200")).toEqual({ x: 100, y: 200 });
     expect(parseClickFromText("(415, 612)")).toEqual({ x: 415, y: 612 });
