@@ -21,6 +21,7 @@ import {
   resolveTwitterAccountConfig,
 } from "../client/accounts.js";
 import { SearchMode } from "../client/index.js";
+import { materializeEnvAccountIfMissing } from "../connector-account-provider.js";
 import { TwitterDiscoveryClient } from "../discovery";
 import { validateTwitterConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
@@ -28,7 +29,6 @@ import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import { getSetting } from "../utils/settings";
-import { materializeEnvAccountIfMissing } from "../connector-account-provider.js";
 import { TwitterPostService } from "./PostService";
 
 const X_CONNECTOR_CONTEXTS = ["social", "connectors"];
