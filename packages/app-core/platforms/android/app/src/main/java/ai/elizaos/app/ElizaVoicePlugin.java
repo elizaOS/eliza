@@ -198,7 +198,7 @@ public class ElizaVoicePlugin extends Plugin {
         if (!ensureLoadedOrReject(call)) return;
         String bundleDir = resolveBundleDir(call.getString("bundleDir"));
         String prompt = call.getString("prompt",
-            "<|im_start|>user\nWrite one sentence about the ocean.<|im_end|>\n<|im_start|>assistant\n");
+            "<start_of_turn>user\nWrite one sentence about the ocean.<end_of_turn>\n<start_of_turn>model\n");
         Integer maxTokens = call.getInt("maxTokens", 48);
         try {
             String json = ElizaVoiceNative.nativeLlmSelfTest(
