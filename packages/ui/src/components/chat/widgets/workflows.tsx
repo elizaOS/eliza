@@ -6,10 +6,14 @@ import { client } from "../../../api";
 //   - AutomationItem: { id, type, status, enabled, system, lastExecution?, … }
 //   - AutomationStatus = "active" | "paused" | "completed" | "draft" | "system"
 import type { AutomationItem } from "../../../api/client-types-config";
+import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";
 import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const AUTOMATIONS_VIEW = "/automations";
+// Bound the bridge call so a hung agent channel settles the tile (self-hide)
+// rather than spinning on "Loading…" forever.
+const AUTOMATIONS_TIMEOUT_MS = 6_000;
 
 /**
  * "Running" = an automation the agent is actively keeping alive on a fresh
@@ -57,7 +61,10 @@ export function WorkflowsWidget({
 
   const load = useCallback(async (signal: { cancelled: boolean }) => {
     try {
-      const res = await client.listAutomations();
+      const res = await withTimeout(
+        client.listAutomations(),
+        AUTOMATIONS_TIMEOUT_MS,
+      );
       if (signal.cancelled) return;
       const items = Array.isArray(res?.automations) ? res.automations : [];
       const running = items.filter(isRunning).sort(compareRunning);
