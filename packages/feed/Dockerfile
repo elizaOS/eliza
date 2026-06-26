@@ -32,7 +32,7 @@ RUN bunx turbo run build --filter=@elizaos/shared --filter=@elizaos/core
 
 # Build the Next.js app (webpack; standalone disabled). Heavy — needs ~8 GB.
 ENV NODE_ENV=production
-RUN NODE_OPTIONS=--max-old-space-size=8192 bun run --cwd packages/feed/apps/web build
+RUN NODE_OPTIONS=--max-old-space-size=6144 bun run --cwd packages/feed/apps/web build
 
 EXPOSE 3000
 # Ensure schema, then start the server (binds $PORT).
