@@ -199,6 +199,11 @@ const iosBunRuntimePackageRoot = path.join(
   "native",
   "bun-runtime",
 );
+const RM_PATH_RECURSIVE_SCRIPT = path.join(
+  packagesRoot,
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const defaultIosBunEngineXcframework = path.join(
   iosBunRuntimePackageRoot,
   "artifacts",
@@ -411,6 +416,28 @@ function runCaptureSync(command, args, { cwd = repoRoot, maxBuffer } = {}) {
     encoding: "utf8",
     maxBuffer,
   });
+}
+
+function rmRecursive(pathToRemove) {
+  const result = spawnSync(
+    process.execPath,
+    [RM_PATH_RECURSIVE_SCRIPT, path.resolve(pathToRemove)],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.status !== 0) {
+    const reason =
+      result.stderr?.trim() ||
+      result.stdout?.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    throw new Error(
+      `[mobile-build] failed to recursively remove ${pathToRemove}: ${reason}`,
+    );
+  }
 }
 
 function resolveBunExecutable() {
@@ -1273,7 +1300,7 @@ function stageIosAgentRuntime({
   }
 
   const targetDir = path.join(iosDir, "App", "public", "agent");
-  fs.rmSync(targetDir, { recursive: true, force: true });
+  rmRecursive(targetDir);
   fs.mkdirSync(targetDir, { recursive: true });
   const filesToStage = assetPlan.agentAssets ?? fs.readdirSync(sourceDir);
   for (const file of filesToStage) {
@@ -1320,7 +1347,7 @@ function removeIosLocalExecutionAssets() {
   let removed = 0;
   for (const target of targets) {
     if (!fs.existsSync(target)) continue;
-    fs.rmSync(target, { recursive: true, force: true });
+    rmRecursive(target);
     removed += 1;
   }
   if (removed > 0) {
