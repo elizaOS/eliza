@@ -13,17 +13,48 @@
  * packages/core/dist/ so all subpath exports resolve correctly.
  */
 
-import { cpSync, existsSync, readdirSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const bunCacheDir = join(repoRoot, "node_modules", ".bun");
+const cleanupHelperScript = join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 // @elizaos/core source lives under packages/core (current) or packages/typescript
 // (legacy). Prefer the current name and fall back so older branches still work.
 const localCoreDist = existsSync(join(repoRoot, "packages", "core", "dist"))
   ? join(repoRoot, "packages", "core", "dist")
   : join(repoRoot, "packages", "typescript", "dist");
+
+function removePathRecursive(targetPath) {
+  const completed = spawnSync(
+    "node",
+    [cleanupHelperScript, resolve(repoRoot, targetPath)],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (completed.error) throw completed.error;
+  if (completed.status !== 0) {
+    throw new Error(
+      [
+        `failed to remove ${targetPath}`,
+        completed.stdout.trim(),
+        completed.stderr.trim(),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+}
 
 if (!existsSync(bunCacheDir)) {
   process.exit(0);
@@ -68,7 +99,7 @@ for (const entry of readdirSync(bunCacheDir)) {
   console.log(`[patch-nested-core-dist] Replacing dist/ in ${nestedCore}`);
   // Remove the partial dist and replace with the full local build
   if (existsSync(nestedDist)) {
-    rmSync(nestedDist, { recursive: true, force: true });
+    removePathRecursive(nestedDist);
   }
   cpSync(localCoreDist, nestedDist, { recursive: true });
   patched++;
