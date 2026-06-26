@@ -2,6 +2,7 @@ import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useNow } from "../../../hooks/useNow";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -222,10 +223,14 @@ function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
     FINANCES_REFRESH_INTERVAL_MS,
   );
 
+  // `useNow` is 0 on first render (deterministic render path — no Date.now in
+  // render) then the live clock, ticking on the poll cadence to drive the
+  // "due in N days" math. The `now === 0` first render is held below.
+  const now = useNow(FINANCES_REFRESH_INTERVAL_MS);
   const overdrawn = data != null && data.netBalanceMinor < 0;
   const dueSoon = useMemo(
-    () => (data ? billsDueWithin7Days(data.bills, Date.now()) : []),
-    [data],
+    () => (data && now > 0 ? billsDueWithin7Days(data.bills, now) : []),
+    [data, now],
   );
   const hasBillsDue = dueSoon.length > 0;
 
@@ -268,11 +273,11 @@ function FinancesAlertsWidget(_props: Partial<WidgetProps>) {
       icon={<Wallet />}
       label="Bills"
       value={soonest.label}
-      meta={dueInLabel(soonest.nextChargeAt as string, Date.now())}
+      meta={dueInLabel(soonest.nextChargeAt as string, now)}
       badge={dueSoon.length > 1 ? `${dueSoon.length} due` : undefined}
       tone="warn"
       testId="chat-widget-finances-alerts"
-      ariaLabel={`Bills: ${dueSoon.length} due this week, next ${soonest.label} ${dueInLabel(soonest.nextChargeAt as string, Date.now())}. Open Finances.`}
+      ariaLabel={`Bills: ${dueSoon.length} due this week, next ${soonest.label} ${dueInLabel(soonest.nextChargeAt as string, now)}. Open Finances.`}
       onActivate={() => nav.openView("/finances", "finances")}
     />
   );

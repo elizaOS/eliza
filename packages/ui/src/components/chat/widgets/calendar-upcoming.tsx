@@ -2,6 +2,7 @@ import { CalendarClock, CalendarPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useNow } from "../../../hooks/useNow";
 import { withTimeout } from "../../../utils/with-timeout";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
@@ -199,7 +200,10 @@ export function CalendarUpcomingWidget({
     if (connection === "connected") void loadEvents();
   }, CALENDAR_REFRESH_INTERVAL_MS);
 
-  const now = Date.now();
+  // `useNow` is 0 on first render (deterministic render path — no Date.now in
+  // render) then the live clock, ticking each minute to drive relative-time /
+  // urgency math. The `now === 0` first render is held below as "Loading…".
+  const now = useNow(CALENDAR_REFRESH_INTERVAL_MS);
   const visible = useMemo(() => upcomingEvents(events, now), [events, now]);
   const onHome = slot === "home";
   const next = visible[0];
@@ -235,8 +239,13 @@ export function CalendarUpcomingWidget({
     );
   }
 
-  // Hold the loading state until the first probe + (if connected) feed settle.
-  if (connection === "unknown" || (connection === "connected" && !feedLoaded)) {
+  // Hold the loading state until the live clock arrives (useNow is 0 on the
+  // first render) and the first probe + (if connected) feed settle.
+  if (
+    now === 0 ||
+    connection === "unknown" ||
+    (connection === "connected" && !feedLoaded)
+  ) {
     return (
       <div className={spanClassName}>
         <HomeWidgetCard

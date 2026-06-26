@@ -154,6 +154,31 @@ describe("J2 — spine + first-run integration", () => {
     expect(snoozed.state.firedAt).toBe("2026-05-09T08:30:00.000Z");
   });
 
+  it("boot seeder feeds the spine runner and is idempotent across two boots", async () => {
+    const runtime = createMinimalRuntimeStub();
+    // Use the real spine runner (production-shaped) as the FirstRunService
+    // runner so boot-seeded inputs flow straight into the scheduler store.
+    const runner = makeFreshRunner();
+    const service = new FirstRunService(runtime, { runner });
+
+    // First boot on an already-initialized runtime that never ran first-run:
+    // the full default pack materializes in the spine store.
+    const firstBoot = await service.seedDefaultPackOnBoot();
+    expect(firstBoot.seeded.length).toBe(5);
+    const afterFirst = await runner.list();
+    expect(afterFirst.length).toBe(5);
+
+    // Second boot: per-key marker short-circuits before scheduling, so the
+    // spine store still holds exactly five rows (no duplicates).
+    const secondBoot = await new FirstRunService(runtime, {
+      runner,
+    }).seedDefaultPackOnBoot();
+    expect(secondBoot.seeded.length).toBe(0);
+    expect(secondBoot.skipped.length).toBe(5);
+    const afterSecond = await runner.list();
+    expect(afterSecond.length).toBe(5);
+  });
+
   it("first-run replay path leaves scheduled inputs idempotent under the runner", async () => {
     const runtime = createMinimalRuntimeStub();
     const service = new FirstRunService(runtime);

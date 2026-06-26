@@ -87,6 +87,7 @@ import {
 } from "./lifeops/connectors/index.js";
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
+import { FirstRunService } from "./lifeops/first-run/service.js";
 import { createOwnerLocaleExamplesProvider } from "./lifeops/i18n/localized-examples-provider.js";
 import {
   createMultilingualPromptRegistry,
@@ -123,7 +124,10 @@ import {
   LIFEOPS_TASK_NAME,
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
-import { ScheduledTaskRunnerService } from "./lifeops/scheduled-task/service.js";
+import {
+  getScheduledTaskRunner as getProductionScheduledTaskRunner,
+  ScheduledTaskRunnerService,
+} from "./lifeops/scheduled-task/service.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
 import {
   createSendPolicyRegistry,
@@ -1036,6 +1040,25 @@ const rawPersonalAssistantPlugin: Plugin = {
           await ensureLifeOpsSchedulerTask(runtime);
         },
       });
+      // Seed the first-run defaults pack idempotently on EVERY boot — not
+      // gated behind first-run completion — so devices that predate the pack
+      // still receive the paused weekly-review starter + default routines.
+      // The per-key seeded marker makes this seed-once: a default the user
+      // deletes is never recreated, and fresh first-run installs are covered
+      // by the same marker so there is no double-seed. Uses the production
+      // DB-backed runner so seeded rows reach the scheduler tick.
+      scheduleTaskEnsureAfterRuntimeInit({
+        runtime,
+        prefix: "[lifeops]",
+        label: "default-pack boot seed",
+        ensure: async () => {
+          const runner = getProductionScheduledTaskRunner(runtime, {
+            agentId: runtime.agentId,
+          });
+          const firstRun = new FirstRunService(runtime, { runner });
+          await firstRun.seedDefaultPackOnBoot();
+        },
+      });
     } else {
       runtime.logger.info(
         "[lifeops] Scheduler task skipped — ELIZA_DISABLE_LIFEOPS_SCHEDULER=1",
@@ -1159,11 +1182,14 @@ export {
 export {
   createFirstRunStateStore,
   createOwnerFactStore,
+  createSeededDefaultsStore,
   type FirstRunRecord,
   type FirstRunStateStore,
   type OwnerFactStore,
   type OwnerFacts,
   type OwnerFactsPatch,
+  type SeededDefaultsMarker,
+  type SeededDefaultsStore,
 } from "./lifeops/first-run/state.js";
 export {
   createGlobalPauseStore,

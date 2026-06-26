@@ -86,4 +86,32 @@ describe("first-run customize e2e", () => {
     const tasks = await readFallbackScheduledTasks(runtime);
     expect(tasks.length).toBe(5);
   });
+
+  it("a boot seed after a completed customize run does not double-seed", async () => {
+    const runtime = createMinimalRuntimeStub();
+    const service = newService(runtime);
+
+    await service.runCustomizePath({ preferredName: "Sam" });
+    await service.runCustomizePath({
+      timezone: "America/Los_Angeles",
+      morningWindow: { startLocal: "06:00", endLocal: "11:00" },
+      eveningWindow: { startLocal: "18:00", endLocal: "22:00" },
+    });
+    await service.runCustomizePath({ categories: ["reminder packs"] });
+    const done = await service.runCustomizePath({ channel: "in_app" });
+    expect(done.status).toBe("ok");
+    expect(done.scheduledTasks.length).toBe(5);
+
+    const beforeBoot = await readFallbackScheduledTasks(runtime);
+    expect(beforeBoot.length).toBe(5);
+
+    // Boot seeding reuses the same per-key marker the customize run wrote, so
+    // no new rows appear.
+    const boot = await newService(runtime).seedDefaultPackOnBoot();
+    expect(boot.seeded.length).toBe(0);
+    expect(boot.skipped.length).toBe(5);
+
+    const afterBoot = await readFallbackScheduledTasks(runtime);
+    expect(afterBoot.length).toBe(5);
+  });
 });
