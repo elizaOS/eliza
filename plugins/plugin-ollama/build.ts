@@ -1,86 +1,50 @@
-import { mkdirSync, rmSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { build } from "bun";
+#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-ollama (Node + Browser + CJS).
+ * Orchestration lives in the shared driver; this lists only what differs.
+ */
+import { buildPlugin } from "../plugin-build";
 
-const ROOT = resolve(dirname(import.meta.path));
-const DIST = join(ROOT, "dist");
+const reexport = "export * from '../index';\nexport { default } from '../index';\n";
 
-rmSync(DIST, { recursive: true, force: true });
-mkdirSync(DIST, { recursive: true });
-mkdirSync(join(DIST, "node"), { recursive: true });
-mkdirSync(join(DIST, "browser"), { recursive: true });
-mkdirSync(join(DIST, "cjs"), { recursive: true });
-
-console.log("Building Node.js ESM bundle...");
-await build({
-  entrypoints: [join(ROOT, "index.node.ts")],
-  outdir: join(DIST, "node"),
-  target: "node",
-  format: "esm",
-  splitting: false,
-  sourcemap: "linked",
-  minify: false,
-  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2", "zod"],
-  naming: {
-    entry: "index.node.js",
-  },
+await buildPlugin({
+  name: "@elizaos/plugin-ollama",
+  clean: true,
+  externals: ["@elizaos/core", "ai", "ollama-ai-provider-v2", "zod"],
+  targets: [
+    {
+      label: "Node ESM",
+      entry: "index.node.ts",
+      outSubdir: "node",
+      target: "node",
+      format: "esm",
+      sourcemap: "linked",
+      naming: { entry: "index.node.js" },
+    },
+    {
+      label: "Browser ESM",
+      entry: "index.browser.ts",
+      outSubdir: "browser",
+      target: "browser",
+      format: "esm",
+      sourcemap: "linked",
+      naming: { entry: "index.browser.js" },
+    },
+    {
+      label: "CJS",
+      entry: "index.node.ts",
+      outSubdir: "cjs",
+      target: "node",
+      format: "cjs",
+      sourcemap: "linked",
+      naming: { entry: "index.node.cjs" },
+    },
+  ],
+  dtsProject: "tsconfig.build.json",
+  dtsTolerant: true,
+  dtsShims: [
+    { path: "node/index.d.ts", content: reexport },
+    { path: "browser/index.d.ts", content: reexport },
+    { path: "cjs/index.d.ts", content: reexport },
+  ],
 });
-
-console.log("Building Browser ESM bundle...");
-await build({
-  entrypoints: [join(ROOT, "index.browser.ts")],
-  outdir: join(DIST, "browser"),
-  target: "browser",
-  format: "esm",
-  splitting: false,
-  sourcemap: "linked",
-  minify: false,
-  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2", "zod"],
-  naming: {
-    entry: "index.browser.js",
-  },
-});
-
-console.log("Building CJS bundle...");
-await build({
-  entrypoints: [join(ROOT, "index.node.ts")],
-  outdir: join(DIST, "cjs"),
-  target: "node",
-  format: "cjs",
-  splitting: false,
-  sourcemap: "linked",
-  minify: false,
-  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2", "zod"],
-  naming: {
-    entry: "index.node.cjs",
-  },
-});
-
-console.log("Generating TypeScript declarations...");
-const { mkdir, writeFile } = await import("node:fs/promises");
-const { $ } = await import("bun");
-try {
-  // Resolve tsc via bun PATH resolution (bunx). bun hoists tsc to the
-  // REPO-ROOT node_modules/.bin, so the per-plugin `${ROOT}/node_modules/.bin/
-  // tsc.exe` path does not exist on Windows — the spawn failed and the plugin
-  // silently shipped with no fresh .d.ts. bunx resolves tsc on every platform.
-  await $`bunx tsc --project tsconfig.build.json --noCheck`;
-} catch {
-  console.warn(
-    "Warning: TypeScript declaration generation failed; continuing with bundled JS outputs only."
-  );
-}
-
-await mkdir("dist/node", { recursive: true });
-await mkdir("dist/browser", { recursive: true });
-await mkdir("dist/cjs", { recursive: true });
-
-const reexportDeclaration = `export * from '../index';
-export { default } from '../index';
-`;
-
-await writeFile("dist/node/index.d.ts", reexportDeclaration);
-await writeFile("dist/browser/index.d.ts", reexportDeclaration);
-await writeFile("dist/cjs/index.d.ts", reexportDeclaration);
-
-console.log("Build complete!");
