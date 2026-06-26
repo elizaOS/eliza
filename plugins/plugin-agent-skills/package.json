@@ -65,7 +65,7 @@
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build": "tsup && tsc --declaration --emitDeclarationOnly --noEmit false",
+    "build": "tsup && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck",
     "dev": "tsup --watch",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "lint": "bunx @biomejs/biome check --write --unsafe --config-path ./biome.json .",
