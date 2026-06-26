@@ -36,6 +36,18 @@ const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const serverJsonStore = new Map<string, unknown>();
 const serverTextStore = new Map<string, string>();
 
+export function clearSimpleViewsStorageForTests(): void {
+  serverJsonStore.clear();
+  serverTextStore.clear();
+
+  const storage = browserStorage();
+  if (!storage) return;
+
+  storage.removeItem(NOTES_KEY);
+  storage.removeItem(CALENDAR_EVENTS_KEY);
+  storage.removeItem(CALENDAR_CURSOR_KEY);
+}
+
 function browserStorage(): Storage | null {
   if (typeof window === "undefined") return null;
   try {
