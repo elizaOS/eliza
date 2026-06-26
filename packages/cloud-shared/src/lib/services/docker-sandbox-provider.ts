@@ -1319,9 +1319,19 @@ export class DockerSandboxProvider implements SandboxProvider {
         .exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS)
         .catch(() => {});
 
-      // Rollback allocated_count on failure
+      // Rollback allocated_count on failure. This is the only place the slot
+      // reserved by incrementAllocated() is released after a failed provision,
+      // so a silent failure here leaks node capacity permanently. Keep the
+      // rollback best-effort (we are already failing and about to rethrow), but
+      // surface the leak so it is observable instead of a mysteriously-full node.
       if (dbNode) {
-        await dockerNodesRepository.decrementAllocated(nodeId).catch(() => {});
+        await dockerNodesRepository
+          .decrementAllocated(nodeId)
+          .catch((rollbackErr) => {
+            logger.error(
+              `[docker-sandbox] Failed to roll back allocation for node ${nodeId}; capacity slot leaked: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+            );
+          });
       }
       // Clean up Headscale pre-auth key if VPN was prepared
       if (headscaleEnabled) {

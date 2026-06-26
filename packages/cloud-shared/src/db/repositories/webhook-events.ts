@@ -52,27 +52,26 @@ export class WebhookEventsRepository {
   async tryCreate(
     data: NewWebhookEvent,
   ): Promise<{ created: true; event: WebhookEvent } | { created: false }> {
-    try {
-      const [event] = await dbWrite
-        .insert(webhookEvents)
-        .values({
-          ...data,
-          processed_at: new Date(),
-        })
-        .onConflictDoNothing({ target: webhookEvents.event_id })
-        .returning();
+    // `onConflictDoNothing` makes the unique-constraint race a no-op (returns
+    // no row), so a genuine duplicate is the `!event` branch below. A real
+    // write failure (connection/permission/schema) must propagate so the
+    // webhook handler fails loudly (5xx → provider retries) instead of
+    // masquerading as a duplicate and silently dropping the event.
+    const [event] = await dbWrite
+      .insert(webhookEvents)
+      .values({
+        ...data,
+        processed_at: new Date(),
+      })
+      .onConflictDoNothing({ target: webhookEvents.event_id })
+      .returning();
 
-      // If no row returned, it means conflict (duplicate)
-      if (!event) {
-        return { created: false };
-      }
-
-      return { created: true, event };
-    } catch {
-      // Fallback for databases that don't support onConflictDoNothing well
-      // or if there's a race condition with unique constraint
+    // No row returned ⇒ the event_id already existed (duplicate delivery).
+    if (!event) {
       return { created: false };
     }
+
+    return { created: true, event };
   }
 
   /**

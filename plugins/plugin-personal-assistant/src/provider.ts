@@ -1,10 +1,11 @@
 import { hasOwnerAccess } from "@elizaos/agent";
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
+import {
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
 } from "@elizaos/core";
 import type { LifeOpsBrowserSession } from "@elizaos/shared";
 import { LifeOpsService } from "./lifeops/service.js";
@@ -116,7 +117,15 @@ export const lifeOpsBrowserProvider: Provider = {
           sessions: activeSessions,
         },
       };
-    } catch {
+    } catch (error) {
+      // A LifeOpsService read failure makes the browser bridge appear disabled.
+      // Degrade to the disabled-context result so composeState still completes,
+      // but surface the read failure so a broken pipeline is observable.
+      logger.warn(
+        `[BrowserBridgeProvider] failed to load browser bridge context; reporting disabled: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
       return {
         text: "",
         values: {
