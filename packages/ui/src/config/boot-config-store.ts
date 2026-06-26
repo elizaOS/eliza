@@ -314,7 +314,7 @@ export interface AppBootConfig {
 
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
-  cloudApiBase: "https://www.elizacloud.ai",
+  cloudApiBase: "https://elizacloud.ai",
 };
 
 // ---------------------------------------------------------------------------

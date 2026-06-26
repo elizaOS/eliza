@@ -2,7 +2,7 @@
  * Pure URL normalizer for Eliza Cloud site/API base URLs. No host-layer deps.
  */
 
-const DEFAULT_CLOUD_SITE_URL = "https://www.elizacloud.ai";
+const DEFAULT_CLOUD_SITE_URL = "https://elizacloud.ai";
 
 const LEGACY_CLOUD_HOST_ALIASES = new Set([
   "api.elizacloud.ai",
@@ -60,7 +60,7 @@ export function normalizeCloudSiteUrl(rawUrl?: string): string {
     parsed.pathname = pathname;
 
     if (LEGACY_CLOUD_HOST_ALIASES.has(host)) {
-      parsed.hostname = "www.elizacloud.ai";
+      parsed.hostname = "elizacloud.ai";
       parsed.pathname = "";
     }
 
