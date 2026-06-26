@@ -30,7 +30,7 @@ async function build() {
   console.log("🏗️  Building package...");
 
   // Clean dist directory
-  await $`rm -rf dist`;
+  await $`node ../../packages/scripts/rm-path-recursive.mjs dist`;
 
   // Externalize plugin-computeruse even though it is NOT a package.json
   // dependency: plugin-vision dynamically imports its OCR seam
