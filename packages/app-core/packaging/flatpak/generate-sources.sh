@@ -22,6 +22,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+RM_PATH_RECURSIVE="${REPO_ROOT}/packages/scripts/rm-path-recursive.mjs"
 OUT_DIR="${1:-$SCRIPT_DIR}"
 OUT_FILE="$OUT_DIR/node-sources.json"
 
@@ -39,7 +41,10 @@ fi
 # packaging dir, so synthesize one from a fresh install of the latest
 # published `elizaos` CLI in a temp dir.
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "$WORK_DIR"' EXIT
+cleanup() {
+  node "${RM_PATH_RECURSIVE}" "${WORK_DIR}"
+}
+trap cleanup EXIT
 
 echo "[generate-sources] Resolving elizaos dependency closure in $WORK_DIR" >&2
 (
