@@ -26,18 +26,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 SRC_DIR="$ROOT_DIR/src"
 SHIM_DIR="$ROOT_DIR/shim"
 DIST_DIR="$ROOT_DIR/dist"
 BUILD_ROOT="$ROOT_DIR/build"
 BUILD_LOCK_DIR="$BUILD_ROOT/.build-ios.lock"
+RM_PATH_RECURSIVE=(node "$REPO_ROOT/packages/scripts/rm-path-recursive.mjs")
 
 cmd="${1:-all}"
 
 log() { printf '\033[34m[build-ios]\033[0m %s\n' "$*"; }
 err() { printf '\033[31m[build-ios:err]\033[0m %s\n' "$*" >&2; }
 die() { err "$*"; exit 1; }
+rm_path_recursive() { "${RM_PATH_RECURSIVE[@]}" "$@"; }
 
 case "$cmd" in
   all|device|simulator|clean) ;;
@@ -46,7 +49,7 @@ esac
 
 clean_all() {
   log "Cleaning $DIST_DIR and $BUILD_ROOT"
-  rm -rf "$DIST_DIR" "$BUILD_ROOT"
+  rm_path_recursive "$DIST_DIR" "$BUILD_ROOT"
 }
 
 acquire_build_lock() {
@@ -59,7 +62,7 @@ acquire_build_lock() {
     fi
     sleep 1
   done
-  trap 'rm -rf "$BUILD_LOCK_DIR"' EXIT
+  trap 'rm_path_recursive "$BUILD_LOCK_DIR"' EXIT
 }
 
 xcframework_is_present() {
@@ -162,7 +165,7 @@ build_slice() {
   local install_dir="$DIST_DIR/$slice"
 
   log "── Building slice: $slice (sysroot=$sysroot archs=$archs)"
-  rm -rf "$build_dir" "$install_dir"
+  rm_path_recursive "$build_dir" "$install_dir"
   mkdir -p "$build_dir" "$install_dir"
 
   # Notes on CMake flags:
@@ -333,7 +336,7 @@ platform_min_flag() {
 
 build_xcframework() {
   local out="$DIST_DIR/LlamaCpp.xcframework"
-  rm -rf "$out"
+  rm_path_recursive "$out"
 
   local args=()
   if [[ -f "$DIST_DIR/ios-arm64/libllama.a" ]]; then
