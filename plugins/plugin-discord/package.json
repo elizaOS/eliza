@@ -44,7 +44,7 @@
 		"clean": "rm -rf dist .turbo && node ../../packages/scripts/clean-stray-dts.mjs",
 		"test": "vitest run",
 		"test:harness": "vitest run --config ./vitest.harness.config.ts",
-		"typecheck": "tsc --noEmit",
+		"typecheck": "tsgo --noEmit",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",

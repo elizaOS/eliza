@@ -75,7 +75,7 @@
     "build": "cd src && bun run build.ts",
     "dev": "cd src && bun --hot build.ts",
     "test": "cd src && vitest run",
-    "typecheck": "tsc --noEmit -p src/tsconfig.json",
+    "typecheck": "tsgo --noEmit -p src/tsconfig.json",
     "lint": "cd src && bun run lint",
     "lint:check": "cd src && bun run lint:check",
     "clean": "rm -rf src/dist .turbo",

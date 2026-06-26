@@ -81,7 +81,7 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "clean": "rm -rf dist .turbo",
     "test": "bunx vitest run --config ./vitest.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src/",
     "lint:check": "bun run lint",
     "check": "bun run typecheck && bun run test"

@@ -7,7 +7,7 @@
     "preview": "bun --bun vite preview",
     "design-review": "node --import tsx test/design-review/run-design-review.ts",
     "lint": "bunx @biomejs/biome check src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.dev-smoke.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts playwright.android.config.ts test/android package.json capacitor.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run --config vitest.config.ts",
     "trace:startup": "node scripts/capture-startup-trace.mjs",
     "test:dev-smoke": "node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts",

@@ -5,7 +5,7 @@
   "description": "Focus / distraction control: website blocking via SelfControl hosts file + macOS app blocking. Schedules, allow-lists, override approval. Exposes the BLOCK action, websiteBlockerProvider + appBlockerProvider, a WebsiteBlockerService, drizzle pgSchema('app_blocker'), and a Focus overlay view.",
   "main": "./dist/index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",

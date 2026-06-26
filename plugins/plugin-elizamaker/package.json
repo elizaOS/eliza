@@ -56,7 +56,7 @@
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json"
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json"
   },
   "files": [
     "dist"

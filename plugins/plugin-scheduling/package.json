@@ -5,7 +5,7 @@
   "description": "Scheduling spine for elizaOS agents: the storage-agnostic ScheduledTask state machine — trigger evaluation (cron/interval/once/event/after_task/relative_to_anchor/during_window), gate + completion-check + escalation-ladder + anchor + consolidation registries, the due/next-fire-at math, and the runner. Persistence + owner/channel/connector deps are injected by the host (e.g. @elizaos/plugin-personal-assistant). Reminders register a tick-hook via the ports here.",
   "main": "./dist/index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:types",

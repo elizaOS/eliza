@@ -5,7 +5,7 @@
   "description": "Life direction plugin: owner-set long-horizon goals, recurring routines, reminders, alarms, daily check-ins, plus a self-care/mood/journal panel.",
   "main": "./dist/index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "test:harness": "bunx vitest run --config ./vitest.harness.config.ts",

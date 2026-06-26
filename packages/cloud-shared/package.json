@@ -19,7 +19,7 @@
     "build:linked-workspaces": "bun run --cwd ../.. build:core",
     "lint": "bunx @biomejs/biome check .",
     "lint:fix": "bunx @biomejs/biome check --write .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test --isolate",
     "preflight:messaging-gateways": "node scripts/messaging-gateway-preflight.mjs",
     "preflight:messaging-gateways:strict": "node scripts/messaging-gateway-preflight.mjs --strict",
