@@ -4,9 +4,13 @@
  * Dual build script for @elizaos/core - generates both Node.js and browser builds
  */
 
+import { execFile } from "node:child_process";
 import { existsSync, type FSWatcher, mkdirSync, watch } from "node:fs";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import type { BuildConfig, BunPlugin } from "bun";
+
+const execFileAsync = promisify(execFile);
 
 export interface ElizaBuildOptions {
 	/** Entry points - defaults to ['src/index.ts'] */
@@ -64,6 +68,7 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 	const fs = await import("node:fs/promises");
 	const lockParent = join(process.cwd(), "../../.turbo");
 	const lockDir = join(lockParent, "core-build.lock");
+	const cleanupHelper = join(process.cwd(), "../scripts/rm-path-recursive.mjs");
 	const staleAfterMs = 30 * 60 * 1000;
 	let announcedWait = false;
 
@@ -84,6 +89,12 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 		} catch (error) {
 			return (error as NodeJS.ErrnoException).code !== "ESRCH";
 		}
+	}
+
+	async function removeLockDir(): Promise<void> {
+		await execFileAsync("node", [cleanupHelper, lockDir], {
+			cwd: process.cwd(),
+		});
 	}
 
 	await fs.mkdir(lockParent, { recursive: true });
@@ -108,7 +119,7 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 				(ownerPid !== null && !isProcessAlive(ownerPid)) ||
 				(stat && Date.now() - stat.mtimeMs > staleAfterMs)
 			) {
-				await fs.rm(lockDir, { recursive: true, force: true });
+				await removeLockDir();
 				continue;
 			}
 
@@ -123,7 +134,7 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 	try {
 		return await build();
 	} finally {
-		await fs.rm(lockDir, { recursive: true, force: true }).catch(() => {});
+		await removeLockDir().catch(() => {});
 	}
 }
 
