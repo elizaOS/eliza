@@ -13,6 +13,7 @@ COPY . .
 
 RUN bun install
 RUN bun run generate:action-search-keywords
+RUN bun run build:core
 
 # Final runtime stage
 FROM oven/bun:latest AS runner
