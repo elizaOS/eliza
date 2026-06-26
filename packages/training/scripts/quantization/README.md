@@ -174,7 +174,7 @@ fp16 to keep the freshly-generated context lossless.
   Shannon-Bennett lower bound.
 - **Cons.** The reference implementation is pure PyTorch — the
   per-step quantize/dequantize is a Python-level operation per layer
-  per step, which costs throughput. On a 0.8B model on a 5080 we
+  per step, which costs throughput. On a gemma-4-E2B model on a 5080 we
   observed **~5× slowdown** vs the bf16 ``DynamicCache``
   (66.8 → 12.2 tok/s). The TurboQuant paper claims faster runtime than
   the bf16 baseline because it ships **Triton kernels**; those are not

@@ -11,7 +11,7 @@
 # `"default"`-subnet shape is gone.
 #
 # Flow: provision a Nebius VM (single H200 SXM `gpu-h200-sxm` / `1gpu-16vcpu-200gb`
-# for the 0.6b/1.7b/4b/9b tiers; the 8×H200 `8gpu-128vcpu-1600gb` preset + FSDP
+# for the active 2b/4b/9b tiers; the 8×H200 `8gpu-128vcpu-1600gb` preset + FSDP
 # for 27b — that preset is expensive, see the note below), boot-disk from the
 # `mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8` public image (NVIDIA 570.x +
 # CUDA 12.8 preinstalled), rsync `packages/training/` + the training corpus,
@@ -380,7 +380,7 @@ export CUDA_VISIBLE_DEVICES=0
 # back to CPU placement (the model then trains single-threaded on CPU at ~10
 # s/it with the GPU at 0% util holding only unused optimizer states) — tell
 # train_local.py to skip device_map and .to() the GPU explicitly. (native_tool_call_bench.py
-# still runs on CPU here — see the §11 caveat in the 0_6b report; --skip-base-bench
+# still runs on CPU here — see the §11 caveat in the legacy CPU-bench report; --skip-base-bench
 # from BENCHMARK_AFTER=0 avoids the base pass, the finetuned pass is ~3h CPU.)
 export ELIZA_NO_DEVICE_MAP=1
 export HF_HOME=/opt/hf-cache
