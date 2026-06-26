@@ -1,6 +1,6 @@
 import { isTruthyEnvValue } from "./env-utils.js";
 
-const DEFAULT_API_BIND_HOST = "127.0.0.1";
+const DEFAULT_API_BIND_HOST = process.env.HOST || process.env.SERVER_HOST || "0.0.0.0";
 export const DEFAULT_SERVER_ONLY_PORT = 2138;
 // Dev mode splits the API from the Vite UI: API on 31337, UI on 2138.
 export const DEFAULT_DESKTOP_API_PORT = 31337;
