@@ -126,7 +126,7 @@ function buildProviderBillingFields(
  * Computes effective max_tokens, reserving response capacity for reasoning models.
  *
  * Reasoning models (Anthropic extended-thinking, OpenAI o-series, DeepSeek R,
- * MiniMax M, Qwen think, etc.) spend output tokens on hidden chain-of-thought
+ * MiniMax M, and similar families) spend output tokens on hidden chain-of-thought
  * BEFORE emitting any visible answer. If max_tokens only covers the reasoning,
  * the model truncates mid-thought and returns empty content while still billing
  * the consumed tokens. To prevent that:

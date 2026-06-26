@@ -67,7 +67,7 @@ const ELIZA_1_LOAD_METADATA: Record<
 	// 2B is the smallest/entry tier (the small-phone default). Every shipped
 	// tier can use a Gemma 4 assistant drafter when that companion GGUF is
 	// staged next to the bundle. The bridge never falls back to same-file MTP
-	// because that was the retired Qwen contract.
+	// because that belonged to the retired pre-Gemma contract.
 	"eliza-1-2b": {
 		contextSize: 131072,
 		mtp: { drafterFile: "mtp/drafter-2b.gguf", ...GEMMA_MTP_DRAFT },
