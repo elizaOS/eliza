@@ -64,9 +64,9 @@
 #   REASONING_PARSER        — default eliza1.
 #   COMPILATION_CONFIG_JSON — JSON blob for `--compilation-config`. Empty = skip.
 #   VLLM_ENABLE_PREFIX_CACHING — default 1. Automatically forced off when a
-#                             MTP/speculative drafter is active on an
-#                             eliza-1/Qwen3.5/Qwen3.6 hybrid model unless
-#                             ELIZA_APC_DRAFTER_VERIFIED=1.
+#                             MTP/speculative drafter is active on Eliza-1
+#                             Gemma targets (or retired Qwen legacy models)
+#                             unless ELIZA_APC_DRAFTER_VERIFIED=1.
 #   EXTRA_VLLM_ARGS         — extra args appended verbatim before --port.
 #   HUGGING_FACE_HUB_TOKEN  — for gated repos.
 #   VLLM_LOG                — log file path. Default /var/log/vllm.log.
@@ -206,7 +206,7 @@ truthy() {
   esac
 }
 
-is_hybrid_qwen_model() {
+requires_apc_drafter_parity_gate() {
   case "${1,,}" in
     qwen/qwen3.5-*|qwen/qwen3.6-*|elizaos/eliza-1*|*/eliza-1*) return 0 ;;
     *) return 1 ;;
@@ -292,9 +292,9 @@ if [ -n "$MTP_MODEL" ] || [ -n "$SPECULATIVE_CONFIG_JSON" ]; then
   drafter_active=1
 fi
 if truthy "$VLLM_ENABLE_PREFIX_CACHING" && [ "$drafter_active" -eq 1 ] && \
-   is_hybrid_qwen_model "$MODEL_REPO" && \
+   requires_apc_drafter_parity_gate "$MODEL_REPO" && \
    ! truthy "${ELIZA_APC_DRAFTER_VERIFIED:-0}"; then
-  echo "[onstart-vllm] disabling prefix caching: APC + drafter on eliza-1/Qwen3.5/Qwen3.6 hybrid models requires ELIZA_APC_DRAFTER_VERIFIED=1 after tool-call parity testing" >&2
+  echo "[onstart-vllm] disabling prefix caching: APC + drafter on Eliza-1 Gemma targets or retired Qwen legacy models requires ELIZA_APC_DRAFTER_VERIFIED=1 after tool-call parity testing" >&2
   VLLM_ENABLE_PREFIX_CACHING=0
 fi
 VLLM_ARGS+=(
