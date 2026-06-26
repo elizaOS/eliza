@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Eliza-1 mmproj header verifier.
 
-Validates each staged Qwen3.5 mmproj GGUF in
+Validates each staged Eliza-1 mmproj GGUF described by the manifest in
 ``packages/training/release-staging/mmproj/`` and reports:
 
   - file size matches the manifest entry,
