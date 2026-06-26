@@ -53,7 +53,7 @@ logger = logging.getLogger("polarquant_apply")
 
 # Architectures we have explicitly verified against the standard
 # ``self_attn.{q,k,v,o}_proj`` / ``mlp.{gate,up,down}_proj`` linear layout.
-_KNOWN_GOOD_ARCH_SUBSTRINGS = ("qwen2", "qwen3", "llama", "mistral", "phi3")
+_KNOWN_GOOD_ARCH_SUBSTRINGS = ("gemma", "llama", "mistral", "phi3")
 
 
 @dataclass(frozen=True)
@@ -87,7 +87,7 @@ def _iter_linears(
     """Linears we want to quantize, in deterministic order.
 
     Skips small projections / MoE routers (``min_numel``), the LM head
-    (weight-tied on Qwen-family models), and embedding tables (lookups,
+    (weight-tied on many causal-LM models), and embedding tables (lookups,
     not multiplies).
     """
     out: list[tuple[str, nn.Linear]] = []
