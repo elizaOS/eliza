@@ -1,4 +1,4 @@
-"""End-to-end validation of TurboQuant on a real Qwen model on the local 5080.
+"""End-to-end validation of TurboQuant on a real Gemma model on the local 5080.
 
 Honest about what TurboQuant is: a *runtime KV-cache* quantizer. It does
 NOT shrink ``model.safetensors`` on disk -- the weights are unchanged.
@@ -16,7 +16,7 @@ This script therefore measures the things TurboQuant actually changes:
 Default model is ``google/gemma-4-E2B``. This is a hybrid
 linear-attention + Gated Attention model; the cache machinery applies to
 the full-attention layers and bypasses linear-attention layers. The
-assertions are correspondingly looser than old dense-Qwen3 smoke runs.
+assertions are correspondingly looser than old dense full-attention smoke runs.
 
 Usage::
 

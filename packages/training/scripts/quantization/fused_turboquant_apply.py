@@ -49,7 +49,7 @@ logging.basicConfig(
 log = logging.getLogger("fused_turboquant_apply")
 
 
-_KNOWN_GOOD_ARCH_SUBSTRINGS = ("qwen2", "qwen3", "llama", "gemma", "mistral")
+_KNOWN_GOOD_ARCH_SUBSTRINGS = ("gemma", "llama", "mistral")
 
 
 @dataclass(frozen=True)

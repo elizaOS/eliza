@@ -1,4 +1,4 @@
-"""End-to-end PolarQuant validation on a Qwen text-only causal LM.
+"""End-to-end PolarQuant validation on a Gemma text-only causal LM.
 
 What this asserts (per the AGENTS.md mandate that we don't LARP results):
 
