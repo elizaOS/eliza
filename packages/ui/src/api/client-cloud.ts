@@ -2896,8 +2896,19 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const agentId = created.data.agentId;
   const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
   const detailAgent = detail?.success ? detail.data : null;
+  // A freshly-created dedicated agent's subdomain is populated immediately, but
+  // its container takes ~30-120s to boot — chatting against it during that window
+  // 202s "starting" and the first message times out (the reported first-run bug).
+  // So start on the shared REST adapter base (the always-on in-Worker shared
+  // runtime serves the user instantly); finishCloud's handoff supervisor switches
+  // to the dedicated subdomain once it reports `running`. Only use the subdomain
+  // up-front when the agent is ALREADY running (warm-pool claim) — no boot gap.
+  const isRunning = detailAgent?.status === "running";
+  const hasDedicatedUrl = Boolean(
+    detailAgent?.web_ui_url || detailAgent?.bridge_url,
+  );
   const apiBase =
-    detailAgent?.web_ui_url || detailAgent?.bridge_url
+    isRunning && hasDedicatedUrl
       ? resolveCloudAgentApiBase({
           bridgeUrl: detailAgent.bridge_url,
           webUiUrl: detailAgent.web_ui_url ?? detailAgent.webUiUrl,
