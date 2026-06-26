@@ -979,6 +979,40 @@ export function resolveMobileBuildPolicy(platform) {
 }
 
 async function buildWeb(platform) {
+  // Auto-skip the full Vite renderer build when it is NOT explicitly forced and
+  // the existing dist is already up-to-date for this variant/target (#9626).
+  // This reuses the same manifest + staleness checks as the explicit-skip path
+  // below, so the loud-fail-on-stale guarantee is preserved: a stale or
+  // mismatched dist simply does not match here and falls through to a rebuild.
+  // Explicit ELIZA_MOBILE_SKIP_WEB_BUILD=1 keeps its force-reuse semantics below.
+  if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1") {
+    const autoDistDir = path.join(appDir, "dist");
+    if (fs.existsSync(path.join(autoDistDir, "index.html"))) {
+      const autoPolicy = resolveMobileBuildPolicy(platform);
+      const autoVariant =
+        process.env.ELIZA_BUILD_VARIANT || autoPolicy.buildVariant;
+      const autoManifest = readRendererBuildManifest(autoDistDir);
+      const variantOk =
+        autoManifest != null &&
+        (autoManifest.variant == null || autoManifest.variant === autoVariant);
+      const targetOk =
+        autoManifest != null &&
+        (autoManifest.capacitorTarget == null ||
+          autoManifest.capacitorTarget === autoPolicy.capacitorTarget);
+      if (
+        autoManifest != null &&
+        variantOk &&
+        targetOk &&
+        !viteRendererBuildNeeded(appDir, repoRoot)
+      ) {
+        console.log(
+          "[mobile-build] Auto-skipping web build: existing dist is up-to-date " +
+            `(buildId=${autoManifest.buildId.slice(0, 12)})`,
+        );
+        return;
+      }
+    }
+  }
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
     const distDir = path.join(appDir, "dist");
     const indexPath = path.join(distDir, "index.html");
