@@ -94,7 +94,6 @@ The current route file does not expose direct local generation or direct embeddi
 
 ```sh
 bun run --cwd elizalaunch/remotes/local-model typecheck
-bun run --cwd elizalaunch/remotes/local-model build
 bun run --cwd elizalaunch/remotes/local-model smoke
 bun run --cwd elizalaunch/remotes/local-model smoke:phase8
 ```

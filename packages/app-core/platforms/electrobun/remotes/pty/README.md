@@ -52,10 +52,9 @@ Output polling through `pty.session.output.tail` is sufficient for Phase 6 when 
 
 Session environment inherits `process.env` and merges per-session env overrides.
 
-## Build And Smoke
+## Smoke
 
 ```sh
-bun run --cwd elizalaunch/remotes/pty build
 bun run --cwd elizalaunch/remotes/pty smoke
 bun run --cwd elizalaunch/remotes/pty smoke:phase6
 ```
