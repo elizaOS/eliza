@@ -724,7 +724,7 @@ jobs:
           retention-days: 7
 
       - name: Prune remote capability cloud report
-        if: always()
+        if: always() && steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud
 
       - name: Note remote capability cloud live smoke not observed
@@ -847,7 +847,7 @@ jobs:
           retention-days: 7
 
       - name: Prune remote capability provider reports
-        if: always()
+        if: always() && steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers
 
       - name: Note provider live smoke not observed

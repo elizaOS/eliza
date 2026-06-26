@@ -508,6 +508,13 @@ export const checks: Check[] = [
       "cloud live smoke must write reports to the same directory that validation consumes.",
   },
   {
+    name: "cloud live report prune only runs after checkout-backed live runs",
+    pattern:
+      /Prune remote capability cloud report\s*\n\s*if: always\(\) && steps\.cloud\.outputs\.capability_skip != 'true' && \(github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\)\s*\n\s*run: node packages\/scripts\/rm-path-recursive\.mjs reports\/remote-capabilities\/cloud/,
+    message:
+      "cloud live report pruning must not run on no-checkout skip paths.",
+  },
+  {
     name: "provider live smoke requires the three primary endpoint secrets",
     pattern:
       /missing_required=\(\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_E2B_URL"\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL"\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL"\)/,
@@ -548,6 +555,13 @@ export const checks: Check[] = [
       /Remote capability URL-backed provider live smoke[\s\S]*ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports\/remote-capabilities\/providers\s*\n[\s\S]*Validate remote capability provider live reports[\s\S]*reports\/remote-capabilities\/providers/,
     message:
       "provider live smoke must write reports to the same directory that validation consumes.",
+  },
+  {
+    name: "provider live report prune only runs after checkout-backed live runs",
+    pattern:
+      /Prune remote capability provider reports\s*\n\s*if: always\(\) && steps\.providers\.outputs\.skip != 'true' && \(github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\)\s*\n\s*run: node packages\/scripts\/rm-path-recursive\.mjs reports\/remote-capabilities\/providers/,
+    message:
+      "provider live report pruning must not run on no-checkout skip paths.",
   },
   {
     name: "provider live reports include providerId evidence",
