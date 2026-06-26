@@ -1,8 +1,18 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const rmPathRecursiveScript = path.resolve(
+  scriptDir,
+  "..",
+  "..",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 function parseArgs(argv) {
   const args = {
@@ -45,6 +55,25 @@ function runCommand(command, commandArgs, cwd, dryRun = false) {
   });
   if (result.status !== 0) {
     fail(`command failed: ${rendered}`);
+  }
+}
+
+function rmRecursive(pathToRemove) {
+  const result = spawnSync(
+    process.execPath,
+    [rmPathRecursiveScript, path.resolve(pathToRemove)],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.status !== 0) {
+    const reason =
+      result.stderr?.trim() ||
+      result.stdout?.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    fail(`failed to recursively remove ${pathToRemove}: ${reason}`);
   }
 }
 
@@ -127,7 +156,7 @@ async function main() {
     if (args.dryRun) {
       console.log(`[dry-run] rm -rf ${venvPath}`);
     } else {
-      await rm(venvPath, { recursive: true, force: true });
+      rmRecursive(venvPath);
     }
   }
 
