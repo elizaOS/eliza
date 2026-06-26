@@ -476,14 +476,15 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     signalKinds: ["activity"],
     size: { cols: 2, rows: 1 },
   },
-  // Running workflows tile — surfaces the agent's currently-running automations
-  // (system automations + active user workflows) from GET /api/automations.
+  // Running tasks tile — surfaces the agent's currently-running tasks: system
+  // automations + active user workflows (GET /api/automations) merged with
+  // boot-seeded LifeOps scheduled tasks (GET /api/lifeops/scheduled-tasks).
   // Self-hides when nothing is running.
   {
     id: "workflow.running",
     pluginId: "workflow",
     slot: "home",
-    label: "Workflows",
+    label: "Tasks",
     icon: "Workflow",
     order: 130,
     defaultEnabled: true,

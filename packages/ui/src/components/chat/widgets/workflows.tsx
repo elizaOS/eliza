@@ -1,25 +1,29 @@
 import { Workflow } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { client } from "../../../api";
-// Real wire types for GET /api/automations (READ, not guessed):
-// packages/ui/src/api/client-types-config.ts
-//   - AutomationItem: { id, type, status, enabled, system, lastExecution?, … }
+import { useCallback } from "react";
+// Real wire types (READ, not guessed):
+//   - AutomationItem: packages/ui/src/api/client-types-config.ts
 //   - AutomationStatus = "active" | "paused" | "completed" | "draft" | "system"
+// The unified set merges automations (GET /api/automations) with LifeOps
+// scheduled tasks (GET /api/lifeops/scheduled-tasks) client-side — see
+// hooks/useUnifiedTasks.ts. No second scheduler, no store touch.
 import type { AutomationItem } from "../../../api/client-types-config";
-import { withTimeout } from "../../../utils/with-timeout";
+import { useUnifiedTasks } from "../../../hooks/useUnifiedTasks";
 import type { WidgetProps } from "../../../widgets/types";
 import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 
 const AUTOMATIONS_VIEW = "/automations";
 // Bound the bridge call so a hung agent channel settles the tile (self-hide)
 // rather than spinning on "Loading…" forever.
-const AUTOMATIONS_TIMEOUT_MS = 6_000;
+const TASKS_TIMEOUT_MS = 6_000;
 
 /**
- * "Running" = an automation the agent is actively keeping alive on a fresh
- * install: the always-on coordinator/system automations plus any user workflow
- * that is enabled and not a draft. Paused, draft, and completed automations are
- * excluded — this card answers "what is the agent running right now?".
+ * "Running" = a task the agent is actively keeping alive on a fresh install:
+ * the always-on coordinator/system automations, any user workflow that is
+ * enabled and not a draft, AND any LifeOps scheduled task whose status is
+ * "active" (a scheduled, non-manual trigger — e.g. the boot-seeded gm / gn /
+ * daily check-in / morning-brief watcher). Paused (manual-trigger, e.g. the
+ * seeded weekly-review), draft, and completed items are excluded from the
+ * running top-line but still appear in the full Tasks list.
  */
 function isRunning(item: AutomationItem): boolean {
   if (item.isDraft) return false;
@@ -27,64 +31,30 @@ function isRunning(item: AutomationItem): boolean {
   return item.enabled && item.status === "active";
 }
 
-/** Stable display order: system automations first, then the rest by title. */
+/** Stable display order: system tasks first, then the rest by title. */
 function compareRunning(a: AutomationItem, b: AutomationItem): number {
   if (a.system !== b.system) return a.system ? -1 : 1;
   return a.title.localeCompare(b.title);
 }
 
-interface WorkflowsState {
-  running: AutomationItem[];
-  /** True until the first fetch settles — distinguishes "loading" from "none". */
-  loading: boolean;
-}
-
-const INITIAL_STATE: WorkflowsState = { running: [], loading: true };
-
 /**
- * Workflows home widget. Glanceable, icon-first surface of the agent's
- * currently-running automations (default system automations + active user
- * workflows) read from GET /api/automations. Shows the most relevant running
- * automation's title plus a "+N" badge for the rest; tapping opens the
- * Automations view.
+ * Tasks home widget. Glanceable, icon-first surface of the agent's currently
+ * running tasks — default system automations, active user workflows, AND
+ * boot-seeded LifeOps scheduled tasks (gm / gn / daily check-in / morning-brief
+ * watcher) — merged from `GET /api/automations` + `GET /api/lifeops/scheduled-tasks`.
+ * Shows the most relevant running task's title plus a "+N" badge for the rest;
+ * tapping opens the unified Tasks view.
  *
  * Zero-setup: no connect gate. Self-hides (renders null) once the first fetch
  * settles with nothing running, so a fresh home surface never shows an empty
- * placeholder (#9143). A 404 (workflow runtime not hosted here, e.g. mobile)
- * settles to "nothing running" rather than a broken card.
+ * placeholder (#9143). A 404 on either source (the runtime/runner not hosted
+ * here, e.g. mobile) settles to "nothing running" rather than a broken card.
  */
 export function WorkflowsWidget({
   spanClassName = "col-span-2 row-span-1",
 }: Partial<WidgetProps>) {
-  const [state, setState] = useState<WorkflowsState>(INITIAL_STATE);
+  const { state } = useUnifiedTasks({ timeoutMs: TASKS_TIMEOUT_MS });
   const nav = useWidgetNavigation();
-
-  const load = useCallback(async (signal: { cancelled: boolean }) => {
-    try {
-      const res = await withTimeout(
-        client.listAutomations(),
-        AUTOMATIONS_TIMEOUT_MS,
-      );
-      if (signal.cancelled) return;
-      const items = Array.isArray(res?.automations) ? res.automations : [];
-      const running = items.filter(isRunning).sort(compareRunning);
-      setState({ running, loading: false });
-    } catch {
-      // Network/runtime failure (incl. 404 where the workflow runtime isn't
-      // hosted) — settle to "nothing running" so the card resolves rather than
-      // spinning forever or surfacing a broken state.
-      if (signal.cancelled) return;
-      setState({ running: [], loading: false });
-    }
-  }, []);
-
-  useEffect(() => {
-    const signal = { cancelled: false };
-    void load(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  }, [load]);
 
   const open = useCallback(
     () => nav.openView(AUTOMATIONS_VIEW, "automations"),
@@ -96,34 +66,35 @@ export function WorkflowsWidget({
       <div className={spanClassName}>
         <HomeWidgetCard
           icon={<Workflow />}
-          label="Workflows"
+          label="Tasks"
           value="Loading…"
           testId="chat-widget-workflows"
-          ariaLabel="Workflows loading."
+          ariaLabel="Tasks loading."
           onActivate={open}
         />
       </div>
     );
   }
 
-  const top = state.running[0] ?? null;
+  const running = state.items.filter(isRunning).sort(compareRunning);
+  const top = running[0] ?? null;
   // Settled with nothing running: the home surface must not render an empty
   // placeholder (#9143), and this is a zero-setup widget, so render nothing.
   if (!top) return null;
 
-  const extraCount = state.running.length - 1;
+  const extraCount = running.length - 1;
 
   return (
     <div className={spanClassName}>
       <HomeWidgetCard
         icon={<Workflow />}
-        label="Workflows"
+        label="Tasks"
         value={top.title}
         badge={extraCount > 0 ? `+${extraCount}` : undefined}
         testId="chat-widget-workflows"
-        ariaLabel={`Running workflows: ${top.title}${
+        ariaLabel={`Running tasks: ${top.title}${
           extraCount > 0 ? `, and ${extraCount} more` : ""
-        }. Open automations.`}
+        }. Open tasks.`}
         onActivate={open}
       />
     </div>

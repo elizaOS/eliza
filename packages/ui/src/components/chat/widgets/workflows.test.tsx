@@ -8,12 +8,16 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listAutomationsMock } = vi.hoisted(() => ({
+const { listAutomationsMock, listScheduledTasksMock } = vi.hoisted(() => ({
   listAutomationsMock: vi.fn(),
+  listScheduledTasksMock: vi.fn(),
 }));
 
 vi.mock("../../../api", () => ({
-  client: { listAutomations: listAutomationsMock },
+  client: {
+    listAutomations: listAutomationsMock,
+    listScheduledTasks: listScheduledTasksMock,
+  },
 }));
 
 // useWidgetNavigation → reportUserViewSwitch (from the slash-command
@@ -58,9 +62,37 @@ function listResponse(automations: ReturnType<typeof automation>[]) {
   };
 }
 
+function scheduledTask(overrides: Record<string, unknown>) {
+  return {
+    taskId: "st-1",
+    kind: "reminder",
+    promptInstructions: "Say good morning",
+    trigger: {
+      kind: "relative_to_anchor",
+      anchorKey: "wake.confirmed",
+      offsetMinutes: 0,
+    },
+    priority: "low",
+    respectsGlobalPause: true,
+    state: { status: "scheduled", followupCount: 0 },
+    source: "default_pack",
+    createdBy: "daily-rhythm",
+    ownerVisible: true,
+    metadata: { recordKey: "gm" },
+    ...overrides,
+  };
+}
+
+function scheduledResponse(tasks: ReturnType<typeof scheduledTask>[]) {
+  return { tasks };
+}
+
 describe("WorkflowsWidget", () => {
   beforeEach(() => {
     listAutomationsMock.mockReset();
+    listScheduledTasksMock.mockReset();
+    // Default: no scheduled tasks so existing assertions are unaffected.
+    listScheduledTasksMock.mockResolvedValue(scheduledResponse([]));
   });
   afterEach(() => cleanup());
 
@@ -69,6 +101,34 @@ describe("WorkflowsWidget", () => {
     render(<WorkflowsWidget />);
     expect(screen.getByTestId("chat-widget-workflows")).toBeTruthy();
     expect(screen.getByText("Loading…")).toBeTruthy();
+  });
+
+  it("surfaces a boot-seeded scheduled task as the running task", async () => {
+    // Fresh install: no workflows, but the seeded gm scheduled task exists.
+    listAutomationsMock.mockResolvedValue(listResponse([]));
+    listScheduledTasksMock.mockResolvedValue(
+      scheduledResponse([scheduledTask({ metadata: { recordKey: "gm" } })]),
+    );
+    render(<WorkflowsWidget />);
+    await waitFor(() => expect(screen.getByText("Good morning")).toBeTruthy());
+  });
+
+  it("excludes a paused (manual-trigger) seeded recap from the running top-line", async () => {
+    listAutomationsMock.mockResolvedValue(listResponse([]));
+    listScheduledTasksMock.mockResolvedValue(
+      scheduledResponse([
+        scheduledTask({
+          taskId: "weekly",
+          kind: "recap",
+          trigger: { kind: "manual" },
+          metadata: { recordKey: "weekly-review" },
+        }),
+      ]),
+    );
+    const { container } = render(<WorkflowsWidget />);
+    await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
+    // Manual trigger → paused → not "running" → self-hides.
+    expect(container.firstElementChild).toBeNull();
   });
 
   it("shows the top running workflow and a +N badge for the rest", async () => {
@@ -118,18 +178,14 @@ describe("WorkflowsWidget", () => {
   it("self-hides when nothing is running", async () => {
     listAutomationsMock.mockResolvedValue(listResponse([]));
     const { container } = render(<WorkflowsWidget />);
-    await waitFor(() =>
-      expect(screen.queryByText("Loading…")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
     expect(container.firstElementChild).toBeNull();
   });
 
   it("self-hides when the automations endpoint fails", async () => {
     listAutomationsMock.mockRejectedValue(new Error("404"));
     const { container } = render(<WorkflowsWidget />);
-    await waitFor(() =>
-      expect(screen.queryByText("Loading…")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
     expect(container.firstElementChild).toBeNull();
   });
 
