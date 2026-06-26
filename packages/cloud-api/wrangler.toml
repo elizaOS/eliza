@@ -371,8 +371,13 @@ NODE_ENV = "production"
 # the route-level org allowlist (apps-deploy-gate.ts): without APPS_DEPLOY_ALLOWED_ORG_IDS the
 # deploy POST fails closed with 403 even when this flag is "1".
 APPS_DEPLOY_ENABLED = "1"
-# Set as a Cloudflare secret/var with comma-separated org UUIDs before piloting/widening:
-# APPS_DEPLOY_ALLOWED_ORG_IDS = "00000000-0000-0000-0000-000000000000"
+# Org allowlist for apps-deploy (apps-deploy-gate.ts). "*" = open to ALL orgs —
+# the launch posture so any user can deploy an app. Set here as a COMMITTED var,
+# NOT a Cloudflare secret: secrets get wiped on Worker redeploys, which already
+# silently re-closed apps-deploy in prod once. Requires the "*" wildcard support
+# in apps-deploy-gate.ts (#9735). To pilot a narrower cohort instead, replace "*"
+# with comma/space-separated org UUIDs.
+APPS_DEPLOY_ALLOWED_ORG_IDS = "*"
 NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
