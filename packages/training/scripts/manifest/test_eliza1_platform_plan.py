@@ -126,6 +126,8 @@ def test_readiness_mentions_vad_native_gguf_caveat() -> None:
     assert "Gemma 4 E2B (`2b`)" in text
     assert "Gemma 4 E4B (`4b`)" in text
     assert "Gemma 4 12B (`9b`)" in text
+    assert "0.8B/2B/4B/9B" not in text
+    assert "2B/4B/9B carry Kokoro" in text
     assert "Qwen3-ASR and Qwen3-Embedding are retired" in text
     assert "Base-v1 release readiness remains blocked" in text
     assert "not evaluated in plan-only mode" in text

@@ -16,12 +16,12 @@ Args:
                           state). Step is parsed from the dir name:
                           `checkpoint-<N>` -> N; `final` -> max known step + 1.
   --registry-key <k>      Model registry key (gemma4-e2b / gemma4-e4b /
-                          gemma4-e4b). Recorded in the result JSON so the
-                          UI can pick the right axis labels.
+                          gemma4-12b / gemma4-31b). Recorded in the result
+                          JSON so the UI can pick the right axis labels.
   --val-jsonl <path>      Validation JSONL. Default: data/smoke/val.jsonl.
   --max-examples <n>      Per-bucket cap for the native benchmark. Default 50 — the
                           smoke val set is tiny on purpose so each scoring
-                          pass takes ~10s on a 0.8B and ~30s on a 2B (per
+                          pass stays practical on the 2B entry tier (per
                           AGENTS spec for this script).
   --out <path>            Where to write the per-checkpoint result JSON.
                           The eval loop also writes a sibling `_eval.json`

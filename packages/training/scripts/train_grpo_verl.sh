@@ -24,7 +24,7 @@ usage() {
 Usage: train_grpo_verl.sh [options]
 
 Required:
-  --registry-key KEY        e.g. gemma4-e2b, gemma4-e4b, gemma4-e4b
+  --registry-key KEY        e.g. gemma4-e2b, gemma4-e4b, gemma4-12b, gemma4-31b
   --dpo-checkpoint DIR      Path to SFT+DPO checkpoint (the `final/` subdir)
   --output-dir DIR          Where to write the GRPO checkpoint + JSONL traces
 

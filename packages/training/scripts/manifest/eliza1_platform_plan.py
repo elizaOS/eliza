@@ -531,7 +531,7 @@ def render_readiness(
         "Important caveats:",
         "",
         "- Text, ASR, MTP, vision mmproj, and OmniVoice TTS payloads are "
-        "GGUF artifacts when a tier ships them. 0.8B/2B/4B/9B carry Kokoro "
+        "GGUF artifacts when a tier ships them. 2B/4B/9B carry Kokoro "
         "plus OmniVoice; Kokoro is the fused GGUF runtime path. "
         "27B-class tiers ship OmniVoice GGUF only.",
         "- VAD is a native silero-vad-cpp GGUF artifact at "
