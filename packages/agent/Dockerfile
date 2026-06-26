@@ -11,7 +11,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN bun install --ignore-scripts
+RUN bun install
 RUN bun run generate:action-search-keywords
 
 # Final runtime stage
