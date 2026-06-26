@@ -14,7 +14,6 @@ const MODELS_ROOT = path.join(
 );
 
 const VISION_TIER_LIST = [
-  "0_8b",
   "2b",
   "4b",
   "9b",
@@ -117,7 +116,6 @@ function relativeFiles(bundleDir, dir) {
 function tierAliases(tier) {
   const aliases = new Set([tier]);
   if (tier.includes("_")) aliases.add(tier.replace("_", "."));
-  if (tier === "0_8b") aliases.add("0.8b");
   return [...aliases];
 }
 

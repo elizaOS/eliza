@@ -28,9 +28,6 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const TIER_ORDER = [
-	"0_6b",
-	"0_8b",
-	"1_7b",
 	"2b",
 	"4b",
 	"9b",

@@ -27,13 +27,13 @@ const MODELS_ROOT = path.join(
   "local-inference",
   "models",
 );
-const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-0_8b.bundle");
+const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-2b.bundle");
 const DEFAULT_TARGET = firstExisting(
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-64k.gguf"),
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-32k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-2b-128k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-2b-256k.gguf"),
 );
 const DEFAULT_DRAFTER = firstExisting(
-  path.join(DEFAULT_BUNDLE, "eagle3", "drafter-0_8b.gguf"),
+  path.join(DEFAULT_BUNDLE, "eagle3", "drafter-2b.gguf"),
   path.join(DEFAULT_BUNDLE, "eagle3", "drafter.gguf"),
 );
 const DEFAULT_BIN = path.join(
@@ -48,11 +48,11 @@ const DEFAULT_BIN = path.join(
 function inferTier(...values) {
   for (const value of values) {
     const match = String(value ?? "").match(
-      /eliza-1-(0_8b|2b|4b|9b|27b(?:-256k)?)/,
+      /eliza-1-(2b|4b|9b|27b(?:-256k)?)/,
     );
     if (match) return match[1];
     const drafterMatch = String(value ?? "").match(
-      /drafter-(0_8b|2b|4b|9b|27b(?:-256k)?)/,
+      /drafter-(2b|4b|9b|27b(?:-256k)?)/,
     );
     if (drafterMatch) return drafterMatch[1];
   }
@@ -114,7 +114,7 @@ function parseArgs(argv) {
   }
 
   args.tier =
-    args.tier || inferTier(args.targetModel, args.drafterModel) || "0_8b";
+    args.tier || inferTier(args.targetModel, args.drafterModel) || "2b";
   return args;
 }
 
