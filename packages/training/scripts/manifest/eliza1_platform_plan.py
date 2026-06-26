@@ -21,6 +21,7 @@ try:
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         ELIZA_1_VISION_TIERS,
+        REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -35,6 +36,7 @@ except ImportError:  # pragma: no cover - script execution path
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         ELIZA_1_VISION_TIERS,
+        REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -85,6 +87,19 @@ IMAGEGEN_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 VISION_TIERS: Final[frozenset[str]] = ELIZA_1_VISION_TIERS
 MTP_TIERS: Final[frozenset[str]] = ELIZA_1_MTP_TIERS
+
+QUANTIZATION_SIDECARS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
+    "turboquant_q4": (
+        "quantization/turboquant.json",
+        "quantization/fused_turboquant.json",
+    ),
+    "turbo3_tcq": (
+        "quantization/turboquant.json",
+        "quantization/fused_turboquant.json",
+    ),
+    "qjl": ("quantization/qjl_config.json",),
+    "polarquant": ("quantization/polarquant_config.json",),
+}
 
 COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     tier: (
@@ -189,6 +204,18 @@ def text_artifact_name(tier: str, ctx: str) -> str:
     return f"text/eliza-1-{tier}-{ctx}.gguf"
 
 
+def required_quantization_sidecars_for_tier(tier: str) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for kernel in REQUIRED_KERNELS_BY_TIER[tier]:
+        for rel_path in QUANTIZATION_SIDECARS_BY_REQUIRED_KERNEL.get(kernel, ()):
+            if rel_path in seen:
+                continue
+            out.append(rel_path)
+            seen.add(rel_path)
+    return tuple(out)
+
+
 def required_files_for_tier(tier: str) -> tuple[str, ...]:
     text_files = tuple(text_artifact_name(tier, ctx) for ctx in CONTEXTS_BY_TIER[tier])
     voice_files = tuple(f"tts/{name}" for name in required_voice_artifacts_for_tier(tier))
@@ -226,10 +253,7 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         *COMPONENT_LICENSES_BY_TIER[tier],
         "checksums/SHA256SUMS",
         "evidence/release.json",
-        "quantization/turboquant.json",
-        "quantization/fused_turboquant.json",
-        "quantization/qjl_config.json",
-        "quantization/polarquant_config.json",
+        *required_quantization_sidecars_for_tier(tier),
     )
 
 
