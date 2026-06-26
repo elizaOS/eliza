@@ -12,7 +12,7 @@
     "lint:fix": "bunx @biomejs/biome check --write .",
     "format": "bunx @biomejs/biome format --write .",
     "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts apps/web",
-    "clean": "rm -rf .next .turbo node_modules/.cache"
+    "clean": "node ../../../../packages/scripts/rm-path-recursive.mjs .next .turbo node_modules/.cache"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.5",
