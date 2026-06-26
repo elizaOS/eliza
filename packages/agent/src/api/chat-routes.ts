@@ -374,6 +374,8 @@ function shouldUseAndroidLocalDirectChat(
 
 function escapeAndroidLocalChatTemplateTokens(text: string): string {
   return text
+    .replaceAll("<start_of_turn>", "< start_of_turn >")
+    .replaceAll("<end_of_turn>", "< end_of_turn >")
     .replaceAll("<|im_start|>", "<| im_start |>")
     .replaceAll("<|im_end|>", "<| im_end |>")
     .replaceAll("<think>", "< think >")
@@ -398,14 +400,13 @@ function buildAndroidLocalDirectChatPrompt(args: {
     "No markdown, labels, tools, logs, or hidden reasoning.",
   ].join("\n");
   return [
-    "<|im_start|>system",
+    "<start_of_turn>user",
     systemText,
-    "<|im_end|>",
-    "<|im_start|>user",
+    "",
     escapeAndroidLocalChatTemplateTokens(args.userText),
-    "<|im_end|>",
-    "<|im_start|>assistant",
-    // Match llama.cpp's thinking-disabled chat-template shape.
+    "<end_of_turn>",
+    "<start_of_turn>model",
+    // Match the Gemma thinking-disabled chat-template shape.
     // The direct mobile path is for short voice/chat replies; pre-filling an
     // empty think block prevents the model from spending its first tokens on
     // hidden `<think>...</think>` scaffolding before any speakable text.
@@ -468,9 +469,11 @@ function stripAndroidLocalReasoning(text: string): string {
 function cleanAndroidLocalDirectChatReply(raw: unknown): string {
   let text = stripAndroidLocalReasoning(extractAndroidLocalModelText(raw));
   text = text
+    .split("<end_of_turn>")[0]
+    .split("<start_of_turn>")[0]
     .split("<|im_end|>")[0]
     .split("<|im_start|>")[0]
-    .replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
+    .replace(/^\s*(assistant|model|eliza)\s*:\s*/i, "")
     .replace(/\bEliza-1\b/gi, "Eliza-1")
     .trim();
   text = truncateAndroidLocalReplyToFirstSentence(text);
@@ -612,7 +615,7 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
     maxTokens,
-    stopSequences: ["<|im_end|>", "<|im_start|>"],
+    stopSequences: ["<end_of_turn>", "<start_of_turn>"],
     temperature: 0,
     providerOptions: {
       eliza: {

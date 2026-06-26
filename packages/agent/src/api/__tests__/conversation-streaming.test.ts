@@ -385,6 +385,10 @@ describe("generateChatResponse token streaming", () => {
     const directParams = useModel.mock.calls[0]?.[1] as { prompt?: string };
     expect(directParams.prompt).not.toContain("/no_think");
     expect(directParams.prompt).toContain("can you hear me locally?");
+    expect(directParams.prompt).toContain("<start_of_turn>user\n");
+    expect(directParams.prompt).toContain("<end_of_turn>\n");
+    expect(directParams.prompt).toContain("<start_of_turn>model\n");
+    expect(directParams.prompt).not.toContain("<|im_start|>");
 
     expect(useModel).toHaveBeenCalledWith(
       expect.anything(),
@@ -392,6 +396,7 @@ describe("generateChatResponse token streaming", () => {
         stream: true,
         maxTokens: 20,
         prompt: expect.stringContaining("<think>\n\n</think>\n"),
+        stopSequences: ["<end_of_turn>", "<start_of_turn>"],
         providerOptions: expect.objectContaining({
           androidLocal: expect.objectContaining({
             minFirstSentenceChars: 12,
