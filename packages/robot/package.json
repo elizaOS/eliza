@@ -45,7 +45,7 @@
   ],
   "scripts": {
     "build": "bun run build.ts",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist .turbo",
     "lint": "bunx @biomejs/biome check --write ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
     "typecheck": "tsgo --noEmit",

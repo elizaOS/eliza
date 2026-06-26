@@ -69,7 +69,7 @@
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsgo --noEmit",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "build:js": "bun run clean && tsup --config tsup.config.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"

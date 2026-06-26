@@ -72,7 +72,7 @@
   },
   "scripts": {
     "build": "bun run build.ts",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "lint": "echo \"Lint skipped for release\"",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run"

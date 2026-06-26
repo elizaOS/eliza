@@ -93,7 +93,7 @@
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "clean": "rm -rf dist && rm -rf .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist && rm -rf .turbo",
     "lint": "echo \"Lint skipped for release\"",
     "typecheck": "echo \"Typecheck skipped for release\"",
     "test": "vitest run",

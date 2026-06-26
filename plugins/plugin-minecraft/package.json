@@ -67,7 +67,7 @@
     "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsgo --noEmit",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",

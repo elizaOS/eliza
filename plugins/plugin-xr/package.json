@@ -23,7 +23,7 @@
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:types",
     "build:all": "bun run build && bun run simulator:build",
-    "clean": "rm -rf dist simulator/dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist simulator/dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "simulator:build": "cd simulator && bun install && bun run build",

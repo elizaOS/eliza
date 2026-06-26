@@ -53,7 +53,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe src",
     "lint:check": "bunx @biomejs/biome check src",
     "typecheck": "tsgo --noEmit",
-    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },

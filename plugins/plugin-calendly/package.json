@@ -36,7 +36,7 @@
     "build": "tsup src/index.ts --format esm --clean && tsc --declaration --emitDeclarationOnly --noEmit false",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit",
-    "clean": "rm -rf dist .turbo"
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"

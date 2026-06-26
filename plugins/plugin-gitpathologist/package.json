@@ -53,7 +53,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

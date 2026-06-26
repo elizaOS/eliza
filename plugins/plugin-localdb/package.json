@@ -39,7 +39,7 @@
   "scripts": {
     "build": "tsup --config tsup.config.ts",
     "dev": "tsup --config tsup.config.ts --watch",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

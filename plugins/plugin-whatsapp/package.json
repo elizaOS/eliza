@@ -80,7 +80,7 @@
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write --config-path ./biome.json .",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "lint:check": "bunx @biomejs/biome check --config-path ./biome.json .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",

@@ -79,7 +79,7 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src/",

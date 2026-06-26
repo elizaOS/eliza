@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
-    "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc --noCheck -p tsconfig.build.json",
+    "build": "node ../scripts/rm-path-recursive.mjs dist tsconfig.build.tsbuildinfo && tsc --noCheck -p tsconfig.build.json",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "bun test src/ --pass-with-no-tests",
     "lint": "bunx @biomejs/biome check src",
