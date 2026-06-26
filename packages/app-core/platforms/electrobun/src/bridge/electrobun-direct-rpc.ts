@@ -15,10 +15,7 @@ import { Electroview } from "electrobun/view";
 import { httpErrorDiagnosticLevel } from "../diagnostic-format.js";
 import type { RpcMessageListener } from "../types.js";
 import { getBrowserTabsRendererImpl } from "./browser-tabs-renderer-registry.js";
-import {
-  type ElectrobunBootConfigWindow,
-  updateElectrobunBootConfig,
-} from "./electrobun-boot-config.js";
+import { updateElectrobunBootConfig } from "./electrobun-boot-config.js";
 import { ensureElectrobunGlobal } from "./electrobun-stub.js";
 
 type RendererRequestHandler = (params: unknown) => Promise<unknown>;
@@ -79,13 +76,10 @@ function dispatchMessage(messageName: string, payload: unknown): void {
     // Propagate to boot config so the appClient picks up port changes.
     // We modify it directly instead of importing @elizaos/app-core
     // to prevent bundling React and the entire UI layer into the preload script.
-    updateElectrobunBootConfig(
-      window as unknown as ElectrobunBootConfigWindow,
-      {
-        apiBase: apiBaseUpdate.base,
-        ...(apiBaseUpdate.token ? { apiToken: apiBaseUpdate.token } : {}),
-      },
-    );
+    updateElectrobunBootConfig(window, {
+      apiBase: apiBaseUpdate.base,
+      ...(apiBaseUpdate.token ? { apiToken: apiBaseUpdate.token } : {}),
+    });
   }
 
   const listeners = listenersByRpcMessage[messageName];
