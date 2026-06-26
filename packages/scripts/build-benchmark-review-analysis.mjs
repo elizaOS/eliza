@@ -1,18 +1,29 @@
 #!/usr/bin/env node
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
+const RM_RECURSIVE_SCRIPT = path.join(SCRIPT_DIR, "rm-path-recursive.mjs");
+const DEFAULT_REPORT_DIR = path.join(
+  REPO_ROOT,
+  "reports",
+  "benchmark-analysis",
+  "benchmark-review",
 );
-const DEFAULT_REPORT_DIR = path.join(REPO_ROOT, "reports", "benchmark-analysis", "benchmark-review");
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
+}
+
+function rmRecursive(targetPath) {
+  execFileSync("node", [RM_RECURSIVE_SCRIPT, targetPath], {
+    cwd: REPO_ROOT,
+    stdio: "inherit",
+  });
 }
 
 function readWindowJson(filePath, assignmentPrefix) {
@@ -28,31 +39,42 @@ function rel(target, from = DEFAULT_REPORT_DIR) {
 }
 
 function pct(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value * 100 : null;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value * 100
+    : null;
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[char]);
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char],
+  );
 }
 
 function slugify(value) {
-  return String(value || "unknown")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 120) || "unknown";
+  return (
+    String(value || "unknown")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || "unknown"
+  );
 }
 
 function statusDisposition(row) {
-  if (row.benchmark === "osworld" && row.run_mode === "smoke") return "missing-live";
-  if (typeof row.target_total === "number" && row.target_total < 5) return "under-five";
-  if (row.status === "superior" || row.status === "comparable") return "review-pass";
+  if (row.benchmark === "osworld" && row.run_mode === "smoke")
+    return "missing-live";
+  if (typeof row.target_total === "number" && row.target_total < 5)
+    return "under-five";
+  if (row.status === "superior" || row.status === "comparable")
+    return "review-pass";
   if (row.status === "weak") return "weak-output";
   if (row.status === "inferior") return "inferior";
   return "review";
@@ -60,20 +82,35 @@ function statusDisposition(row) {
 
 function buildPayload() {
   const indexData = readWindowJson(
-    path.join(REPO_ROOT, "reports/benchmarks/code-agent-run-index/index-data.js"),
+    path.join(
+      REPO_ROOT,
+      "reports/benchmarks/code-agent-run-index/index-data.js",
+    ),
     /^window\.BENCHMARK_RUN_INDEX = /,
   );
   const trajectoryCatalog = readJson(
-    path.join(REPO_ROOT, "reports/benchmarks/code-agent-trajectory-catalog/trajectory-catalog.json"),
+    path.join(
+      REPO_ROOT,
+      "reports/benchmarks/code-agent-trajectory-catalog/trajectory-catalog.json",
+    ),
   );
   const versionComparison = readJson(
-    path.join(REPO_ROOT, "reports/benchmarks/code-agent-version-comparison/version-comparison.json"),
+    path.join(
+      REPO_ROOT,
+      "reports/benchmarks/code-agent-version-comparison/version-comparison.json",
+    ),
   );
   const gapEvidence = readJson(
-    path.join(REPO_ROOT, "reports/benchmark-analysis/gap-evidence/gap-evidence.json"),
+    path.join(
+      REPO_ROOT,
+      "reports/benchmark-analysis/gap-evidence/gap-evidence.json",
+    ),
   );
   const versionByBenchmark = Object.fromEntries(
-    (versionComparison.benchmarks || []).map((entry) => [entry.benchmark, entry]),
+    (versionComparison.benchmarks || []).map((entry) => [
+      entry.benchmark,
+      entry,
+    ]),
   );
   const trajectoryEntriesByBenchmark = new Map();
   for (const entry of trajectoryCatalog.entries || []) {
@@ -83,21 +120,23 @@ function buildPayload() {
     trajectoryEntriesByBenchmark.get(entry.benchmark).push(entry);
   }
   const rows = Object.values(indexData.latest_by_benchmark || {})
-    .sort((a, b) => String(a.benchmark || "").localeCompare(String(b.benchmark || "")))
+    .sort((a, b) =>
+      String(a.benchmark || "").localeCompare(String(b.benchmark || "")),
+    )
     .map((row) => {
       const trajectory = trajectoryCatalog.byBenchmark?.[row.benchmark] || {};
-      const trajectoryEntries = trajectoryEntriesByBenchmark.get(row.benchmark) || [];
-      const selectedEntries = trajectoryEntries
-        .slice()
-        .sort((a, b) => {
-          const aTarget = a.side === "target" && a.adapter === "elizaos" ? 1 : 0;
-          const bTarget = b.side === "target" && b.adapter === "elizaos" ? 1 : 0;
-          if (aTarget !== bTarget) return bTarget - aTarget;
-          return (
-            Number(b.totals?.totalTokens || 0) - Number(a.totals?.totalTokens || 0) ||
-            Number(b.totals?.records || 0) - Number(a.totals?.records || 0)
-          );
-        });
+      const trajectoryEntries =
+        trajectoryEntriesByBenchmark.get(row.benchmark) || [];
+      const selectedEntries = trajectoryEntries.slice().sort((a, b) => {
+        const aTarget = a.side === "target" && a.adapter === "elizaos" ? 1 : 0;
+        const bTarget = b.side === "target" && b.adapter === "elizaos" ? 1 : 0;
+        if (aTarget !== bTarget) return bTarget - aTarget;
+        return (
+          Number(b.totals?.totalTokens || 0) -
+            Number(a.totals?.totalTokens || 0) ||
+          Number(b.totals?.records || 0) - Number(a.totals?.records || 0)
+        );
+      });
       const representativeRecords = selectedEntries
         .flatMap((entry) =>
           (entry.records || []).slice(0, 5).map((record) => ({
@@ -150,7 +189,10 @@ function buildPayload() {
         );
       }
       if (row.benchmark === "osworld" && row.run_mode === "smoke") {
-        caveats.push(gapEvidence.osworld?.blockerSummary || "OSWorld live prerequisites unavailable");
+        caveats.push(
+          gapEvidence.osworld?.blockerSummary ||
+            "OSWorld live prerequisites unavailable",
+        );
       }
       const blockers = String(row.release_readiness_blocking_requirements || "")
         .split(",")
@@ -215,8 +257,10 @@ function buildPayload() {
         reviewLinks: {
           benchmarkReview: `benchmarks/${slugify(row.benchmark)}.html`,
           runViewer: row.viewer_href,
-          trajectoryCatalog: "../benchmarks/code-agent-trajectory-catalog/index.html",
-          versionComparison: "../benchmarks/code-agent-version-comparison/index.html",
+          trajectoryCatalog:
+            "../benchmarks/code-agent-trajectory-catalog/index.html",
+          versionComparison:
+            "../benchmarks/code-agent-version-comparison/index.html",
         },
         playbackLinks,
         representativeRecords,
@@ -225,13 +269,29 @@ function buildPayload() {
   const summary = {
     benchmarkCount: rows.length,
     reviewPass: rows.filter((row) => row.disposition === "review-pass").length,
-    weakOrInferior: rows.filter((row) => row.disposition === "weak-output" || row.disposition === "inferior").length,
+    weakOrInferior: rows.filter(
+      (row) =>
+        row.disposition === "weak-output" || row.disposition === "inferior",
+    ).length,
     underFive: rows.filter((row) => row.disposition === "under-five").length,
-    missingLive: rows.filter((row) => row.disposition === "missing-live").length,
-    totalTrajectoryFiles: rows.reduce((sum, row) => sum + row.trajectory.files, 0),
-    totalTrajectoryRecords: rows.reduce((sum, row) => sum + row.trajectory.records, 0),
-    totalTrajectoryTokens: rows.reduce((sum, row) => sum + row.trajectory.totalTokens, 0),
-    totalCacheReadTokens: rows.reduce((sum, row) => sum + row.trajectory.cacheReadTokens, 0),
+    missingLive: rows.filter((row) => row.disposition === "missing-live")
+      .length,
+    totalTrajectoryFiles: rows.reduce(
+      (sum, row) => sum + row.trajectory.files,
+      0,
+    ),
+    totalTrajectoryRecords: rows.reduce(
+      (sum, row) => sum + row.trajectory.records,
+      0,
+    ),
+    totalTrajectoryTokens: rows.reduce(
+      (sum, row) => sum + row.trajectory.totalTokens,
+      0,
+    ),
+    totalCacheReadTokens: rows.reduce(
+      (sum, row) => sum + row.trajectory.cacheReadTokens,
+      0,
+    ),
   };
   summary.cachePercent = summary.totalTrajectoryTokens
     ? (summary.totalCacheReadTokens / summary.totalTrajectoryTokens) * 100
@@ -284,12 +344,25 @@ function benchmarkDrilldownHtml(row) {
         ["ElizaOS", `${row.target.right}/${row.target.total}`],
         ["OpenCode", `${row.baseline.right}/${row.baseline.total}`],
         ["Target tokens", row.target.totalTokens],
-        ["Target cache", row.target.cachePercent == null ? "n/a" : `${row.target.cachePercent.toFixed(1)}%`],
+        [
+          "Target cache",
+          row.target.cachePercent == null
+            ? "n/a"
+            : `${row.target.cachePercent.toFixed(1)}%`,
+        ],
         ["Trajectory records", row.trajectory.records],
-        ["Catalog cache", row.trajectory.cachePercent == null ? "n/a" : `${row.trajectory.cachePercent.toFixed(1)}%`],
+        [
+          "Catalog cache",
+          row.trajectory.cachePercent == null
+            ? "n/a"
+            : `${row.trajectory.cachePercent.toFixed(1)}%`,
+        ],
         ["Previous run", row.version.hasPrevious ? "yes" : "no"],
       ]
-        .map(([key, value]) => `<div class="card"><span class="muted">${escapeHtml(key)}</span><b>${escapeHtml(value)}</b></div>`)
+        .map(
+          ([key, value]) =>
+            `<div class="card"><span class="muted">${escapeHtml(key)}</span><b>${escapeHtml(value)}</b></div>`,
+        )
         .join("")}
     </div>
     <section class="panel"><h2>Review Notes</h2><div class="body">
@@ -297,18 +370,23 @@ function benchmarkDrilldownHtml(row) {
       <p><strong>Caveats:</strong> ${escapeHtml((row.caveats || []).join("; ") || "none")}</p>
       <p><strong>Version notes:</strong> ${escapeHtml((row.version.notes || []).join("; ") || "none")}</p>
     </div></section>
-    <section class="panel"><h2>Playback Links</h2><div class="body"><table><thead><tr><th>side</th><th>adapter</th><th>records</th><th>tokens</th><th>cache</th><th>playback</th></tr></thead><tbody>${(row.playbackLinks || [])
+    <section class="panel"><h2>Playback Links</h2><div class="body"><table><thead><tr><th>side</th><th>adapter</th><th>records</th><th>tokens</th><th>cache</th><th>playback</th></tr></thead><tbody>${(
+      row.playbackLinks || []
+    )
       .map(
         (link) =>
           `<tr><td>${escapeHtml(link.side)}</td><td>${escapeHtml(link.adapter)}</td><td>${escapeHtml(link.records)}</td><td>${escapeHtml(link.totalTokens)}</td><td>${escapeHtml(link.cachePercent == null ? "n/a" : `${link.cachePercent.toFixed(1)}%`)}</td><td>${link.href ? `<a href="${escapeHtml(link.href)}">open</a>` : ""}</td></tr>`,
       )
       .join("")}</tbody></table></div></section>
-    <section class="panel"><h2>Representative Trajectory Records</h2><div class="body">${(row.representativeRecords || [])
-      .map(
-        (record, index) =>
-          `<section class="panel"><h2>Record ${index + 1}: ${escapeHtml(record.taskId || record.kind)}</h2><div class="body"><table><tbody><tr><th>tokens</th><td>${escapeHtml(record.totalTokens ?? "n/a")}</td></tr><tr><th>cache</th><td>${escapeHtml(record.cacheReadTokens ?? "n/a")} (${escapeHtml(record.cachePercent == null ? "n/a" : `${record.cachePercent.toFixed(1)}%`)})</td></tr><tr><th>model</th><td>${escapeHtml([record.provider, record.model].filter(Boolean).join(" / ") || "n/a")}</td></tr><tr><th>playback</th><td>${record.playbackHref ? `<a href="${escapeHtml(record.playbackHref)}">open call playback</a>` : ""}</td></tr></tbody></table><h3>Input</h3><pre>${escapeHtml(record.inputPreview)}</pre><h3>Output</h3><pre>${escapeHtml(record.outputPreview)}</pre><h3>Raw</h3><pre>${escapeHtml(record.rawPreview)}</pre></div></section>`,
-      )
-      .join("") || '<span class="muted">No representative trajectory records were parsed for this benchmark.</span>'}</div></section>
+    <section class="panel"><h2>Representative Trajectory Records</h2><div class="body">${
+      (row.representativeRecords || [])
+        .map(
+          (record, index) =>
+            `<section class="panel"><h2>Record ${index + 1}: ${escapeHtml(record.taskId || record.kind)}</h2><div class="body"><table><tbody><tr><th>tokens</th><td>${escapeHtml(record.totalTokens ?? "n/a")}</td></tr><tr><th>cache</th><td>${escapeHtml(record.cacheReadTokens ?? "n/a")} (${escapeHtml(record.cachePercent == null ? "n/a" : `${record.cachePercent.toFixed(1)}%`)})</td></tr><tr><th>model</th><td>${escapeHtml([record.provider, record.model].filter(Boolean).join(" / ") || "n/a")}</td></tr><tr><th>playback</th><td>${record.playbackHref ? `<a href="${escapeHtml(record.playbackHref)}">open call playback</a>` : ""}</td></tr></tbody></table><h3>Input</h3><pre>${escapeHtml(record.inputPreview)}</pre><h3>Output</h3><pre>${escapeHtml(record.outputPreview)}</pre><h3>Raw</h3><pre>${escapeHtml(record.rawPreview)}</pre></div></section>`,
+        )
+        .join("") ||
+      '<span class="muted">No representative trajectory records were parsed for this benchmark.</span>'
+    }</div></section>
     <section class="panel"><h2>Source Viewers</h2><div class="body"><a href="${escapeHtml(row.reviewLinks.runViewer)}">Run viewer</a> · <a href="${escapeHtml(row.reviewLinks.trajectoryCatalog)}">Trajectory catalog</a> · <a href="${escapeHtml(row.reviewLinks.versionComparison)}">Version comparison</a> · <a href="../index.html">Benchmark review table</a></div></section>
   </main>
 </body>
@@ -317,7 +395,7 @@ function benchmarkDrilldownHtml(row) {
 
 function writeBenchmarkDrilldownPages(payload) {
   const dir = path.join(DEFAULT_REPORT_DIR, "benchmarks");
-  rmSync(dir, { recursive: true, force: true });
+  rmRecursive(dir);
   mkdirSync(dir, { recursive: true });
   for (const row of payload.rows || []) {
     writeFileSync(
@@ -438,10 +516,14 @@ function main() {
   );
   writeFileSync(
     path.join(DEFAULT_REPORT_DIR, "benchmark-review.json"),
-    JSON.stringify(payload, null, 2) + "\n",
+    `${JSON.stringify(payload, null, 2)}\n`,
     "utf8",
   );
-  writeFileSync(path.join(DEFAULT_REPORT_DIR, "README.md"), renderMarkdown(payload), "utf8");
+  writeFileSync(
+    path.join(DEFAULT_REPORT_DIR, "README.md"),
+    renderMarkdown(payload),
+    "utf8",
+  );
   writeFileSync(path.join(DEFAULT_REPORT_DIR, "index.html"), html(), "utf8");
   process.stdout.write(
     `benchmark review analysis ${payload.summary.benchmarkCount} benchmarks; ${payload.summary.reviewPass} pass; ${payload.summary.weakOrInferior} weak/inferior\n`,
