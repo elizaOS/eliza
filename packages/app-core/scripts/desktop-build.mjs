@@ -38,6 +38,12 @@ const COMMAND_PREFIX = (process.env.ELIZA_DESKTOP_COMMAND_PREFIX ?? "")
   .split(/\s+/)
   .filter(Boolean);
 const DESKTOP_BUILD_LOCK_DIR = path.join(ROOT, ".turbo", "desktop-build.lock");
+const CLEANUP_HELPER_SCRIPT = path.join(
+  ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const RUNTIME_COPY_SCRIPT = fs.existsSync(
   path.join(ROOT, "scripts", "copy-runtime-node-modules.ts"),
 )
@@ -88,6 +94,33 @@ function isProcessAlive(pid) {
   }
 }
 
+function removeDesktopBuildLockDir() {
+  const result = spawnSync(
+    "node",
+    [CLEANUP_HELPER_SCRIPT, DESKTOP_BUILD_LOCK_DIR],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: "pipe",
+    },
+  );
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const detail = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    throw new Error(
+      `desktop build lock cleanup failed with exit code ${result.status ?? 1}${
+        detail ? `: ${detail}` : ""
+      }`,
+    );
+  }
+}
+
 function withDesktopBuildLock(run) {
   const lockParent = path.dirname(DESKTOP_BUILD_LOCK_DIR);
   const staleAfterMs = 30 * 60 * 1000;
@@ -120,7 +153,7 @@ function withDesktopBuildLock(run) {
         (ownerPid !== null && !isProcessAlive(ownerPid)) ||
         Date.now() - stat.mtimeMs > staleAfterMs
       ) {
-        fs.rmSync(DESKTOP_BUILD_LOCK_DIR, { recursive: true, force: true });
+        removeDesktopBuildLockDir();
         continue;
       }
 
@@ -137,7 +170,7 @@ function withDesktopBuildLock(run) {
   try {
     run();
   } finally {
-    fs.rmSync(DESKTOP_BUILD_LOCK_DIR, { recursive: true, force: true });
+    removeDesktopBuildLockDir();
   }
 }
 
