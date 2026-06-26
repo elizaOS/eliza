@@ -50,7 +50,7 @@ jobs:
           set -euo pipefail
           ZIG_ROOT="$HOME/.cache/elizaos/zig/${ZIG_VERSION}"
           if [ ! -x "${ZIG_ROOT}/zig" ]; then
-            rm -rf "${ZIG_ROOT}"
+            node packages/scripts/rm-path-recursive.mjs "${ZIG_ROOT}"
             mkdir -p "${ZIG_ROOT}"
             curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
               -o /tmp/zig.tar.xz
