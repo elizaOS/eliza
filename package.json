@@ -121,7 +121,7 @@
     "typecheck": "NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=8 --filter='!@elizaos/example-code' && node packages/scripts/run-examples-benchmarks.mjs typecheck",
     "audit:build-model": "node packages/scripts/audit-build-typecheck.mjs",
     "lint:all": "bun run lint:check && bun run typecheck",
-    "verify": "bun run audit:type-safety-ratchet && NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck lint --concurrency=8 --filter='!@elizaos/example-code' && bun run audit:build-model",
+    "verify": "bun run audit:type-safety-ratchet && NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck lint --concurrency=8 --filter='!@elizaos/example-code' && bun run audit:build-model && bun run typecheck:dist",
     "check": "bun run verify",
     "pre-commit": "bun run packages/scripts/pre-commit-lint.js",
     "release": "bunx lerna publish from-package --dist-tag latest --force-publish --yes --no-verify-access --no-sort",
@@ -222,7 +222,7 @@
     "db:cloud:pglite": "bun run packages/scripts/cloud/admin/dev/pglite-server.ts",
     "publish:dry-run": "bun packages/scripts/publish-from-dist.mjs",
     "publish:packages": "bun packages/scripts/publish-from-dist.mjs --apply",
-    "typecheck:dist": "NODE_OPTIONS='--max-old-space-size=8192' tsc --noEmit -p tsconfig.dist-paths.json",
+    "typecheck:dist": "node packages/scripts/typecheck-dist-path-consumers.mjs",
     "sync:artifacts": "bun packages/scripts/sync-artifacts.mjs",
     "check:view-bundles": "bun packages/scripts/view-bundle-import-guard.mjs"
   },
