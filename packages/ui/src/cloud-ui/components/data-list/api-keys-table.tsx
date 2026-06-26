@@ -1,10 +1,4 @@
-import {
-  CalendarClock,
-  Copy,
-  RefreshCw,
-  ShieldOff,
-  Trash2,
-} from "lucide-react";
+import { CalendarClock, RefreshCw, ShieldOff, Trash2 } from "lucide-react";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import {
   Table,
@@ -38,7 +32,6 @@ export interface ApiKeyDisplay {
 
 export interface ApiKeysTableProps {
   keys: ApiKeyDisplay[];
-  onCopyKey?: (id: string) => void;
   onDisableKey?: (id: string) => void;
   onDeleteKey?: (id: string) => void;
   onRegenerateKey?: (id: string) => void;
@@ -83,7 +76,7 @@ function renderActions(
   key: ApiKeyDisplay,
   handlers: Pick<
     ApiKeysTableProps,
-    "onCopyKey" | "onDisableKey" | "onDeleteKey" | "onRegenerateKey"
+    "onDisableKey" | "onDeleteKey" | "onRegenerateKey"
   >,
   triggerClassName?: string,
 ) {
@@ -92,11 +85,6 @@ function renderActions(
       label="Manage key"
       triggerClassName={triggerClassName}
       items={[
-        {
-          label: "Copy key",
-          icon: Copy,
-          onSelect: () => handlers.onCopyKey?.(key.id),
-        },
         {
           label: "Regenerate key",
           icon: RefreshCw,
@@ -121,7 +109,6 @@ function renderActions(
 
 export function ApiKeysTable({
   keys,
-  onCopyKey,
   onDisableKey,
   onDeleteKey,
   onRegenerateKey,
@@ -131,7 +118,6 @@ export function ApiKeysTable({
   }
 
   const handlers = {
-    onCopyKey,
     onDisableKey,
     onDeleteKey,
     onRegenerateKey,
@@ -169,15 +155,6 @@ export function ApiKeysTable({
               <span className="rounded-sm border border-white/10 bg-black/60 px-1.5 py-0.5 font-mono text-xs text-white">
                 {`${key.keyPrefix}.......`}
               </span>
-              <BrandButton
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2"
-                onClick={() => onCopyKey?.(key.id)}
-              >
-                <Copy className="mr-1 h-3.5 w-3.5" />
-                Copy
-              </BrandButton>
               <BrandButton
                 variant="ghost"
                 size="sm"
@@ -244,15 +221,6 @@ export function ApiKeysTable({
                       <span className="rounded-sm border border-white/10 bg-black/60 px-1.5 py-0.5 font-mono text-xs text-white">
                         {`${key.keyPrefix}.......`}
                       </span>
-                      <BrandButton
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2"
-                        onClick={() => onCopyKey?.(key.id)}
-                      >
-                        <Copy className="mr-1 h-3.5 w-3.5" />
-                        Copy
-                      </BrandButton>
                       <BrandButton
                         variant="ghost"
                         size="sm"

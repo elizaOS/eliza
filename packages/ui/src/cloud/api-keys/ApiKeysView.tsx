@@ -13,9 +13,12 @@
  * - Mutations use the shared cloud `apiFetch` client (auth injection +
  *   structured `ApiError`) and invalidate the react-query key, replacing the
  *   raw `fetch` + manual `response.ok` plumbing.
- * - The dead "copy stored key" action (which imported a non-existent
- *   `@/lib/client/api-keys` module and could never fetch a hashed secret) now
- *   copies the public key prefix — the only identifier visible after creation.
+ * - There is no row-level "copy key" action: the full secret is only ever
+ *   shown once, in the post-create reveal dialog (copyable via `handleCopyKey`).
+ *   A stored key exposes only its public prefix, so copying it is pointless.
+ * - Delete optimistically removes the row from the `["api-keys"]` cache because
+ *   Hyperdrive caches the list GET, so the post-delete refetch can briefly
+ *   serve the deleted key; the invalidate reconciles once the cache expires.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -61,7 +64,8 @@ import {
 import { Textarea } from "../../components/ui/textarea";
 import { ApiError, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { copyApiKeyPrefix, copyApiKeyToClipboard } from "./copy-api-key";
+import { copyApiKeyToClipboard } from "./copy-api-key";
+import type { ApiKeyRecord } from "./use-api-keys";
 
 interface ApiKeysViewProps {
   keys: ApiKeyDisplay[];
@@ -220,35 +224,6 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
     }
   };
 
-  // The full secret is hashed + KMS-encrypted at rest and only returned once
-  // (on create / regenerate). For a stored key the only copyable identifier is
-  // its public prefix.
-  const handleCopyStoredKey = async (id: string) => {
-    const key = keys.find((k) => k.id === id);
-    if (!key) return;
-    try {
-      await copyApiKeyPrefix(key.keyPrefix);
-      toast.success(
-        t("cloud.apiKeys.prefixCopied", {
-          defaultValue: "Key prefix copied",
-        }),
-        {
-          description: t("cloud.apiKeys.prefixCopiedDesc", {
-            defaultValue:
-              "The full key is only shown once, when it is created. Copied the public prefix instead.",
-          }),
-        },
-      );
-    } catch (error) {
-      toast.error(
-        t("cloud.apiKeys.copyFailed", {
-          defaultValue: "Failed to copy API key",
-        }),
-        { description: errorMessage(error) },
-      );
-    }
-  };
-
   const handleDisableKey = (id: string) => {
     const key = keys.find((k) => k.id === id);
     const isCurrentlyActive = key?.status === "active";
@@ -337,6 +312,14 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
     } else if (type === "delete") {
       try {
         await apiFetch(`/api/v1/api-keys/${id}`, { method: "DELETE" });
+        // Hyperdrive caches the list GET, so an immediate refetch can still
+        // serve the just-deleted row. Optimistically drop it from every cached
+        // `["api-keys", ...]` query (the key is partitioned per user, so match
+        // on the prefix) so it disappears immediately.
+        queryClient.setQueriesData<ApiKeyRecord[]>(
+          { queryKey: ["api-keys"] },
+          (existing) => existing?.filter((key) => key.id !== id),
+        );
         toast.success(
           t("cloud.apiKeys.deleted", { defaultValue: "API key deleted" }),
           {
@@ -345,7 +328,14 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
             }),
           },
         );
-        refreshApiKeys();
+        // Mark the list stale WITHOUT an immediate refetch: refetching now would
+        // re-read the Hyperdrive-cached GET and clobber the optimistic removal
+        // above, making the deleted row reappear. It reconciles on the next
+        // natural refetch (mount/focus), by which point the cache has rolled over.
+        void queryClient.invalidateQueries({
+          queryKey: ["api-keys"],
+          refetchType: "none",
+        });
       } catch (error) {
         toast.error(
           t("cloud.apiKeys.deleteFailed", {
@@ -591,7 +581,6 @@ export function ApiKeysView({ keys, summary }: ApiKeysViewProps) {
         {hasKeys ? (
           <ApiKeysTable
             keys={keys}
-            onCopyKey={(id) => void handleCopyStoredKey(id)}
             onDisableKey={handleDisableKey}
             onDeleteKey={handleDeleteKey}
             onRegenerateKey={handleRegenerateKey}
