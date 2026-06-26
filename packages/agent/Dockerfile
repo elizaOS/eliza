@@ -13,7 +13,8 @@ COPY . .
 
 RUN bun install
 RUN bun run generate:action-search-keywords
-RUN bun run build:core
+RUN bun run --cwd packages/core build
+RUN bun run --cwd plugins/plugin-sql build
 
 # Final runtime stage
 FROM oven/bun:latest AS runner
