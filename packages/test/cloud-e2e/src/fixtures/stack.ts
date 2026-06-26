@@ -230,9 +230,8 @@ async function killProc(proc: SpawnedProc): Promise<void> {
 }
 
 async function closeCloudSharedDatabaseConnections(): Promise<void> {
-  const { closeDatabaseConnectionsForTests } = await import(
-    "@elizaos/cloud-shared/db/client"
-  );
+  const { closeDatabaseConnectionsForTests } =
+    await import("@elizaos/cloud-shared/db/client");
   await closeDatabaseConnectionsForTests();
 }
 
@@ -256,6 +255,13 @@ export interface StartCloudStackOptions {
    * with no paid provider key. Defaults to false.
    */
   mockLlm?: boolean;
+  /**
+   * Boot the mock LLM in context-aware echo mode (implies `mockLlm`). The
+   * assistant reply is derived from the conversation the caller replayed into
+   * the model call instead of a fixed string, so a multi-turn spec can assert
+   * the reply itself reflects retained history. Defaults to false (fixed reply).
+   */
+  mockLlmEchoContext?: boolean;
 }
 
 /**
@@ -285,7 +291,10 @@ export async function startCloudStack(
     hetznerUrl: hetzner.url,
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });
-  const mockLlm = opts.mockLlm ? await startMockLlm() : undefined;
+  const mockLlm =
+    opts.mockLlm || opts.mockLlmEchoContext
+      ? await startMockLlm({ echoContext: opts.mockLlmEchoContext ?? false })
+      : undefined;
   const mockLlmEnv: Record<string, string> = mockLlm
     ? {
         OPENAI_API_KEY: "mock-llm-key",
