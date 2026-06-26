@@ -68,6 +68,12 @@ async function fulfillJson(
 }
 
 async function installAssistantFlowRoutes(page: Page): Promise<{
+  messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number;
+  }>;
   streamRequests: string[];
 }> {
   await installDefaultAppRoutes(page);
@@ -373,7 +379,7 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
     },
   );
 
-  return { streamRequests };
+  return { messages, streamRequests };
 }
 
 async function screenshot(page: Page, name: string): Promise<void> {
@@ -770,11 +776,17 @@ test.describe("assistant home app flow", () => {
     await expect
       .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
       .toEqual(["show me my pinned views"]);
-    await expect(
-      page
-        .getByText("Opening the right view now and keeping voice ready.")
-        .first(),
-    ).toBeVisible();
+    await expect
+      .poll(
+        () =>
+          assistantApi.messages
+            .filter((message) => message.role === "assistant")
+            .map((message) => message.text),
+        { timeout: 10_000 },
+      )
+      .toContain(
+        "I heard you. Opening the right view now and keeping voice ready.",
+      );
     expect(assistantApi.streamRequests).toEqual(["show me my pinned views"]);
   });
 
