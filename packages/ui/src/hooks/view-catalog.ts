@@ -21,28 +21,10 @@ import {
   isViewVisible,
   type ViewKind,
 } from "@elizaos/core";
-import { generateViewHeroSvgFor } from "@elizaos/shared";
 import type { RegistryAppInfo } from "../api";
+import { viewIconDataUri } from "../components/views/view-icons.generated";
 import type { ViewModality } from "../platform/platform-guards";
 import type { ViewRegistryEntry } from "./useAvailableViews";
-
-/**
- * A deterministic, branded view hero generated CLIENT-SIDE as an inline data
- * URI. This is the SAME no-blue art the agent serves at `/api/views/:id/hero`,
- * but rendered with no network round-trip — so every launcher tile shows a real
- * image even offline / on cloud builds where that endpoint isn't reachable
- * (the "tiles show glyphs, not images" report). Real plugin heroes
- * (`heroImageUrl`) still win; this is the universal fallback.
- */
-function generatedViewHeroDataUri(source: {
-  id: string;
-  label: string;
-  icon?: string;
-}): string {
-  return `data:image/svg+xml,${encodeURIComponent(
-    generateViewHeroSvgFor(source),
-  )}`;
-}
 
 export type { ViewModality } from "../platform/platform-guards";
 
@@ -105,31 +87,22 @@ export interface InstalledAppLike {
 }
 
 export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
-  const hasHero = Boolean(view.hasHeroImage && view.heroImageUrl);
-  const generatedHero = generatedViewHeroDataUri({
-    id: view.id,
-    label: view.label,
-    icon: view.icon,
-  });
+  // Every tile uses a BUNDLED icon — a base64 PNG data URI baked into the JS
+  // bundle (see view-icons.generated.ts). It is preloaded with the app, so a
+  // tile is never a bare glyph, never the `/api/views/:id/hero` endpoint (which
+  // 404s → black/reloading on native), and never a generated SVG. Views without
+  // a dedicated icon fall back to the bundled generic `default` icon.
+  const bundledIcon = viewIconDataUri(view.id);
   return {
     key: `view:${view.id}`,
     id: view.id,
     label: view.label,
     description: view.description,
     icon: view.icon,
-    heroUrl: hasHero ? view.heroImageUrl : undefined,
-    // `imageUrl` ALWAYS resolves to a real/branded image so a Springboard tile
-    // is never a bare glyph. A real plugin hero wins ONLY when one actually
-    // exists on disk (`hasHero`); otherwise we use the branded hero generated
-    // CLIENT-SIDE (an inline data URI). The server sets `heroImageUrl` to the
-    // `/api/views/:id/hero` endpoint for EVERY view regardless of whether a real
-    // hero exists, and that bare `/api/...` path 404s on native/desktop shells
-    // (no API base ⇒ resolves to the SPA, not the agent) and offline / on cloud
-    // builds. Gating on `hasHero` means viewless tiles load the client SVG
-    // directly with no doomed network round-trip, and real heroes still win.
-    imageUrl: hasHero ? view.heroImageUrl : generatedHero,
-    fallbackImageUrl: generatedHero,
-    hasHero,
+    heroUrl: undefined,
+    imageUrl: bundledIcon,
+    fallbackImageUrl: viewIconDataUri("default"),
+    hasHero: true,
     modality: view.viewType ?? "gui",
     modalities: [view.viewType ?? "gui"],
     state: "loaded",
@@ -155,13 +128,13 @@ function isReachableHero(url: string | null | undefined): url is string {
 }
 
 function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
+  // An app's own hero wins only when it is an absolute, shell-reachable URL
+  // (a root-relative `/api/...` path 404s on native). Otherwise use the bundled
+  // icon for this app id, falling back to the generic `default` — always a
+  // preloaded data URI, never an SVG or a doomed network round-trip.
   const reachableHero = isReachableHero(app.heroImage);
   const label = app.displayName || app.name;
-  const generatedHero = generatedViewHeroDataUri({
-    id: app.name,
-    label,
-    icon: app.icon ?? undefined,
-  });
+  const bundledIcon = viewIconDataUri(app.name);
   return {
     key: `app:${app.name}`,
     id: app.name,
@@ -169,12 +142,9 @@ function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
     description: app.description,
     icon: app.icon ?? undefined,
     heroUrl: reachableHero ? (app.heroImage ?? undefined) : undefined,
-    // Use the app's own hero only when it is an absolute, shell-reachable URL;
-    // a root-relative `/api/...` fallback path 404s on native, so render the
-    // branded client SVG directly instead of a doomed network round-trip.
-    imageUrl: reachableHero ? (app.heroImage as string) : generatedHero,
-    fallbackImageUrl: generatedHero,
-    hasHero: reachableHero,
+    imageUrl: reachableHero ? (app.heroImage as string) : bundledIcon,
+    fallbackImageUrl: bundledIcon,
+    hasHero: true,
     category: app.category,
     // Catalog cards are a GUI install surface; the loaded view carries the real
     // modality once the plugin registers.

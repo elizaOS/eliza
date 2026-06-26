@@ -66,12 +66,12 @@ describe("mergeViewCatalog", () => {
     expect(claw?.state).toBe("available");
     expect(claw?.kind).toBe("app");
     expect(claw?.label).toBe("Arcade");
-    // A root-relative API hero is not shell-reachable → no real hero, image is
-    // the branded client SVG so the tile never 404s on native.
+    // A root-relative API hero is not shell-reachable → use the bundled icon
+    // (a preloaded PNG data URI) so the tile never 404s on native.
     expect(claw?.heroUrl).toBeUndefined();
-    expect(claw?.hasHero).toBe(false);
-    expect(claw?.imageUrl).toMatch(/^data:image\/svg\+xml,/);
-    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(claw?.hasHero).toBe(true);
+    expect(claw?.imageUrl).toMatch(/^data:image\/png/);
+    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/png/);
   });
 
   it("uses an absolute (shell-reachable) app hero as the real tile image", () => {
@@ -90,7 +90,7 @@ describe("mergeViewCatalog", () => {
     expect(claw?.heroUrl).toBe("https://cdn.example.com/arcade.png");
     expect(claw?.imageUrl).toBe("https://cdn.example.com/arcade.png");
     // The fallback is still the branded SVG for an onError recovery.
-    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/png/);
   });
 
   it("generates branded image fallbacks for entries without real hero art", () => {
@@ -104,20 +104,16 @@ describe("mergeViewCatalog", () => {
     const calendar = entries.find((e) => e.id === "calendar");
     const notes = entries.find((e) => e.id === "@elizaos/plugin-notes");
     expect(calendar?.heroUrl).toBeUndefined();
-    expect(calendar?.imageUrl).toMatch(/^data:image\/svg\+xml,/);
-    expect(calendar?.fallbackImageUrl).toBe(calendar?.imageUrl);
+    expect(calendar?.imageUrl).toMatch(/^data:image\/png/);
+    expect(calendar?.fallbackImageUrl).toMatch(/^data:image\/png/);
     expect(notes?.heroUrl).toBeUndefined();
-    expect(notes?.imageUrl).toMatch(/^data:image\/svg\+xml,/);
-    expect(notes?.fallbackImageUrl).toBe(notes?.imageUrl);
+    expect(notes?.imageUrl).toMatch(/^data:image\/png/);
+    expect(notes?.fallbackImageUrl).toMatch(/^data:image\/png/);
   });
 });
 
-describe("viewToEntry hero gating (native 404 fix)", () => {
-  it("uses the branded client SVG (not the /api hero) when no real hero exists", () => {
-    // The agent sets `heroImageUrl` to the `/api/views/:id/hero` endpoint for
-    // EVERY view but `hasHeroImage: false` when no real hero is on disk. The
-    // bare `/api/...` path 404s on native, so the primary image must be the
-    // client SVG — never the doomed endpoint.
+describe("viewToEntry uses bundled icons (native 404 fix)", () => {
+  it("uses the bundled preloaded icon, never the /api hero, when no real hero exists", () => {
     const entry = viewToEntry(
       makeView("calendar", {
         label: "Calendar",
@@ -125,13 +121,13 @@ describe("viewToEntry hero gating (native 404 fix)", () => {
         heroImageUrl: "/api/views/calendar/hero",
       }),
     );
-    expect(entry.hasHero).toBe(false);
+    expect(entry.hasHero).toBe(true);
     expect(entry.heroUrl).toBeUndefined();
-    expect(entry.imageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(entry.imageUrl).toMatch(/^data:image\/png/);
     expect(entry.imageUrl).not.toBe("/api/views/calendar/hero");
   });
 
-  it("uses the real /api hero as primary when a real hero exists on disk", () => {
+  it("ALWAYS uses the bundled icon for a view, even when the agent reports a real hero (the /api path 404s on native)", () => {
     const entry = viewToEntry(
       makeView("notes", {
         label: "Notes",
@@ -140,10 +136,10 @@ describe("viewToEntry hero gating (native 404 fix)", () => {
       }),
     );
     expect(entry.hasHero).toBe(true);
-    expect(entry.heroUrl).toBe("/api/views/notes/hero");
-    expect(entry.imageUrl).toBe("/api/views/notes/hero");
-    // The branded SVG is the onError fallback when that endpoint is unreachable.
-    expect(entry.fallbackImageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(entry.heroUrl).toBeUndefined();
+    expect(entry.imageUrl).toMatch(/^data:image\/png/);
+    expect(entry.imageUrl).not.toBe("/api/views/notes/hero");
+    expect(entry.fallbackImageUrl).toMatch(/^data:image\/png/);
   });
 
   it("dedupes: a catalog app whose plugin is already a loaded view is not shown twice", () => {
