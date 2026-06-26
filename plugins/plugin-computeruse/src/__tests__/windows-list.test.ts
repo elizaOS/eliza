@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import {
   findWindowsByQuery,
+  parseDarwinWindowOutput,
   resolveWindowMatch,
 } from "../platform/windows-list.js";
 import type { WindowInfo } from "../types.js";
@@ -65,5 +66,37 @@ describe("resolveWindowMatch", () => {
   it("returns null for no match or an empty query", () => {
     expect(resolveWindowMatch("nope-xyz", wins)).toBeNull();
     expect(resolveWindowMatch("", wins)).toBeNull();
+  });
+});
+
+describe("parseDarwinWindowOutput", () => {
+  // Regression guard for the macOS window-listing bug: System Events `window`
+  // elements have no `id`, so the old `(id of w as text)` script threw for every
+  // window and listWindowsDarwin always returned []. The owner|||title parse now
+  // uses the window title as the id (the only usable match term), falling back
+  // to the app name when the title is empty.
+  it("parses sentinel-joined owner|||title entries into WindowInfo", () => {
+    const out =
+      "Google Chrome|||Issue #9581 - elizaOS<<WIN>>Terminal|||eliza — tmux<<WIN>>";
+    expect(parseDarwinWindowOutput(out)).toEqual([
+      {
+        app: "Google Chrome",
+        title: "Issue #9581 - elizaOS",
+        id: "Issue #9581 - elizaOS",
+      },
+      { app: "Terminal", title: "eliza — tmux", id: "eliza — tmux" },
+    ]);
+  });
+
+  it("uses the app name as the id when a window has no title", () => {
+    expect(parseDarwinWindowOutput("Finder|||<<WIN>>")).toEqual([
+      { app: "Finder", title: "", id: "Finder" },
+    ]);
+  });
+
+  it("drops blank entries and trailing separators", () => {
+    expect(parseDarwinWindowOutput("")).toEqual([]);
+    expect(parseDarwinWindowOutput("<<WIN>><<WIN>>")).toEqual([]);
+    expect(parseDarwinWindowOutput("|||<<WIN>>")).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@
  * - eliza sandbox-routes.ts listWindows()
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import type { ScreenRegion, ScreenSize, WindowInfo } from "../types.js";
 import {
   commandExists,
@@ -85,39 +85,51 @@ function runDarwinWindowScript(target: WindowInfo, body: string): string {
     terms.length > 0
       ? `{${terms.map((term) => `"${escapeAppleScriptString(term)}"`).join(", ")}}`
       : "{}";
+  // Two-pass match: first by process name (fast — no accessibility-tree walk),
+  // then by window title only if no process matched. The previous single pass
+  // walked `every window of` every non-matching process via System Events,
+  // which on a busy desktop blew past the osascript timeout and surfaced as a
+  // bogus "Accessibility denied" error (the timeout message matches the
+  // accessibility classifier). Window operations are process-level
+  // (`window 1 of proc`), so a process match is sufficient to act.
   const script = `
       tell application "System Events"
+        set matchedProc to missing value
         repeat with proc in (every process whose visible is true)
           try
             set procName to name of proc
-            set matched to false
             repeat with term in ${termList}
               if procName contains term then
-                set matched to true
+                set matchedProc to contents of proc
                 exit repeat
               end if
             end repeat
-            if not matched then
+          end try
+          if matchedProc is not missing value then exit repeat
+        end repeat
+        if matchedProc is missing value then
+          repeat with proc in (every process whose visible is true)
+            try
               repeat with w in (every window of proc)
-                set winName to name of w
                 repeat with term in ${termList}
-                  if winName contains term then
-                    set matched to true
+                  if (name of w) contains term then
+                    set matchedProc to contents of proc
                     exit repeat
                   end if
                 end repeat
-                if matched then exit repeat
+                if matchedProc is not missing value then exit repeat
               end repeat
-            end if
-            if matched then
-              ${body}
-              exit repeat
-            end if
-          end try
-        end repeat
+            end try
+            if matchedProc is not missing value then exit repeat
+          end repeat
+        end if
+        if matchedProc is not missing value then
+          set proc to matchedProc
+          ${body}
+        end if
       end tell`;
 
-  return runCommand("osascript", ["-e", script], 5000);
+  return runCommand("osascript", ["-e", script], 15000);
 }
 
 // ── List Windows ────────────────────────────────────────────────────────────
@@ -137,39 +149,102 @@ export function listWindows(): WindowInfo[] {
   return [];
 }
 
-function listWindowsDarwin(): WindowInfo[] {
+// `owner|||title` (sentinel-joined) → WindowInfo. macOS windows have no stable
+// id we can act on (System Events `window` elements expose no `id` — reading it
+// throws -1728), and every window operation here is process-level (`window 1 of
+// proc`, matched by app/title term), so the owning app name + window title are
+// the only usable identifiers. The id is the title when present, else the app.
+function parseDarwinWindowEntry(entry: string): WindowInfo | null {
+  const [app, title] = entry.split("|||");
+  const appName = app?.trim() ?? "";
+  const winTitle = title?.trim() ?? "";
+  if (!appName && !winTitle) return null;
+  return {
+    app: appName || "unknown",
+    title: winTitle,
+    id: winTitle || appName,
+  };
+}
+
+// Swift CGWindowList enumerator, fed to `swift -` on stdin. Fast (~0.5s incl.
+// compile) and only needs Screen Recording (for window titles); falls back to
+// the empty owner/title when that permission is absent. Normal app windows are
+// layer 0; desktop/menubar elements are excluded.
+const DARWIN_WINDOW_LIST_SWIFT = `import CoreGraphics
+import Foundation
+let opts: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+guard let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else { exit(0) }
+var out: [String] = []
+for w in list {
+  if ((w[kCGWindowLayer as String] as? Int) ?? -1) != 0 { continue }
+  let owner = (w[kCGWindowOwnerName as String] as? String) ?? ""
+  let name = (w[kCGWindowName as String] as? String) ?? ""
+  out.append(owner + "|||" + name)
+}
+print(out.joined(separator: "<<WIN>>"))`;
+
+export function parseDarwinWindowOutput(output: string): WindowInfo[] {
+  return output
+    .split("<<WIN>>")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map(parseDarwinWindowEntry)
+    .filter((win): win is WindowInfo => win !== null);
+}
+
+// Returns null (not []) when Swift is unavailable or the call fails, so the
+// caller can fall back to System Events. An empty-but-successful Swift result is
+// a real "no windows" answer and is returned as [].
+function listWindowsDarwinViaSwift(): WindowInfo[] | null {
+  if (!commandExists("swift")) return null;
+  try {
+    const output = execFileSync("swift", ["-"], {
+      input: DARWIN_WINDOW_LIST_SWIFT,
+      encoding: "utf-8",
+      timeout: 15000,
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    return parseDarwinWindowOutput(output);
+  } catch {
+    return null;
+  }
+}
+
+// Fallback for macOS hosts without the Swift toolchain. Walks the System Events
+// accessibility tree, which is correct but multi-second on a busy desktop —
+// hence the generous timeout. Concatenate with a sentinel rather than coercing
+// a list via `text item delimiters`, whose canonical `AppleScript's …` form
+// embeds an apostrophe that breaks the single-quoted `osascript -e '…'` shell.
+function listWindowsDarwinViaSystemEvents(): WindowInfo[] {
   try {
     const script = `
       tell application "System Events"
-        set windowList to {}
+        set outText to ""
         repeat with proc in (every process whose visible is true)
           try
+            set procName to name of proc
             repeat with w in (every window of proc)
-              set end of windowList to (name of proc) & "|||" & (name of w) & "|||" & (id of w as text)
+              try
+                set outText to outText & procName & "|||" & (name of w) & "<<WIN>>"
+              end try
             end repeat
           end try
         end repeat
-        return windowList as text
+        return outText
       end tell`;
     const output = execSync(`osascript -e '${script}'`, {
       encoding: "utf-8",
-      timeout: 10000,
+      timeout: 20000,
       stdio: ["ignore", "pipe", "ignore"],
     });
-    return output
-      .split(", ")
-      .filter(Boolean)
-      .map((entry) => {
-        const parts = entry.split("|||");
-        return {
-          app: parts[0] ?? "unknown",
-          title: parts[1] ?? "unknown",
-          id: parts[2] ?? "0",
-        };
-      });
+    return parseDarwinWindowOutput(output);
   } catch {
     return [];
   }
+}
+
+function listWindowsDarwin(): WindowInfo[] {
+  return listWindowsDarwinViaSwift() ?? listWindowsDarwinViaSystemEvents();
 }
 
 function listWindowsLinux(): WindowInfo[] {
@@ -236,15 +311,18 @@ export function getActiveWindow(): WindowInfo | null {
   const os = currentPlatform();
   try {
     if (os === "darwin") {
+      // System Events windows have no `id` (see listWindowsDarwin); identify the
+      // active window by its title scoped to the frontmost process, falling back
+      // to the process name so the id is always a usable match term.
       const script = `
         tell application "System Events"
           set proc to first process whose frontmost is true
           set procName to name of proc
           try
-            set w to window 1 of proc
-            return procName & "|||" & (name of w) & "|||" & (id of w as text)
+            set winName to name of window 1 of proc
+            return procName & "|||" & winName & "|||" & winName
           on error
-            return procName & "|||" & "" & "|||" & "0"
+            return procName & "|||" & "" & "|||" & procName
           end try
         end tell`;
       const out = execSync(`osascript -e '${script}'`, {
