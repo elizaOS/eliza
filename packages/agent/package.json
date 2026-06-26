@@ -28,7 +28,7 @@
     "eliza-autonomous": "./src/bin.ts"
   },
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "start": "bun run src/bin.ts",
     "dev": "bun --hot src/bin.ts",
     "prepublishOnly": "bun run build:dist",

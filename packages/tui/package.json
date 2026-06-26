@@ -16,7 +16,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "build": "tsc -p tsconfig.build.json --noCheck",
     "typecheck": "tsgo --noEmit -p tsconfig.build.json",
     "dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",

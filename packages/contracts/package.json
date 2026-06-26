@@ -40,7 +40,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "clean": "rm -rf dist"
+    "clean": "node ../scripts/rm-path-recursive.mjs dist"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

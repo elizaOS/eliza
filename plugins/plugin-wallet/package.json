@@ -59,7 +59,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "vitest run --config ./vitest.config.ts",
     "test:watch": "vitest --config ./vitest.config.ts",
-    "clean": "rm -rf dist"
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",

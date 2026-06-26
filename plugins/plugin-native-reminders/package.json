@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.json",
     "test": "vitest run",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "typecheck": "tsgo --noEmit -p tsconfig.json"
   },

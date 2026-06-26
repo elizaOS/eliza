@@ -67,7 +67,7 @@
   "scripts": {
     "build": "tsup && tsc --declaration --emitDeclarationOnly --noEmit false",
     "dev": "tsup --watch",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "lint": "bunx @biomejs/biome check --write --unsafe --config-path ./biome.json .",
     "lint:check": "bunx @biomejs/biome lint --config-path ./biome.json . --no-errors-on-unmatched",
     "format": "bunx @biomejs/biome format --write . --no-errors-on-unmatched",

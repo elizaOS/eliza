@@ -25,7 +25,7 @@
 		"node": ">=24.0.0"
 	},
 	"scripts": {
-		"clean": "rm -rf dist",
+		"clean": "node ../scripts/rm-path-recursive.mjs dist",
 		"prepublishOnly": "bun run build:dist",
 		"build": "bun run build:dist",
 		"typecheck": "tsgo --noEmit -p tsconfig.json",

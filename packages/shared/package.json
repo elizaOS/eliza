@@ -27,7 +27,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "build": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs --target ts",

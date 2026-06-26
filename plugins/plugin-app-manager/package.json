@@ -50,7 +50,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun run build.ts",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "typecheck": "tsgo --noEmit --rootDir ../..",
     "test": "vitest run --config vitest.config.ts"
   },

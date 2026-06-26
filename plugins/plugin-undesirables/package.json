@@ -26,7 +26,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "vitest run --passWithNoTests"
   },
   "keywords": [

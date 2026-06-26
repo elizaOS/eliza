@@ -61,7 +61,7 @@
     }
   },
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "build": "tsc --noCheck -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts --passWithNoTests",
