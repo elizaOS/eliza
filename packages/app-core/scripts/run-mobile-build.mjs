@@ -7475,7 +7475,7 @@ function writeAndroidSystemProvenance(apkPath) {
       );
     }
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmRecursive(tmpDir);
   }
 }
 
