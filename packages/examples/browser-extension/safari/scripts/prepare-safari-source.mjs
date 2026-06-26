@@ -1,11 +1,17 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const safariRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const repoRoot = resolve(safariRoot, "../../../..");
 const extensionRoot = dirname(safariRoot);
 const chromeRoot = join(extensionRoot, "chrome");
 const safariSourceRoot = join(safariRoot, ".generated", "extension");
+const rmRecursiveScript = join(
+  repoRoot,
+  "packages/scripts/rm-path-recursive.mjs",
+);
 const runtimeEntries = ["icons", "popup.css", "popup.html"];
 const distEntries = [
   "background.global.js",
@@ -17,7 +23,18 @@ const distEntries = [
 ];
 const unsupportedSafariPermissions = new Set(["offscreen"]);
 
-await rm(safariSourceRoot, { recursive: true, force: true });
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `failed to remove generated Safari source ${targetPath} (exit ${result.status})`,
+    );
+  }
+}
+
+rmRecursive(safariSourceRoot);
 await mkdir(safariSourceRoot, { recursive: true });
 
 for (const entry of runtimeEntries) {
