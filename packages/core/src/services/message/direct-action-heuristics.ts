@@ -149,8 +149,9 @@ export function findAvailableActionName(
 ): string | undefined {
 	// Resolve in `names` PRIORITY order, not action-registration order: for each
 	// wanted name in turn, return the first action whose name or simile matches.
-	// The leading preference wins — e.g. WEB_SEARCH (listed ahead of WEB_FETCH)
-	// is chosen for a web lookup even though WEB_FETCH registers first.
+	// The leading preference wins — the first name in `names` that matches any
+	// registered action (by name or simile) is returned, regardless of
+	// registration order.
 	for (const want of names) {
 		const wanted = normalizeActionIdentifier(want);
 		const match = actions.find((action) => {
@@ -194,30 +195,64 @@ export function inferDirectCurrentRequestCandidateActions(
 	);
 	if (viewCapabilityAction) return [viewCapabilityAction];
 	if (looksLikeWebSearchRequest(messageText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
+		const lookupActions = findWebLookupActionNames(actions);
+		if (lookupActions.length > 0) return lookupActions;
 	}
 	return [];
 }
 
+// Specific web-tool action names, split by capability. A bare "SEARCH" must NOT
+// appear in either list: it loosely matches MESSAGE_SEARCH / CONTACT_SEARCH /
+// LOGS_SEARCH via their "search" simile (findAvailableActionName matches name OR
+// simile) and would resolve a non-web action.
+const WEB_FETCH_ACTION_NAMES = [
+	"WEB_FETCH",
+	"LOOKUP_WEB",
+	"WEB_LOOKUP",
+	"FETCH_URL",
+] as const;
+const WEB_SEARCH_ACTION_NAMES = [
+	"WEB_SEARCH",
+	"SEARCH_WEB",
+	"BRAVE_SEARCH",
+	"INTERNET_SEARCH",
+	"SEARCH_INTERNET",
+	"GOOGLE",
+] as const;
+
 /**
- * Resolve the action that satisfies a web / live-info lookup, or undefined when
- * the runtime has no real search backend registered.
+ * Resolve ONE web/live-info lookup action, or undefined when the runtime has no
+ * web backend. Prefers WEB_SEARCH — the general fallback used by the
+ * rescue/existence checks, where a broad search satisfies any query without
+ * needing a constructible URL. The planner-surfacing path uses
+ * findWebLookupActionNames (WEB_FETCH-first) instead.
  */
 export function findWebLookupActionName(
-	actions: ReadonlyArray<Pick<Action, "name">>,
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 ): string | undefined {
-	return findAvailableActionName(actions, [
-		"SEARCH",
-		"WEB_SEARCH",
-		"SEARCH_WEB",
-		"BRAVE_SEARCH",
-		"INTERNET_SEARCH",
-		"SEARCH_INTERNET",
-		"LOOKUP_WEB",
-		"WEB_FETCH",
-		"GOOGLE",
-	]);
+	return (
+		findAvailableActionName(actions, WEB_SEARCH_ACTION_NAMES) ??
+		findAvailableActionName(actions, WEB_FETCH_ACTION_NAMES)
+	);
+}
+
+/**
+ * Resolve EVERY web/live-info lookup action the runtime exposes, in planner
+ * preference order: WEB_FETCH first (a constructible live API/URL — e.g.
+ * coingecko or wttr.in — returns deterministic JSON the planner can use inline),
+ * then WEB_SEARCH (open-ended discovery). Surfacing BOTH lets the planner fetch
+ * a live source itself instead of settling for a stale search result or spawning
+ * a sub-agent just to webfetch a URL it already knows.
+ */
+export function findWebLookupActionNames(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string[] {
+	const fetchAction = findAvailableActionName(actions, WEB_FETCH_ACTION_NAMES);
+	const searchAction = findAvailableActionName(actions, WEB_SEARCH_ACTION_NAMES);
+	const names: string[] = [];
+	if (fetchAction) names.push(fetchAction);
+	if (searchAction && searchAction !== fetchAction) names.push(searchAction);
+	return names;
 }
 
 const VIEW_REQUEST_OPERATION_GROUPS = {

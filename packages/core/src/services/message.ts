@@ -238,6 +238,7 @@ import { runPostTurnEvaluators } from "./evaluator";
 import {
 	findAvailableActionName,
 	findWebLookupActionName,
+	findWebLookupActionNames,
 	inferDirectCurrentRequestCandidateActions as inferDirectCurrentRequestCandidateActionsFromHeuristics,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
@@ -262,6 +263,7 @@ import {
 
 export {
 	findWebLookupActionName,
+	findWebLookupActionNames,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 };
@@ -4206,8 +4208,8 @@ function inferAckIntentCandidateActions(
 		if (codingAction) return [codingAction];
 	}
 	if (looksLikeWebSearchRequest(actionText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
+		const lookupActions = findWebLookupActionNames(actions);
+		if (lookupActions.length > 0) return lookupActions;
 	}
 	return [];
 }
