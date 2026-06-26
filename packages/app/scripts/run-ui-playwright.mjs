@@ -8,6 +8,12 @@ import { getFreePort } from "../test/utils/get-free-port.mjs";
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(appDir, "..", "..");
 const workspaceRoot = path.resolve(repoRoot, "..");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const playwrightArgs = process.argv.slice(2);
 const uiSmokeViewLockDir = path.join(
   repoRoot,
@@ -131,6 +137,29 @@ function isProcessAlive(pid) {
   }
 }
 
+function removePathRecursive(targetPath, label) {
+  const result = spawnSync("node", [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const detail = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    throw new Error(
+      `[ui-smoke] cleanup failed for ${label} with exit code ${
+        result.status ?? 1
+      }${detail ? `: ${detail}` : ""}`,
+    );
+  }
+}
+
 function acquireUiSmokeViewLock() {
   const staleAfterMs = 30 * 60 * 1000;
   let announcedWait = false;
@@ -162,7 +191,7 @@ function acquireUiSmokeViewLock() {
         (ownerPid !== null && !isProcessAlive(ownerPid)) ||
         Date.now() - stat.mtimeMs > staleAfterMs
       ) {
-        fs.rmSync(uiSmokeViewLockDir, { recursive: true, force: true });
+        removePathRecursive(uiSmokeViewLockDir, "ui smoke view lock");
         continue;
       }
 
@@ -178,7 +207,7 @@ function acquireUiSmokeViewLock() {
   return () => {
     if (released) return;
     released = true;
-    fs.rmSync(uiSmokeViewLockDir, { recursive: true, force: true });
+    removePathRecursive(uiSmokeViewLockDir, "ui smoke view lock");
   };
 }
 
@@ -217,7 +246,7 @@ function cleanupUiSmokeStateDirsForRun() {
         .readFileSync(path.join(stateDir, ".eliza-ui-smoke-run-id"), "utf8")
         .trim();
       if (owner === runId) {
-        fs.rmSync(stateDir, { recursive: true, force: true });
+        removePathRecursive(stateDir, "ui smoke state directory");
       }
     } catch {
       // Only remove dirs explicitly stamped with this runner's id.
