@@ -4,7 +4,7 @@
  * Orchestration lives in the shared driver; this lists only what differs.
  * Declarations are hand-written (no tsc emit).
  */
-import { buildPlugin } from "../plugin-build.ts";
+import { buildPlugin } from "../plugin-build";
 
 const externals = ["@elizaos/core", "ai", "@openrouter/ai-sdk-provider", "@ai-sdk/openai"];
 const reexport = "export * from '../index';\nexport { default } from '../index';\n";

@@ -7,7 +7,7 @@
  * avoid a `index.d.ts → node/index.node.d.ts → index.d.ts` cycle, and the
  * tsc-emitted `node/index.d.ts` is deliberately left in place (no node shim).
  */
-import { buildPlugin } from "../plugin-build.ts";
+import { buildPlugin } from "../plugin-build";
 
 const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
 

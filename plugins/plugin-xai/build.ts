@@ -7,7 +7,7 @@
  * output to `index.node.*`: bundling the shim triggers a Bun.build codegen bug
  * ("default2" is not declared). zod is externalized (transitive via core).
  */
-import { buildPlugin } from "../plugin-build.ts";
+import { buildPlugin } from "../plugin-build";
 
 const reexport =
   "export * from '../index';\nexport { default } from '../index';\n";

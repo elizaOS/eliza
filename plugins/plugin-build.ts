@@ -14,7 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import {
   type ExternalsFromPackageJsonOptions,
   externalsFromPackageJson,
-} from "./plugin-build-externals.ts";
+} from "./plugin-build-externals";
 
 export interface BuildTarget {
   /** Human label for the progress log (e.g. "Node", "Browser", "Node (CJS)"). */

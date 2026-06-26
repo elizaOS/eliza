@@ -3,7 +3,7 @@
  * Build script for @elizaos/plugin-openai (Node + Browser).
  * Orchestration lives in the shared driver; this lists only what differs.
  */
-import { buildPlugin } from "../plugin-build.ts";
+import { buildPlugin } from "../plugin-build";
 
 // Single-quoted re-export to keep the emitted .d.ts byte-stable.
 const reexport = "export * from '../index';\nexport { default } from '../index';\n";

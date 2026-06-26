@@ -3,7 +3,7 @@
  * Build script for @elizaos/plugin-zai (Node + Browser + CJS).
  * Orchestration lives in the shared driver; this lists only what differs.
  */
-import { buildPlugin } from "../plugin-build.ts";
+import { buildPlugin } from "../plugin-build";
 
 const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
 
