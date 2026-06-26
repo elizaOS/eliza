@@ -7,6 +7,7 @@ import {
   assert,
   waitForTestId,
 } from "../../../storybook/home-widget-decorator";
+import { MockAppProvider } from "../../../storybook/mock-providers";
 import { ModelDownloadWidget } from "./model-download";
 
 // The naked 2x1 home MODEL DOWNLOAD widget (PART A): surfaces the recommended
@@ -96,14 +97,21 @@ function withHub(snapshot: ModelHubSnapshot): Decorator {
         headers: { "Content-Type": "application/json" },
       });
     }) as typeof window.fetch;
-    queueMicrotask(() => {
+    // Keep the mock installed long enough for the widget's mount fetch (and the
+    // play-function assertions) to resolve against it; a queueMicrotask restore
+    // races ahead of the effect's getLocalInferenceHub() call, leaving the widget
+    // to hit the real (failing) fetch and self-hide. Each story renders in its
+    // own iframe page, so a delayed restore cannot leak across stories.
+    setTimeout(() => {
       window.fetch = originalFetch;
       (window as { EventSource?: unknown }).EventSource = originalEventSource;
-    });
+    }, 4_000);
     return (
-      <div className="w-[360px] rounded-2xl bg-accent/20 p-3">
-        <Story />
-      </div>
+      <MockAppProvider value={{ plugins: [], conversations: [] }}>
+        <div className="w-[360px] rounded-2xl bg-accent/20 p-3">
+          <Story />
+        </div>
+      </MockAppProvider>
     );
   };
 }
