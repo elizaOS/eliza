@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-simple-views",
-  "version": "2.0.3-beta.5",
+  "version": "2.0.3-beta.6",
   "type": "module",
   "description": "Small agent-drivable Notes and Simple Calendar app views for view switching, split-pane, and capability QA.",
   "main": "./dist/index.js",
