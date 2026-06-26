@@ -27,6 +27,9 @@ const coreMock = vi.hoisted(() => ({
 	},
 	resolveServerOnlyPort: vi.fn(() => 3456),
 	hasOwnerAccess: vi.fn(async () => true),
+	getUserMessageText: (message: {
+		content?: { text?: string };
+	}): string | undefined => message.content?.text,
 	// @elizaos/shared re-exports formatError (as errorMessage) from @elizaos/core,
 	// and app-control imports @elizaos/shared at module load — the mock must carry it.
 	formatError: (error: unknown): string =>

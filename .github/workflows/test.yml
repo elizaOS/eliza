@@ -910,7 +910,7 @@ jobs:
 
   test-status:
     name: All Tests Passed
-    if: always()
+    if: ${{ !cancelled() && always() }}
     needs:
       - changes
       - server-tests

@@ -88,6 +88,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket-app/src/plugin.ts",
   "plugins/plugin-shopify-ui/src/plugin.ts",
+  "plugins/plugin-simple-views/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-vincent/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
@@ -166,6 +167,7 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-polymarket-app":
     "plugins/plugin-polymarket-app/src/plugin.ts",
   "@elizaos/plugin-shopify-ui": "plugins/plugin-shopify-ui/src/plugin.ts",
+  "@elizaos/plugin-simple-views": "plugins/plugin-simple-views/src/plugin.ts",
   "@elizaos/plugin-steward-app": "plugins/plugin-steward-app/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",
@@ -234,6 +236,18 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     id: "shopify",
     viewType: "xr",
     path: "/shopify",
+  },
+  {
+    manifestPath: "plugins/plugin-simple-views/src/plugin.ts",
+    id: "notes",
+    viewType: "xr",
+    path: "/notes",
+  },
+  {
+    manifestPath: "plugins/plugin-simple-views/src/plugin.ts",
+    id: "simple-calendar",
+    viewType: "xr",
+    path: "/simple-calendar",
   },
   {
     manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
