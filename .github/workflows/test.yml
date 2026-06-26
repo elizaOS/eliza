@@ -697,7 +697,7 @@ jobs:
       - name: Prepare remote capability cloud live report directory
         if: steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: |
-          rm -rf reports/remote-capabilities/cloud
+          node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud
           mkdir -p reports/remote-capabilities/cloud
 
       - name: Remote capability cloud sandbox live smoke
@@ -725,7 +725,7 @@ jobs:
 
       - name: Prune remote capability cloud report
         if: always()
-        run: rm -rf reports/remote-capabilities/cloud
+        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud
 
       - name: Note remote capability cloud live smoke not observed
         if: steps.cloud.outputs.skip != 'true' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
@@ -807,7 +807,7 @@ jobs:
       - name: Prepare remote capability provider live report directory
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: |
-          rm -rf reports/remote-capabilities/providers
+          node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers
           mkdir -p reports/remote-capabilities/providers
 
       - name: Remote capability URL-backed provider live smoke
@@ -848,7 +848,7 @@ jobs:
 
       - name: Prune remote capability provider reports
         if: always()
-        run: rm -rf reports/remote-capabilities/providers
+        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers
 
       - name: Note provider live smoke not observed
         if: steps.providers.outputs.skip != 'true' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
