@@ -32,7 +32,7 @@
     "test:protocol": "bun test smartglasses-protocol.test.ts",
     "typecheck": "bun run --cwd ../../../plugins/plugin-facewear build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --noEmit -p tsconfig.json",
     "verify:software": "bun run lint && bun run test && bun run test:protocol && bun run hardware:test-bleak-parser && bun run hardware:test-doctor && bun run typecheck && bun run smoke:package && bun run smoke:runtime && bun run smoke:simulator",
-    "clean": "rm -rf .turbo node_modules/.vite node_modules/.vite-temp"
+    "clean": "node ../../../packages/scripts/rm-path-recursive.mjs .turbo node_modules/.vite node_modules/.vite-temp"
   },
   "dependencies": {
     "@abandonware/noble": "^1.9.2-25",
