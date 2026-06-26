@@ -6,18 +6,21 @@ describe("Eliza Cloud base URL normalization", () => {
     delete process.env.ELIZAOS_CLOUD_BASE_URL;
   });
 
-  it("normalizes the API host back to the browser site host", () => {
+  it("normalizes every cloud host alias to the apex origin", () => {
     expect(normalizeCloudSiteUrl("https://api.elizacloud.ai")).toBe(
-      "https://www.elizacloud.ai",
+      "https://elizacloud.ai",
     );
     expect(normalizeCloudSiteUrl("https://api.elizacloud.ai/api/v1")).toBe(
-      "https://www.elizacloud.ai",
+      "https://elizacloud.ai",
+    );
+    expect(normalizeCloudSiteUrl("https://www.elizacloud.ai")).toBe(
+      "https://elizacloud.ai",
     );
   });
 
   it("resolves canonical API paths from API host input", () => {
     expect(resolveCloudApiBaseUrl("https://api.elizacloud.ai")).toBe(
-      "https://www.elizacloud.ai/api/v1",
+      "https://elizacloud.ai/api/v1",
     );
   });
 
