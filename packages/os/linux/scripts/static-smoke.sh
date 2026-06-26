@@ -8,79 +8,10 @@ REPO_ROOT="$(cd "${ROOT}/../../.." && pwd)"
 SOURCE_ONLY="${ELIZAOS_STATIC_SOURCE_ONLY:-0}"
 cd "${ROOT}"
 
-rg() {
-    local rg_bin
-    rg_bin="$(type -P rg || true)"
-    if [ -n "${rg_bin}" ]; then
-        "${rg_bin}" "$@"
-        return
-    fi
-
-    local show_line_numbers=0
-    local quiet=0
-    local pattern
-    local glob_pattern=""
-    local paths=()
-
-    # Consume leading flags this shim understands. Crucially `-q`: without it,
-    # `rg -q 'pat' file` would leave `-q` as the pattern and shove the real
-    # pattern into grep's file position ("grep: <pat>: No such file or directory").
-    while [ "$#" -gt 0 ]; do
-        case "${1:-}" in
-            -n) show_line_numbers=1; shift ;;
-            -q) quiet=1; shift ;;
-            -nq | -qn) show_line_numbers=1; quiet=1; shift ;;
-            *) break ;;
-        esac
-    done
-    pattern="${1:-}"
-    if [ -z "${pattern}" ]; then
-        return 2
-    fi
-    shift
-
-    while [ "$#" -gt 0 ]; do
-        case "$1" in
-            --glob)
-                glob_pattern="${2:-}"
-                shift 2
-                ;;
-            --)
-                shift
-                ;;
-            *)
-                paths+=("$1")
-                shift
-                ;;
-        esac
-    done
-
-    if [ "${#paths[@]}" -eq 0 ]; then
-        paths=(.)
-    fi
-
-    local grep_flags="-RE"
-    if [ "${show_line_numbers}" = "1" ]; then
-        grep_flags="${grep_flags}n"
-    fi
-    if [ "${quiet}" = "1" ]; then
-        grep_flags="${grep_flags}q"
-    fi
-
-    if [ -n "${glob_pattern}" ]; then
-        local matches=()
-        while IFS= read -r -d '' match; do
-            matches+=("${match}")
-        done < <(find "${paths[@]}" -type f -name "${glob_pattern}" -print0 2>/dev/null)
-        if [ "${#matches[@]}" -eq 0 ]; then
-            return 1
-        fi
-        grep ${grep_flags} -- "${pattern}" "${matches[@]}"
-        return
-    fi
-
-    grep ${grep_flags} -- "${pattern}" "${paths[@]}"
-}
+if ! command -v rg >/dev/null 2>&1; then
+    echo "ripgrep (rg) is required for elizaOS Live static smoke checks." >&2
+    exit 1
+fi
 
 stat_mode() {
     local path="$1"
