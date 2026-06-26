@@ -3102,7 +3102,14 @@ function parseSayLiteralInstruction(
 ): string | null {
 	const input = text?.trim();
 	if (!input) return null;
-	const match = input.match(
+	// Strip a leading connector mention prefix ("Name (@123) ", "<@123> ",
+	// "@name ") so "say PONG" still parses when the user @-mentioned the agent
+	// first — Discord/Telegram render the mention into the message text, which
+	// the anchored matcher below would otherwise reject.
+	const body = input
+		.replace(/^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u, "")
+		.trim();
+	const match = body.match(
 		/^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|the\s+word|the\s+phrase)){0,2}\s*:?\s*["'“”‘’]?([\p{L}\p{N}]{1,40})["'“”‘’]?\s*[.!?]*$/iu,
 	);
 	return match ? match[1] : null;
