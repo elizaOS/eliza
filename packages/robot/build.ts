@@ -1,8 +1,27 @@
 #!/usr/bin/env bun
-import { rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { externalsFromPackageJson } from "../../plugins/plugin-build-externals.ts";
 
-rmSync("dist", { recursive: true, force: true });
+const rmRecursiveScript = join(
+  import.meta.dirname,
+  "..",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function rmRecursive(targetPath: string) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `failed to remove generated Robot build output ${targetPath}`,
+    );
+  }
+}
+
+rmRecursive("dist");
 
 const external = await externalsFromPackageJson("./package.json");
 
