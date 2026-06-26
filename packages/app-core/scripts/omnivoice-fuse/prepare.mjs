@@ -17,9 +17,10 @@
  * is no fallback path.
  */
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const OMNIVOICE_REPO =
   process.env.ELIZA_OMNIVOICE_REMOTE ||
@@ -35,6 +36,13 @@ export const OMNIVOICE_REF =
 export const OMNIVOICE_GGML_REF =
   process.env.ELIZA_OMNIVOICE_GGML_REF ||
   "0e3980ef205ea3639650f59e54cfeecd7d947700";
+
+const SCRIPT_PATH = fileURLToPath(import.meta.url);
+const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
+const RECURSIVE_CLEANUP_SCRIPT = path.resolve(
+  SCRIPT_DIR,
+  "../../../scripts/rm-path-recursive.mjs",
+);
 
 // Subdirectory inside the llama.cpp checkout where omnivoice sources
 // land. Stable so the CMake graft and the symbol verifier agree.
@@ -72,6 +80,21 @@ function run(cmd, args, opts = {}) {
   return result.stdout?.trim() ?? "";
 }
 
+function removeDirectoryRecursive(targetPath) {
+  try {
+    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(
+      `[omnivoice-fuse] failed to remove directory ${targetPath}${detail ? `: ${detail}` : ""}`,
+      { cause: error },
+    );
+  }
+}
+
 function copyDirRecursive(src, dst) {
   fs.mkdirSync(dst, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
@@ -101,7 +124,7 @@ function replaceBetween(source, startMarker, endMarker, replacement) {
   return source.slice(0, start) + replacement + source.slice(end);
 }
 
-function writeElizaFfiAdapter({ graftRoot, commit }) {
+function writeElizaFfiAdapter({ graftRoot }) {
   const ffiHeaderSrc = new URL("./ffi.h", import.meta.url).pathname;
   const ffiHeaderDst = path.join(graftRoot, "src", "ffi.h");
   fs.copyFileSync(ffiHeaderSrc, ffiHeaderDst);
@@ -2201,7 +2224,7 @@ static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
     `#pragma once\n#define OMNIVOICE_VERSION "${commit.slice(0, 12)} (eliza-fused)"\n`,
     "utf8",
   );
-  writeElizaFfiAdapter({ graftRoot, commit });
+  writeElizaFfiAdapter({ graftRoot });
 }
 
 // Ensure a clone of omnivoice.cpp at OMNIVOICE_REF lives under
@@ -2685,7 +2708,7 @@ export function prepareOmnivoiceFusion({
   // If a previous run left an aborted graft behind, blow it away. The
   // git checkout itself remains untouched — we only own the graft
   // subdirectory.
-  fs.rmSync(graftRoot, { recursive: true, force: true });
+  removeDirectoryRecursive(graftRoot);
   fs.mkdirSync(graftRoot, { recursive: true });
 
   for (const subdir of ["src", "tools"]) {
