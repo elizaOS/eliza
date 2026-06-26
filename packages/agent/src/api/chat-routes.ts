@@ -405,7 +405,7 @@ function buildAndroidLocalDirectChatPrompt(args: {
     escapeAndroidLocalChatTemplateTokens(args.userText),
     "<|im_end|>",
     "<|im_start|>assistant",
-    // Match llama.cpp's Qwen3 `enable_thinking=false` chat-template shape.
+    // Match llama.cpp's thinking-disabled chat-template shape.
     // The direct mobile path is for short voice/chat replies; pre-filling an
     // empty think block prevents the model from spending its first tokens on
     // hidden `<think>...</think>` scaffolding before any speakable text.

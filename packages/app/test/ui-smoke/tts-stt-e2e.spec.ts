@@ -34,7 +34,7 @@
  *      in the chat composer. This is the contract the chat composer relies
  *      on to populate the input from voice.
  *
- * The TTS/STT backends themselves (ElevenLabs cloud, Qwen3-ASR, omnivoice)
+ * The TTS/STT backends themselves (ElevenLabs cloud, local ASR, omnivoice)
  * are NOT exercised here — those are integration territory and require
  * credentials + heavy local models (see
  * `packages/app-core/src/services/phrase-chunked-tts.test.ts` for the
