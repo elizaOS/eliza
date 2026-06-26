@@ -27,7 +27,7 @@ export interface ChainingLoopConfig {
 	 * window (and a 20%-of-window reserve floor) at compaction-budget time
 	 * via `lookupModelContextWindow`. When set and the lookup hits, this
 	 * wins over `contextWindowTokens` — letting tight-context models
-	 * (Cerebras llama3.1-8b at 32k, qwen at 64k, gpt-oss-120b at 131k) get
+	 * (Cerebras llama3.1-8b at 32k, compact local tiers at 64k, gpt-oss-120b at 131k) get
 	 * a budget sized to their real ceiling instead of the 128k default.
 	 *
 	 * Optional and additive: when unset, the existing

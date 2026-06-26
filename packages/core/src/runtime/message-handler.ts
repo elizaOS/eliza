@@ -75,8 +75,8 @@ export function parseMessageHandlerOutput(
 	// actions, the planner stage will produce the user-facing message and the
 	// Stage-1 `replyText` is intended to be a brief acknowledgement. Some
 	// safety-tuned hosted models (Cerebras-served `gpt-oss-120b`,
-	// `qwen-3-235b-a22b-instruct-2507`) still emit a prompt-contract violation
-	// here even with the system-prompt rules in place: a refusal, a
+	// GLM/Gemma-class dedicated endpoints, etc.) still emit a prompt-contract
+	// violation here even with the system-prompt rules in place: a refusal, a
 	// training-metadata/knowledge-cutoff leak, or a fabricated-moderation claim.
 	// We blank the reply when it matches any of these and route through planning
 	// for non-refusal honesty violations, so the user sees a fresh planner

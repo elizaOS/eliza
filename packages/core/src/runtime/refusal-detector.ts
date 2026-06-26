@@ -2,8 +2,8 @@
  * Detect refusal-shaped openings in model-generated replyText.
  *
  * Background: weaker / safety-tuned planner models (Cerebras-hosted
- * `gpt-oss-120b`, `qwen-3-235b-a22b-instruct-2507`, etc.) sometimes emit a
- * refusal in Stage-1 `replyText` even when the same turn correctly populates
+ * `gpt-oss-120b`, GLM/Gemma-class dedicated endpoints, etc.) sometimes emit
+ * a refusal in Stage-1 `replyText` even when the same turn correctly populates
  * `candidateActionNames` and routes to a planning context. The refusal text
  * then ships to the user via the early-reply path and contradicts the
  * planner's subsequent action call. See elizaOS/eliza#7620.
