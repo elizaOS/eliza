@@ -279,7 +279,7 @@ def score_with_lora(
     base_id: str,
     adapter_path: Path,
 ) -> tuple[list[float], list[float]]:
-    """LoRA-on-eliza-1 path: load base + attach adapter, read P(im_end)."""
+    """LoRA-on-eliza-1 path: load base + attach adapter, read P(EOT)."""
     import torch  # type: ignore
     from peft import PeftModel  # type: ignore
     from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
@@ -294,10 +294,7 @@ def score_with_lora(
     model = PeftModel.from_pretrained(model, str(adapter_path))
     model.eval()
 
-    im_end_id = tokenizer.encode("<|im_end|>", add_special_tokens=False)
-    if len(im_end_id) != 1:
-        raise RuntimeError(f"expected <|im_end|> to be 1 token, got {len(im_end_id)}")
-    im_end_id = im_end_id[0]
+    eot_id = _resolve_eot_token_id(tokenizer)
 
     scores: list[float] = []
     latencies: list[float] = []
@@ -308,9 +305,24 @@ def score_with_lora(
             out = model(**encoded)
             logits = out.logits[0, -1]  # last-position
             probs = torch.softmax(logits, dim=-1)
-            scores.append(float(probs[im_end_id].item()))
+            scores.append(float(probs[eot_id].item()))
             latencies.append((time.perf_counter() - start) * 1000)
     return scores, latencies
+
+
+def _resolve_eot_token_id(tokenizer) -> int:
+    """Find the Gemma `<end_of_turn>` token id in the loaded tokenizer."""
+    for candidate in ("<end_of_turn>", "&lt;end_of_turn&gt;"):
+        ids = tokenizer.convert_tokens_to_ids(candidate)
+        if isinstance(ids, int) and ids >= 0:
+            return ids
+    encoded = tokenizer.encode("<end_of_turn>", add_special_tokens=False)
+    if encoded and len(encoded) == 1:
+        return encoded[0]
+    raise RuntimeError(
+        "could not resolve <end_of_turn> in tokenizer; ensure the base "
+        "model uses the Gemma chat template."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +379,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--lora-base",
-        help="HF id of the base model the LoRA was trained on (e.g. Qwen/Qwen3.5-0.8B-Base).",
+        help="HF id of the base model the LoRA was trained on (e.g. google/gemma-4-E2B).",
     )
     parser.add_argument(
         "--livekit-gguf",

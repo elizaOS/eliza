@@ -3,7 +3,7 @@
 End-to-end recipe for producing a tiny LoRA adapter that hot-swaps onto
 the already-loaded eliza-1 chat model at runtime. Reads the next-token
 distribution after the partial user transcript and uses
-P(`<|im_end|>`) as the turn-completion probability — same signal the
+P(`<end_of_turn>`) as the turn-completion probability — same signal the
 LiveKit ONNX turn-detector provides, but at zero extra RAM and zero
 extra download (the chat model is loaded anyway for conversation).
 
