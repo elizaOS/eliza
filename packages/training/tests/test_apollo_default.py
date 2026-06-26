@@ -216,6 +216,7 @@ def test_audited_scripts_are_discoverable() -> None:
     expected = {
         "build_eliza1_sft_0_6b.py",
         "build_eliza1_sft_0_8b.py",
+        "build_eliza1_sft_2b.py",
         "build_eliza1_fullcorpus.py",
         "build_eliza1_smoke_corpus.py",
         "bootstrap_native_to_eliza_native.py",
