@@ -1,6 +1,3 @@
-// File: /swarm/shared/settings/provider.ts
-// Updated to use world metadata instead of cache
-
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { findWorldsForOwner } from "../../../roles.ts";

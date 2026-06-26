@@ -23,28 +23,8 @@ export async function loadWallet(
   const rpcUrl = getRuntimeStringSetting(runtime, "SOLANA_RPC_URL") ?? DEFAULT_SOLANA_RPC_URL;
   const connection = new Connection(rpcUrl, "confirmed");
 
-  // TEE mode remains disabled until DeriveKeyProvider is available.
-  // const teeMode = runtime.getSetting('TEE_MODE') || TEEMode.OFF;
-
-  // if (teeMode !== TEEMode.OFF) {
-  //   const walletSecretSalt = runtime.getSetting('WALLET_SECRET_SALT');
-  //   if (!walletSecretSalt) {
-  //     throw new Error('WALLET_SECRET_SALT required when TEE_MODE is enabled');
-  //   }
-
-  //   const deriveKeyProvider = new DeriveKeyProvider(teeMode);
-  //   const deriveKeyResult = await deriveKeyProvider.deriveEd25519Keypair(
-  //     '/',
-  //     walletSecretSalt,
-  //     runtime.agentId
-  //   );
-
-  //   return requirePrivateKey
-  //     ? { signer: deriveKeyResult.keypair }
-  //     : { address: deriveKeyResult.keypair.publicKey };
-  // }
-
-  // TEE mode is OFF
+  // TEE-derived keys are not wired up here yet (no DeriveKeyProvider); the
+  // wallet is always loaded from the configured private/public key settings.
   if (requirePrivateKey) {
     const privateKeyString =
       getRuntimeStringSetting(runtime, "SOLANA_PRIVATE_KEY") ??
