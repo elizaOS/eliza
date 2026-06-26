@@ -1369,7 +1369,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
 
     if (hubInstalled.length === 0) {
       throw new Error(
-        "local-inference hub had no installed Qwen3.5 GGUF model; full-Bun smoke requires a staged local model",
+        "local-inference hub had no installed Eliza-1 GGUF model; full-Bun smoke requires a staged local model",
       );
     }
 

@@ -6,9 +6,8 @@
  * and eliza-1-27b-256k.
  * These ship Gemma 4 bases: E2B/E4B/12B/31B mapped onto the
  * 2B/4B/9B/27B release tiers (the 2026-06-22 cutover from the legacy
- * Qwen3.5/3.6 line — see #9033 and
- * packages/training/scripts/training/model_registry.py for the active
- * registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
+ * hybrid line — see #9033 and packages/training/scripts/training/model_registry.py
+ * for the active registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
  * (PLE) + MQA architecture; KV is already minimal so the legacy
  * QJL/PolarQuant KV kernels are not used (stock KV), while TurboQuant
  * weight-quant remains active. External Hub search remains custom/opt-in and
@@ -381,7 +380,7 @@ function bundleComponent(
  *
  * R8 §2 + omnivoice.cpp/AGENTS.md PolarQuant note: the K-quant family
  * (Q3..Q6) is the only weight-quant currently wired for OmniVoice's
- * Qwen3-shaped LM head — PolarQuant / TurboQuant for the LM weight bank
+ * MaskGIT LM weight bank — PolarQuant / TurboQuant for that LM bank
  * is *plausible* (same arch) but no recipe wires it yet; QJL is N/A
  * (OmniVoice has no KV cache between MaskGIT steps); V-cache PolarQuant
  * is N/A for the same reason. See `docs/inference/voice-quant-matrix.md`.
