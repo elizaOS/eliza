@@ -1,8 +1,21 @@
 #!/usr/bin/env bun
 
-import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { dirname, join, resolve } from "node:path";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const ROOT = resolve(dirname(import.meta.path));
+const DIST = join(ROOT, "dist");
+const RM_RECURSIVE_SCRIPT = join(ROOT, "..", "..", "packages", "scripts", "rm-path-recursive.mjs");
+
+function rmRecursive(targetPath: string) {
+  const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`failed to remove generated plugin-linear build output ${targetPath}`);
+  }
+}
 
 const externalDeps = await externalsFromPackageJson("./package.json", {
   // Preserve transitive externals the hand-maintained list relied on.
@@ -14,9 +27,7 @@ const externalDeps = await externalsFromPackageJson("./package.json", {
 async function buildPlugin() {
   console.log("🔨 Building @elizaos/plugin-linear...\n");
 
-  if (existsSync("dist")) {
-    await rm("dist", { recursive: true, force: true });
-  }
+  rmRecursive(DIST);
 
   console.log("📦 Bundling with Bun...");
   const buildResult = await Bun.build({
