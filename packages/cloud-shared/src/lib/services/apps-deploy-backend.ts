@@ -4,7 +4,10 @@
  * call. Composes:
  *   - real per-tenant DB provisioning (makeTenantDbProvisioning -> ClusterPool ->
  *     DirectPgExecutor) into a UserDatabaseService,
- *   - the build-from-repo image resolver (AppImageBuilder over an SSH builder),
+ *   - the build-from-repo image resolver (AppImageBuilder over an SSH builder) —
+ *     wired ONLY when build-from-repo is explicitly armed; off by default, so the
+ *     composer is prebuilt-image-only unless the arming gate below resolves a
+ *     builder (issue #9768: build-from-repo deferred for launch),
  *   - the concrete node AppDeployRunner (ensure tenant DB -> create container row
  *     carrying the per-tenant DSN -> enqueue CONTAINER_PROVISION -> link), injected
  *     into the shared appDeploymentsService,
@@ -69,11 +72,19 @@ export interface AppsDeployBackendConfig {
  */
 export function configureAppsDeployBackend(config: AppsDeployBackendConfig): void {
   // BUILD-FROM-REPO ("Vercel-like": the platform builds the user's repo, no
-  // manual image push) is armed when a registry is configured. The builder exec
-  // is the explicit one if passed, else the app node's own SSH (it already has
-  // Docker + buildx). With no armed builder, buildResolver stays undefined and
-  // the runner falls back through the optional APP_PREBUILT_IMAGES map, then
-  // app.metadata.imageTag / APP_DEFAULT_IMAGE (the legacy prebuilt path).
+  // manual image push) is NOT armed by a registry alone. `APPS_IMAGE_REGISTRY`
+  // only sets the push/pull target; build-from-repo additionally requires a
+  // builder exec. With no explicit `buildExec`, that comes from
+  // `makeNodeBuilderExec()`, which returns a builder ONLY when the container
+  // backend is configured AND `APPS_BUILD_FROM_REPO_ENABLED=1` AND an isolated
+  // builder host resolves (a dedicated `APPS_BUILDS_HOST`, or the runtime node
+  // via `APPS_BUILD_ON_RUNTIME_NODE=1`) — see `makeNodeBuilderExec` /
+  // `decideBuilderArming`. So `APPS_IMAGE_REGISTRY` set with build-from-repo
+  // NOT armed yields `buildExec === null` → `buildResolver` undefined → the
+  // runner falls back through the optional APP_PREBUILT_IMAGES map, then
+  // app.metadata.imageTag / APP_DEFAULT_IMAGE (the prebuilt-image path).
+  // "Deferred" (issue #9768) is the default safe state: registry-only stays
+  // prebuilt-only. Coverage: `__tests__/node-builder-exec.test.ts`.
   const registry = config.registry ?? process.env.APPS_IMAGE_REGISTRY;
   const dockerfile = config.dockerfile ?? process.env.APPS_BUILD_DOCKERFILE;
   const buildExec = config.buildExec ?? (registry ? makeNodeBuilderExec() : null);
