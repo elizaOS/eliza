@@ -61,12 +61,13 @@ on:
           - production
 
 concurrency:
-  # Manual production deploys (workflow_dispatch) must run to completion: they
-  # are intentional and must NOT be cancelled by routine pushes. Give them a
-  # per-run-unique group + no cancel-in-progress. Push/PR runs keep the
-  # dedupe-to-latest behavior (a new push cancels the older in-progress run).
+  # Manual deploys (workflow_dispatch) and branch deploys must run to
+  # completion: cancelling an in-progress push deploy lets a busy develop/main
+  # stream starve Cloudflare publishes indefinitely. Push runs still share a
+  # ref-scoped group, so GitHub keeps at most the running deploy plus the newest
+  # pending commit. PR validation keeps the old dedupe-to-latest behavior.
   group: cloud-cf-deploy-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event_name }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
 permissions:
