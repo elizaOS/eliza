@@ -23,6 +23,15 @@ export interface DefaultTaskPack {
   id: string;
   /** The task inputs to seed. Each SHOULD carry an `idempotencyKey`. */
   tasks: ScheduledTaskInput[];
+  /**
+   * A built-in fallback pack — seeded ONLY when no consumer (non-fallback) pack
+   * has registered on this runtime. `@elizaos/plugin-scheduling` registers its
+   * generic built-in pack with this flag so a stock mobile boot (no
+   * `@elizaos/plugin-personal-assistant`) still gets visible defaults, while a
+   * desktop/cloud boot — where PA registers its richer non-fallback pack —
+   * supersedes it. The two never double-seed. Defaults to `false`.
+   */
+  fallback?: boolean;
 }
 
 type PackCarrier = {
@@ -55,6 +64,22 @@ export function getDefaultTaskPacks(
   return Array.from(packMap(runtime).values());
 }
 
+/**
+ * Resolve the packs the seeder should materialize. When any consumer
+ * (non-fallback) pack is registered, fallback packs are dropped — the consumer
+ * owns the domain content and the built-in fallback exists only to cover the
+ * no-consumer case (e.g. a stock mobile boot). When only fallback packs are
+ * registered, they are returned as-is.
+ */
+export function resolvePacksToSeed(
+  packs: readonly DefaultTaskPack[],
+): readonly DefaultTaskPack[] {
+  const hasConsumerPack = packs.some((pack) => pack.fallback !== true);
+  return hasConsumerPack
+    ? packs.filter((pack) => pack.fallback !== true)
+    : packs;
+}
+
 async function readSeededMarkers(
   runtime: IAgentRuntime,
 ): Promise<Record<string, string>> {
@@ -75,7 +100,7 @@ export async function seedRegisteredTaskPacks(
   runtime: IAgentRuntime,
   runner: ScheduledTaskRunnerHandle,
 ): Promise<{ seeded: ScheduledTask[]; skipped: string[] }> {
-  const packs = getDefaultTaskPacks(runtime);
+  const packs = resolvePacksToSeed(getDefaultTaskPacks(runtime));
   const seeded: ScheduledTask[] = [];
   const skipped: string[] = [];
   if (packs.length === 0) return { seeded, skipped };

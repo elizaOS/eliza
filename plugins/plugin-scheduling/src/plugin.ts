@@ -1,10 +1,16 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
+import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";
 import {
   getScheduledTaskRunner,
+  getScheduledTaskRunnerDeps,
   ScheduledTaskRunnerService,
 } from "./scheduled-task/runner-service.js";
-import { seedRegisteredTaskPacks } from "./scheduled-task/seed-registry.js";
+import {
+  getDefaultTaskPacks,
+  registerDefaultTaskPack,
+  seedRegisteredTaskPacks,
+} from "./scheduled-task/seed-registry.js";
 
 /**
  * `@elizaos/plugin-scheduling` — the scheduling spine, now an always-loaded,
@@ -22,8 +28,18 @@ import { seedRegisteredTaskPacks } from "./scheduled-task/seed-registry.js";
  * Consumers (e.g. `@elizaos/plugin-personal-assistant`) inject production deps
  * via `registerScheduledTaskRunnerDeps` and register their domain packs via
  * `registerDefaultTaskPack`; when present, their deps win (first-wins). This
- * plugin ships ZERO packs and imports neither `@elizaos/app-core`,
- * `@elizaos/agent`, nor `@elizaos/plugin-personal-assistant`.
+ * plugin imports neither `@elizaos/app-core`, `@elizaos/agent`, nor
+ * `@elizaos/plugin-personal-assistant`.
+ *
+ * It ships ONE small, generic built-in fallback pack (`buildFallbackDefaultPack`
+ * — a daily "Good morning" reminder + a paused "Weekly review" starter) that is
+ * seeded ONLY when no consumer host is present. The consumer signal is the
+ * injected deps provider: a host like PA calls `registerScheduledTaskRunnerDeps`
+ * during its `init` (which completes before `runtime.initPromise` resolves), so
+ * by seed time the spine knows whether a host owns the runner. When a host is
+ * present its richer domain pack supersedes the fallback and the fallback is not
+ * registered → no double-seed. On a stock mobile boot (no PA) the fallback seeds
+ * so the home Tasks widget resolves.
  *
  * One runner/store invariant: a single runner service + a single injected deps
  * set + a single REST route per runtime (runtime first-wins dedup).
@@ -41,6 +57,21 @@ export const schedulingPlugin: Plugin = {
     void runtime.initPromise
       .then(async () => {
         try {
+          // Register the built-in fallback pack only when no consumer host has
+          // injected deps (e.g. a stock mobile boot without
+          // @elizaos/plugin-personal-assistant). When a host is present it owns
+          // the domain content; `seedRegisteredTaskPacks` would also drop a
+          // fallback pack via its consumer-pack gate, but skipping registration
+          // here keeps the registry honest and avoids seeding generic defaults
+          // alongside a host's richer pack.
+          const hasConsumerHost = getScheduledTaskRunnerDeps(runtime) !== null;
+          const alreadyRegistered = getDefaultTaskPacks(runtime).length > 0;
+          if (!hasConsumerHost && !alreadyRegistered) {
+            registerDefaultTaskPack(
+              runtime,
+              buildFallbackDefaultPack({ agentId: runtime.agentId }),
+            );
+          }
           const runner = getScheduledTaskRunner(runtime, {
             agentId: runtime.agentId,
           });
