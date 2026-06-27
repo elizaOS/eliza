@@ -674,6 +674,11 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             name: firstRunName,
             bio: style?.bio ?? ["An autonomous AI agent."],
             ...(preferAgentId ? { preferAgentId } : {}),
+            // Phase-0 MVP: boot-config flag → request a SHARED (instant,
+            // container-free) agent on create. Default off → dedicated, unchanged.
+            ...(getBootConfig().preferSharedCloudTier
+              ? { preferSharedTier: true }
+              : {}),
             onProgress: () => {},
           });
 
