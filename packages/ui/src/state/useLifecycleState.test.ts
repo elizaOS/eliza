@@ -6,7 +6,6 @@ import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
 } from "../events";
-import { isCloudAgentWaking } from "./types";
 import { useLifecycleState } from "./useLifecycleState";
 
 function emitHandoff(detail: CloudHandoffPhaseDetail) {
@@ -67,25 +66,5 @@ describe("useLifecycleState — cloud handoff phase", () => {
         }),
       ),
     ).not.toThrow();
-  });
-});
-
-describe("isCloudAgentWaking", () => {
-  it("is true only for the migrating phase", () => {
-    expect(isCloudAgentWaking({ agentId: "a", phase: "migrating" })).toBe(true);
-    expect(isCloudAgentWaking({ agentId: "a", phase: "switched" })).toBe(false);
-    expect(isCloudAgentWaking({ agentId: "a", phase: "failed" })).toBe(false);
-    expect(isCloudAgentWaking(null)).toBe(false);
-  });
-
-  it("scopes to a specific agent id when provided", () => {
-    const phase: CloudHandoffPhaseDetail = {
-      agentId: "agent-1",
-      phase: "migrating",
-    };
-    expect(isCloudAgentWaking(phase, "agent-1")).toBe(true);
-    expect(isCloudAgentWaking(phase, "agent-2")).toBe(false);
-    // No agent id → matches any migrating handoff.
-    expect(isCloudAgentWaking(phase)).toBe(true);
   });
 });

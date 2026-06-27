@@ -23,7 +23,6 @@ import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "../../state/persistence";
-import { isCloudAgentWaking } from "../../state/types";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { StatusBadge } from "../ui/status-badge";
@@ -90,7 +89,6 @@ function currentCloudToken(): string {
 export function CloudAgentsSection() {
   const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
-  const cloudHandoffPhase = useAppSelector((s) => s.cloudHandoffPhase);
   const { appName } = useBranding();
   const [agents, setAgents] = useState<CloudCompatAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -534,13 +532,12 @@ export function CloudAgentsSection() {
           agents.map((agent) => {
             const isActive = agent.agent_id === activeId;
             const busy = busyId === agent.agent_id;
-            // Show "Waking…" for a locally-driven resume (wakingId) OR a
-            // first-run shared→dedicated handoff in flight for this agent, so the
-            // row reflects the same shared-now/dedicated-pending state the chat
-            // shell sees rather than running a wholly independent signal.
-            const waking =
-              wakingId === agent.agent_id ||
-              isCloudAgentWaking(cloudHandoffPhase, agent.agent_id);
+            // Show "Waking…" for a locally-driven resume (wakingId). The
+            // first-run shared→dedicated handoff no longer surfaces here: it
+            // re-points the live client SILENTLY (no row-level "waking" state),
+            // and its in-flight progress is shown by the chat-shell handoff
+            // toast (CloudHandoffBanner), not this Settings row.
+            const waking = wakingId === agent.agent_id;
             const status = (agent.status || "").toLowerCase();
             const canSuspend = status === "running";
             const canResume = NON_RUNNING_STATES.has(status);

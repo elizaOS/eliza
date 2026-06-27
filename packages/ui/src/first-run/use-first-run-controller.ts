@@ -8,6 +8,7 @@ import {
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
+import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { getBootConfig } from "../config/boot-config";
 import {
   canSelectLocalRuntime,
@@ -852,33 +853,28 @@ export function useFirstRunController(): FirstRunController {
               cloudApiBase:
                 getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
               authToken,
+              // The invisible switch (PR3). switchAgentProfile() would
+              // clearAllChatDrafts() (wiping the composer) and dispatch
+              // SWITCH_AGENT (re-entering the coordinator → full-screen
+              // <StartupScreen/> + dropped WS). The handoff instead re-points
+              // SILENTLY in place: persist the dedicated profile, seamlessly
+              // swap the API/WS base (no visible disconnect), keep the same
+              // conversation id mounted, and DON'T touch drafts or the
+              // coordinator. The transcript was already copied to the dedicated
+              // agent, so the chat surface stays live throughout the swap.
               onSwitch: (containerBase) => {
-                client.setBaseUrl(containerBase);
-                client.setToken(authToken);
-                const switched = createPersistedActiveServer({
-                  kind: "cloud",
-                  // Persist by the dedicated id — that's the agent the user ends
-                  // up on, so a re-boot restores the dedicated, not the shared
-                  // bridge.
-                  id: `cloud:${dedicatedAgentId}`,
-                  apiBase: containerBase,
-                  accessToken: authToken,
+                silentlyRepointToDedicated({
+                  containerBase,
+                  authToken,
+                  dedicatedAgentId,
                 });
-                savePersistedActiveServer(switched);
-                const profile = addAgentProfile({
-                  kind: "cloud",
-                  label: switched.label,
-                  apiBase: containerBase,
-                  accessToken: authToken,
-                });
-                switchAgentProfile(profile.id);
               },
             }),
           );
         }
       }
     },
-    [completeFirstRun, switchAgentProfile, uiLanguage],
+    [completeFirstRun, uiLanguage],
   );
 
   const finishCloud = React.useCallback(

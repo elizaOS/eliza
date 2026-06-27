@@ -243,22 +243,6 @@ export function deriveAgentReady(agentStatus: AgentStatus | null): boolean {
 }
 
 /**
- * True while a shared→dedicated cloud-agent handoff is in flight (`migrating`):
- * the user is chatting on the shared adapter while the dedicated container boots.
- * One signal both the chat shell and the Settings cloud-agents row read, so the
- * transient "shared-now / dedicated-pending" state isn't opaque to either. It is
- * an AWARENESS signal only — it never gates the composer, since the shared
- * adapter is fully responsive during the handoff.
- */
-export function isCloudAgentWaking(
-  phase: CloudHandoffPhaseDetail | null,
-  agentId?: string,
-): boolean {
-  if (phase?.phase !== "migrating") return false;
-  return agentId === undefined || phase.agentId === agentId;
-}
-
-/**
  * Whether the chat lifecycle should keep polling agent status to clear the
  * "waking up" banner (#8777). Poll while the agent is NOT ready
  * ({@link deriveAgentReady}) and NOT in a terminal state — a null/early status
@@ -383,9 +367,10 @@ export interface AppState {
   agentStatus: AgentStatus | null;
   /**
    * Latest shared→dedicated cloud-agent handoff phase, or null. Single source of
-   * truth fed by `CLOUD_HANDOFF_PHASE_EVENT`, so the chat shell and the Settings
-   * cloud-agents row both reflect the shared-now/dedicated-pending state instead
-   * of each running an independent wake loop. {@link isCloudAgentWaking}.
+   * truth fed by `CLOUD_HANDOFF_PHASE_EVENT`, read by the chat-shell handoff
+   * toast (`CloudHandoffBanner`) so the background swap is visible while the
+   * dedicated container boots. The actual switch is silent (the client
+   * re-points in place); this phase only drives the progress toast.
    */
   cloudHandoffPhase: CloudHandoffPhaseDetail | null;
   firstRunComplete: boolean;

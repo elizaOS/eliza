@@ -75,6 +75,13 @@ const mocks = vi.hoisted(() => ({
     status: "switched-empty" as const,
     imported: 0,
   })),
+  // PR3 invisible re-point: the handoff's onSwitch delegates to this silent
+  // path instead of switchAgentProfile (which would clear drafts + dispatch
+  // SWITCH_AGENT → StartupScreen flash). Mock it to assert the WIRING; the
+  // helper's internals (repointBaseUrl, no draft clear) are covered by
+  // cloud/handoff/silent-repoint.test.ts.
+  silentlyRepointToDedicated: vi.fn(),
+  switchAgentProfile: vi.fn(),
   // Phase-1 create-both: when the shared-tier flag is on, the controller
   // provisions a SEPARATE dedicated agent (a plain create, no preferSharedTier)
   // as the handoff target.
@@ -147,6 +154,10 @@ vi.mock("../bridge", () => ({
   invokeDesktopBridgeRequest: mocks.invokeDesktopBridgeRequest,
 }));
 
+vi.mock("../cloud/handoff/silent-repoint", () => ({
+  silentlyRepointToDedicated: mocks.silentlyRepointToDedicated,
+}));
+
 vi.mock("../config/boot-config", () => ({
   getBootConfig: () => ({
     branding: { cloudOnly: true },
@@ -173,6 +184,7 @@ vi.mock("../state", () => {
     showActionBanner: mocks.showActionBanner,
     setTab: mocks.setTab,
     setState: mocks.setState,
+    switchAgentProfile: mocks.switchAgentProfile,
     uiLanguage: "en",
   });
   return {
@@ -294,6 +306,8 @@ describe("useFirstRunController cloud first-run", () => {
       created: true,
     }));
     mocks.startCloudAgentHandoff.mockClear();
+    mocks.silentlyRepointToDedicated.mockClear();
+    mocks.switchAgentProfile.mockClear();
     mocks.savePersistedActiveServer.mockClear();
     mocks.setBaseUrl.mockClear();
     mocks.setState.mockClear();
@@ -381,6 +395,40 @@ describe("useFirstRunController cloud first-run", () => {
         onSwitch: expect.any(Function),
       }),
     );
+  });
+
+  it("PR3: the handoff onSwitch re-points SILENTLY (no switchAgentProfile, no draft wipe, no shell flash)", async () => {
+    mocks.preferSharedCloudTier = true;
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    // Grab the onSwitch the controller armed the supervisor with, and fire it
+    // the way a ready dedicated container would. The mock is untyped (no params
+    // on the vi.fn), so go through `unknown` to read the handoff arg object.
+    const handoffArgs = (
+      mocks.startCloudAgentHandoff.mock.calls as unknown as Array<
+        [{ onSwitch: (containerBase: string) => void }]
+      >
+    )[0]?.[0];
+    expect(handoffArgs?.onSwitch).toBeTypeOf("function");
+
+    act(() => handoffArgs?.onSwitch("https://dedicated-1.elizacloud.ai"));
+
+    // The switch goes through the SILENT in-place re-point, carrying the
+    // dedicated id + token so a reboot restores the dedicated agent.
+    expect(mocks.silentlyRepointToDedicated).toHaveBeenCalledTimes(1);
+    expect(mocks.silentlyRepointToDedicated).toHaveBeenCalledWith({
+      containerBase: "https://dedicated-1.elizacloud.ai",
+      authToken: "cloud-token",
+      dedicatedAgentId: "dedicated-1",
+    });
+    // It must NOT take the global profile-switch path, which clears chat drafts
+    // and dispatches SWITCH_AGENT → coordinator re-entry → full-screen
+    // <StartupScreen/> flash + dropped WS.
+    expect(mocks.switchAgentProfile).not.toHaveBeenCalled();
   });
 
   it("auto-creates (no forceCreate) and skips the picker when the user has 0 agents", async () => {
