@@ -149,6 +149,10 @@ const nextConfig: NextConfig = {
   },
   // Webpack configuration for backward compatibility
   webpack: (config, { isServer, webpack }) => {
+    // Disable source-map generation to cut peak webpack build memory on the
+    // RAM-limited Railway builder. Server source maps are stripped post-build by
+    // prune-next-server-sourcemaps anyway, so this is no net loss.
+    config.devtool = false;
     // Enable WebAssembly experiments for tiktoken
     config.experiments = {
       ...config.experiments,
