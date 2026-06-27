@@ -66,6 +66,9 @@ const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> = [
   { from: "dashboard/containers", to: "/dashboard/agents" },
   { from: "dashboard/containers/:id", to: "/dashboard/agents/:id" },
   { from: "dashboard/containers/agents/:id", to: "/dashboard/agents/:id" },
+  // In-dashboard quick chat was removed; real chat lives in the app. Send old
+  // deep links back to the agent detail page.
+  { from: "dashboard/agents/:id/chat", to: "/dashboard/agents/:id" },
   // App-create modal is opened from the apps list, not its own route.
   { from: "dashboard/apps/create", to: "/dashboard/apps" },
   // New app-IA targets: billing / api-keys move into settings sections.
