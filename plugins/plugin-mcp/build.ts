@@ -9,7 +9,23 @@
  * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
  */
 
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const RM_RECURSIVE_SCRIPT = fileURLToPath(
+  new URL("../../packages/scripts/rm-path-recursive.mjs", import.meta.url)
+);
+
+function rmRecursive(target: string) {
+  const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, target], {
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`rm-path-recursive failed for ${target} with status ${result.status}`);
+  }
+}
 
 const externalDeps = await externalsFromPackageJson("./package.json", {
   // Transitive workspace + native deps the hand-list relied on.
@@ -21,8 +37,7 @@ async function build(): Promise<void> {
 
   // Wipe dist first so leftover .d.ts files from prior runs don't get
   // picked up by tsc as inputs (TS5055).
-  const { rm } = await import("node:fs/promises");
-  await rm("dist", { recursive: true, force: true });
+  rmRecursive("dist");
 
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-mcp for Node (ESM)...");
