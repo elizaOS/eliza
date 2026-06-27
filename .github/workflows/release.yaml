@@ -616,6 +616,12 @@ jobs:
           node packages/scripts/replace-workspace-versions.js
           echo "✅ Workspace references replaced"
 
+      - name: Verify reported plugin package dist tarballs
+        run: |
+          node packages/scripts/verify-npm-pack-dist.mjs \
+            plugins/plugin-x \
+            plugins/plugin-openrouter
+
       # Publish to NPM (only after git operations succeed)
       - name: Skip NPM publish on forks
         if: github.repository != 'elizaOS/eliza'
