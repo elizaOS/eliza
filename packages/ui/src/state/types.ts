@@ -71,7 +71,6 @@ import type {
   WhitelistStatus,
   WorkbenchOverview,
 } from "../api/client";
-import type { CloudHandoffPhaseDetail } from "../events";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
@@ -365,14 +364,6 @@ export interface AppState {
   companionHalfFramerateMode: CompanionHalfFramerateMode;
   connected: boolean;
   agentStatus: AgentStatus | null;
-  /**
-   * Latest shared→dedicated cloud-agent handoff phase, or null. Single source of
-   * truth fed by `CLOUD_HANDOFF_PHASE_EVENT`, read by the chat-shell handoff
-   * toast (`CloudHandoffBanner`) so the background swap is visible while the
-   * dedicated container boots. The actual switch is silent (the client
-   * re-points in place); this phase only drives the progress toast.
-   */
-  cloudHandoffPhase: CloudHandoffPhaseDetail | null;
   firstRunComplete: boolean;
   /** Incremented on agent reset so first-run UI shows immediately (not stuck behind VRM reveal). */
   firstRunUiRevealNonce: number;

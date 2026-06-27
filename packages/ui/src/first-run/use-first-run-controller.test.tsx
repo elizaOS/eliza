@@ -22,7 +22,15 @@ const mocks = vi.hoisted(() => ({
   // Phase-1 shared-tier flag (boot-config). Default off → byte-identical to
   // pre-Phase-1; the create-both test flips it on to exercise the handoff arm.
   preferSharedCloudTier: false,
-  addAgentProfile: vi.fn(),
+  addAgentProfile: vi.fn(() => ({
+    id: "profile-shared-1",
+    kind: "cloud" as const,
+    label: "Demo Agent",
+    createdAt: "2026-06-18T00:00:00.000Z",
+  })),
+  removeAgentProfile: vi.fn(),
+  // Gated post-switch cleanup: deletes the now-dead shared bridge cloud-side.
+  deleteSharedBridgeAgent: vi.fn(async () => ({ success: true as const })),
   completeFirstRun: vi.fn(),
   createPersistedActiveServer: vi.fn(
     (args: ActiveServerArgs): ActiveServerRecord => ({
@@ -136,6 +144,7 @@ vi.mock("../api", () => ({
     getCloudCompatAgents: mocks.getCloudCompatAgents,
     selectOrProvisionCloudAgent: mocks.selectOrProvisionCloudAgent,
     startCloudAgentHandoff: mocks.startCloudAgentHandoff,
+    deleteSharedBridgeAgent: mocks.deleteSharedBridgeAgent,
     createCloudCompatAgent: mocks.createCloudCompatAgent,
     setBaseUrl: mocks.setBaseUrl,
     setToken: mocks.setToken,
@@ -194,6 +203,7 @@ vi.mock("../state", () => {
   });
   return {
     addAgentProfile: mocks.addAgentProfile,
+    removeAgentProfile: mocks.removeAgentProfile,
     createPersistedActiveServer: mocks.createPersistedActiveServer,
     loadPersistedActiveServer: mocks.loadPersistedActiveServer,
     savePersistedActiveServer: mocks.savePersistedActiveServer,
@@ -311,6 +321,8 @@ describe("useFirstRunController cloud first-run", () => {
       created: true,
     }));
     mocks.startCloudAgentHandoff.mockClear();
+    mocks.removeAgentProfile.mockClear();
+    mocks.deleteSharedBridgeAgent.mockClear();
     mocks.silentlyRepointToDedicated.mockClear();
     mocks.switchAgentProfile.mockClear();
     mocks.savePersistedActiveServer.mockClear();
@@ -439,6 +451,32 @@ describe("useFirstRunController cloud first-run", () => {
     // and dispatches SWITCH_AGENT → coordinator re-entry → full-screen
     // <StartupScreen/> flash + dropped WS.
     expect(mocks.switchAgentProfile).not.toHaveBeenCalled();
+  });
+
+  it("on handoff success, drops the orphaned shared profile AND deletes the shared bridge", async () => {
+    // The supervisor mock returns `switched-empty` (a confirmed switch), so the
+    // gated success callback fires. It must clean up BOTH sides of the now-dead
+    // shared agent: the local registry profile (removeAgentProfile, by the id
+    // captured from the shared addAgentProfile) and the cloud-side bridge row
+    // (deleteSharedBridgeAgent).
+    mocks.preferSharedCloudTier = true;
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+      // Let runCloudAgentHandoff's start().then(onSwitchSucceeded) settle.
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.removeAgentProfile).toHaveBeenCalledTimes(1);
+    expect(mocks.removeAgentProfile).toHaveBeenCalledWith("profile-shared-1");
+    expect(mocks.deleteSharedBridgeAgent).toHaveBeenCalledTimes(1);
+    // Pins the cloud-side delete to the shared agent id, not the dedicated one.
+    expect(mocks.deleteSharedBridgeAgent).toHaveBeenCalledWith(
+      "agent-1",
+      expect.objectContaining({ cloudApiBase: "https://www.elizacloud.ai" }),
+    );
   });
 
   it("auto-creates (no forceCreate) and skips the picker when the user has 0 agents", async () => {

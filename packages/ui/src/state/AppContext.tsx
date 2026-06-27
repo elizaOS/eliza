@@ -175,7 +175,6 @@ function AppProviderInner({
     state: {
       connected,
       agentStatus,
-      cloudHandoffPhase,
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
@@ -1947,7 +1946,6 @@ function AppProviderInner({
       companionHalfFramerateMode,
       connected,
       agentStatus,
-      cloudHandoffPhase,
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
@@ -2368,7 +2366,6 @@ function AppProviderInner({
       companionHalfFramerateMode,
       connected,
       agentStatus,
-      cloudHandoffPhase,
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,

@@ -206,6 +206,32 @@ describe("runCloudAgentHandoff", () => {
     expect(onSwitchSucceeded).toHaveBeenCalledTimes(1);
   });
 
+  it("drops the armed retry listener after the TTL so an un-retried handoff doesn't leak it", async () => {
+    vi.useFakeTimers();
+    try {
+      const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
+        status: "failed",
+        imported: 0,
+        error: "import failed",
+      }));
+
+      runCloudAgentHandoff("a13", start, undefined);
+      // Resolve the start() promise + the .then arming the retry listener.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(start).toHaveBeenCalledTimes(1);
+
+      // Advance past the arm TTL: the listener self-detaches via AbortController.
+      await vi.advanceTimersByTimeAsync(10 * 60_000 + 1);
+
+      // A (late) retry is now ignored — no second supervisor run, no leak.
+      dispatchCloudHandoffRetry({ agentId: "a13" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(start).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not re-fire the retry listener more than once per failure", async () => {
     const { stop } = collectPhases();
     const start = vi

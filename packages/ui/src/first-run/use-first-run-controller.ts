@@ -20,6 +20,7 @@ import {
   addAgentProfile,
   createPersistedActiveServer,
   loadPersistedActiveServer,
+  removeAgentProfile,
   savePersistedActiveServer,
   useAppSelectorShallow,
 } from "../state";
@@ -776,7 +777,7 @@ export function useFirstRunController(): FirstRunController {
         accessToken: authToken,
       });
       savePersistedActiveServer(activeServer);
-      addAgentProfile({
+      const sharedAgentProfile = addAgentProfile({
         kind: "cloud",
         label: activeServer.label,
         ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
@@ -886,6 +887,12 @@ export function useFirstRunController(): FirstRunController {
             // their conversation). Fire-and-forget: a failed delete just leaks a
             // shared row — never blocks the (already switched) user.
             () => {
+              // Drop the now-dead shared profile from the local registry. The
+              // switch already activated the dedicated profile (silent-repoint's
+              // addAgentProfile), so removing the shared one by its captured id
+              // can't touch the active dedicated profile — it just stops the
+              // orphaned `cloud:<sharedId>` row from lingering in the picker.
+              removeAgentProfile(sharedAgentProfile.id);
               void client
                 .deleteSharedBridgeAgent(sharedAgentId, {
                   cloudApiBase,

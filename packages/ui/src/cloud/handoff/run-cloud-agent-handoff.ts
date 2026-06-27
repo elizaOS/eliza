@@ -65,19 +65,37 @@ export function runCloudAgentHandoff(
     });
 }
 
+/**
+ * How long an armed retry listener stays live before it self-cleans. A handoff
+ * that fails and is never retried would otherwise leak its
+ * {@link CLOUD_HANDOFF_RETRY_EVENT} listener for the page lifetime; a flapping
+ * one would stack a new listener per failure. The TTL bounds both: the user has
+ * a generous window to hit retry, after which the listener is dropped.
+ */
+const RETRY_ARM_TTL_MS = 10 * 60_000;
+
 function armRetry(
   agentId: string,
   start: () => Promise<ConversationHandoffResult>,
   onSwitchSucceeded?: () => void | Promise<void>,
 ): void {
   if (typeof window === "undefined") return;
+  // Bind the listener to an AbortController so it's removable two ways: when the
+  // retry actually fires (one-shot), AND on a TTL timeout if it never does. The
+  // `{ signal }` option means a single abort() detaches the listener — no need
+  // to hold the handler ref for removeEventListener.
+  const ac = new AbortController();
+  const ttl = setTimeout(() => ac.abort(), RETRY_ARM_TTL_MS);
   const onRetry = (event: Event) => {
     const detail = (event as CustomEvent<CloudHandoffRetryDetail>).detail;
     if (detail?.agentId !== agentId) return;
-    window.removeEventListener(CLOUD_HANDOFF_RETRY_EVENT, onRetry);
+    clearTimeout(ttl);
+    ac.abort();
     // Thread the gated delete through the retry: a handoff that fails first and
     // succeeds on retry must still delete the shared bridge on the success leg.
     runCloudAgentHandoff(agentId, start, onSwitchSucceeded);
   };
-  window.addEventListener(CLOUD_HANDOFF_RETRY_EVENT, onRetry);
+  window.addEventListener(CLOUD_HANDOFF_RETRY_EVENT, onRetry, {
+    signal: ac.signal,
+  });
 }

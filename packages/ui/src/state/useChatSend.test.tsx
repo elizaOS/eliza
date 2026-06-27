@@ -41,10 +41,16 @@ vi.mock("../api", () => ({
   client: mocks.client,
 }));
 
-vi.mock("../api/client-cloud", () => ({
-  isDirectCloudSharedAgentBase: (url: string | null | undefined) =>
-    !!url &&
-    /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim()),
+// Stub Capacitor so the REAL `../api/client-cloud` (imported by useChatSend)
+// loads cleanly under jsdom. We deliberately do NOT mock client-cloud: these
+// freeze tests must exercise the production `isDirectCloudSharedAgentBase`
+// classifier, not a hand-copied regex that can silently drift from it.
+vi.mock("@capacitor/core", () => ({
+  Capacitor: {
+    isNativePlatform: () => false,
+    getPlatform: () => "web",
+  },
+  CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
 function conversation(id: string, roomId: string): Conversation {
