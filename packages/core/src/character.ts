@@ -5,6 +5,7 @@ import type {
 	DocumentSourceItem,
 	MessageExample,
 	MessageExampleGroup,
+	TemplateType,
 } from "./types";
 import { isObjectRecord as isRecord } from "./utils/type-guards";
 
@@ -21,7 +22,7 @@ export interface CharacterInput {
 	name?: string;
 	username?: string;
 	system?: string;
-	templates?: Record<string, string>;
+	templates?: Record<string, TemplateType>;
 	bio?: string | string[];
 	messageExamples?: MessageExamplesInput;
 	postExamples?: string[];
@@ -42,7 +43,7 @@ interface NormalizedCharacterInput {
 	name?: string;
 	username?: string;
 	system?: string;
-	templates: Record<string, string>;
+	templates: Record<string, TemplateType>;
 	bio: string[];
 	messageExamples: MessageExampleGroup[];
 	postExamples: string[];
