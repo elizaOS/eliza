@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -12,6 +12,10 @@ const nextBuildArgs = ["build", ...(nextMajor >= 16 ? ["--webpack"] : [])];
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
+);
+const cleanupHelperPath = path.resolve(
+  packageRoot,
+  "../../../scripts/rm-path-recursive.mjs",
 );
 const finalDistDir = path.join(packageRoot, ".next");
 const tempDistDirName = `.next-build-${process.pid}`;
@@ -30,12 +34,14 @@ const originalTsconfig = await readFile(tsconfigPath, "utf8").catch((error) => {
   throw error;
 });
 
-await rm(tempDistDir, {
-  force: true,
-  maxRetries: 5,
-  recursive: true,
-  retryDelay: 100,
-});
+function rmRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperPath, targetPath], {
+    cwd: packageRoot,
+    stdio: "inherit",
+  });
+}
+
+rmRecursive(tempDistDir);
 
 async function writeTempPackageMarker() {
   await mkdir(path.dirname(tempPackagePath), { recursive: true });
@@ -116,20 +122,10 @@ try {
   exitCode = await runNextBuild();
 
   if (exitCode === 0) {
-    await rm(finalDistDir, {
-      force: true,
-      maxRetries: 5,
-      recursive: true,
-      retryDelay: 100,
-    });
+    rmRecursive(finalDistDir);
     await rename(tempDistDir, finalDistDir);
   } else {
-    await rm(tempDistDir, {
-      force: true,
-      maxRetries: 5,
-      recursive: true,
-      retryDelay: 100,
-    });
+    rmRecursive(tempDistDir);
   }
 } finally {
   await restoreGeneratedInputs();
