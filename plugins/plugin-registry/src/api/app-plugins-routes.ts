@@ -700,7 +700,13 @@ function maybeLogPluginStateDrift(report: PluginDriftDiagnosticsReport): void {
   }
   _lastDriftWarningAt = now;
   _lastDriftWarningFingerprint = fingerprint;
-  logger.warn(
+  const hasPersistentConfigDrift = report.plugins.some((plugin) =>
+    plugin.drift_flags.some(
+      (flag) => flag === "entries_vs_compat" || flag === "entries_vs_allowlist",
+    ),
+  );
+  const log = hasPersistentConfigDrift ? logger.warn : logger.info;
+  log(
     {
       src: "api:plugins",
       driftCount: report.summary.withDrift,

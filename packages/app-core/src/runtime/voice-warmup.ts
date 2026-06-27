@@ -87,6 +87,11 @@ type LogSink = {
 
 const noopLog: LogSink = { info: () => {}, warn: () => {} };
 
+function isMissingModelHandlerError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("No handler found for delegate type");
+}
+
 /**
  * Retry a warmup call up to `maxRetries` times when the error message
  * indicates a transient HTTP issue (429 / 503). Waits `delayMs` between
@@ -133,8 +138,9 @@ export async function warmVoiceModels(
     );
     log.info("[eliza] Voice TTS model: ready");
   } catch (err) {
-    log.warn(
-      `[eliza] Voice TTS warmup failed (will load on first use): ${
+    const logMethod = isMissingModelHandlerError(err) ? log.info : log.warn;
+    logMethod(
+      `[eliza] Voice TTS warmup skipped (will load on first use): ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -150,8 +156,9 @@ export async function warmVoiceModels(
     );
     log.info("[eliza] Voice STT model: ready");
   } catch (err) {
-    log.warn(
-      `[eliza] Voice STT warmup failed (will load on first use): ${
+    const logMethod = isMissingModelHandlerError(err) ? log.info : log.warn;
+    logMethod(
+      `[eliza] Voice STT warmup skipped (will load on first use): ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
