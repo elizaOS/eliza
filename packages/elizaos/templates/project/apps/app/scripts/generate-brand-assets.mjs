@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(scriptDir, "..");
+const cleanupHelperPath = path.join(scriptDir, "rm-path-recursive.mjs");
 const publicDir = path.join(appDir, "public");
 const electrobunAssetsDir = path.join(appDir, "electrobun", "assets");
 const faviconSvgPath = path.join(publicDir, "favicon.svg");
@@ -30,6 +31,12 @@ function ensureMacTool(tool) {
     throw new Error(`${tool} asset generation currently requires macOS.`);
   }
   execFileSync("which", [tool], { stdio: "ignore" });
+}
+
+function rmRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperPath, targetPath], {
+    stdio: "inherit",
+  });
 }
 
 function renderSvgToRaster({ format, outputPath, size, sourcePath }) {
@@ -76,7 +83,7 @@ function main() {
 
   fs.mkdirSync(publicDir, { recursive: true });
   fs.mkdirSync(electrobunAssetsDir, { recursive: true });
-  fs.rmSync(appIconsetDir, { force: true, recursive: true });
+  rmRecursive(appIconsetDir);
   fs.mkdirSync(appIconsetDir, { recursive: true });
 
   if (!fs.existsSync(faviconSvgPath)) {
