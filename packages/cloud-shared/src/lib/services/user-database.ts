@@ -92,16 +92,18 @@ export class UserDatabaseService {
   }
 
   /**
-   * Provision a database for an app.
+   * Provision an ISOLATED per-tenant database for an app.
    *
-   * Provisions an isolated per-tenant database when a tenant-DB backend is
-   * wired; otherwise falls back to the shared cloud DATABASE_URL. ElizaOS
-   * plugin-sql tables scope data by agent/app UUID so multiple apps safely
-   * coexist on the shared database.
+   * Called only for `databaseMode: "isolated"` apps. Requires a tenant-DB
+   * provisioning backend (the node daemon's real CREATE ROLE / REVOKE CONNECT).
+   * If no backend is wired this FAILS CLOSED (throws → ProvisionResult.success
+   * false) instead of silently falling back to the shared cloud DATABASE_URL —
+   * a degrade that would co-locate the app on the shared DB while reporting it as
+   * isolated.
    *
    * @param appId App ID
    * @param appName App name (used for logging)
-   * @param region Optional AWS region (ignored in shared-DB mode)
+   * @param region Optional AWS region for the provisioned tenant DB
    * @returns Provision result with connection URI
    */
   async provisionDatabase(
@@ -167,11 +169,11 @@ export class UserDatabaseService {
     }
 
     try {
-      // Per-tenant ISOLATED database (Apps / Product 2) when the provisioning
-      // backend is wired; otherwise fall back to the legacy shared cloud
-      // DATABASE_URL (plugin-sql tables scope by agent/app UUID, so the shared
-      // mode still coexists safely). The isolated path provisions the app its
-      // own DB + role and stores that real DSN — never the shared agent URL.
+      // Per-tenant ISOLATED database (Apps / Product 2): provision the app its
+      // own DB + role (real CREATE ROLE / REVOKE CONNECT) and store that DSN.
+      // This requires a tenant-DB provisioning backend (the node daemon); with
+      // none wired we FAIL CLOSED rather than silently using the shared cloud
+      // DATABASE_URL — see the else branch.
       let connectionUri: string;
       let clusterId: string | undefined;
       if (this.tenantDbProvisioning) {
@@ -179,11 +181,17 @@ export class UserDatabaseService {
         connectionUri = provisioned.dsn;
         clusterId = provisioned.clusterId;
       } else {
-        const sharedDbUrl = process.env.DATABASE_URL;
-        if (!sharedDbUrl) {
-          throw new Error("DATABASE_URL not configured in cloud environment");
-        }
-        connectionUri = sharedDbUrl;
+        // FAIL CLOSED. provisionDatabase is only called for mode==="isolated"
+        // apps; with no provisioning backend we'd silently co-locate the app on
+        // the shared cloud DATABASE_URL (isolation by UUID only) yet report it as
+        // isolated. Never silently degrade isolation — throw so the deploy fails
+        // loudly. The live path runs this in the node daemon (backend wired); an
+        // unarmed daemon must hard-fail, not downgrade.
+        throw new Error(
+          "Isolated database requested but no tenant-DB provisioning backend is wired " +
+            "(the provisioning daemon is not armed). Refusing to fall back to the shared " +
+            "cloud DATABASE_URL — arm the daemon (configureAppsDeployBackend) and retry.",
+        );
       }
 
       // Encrypt the connection URI before storing.
@@ -197,7 +205,7 @@ export class UserDatabaseService {
 
       logger.info("Database provisioned successfully", {
         appId,
-        mode: this.tenantDbProvisioning ? "isolated" : "shared",
+        mode: "isolated",
         clusterId,
       });
 
