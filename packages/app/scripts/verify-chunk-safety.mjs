@@ -90,3 +90,43 @@ if (!cryptoChunkSeen) {
 console.log(
   `[verify-chunk-safety] OK: bn.js/crypto graph is confined to lazy vendor chunks (${files.length} chunks scanned).`,
 );
+
+// ── Web SPA base regression guard ──
+// build:web sets ELIZA_WEB_ABSOLUTE_BASE=1 → Vite base "/". A relative base
+// ("./assets/…") boots fine at depth-1 routes (/, /login) but 404s its bundle
+// at depth-2+ routes (/auth/cli-login, /app-auth/authorize, /payment/:id):
+// "./assets/x.js" resolves to /<route-dir>/assets/x.js, which the SPA fallback
+// serves as text/html, so the module/stylesheet is refused and the page blanks.
+// This shipped to prod once (the cli-login device-login handoff). Fail the build
+// if the absolute-base web bundle still emitted relative asset refs. Native /
+// relative builds don't set the flag, so this guard is skipped for them — their
+// relative base is correct (Electrobun views:// / Capacitor file://).
+if (process.env.ELIZA_WEB_ABSOLUTE_BASE === "1") {
+  const indexHtmlPath = path.join(process.cwd(), "dist", "index.html");
+  let indexHtml;
+  try {
+    indexHtml = readFileSync(indexHtmlPath, "utf8");
+  } catch (err) {
+    console.error(
+      `[verify-chunk-safety] cannot read ${indexHtmlPath} for the web-base check: ${err.message}`,
+    );
+    process.exit(2);
+  }
+  const relativeAssetRefs = indexHtml.match(/(?:src|href)="\.\/assets\//g);
+  if (relativeAssetRefs) {
+    console.error(
+      `[verify-chunk-safety] FAIL: ELIZA_WEB_ABSOLUTE_BASE=1 but dist/index.html still has ${relativeAssetRefs.length} relative "./assets/" ref(s).`,
+    );
+    console.error(
+      "\nThe web SPA base regressed to relative. Depth-2+ routes (/auth/cli-login,\n" +
+        "/app-auth/authorize, /payment/:id) would resolve assets to /<route>/assets/…,\n" +
+        "which the SPA fallback serves as text/html → the bundle never boots → blank\n" +
+        'page. Keep `base` absolute for the web build (vite.config.ts:\n' +
+        '`process.env.ELIZA_WEB_ABSOLUTE_BASE === "1" ? "/" : "./"`). Do NOT deploy.',
+    );
+    process.exit(1);
+  }
+  console.log(
+    "[verify-chunk-safety] OK: web SPA uses an absolute base (no relative ./assets/ refs in index.html).",
+  );
+}
