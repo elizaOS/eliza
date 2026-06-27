@@ -799,52 +799,83 @@ export function useFirstRunController(): FirstRunController {
       setBusyText(null);
       completeFirstRun("chat", { launchCompanionOverlay: true });
 
-      // Seamless shared→personal handoff. A freshly created cloud agent serves
-      // the user from the shared REST adapter while its dedicated container
-      // boots (selectedAgent.created with no bridge URL yet). In the background,
-      // once the container is reachable, copy the conversation the user built on
-      // the shared adapter into it and switch the live client over — no waiting,
-      // no lost history. Best-effort: on failure the user stays on the shared
-      // adapter, which keeps working.
+      // Seamless shared→dedicated cloud-agent handoff (Phase 1). A freshly
+      // created SHARED agent serves the user instantly from the container-free
+      // REST adapter — but, being container-free, it never grows a dedicated
+      // base on its own. So when the shared-tier flag is on we ALSO provision a
+      // SEPARATE dedicated agent in the background and arm the existing handoff
+      // supervisor to poll IT, copy the conversation across, and switch over
+      // once it's running. Without that separate dedicated target the supervisor
+      // would poll the shared agent forever and time out (the reconciliation's
+      // "the branch fires but never resolves"). Best-effort: on failure the user
+      // stays on the (working) shared adapter.
+      //
+      // Flag OFF → `preferSharedTier` was never sent, so `selectedAgent` is the
+      // dedicated agent itself (not a shared base) and this branch is skipped:
+      // byte-identical to pre-Phase-1.
       if (
+        getBootConfig().preferSharedCloudTier &&
         selectedAgent.created &&
         isDirectCloudSharedAgentBase(cloudAgentApiBase)
       ) {
-        const handoffAgentId = selectedAgent.agentId;
-        // Surface the handoff lifecycle (migrating → switched | timed-out |
-        // failed) as typed phase events instead of swapping silently, and keep
-        // a `timed-out`/`failed` retryable rather than a silent permanent
-        // fallback. The supervisor's import is idempotent, so a retry just
-        // re-runs the same call.
-        runCloudAgentHandoff(handoffAgentId, () =>
-          client.startCloudAgentHandoff({
-            agentId: handoffAgentId,
-            sharedApiBase: cloudAgentApiBase,
-            // The shared adapter keeps one canonical conversation per agent id.
-            conversationId: handoffAgentId,
-            cloudApiBase:
-              getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
-            authToken,
-            onSwitch: (containerBase) => {
-              client.setBaseUrl(containerBase);
-              client.setToken(authToken);
-              const switched = createPersistedActiveServer({
-                kind: "cloud",
-                id: `cloud:${handoffAgentId}`,
-                apiBase: containerBase,
-                accessToken: authToken,
-              });
-              savePersistedActiveServer(switched);
-              const profile = addAgentProfile({
-                kind: "cloud",
-                label: switched.label,
-                apiBase: containerBase,
-                accessToken: authToken,
-              });
-              switchAgentProfile(profile.id);
-            },
-          }),
-        );
+        const sharedAgentId = selectedAgent.agentId;
+        // Provision the dedicated agent ONCE, here, so a handoff retry re-arms
+        // the supervisor against the same dedicated id instead of minting a new
+        // dedicated agent each time. A plain create (no `preferSharedTier`)
+        // yields the DEDICATED always-on container — the migration target.
+        const dedicated = await client
+          .createCloudCompatAgent({
+            agentName: name,
+            ...(bio.length ? { agentConfig: { bio } } : {}),
+          })
+          .catch(() => null);
+        const dedicatedAgentId =
+          dedicated?.success && dedicated.data.agentId
+            ? dedicated.data.agentId
+            : null;
+        if (dedicatedAgentId) {
+          // Surface the handoff lifecycle (migrating → switched | timed-out |
+          // failed) as typed phase events instead of swapping silently, and
+          // keep a `timed-out`/`failed` retryable rather than a silent permanent
+          // fallback. The supervisor's import is idempotent, so a retry just
+          // re-runs the same call against the same dedicated agent.
+          runCloudAgentHandoff(sharedAgentId, () =>
+            client.startCloudAgentHandoff({
+              // Source: the shared agent the user is chatting on right now.
+              agentId: sharedAgentId,
+              sharedApiBase: cloudAgentApiBase,
+              // The shared adapter keeps one canonical conversation per agent id.
+              conversationId: sharedAgentId,
+              // Target: the separate dedicated agent we just kicked off. The
+              // supervisor polls THIS record for its container base.
+              dedicatedAgentId,
+              cloudApiBase:
+                getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
+              authToken,
+              onSwitch: (containerBase) => {
+                client.setBaseUrl(containerBase);
+                client.setToken(authToken);
+                const switched = createPersistedActiveServer({
+                  kind: "cloud",
+                  // Persist by the dedicated id — that's the agent the user ends
+                  // up on, so a re-boot restores the dedicated, not the shared
+                  // bridge.
+                  id: `cloud:${dedicatedAgentId}`,
+                  apiBase: containerBase,
+                  accessToken: authToken,
+                });
+                savePersistedActiveServer(switched);
+                const profile = addAgentProfile({
+                  kind: "cloud",
+                  label: switched.label,
+                  apiBase: containerBase,
+                  accessToken: authToken,
+                });
+                switchAgentProfile(profile.id);
+              },
+            }),
+          );
+        }
       }
     },
     [completeFirstRun, switchAgentProfile, uiLanguage],

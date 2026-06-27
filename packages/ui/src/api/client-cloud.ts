@@ -1263,6 +1263,13 @@ declare module "./client-base" {
       conversationId: string;
       cloudApiBase: string;
       authToken: string;
+      /**
+       * The SEPARATE dedicated agent to migrate onto. When set, the readiness
+       * probe polls THIS agent's record for its container base (the shared
+       * `agentId` is container-free and never exposes one). Omitted → the probe
+       * polls `agentId` itself, the pre-shared-tier behavior.
+       */
+      dedicatedAgentId?: string;
       onSwitch: (containerBase: string) => void | Promise<void>;
       intervalMs?: number;
       timeoutMs?: number;
@@ -2954,12 +2961,18 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
     conversationId,
     cloudApiBase,
     authToken,
+    dedicatedAgentId,
     onSwitch,
     intervalMs,
     timeoutMs,
     log,
   } = options;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
+  // Migration TARGET. With the shared tier, the user chats on `agentId` (a
+  // container-free shared agent that never gets a dedicated base), so the
+  // dedicated record we poll for readiness is a SEPARATE agent. Default to
+  // `agentId` so the pre-shared-tier single-agent flow is unchanged.
+  const readinessAgentId = dedicatedAgentId ?? agentId;
 
   // Authed JSON fetch against a specific agent base (shared adapter OR the
   // dedicated container subdomain). Both accept the cloud session token —
@@ -2986,7 +2999,9 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
 
   const readiness: AgentReadinessProbe = {
     resolveReadyBase: async () => {
-      const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
+      const detail = await this.getCloudCompatAgent(readinessAgentId).catch(
+        () => null,
+      );
       const agent = detail?.success ? detail.data : null;
       if (!agent) return null;
       // The container is "ready" only once the record exposes a dedicated base
@@ -3000,7 +3015,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
       const base = resolveCloudAgentApiBase({
         bridgeUrl: agent.bridge_url,
         webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
-        agentId,
+        agentId: readinessAgentId,
         cloudApiBase: resolvedCloudApiBase,
       });
       // Never "switch" onto the shared adapter (no migration target there).

@@ -19,6 +19,9 @@ type ActiveServerRecord = {
 
 const mocks = vi.hoisted(() => ({
   cloudAuthenticated: false,
+  // Phase-1 shared-tier flag (boot-config). Default off → byte-identical to
+  // pre-Phase-1; the create-both test flips it on to exercise the handoff arm.
+  preferSharedCloudTier: false,
   addAgentProfile: vi.fn(),
   completeFirstRun: vi.fn(),
   createPersistedActiveServer: vi.fn(
@@ -72,6 +75,20 @@ const mocks = vi.hoisted(() => ({
     status: "switched-empty" as const,
     imported: 0,
   })),
+  // Phase-1 create-both: when the shared-tier flag is on, the controller
+  // provisions a SEPARATE dedicated agent (a plain create, no preferSharedTier)
+  // as the handoff target.
+  createCloudCompatAgent: vi.fn(async () => ({
+    success: true as const,
+    data: {
+      agentId: "dedicated-1",
+      agentName: "Demo Agent",
+      jobId: "",
+      status: "provisioning",
+      nodeId: null,
+      message: "Agent created",
+    },
+  })),
 }));
 
 type CompatAgent = {
@@ -107,6 +124,7 @@ vi.mock("../api", () => ({
     getCloudCompatAgents: mocks.getCloudCompatAgents,
     selectOrProvisionCloudAgent: mocks.selectOrProvisionCloudAgent,
     startCloudAgentHandoff: mocks.startCloudAgentHandoff,
+    createCloudCompatAgent: mocks.createCloudCompatAgent,
     setBaseUrl: mocks.setBaseUrl,
     setToken: mocks.setToken,
     getBaseUrl: () => "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
@@ -133,6 +151,7 @@ vi.mock("../config/boot-config", () => ({
   getBootConfig: () => ({
     branding: { cloudOnly: true },
     cloudApiBase: "https://www.elizacloud.ai",
+    preferSharedCloudTier: mocks.preferSharedCloudTier,
   }),
 }));
 
@@ -224,6 +243,8 @@ describe("useFirstRunController cloud first-run", () => {
   beforeEach(() => {
     localStorage.clear();
     mocks.cloudAuthenticated = false;
+    mocks.preferSharedCloudTier = false;
+    mocks.createCloudCompatAgent.mockClear();
     mocks.addAgentProfile.mockClear();
     mocks.completeFirstRun.mockClear();
     // mockReset (not mockClear): individual tests install custom
@@ -286,6 +307,10 @@ describe("useFirstRunController cloud first-run", () => {
   });
 
   it("continues into cloud agent provisioning after native login authenticates", async () => {
+    // Phase-1 create-both: the shared-tier flag is on, so the user lands on a
+    // shared agent AND a separate dedicated agent is provisioned as the handoff
+    // target.
+    mocks.preferSharedCloudTier = true;
     const { result } = renderHook(() => useFirstRunController());
 
     await act(async () => {
@@ -334,14 +359,24 @@ describe("useFirstRunController cloud first-run", () => {
     expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
       launchCompanionOverlay: true,
     });
-    // A freshly created agent (created, no bridge URL yet) is served by the
-    // shared adapter while its container boots — so the background shared→
-    // personal handoff is armed to migrate + switch once the container is ready.
+    // Create-both: a SEPARATE dedicated agent is provisioned as the migration
+    // target — a PLAIN create (no preferSharedTier, so the backend derives a
+    // dedicated always-on container, not another shared agent).
+    expect(mocks.createCloudCompatAgent).toHaveBeenCalledWith(
+      expect.not.objectContaining({ preferSharedTier: expect.anything() }),
+    );
+    expect(mocks.createCloudCompatAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ agentName: "Demo Agent" }),
+    );
+    // A freshly created SHARED agent is served by the shared adapter; the
+    // background handoff is armed to poll the dedicated agent, copy the
+    // conversation, and switch once the dedicated container is ready.
     expect(mocks.startCloudAgentHandoff).toHaveBeenCalledWith(
       expect.objectContaining({
         agentId: "agent-1",
         sharedApiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
         conversationId: "agent-1",
+        dedicatedAgentId: "dedicated-1",
         authToken: "cloud-token",
         onSwitch: expect.any(Function),
       }),
@@ -400,6 +435,29 @@ describe("useFirstRunController cloud first-run", () => {
       await result.current.finishRuntime();
     });
 
+    expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
+  });
+
+  it("flag OFF: a created shared agent neither provisions a dedicated agent nor arms the handoff", async () => {
+    // Phase-1 is gated on the boot-config flag. With it OFF (the default), even
+    // a shared-base create stays byte-identical to pre-Phase-1: no second
+    // (dedicated) create, no handoff. The demo turns the flag on.
+    mocks.preferSharedCloudTier = false;
+    mocks.selectOrProvisionCloudAgent.mockResolvedValue({
+      agentId: "agent-1",
+      agentName: "Demo Agent",
+      apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
+      bridgeUrl: null,
+      created: true,
+    });
+
+    const { result } = renderHook(() => useFirstRunController());
+
+    await act(async () => {
+      await result.current.finishRuntime();
+    });
+
+    expect(mocks.createCloudCompatAgent).not.toHaveBeenCalled();
     expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
   });
 
