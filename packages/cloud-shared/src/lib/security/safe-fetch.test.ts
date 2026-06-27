@@ -29,16 +29,18 @@ describe("createPinnedLookup", () => {
     expect(cb).toHaveBeenCalledWith(null, [{ address: "93.184.216.34", family: 4 }]);
   });
 
-  test.each(["169.254.169.254", "127.0.0.1", "10.0.0.5", "::1"])(
-    "rejects a pin that re-checks as a private/reserved address (%s)",
-    (address) => {
-      const cb = vi.fn();
-      createPinnedLookup(address, address.includes(":") ? 6 : 4)("host", { all: true }, cb);
-      const [error] = cb.mock.calls[0];
-      expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toMatch(/private or reserved/i);
-    },
-  );
+  test.each([
+    "169.254.169.254",
+    "127.0.0.1",
+    "10.0.0.5",
+    "::1",
+  ])("rejects a pin that re-checks as a private/reserved address (%s)", (address) => {
+    const cb = vi.fn();
+    createPinnedLookup(address, address.includes(":") ? 6 : 4)("host", { all: true }, cb);
+    const [error] = cb.mock.calls[0];
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/private or reserved/i);
+  });
 });
 
 describe("resolveSafeOutboundTarget (connection pin)", () => {
