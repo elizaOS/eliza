@@ -222,10 +222,13 @@ async function main() {
   // that web_ui_url over the agent's `bridge_url`. There is no Worker-fronted
   // `*.elizacloud.ai` ingress in the local mock stack, so that subdomain is
   // unreachable — the dedicated agent's reachable base IS its `bridge_url` (the
-  // control-plane mock). A base domain that normalizes to empty makes
-  // `getElizaAgentPublicWebUiUrl` return null, so the reachable bridge wins and
-  // the shared→dedicated handoff import can complete. The apps domain
-  // (`CONTAINERS_PUBLIC_BASE_DOMAIN`) is a separate knob and is left untouched.
+  // control-plane mock). The detail route feeds `containersEnv.publicBaseDomain()`
+  // into `getElizaAgentPublicWebUiUrl` as the EXPLICIT `{baseDomain}` option; a
+  // value that normalizes to empty makes that explicit-option path return null, so
+  // the reachable bridge wins and the shared→dedicated handoff import can complete.
+  // (The compat-envelope no-option path keeps its default and is intentionally not
+  // neutralized.) The apps domain (`CONTAINERS_PUBLIC_BASE_DOMAIN`) is a separate
+  // knob and is left untouched.
   const agentBaseDomainOverride =
     process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN ?? "https://";
   const testModeVars = isE2eTestMode

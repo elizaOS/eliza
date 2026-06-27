@@ -51,7 +51,12 @@ export interface Job {
 }
 
 export type ContainerStatus =
-  "pending" | "running" | "restarting" | "deleting" | "deleted" | "error";
+  | "pending"
+  | "running"
+  | "restarting"
+  | "deleting"
+  | "deleted"
+  | "error";
 
 export interface Container {
   id: string;
@@ -103,12 +108,16 @@ export interface ImportedMessage {
   timestamp?: number;
 }
 
-/** Outcome of importing a transcript into a dedicated agent's conversation. */
+/**
+ * Outcome of importing a transcript into a dedicated agent's conversation.
+ * Byte-matches the real agent route's `POST /api/conversations/:id/import`:
+ * `alreadyPopulated` is present (and `true`) only on the idempotent skip path.
+ */
 export interface ConversationImportResult {
   conversationId: string;
   inserted: number;
   skipped: number;
-  alreadyPopulated: boolean;
+  alreadyPopulated?: boolean;
 }
 
 export class ControlPlaneStore {
@@ -342,7 +351,6 @@ export class ControlPlaneStore {
       conversationId,
       inserted: messages.length,
       skipped: 0,
-      alreadyPopulated: false,
     };
   }
 
