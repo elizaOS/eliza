@@ -987,6 +987,12 @@ declare module "./client-base" {
       agentName: string;
       agentConfig?: Record<string, unknown>;
       environmentVars?: Record<string, string>;
+      /**
+       * Phase-0 tier flip. When true, omit `alwaysOn` so the backend derives a
+       * SHARED (container-free, instant) agent instead of a DEDICATED always-on
+       * one. Default (undefined/false) keeps the dedicated request unchanged.
+       */
+      preferSharedTier?: boolean;
     }): Promise<{
       success: boolean;
       data: {
@@ -1230,6 +1236,12 @@ declare module "./client-base" {
       preferAgentId?: string | null;
       /** Skip reuse and always create a new agent (explicit "Create new"). */
       forceCreate?: boolean;
+      /**
+       * Phase-0 tier flip. When true, a freshly created agent is requested as
+       * SHARED (instant, container-free) instead of DEDICATED always-on. Only
+       * affects the create branch; reuse of an existing agent is unaffected.
+       */
+      preferSharedTier?: boolean;
       onProgress?: (status: string, detail?: string) => void;
     }): Promise<{
       agentId: string;
@@ -1582,6 +1594,12 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   this: ElizaClient,
   opts,
 ) {
+  // Phase-0 tier flip. The backend derives `execution_tier` from the request:
+  // `alwaysOn: true` → DEDICATED always-on container; omitting it (for a plain
+  // chat agent) → SHARED, container-free, instant. Default is dedicated — only
+  // the demo flag drops `alwaysOn` to request shared. `tierFields` is spread
+  // into both create bodies so the dedicated path stays byte-identical to before.
+  const tierFields = opts.preferSharedTier ? {} : { alwaysOn: true };
   const direct = await directCloudRequest<{
     success: boolean;
     data: unknown;
@@ -1594,7 +1612,9 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       // the full experience, and the paid tier. New users have the signup credit
       // grant so they get a real agent; out-of-credit users get the cloud's
       // 402 add-credits prompt (the monetization path) rather than a shared agent.
-      alwaysOn: true,
+      // (With the Phase-0 shared-tier flag on, `alwaysOn` is dropped so the
+      // backend derives a SHARED agent instead — see tierFields above.)
+      ...tierFields,
       ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
       ...(opts.environmentVars
         ? { environmentVars: opts.environmentVars }
@@ -1640,7 +1660,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       body: JSON.stringify({
         agentName: opts.agentName,
         // Dedicated (own-container, always-on) agent — see the direct-path note.
-        alwaysOn: true,
+        // The Phase-0 shared-tier flag drops `alwaysOn` here too (tierFields).
+        ...tierFields,
         ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
         ...(opts.environmentVars
           ? { environmentVars: opts.environmentVars }
@@ -2822,8 +2843,15 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   this: ElizaClient,
   options,
 ) {
-  const { cloudApiBase, authToken, name, bio, preferAgentId, forceCreate } =
-    options;
+  const {
+    cloudApiBase,
+    authToken,
+    name,
+    bio,
+    preferAgentId,
+    forceCreate,
+    preferSharedTier,
+  } = options;
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   // Ensure the direct-cloud requests below authenticate even on a cold boot,
@@ -2889,6 +2917,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const created = await this.createCloudCompatAgent({
     agentName: name,
     ...(bio?.length ? { agentConfig: { bio } } : {}),
+    ...(preferSharedTier ? { preferSharedTier: true } : {}),
   });
   if (!created.success || !created.data.agentId) {
     throw new Error(created.data.message || "Failed to create cloud agent");

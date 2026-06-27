@@ -750,6 +750,12 @@ export function useFirstRunController(): FirstRunController {
         bio,
         ...(opts.preferAgentId ? { preferAgentId: opts.preferAgentId } : {}),
         ...(opts.forceCreate ? { forceCreate: true } : {}),
+        // Phase-0 MVP: when the boot-config flag is on, request a SHARED
+        // (instant, container-free) agent on create instead of a dedicated
+        // always-on container. Default off → unchanged dedicated behavior.
+        ...(getBootConfig().preferSharedCloudTier
+          ? { preferSharedTier: true }
+          : {}),
         onProgress: (status, detail) => setBusyText(detail ?? status),
       });
       const cloudAgentApiBase = selectedAgent.apiBase;

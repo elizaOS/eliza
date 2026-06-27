@@ -297,6 +297,16 @@ export interface AppBootConfig {
   shortcutFlags?: {
     naturalLanguage?: boolean;
   };
+  /**
+   * Phase-0 cloud tier flip (MVP). When true, the first-run cloud-create path
+   * requests a SHARED (container-free, in-Worker) agent so the user chats
+   * instantly with no provisioning wait, instead of the default DEDICATED
+   * always-on container. Off by default: the seamless shared→dedicated handoff
+   * is not built yet, so making everyone shared would strand them there — this
+   * flag is for the instant-shared demo only. When false the create request is
+   * byte-identical to the dedicated path (sends `alwaysOn: true`).
+   */
+  preferSharedCloudTier?: boolean;
   /** Character catalog data — replaces cross-package import of catalog.json. */
   characterCatalog?: CharacterCatalogData;
   /**
