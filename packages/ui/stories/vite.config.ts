@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +10,10 @@ const repoRoot = path.resolve(here, "../../..");
 const uiSrc = path.resolve(here, "../src");
 const sharedSrc = path.resolve(here, "../../shared/src");
 const sharedAssets = path.resolve(here, "../../shared/assets");
+const cleanupHelper = path.resolve(
+  repoRoot,
+  "packages/scripts/rm-path-recursive.mjs",
+);
 const coreBrowserShim = path.resolve(here, "src/eliza-core-browser-shim.ts");
 const fastRedactShim = path.resolve(here, "src/fast-redact-browser-shim.ts");
 const nodeBuiltinsShim = path.resolve(
@@ -50,7 +55,10 @@ function brandAssetsPlugin(): Plugin {
     },
     closeBundle() {
       const dest = path.resolve(here, "dist/brand");
-      fs.rmSync(dest, { recursive: true, force: true });
+      execFileSync("node", [cleanupHelper, dest], {
+        cwd: repoRoot,
+        stdio: "inherit",
+      });
       fs.cpSync(sharedAssets, dest, { recursive: true });
     },
   };
