@@ -1,3 +1,5 @@
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+
 export type FeatureFlag =
   | "mcp"
   | "containers"
@@ -47,16 +49,42 @@ export const FEATURE_FLAGS: FeatureFlagsMap = {
   },
 } as const;
 
+function parseFlagList(raw: string | undefined): Set<string> {
+  if (!raw) {
+    return new Set();
+  }
+  return new Set(
+    raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Resolve a flag, letting runtime env override the compiled default so a
+ * feature can be killed (or force-enabled) mid-incident without a deploy:
+ *   FEATURE_FLAGS_DISABLED="mcp,billing"  -> force off (kill switch)
+ *   FEATURE_FLAGS_ENABLED="gallery"       -> force on
+ * Disable wins over enable so the kill switch is always authoritative.
+ */
 export function isFeatureEnabled(flag: FeatureFlag): boolean {
+  const env = getCloudAwareEnv();
+  if (parseFlagList(env.FEATURE_FLAGS_DISABLED).has(flag)) {
+    return false;
+  }
+  if (parseFlagList(env.FEATURE_FLAGS_ENABLED).has(flag)) {
+    return true;
+  }
   return FEATURE_FLAGS[flag].enabled;
 }
 
 export function getEnabledFeatures(): FeatureFlag[] {
-  return (Object.keys(FEATURE_FLAGS) as FeatureFlag[]).filter((key) => FEATURE_FLAGS[key].enabled);
+  return (Object.keys(FEATURE_FLAGS) as FeatureFlag[]).filter(isFeatureEnabled);
 }
 
 export function getDisabledFeatures(): FeatureFlag[] {
-  return (Object.keys(FEATURE_FLAGS) as FeatureFlag[]).filter((key) => !FEATURE_FLAGS[key].enabled);
+  return (Object.keys(FEATURE_FLAGS) as FeatureFlag[]).filter((key) => !isFeatureEnabled(key));
 }
 
 export const FEATURE_ROUTE_MAP: Record<FeatureFlag, { frontend: string[]; api: string[] }> = {
@@ -90,7 +118,7 @@ export function isRouteEnabled(pathname: string): boolean {
   for (const [flag, routes] of Object.entries(FEATURE_ROUTE_MAP)) {
     const allRoutes = [...routes.frontend, ...routes.api];
     if (allRoutes.some((route) => pathname.startsWith(route))) {
-      if (!FEATURE_FLAGS[flag as FeatureFlag].enabled) {
+      if (!isFeatureEnabled(flag as FeatureFlag)) {
         return false;
       }
     }
