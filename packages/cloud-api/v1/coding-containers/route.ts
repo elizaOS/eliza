@@ -59,6 +59,7 @@ import {
   buildCodingContainerCreatePayload,
   buildCodingContainerSessionResponse,
   type CodingContainerCreatePayload,
+  imageRequiresDigestPin,
   isCodingContainerImageAllowed,
   type RequestCodingAgentContainerRequest,
   RequestCodingAgentContainerRequestSchema,
@@ -169,6 +170,28 @@ async function createCodingContainer(
           `To run another image, ask an operator to add its GHCR namespace to ` +
           `CODING_CONTAINER_IMAGE_ALLOWLIST.`,
         permittedImages: allowlist,
+      },
+      403,
+    );
+  }
+
+  // ── SECURITY (opt-in): digest-pin gate ───────────────────────────────
+  // When armed, an allowed image must also be pinned to a full sha256 digest
+  // so the registry cannot swap the bytes behind a mutable tag after the
+  // allowlist check passes. Default OFF (opt-in via env).
+  if (imageRequiresDigestPin(payload.image, containersEnv.requireDigestPinnedImages())) {
+    logger.warn("[CodingContainers API] image rejected: digest pin required", {
+      orgId: user.organization_id,
+      image: payload.image,
+    });
+    return c.json(
+      {
+        success: false,
+        code: "CODING_CONTAINER_IMAGE_NOT_DIGEST_PINNED",
+        error:
+          `Image '${payload.image}' must be pinned to a full sha256 digest ` +
+          `(e.g. ghcr.io/org/repo@sha256:<64 hex>). Mutable tags like ':latest' ` +
+          `are not accepted while CONTAINER_IMAGE_REQUIRE_DIGEST is enabled.`,
       },
       403,
     );
