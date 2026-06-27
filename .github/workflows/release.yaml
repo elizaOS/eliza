@@ -616,12 +616,9 @@ jobs:
           node packages/scripts/replace-workspace-versions.js
           echo "✅ Workspace references replaced"
 
-      - name: Verify reported plugin package dist tarballs
+      - name: Build and verify public package dist tarballs
         run: |
-          node packages/scripts/verify-npm-pack-dist.mjs \
-            packages/cloud-sdk \
-            plugins/plugin-x \
-            plugins/plugin-openrouter
+          node packages/scripts/verify-npm-pack-dist.mjs --all-public-dist-packages --build
 
       # Publish to NPM (only after git operations succeed)
       - name: Skip NPM publish on forks

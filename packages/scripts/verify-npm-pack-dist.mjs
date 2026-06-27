@@ -8,17 +8,30 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(dirname(scriptDir));
-const packageDirs = process.argv.slice(2);
+const args = process.argv.slice(2);
+const packageDirs = [];
+let allPublicDistPackages = false;
+let buildBeforePack = false;
 
-if (packageDirs.length === 0) {
+for (const arg of args) {
+  if (arg === "--all-public-dist-packages") {
+    allPublicDistPackages = true;
+  } else if (arg === "--build") {
+    buildBeforePack = true;
+  } else {
+    packageDirs.push(arg);
+  }
+}
+
+if (packageDirs.length === 0 && !allPublicDistPackages) {
   console.error(
-    "Usage: node packages/scripts/verify-npm-pack-dist.mjs <package-dir> [...]",
+    "Usage: node packages/scripts/verify-npm-pack-dist.mjs [--build] [--all-public-dist-packages | <package-dir> [...]]",
   );
   process.exit(1);
 }
@@ -27,10 +40,24 @@ function normalizePackagePath(value) {
   return value.replace(/^\.\//, "").replace(/\\/g, "/");
 }
 
+function isDistArtifactPath(value) {
+  const normalized = normalizePackagePath(value);
+  return normalized.startsWith("dist/") || normalized.includes("/dist/");
+}
+
+function isDistDirectoryReference(value) {
+  const normalized = normalizePackagePath(value).replace(/\/$/, "");
+  return normalized === "dist" || normalized.endsWith("/dist");
+}
+
 function collectDistReferences(value, references = new Set()) {
   if (typeof value === "string") {
     const normalized = normalizePackagePath(value);
-    if (normalized.startsWith("dist/") && !normalized.includes("*")) {
+    if (
+      isDistArtifactPath(normalized) &&
+      !isDistDirectoryReference(normalized) &&
+      !normalized.includes("*")
+    ) {
       references.add(normalized);
     }
     return references;
@@ -52,25 +79,100 @@ function collectDistReferences(value, references = new Set()) {
   return references;
 }
 
+function collectEntryPointDistReferences(pkg) {
+  return collectDistReferences({
+    main: pkg.main,
+    module: pkg.module,
+    types: pkg.types,
+    bin: pkg.bin,
+    exports: pkg.exports,
+  });
+}
+
 function expectsDist(pkg) {
-  if (
-    Array.isArray(pkg.files) &&
-    pkg.files.some((entry) => {
-      const normalized = normalizePackagePath(String(entry)).replace(/\/$/, "");
-      return normalized === "dist" || normalized.startsWith("dist/");
-    })
-  ) {
-    return true;
+  return collectEntryPointDistReferences(pkg).size > 0;
+}
+
+function expandLernaPackagePattern(pattern) {
+  if (!pattern.includes("*")) {
+    return [pattern];
   }
 
-  return (
-    collectDistReferences({
-      main: pkg.main,
-      module: pkg.module,
-      types: pkg.types,
-      exports: pkg.exports,
-    }).size > 0
-  );
+  const [baseDir, suffix = ""] = pattern.split("*");
+  const normalizedBase = baseDir.replace(/\/$/, "");
+  const absoluteBase = join(repoRoot, normalizedBase);
+  if (!existsSync(absoluteBase)) {
+    return [];
+  }
+
+  return readdirSync(absoluteBase, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) =>
+      join(normalizedBase, entry.name, suffix.replace(/^\//, "")).replace(
+        /\\/g,
+        "/",
+      ),
+    );
+}
+
+function isTrackedPackageManifest(packageJsonPath) {
+  try {
+    execFileSync(
+      "git",
+      ["ls-files", "--error-unmatch", relative(repoRoot, packageJsonPath)],
+      {
+        cwd: repoRoot,
+        stdio: "ignore",
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function discoverPublicPackageDirs() {
+  const lerna = JSON.parse(readFileSync(join(repoRoot, "lerna.json"), "utf8"));
+  const dirs = new Set();
+
+  for (const pattern of lerna.packages ?? []) {
+    for (const packageDir of expandLernaPackagePattern(pattern)) {
+      const packageJsonPath = join(repoRoot, packageDir, "package.json");
+      if (!existsSync(packageJsonPath)) {
+        continue;
+      }
+      if (!isTrackedPackageManifest(packageJsonPath)) {
+        continue;
+      }
+
+      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+      if (pkg.private === true) {
+        continue;
+      }
+
+      dirs.add(packageDir);
+    }
+  }
+
+  return [...dirs].sort();
+}
+
+function readPackageInfo(packageDir) {
+  const absoluteDir = join(repoRoot, packageDir);
+  const packageJsonPath = join(absoluteDir, "package.json");
+  if (!existsSync(packageJsonPath)) {
+    throw new Error(
+      `Missing package.json: ${relative(repoRoot, packageJsonPath)}`,
+    );
+  }
+
+  const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+  return {
+    absoluteDir,
+    packageDir,
+    pkg,
+    expectsDist: expectsDist(pkg),
+  };
 }
 
 function parsePackJson(output) {
@@ -86,21 +188,55 @@ function parsePackJson(output) {
   }
 }
 
+if (allPublicDistPackages) {
+  for (const packageDir of discoverPublicPackageDirs()) {
+    if (!packageDirs.includes(packageDir)) {
+      packageDirs.push(packageDir);
+    }
+  }
+}
+
+const packageInfos = [];
 let failed = false;
 
 for (const packageDir of packageDirs) {
-  const absoluteDir = join(repoRoot, packageDir);
-  const packageJsonPath = join(absoluteDir, "package.json");
-  if (!existsSync(packageJsonPath)) {
-    console.error(
-      `Missing package.json: ${relative(repoRoot, packageJsonPath)}`,
-    );
+  try {
+    packageInfos.push(readPackageInfo(packageDir));
+  } catch (error) {
+    console.error(error.message);
     failed = true;
-    continue;
   }
+}
 
-  const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-  if (!expectsDist(pkg)) {
+if (failed) {
+  process.exit(1);
+}
+
+const distPackageInfos = packageInfos.filter((info) => info.expectsDist);
+
+if (buildBeforePack && distPackageInfos.length > 0) {
+  const buildFilters = distPackageInfos
+    .filter((info) => info.pkg.scripts?.build)
+    .map((info) => `--filter=${info.pkg.name}`);
+
+  if (buildFilters.length > 0) {
+    console.log(
+      `Building ${buildFilters.length} package(s) before npm pack verification...`,
+    );
+    execFileSync(
+      "bunx",
+      ["turbo", "run", "build", "--continue", ...buildFilters],
+      {
+        cwd: repoRoot,
+        stdio: "inherit",
+      },
+    );
+  }
+}
+
+for (const info of packageInfos) {
+  const { absoluteDir, packageDir, pkg } = info;
+  if (!info.expectsDist) {
     console.log(
       `skip ${pkg.name ?? packageDir}: package does not declare dist`,
     );
@@ -119,8 +255,8 @@ for (const packageDir of packageDirs) {
   const files = new Set(
     (pack[0]?.files ?? []).map((file) => normalizePackagePath(file.path)),
   );
-  const hasDist = [...files].some((file) => file.startsWith("dist/"));
-  const missingReferences = [...collectDistReferences(pkg)].filter(
+  const hasDist = [...files].some((file) => isDistArtifactPath(file));
+  const missingReferences = [...collectEntryPointDistReferences(pkg)].filter(
     (file) => !files.has(file),
   );
 

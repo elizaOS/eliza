@@ -11,16 +11,8 @@ await build({
   external: ["@elizaos/core", "@slack/bolt", "@slack/web-api", "zod"],
 });
 
-// Generate type declarations
 const proc = Bun.spawn(
-  [
-    "bunx",
-    "tsc",
-    "--emitDeclarationOnly",
-    "--noCheck",
-    "--declaration",
-    "--declarationMap",
-  ],
+  ["bunx", "tsc", "-p", "tsconfig.build.json", "--noCheck"],
   {
     cwd: import.meta.dir,
     stdout: "inherit",
@@ -28,6 +20,10 @@ const proc = Bun.spawn(
   },
 );
 
-await proc.exited;
+const exitCode = await proc.exited;
+if (exitCode !== 0) {
+  console.error("TypeScript declaration generation failed");
+  process.exit(exitCode);
+}
 
 console.log("Build complete!");
