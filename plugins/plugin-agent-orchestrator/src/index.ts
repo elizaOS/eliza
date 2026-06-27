@@ -1574,9 +1574,21 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // on every backend (codex/opencode/claude). emitProgress ignores the
         // empty rawText for the ack first-post and the firstPostInFlight +
         // mainMessageId guards keep it to exactly one ack.
+        // A verification-retry re-dispatch (buildVerifyRetryCount > 0, set by
+        // SubAgentRouter.retryIncompleteBuild) is an INTERNAL continuation of the
+        // same user request, spawned under a fresh sessionId minutes later. The
+        // per-session ackedSessions/firstPostInFlight guards never see it, and the
+        // per-room ack dedup window (60s) has long expired — so without this gate
+        // each retry posts another "working on it now." (the triple-ack users
+        // reported). The original user-requested session has no
+        // buildVerifyRetryCount, so it still acks exactly once.
+        const isVerifyRetrySpawn =
+          typeof meta.buildVerifyRetryCount === "number" &&
+          meta.buildVerifyRetryCount > 0;
         if (
           progressPolicy.mode === "ack" &&
           !ackedSessions.has(sessionId) &&
+          !isVerifyRetrySpawn &&
           evName !== "task_complete" &&
           evName !== "turn_complete" &&
           evName !== "stopped" &&

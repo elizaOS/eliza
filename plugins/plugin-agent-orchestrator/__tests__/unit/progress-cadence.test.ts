@@ -382,6 +382,37 @@ describe("emitProgress routing ladder + cadence", () => {
     await rt.dispose();
   });
 
+  it("ack mode does NOT re-ack a verify-retry re-dispatch, even past the room dedup window", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    // The original user-requested session acks exactly once.
+    seedSession(rt, "s-orig", "build-site");
+    await fire(rt, "s-orig", "ready");
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    // SubAgentRouter.retryIncompleteBuild re-dispatches a failed build under a
+    // FRESH sessionId minutes later, tagging it `buildVerifyRetryCount > 0`. By
+    // then the per-room ack dedup window (ACK_ROOM_DEDUP_MS, 60s) has expired, so
+    // without the buildVerifyRetryCount guard the retry posts another
+    // "working on it now." — the triple-ack users reported. Advance well past the
+    // dedup window so this asserts the guard, not the room-dedup.
+    await vi.advanceTimersByTimeAsync(120_000);
+    rt.sessions.set("s-retry", {
+      status: "running",
+      metadata: {
+        source: SOURCE,
+        roomId: ROOM,
+        label: "build-site",
+        buildVerifyRetryCount: 1,
+      },
+    });
+    await fire(rt, "s-retry", "ready");
+    // Still exactly ONE ack for the whole user request.
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    await rt.dispose();
+  });
+
   it("threaded mode creates exactly one thread per label and routes narration into it", async () => {
     process.env.ACPX_PROGRESS_MODE = "threaded";
     process.env.ACPX_PROGRESS_DELAY_MS = "0";
