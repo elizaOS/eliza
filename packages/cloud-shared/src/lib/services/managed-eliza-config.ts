@@ -3,6 +3,7 @@ import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
+import { findReservedEnvKeys, RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
 
 const DEFAULT_ELIZA_APP_URL = "https://eliza.app";
 const DEFAULT_CLOUD_PUBLIC_URL = "https://www.elizacloud.ai";
@@ -12,21 +13,13 @@ const DEV_ELIZA_APP_ORIGINS = [
   "http://localhost:4173",
   "http://127.0.0.1:4173",
 ] as const;
-export const RESERVED_MANAGED_ELIZA_ENV_KEYS = [
-  "DATABASE_URL",
-  "ELIZA_MANAGED_DATABASE_URL",
-  "ELIZA_API_TOKEN",
-  "ELIZAOS_CLOUD_API_KEY",
-  "ELIZAOS_CLOUD_BASE_URL",
-  "ELIZAOS_CLOUD_ENABLED",
-  "ELIZA_CLOUD_AGENT_ID",
-  "PUBLIC_BASE_URL",
-  "STEWARD_AGENT_ID",
-  "STEWARD_AGENT_TOKEN",
-  "WAIFU_ELIZA_CLOUD_AGENT_ID",
-] as const;
-
-const RESERVED_MANAGED_ELIZA_ENV_KEY_SET = new Set<string>(RESERVED_MANAGED_ELIZA_ENV_KEYS);
+/**
+ * Platform-reserved env keys for the managed agent path. Aliases the shared
+ * {@link RESERVED_PLATFORM_ENV_KEYS} denylist — single source of truth, also
+ * enforced on the Apps deploy path — and stays a named export for existing
+ * importers (the agent environment route).
+ */
+export const RESERVED_MANAGED_ELIZA_ENV_KEYS = RESERVED_PLATFORM_ENV_KEYS;
 
 export interface ManagedElizaEnvironmentResult {
   apiToken: string;
@@ -49,14 +42,7 @@ export interface PrepareManagedElizaSharedEnvironmentParams {
 }
 
 export function findReservedManagedElizaEnvKeys(keys: Iterable<string>): string[] {
-  const reserved: string[] = [];
-  for (const key of keys) {
-    const normalized = key.toUpperCase();
-    if (RESERVED_MANAGED_ELIZA_ENV_KEY_SET.has(normalized)) {
-      reserved.push(key);
-    }
-  }
-  return reserved;
+  return findReservedEnvKeys(keys);
 }
 
 export function normalizeBaseUrl(raw: string): string {
