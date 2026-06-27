@@ -43,10 +43,18 @@ export async function loadRendererBuildStamp(): Promise<RendererBuildStamp | nul
     return null;
   }
   try {
-    // Resolve against the document base so it works on web, Capacitor
-    // (https://localhost/ via the configured scheme), and Electrobun static
-    // hosting alike.
-    const url = new URL(MANIFEST_FILENAME, document.baseURI).toString();
+    // The manifest is emitted at the web root. On the absolute-base web build
+    // (ELIZA_WEB_ABSOLUTE_BASE=1 → Vite base "/"), `document.baseURI` points at
+    // the current deep SPA route (e.g. /auth/cli-login), so resolving against it
+    // would fetch /auth/eliza-renderer-build.json (404). Resolve from the origin
+    // root there. Native / relative-base builds (Capacitor https://localhost,
+    // Electrobun static hosting) keep resolving against the document base, where
+    // the document already lives at the root — so their behavior is unchanged.
+    const base = import.meta.env?.BASE_URL ?? "./";
+    const url =
+      base === "/"
+        ? new URL(MANIFEST_FILENAME, window.location.origin).toString()
+        : new URL(MANIFEST_FILENAME, document.baseURI).toString();
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
       window.__ELIZA_RENDERER_BUILD__ = null;
