@@ -12,6 +12,10 @@ import { run } from "./script-utils.mjs";
 // Documented in README.md. Hosts beyond this list require runtime opt-in
 // through chrome.permissions.request against `optional_host_permissions`.
 export const BROWSER_BRIDGE_HOST_ALLOWLIST = [
+  // Local Eliza agent API. Chrome match patterns do not encode the port,
+  // so these cover 127.0.0.1:31337 plus smoke-test/random dev ports.
+  "http://127.0.0.1/*",
+  "http://localhost/*",
   "https://eliza.how/*",
   "https://*.eliza.how/*",
   "https://eliza.dev/*",
