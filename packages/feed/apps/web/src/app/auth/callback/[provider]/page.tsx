@@ -24,7 +24,8 @@ function isFeedOAuthProvider(value: string): value is FeedStewardOAuthProvider {
  * OAuth callback page for Steward OAuth providers (Google, Discord, Twitter/X).
  *
  * PKCE code flow (current):
- *   ?code=<nonce>  → POST /api/auth/steward/oauth/exchange → session cookies
+ *   #code=<nonce>  → POST /api/auth/steward/oauth/exchange → session cookies
+ *   (Steward returns the code in the URL fragment, not the query string.)
  *
  * Legacy token-in-URL flow (backward compat during rollout):
  *   ?token=<jwt>&refresh_token=<rt>
@@ -45,11 +46,18 @@ export default function OAuthCallbackPage() {
       return;
     }
 
-    const searchParams = new URLSearchParams(window.location.search);
-    const error = searchParams.get("error");
-    const code = searchParams.get("code");
-    const token = searchParams.get("token");
-    const refreshToken = searchParams.get("refresh_token") ?? undefined;
+    // Steward's PKCE flow returns the one-time code in the URL *fragment*
+    // (`#code=…&state=…`) — deliberately, so it stays out of server logs /
+    // Referer / browser history. Read the fragment first, then fall back to the
+    // query string for the legacy token-in-URL flow (`?token=…`).
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const queryParams = new URLSearchParams(window.location.search);
+    const pick = (key: string): string | null =>
+      hashParams.get(key) ?? queryParams.get(key);
+    const error = pick("error");
+    const code = pick("code");
+    const token = pick("token");
+    const refreshToken = pick("refresh_token") ?? undefined;
 
     window.history.replaceState(null, "", window.location.pathname);
 
