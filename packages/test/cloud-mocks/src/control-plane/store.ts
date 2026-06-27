@@ -51,12 +51,7 @@ export interface Job {
 }
 
 export type ContainerStatus =
-  | "pending"
-  | "running"
-  | "restarting"
-  | "deleting"
-  | "deleted"
-  | "error";
+  "pending" | "running" | "restarting" | "deleting" | "deleted" | "error";
 
 export interface Container {
   id: string;
@@ -101,12 +96,33 @@ export interface WarmPoolState {
   totalSandboxes: number;
 }
 
+/** A single message imported into a dedicated agent's conversation. */
+export interface ImportedMessage {
+  role: "user" | "assistant";
+  text: string;
+  timestamp?: number;
+}
+
+/** Outcome of importing a transcript into a dedicated agent's conversation. */
+export interface ConversationImportResult {
+  conversationId: string;
+  inserted: number;
+  skipped: number;
+  alreadyPopulated: boolean;
+}
+
 export class ControlPlaneStore {
   private readonly jobs = new Map<string, Job>();
   private readonly sandboxes = new Map<string, Sandbox>();
   private readonly containers = new Map<string, Container>();
   private readonly warmPool = new Map<string, WarmSandbox>();
   private readonly cronCounters = new Map<string, number>();
+  /**
+   * Per-(sandbox,conversation) message store backing the dedicated-agent
+   * conversation import/read routes — the mock stand-in for a real container's
+   * PGlite memories. Keyed `${sandboxId}::${conversationId}`.
+   */
+  private readonly conversations = new Map<string, ImportedMessage[]>();
   private hotPoolTarget = 0;
   private warmPoolState: WarmPoolState = {
     enabled: true,
@@ -292,6 +308,68 @@ export class ControlPlaneStore {
     const next: Sandbox = { ...existing, ...patch, id, updatedAt: this.now() };
     this.sandboxes.set(id, next);
     return next;
+  }
+
+  // ── Dedicated-agent conversation store (handoff import target) ─────────
+  private convKey(sandboxId: string, conversationId: string): string {
+    return `${sandboxId}::${conversationId}`;
+  }
+
+  /**
+   * Silently bulk-insert a transcript into a dedicated agent's conversation —
+   * the mock counterpart of the agent's `POST /api/conversations/:id/import`
+   * (no inference). Idempotent per conversation: importing into an already
+   * populated conversation inserts nothing and reports `alreadyPopulated`,
+   * matching the real skip-all behaviour.
+   */
+  importConversation(
+    sandboxId: string,
+    conversationId: string,
+    messages: ImportedMessage[],
+  ): ConversationImportResult {
+    const key = this.convKey(sandboxId, conversationId);
+    const existing = this.conversations.get(key);
+    if (existing && existing.length > 0) {
+      return {
+        conversationId,
+        inserted: 0,
+        skipped: messages.length,
+        alreadyPopulated: true,
+      };
+    }
+    this.conversations.set(key, [...messages]);
+    return {
+      conversationId,
+      inserted: messages.length,
+      skipped: 0,
+      alreadyPopulated: false,
+    };
+  }
+
+  /** Read back a dedicated agent's imported conversation transcript. */
+  getConversation(
+    sandboxId: string,
+    conversationId: string,
+  ): ImportedMessage[] {
+    return (
+      this.conversations.get(this.convKey(sandboxId, conversationId)) ?? []
+    );
+  }
+
+  /**
+   * Read back an imported transcript by the cloud `agentId` rather than the
+   * internal sandbox id (the import routes key on the sandbox id from the
+   * advertised bridge_url; callers that only know the agent id use this).
+   */
+  getConversationByAgent(
+    agentId: string,
+    conversationId: string,
+  ): ImportedMessage[] {
+    const sandbox = [...this.sandboxes.values()].find(
+      (s) => s.agentId === agentId,
+    );
+    if (!sandbox) return [];
+    return this.getConversation(sandbox.id, conversationId);
   }
 
   createJob(input: {

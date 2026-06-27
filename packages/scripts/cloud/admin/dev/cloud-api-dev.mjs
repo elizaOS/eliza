@@ -216,6 +216,18 @@ async function main() {
   // domain buy/check routes never hit the real Cloudflare API (overridable via
   // ELIZA_CF_REGISTRAR_DEV_STUB).
   const registrarStub = process.env.ELIZA_CF_REGISTRAR_DEV_STUB ?? "1";
+  // In e2e/test mode, neutralize the dedicated-agent public subdomain. The agent
+  // detail route synthesizes `web_ui_url = https://<id>.<ELIZA_CLOUD_AGENT_BASE_DOMAIN>`
+  // (wrangler.toml pins `elizacloud.ai`), and the client's readiness probe prefers
+  // that web_ui_url over the agent's `bridge_url`. There is no Worker-fronted
+  // `*.elizacloud.ai` ingress in the local mock stack, so that subdomain is
+  // unreachable — the dedicated agent's reachable base IS its `bridge_url` (the
+  // control-plane mock). A base domain that normalizes to empty makes
+  // `getElizaAgentPublicWebUiUrl` return null, so the reachable bridge wins and
+  // the shared→dedicated handoff import can complete. The apps domain
+  // (`CONTAINERS_PUBLIC_BASE_DOMAIN`) is a separate knob and is left untouched.
+  const agentBaseDomainOverride =
+    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN ?? "https://";
   const testModeVars = isE2eTestMode
     ? [
         "--var",
@@ -224,6 +236,8 @@ async function main() {
         "ELIZA_KMS_BACKEND:memory",
         "--var",
         `ELIZA_CF_REGISTRAR_DEV_STUB:${registrarStub}`,
+        "--var",
+        `ELIZA_CLOUD_AGENT_BASE_DOMAIN:${agentBaseDomainOverride}`,
       ]
     : [];
   const appDeployDevVars = [
