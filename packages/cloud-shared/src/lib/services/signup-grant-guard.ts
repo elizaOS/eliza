@@ -44,11 +44,14 @@ export async function signupGrantAllowedForIp(ip: string | undefined): Promise<b
 
   const granted = Number((result.rows[0] as { count: string } | undefined)?.count ?? 0);
   if (granted >= FREE_GRANT_IP_LIMITS.MAX_FREE_GRANTS_PER_IP_DAILY) {
-    logger.warn("[SignupGrantGuard] Per-IP daily free-grant cap reached; withholding welcome bonus", {
-      ip: maskIp(ip),
-      granted,
-      cap: FREE_GRANT_IP_LIMITS.MAX_FREE_GRANTS_PER_IP_DAILY,
-    });
+    logger.warn(
+      "[SignupGrantGuard] Per-IP daily free-grant cap reached; withholding welcome bonus",
+      {
+        ip: maskIp(ip),
+        granted,
+        cap: FREE_GRANT_IP_LIMITS.MAX_FREE_GRANTS_PER_IP_DAILY,
+      },
+    );
     return false;
   }
   return true;
