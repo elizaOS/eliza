@@ -10,7 +10,6 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  rm,
   writeFile,
 } from "node:fs/promises";
 import {
@@ -139,12 +138,37 @@ function markStateDirOwnedByStack(stateDir: string): void {
   ownedStateDirs.add(stateDir);
 }
 
+async function removePathRecursive(targetPath: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, [CLEANUP_HELPER_SCRIPT, targetPath], {
+      cwd: REPO_ROOT,
+      stdio: "inherit",
+    });
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        reject(new Error(`rm-path-recursive exited due to signal ${signal}`));
+        return;
+      }
+      if ((code ?? 1) !== 0) {
+        reject(
+          new Error(
+            `rm-path-recursive failed for ${targetPath} with status ${
+              code ?? 1
+            }`,
+          ),
+        );
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 async function cleanupPendingStateDirs(): Promise<void> {
   const stateDirs = Array.from(pendingStateDirs);
   pendingStateDirs.clear();
-  await Promise.all(
-    stateDirs.map((stateDir) => rm(stateDir, { force: true, recursive: true })),
-  );
+  await Promise.all(stateDirs.map(removePathRecursive));
 }
 
 function cleanupKnownStateDirsSync(): void {
@@ -694,7 +718,7 @@ async function ensureUiDistReady(): Promise<void> {
     return;
   }
 
-  await rm(path.join(APP_DIR, ".vite"), { force: true, recursive: true });
+  await removePathRecursive(path.join(APP_DIR, ".vite"));
 
   const logs: string[] = [];
   const child = spawn(resolveBunCommand(), ["run", "build:web"], {
@@ -931,7 +955,7 @@ async function startStubStack(): Promise<StartedStack> {
   } catch (error) {
     await closeUiServer(uiServer);
     await stopApiChild(apiChild);
-    await rm(stateDir, { force: true, recursive: true });
+    await removePathRecursive(stateDir);
     pendingStateDirs.delete(stateDir);
     throw error;
   }
@@ -1046,7 +1070,7 @@ async function startRealStack(): Promise<StartedStack> {
   } catch (error) {
     await closeUiServer(uiServer);
     await stopApiChild(apiChild);
-    await rm(stateDir, { force: true, recursive: true });
+    await removePathRecursive(stateDir);
     pendingStateDirs.delete(stateDir);
     throw error;
   }
@@ -1060,7 +1084,7 @@ async function stopRealStack(stack: StartedStack | null): Promise<void> {
   await closeUiServer(stack.uiServer);
   await stopApiChild(stack.apiChild);
 
-  await rm(stack.stateDir, { force: true, recursive: true });
+  await removePathRecursive(stack.stateDir);
   ownedStateDirs.delete(stack.stateDir);
 }
 
