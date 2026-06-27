@@ -103,7 +103,7 @@ describe("handleCloudBillingRoute money proxies", () => {
       expect(response.headers.get("PAYMENT-REQUIRED")).toBe("encoded-payment-required");
       expect(upstreamRequest).toEqual({
         method: "POST",
-        url: "https://www.elizacloud.ai/api/v1/x402/requests",
+        url: "https://elizacloud.ai/api/v1/x402/requests",
         authorization: "Bearer eliza_test_key",
         body: {
           amountUsd: 5,
