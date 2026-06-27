@@ -21,9 +21,11 @@
  *   - libelizainference voice ABI symbols resolve, unless explicitly disabled
  *     with --skip-voice-abi for diagnosis.
  *
- * No model weights are bundled here, so this does not claim text/voice
- * numerical generation. It is the device-runtime gate that must pass before a
- * real Eliza-1 bundle smoke can run.
+ * No model weights are bundled by default. When --benchmark-model is supplied,
+ * the smoke also bundles that GGUF and records real physical-device text
+ * throughput plus memory/thermal telemetry for CPU and Metal. Voice and
+ * first-audio latency remain out of scope until the mobile voice runtime is
+ * wired to real OmniVoice assets instead of the current fail-closed ABI shim.
  */
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
