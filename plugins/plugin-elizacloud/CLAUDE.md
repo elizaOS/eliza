@@ -200,7 +200,7 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 
 | Var | Default |
 |---|---|
-| `ELIZAOS_CLOUD_BASE_URL` | `https://www.elizacloud.ai/api/v1` |
+| `ELIZAOS_CLOUD_BASE_URL` | `https://elizacloud.ai/api/v1` |
 | `ELIZAOS_CLOUD_ENABLED` | `false` — when true, enables container provisioning, device auth, bridge, and backup services |
 | `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` | `false` |
 | `ELIZAOS_CLOUD_APP_VERSION` | `2.0.0-beta.0` |
