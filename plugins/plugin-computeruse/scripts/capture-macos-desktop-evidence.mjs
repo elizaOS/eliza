@@ -383,10 +383,33 @@ async function runTextEditInputCheck(service, displays) {
     }
 
     await new Promise((resolve) => setTimeout(resolve, 300));
-    const text = runText("osascript", [
-      "-e",
-      'tell application "TextEdit" to get text of front document',
-    ]);
+    // Read the typed text back from the accessibility tree (`value` of the text
+    // area) rather than `tell application "TextEdit" to get text of front
+    // document`: directly after synthetic keyboard input TextEdit's Apple Event
+    // dispatch is briefly blocked and that document read hangs to its timeout,
+    // whereas the AX value — exactly what a computer-use agent observes on
+    // screen — is available immediately. The document read is kept as a fallback
+    // for macOS builds whose TextEdit AX hierarchy differs.
+    let text = "";
+    try {
+      text = runText(
+        "osascript",
+        [
+          "-e",
+          'tell application "System Events" to tell process "TextEdit" to return value of text area 1 of scroll area 1 of front window',
+        ],
+        { timeout: 15_000 },
+      );
+    } catch {
+      text = "";
+    }
+    if (!text.includes(token)) {
+      text = runText(
+        "osascript",
+        ["-e", 'tell application "TextEdit" to get text of front document'],
+        { timeout: 30_000 },
+      );
+    }
     if (!text.includes(token)) {
       throw new Error(`TextEdit document did not contain typed token ${token}`);
     }
@@ -397,7 +420,7 @@ async function runTextEditInputCheck(service, displays) {
         `mouse_move succeeded at ${coordinate.join(",")} on display ${display.id}`,
         "click succeeded on a controlled TextEdit document",
         "key_combo cmd+a succeeded in the controlled text field",
-        `type wrote and verified token ${token}`,
+        `type wrote and verified marker ${token}`,
         "post-action screenshots were requested by service configuration",
       ],
       details: {
@@ -405,19 +428,28 @@ async function runTextEditInputCheck(service, displays) {
         bounds,
         coordinate,
         displayId: display.id,
-        token,
+        marker: token,
       },
     };
   } finally {
     if (createdDocument) {
-      try {
-        runText("osascript", [
-          "-e",
-          'tell application "TextEdit" to close front document saving no',
-        ]);
-      } catch {
-        // Best effort cleanup: the evidence report captures any actual failure
-        // before this point.
+      // The close Apple Event is blocked by the same transient post-input state
+      // as the read above; retry with a short delay so the document still closes
+      // and runs don't accumulate stale windows (which slow TextEdit further).
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          runText(
+            "osascript",
+            [
+              "-e",
+              'tell application "TextEdit" to close front document saving no',
+            ],
+            { timeout: 20_000 },
+          );
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       }
     }
     if (previousWindow?.id) {
@@ -899,12 +931,12 @@ async function main() {
       return {
         status: "passed",
         requiredEvidence: [
-          `pbcopy wrote test token ${token}`,
-          "pbpaste read the same test token",
+          `pbcopy wrote test marker ${token}`,
+          "pbpaste read the same test marker",
           "large payload cap and command failures remain covered by unit tests",
         ],
         details: {
-          token,
+          marker: token,
           restoredOriginalClipboard: true,
         },
       };

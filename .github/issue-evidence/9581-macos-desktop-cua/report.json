@@ -1,9 +1,9 @@
 {
   "issue": 9581,
-  "generatedAt": "2026-06-25T06:22:49.821Z",
-  "gitHead": "028afc134c",
+  "generatedAt": "2026-06-26T22:47:17.507Z",
+  "gitHead": "08255e4731",
   "host": {
-    "hostname": "[redacted]",
+    "hostname": "Shaws-MacBook-Pro.local",
     "machineModel": "Mac16,5",
     "macosVersion": "26.2",
     "buildId": "25C56",
@@ -12,14 +12,14 @@
     "arch": "arm64"
   },
   "options": {
-    "outDir": ".github/issue-evidence/9581-macos-desktop-cua",
+    "outDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.github/issue-evidence/9581-macos-desktop-cua",
     "skipBrowser": false,
     "skipInput": false
   },
   "manifest": {
     "schemaVersion": 1,
     "platform": "macos-desktop",
-    "status": "requires_device_evidence",
+    "status": "passed",
     "target": {
       "minimumMacos": "macOS 13 or newer",
       "requiredPermissions": [
@@ -32,8 +32,8 @@
       "machineModel": "Mac16,5",
       "macosVersion": "26.2",
       "buildId": "25C56",
-      "validatedAt": "2026-06-25T06:22:49.821Z",
-      "validator": "bun scripts/capture-macos-desktop-evidence.mjs (028afc134c)",
+      "validatedAt": "2026-06-26T22:47:17.507Z",
+      "validator": "bun scripts/capture-macos-desktop-evidence.mjs (08255e4731)",
       "artifacts": [
         ".github/issue-evidence/9581-macos-desktop-cua/screenshot-primary.png",
         ".github/issue-evidence/9581-macos-desktop-cua/browser-evidence.png",
@@ -70,7 +70,7 @@
         "method": "captureDisplay/capturePrimaryDisplay",
         "status": "passed",
         "requiredEvidence": [
-          "primary display capture returned 2745277 PNG bytes",
+          "primary display capture returned 2502814 PNG bytes",
           "captured dimensions 3456x2234 match display 0",
           "screenshot artifact .github/issue-evidence/9581-macos-desktop-cua/screenshot-primary.png"
         ]
@@ -78,25 +78,32 @@
       {
         "id": "accessibilityPermission",
         "method": "Accessibility/TCC gate",
-        "status": "requires_device_evidence",
+        "status": "passed",
         "requiredEvidence": [
-          "Accessibility-gated input/window proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
+          "granted Accessibility permission allowed TextEdit focus, window bounds, click, key_combo, and type operations",
+          "missing Accessibility permission is classified by desktop service errors when TCC blocks input or System Events access"
         ]
       },
       {
         "id": "mouseKeyboardInput",
         "method": "ComputerUseService desktop actions",
-        "status": "requires_device_evidence",
+        "status": "passed",
         "requiredEvidence": [
-          "Controlled TextEdit input proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
+          "mouse_move succeeded at 1348,581 on display 0",
+          "click succeeded on a controlled TextEdit document",
+          "key_combo cmd+a succeeded in the controlled text field",
+          "type wrote and verified marker macos-cua-1782514041177",
+          "post-action screenshots were requested by service configuration"
         ]
       },
       {
         "id": "windowListFocus",
         "method": "listWindows/focusWindow",
-        "status": "requires_device_evidence",
+        "status": "passed",
         "requiredEvidence": [
-          "windowListFocus requires rerun with macOS Accessibility permission granted: list_windows returned only placeholder window metadata."
+          "listWindows returned 15 visible window(s)",
+          "focusWindow/switchWindow succeeded for Simulator:iPhone 16 Pro",
+          "window operation errors retain permission guidance through service failure results"
         ]
       },
       {
@@ -116,8 +123,8 @@
         "method": "readClipboard/writeClipboard",
         "status": "passed",
         "requiredEvidence": [
-          "pbcopy wrote test token macos-clipboard-1782368614059",
-          "pbpaste read the same test token",
+          "pbcopy wrote test marker macos-clipboard-1782514118884",
+          "pbpaste read the same test marker",
           "large payload cap and command failures remain covered by unit tests"
         ]
       },
@@ -223,7 +230,7 @@
     "screenshotCapture": {
       "status": "passed",
       "requiredEvidence": [
-        "primary display capture returned 2745277 PNG bytes",
+        "primary display capture returned 2502814 PNG bytes",
         "captured dimensions 3456x2234 match display 0",
         "screenshot artifact .github/issue-evidence/9581-macos-desktop-cua/screenshot-primary.png"
       ],
@@ -241,12 +248,12 @@
           "name": "Color LCD"
         },
         "screenshotQuality": {
-          "byteLength": 2745277,
+          "byteLength": 2502814,
           "width": 3456,
           "height": 2234,
           "sampledPixels": 7720704,
-          "colorBuckets": 654,
-          "dominantRatio": 0.7151171706621572
+          "colorBuckets": 679,
+          "dominantRatio": 0.43209259155641766
         }
       }
     },
@@ -259,33 +266,105 @@
       ],
       "details": {
         "screenshotQuality": {
-          "byteLength": 2745277,
+          "byteLength": 2502814,
           "width": 3456,
           "height": 2234,
           "sampledPixels": 7720704,
-          "colorBuckets": 654,
-          "dominantRatio": 0.7151171706621572
+          "colorBuckets": 679,
+          "dominantRatio": 0.43209259155641766
         }
       }
     },
     "windowListFocus": {
-      "status": "requires_device_evidence",
+      "status": "passed",
       "requiredEvidence": [
-        "windowListFocus requires rerun with macOS Accessibility permission granted: list_windows returned only placeholder window metadata."
+        "listWindows returned 15 visible window(s)",
+        "focusWindow/switchWindow succeeded for Simulator:iPhone 16 Pro",
+        "window operation errors retain permission guidance through service failure results"
       ],
-      "error": "list_windows returned only placeholder window metadata; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry."
+      "details": {
+        "focusedWindow": {
+          "app": "Simulator",
+          "title": "iPhone 16 Pro",
+          "id": "iPhone 16 Pro"
+        },
+        "sampleWindows": [
+          {
+            "app": "Simulator",
+            "title": "iPhone 16 Pro",
+            "id": "iPhone 16 Pro"
+          },
+          {
+            "app": "Claude",
+            "title": "Claude",
+            "id": "Claude"
+          },
+          {
+            "app": "Google Chrome",
+            "title": "Computer Use × Vision — cross-p…) · Issue #9581 · elizaOS/eliza",
+            "id": "Computer Use × Vision — cross-p…) · Issue #9581 · elizaOS/eliza"
+          },
+          {
+            "app": "Discord",
+            "title": "🧝‍♀️ Eliza App by July 3rd 👾📱👁️🗨️ - Discord",
+            "id": "🧝‍♀️ Eliza App by July 3rd 👾📱👁️🗨️ - Discord"
+          },
+          {
+            "app": "Terminal",
+            "title": "eliza — tmux — 213×58",
+            "id": "eliza — tmux — 213×58"
+          }
+        ]
+      }
     },
     "mouseKeyboardInput": {
-      "status": "requires_device_evidence",
+      "status": "passed",
       "requiredEvidence": [
-        "Controlled TextEdit input proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
-      ]
+        "mouse_move succeeded at 1348,581 on display 0",
+        "click succeeded on a controlled TextEdit document",
+        "key_combo cmd+a succeeded in the controlled text field",
+        "type wrote and verified marker macos-cua-1782514041177",
+        "post-action screenshots were requested by service configuration"
+      ],
+      "details": {
+        "activeWindow": {
+          "id": "Untitled 53",
+          "title": "Untitled 53",
+          "app": "TextEdit"
+        },
+        "bounds": {
+          "x": 1055,
+          "y": 337,
+          "width": 586,
+          "height": 488
+        },
+        "coordinate": [
+          1348,
+          581
+        ],
+        "displayId": 0,
+        "marker": "macos-cua-1782514041177"
+      }
     },
     "accessibilityPermission": {
-      "status": "requires_device_evidence",
+      "status": "passed",
       "requiredEvidence": [
-        "Accessibility-gated input/window proof requires rerun with macOS Accessibility permission granted: could not read TextEdit bounds."
-      ]
+        "granted Accessibility permission allowed TextEdit focus, window bounds, click, key_combo, and type operations",
+        "missing Accessibility permission is classified by desktop service errors when TCC blocks input or System Events access"
+      ],
+      "details": {
+        "activeWindow": {
+          "id": "Untitled 53",
+          "title": "Untitled 53",
+          "app": "TextEdit"
+        },
+        "bounds": {
+          "x": 1055,
+          "y": 337,
+          "width": 586,
+          "height": 488
+        }
+      }
     },
     "browserAutomation": {
       "status": "passed",
@@ -314,12 +393,12 @@
     "clipboardRoundTrip": {
       "status": "passed",
       "requiredEvidence": [
-        "pbcopy wrote test token macos-clipboard-1782368614059",
-        "pbpaste read the same test token",
+        "pbcopy wrote test marker macos-clipboard-1782514118884",
+        "pbpaste read the same test marker",
         "large payload cap and command failures remain covered by unit tests"
       ],
       "details": {
-        "token": "macos-clipboard-1782368614059",
+        "marker": "macos-clipboard-1782514118884",
         "restoredOriginalClipboard": true
       }
     },
