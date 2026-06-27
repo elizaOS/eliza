@@ -70,7 +70,7 @@ mock.module("@/lib/utils/logger", () => ({
 
 const { default: app } = await import("./route");
 
-function postCodingContainer(image: string): Promise<Response> {
+async function postCodingContainer(image: string): Promise<Response> {
   return app.fetch(
     new Request("https://api.example.test/", {
       method: "POST",
