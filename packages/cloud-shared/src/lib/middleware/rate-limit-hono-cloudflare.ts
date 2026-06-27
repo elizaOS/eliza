@@ -26,13 +26,22 @@ function getRedis(env: Bindings): CompatibleRedis | null {
   return buildRedisClient(env);
 }
 
-function getIpKey(c: Context): string {
-  const ip =
+/**
+ * Resolve the client IP, preferring `cf-connecting-ip` (set by Cloudflare and
+ * not spoofable by the client) over `x-forwarded-for` so a forged XFF header
+ * cannot evade IP-keyed limits. Returns `undefined` when no IP is known.
+ */
+function getRequestIp(c: Context): string | undefined {
+  return (
     c.req.header("cf-connecting-ip") ||
     c.req.header("x-real-ip") ||
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "unknown";
-  return `ip:${ip}`;
+    undefined
+  );
+}
+
+function getIpKey(c: Context): string {
+  return `ip:${getRequestIp(c) ?? "unknown"}`;
 }
 
 function getDefaultKey(c: AppContext): string {
@@ -196,5 +205,5 @@ export const RateLimitPresets = {
   AGGRESSIVE: { windowMs: 60_000, maxRequests: 100, keyGenerator: getIpKey },
 } as const;
 
-export { getDefaultKey, getIpKey };
+export { getDefaultKey, getIpKey, getRequestIp };
 export const _multiplier = multiplier;

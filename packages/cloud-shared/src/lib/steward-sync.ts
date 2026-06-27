@@ -10,6 +10,7 @@
 
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
 import { usersRepository } from "../db/repositories/users";
+import { getClientIp } from "./runtime/request-context";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
 import { creditsService } from "./services/credits";
@@ -17,6 +18,7 @@ import { discordService } from "./services/discord";
 import { emailService } from "./services/email";
 import { invitesService } from "./services/invites";
 import { organizationsService } from "./services/organizations";
+import { signupGrantAllowedForIp } from "./services/signup-grant-guard";
 import { usersService } from "./services/users";
 import type { UserWithOrganization } from "./types";
 import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
@@ -421,10 +423,13 @@ export async function syncUserFromSteward(
     credit_balance: "0.00",
   });
 
-  // Add initial free credits
+  // Add initial free credits — withheld when this IP has already hit the daily
+  // free-grant cap (anti-sybil). Withholding is not a failure: the org is still
+  // created (at $0) and the signup proceeds.
   const initialCredits = getInitialCredits();
+  const signupIp = getClientIp();
 
-  if (initialCredits > 0) {
+  if (initialCredits > 0 && (await signupGrantAllowedForIp(signupIp))) {
     try {
       await creditsService.addCredits({
         organizationId: organization.id,
@@ -433,6 +438,7 @@ export async function syncUserFromSteward(
         metadata: {
           type: "initial_free_credits",
           source: "signup",
+          ip_address: signupIp,
         },
       });
     } catch (error) {
