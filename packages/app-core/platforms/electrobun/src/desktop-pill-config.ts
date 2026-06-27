@@ -20,7 +20,7 @@ function parseFalsy(value: string | undefined): boolean {
  *   - After  PR #8175: pill is shown (opt-out, ON by default).
  *
  * To restore the previous hidden behaviour set either:
- *   ELIZA_DESKTOP_PILL=0            (standard off)
+ *   ELIZA_DESKTOP_PILL=0            (canonical off)
  *   ELIZA_DESKTOP_DISABLE_PILL=1    (legacy kill-switch; still respected)
  */
 export function shouldCreateDesktopPill(
@@ -35,6 +35,7 @@ export function shouldCreateDesktopPill(
   }
 
   // Default on: the pill window is the primary voice surface. Users can
-  // suppress it with ELIZA_DESKTOP_PILL=0 or ELIZA_DESKTOP_DISABLE_PILL=1.
+  // suppress it with ELIZA_DESKTOP_PILL=0. ELIZA_DESKTOP_DISABLE_PILL remains
+  // supported as a legacy alias.
   return true;
 }
