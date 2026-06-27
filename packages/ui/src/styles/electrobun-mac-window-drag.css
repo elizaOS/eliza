@@ -57,6 +57,13 @@ html.eliza-electrobun-macos-titlebar [data-window-titlebar-padding] {
   );
 }
 
+html.eliza-electrobun-macos-titlebar [data-testid="ui-shell-toggle"] {
+  margin-inline-start: max(
+    env(safe-area-inset-left, 0px),
+    var(--eliza-macos-frame-left-inset)
+  );
+}
+
 html.eliza-electrobun-macos-titlebar [data-window-titlebar-banner="true"] {
   padding-inline-start: max(
     env(safe-area-inset-left, 0px),
