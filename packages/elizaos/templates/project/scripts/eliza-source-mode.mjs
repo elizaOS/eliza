@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
+const cleanupHelperPath = path.join(__dirname, "rm-path-recursive.mjs");
 
 function usage() {
   console.log(`usage:
@@ -77,6 +78,21 @@ function run(command, args, cwd, env = process.env) {
   });
 }
 
+function removePathRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [cleanupHelperPath, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `rm-path-recursive failed for ${targetPath} with status ${result.status}`,
+    );
+  }
+}
+
 async function cloneLocalElizaIfMissing(env) {
   const elizaRoot = path.join(repoRoot, "eliza");
   if (fs.existsSync(elizaRoot)) {
@@ -88,7 +104,7 @@ async function cloneLocalElizaIfMissing(env) {
     console.log(
       "[eliza-source-mode] removing partial eliza/ checkout before re-clone",
     );
-    fs.rmSync(elizaRoot, { recursive: true, force: true });
+    removePathRecursive(elizaRoot);
   }
 
   const gitUrl = getElizaGitUrl(env);
@@ -121,7 +137,7 @@ async function cloneLocalElizaIfMissing(env) {
     } catch (error) {
       // git removes its own target dir on a failed clone, but guard against a
       // killed process leaving a partial tree behind.
-      fs.rmSync(elizaRoot, { recursive: true, force: true });
+      removePathRecursive(elizaRoot);
       const detail = error instanceof Error ? error.message : String(error);
       if (attempt === maxAttempts) {
         throw new Error(

@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isLocalElizaDisabled } from "./lib/eliza-source-mode.mjs";
 
 const LOG_PREFIX = "[ensure-elizaos-optional-app-stubs]";
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..");
 const nodeModulesDir = path.join(repoRoot, "node_modules");
+const cleanupHelperPath = path.join(scriptDir, "rm-path-recursive.mjs");
 
 const optionalPackages = [
   "@elizaos/plugin-companion",
@@ -124,6 +124,21 @@ function packageDir(packageName) {
   return path.join(nodeModulesDir, ...packageName.split("/"));
 }
 
+function removePathRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [cleanupHelperPath, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `rm-path-recursive failed for ${targetPath} with status ${result.status}`,
+    );
+  }
+}
+
 function ensureStubPackage(packageName, { force = false } = {}) {
   const dir = packageDir(packageName);
   const packageJsonPath = path.join(dir, "package.json");
@@ -137,7 +152,7 @@ function ensureStubPackage(packageName, { force = false } = {}) {
     } catch {
       // Replace unreadable package metadata with a known stub below.
     }
-    fs.rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 
   try {
