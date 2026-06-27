@@ -7,8 +7,11 @@
  * `production_url`, and `last_deployed_at` columns added in migration 0007.
  * A deployment is identified by `<appId>:<last_deployed_at_iso>` so the
  * CLI can correlate POST → GET polls without a separate `deployments` table.
- * When a real build/upload service (Vercel or otherwise) lands, this service
- * becomes the integration boundary — callers will not need to change.
+ * The real build/deploy pipeline has landed (Apps / Product 2): when a deploy
+ * runner or APP_DEPLOY enqueuer is wired, `createDeployment` triggers a real
+ * isolated provision (the daemon runs it — build-from-repo when armed, prebuilt
+ * image otherwise). This service is that integration boundary — callers keep
+ * polling `getLatestDeployment` regardless of which backend is wired.
  */
 import { logger } from "../utils/logger";
 import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestrator";
@@ -111,9 +114,10 @@ export class AppDeploymentsService {
   /**
    * Mark the app as building and stamp `last_deployed_at`.
    *
-   * Returns the new deployment record. The actual build/upload pipeline is
-   * out of scope for this service today; callers (CLI, dashboard) poll
-   * `getLatestDeployment` until status is `READY` or `ERROR`.
+   * Returns the new deployment record. The actual build/upload pipeline runs in
+   * the injected runner/daemon this service triggers, not inline here; callers
+   * (CLI, dashboard) poll `getLatestDeployment` until status is `READY` or
+   * `ERROR`.
    *
    * The route layer is responsible for verifying ownership before calling
    * this method (mirrors the pattern used by `managed-domains.ts`).
