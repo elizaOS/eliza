@@ -619,6 +619,7 @@ jobs:
       - name: Verify reported plugin package dist tarballs
         run: |
           node packages/scripts/verify-npm-pack-dist.mjs \
+            packages/cloud-sdk \
             plugins/plugin-x \
             plugins/plugin-openrouter
 
