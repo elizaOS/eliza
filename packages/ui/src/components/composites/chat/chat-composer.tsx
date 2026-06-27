@@ -30,7 +30,7 @@ const INLINE_TEXTAREA_MAX_HEIGHT_PX = 128;
 const INLINE_STACKED_INLINE_PADDING_PX = 12;
 
 const inlineTextareaClass =
-  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt outline-none placeholder:text-muted-strong    ";
+  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt outline-none placeholder:text-muted-strong pointer-coarse:text-base    ";
 
 const inlineMeasureTextareaClass = `${inlineTextareaClass} pointer-events-none fixed left-0 top-0 z-[-1] opacity-0`;
 
@@ -360,7 +360,7 @@ export function ChatComposer({
         <Button
           variant="ghost"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt ${
+          className={`h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
             chatPendingImagesCount > 0 ? "text-accent hover:text-accent" : ""
           }`}
           onClick={onAttachImage}
@@ -413,7 +413,7 @@ export function ChatComposer({
       <Button
         variant="ghost"
         size="icon"
-        className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 ${
+        className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
           voice.isListening
             ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
             : "bg-bg text-muted hover:bg-bg hover:text-txt"
@@ -438,7 +438,7 @@ export function ChatComposer({
         variant="ghost"
         data-testid="chat-composer-action"
         size="icon"
-        className="h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40"
+        className="h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
         onClick={onSend}
         // Keep the textarea focused through the tap: without this, tapping the
         // send button blurs the composer (the keyboard starts to dismiss) and the
@@ -456,7 +456,7 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25"
+        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
         onClick={onStop}
         size="icon"
         title={actionButtonLabel}
@@ -470,7 +470,7 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25"
+        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
         onClick={onStopSpeaking}
         size="icon"
         title={actionButtonLabel}
@@ -561,7 +561,7 @@ export function ChatComposer({
                     ? "text-accent hover:text-accent"
                     : ""
                 }`
-              : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt ${
+              : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
                   chatPendingImagesCount > 0
                     ? "text-accent hover:text-accent"
                     : ""
@@ -591,7 +591,7 @@ export function ChatComposer({
                     ? "animate-pulse select-none rounded-sm border border-border/28 bg-card text-txt    transition-all duration-300 active:scale-95 "
                     : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none  transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95"
                 } ${isComposerLocked ? "opacity-50" : ""}`
-              : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt ${voice.isListening ? "text-accent hover:text-accent" : ""}`
+              : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${voice.isListening ? "text-accent hover:text-accent" : ""}`
           }
           data-testid="chat-composer-mic"
           onClick={handleMicClick}
@@ -629,10 +629,10 @@ export function ChatComposer({
           density={isInline ? null : undefined}
           className={
             isGameModal
-              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted"
+              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted pointer-coarse:text-base"
               : isInline
                 ? inlineTextareaClass
-                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted"
+                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none     font-[var(--font-chat)] disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted pointer-coarse:text-base"
           }
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}
@@ -693,7 +693,7 @@ export function ChatComposer({
           data-testid="chat-composer-action"
           className={
             isInline
-              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25"
+              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
               : "ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
           }
           onClick={onStop}
@@ -717,7 +717,7 @@ export function ChatComposer({
           data-testid="chat-composer-action"
           className={
             isInline
-              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25"
+              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
               : "ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
           }
           onClick={onStopSpeaking}
@@ -733,7 +733,7 @@ export function ChatComposer({
         <Button
           variant="ghost"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 ${
+          className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
             voice.isListening
               ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
               : "bg-bg text-muted hover:bg-bg hover:text-txt"
@@ -764,8 +764,8 @@ export function ChatComposer({
                     : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none  transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95 opacity-80"
                 }`
               : isInline
-                ? "h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40"
-                : "ml-1 h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt transition-colors select-none active:scale-95  disabled:opacity-40"
+                ? "h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
+                : "ml-1 h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt transition-colors select-none active:scale-95  disabled:opacity-40 pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
           }
           onClick={onSend}
           // Keep the textarea focused through the tap so the keyboard doesn't
