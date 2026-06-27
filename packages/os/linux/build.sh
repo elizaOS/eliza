@@ -28,6 +28,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${HERE}/../../.." && pwd)"
+RM_PATH_RECURSIVE_SCRIPT="${REPO_ROOT}/packages/scripts/rm-path-recursive.mjs"
+# shellcheck source=packages/os/linux/scripts/submodule-checkout.sh
 source "${HERE}/scripts/submodule-checkout.sh"
 TAILS_SRC="${TAILS_SRC:-${HERE}/tails}"
 OUT="${HERE}/out"
@@ -68,6 +71,15 @@ case "${STAGE}" in
         ;;
 esac
 
+[ -r "${RM_PATH_RECURSIVE_SCRIPT}" ] || {
+    echo "ERROR: recursive cleanup helper not found at ${RM_PATH_RECURSIVE_SCRIPT}" >&2
+    exit 1
+}
+
+rm_path_recursive() {
+    node "${RM_PATH_RECURSIVE_SCRIPT}" "$@"
+}
+
 if [ ! -d "${TAILS_SRC}/config" ]; then
     echo "ERROR: no Tails source at ${TAILS_SRC} (expected config/, auto/, …)" >&2
     echo "Set TAILS_SRC=/path/to/tails or vendor it as ./tails/" >&2
@@ -84,7 +96,7 @@ echo "=== building image ${IMAGE} ==="
 # context needs that source available as tails-live-build/. The vendored
 # Tails tree may omit submodule checkouts, so clone the pinned revision
 # when tails/submodules/live-build is absent.
-trap 'rm -rf "${HERE}/tails-live-build"' EXIT
+trap 'rm_path_recursive "${HERE}/tails-live-build"' EXIT
 materialize_submodule_checkout \
     "${TAILS_SRC}/submodules/live-build" \
     "${HERE}/tails-live-build" \
@@ -118,7 +130,7 @@ if [ "${ELIZAOS_DOCKER_BUILDX_GHA_CACHE:-0}" = "1" ]; then
 else
     docker build "${docker_build_args[@]}" "${HERE}"
 fi
-rm -rf "${HERE}/tails-live-build"
+rm_path_recursive "${HERE}/tails-live-build"
 
 # Create the apt-cacher-ng cache volume on first run.
 if ! docker volume inspect "${ACNG_VOLUME}" >/dev/null 2>&1; then
