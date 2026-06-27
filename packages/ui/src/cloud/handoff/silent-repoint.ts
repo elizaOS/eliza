@@ -3,7 +3,6 @@ import {
   addAgentProfile,
   createPersistedActiveServer,
   savePersistedActiveServer,
-  setActiveProfileId,
 } from "../../state";
 
 /**
@@ -53,15 +52,14 @@ export function silentlyRepointToDedicated(opts: {
 
   // Register + activate the dedicated profile WITHOUT going through
   // switchAgentProfile (which would clear drafts + dispatch SWITCH_AGENT).
-  // addAgentProfile already sets it active in the registry; setActiveProfileId
-  // is belt-and-suspenders for the case the registry shape changes.
-  const profile = addAgentProfile({
+  // addAgentProfile sets it active in the registry and persists before
+  // returning, so no separate activation step is needed.
+  addAgentProfile({
     kind: "cloud",
     label: server.label,
     apiBase: containerBase,
     accessToken: authToken,
   });
-  setActiveProfileId(profile.id);
 
   // Seamless in-place base swap: re-point the REST base AND reconnect the WS to
   // the dedicated host without a visible disconnect. The transcript was already

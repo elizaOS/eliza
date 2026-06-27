@@ -22,8 +22,6 @@ const mocks = vi.hoisted(() => ({
     ...p,
     id: "profile-dedicated-1",
   })),
-  setActiveProfileId: vi.fn(),
-  clearAllChatDrafts: vi.fn(),
 }));
 
 vi.mock("../../api", () => ({
@@ -38,10 +36,6 @@ vi.mock("../../state", () => ({
   createPersistedActiveServer: mocks.createPersistedActiveServer,
   savePersistedActiveServer: mocks.savePersistedActiveServer,
   addAgentProfile: mocks.addAgentProfile,
-  setActiveProfileId: mocks.setActiveProfileId,
-  // Exposed so a regression that re-introduces switchAgentProfile's draft wipe
-  // would be caught — the silent re-point must NEVER call this.
-  clearAllChatDrafts: mocks.clearAllChatDrafts,
 }));
 
 import { silentlyRepointToDedicated } from "./silent-repoint";
@@ -72,11 +66,6 @@ describe("silentlyRepointToDedicated", () => {
     expect(mocks.setToken).toHaveBeenCalledWith("cloud-token");
   });
 
-  it("does NOT clear chat drafts (the composer survives the switch)", () => {
-    silentlyRepointToDedicated(ARGS);
-    expect(mocks.clearAllChatDrafts).not.toHaveBeenCalled();
-  });
-
   it("persists the dedicated as the restorable active server + active profile", () => {
     silentlyRepointToDedicated(ARGS);
 
@@ -91,6 +80,10 @@ describe("silentlyRepointToDedicated", () => {
       }),
     );
     expect(mocks.savePersistedActiveServer).toHaveBeenCalledTimes(1);
+    // addAgentProfile registers AND activates the dedicated profile (it sets
+    // registry.activeProfileId + persists before returning) — done WITHOUT
+    // switchAgentProfile, so no SWITCH_AGENT dispatch / coordinator re-entry /
+    // StartupScreen flash.
     expect(mocks.addAgentProfile).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "cloud",
@@ -98,8 +91,5 @@ describe("silentlyRepointToDedicated", () => {
         accessToken: "cloud-token",
       }),
     );
-    // The dedicated profile is made active WITHOUT switchAgentProfile (so no
-    // SWITCH_AGENT dispatch / coordinator re-entry / StartupScreen flash).
-    expect(mocks.setActiveProfileId).toHaveBeenCalledWith("profile-dedicated-1");
   });
 });

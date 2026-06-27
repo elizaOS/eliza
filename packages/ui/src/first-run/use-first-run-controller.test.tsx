@@ -71,10 +71,15 @@ const mocks = vi.hoisted(() => ({
     bridgeUrl: null,
     created: true,
   })),
-  startCloudAgentHandoff: vi.fn(async () => ({
-    status: "switched-empty" as const,
-    imported: 0,
-  })),
+  startCloudAgentHandoff: vi.fn(
+    async (_args: {
+      onSwitch: (containerBase: string) => void;
+      [key: string]: unknown;
+    }) => ({
+      status: "switched-empty" as const,
+      imported: 0,
+    }),
+  ),
   // PR3 invisible re-point: the handoff's onSwitch delegates to this silent
   // path instead of switchAgentProfile (which would clear drafts + dispatch
   // SWITCH_AGENT → StartupScreen flash). Mock it to assert the WIRING; the
@@ -406,13 +411,9 @@ describe("useFirstRunController cloud first-run", () => {
     });
 
     // Grab the onSwitch the controller armed the supervisor with, and fire it
-    // the way a ready dedicated container would. The mock is untyped (no params
-    // on the vi.fn), so go through `unknown` to read the handoff arg object.
-    const handoffArgs = (
-      mocks.startCloudAgentHandoff.mock.calls as unknown as Array<
-        [{ onSwitch: (containerBase: string) => void }]
-      >
-    )[0]?.[0];
+    // the way a ready dedicated container would. The mock's arg is typed, so
+    // the handoff arg object reads through directly.
+    const handoffArgs = mocks.startCloudAgentHandoff.mock.calls[0]?.[0];
     expect(handoffArgs?.onSwitch).toBeTypeOf("function");
 
     act(() => handoffArgs?.onSwitch("https://dedicated-1.elizacloud.ai"));
