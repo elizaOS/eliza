@@ -1,4 +1,4 @@
-import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { safeFetch } from "../security/safe-fetch";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -29,7 +29,6 @@ export async function forwardMcpUpstreamRequest(
   request: Request,
   upstreamUrl: string,
 ): Promise<Response> {
-  const target = await assertSafeOutboundUrl(upstreamUrl);
   const init: RequestInit = {
     method: request.method,
     headers: forwardOutgoingHeaders(request.headers),
@@ -40,7 +39,7 @@ export async function forwardMcpUpstreamRequest(
   }
   try {
     init.signal = AbortSignal.timeout(MCP_UPSTREAM_TIMEOUT_MS);
-    return await fetch(target.toString(), init);
+    return await safeFetch(upstreamUrl, init);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return Response.json(

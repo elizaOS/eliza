@@ -2,7 +2,7 @@ import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-function normalizeHostname(hostname: string): string {
+export function normalizeHostname(hostname: string): string {
   return hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
 }
 
@@ -176,6 +176,39 @@ export function assertSafeOutboundUrlSync(rawUrl: string): URL {
 }
 
 /**
+ * Resolves `hostname` (or accepts an IP literal) and rejects the whole answer
+ * set if any record points at a private/reserved range. Returns every resolved
+ * address so callers can both validate and pin a single connection target.
+ */
+async function resolveValidatedAddresses(hostname: string): Promise<LookupAddress[]> {
+  const literalFamily = isIP(hostname);
+  if (literalFamily) {
+    // IP literals are already screened by validateUrlSyntax (isForbiddenIpAddress),
+    // so we can pin to the literal without a DNS round-trip.
+    return [{ address: hostname, family: literalFamily }];
+  }
+
+  let records: LookupAddress[];
+  try {
+    records = await lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    throw new Error("Unable to resolve endpoint hostname");
+  }
+
+  if (!records.length) {
+    throw new Error("Unable to resolve endpoint hostname");
+  }
+
+  for (const record of records) {
+    if (isForbiddenIpAddress(record.address)) {
+      throw new Error("Endpoint resolves to a private or reserved IP address");
+    }
+  }
+
+  return records;
+}
+
+/**
  * Validates an outbound URL against SSRF-sensitive destinations.
  * For hostnames, DNS is resolved at call time so rebinding to private ranges
  * cannot bypass creation-time validation.
@@ -185,23 +218,26 @@ export async function assertSafeOutboundUrl(rawUrl: string): Promise<URL> {
   const hostname = normalizeHostname(parsed.hostname);
 
   if (!isIP(hostname)) {
-    let records: LookupAddress[];
-    try {
-      records = await lookup(hostname, { all: true, verbatim: true });
-    } catch {
-      throw new Error("Unable to resolve endpoint hostname");
-    }
-
-    if (!records.length) {
-      throw new Error("Unable to resolve endpoint hostname");
-    }
-
-    for (const record of records) {
-      if (isForbiddenIpAddress(record.address)) {
-        throw new Error("Endpoint resolves to a private or reserved IP address");
-      }
-    }
+    await resolveValidatedAddresses(hostname);
   }
 
   return parsed;
+}
+
+/**
+ * Like {@link assertSafeOutboundUrl}, but also returns a single validated
+ * address to PIN the connection to. The caller must connect to exactly this
+ * address (e.g. via an http(s) `lookup` hook) so the socket cannot re-resolve
+ * the hostname to a private range between validation and connect
+ * (TOCTOU / DNS rebinding). All resolved addresses are still screened; the
+ * first is returned as the pin.
+ */
+export async function resolveSafeOutboundTarget(
+  rawUrl: string,
+): Promise<{ url: URL; address: string; family: number }> {
+  const parsed = validateUrlSyntax(rawUrl);
+  const hostname = normalizeHostname(parsed.hostname);
+  const [pinned] = await resolveValidatedAddresses(hostname);
+
+  return { url: parsed, address: pinned.address, family: pinned.family };
 }

@@ -29,6 +29,7 @@ import { apps } from "../../db/schemas/apps";
 import { containers } from "../../db/schemas/containers";
 import { jobs } from "../../db/schemas/jobs";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
 import { withTimeout } from "../utils/with-timeout";
@@ -2790,7 +2791,10 @@ export class ProvisioningJobService {
         });
       }
 
-      const response = await fetch(safeWebhookUrl, {
+      // `safeWebhookUrl` is validated above for the waifu-target comparison;
+      // safeFetch re-resolves and pins the connection so the webhook host
+      // cannot rebind to a private/mesh address between check and connect.
+      const response = await safeFetch(safeWebhookUrl.toString(), {
         method: "POST",
         headers,
         body: rawBody,
