@@ -1,9 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  type AppDeployDeps,
-  deployApp,
-  type NewAppContainerRow,
-} from "./app-deploy-orchestrator";
+import { type AppDeployDeps, deployApp, type NewAppContainerRow } from "./app-deploy-orchestrator";
 
 function makeDeps(): { deps: AppDeployDeps; captured: { row?: NewAppContainerRow } } {
   const captured: { row?: NewAppContainerRow } = {};

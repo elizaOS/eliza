@@ -7,9 +7,10 @@ import {
 
 describe("reserved-env-keys", () => {
   test("findReservedEnvKeys flags reserved keys case-insensitively, echoing caller casing", () => {
-    expect(
-      findReservedEnvKeys(["database_url", "ELIZAOS_CLOUD_API_KEY", "MY_VAR"]),
-    ).toEqual(["database_url", "ELIZAOS_CLOUD_API_KEY"]);
+    expect(findReservedEnvKeys(["database_url", "ELIZAOS_CLOUD_API_KEY", "MY_VAR"])).toEqual([
+      "database_url",
+      "ELIZAOS_CLOUD_API_KEY",
+    ]);
   });
 
   test("findReservedEnvKeys returns [] when no reserved keys present", () => {
