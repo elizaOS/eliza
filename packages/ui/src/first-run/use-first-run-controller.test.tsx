@@ -380,12 +380,14 @@ describe("useFirstRunController cloud first-run", () => {
     });
     // Create-both: a SEPARATE dedicated agent is provisioned as the migration
     // target — a PLAIN create (no preferSharedTier, so the backend derives a
-    // dedicated always-on container, not another shared agent).
+    // dedicated always-on container, not another shared agent) AND forceCreate
+    // so the backend reuse guard doesn't hand back the shared agent we already
+    // created (which would make dedicatedId === sharedId → the probe times out).
     expect(mocks.createCloudCompatAgent).toHaveBeenCalledWith(
       expect.not.objectContaining({ preferSharedTier: expect.anything() }),
     );
     expect(mocks.createCloudCompatAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ agentName: "Demo Agent" }),
+      expect.objectContaining({ agentName: "Demo Agent", forceCreate: true }),
     );
     // A freshly created SHARED agent is served by the shared adapter; the
     // background handoff is armed to poll the dedicated agent, copy the
@@ -400,6 +402,13 @@ describe("useFirstRunController cloud first-run", () => {
         onSwitch: expect.any(Function),
       }),
     );
+    // The whole point of forceCreate: the dedicated migration target is a
+    // DISTINCT agent from the shared bridge — not the same id handed back by
+    // the reuse guard. If these were equal the readiness probe would poll the
+    // shared base (which never grows a dedicated container) and time out.
+    const handoffArgs = mocks.startCloudAgentHandoff.mock.calls[0]?.[0];
+    expect(handoffArgs?.dedicatedAgentId).toBe("dedicated-1");
+    expect(handoffArgs?.dedicatedAgentId).not.toBe(handoffArgs?.agentId);
   });
 
   it("PR3: the handoff onSwitch re-points SILENTLY (no switchAgentProfile, no draft wipe, no shell flash)", async () => {

@@ -177,4 +177,60 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     expect(json.data.jobId).toBe("job-1");
     expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
   });
+
+  test("forceCreate:true bypasses the reuse guard → createAgent called with reuseExistingNonTerminal:false (mints a SEPARATE agent)", async () => {
+    // The org already has a non-terminal agent (the shared bridge). With
+    // forceCreate the route must NOT let createAgent reuse it — the dedicated
+    // handoff target has to be a distinct record, else dedicatedId === sharedId.
+    const agent = { ...pendingAgent(), id: "dedicated-fresh", status: "pending" };
+    createAgent.mockResolvedValue({ agent, idempotent: false });
+
+    const res = await postCreate({
+      agentName: "alpha",
+      dockerImage: "ghcr.io/example/agent:latest",
+      forceCreate: true,
+    });
+
+    expect(res.status).toBe(202);
+    expect(createAgent).toHaveBeenCalledTimes(1);
+    const passed = createAgent.mock.calls[0]?.[0] as {
+      reuseExistingNonTerminal?: boolean;
+    };
+    expect(passed.reuseExistingNonTerminal).toBe(false);
+    // A fresh create still provisions normally.
+    expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
+  });
+
+  test("default (no forceCreate) still reuses → createAgent called with reuseExistingNonTerminal:true (byte-identical to before)", async () => {
+    const agent = pendingAgent();
+    createAgent.mockResolvedValue({ agent, idempotent: true });
+
+    const res = await postCreate({
+      agentName: "alpha",
+      dockerImage: "ghcr.io/example/agent:latest",
+    });
+
+    expect(res.status).toBe(200);
+    expect(createAgent).toHaveBeenCalledTimes(1);
+    const passed = createAgent.mock.calls[0]?.[0] as {
+      reuseExistingNonTerminal?: boolean;
+    };
+    expect(passed.reuseExistingNonTerminal).toBe(true);
+  });
+
+  test("forceCreate:false (explicit) is treated as the default → reuseExistingNonTerminal:true", async () => {
+    const agent = pendingAgent();
+    createAgent.mockResolvedValue({ agent, idempotent: true });
+
+    await postCreate({
+      agentName: "alpha",
+      dockerImage: "ghcr.io/example/agent:latest",
+      forceCreate: false,
+    });
+
+    const passed = createAgent.mock.calls[0]?.[0] as {
+      reuseExistingNonTerminal?: boolean;
+    };
+    expect(passed.reuseExistingNonTerminal).toBe(true);
+  });
 });

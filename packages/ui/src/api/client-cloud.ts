@@ -993,6 +993,15 @@ declare module "./client-base" {
        * one. Default (undefined/false) keeps the dedicated request unchanged.
        */
       preferSharedTier?: boolean;
+      /**
+       * Bypass the backend's org-scoped reuse guard so a SEPARATE agent is
+       * minted even when the org already has a live one. The shared→dedicated
+       * handoff sets this for the dedicated migration target; without it the
+       * reuse guard hands back the shared bridge (dedicatedId === sharedId) and
+       * the handoff probe never resolves. Default (undefined/false) leaves the
+       * request byte-identical — every existing caller still reuses.
+       */
+      forceCreate?: boolean;
     }): Promise<{
       success: boolean;
       data: {
@@ -1640,6 +1649,9 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       // (With the Phase-0 shared-tier flag on, `alwaysOn` is dropped so the
       // backend derives a SHARED agent instead — see tierFields above.)
       ...tierFields,
+      // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
+      // shared→dedicated handoff target). Omitted by default → reuse unchanged.
+      ...(opts.forceCreate ? { forceCreate: true } : {}),
       ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
       ...(opts.environmentVars
         ? { environmentVars: opts.environmentVars }
@@ -1687,6 +1699,9 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         // Dedicated (own-container, always-on) agent — see the direct-path note.
         // The Phase-0 shared-tier flag drops `alwaysOn` here too (tierFields).
         ...tierFields,
+        // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
+        // shared→dedicated handoff target). Omitted by default → reuse unchanged.
+        ...(opts.forceCreate ? { forceCreate: true } : {}),
         ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
         ...(opts.environmentVars
           ? { environmentVars: opts.environmentVars }

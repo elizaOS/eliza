@@ -828,6 +828,12 @@ export function useFirstRunController(): FirstRunController {
           .createCloudCompatAgent({
             agentName: name,
             ...(bio.length ? { agentConfig: { bio } } : {}),
+            // Bypass the backend reuse guard: the org already has a non-terminal
+            // agent (the SHARED bridge we just created), so without forceCreate
+            // the server hands that one back and dedicatedAgentId === sharedId —
+            // the handoff probe then polls the shared base (which never grows a
+            // dedicated container) and times out, so the switch never fires.
+            forceCreate: true,
           })
           .catch(() => null);
         const dedicatedAgentId =
