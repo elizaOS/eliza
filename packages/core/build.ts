@@ -7,10 +7,14 @@
 import { execFile } from "node:child_process";
 import { existsSync, type FSWatcher, mkdirSync, watch } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { BuildConfig, BunPlugin } from "bun";
 
 const execFileAsync = promisify(execFile);
+const RM_RECURSIVE_SCRIPT = fileURLToPath(
+	new URL("../scripts/rm-path-recursive.mjs", import.meta.url),
+);
 
 export interface ElizaBuildOptions {
 	/** Entry points - defaults to ['src/index.ts'] */
@@ -361,7 +365,6 @@ export async function generateDts(
  */
 export async function cleanBuild(outdir = "dist", maxRetries = 3) {
 	const timer = getTimer();
-	const { rm } = await import("node:fs/promises");
 
 	if (!existsSync(outdir)) {
 		console.log(`✓ ${outdir} directory already clean (${timer.elapsed()}ms)`);
@@ -372,7 +375,9 @@ export async function cleanBuild(outdir = "dist", maxRetries = 3) {
 
 	for (let attempt = 1; attempt <= maxRetries; attempt++) {
 		try {
-			await rm(outdir, { recursive: true, force: true });
+			await execFileAsync("node", [RM_RECURSIVE_SCRIPT, outdir], {
+				cwd: process.cwd(),
+			});
 			console.log(`✓ Cleaned ${outdir} directory (${timer.elapsed()}ms)`);
 			return; // Success, exit the function
 		} catch (error: unknown) {
