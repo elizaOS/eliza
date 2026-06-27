@@ -1277,6 +1277,24 @@ declare module "./client-base" {
     }): Promise<
       import("../cloud/handoff/conversation-handoff").ConversationHandoffResult
     >;
+    /**
+     * Delete the transient SHARED bridge agent (+ its `shared_runtime_history`,
+     * cascaded server-side) once the user has been switched to their dedicated
+     * agent (PR4). MUST only be called after a confirmed-successful handoff —
+     * deleting the shared while the user is still served by it loses their
+     * conversation.
+     *
+     * Pins the request to the explicit `cloudApiBase` (NOT the client's mutable
+     * `baseUrl`): by the time the switch succeeds the client has already
+     * repointed onto the dedicated container, so the base-derived
+     * `deleteCloudCompatAgent` would no longer resolve the cloud API. Shared
+     * delete is synchronous server-side (no container teardown), so success
+     * means the row + history are gone.
+     */
+    deleteSharedBridgeAgent(
+      agentId: string,
+      options: { cloudApiBase: string; authToken: string },
+    ): Promise<{ success: boolean; error?: string }>;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
       platform?: string;
@@ -3034,6 +3052,43 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
     ...(typeof timeoutMs === "number" ? { timeoutMs } : {}),
     ...(log ? { log } : {}),
   });
+};
+
+ElizaClient.prototype.deleteSharedBridgeAgent = async function (
+  this: ElizaClient,
+  agentId,
+  options,
+) {
+  // Pin to the explicit cloud API base, not the client's (now repointed-to-
+  // dedicated) baseUrl. The shared-tier DELETE on `/api/v1/eliza/agents/:id`
+  // synchronously removes the shared `agent_sandboxes` row AND its
+  // `shared_runtime_history` (cascaded in `deleteAgent`); no container teardown.
+  const apiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
+  try {
+    const res = await fetch(
+      `${apiBase}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${options.authToken}`,
+        },
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+    if (res.status < 200 || res.status >= 300) {
+      return {
+        success: false,
+        error: `shared bridge delete failed (HTTP ${res.status})`,
+      };
+    }
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 };
 
 ElizaClient.prototype.checkBugReportInfo = async function (this: ElizaClient) {

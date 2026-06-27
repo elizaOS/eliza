@@ -840,36 +840,59 @@ export function useFirstRunController(): FirstRunController {
           // keep a `timed-out`/`failed` retryable rather than a silent permanent
           // fallback. The supervisor's import is idempotent, so a retry just
           // re-runs the same call against the same dedicated agent.
-          runCloudAgentHandoff(sharedAgentId, () =>
-            client.startCloudAgentHandoff({
-              // Source: the shared agent the user is chatting on right now.
-              agentId: sharedAgentId,
-              sharedApiBase: cloudAgentApiBase,
-              // The shared adapter keeps one canonical conversation per agent id.
-              conversationId: sharedAgentId,
-              // Target: the separate dedicated agent we just kicked off. The
-              // supervisor polls THIS record for its container base.
-              dedicatedAgentId,
-              cloudApiBase:
-                getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
-              authToken,
-              // The invisible switch (PR3). switchAgentProfile() would
-              // clearAllChatDrafts() (wiping the composer) and dispatch
-              // SWITCH_AGENT (re-entering the coordinator → full-screen
-              // <StartupScreen/> + dropped WS). The handoff instead re-points
-              // SILENTLY in place: persist the dedicated profile, seamlessly
-              // swap the API/WS base (no visible disconnect), keep the same
-              // conversation id mounted, and DON'T touch drafts or the
-              // coordinator. The transcript was already copied to the dedicated
-              // agent, so the chat surface stays live throughout the swap.
-              onSwitch: (containerBase) => {
-                silentlyRepointToDedicated({
-                  containerBase,
+          const cloudApiBase =
+            getBootConfig().cloudApiBase || "https://www.elizacloud.ai";
+          runCloudAgentHandoff(
+            sharedAgentId,
+            () =>
+              client.startCloudAgentHandoff({
+                // Source: the shared agent the user is chatting on right now.
+                agentId: sharedAgentId,
+                sharedApiBase: cloudAgentApiBase,
+                // The shared adapter keeps one canonical conversation per agent id.
+                conversationId: sharedAgentId,
+                // Target: the separate dedicated agent we just kicked off. The
+                // supervisor polls THIS record for its container base.
+                dedicatedAgentId,
+                cloudApiBase,
+                authToken,
+                // The invisible switch (PR3). switchAgentProfile() would
+                // clearAllChatDrafts() (wiping the composer) and dispatch
+                // SWITCH_AGENT (re-entering the coordinator → full-screen
+                // <StartupScreen/> + dropped WS). The handoff instead re-points
+                // SILENTLY in place: persist the dedicated profile, seamlessly
+                // swap the API/WS base (no visible disconnect), keep the same
+                // conversation id mounted, and DON'T touch drafts or the
+                // coordinator. The transcript was already copied to the dedicated
+                // agent, so the chat surface stays live throughout the swap.
+                onSwitch: (containerBase) => {
+                  silentlyRepointToDedicated({
+                    containerBase,
+                    authToken,
+                    dedicatedAgentId,
+                  });
+                },
+              }),
+            // Gated on switch-SUCCESS (`switched`/`switched-empty`): only once
+            // the user is on the dedicated and the transcript was copied is the
+            // transient shared bridge safe to delete. On `timed-out`/`failed`
+            // this never runs, so the user keeps the working shared bridge (and
+            // their conversation). Fire-and-forget: a failed delete just leaks a
+            // shared row — never blocks the (already switched) user.
+            () => {
+              void client
+                .deleteSharedBridgeAgent(sharedAgentId, {
+                  cloudApiBase,
                   authToken,
-                  dedicatedAgentId,
+                })
+                .then((res) => {
+                  if (!res.success) {
+                    console.warn(
+                      `[useFirstRunController] shared bridge delete failed (leaked row ${sharedAgentId}): ${res.error ?? "unknown"}`,
+                    );
+                  }
                 });
-              },
-            }),
+            },
           );
         }
       }

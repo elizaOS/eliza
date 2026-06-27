@@ -31,12 +31,10 @@ describe("runCloudAgentHandoff", () => {
 
   it("dispatches migrating then the supervisor's terminal status", async () => {
     const { phases, stop } = collectPhases();
-    const start = vi.fn(
-      async (): Promise<ConversationHandoffResult> => ({
-        status: "switched",
-        imported: 3,
-      }),
-    );
+    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
+      status: "switched",
+      imported: 3,
+    }));
 
     runCloudAgentHandoff("a1", start);
     await flush();
@@ -89,6 +87,123 @@ describe("runCloudAgentHandoff", () => {
       "migrating",
       "switched",
     ]);
+  });
+
+  // PR4 — the shared-bridge delete is a DESTRUCTIVE op, so its gating is
+  // safety-critical: it must fire ONLY on a confirmed-successful switch and
+  // NEVER on a non-success / uncertain terminal phase (the user is still on the
+  // shared bridge, so deleting it would lose their conversation).
+  it("fires onSwitchSucceeded on `switched` (success — safe to delete shared)", async () => {
+    const { stop } = collectPhases();
+    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
+      status: "switched",
+      imported: 2,
+    }));
+    const onSwitchSucceeded = vi.fn();
+
+    runCloudAgentHandoff("a5", start, onSwitchSucceeded);
+    await flush();
+    stop();
+
+    expect(onSwitchSucceeded).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onSwitchSucceeded on `switched-empty` (success, nothing to copy)", async () => {
+    const { stop } = collectPhases();
+    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
+      status: "switched-empty",
+      imported: 0,
+    }));
+    const onSwitchSucceeded = vi.fn();
+
+    runCloudAgentHandoff("a6", start, onSwitchSucceeded);
+    await flush();
+    stop();
+
+    expect(onSwitchSucceeded).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT fire onSwitchSucceeded on `timed-out` (user still on the shared bridge)", async () => {
+    const { stop } = collectPhases();
+    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
+      status: "timed-out",
+      imported: 0,
+    }));
+    const onSwitchSucceeded = vi.fn();
+
+    runCloudAgentHandoff("a7", start, onSwitchSucceeded);
+    await flush();
+    stop();
+
+    expect(onSwitchSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fire onSwitchSucceeded on `failed`", async () => {
+    const { stop } = collectPhases();
+    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
+      status: "failed",
+      imported: 0,
+      error: "import failed",
+    }));
+    const onSwitchSucceeded = vi.fn();
+
+    runCloudAgentHandoff("a8", start, onSwitchSucceeded);
+    await flush();
+    stop();
+
+    expect(onSwitchSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fire onSwitchSucceeded when the supervisor throws", async () => {
+    const { stop } = collectPhases();
+    const start = vi.fn(async (): Promise<ConversationHandoffResult> => {
+      throw new Error("container never came up");
+    });
+    const onSwitchSucceeded = vi.fn();
+
+    runCloudAgentHandoff("a9", start, onSwitchSucceeded);
+    await flush();
+    stop();
+
+    expect(onSwitchSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("swallows an onSwitchSucceeded rejection (a leaked-row delete never throws upward)", async () => {
+    const { stop } = collectPhases();
+    const start = vi.fn(async (): Promise<ConversationHandoffResult> => ({
+      status: "switched",
+      imported: 1,
+    }));
+    const onSwitchSucceeded = vi.fn(async () => {
+      throw new Error("delete failed");
+    });
+
+    expect(() =>
+      runCloudAgentHandoff("a10", start, onSwitchSucceeded),
+    ).not.toThrow();
+    await flush();
+    stop();
+
+    expect(onSwitchSucceeded).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire onSwitchSucceeded on the failed leg of a retry, only on the successful one", async () => {
+    const { stop } = collectPhases();
+    const start = vi
+      .fn<() => Promise<ConversationHandoffResult>>()
+      .mockResolvedValueOnce({ status: "timed-out", imported: 0 })
+      .mockResolvedValueOnce({ status: "switched", imported: 1 });
+    const onSwitchSucceeded = vi.fn();
+
+    runCloudAgentHandoff("a11", start, onSwitchSucceeded);
+    await flush();
+    expect(onSwitchSucceeded).not.toHaveBeenCalled();
+
+    dispatchCloudHandoffRetry({ agentId: "a11" });
+    await flush();
+    stop();
+
+    expect(onSwitchSucceeded).toHaveBeenCalledTimes(1);
   });
 
   it("does not re-fire the retry listener more than once per failure", async () => {
