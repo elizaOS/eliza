@@ -71,6 +71,8 @@ const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> = [
   // New app-IA targets: billing / api-keys move into settings sections.
   { from: "dashboard/billing", to: "/settings#billing" },
   { from: "dashboard/api-keys", to: "/settings#api-keys" },
+  // Knowledge/Documents now lives in the app; old deep links land on the agents list.
+  { from: "dashboard/documents", to: "/dashboard/agents" },
 ];
 
 /** Substitute `:param` segments from the matched route params. */
