@@ -26,7 +26,9 @@
  */
 
 import { Plug } from "lucide-react";
+import { createElement } from "react";
 import { registerSettingsSection } from "../../components/settings/settings-section-registry";
+import { CloudSettingsSectionShell } from "../settings/CloudSettingsSectionShell";
 import { registerCloudRoute } from "../shell/cloud-route-registry";
 import { CloudConnectorsSection } from "./CloudConnectorsSection";
 
@@ -53,6 +55,22 @@ export { WhatsAppConnection } from "./whatsapp-connection";
 export const CLOUD_CONNECTORS_SECTION_ID = "cloud-connectors";
 
 /**
+ * Settings-section adapter for the cloud connectors surface.
+ *
+ * The standalone cloud route is already rendered under CloudRouterShell, which
+ * supplies query/i18n/auth providers. Settings sections render inside the
+ * app-shell settings registry instead, so this adapter provides the cloud stack
+ * before mounting the canonical connectors body.
+ */
+export function CloudConnectorsSettingsSection(): React.JSX.Element {
+  return createElement(
+    CloudSettingsSectionShell,
+    null,
+    createElement(CloudConnectorsSection),
+  );
+}
+
+/**
  * Register the cloud connectors surface as a Settings section under the "agent"
  * group. Idempotent (the registry replaces by id). Call from the host's cloud
  * boot path; not invoked at import time so the settings IA stays the host's
@@ -69,7 +87,7 @@ export function registerCloudConnectorsSettingsSection(): void {
     group: "agent",
     titleKey: "settings.sections.cloudConnectors.title",
     defaultTitle: "Cloud Connectors",
-    Component: CloudConnectorsSection,
+    Component: CloudConnectorsSettingsSection,
   });
 }
 
