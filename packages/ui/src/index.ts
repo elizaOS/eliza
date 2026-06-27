@@ -96,14 +96,6 @@ export {
   WhatsAppIcon,
 } from "./cloud-ui/components/icons";
 export {
-  type AspectRatio,
-  EnhancedLoading,
-  ImageEmptyState,
-  ImageLoadingState,
-  ImagePromptInput,
-  type StylePreset,
-} from "./cloud-ui/components/image-gen";
-export {
   AnimatedCounter,
   AnimatedCounterWithLabel,
   EarningsSimulator,
