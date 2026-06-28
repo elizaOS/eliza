@@ -70,6 +70,16 @@ export interface OrchestratorSnapshot {
   error?: string | null;
 }
 
+/** The statusless empty snapshot — the workbench landing with no host data. */
+export const EMPTY_ORCHESTRATOR_SNAPSHOT: OrchestratorSnapshot = {
+  status: null,
+  threads: [],
+  hasMore: false,
+  detail: null,
+  planSteps: [],
+  pendingInputs: [],
+};
+
 const STATUS_TONE: Record<TaskStatus, SpatialTone> = {
   open: "primary",
   active: "success",

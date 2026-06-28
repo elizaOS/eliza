@@ -21,9 +21,12 @@
  * dim_768 pgvector ::text embeddings so the populated graph/stat/badge paths
  * (never reachable in the packages/app smoke fixture) are covered here.
  *
- * TUI / XR contract test: N/A. plugin-vector-browser declares a single `gui`
- * view (src/plugin.ts) and exposes no interact() capability, so there is no
- * terminal/XR surface to drive.
+ * This renders the adaptive `VectorBrowserView` (the single componentExport): a
+ * `SpatialSurface` + `Escape` wrapper that, on the GUI/DOM surface, mounts the
+ * rich `VectorBrowserRichView` as the escape child — so these assertions cover
+ * the wrapper and the rich surface together. The TUI surface renders the
+ * separate `VectorBrowserSpatialView` summary (covered by the packages/ui
+ * registered-view parity gate, not here).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

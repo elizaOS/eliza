@@ -9,14 +9,16 @@ import type { Plugin } from "@elizaos/core";
  * `/api/views/vector-browser/bundle.js` and mounted by the shell's
  * DynamicViewLoader.
  *
- * Modalities — tri-modal via KEEP-RICH-GUI + SPATIAL-TUI-FALLBACK:
- *   - GUI / XR — the rich `VectorBrowserView` (`componentExport`): the 3D point
- *     cloud (three.js / WebGL) and the 2D canvas projection. These are
- *     INFEASIBLE in a terminal, so they stay GUI/XR-only.
- *   - TUI      — the terminal registry renders `VectorBrowserSpatialView` (see
- *     `register-terminal-view.tsx`): a presentational summary-stats
- *     (vectors / with-embeddings / dim / clusters / table) + points-list
- *     fallback, with a "3D point cloud renders in GUI/XR" note.
+ * Modalities — one adaptive `componentExport` (`VectorBrowserView`) wraps the
+ * rich surface in a spatial `Escape`:
+ *   - GUI / XR — `Escape` renders the rich `VectorBrowserRichView` as real DOM:
+ *     the 3D point cloud (three.js / WebGL) and the 2D canvas projection. These
+ *     are INFEASIBLE in a terminal, so they stay GUI/XR-only.
+ *   - TUI      — the `Escape` fallback (and the terminal registry, see
+ *     `register-terminal-view.tsx`) render the SAME `VectorBrowserSpatialView`:
+ *     a presentational summary-stats (vectors / with-embeddings / dim /
+ *     clusters / table) + points-list fallback, with a "3D point cloud renders
+ *     in GUI/XR" note.
  */
 export const vectorBrowserPlugin: Plugin = {
   name: "@elizaos/plugin-vector-browser",

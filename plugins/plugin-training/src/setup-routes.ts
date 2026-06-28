@@ -350,11 +350,13 @@ export const trainingPlugin: Plugin = {
     "Training jobs, datasets, models, blueprints, and trajectory routes",
   routes: trainingRoutes,
   views: [
-    // ONE declaration → GUI + XR + TUI. The rich `FineTuningView` is the
-    // catalog componentExport for GUI/XR; the terminal surface renders the
-    // registered FineTuningSpatialView via the spatial terminal registry (see
-    // register-terminal-view.tsx). `modalities` is a plain literal here, so no
-    // brand-new `@elizaos/core` runtime export reaches the bundle build.
+    // ONE declaration → GUI + XR + TUI, ONE componentExport. `FineTuningView`
+    // is an adaptive wrapper: GUI/XR render the rich `FineTuningDashboard`
+    // through the spatial `Escape` hatch, TUI falls back to the presentational
+    // `FineTuningSpatialView` — the same source the agent terminal renders
+    // directly via the spatial terminal registry (see register-terminal-view.tsx).
+    // `modalities` is a plain literal here, so no brand-new `@elizaos/core`
+    // runtime export reaches the bundle build.
     {
       id: "training",
       label: "Training",

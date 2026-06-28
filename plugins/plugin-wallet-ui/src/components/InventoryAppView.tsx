@@ -1,13 +1,16 @@
 /**
- * InventoryAppView — the full-screen wallet dashboard mounted by the `/inventory`
- * nav tab (and the `@elizaos/plugin-wallet-ui#InventoryAppView` overlay export).
+ * InventoryAppView — the full-screen wallet dashboard.
  *
  * It owns the rich multi-panel surface — holdings rail (tokens / DeFi / NFTs),
  * P&L window selector + chart, activity log, portfolio movers, LP positions, and
  * the NFT grid — backed by the app store + live trading-profile / market-overview
- * fetches. The cross-modality holdings view (`InventoryView`) renders the same
- * data through the spatial vocabulary for GUI / XR / TUI; this is the DOM-only
- * dashboard.
+ * fetches.
+ *
+ * It is no longer registered as a separate app/nav tab. The unified
+ * {@link InventoryView} renders it as the real-DOM child of its `Escape` hatch,
+ * so GUI / XR get this full dashboard while TUI falls back to the spatial
+ * `InventorySpatialView`. This is the DOM-only dashboard reached only through
+ * that wrapper.
  */
 import type {
   WalletConfigStatus,

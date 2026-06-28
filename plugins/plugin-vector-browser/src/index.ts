@@ -1,4 +1,8 @@
-export { VectorBrowserView, VectorGraph3D } from "./VectorBrowserView.js";
+export {
+  VectorBrowserRichView,
+  VectorBrowserView,
+  VectorGraph3D,
+} from "./VectorBrowserView.js";
 export {
   type VectorBrowserPoint,
   type VectorBrowserSnapshot,

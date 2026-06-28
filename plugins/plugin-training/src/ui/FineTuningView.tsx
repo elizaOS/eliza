@@ -30,6 +30,7 @@ import {
 } from "@elizaos/ui/components";
 import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks";
 import { ContentLayout } from "@elizaos/ui/layouts";
+import { Escape, SpatialSurface } from "@elizaos/ui/spatial";
 import { type AppContextValue, useAppSelector } from "@elizaos/ui/state";
 import {
   confirmDesktopAction,
@@ -48,6 +49,10 @@ import {
   ELIZA_ONE_BENCHMARK_TIER_LIST,
   ELIZA_ONE_BENCHMARK_TIERS,
 } from "../core/eliza1-benchmark-recipe.js";
+import {
+  type FineTuningSnapshot,
+  FineTuningSpatialView,
+} from "./FineTuningSpatialView";
 import { asArray, parseCollectionTierList } from "./FineTuningView.helpers";
 import { interact } from "./FineTuningView.interact";
 import {
@@ -784,7 +789,41 @@ function TrainingActionButton({
   );
 }
 
-export function FineTuningView({
+const EMPTY_FINE_TUNING_SNAPSHOT: FineTuningSnapshot = {
+  runtimeAvailable: false,
+  runningJobs: 0,
+  queuedJobs: 0,
+  completedJobs: 0,
+  failedJobs: 0,
+  jobs: [],
+  models: 0,
+  datasets: 0,
+  trajectoryCount: 0,
+};
+
+/**
+ * FineTuningView — the single GUI / XR / TUI componentExport.
+ *
+ * GUI and XR render the full rich {@link FineTuningDashboard} (its real DOM:
+ * forms, panels, the live-event stream) through the spatial `Escape` hatch; TUI
+ * falls back to the presentational {@link FineTuningSpatialView} summary. That
+ * same `FineTuningSpatialView` is the source the agent terminal renders directly
+ * via `registerFineTuningTerminalView` (see `register-terminal-view.tsx`), so
+ * there is exactly one registered component and one terminal source.
+ */
+export function FineTuningView(props: { contentHeader?: ReactNode } = {}) {
+  return (
+    <SpatialSurface>
+      <Escape
+        tui={<FineTuningSpatialView snapshot={EMPTY_FINE_TUNING_SNAPSHOT} />}
+      >
+        <FineTuningDashboard {...props} />
+      </Escape>
+    </SpatialSurface>
+  );
+}
+
+export function FineTuningDashboard({
   contentHeader,
 }: {
   contentHeader?: ReactNode;

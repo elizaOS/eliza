@@ -1,27 +1,31 @@
 /**
- * InventoryView — the single GUI/XR data wrapper for the wallet surface.
+ * InventoryView — the single registered component for the wallet surface across
+ * GUI, XR, and TUI.
  *
- * It owns the live wallet data (balances, NFTs, trading profile, market
- * overview, addresses, config) drawn from the app store + `useInventoryData`,
- * builds the one presentational {@link WalletSnapshot}, and renders the single
- * {@link InventorySpatialView} inside a {@link SpatialSurface}. Omitting the
- * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The TUI
- * surface renders the same `InventorySpatialView` through the terminal registry
- * (see `register-terminal-view.tsx`).
+ * It renders a {@link SpatialSurface} wrapping an {@link Escape} hatch:
  *
- * The rich multi-panel dashboard (P&L chart, activity log, movers, LP positions,
- * NFT grid) lives in the separate {@link InventoryAppView} overlay surface that
- * the `/inventory` nav tab mounts; this view is the cross-modality holdings
- * source of truth.
+ *   - GUI / XR — `Escape` renders its real DOM children, the full multi-panel
+ *     {@link InventoryAppView} dashboard (holdings rail, P&L chart, activity log,
+ *     movers, LP positions, NFT grid).
+ *   - TUI      — `Escape` never renders the DOM children (they can't run in a
+ *     terminal); the spatial-primitive `tui` fallback ({@link InventorySpatialView})
+ *     is emitted instead. The agent terminal mounts the same `InventorySpatialView`
+ *     directly through the terminal registry (see `register-terminal-view.tsx`).
+ *
+ * The wrapper still owns the live wallet data (balances, NFTs, trading profile,
+ * addresses, config) drawn from the app store + `useInventoryData` and builds the
+ * presentational {@link WalletSnapshot} that feeds the `tui` fallback. There is
+ * one componentExport (`InventoryView`); the rich dashboard is reached only
+ * through this wrapper, never registered as a separate app/nav tab.
  */
 
 import { client } from "@elizaos/ui/api";
 import { useActivityEvents } from "@elizaos/ui/hooks";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+import { Escape, SpatialSurface } from "@elizaos/ui/spatial";
 import type { InventoryChainFilters } from "@elizaos/ui/state";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { InventoryAppView } from "./components/InventoryAppView.tsx";
 import {
   InventorySpatialView,
   type WalletSnapshot,
@@ -285,7 +289,11 @@ export function InventoryView() {
 
   return (
     <SpatialSurface>
-      <InventorySpatialView snapshot={snapshot} onAction={onAction} />
+      <Escape
+        tui={<InventorySpatialView snapshot={snapshot} onAction={onAction} />}
+      >
+        <InventoryAppView />
+      </Escape>
     </SpatialSurface>
   );
 }

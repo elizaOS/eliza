@@ -1,21 +1,15 @@
 // @vitest-environment jsdom
 //
-// Drives the unified InventoryView (the single GUI/XR data wrapper) through the
-// rendered DOM — the same component the bundle exports for both the "gui" and
-// "xr" modalities. The presentational InventorySpatialView renders real spatial
-// DOM (its `@elizaos/ui/spatial` import is NOT aliased to the mock), so the agent
-// buttons surface as `data-agent-id` nodes. Asserts the token rows, the per-row
-// Hide / Open controls, the Enable-wallet / RPC-settings / Refresh controls, and
-// the EVM/SOL address copy controls all reach the store + native bridge — the
-// holdings parity the retired InventoryTuiView + gui surfaces provided.
+// Drives the unified InventoryView wrapper through the rendered DOM — the single
+// component the bundle exports for the "gui"/"xr"/"tui" modalities. Its
+// `@elizaos/ui/spatial` `Escape` hatch renders its real-DOM children (the rich
+// InventoryAppView dashboard) on the GUI/XR surface and only falls back to the
+// spatial `InventorySpatialView` in TUI. This file asserts the GUI/XR Escape
+// contract: the rich dashboard mounts and the degraded spatial buttons stay out
+// of the DOM. The rich dashboard's own behaviour is covered by
+// InventoryAppView.gui.test.tsx; the spatial fallback by InventorySpatialView.test.tsx.
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,6 +27,18 @@ vi.mock("@elizaos/ui", () => ({
     selector(appHooks.useApp()),
   useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
     selector(appHooks.useApp()),
+}));
+
+// The rich dashboard is exhaustively covered by InventoryAppView.gui.test.tsx;
+// here we only assert the wrapper mounts it as the GUI/XR Escape surface, so a
+// lightweight marker stub keeps this test focused on the consolidation contract.
+vi.mock("./components/InventoryAppView.tsx", () => ({
+  InventoryAppView: () =>
+    React.createElement(
+      "div",
+      { "data-testid": "wallet-rich-dashboard" },
+      "rich dashboard",
+    ),
 }));
 
 import { InventoryView } from "./InventoryView";
@@ -97,12 +103,6 @@ function makeAppState(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-function agent(id: string): HTMLElement {
-  const el = document.querySelector(`[data-agent-id="${id}"]`);
-  if (!el) throw new Error(`no element with data-agent-id="${id}"`);
-  return el as HTMLElement;
-}
-
 beforeEach(() => {
   appHooks.useApp.mockReturnValue(makeAppState());
   walletClient.getWalletTradingProfile.mockResolvedValue({
@@ -120,10 +120,6 @@ beforeEach(() => {
       clear: vi.fn(() => values.clear()),
     },
   });
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText: vi.fn().mockResolvedValue(undefined) },
-  });
 });
 
 afterEach(() => {
@@ -132,93 +128,26 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("InventoryView — unified GUI/XR holdings", () => {
-  it("renders the portfolio total and the token row from live store data", async () => {
+describe("InventoryView — unified Escape wrapper", () => {
+  it("renders the rich dashboard as the GUI/XR Escape surface", () => {
     render(React.createElement(InventoryView));
-    await screen.findByText("USDC");
-    // Portfolio = 750 (BNB) + 100 (USDC) + 300 (SOL) = $1,150.
-    expect(screen.getByText("$1,150")).toBeTruthy();
-    expect(screen.getByText("BNB")).toBeTruthy();
+    // Escape renders its real-DOM children in GUI/XR — the full dashboard.
+    expect(screen.getByTestId("wallet-rich-dashboard")).toBeTruthy();
   });
 
-  it("hides a token, persists the id, and removes the row", async () => {
-    const state = makeAppState();
-    appHooks.useApp.mockReturnValue(state);
+  it("keeps the spatial fallback buttons out of the GUI DOM", () => {
     render(React.createElement(InventoryView));
-    await screen.findByText("USDC");
-
-    fireEvent.click(agent("hide-bsc:0xusdc00000000000000000000000000000000000000"));
-
-    await waitFor(() => expect(screen.queryByText("USDC")).toBeNull());
-    expect(state.setActionNotice).toHaveBeenCalledWith(
-      "USDC hidden from this wallet view.",
-    );
-    const stored = window.localStorage.getItem(
-      "eliza:wallet:hidden-token-ids:v1",
-    );
-    expect(stored).toContain("0xusdc");
+    // The degraded InventorySpatialView is the Escape `tui` prop — never rendered
+    // on the GUI surface — so its agent buttons must be absent here.
+    expect(document.querySelector('[data-agent-id="copy-evm"]')).toBeNull();
+    expect(document.querySelector('[data-agent-id="refresh"]')).toBeNull();
   });
 
-  it("opens settings when a token row's Open control fires", async () => {
-    const state = makeAppState();
-    appHooks.useApp.mockReturnValue(state);
+  it("builds the holdings snapshot from live store data without crashing", () => {
+    appHooks.useApp.mockReturnValue(makeAppState({ walletEnabled: false }));
+    // A disabled wallet with empty balances still resolves to the mounted
+    // dashboard — the wrapper's snapshot path tolerates every store shape.
     render(React.createElement(InventoryView));
-    await screen.findByText("USDC");
-    fireEvent.click(agent("open-bsc:0xusdc00000000000000000000000000000000000000"));
-    expect(state.setTab).toHaveBeenCalledWith("settings");
-  });
-
-  it("copies the EVM and SOL addresses through the clipboard", async () => {
-    render(React.createElement(InventoryView));
-    await screen.findByText("USDC");
-    fireEvent.click(agent("copy-evm"));
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(EVM_ADDRESS);
-    fireEvent.click(agent("copy-solana"));
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SOL_ADDRESS);
-  });
-
-  it("opens RPC settings and sets the wallet-rpc hash", async () => {
-    const state = makeAppState();
-    appHooks.useApp.mockReturnValue(state);
-    render(React.createElement(InventoryView));
-    await screen.findByText("USDC");
-    fireEvent.click(agent("rpc-settings"));
-    expect(state.setTab).toHaveBeenCalledWith("settings");
-    expect(window.location.hash).toBe("#wallet-rpc");
-  });
-
-  it("re-loads balances, nfts, config, and the trading profile on refresh", async () => {
-    const state = makeAppState();
-    appHooks.useApp.mockReturnValue(state);
-    render(React.createElement(InventoryView));
-    await screen.findByText("USDC");
-    state.loadBalances.mockClear();
-    state.loadNfts.mockClear();
-    state.loadWalletConfig.mockClear();
-    walletClient.getWalletTradingProfile.mockClear();
-
-    fireEvent.click(agent("refresh"));
-
-    expect(state.loadBalances).toHaveBeenCalled();
-    expect(state.loadNfts).toHaveBeenCalled();
-    expect(state.loadWalletConfig).toHaveBeenCalled();
-    await waitFor(() =>
-      expect(walletClient.getWalletTradingProfile).toHaveBeenCalled(),
-    );
-  });
-});
-
-describe("InventoryView — disabled wallet", () => {
-  it("surfaces the Enable control and flips walletEnabled on press", async () => {
-    const state = makeAppState({
-      walletEnabled: false,
-      walletBalances: { evm: { address: EVM_ADDRESS, chains: [] }, solana: null },
-    });
-    appHooks.useApp.mockReturnValue(state);
-    render(React.createElement(InventoryView));
-
-    fireEvent.click(agent("enable-wallet"));
-    expect(state.setState).toHaveBeenCalledWith("walletEnabled", true);
-    expect(state.loadBalances).toHaveBeenCalled();
+    expect(screen.getByTestId("wallet-rich-dashboard")).toBeTruthy();
   });
 });

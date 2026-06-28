@@ -28,6 +28,7 @@ import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
 import { getBootConfig } from "@elizaos/ui/config";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { WorkspaceLayout } from "@elizaos/ui/layouts";
+import { Escape, SpatialSurface } from "@elizaos/ui/spatial";
 import { useAppSelector } from "@elizaos/ui/state";
 import { Clock3, Database, Hash, Layers3 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -40,6 +41,10 @@ import {
   useState,
 } from "react";
 import type * as Three from "three";
+import {
+  type VectorBrowserSnapshot,
+  VectorBrowserSpatialView,
+} from "./VectorBrowserSpatialView.tsx";
 
 type VectorBrowserRuntime = {
   THREE: typeof Three;
@@ -922,16 +927,16 @@ export function VectorGraph3D({
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────────
+// ── Rich GUI/XR surface (the Escape child) ─────────────────────────────
 
-export function VectorBrowserView({
+export function VectorBrowserRichView({
   leftNav,
   contentHeader,
 }: {
   leftNav?: ReactNode;
   contentHeader?: ReactNode;
 }) {
-  useRenderGuard("VectorBrowserView");
+  useRenderGuard("VectorBrowserRichView");
   const t = useAppSelector((s) => s.t);
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [selectedTable, setSelectedTable] = useState("");
@@ -1669,5 +1674,47 @@ export function VectorBrowserView({
         </div>
       )}
     </WorkspaceLayout>
+  );
+}
+
+// ── Adaptive view (the single componentExport) ─────────────────────────
+
+/**
+ * Terminal-safe summary shown when this view is evaluated on the TUI surface.
+ * The rich three.js/canvas surface can't run in a terminal, so the wrapper's
+ * `Escape` fallback degrades to the spatial summary. Live terminal stats come
+ * from the dedicated terminal registration (`register-terminal-view.tsx`), which
+ * a host can update via `setVectorBrowserTerminalSnapshot`; here the wrapper
+ * fallback carries the zeroed default + the "renders in GUI/XR" note.
+ */
+const TUI_FALLBACK_SNAPSHOT: VectorBrowserSnapshot = {
+  vectorCount: 0,
+  withEmbeddings: 0,
+  dimension: 0,
+  typeCount: 0,
+  points: [],
+};
+
+/**
+ * The single adaptive vector-browser view (`componentExport`).
+ *
+ * GUI/XR render the full rich {@link VectorBrowserRichView} (three.js 3D point
+ * cloud + 2D canvas projection + list/detail) as the {@link Escape} DOM child;
+ * TUI renders the spatial {@link VectorBrowserSpatialView} summary fallback. One
+ * registered component, no separate rich-DOM app — `SpatialSurface` auto-detects
+ * GUI vs XR.
+ */
+export function VectorBrowserView(props: {
+  leftNav?: ReactNode;
+  contentHeader?: ReactNode;
+}) {
+  return (
+    <SpatialSurface>
+      <Escape
+        tui={<VectorBrowserSpatialView snapshot={TUI_FALLBACK_SNAPSHOT} />}
+      >
+        <VectorBrowserRichView {...props} />
+      </Escape>
+    </SpatialSurface>
   );
 }

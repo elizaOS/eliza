@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 // The RPC-provider status copy + the empty-wallet market-pulse hero live in the
-// rich dashboard (`InventoryAppView`), which the `/inventory` nav tab mounts; the
-// cross-modality `InventoryView` is the spatial holdings source.
+// rich dashboard (`InventoryAppView`), which the unified `InventoryView` renders
+// as its GUI/XR `Escape` child; the spatial `InventorySpatialView` is the TUI
+// fallback.
 const source = readFileSync(
   resolve(
     dirname(fileURLToPath(import.meta.url)),

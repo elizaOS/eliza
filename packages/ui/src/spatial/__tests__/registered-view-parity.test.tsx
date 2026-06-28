@@ -85,9 +85,12 @@ const TUI_WIDTHS = [56, 40];
 
 describe("registered view parity — every view × three surfaces", () => {
   it("registers the full plugin catalog of spatial views", () => {
-    // 33 plugins each ship a register-terminal-view.tsx; the glob/vite path
+    // Most app plugins ship a register-terminal-view.tsx; the glob/vite path
     // imports them all (the raw-bun review harness drops the `as`-cast files).
-    expect(registeredIds.length).toBeGreaterThanOrEqual(30);
+    // Floor is set below the live count so it tolerates the in-flight removal of
+    // app-bundled plugins (waifu ×2 / vincent / simple-views / companion) while
+    // still catching a catastrophic loss of spatial-view registration.
+    expect(registeredIds.length).toBeGreaterThanOrEqual(24);
   });
 
   it("every registered id has its authored React thunk recorded", () => {

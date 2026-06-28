@@ -12,6 +12,7 @@
 import { registerSpatialTerminalView } from "@elizaos/ui/spatial/tui";
 import { createElement } from "react";
 import {
+  EMPTY_ORCHESTRATOR_SNAPSHOT,
   type OrchestratorSnapshot,
   OrchestratorSpatialView,
 } from "./components/OrchestratorSpatialView.tsx";
@@ -21,15 +22,7 @@ import {
   TaskCoordinatorSpatialView,
 } from "./components/TaskCoordinatorSpatialView.tsx";
 
-const EMPTY: OrchestratorSnapshot = {
-  status: null,
-  threads: [],
-  hasMore: false,
-  detail: null,
-  planSteps: [],
-  pendingInputs: [],
-};
-let current: OrchestratorSnapshot = EMPTY;
+let current: OrchestratorSnapshot = EMPTY_ORCHESTRATOR_SNAPSHOT;
 
 /** Update the snapshot the registered terminal view renders from. */
 export function setOrchestratorTerminalSnapshot(

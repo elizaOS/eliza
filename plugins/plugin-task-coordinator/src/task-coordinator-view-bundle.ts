@@ -5,10 +5,11 @@
 // component files so they export only React components and stay
 // Fast-Refresh-compatible.
 //
-// The legacy GUI surfaces (`CodingAgentTasksPanel`, `OrchestratorWorkbench`)
-// reach their mounts through other paths — the app-core slot registry
-// (register-slots.ts) and the app-shell page registry (register.ts) — not this
-// bundle, so they are intentionally absent here.
+// `OrchestratorWorkbench` is the rich GUI/XR surface of `OrchestratorView` (its
+// `Escape` child) so it ships inside this bundle transitively, not as a named
+// export. `CodingAgentTasksPanel` reaches its mount through the app-core slot
+// registry (register-slots.ts → the built-in /apps/tasks page), so it is
+// intentionally absent here.
 export { interact } from "./CodingAgentTasksPanel.interact";
 export { OrchestratorView } from "./OrchestratorView";
 export { TaskCoordinatorView } from "./TaskCoordinatorView";
