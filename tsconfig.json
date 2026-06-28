@@ -125,8 +125,8 @@
         "./plugins/plugin-computeruse/src/mobile/*"
       ],
       "@elizaos/plugin-contacts": ["./plugins/plugin-contacts/src/index.ts"],
-      "@elizaos/plugin-device-settings": [
-        "./plugins/plugin-device-settings/src/index.ts"
+      "@elizaos/plugin-native-settings": [
+        "./plugins/plugin-native-settings/src/index.ts"
       ],
       "@elizaos/plugin-discord": ["./plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-edge-tts": ["./plugins/plugin-edge-tts/src/index.ts"],
@@ -136,8 +136,8 @@
       "@elizaos/plugin-facewear": ["./plugins/plugin-facewear/src/index.ts"],
       "@elizaos/plugin-feed": ["./plugins/plugin-feed/src/index.ts"],
       "@elizaos/plugin-groq": ["./plugins/plugin-groq/index.ts"],
-      "@elizaos/plugin-hyperliquid-app": [
-        "./plugins/plugin-hyperliquid-app/src/index.ts"
+      "@elizaos/plugin-hyperliquid": [
+        "./plugins/plugin-hyperliquid/src/index.ts"
       ],
       "@elizaos/plugin-imessage": ["./plugins/plugin-imessage/src/index.ts"],
       "@elizaos/plugin-personal-assistant": [
@@ -158,8 +158,8 @@
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-phone": ["./plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["./plugins/plugin-phone/src/*"],
-      "@elizaos/plugin-polymarket-app": [
-        "./plugins/plugin-polymarket-app/src/index.ts"
+      "@elizaos/plugin-polymarket": [
+        "./plugins/plugin-polymarket/src/index.ts"
       ],
       "@elizaos/plugin-registry": ["./plugins/plugin-registry/src/index.ts"],
       "@elizaos/plugin-remote-manifest": [

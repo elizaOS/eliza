@@ -32,11 +32,11 @@ const repoRoot = resolve(
 const VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
-  "plugins/plugin-hyperliquid-app/src/plugin.ts",
+  "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",
-  "plugins/plugin-polymarket-app/src/plugin.ts",
+  "plugins/plugin-polymarket/src/plugin.ts",
   "plugins/plugin-shopify-ui/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
@@ -65,7 +65,7 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-create-contact",
     "terminal-import-vcard",
   ],
-  "plugins/plugin-hyperliquid-app/src/hyperliquid-app-view-bundle.ts": [
+  "plugins/plugin-hyperliquid/src/hyperliquid-app-view-bundle.ts": [
     "terminal-hyperliquid-state",
     "terminal-hyperliquid-market",
     "terminal-hyperliquid-execution-check",
@@ -91,7 +91,7 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-open-dialer",
     "terminal-save-call-transcript",
   ],
-  "plugins/plugin-polymarket-app/src/polymarket-view-bundle.ts": [
+  "plugins/plugin-polymarket/src/polymarket-view-bundle.ts": [
     "terminal-polymarket-state",
     "terminal-polymarket-market",
     "terminal-polymarket-orderbook",

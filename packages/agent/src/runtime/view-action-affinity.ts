@@ -117,8 +117,8 @@ export function setActiveViewElements(
  * missing-plugin skip (no error). Sources:
  *   wallet      — view plugins/plugin-wallet-ui; actions plugins/plugin-wallet
  *                 (chains/evm/actions swap+transfer, chains generated specs)
- *   polymarket  — plugins/plugin-polymarket-app/src/actions.ts (POLYMARKET_STATUS)
- *   hyperliquid — plugins/plugin-hyperliquid-app/src/actions/perpetual-market.ts
+ *   polymarket  — plugins/plugin-polymarket/src/actions.ts (POLYMARKET_STATUS)
+ *   hyperliquid — plugins/plugin-hyperliquid/src/actions/perpetual-market.ts
  *   steward     — plugin-steward-app re-exports plugin-wallet's WALLET action
  *   facewear    — plugins/plugin-facewear/src/index.ts (FACEWEAR_, SMARTGLASSES_, XR_ actions)
  *

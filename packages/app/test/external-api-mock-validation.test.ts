@@ -28,14 +28,14 @@ const VALIDATED: Readonly<
   Record<string, { contract: string; real: string; fixtures: string }>
 > = {
   polymarket: {
-    contract: "plugins/plugin-polymarket-app/src/routes.contract.test.ts",
-    real: "plugins/plugin-polymarket-app/src/routes.real.test.ts",
-    fixtures: "plugins/plugin-polymarket-app/src/__fixtures__",
+    contract: "plugins/plugin-polymarket/src/routes.contract.test.ts",
+    real: "plugins/plugin-polymarket/src/routes.real.test.ts",
+    fixtures: "plugins/plugin-polymarket/src/__fixtures__",
   },
   hyperliquid: {
-    contract: "plugins/plugin-hyperliquid-app/src/routes.contract.test.ts",
-    real: "plugins/plugin-hyperliquid-app/src/routes.real.test.ts",
-    fixtures: "plugins/plugin-hyperliquid-app/src/__fixtures__",
+    contract: "plugins/plugin-hyperliquid/src/routes.contract.test.ts",
+    real: "plugins/plugin-hyperliquid/src/routes.real.test.ts",
+    fixtures: "plugins/plugin-hyperliquid/src/__fixtures__",
   },
   coingecko: {
     contract:

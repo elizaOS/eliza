@@ -104,7 +104,7 @@ const smokeViewDeclarations = [
   [
     "hyperliquid",
     "Hyperliquid",
-    "plugin-hyperliquid-app",
+    "plugin-hyperliquid",
     "/hyperliquid",
     "HyperliquidView",
     ["gui", "tui"],
@@ -162,7 +162,7 @@ const smokeViewDeclarations = [
   [
     "polymarket",
     "Polymarket",
-    "plugin-polymarket-app",
+    "plugin-polymarket",
     "/polymarket",
     "PolymarketView",
     ["gui", "tui"],
@@ -526,14 +526,14 @@ const stubCatalogApps = [
     category: "platform",
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-hyperliquid-app",
+    name: "@elizaos/plugin-hyperliquid",
     displayName: "Hyperliquid",
     description: "Inspect Hyperliquid markets, positions, and order status.",
     category: "platform",
     capabilities: ["hyperliquid", "trading", "wallet"],
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-polymarket-app",
+    name: "@elizaos/plugin-polymarket",
     displayName: "Polymarket",
     description: "Browse prediction markets and native trading readiness.",
     category: "platform",

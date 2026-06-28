@@ -26,12 +26,12 @@
   },
   {
     "slug": "hyperliquid",
-    "canonicalName": "@elizaos/plugin-hyperliquid-app",
+    "canonicalName": "@elizaos/plugin-hyperliquid",
     "aliases": []
   },
   {
     "slug": "polymarket",
-    "canonicalName": "@elizaos/plugin-polymarket-app",
+    "canonicalName": "@elizaos/plugin-polymarket",
     "aliases": []
   },
   {

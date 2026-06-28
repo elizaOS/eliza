@@ -71,11 +71,11 @@ const LEVELS = [
   },
   {
     name: "plugin view hyperliquid",
-    file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
+    file: "plugins/plugin-hyperliquid/src/HyperliquidView.tsx",
   },
   {
     name: "plugin view messages",
-    file: "plugins/plugin-messages/src/components/MessagesAppView.tsx",
+    file: "plugins/plugin-messages/src/components/MessagesView.tsx",
   },
   {
     name: "plugin view model tester",
@@ -83,15 +83,15 @@ const LEVELS = [
   },
   {
     name: "plugin view phone",
-    file: "plugins/plugin-phone/src/components/PhoneAppView.tsx",
+    file: "plugins/plugin-phone/src/components/PhoneView.tsx",
   },
   {
     name: "plugin view polymarket",
-    file: "plugins/plugin-polymarket-app/src/PolymarketView.tsx",
+    file: "plugins/plugin-polymarket/src/PolymarketView.tsx",
   },
   {
     name: "plugin view shopify",
-    file: "plugins/plugin-shopify-ui/src/ShopifyAppView.tsx",
+    file: "plugins/plugin-shopify-ui/src/ShopifyView.tsx",
   },
   {
     name: "plugin view notes",

@@ -450,9 +450,9 @@ const optionalPluginStubs = {
   // package so a local-source mobile bundle does not depend on those desktop
   // catalogs or pull the full workflow graph into the phone agent.
   "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.cjs"),
-  // plugin-device-filesystem uses native fs APIs and is not available
+  // plugin-native-filesystem uses native fs APIs and is not available
   // in the mobile bundle — stub it so the runtime skips it gracefully.
-  "@elizaos/plugin-device-filesystem": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-native-filesystem": path.join(stubsDir, "null-plugin.cjs"),
 };
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };

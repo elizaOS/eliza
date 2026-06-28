@@ -15,10 +15,10 @@ const cleanupHelperPath = path.join(scriptDir, "rm-path-recursive.mjs");
 const optionalPackages = [
   "@elizaos/plugin-companion",
   "@elizaos/plugin-elizamaker",
-  "@elizaos/plugin-hyperliquid-app",
+  "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-documents",
   "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-polymarket-app",
+  "@elizaos/plugin-polymarket",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
   "@elizaos/plugin-task-coordinator",

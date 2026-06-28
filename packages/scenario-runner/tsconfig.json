@@ -72,8 +72,8 @@
       ],
       "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
-      "@elizaos/plugin-device-filesystem": [
-        "../../plugins/plugin-device-filesystem/src/index.ts"
+      "@elizaos/plugin-native-filesystem": [
+        "../../plugins/plugin-native-filesystem/src/index.ts"
       ],
       "@elizaos/plugin-github": ["../../plugins/plugin-github/src/index.ts"],
       "@elizaos/plugin-gitpathologist": [

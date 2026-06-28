@@ -188,8 +188,8 @@
       "@elizaos/plugin-companion": [
         "./plugins/plugin-companion/dist/index.d.ts"
       ],
-      "@elizaos/plugin-polymarket-app": [
-        "./plugins/plugin-polymarket-app/dist/index.d.ts"
+      "@elizaos/plugin-polymarket": [
+        "./plugins/plugin-polymarket/dist/index.d.ts"
       ],
       "@elizaos/plugin-computeruse": [
         "./plugins/plugin-computeruse/dist/index.d.ts"
@@ -237,8 +237,8 @@
       "@elizaos/plugin-app-manager": [
         "./plugins/plugin-app-manager/src/index.ts"
       ],
-      "@elizaos/plugin-hyperliquid-app": [
-        "./plugins/plugin-hyperliquid-app/dist/index.d.ts"
+      "@elizaos/plugin-hyperliquid": [
+        "./plugins/plugin-hyperliquid/dist/index.d.ts"
       ],
       "@elizaos/plugin-anthropic": [
         "./plugins/plugin-anthropic/dist/index.d.ts"

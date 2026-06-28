@@ -125,7 +125,7 @@ jobs:
             --filter=@elizaos/plugin-browser \
             --filter=@elizaos/plugin-capacitor-bridge \
             --filter=@elizaos/plugin-coding-tools \
-            --filter=@elizaos/plugin-device-filesystem \
+            --filter=@elizaos/plugin-native-filesystem \
             --filter=@elizaos/plugin-shell \
             --filter=@elizaos/plugin-commands \
             --filter=@elizaos/plugin-computeruse \

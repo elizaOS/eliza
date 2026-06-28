@@ -65,7 +65,7 @@ Per-view UX + code + state inventory of elizaOS **plugin** views (under `plugins
 
 All three wire **real live data** (no stubs). Theme split is the key lever: wallet + finances are dark-black (`bg-bg` / `#0a0a0a`); **polymarket is the only one already on a light surface** (`--bg #fff`, `--txt #111`). Pull wallet + finances toward polymarket's lighter look, and cut ~40-60% of chrome.
 
-Theme citations: Finances dark bg `plugins/plugin-finances/src/components/finances/FinancesView.tsx:299`; Wallet dark `InventoryView.tsx:2240,:1755,:1866`; Polymarket light `plugins/plugin-polymarket-app/src/PolymarketAppView.tsx:14-15,186`.
+Theme citations: Finances dark bg `plugins/plugin-finances/src/components/finances/FinancesView.tsx:299`; Wallet dark `InventoryView.tsx:2240,:1755,:1866`; Polymarket light `plugins/plugin-polymarket/src/PolymarketAppView.tsx:14-15,186`.
 
 ## 1. Wallet — `wallet` / `InventoryView` (desktop+XR) — `plugins/plugin-wallet-ui/src/InventoryView.tsx:2042`
 
@@ -112,9 +112,9 @@ ViewDeclaration: `plugins/plugin-finances/src/plugin.ts:26-40` (single view, no 
 - **Minimization recommendations:** Flip to light surface. Empty state → one line + button ("No source connected" + Connect); delete the 3-line paragraph. Balance card → flat header row (big net number, "+in/−out" pair in green/red, drop "As of"). Transactions/recurring → borderless rows, color the amount. Error → inline one-liner + Retry icon. Chat actions: refresh, connect-source, "what did I spend on X", "cancel <subscription>" (recurring list is the natural cancel surface). Proactive: "next recurring charge in N days" is the one line worth keeping.
 - **Even-simpler note:** Won't merge with wallet (separate domains/services) but should share **one minimal "money list" visual primitive** (balance header + borderless amount-colored list).
 
-## 5. Polymarket — `polymarket` / `PolymarketAppView` (desktop+XR) — `plugins/plugin-polymarket-app/src/PolymarketAppView.tsx:36`
+## 5. Polymarket — `polymarket` / `PolymarketAppView` (desktop+XR) — `plugins/plugin-polymarket/src/PolymarketAppView.tsx:36`
 
-ViewDeclaration: `plugins/plugin-polymarket-app/src/plugin.ts:105-145` (standard, XR, TUI→`PolymarketTuiView`).
+ViewDeclaration: `plugins/plugin-polymarket/src/plugin.ts:105-145` (standard, XR, TUI→`PolymarketTuiView`).
 
 - **Purpose:** Prediction-market discovery — readiness strip, market list, market detail with outcomes/odds.
 - **Real or stub?** **REAL** — `usePolymarketState()` fetches live `polymarketStatus()` + `polymarketMarkets({limit:25})` (`usePolymarketState.ts:24-29`). Trading intentionally read-only (documented).

@@ -2478,12 +2478,12 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-shopify-ui/src/register.ts",
         ],
         [
-          "@elizaos/plugin-hyperliquid-app",
-          "plugins/plugin-hyperliquid-app/src/register.ts",
+          "@elizaos/plugin-hyperliquid",
+          "plugins/plugin-hyperliquid/src/register.ts",
         ],
         [
-          "@elizaos/plugin-polymarket-app",
-          "plugins/plugin-polymarket-app/src/register.ts",
+          "@elizaos/plugin-polymarket",
+          "plugins/plugin-polymarket/src/register.ts",
         ],
         [
           "@elizaos/plugin-wallet-ui",
@@ -2494,8 +2494,8 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-contacts/src/register.ts",
         ],
         [
-          "@elizaos/plugin-device-settings/register",
-          "plugins/plugin-device-settings/src/register.ts",
+          "@elizaos/plugin-native-settings/register",
+          "plugins/plugin-native-settings/src/register.ts",
         ],
         [
           "@elizaos/plugin-messages/register",

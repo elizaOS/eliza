@@ -6,7 +6,7 @@ import agentSkillsPlugin from "@elizaos/plugin-agent-skills";
 import appControlPlugin from "@elizaos/plugin-app-control";
 import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
-import deviceFilesystemPlugin from "@elizaos/plugin-device-filesystem";
+import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
 import githubPlugin from "@elizaos/plugin-github";
 import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
@@ -148,7 +148,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
 const ACTIONLESS_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-shell": shellPlugin,
   "@elizaos/plugin-video": videoPlugin,
-  "@elizaos/plugin-device-filesystem": deviceFilesystemPlugin,
+  "@elizaos/plugin-native-filesystem": deviceFilesystemPlugin,
 };
 
 /**

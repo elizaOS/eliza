@@ -55,8 +55,8 @@ not injectable need that refactor first.
 
 | External API | Provider host | Public? | Tier | Evidence / next step |
 |---|---|---|---|---|
-| Polymarket | gamma/clob/data-api.polymarket.com | yes | **validated** | `plugin-polymarket-app/src/routes.{contract,real}.test.ts`. Fixed UI mock `liquidity` format. |
-| Hyperliquid | api.hyperliquid.xyz/info | yes | **validated** | `plugin-hyperliquid-app/src/routes.{contract,real}.test.ts`. |
+| Polymarket | gamma/clob/data-api.polymarket.com | yes | **validated** | `plugin-polymarket/src/routes.{contract,real}.test.ts`. Fixed UI mock `liquidity` format. |
+| Hyperliquid | api.hyperliquid.xyz/info | yes | **validated** | `plugin-hyperliquid/src/routes.{contract,real}.test.ts`. |
 | ClawVille | api.clawville.world | yes | **contract-tested** | `plugin-clawville/src/routes.test.ts` (recorded REAL_CONNECT/perception). Fixed stale building ids via perception-aware resolution. Next: live-drift test. |
 | Shopify | Admin GraphQL 2025-04 | no (store token) | **contract-tested** | `plugin-shopify-ui/src/routes.contract.test.ts` + customer fields fixed to `numberOfOrders`/`amountSpent` (verified vs live 2025-04 docs). Next: gated live-refresh. |
 | Steward | KMS/anvil bridge | no | **contract-tested** | `plugin-steward-app/src/steward-bridge.contract.test.ts`. |

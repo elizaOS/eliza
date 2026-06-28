@@ -91,7 +91,7 @@ const views = [
     icon: VIEW_HERO_ICONS.calendar,
   },
   {
-    out: "plugins/plugin-device-settings/assets/hero.svg",
+    out: "plugins/plugin-native-settings/assets/hero.svg",
     id: "device-settings",
     label: "Device Settings",
     hue: 96,

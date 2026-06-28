@@ -157,14 +157,14 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-elizacloud": existing(
     "plugins/plugin-elizacloud/__tests__/cloud-billing-routes.test.ts",
   ),
-  "plugin-hyperliquid-app": existing(
-    "plugins/plugin-hyperliquid-app/src/routes.real.test.ts",
+  "plugin-hyperliquid": existing(
+    "plugins/plugin-hyperliquid/src/routes.real.test.ts",
   ),
   "plugin-local-inference": existing(
     "plugins/plugin-local-inference/__tests__/voice-models-routes.test.ts",
   ),
-  "plugin-polymarket-app": existing(
-    "plugins/plugin-polymarket-app/src/routes.real.test.ts",
+  "plugin-polymarket": existing(
+    "plugins/plugin-polymarket/src/routes.real.test.ts",
   ),
   "plugin-shopify-ui": existing(
     "plugins/plugin-shopify-ui/src/routes.contract.test.ts",

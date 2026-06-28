@@ -73,7 +73,7 @@ type PluginViewManifestContract = {
 const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
-  "plugins/plugin-hyperliquid-app/src/plugin.ts",
+  "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-blocker/src/plugin.ts",
@@ -86,7 +86,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-relationships/src/plugin.ts",
   "plugins/plugin-todos/src/index.ts",
   "plugins/plugin-phone/src/plugin.ts",
-  "plugins/plugin-polymarket-app/src/plugin.ts",
+  "plugins/plugin-polymarket/src/plugin.ts",
   "plugins/plugin-shopify-ui/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
@@ -150,18 +150,18 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice":
     "plugins/plugin-companion/src/plugin.ts",
   "@elizaos/plugin-contacts": "plugins/plugin-contacts/src/plugin.ts",
-  "@elizaos/plugin-device-settings": null,
+  "@elizaos/plugin-native-settings": null,
   "@elizaos/plugin-facewear": "plugins/plugin-facewear/src/index.ts",
   "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
-  "@elizaos/plugin-hyperliquid-app":
-    "plugins/plugin-hyperliquid-app/src/plugin.ts",
+  "@elizaos/plugin-hyperliquid":
+    "plugins/plugin-hyperliquid/src/plugin.ts",
   // PA no longer declares a view (the LifeOps overview was removed); it is a
   // boot plugin with no renderer module.
   "@elizaos/plugin-personal-assistant": null,
   "@elizaos/plugin-messages": "plugins/plugin-messages/src/plugin.ts",
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
-  "@elizaos/plugin-polymarket-app":
-    "plugins/plugin-polymarket-app/src/plugin.ts",
+  "@elizaos/plugin-polymarket":
+    "plugins/plugin-polymarket/src/plugin.ts",
   "@elizaos/plugin-shopify-ui": "plugins/plugin-shopify-ui/src/plugin.ts",
   "@elizaos/plugin-steward-app": "plugins/plugin-steward-app/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
@@ -192,7 +192,7 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/contacts",
   },
   {
-    manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
+    manifestPath: "plugins/plugin-hyperliquid/src/plugin.ts",
     id: "hyperliquid",
     viewType: "xr",
     path: "/hyperliquid",
@@ -216,7 +216,7 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/phone",
   },
   {
-    manifestPath: "plugins/plugin-polymarket-app/src/plugin.ts",
+    manifestPath: "plugins/plugin-polymarket/src/plugin.ts",
     id: "polymarket",
     viewType: "xr",
     path: "/polymarket",

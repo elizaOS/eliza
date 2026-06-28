@@ -321,7 +321,7 @@ export const documentsPlugin = {
 export const plugin = documentsPlugin;
 export default documentsPlugin;
 `,
-    "@elizaos/plugin-hyperliquid-app": `
+    "@elizaos/plugin-hyperliquid": `
 export const hyperliquidPlugin = {
   name: "hyperliquid",
   description: "Hyperliquid app routes are not bundled in the elizaOS Live base runtime.",
@@ -330,7 +330,7 @@ export const hyperliquidPlugin = {
 export const plugin = hyperliquidPlugin;
 export default hyperliquidPlugin;
 `,
-    "@elizaos/plugin-polymarket-app": `
+    "@elizaos/plugin-polymarket": `
 export const polymarketPlugin = {
   name: "polymarket",
   description: "Polymarket app routes are not bundled in the elizaOS Live base runtime.",
@@ -495,9 +495,9 @@ const forceLiveStubPackages = new Set([
   "@elizaos/plugin-companion",
   "@elizaos/plugin-documents",
   "@elizaos/plugin-google",
-  "@elizaos/plugin-hyperliquid-app",
+  "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-polymarket-app",
+  "@elizaos/plugin-polymarket",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
   "@elizaos/plugin-training",
@@ -883,7 +883,7 @@ const sourceRuntimePackages = [
   ["@elizaos/plugin-coding-tools", "plugins/plugin-coding-tools"],
   ["@elizaos/plugin-commands", "plugins/plugin-commands"],
   ["@elizaos/plugin-computeruse", "plugins/plugin-computeruse"],
-  ["@elizaos/plugin-device-filesystem", "plugins/plugin-device-filesystem"],
+  ["@elizaos/plugin-native-filesystem", "plugins/plugin-native-filesystem"],
   ["@elizaos/plugin-elizacloud", "plugins/plugin-elizacloud"],
   ["@elizaos/plugin-sql", "plugins/plugin-sql"],
   ["@elizaos/plugin-video", "plugins/plugin-video"],

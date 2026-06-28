@@ -121,8 +121,8 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-contacts/src/plugin.ts",
   },
   {
-    pluginDir: "plugins/plugin-hyperliquid-app",
-    manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
+    pluginDir: "plugins/plugin-hyperliquid",
+    manifestPath: "plugins/plugin-hyperliquid/src/plugin.ts",
   },
   {
     pluginDir: "plugins/plugin-messages",
@@ -137,8 +137,8 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-phone/src/plugin.ts",
   },
   {
-    pluginDir: "plugins/plugin-polymarket-app",
-    manifestPath: "plugins/plugin-polymarket-app/src/plugin.ts",
+    pluginDir: "plugins/plugin-polymarket",
+    manifestPath: "plugins/plugin-polymarket/src/plugin.ts",
   },
   {
     pluginDir: "plugins/plugin-shopify-ui",

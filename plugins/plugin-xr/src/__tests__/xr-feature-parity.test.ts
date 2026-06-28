@@ -142,11 +142,11 @@ const VOICE_ROUTE_SAMPLE_IDS = [
 const VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
-  "plugins/plugin-hyperliquid-app/src/plugin.ts",
+  "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",
-  "plugins/plugin-polymarket-app/src/plugin.ts",
+  "plugins/plugin-polymarket/src/plugin.ts",
   "plugins/plugin-shopify-ui/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",

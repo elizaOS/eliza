@@ -39,7 +39,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
 export const MOBILE_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",
   "@elizaos/plugin-background-runner",
-  "@elizaos/plugin-device-filesystem",
+  "@elizaos/plugin-native-filesystem",
   // Screen understanding on mobile (EPIC #9105): the GET_SCREEN op + the
   // renderer-pulled screen-capture bridge + the IMAGE_DESCRIPTION describe
   // path. plugin-vision is now mobile-safe — `sharp` is lazy-loaded with a
@@ -120,7 +120,7 @@ export const CORE_PLUGINS: readonly string[] = [
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
-  "@elizaos/plugin-device-filesystem", // mobile-safe FILE target=device via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
+  "@elizaos/plugin-native-filesystem", // mobile-safe FILE target=device via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
   "@elizaos/plugin-shell", // shell service, approvals, and history provider
   "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools (desktop-only
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
@@ -152,7 +152,7 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
   "@elizaos/plugin-companion", // VRM companion emotes for the app chat surface
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
-  "@elizaos/plugin-device-filesystem", // mobile-safe FILE target
+  "@elizaos/plugin-native-filesystem", // mobile-safe FILE target
   "@elizaos/plugin-agent-skills", // skill execution + enabled-skills provider
   "@elizaos/plugin-commands", // slash commands
 ];

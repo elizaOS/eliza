@@ -69,15 +69,15 @@ const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
 
 const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
   "@elizaos/plugin-elizamaker",
-  "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-polymarket-app",
+  "@elizaos/plugin-hyperliquid",
+  "@elizaos/plugin-polymarket",
   "@elizaos/plugin-shopify-ui",
   "@elizaos/plugin-steward-app",
 ]);
 
 const WALLET_SCOPED_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-polymarket-app",
+  "@elizaos/plugin-hyperliquid",
+  "@elizaos/plugin-polymarket",
 ]);
 
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
@@ -348,8 +348,8 @@ export function getAppCatalogSectionKey(
     case "@elizaos/plugin-companion":
       return "games";
     case "@elizaos/plugin-shopify-ui":
-    case "@elizaos/plugin-hyperliquid-app":
-    case "@elizaos/plugin-polymarket-app":
+    case "@elizaos/plugin-hyperliquid":
+    case "@elizaos/plugin-polymarket":
       return "finance";
     case "@elizaos/plugin-feed":
       return "games";

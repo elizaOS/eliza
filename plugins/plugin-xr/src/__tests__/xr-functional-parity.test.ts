@@ -165,9 +165,9 @@ const PLUGIN_REGISTRY: Array<{
     ],
   },
   {
-    pluginDir: "plugins/plugin-hyperliquid-app",
-    manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-hyperliquid-app/src/HyperliquidView.tsx",
+    pluginDir: "plugins/plugin-hyperliquid",
+    manifestPath: "plugins/plugin-hyperliquid/src/plugin.ts",
+    xrComponentSrc: "plugins/plugin-hyperliquid/src/HyperliquidView.tsx",
     requiredTerms: ["HyperliquidView", "useState"],
   },
   {
@@ -190,9 +190,9 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["PhoneView", "PhoneSpatialView", "Button"],
   },
   {
-    pluginDir: "plugins/plugin-polymarket-app",
-    manifestPath: "plugins/plugin-polymarket-app/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-polymarket-app/src/PolymarketView.tsx",
+    pluginDir: "plugins/plugin-polymarket",
+    manifestPath: "plugins/plugin-polymarket/src/plugin.ts",
+    xrComponentSrc: "plugins/plugin-polymarket/src/PolymarketView.tsx",
     requiredTerms: ["PolymarketView", "useState"],
   },
   {
@@ -278,8 +278,8 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
       "plugins/plugin-contacts/src/components/ContactsAppView.interact.ts",
     capabilities: ["terminal-list-contacts", "terminal-create-contact"],
   },
-  "plugins/plugin-hyperliquid-app": {
-    srcFile: "plugins/plugin-hyperliquid-app/src/hyperliquid-interact.ts",
+  "plugins/plugin-hyperliquid": {
+    srcFile: "plugins/plugin-hyperliquid/src/hyperliquid-interact.ts",
     capabilities: ["terminal-hyperliquid-state"],
   },
   "plugins/plugin-messages": {

@@ -410,6 +410,41 @@ describe("assertRequiredBundledPackagesLanded", () => {
     ).toBe(targetNodeModules);
   });
 
+  it("hoists Smithy signing packages so AWS signing trees stay tar-safe", () => {
+    const rootDestDir = path.join(tmpDir, "dist");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(
+      targetNodeModules,
+      "@aws-sdk",
+      "signature-v4-multi-region",
+      "node_modules",
+      "@smithy",
+      "signature-v4",
+    );
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@smithy/core",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@smithy/core", "3.26.0"]]),
+        resolvedVersion: "3.25.0",
+      }),
+    ).toBe(targetNodeModules);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@smithy/signature-v4",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@smithy/signature-v4", "5.5.2"]]),
+        resolvedVersion: "5.5.0",
+      }),
+    ).toBe(targetNodeModules);
+  });
+
   it("collapses WalletConnect patch drift to avoid duplicate desktop runtime copies", () => {
     const rootDestDir = path.join(tmpDir, "dist");
     const targetNodeModules = path.join(rootDestDir, "node_modules");

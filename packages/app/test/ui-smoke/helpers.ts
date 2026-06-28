@@ -722,7 +722,7 @@ function smokePolymarketMarkets() {
           { name: "No", price: "0.13" },
         ],
         // Raw numeric strings — the real Gamma API + BFF parser emit unformatted
-        // numerics (see plugin-polymarket-app routes.contract.test.ts). The view's
+        // numerics (see plugin-polymarket routes.contract.test.ts). The view's
         // shortNumber() does Number(value), so a pre-formatted "$12,345" would
         // render as "—". Keep this matching the validated real DTO shape.
         liquidity: "12345.5",

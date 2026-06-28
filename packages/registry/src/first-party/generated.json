@@ -209,7 +209,7 @@
       "id": "app-polymarket",
       "name": "Polymarket",
       "description": "Native Polymarket market discovery and trading readiness for prediction markets.",
-      "npmName": "@elizaos/plugin-polymarket-app",
+      "npmName": "@elizaos/plugin-polymarket",
       "source": "bundled",
       "tags": ["trading", "polymarket", "prediction-markets", "wallet"],
       "config": {},
@@ -242,7 +242,7 @@
         ],
         "curatedSlug": "polymarket",
         "routePlugin": {
-          "specifier": "@elizaos/plugin-polymarket-app/plugin",
+          "specifier": "@elizaos/plugin-polymarket/plugin",
           "exportName": "polymarketPlugin"
         }
       }
@@ -3497,7 +3497,7 @@
       "id": "hyperliquid",
       "name": "Hyperliquid",
       "description": "Native Hyperliquid market, position, and order status for wallet trading.",
-      "npmName": "@elizaos/plugin-hyperliquid-app",
+      "npmName": "@elizaos/plugin-hyperliquid",
       "source": "bundled",
       "tags": ["trading", "hyperliquid", "perps", "wallet"],
       "config": {},
@@ -3525,7 +3525,7 @@
         "capabilities": ["hyperliquid", "trading", "wallet"],
         "curatedSlug": "hyperliquid",
         "routePlugin": {
-          "specifier": "@elizaos/plugin-hyperliquid-app/plugin",
+          "specifier": "@elizaos/plugin-hyperliquid/plugin",
           "exportName": "hyperliquidPlugin"
         }
       }

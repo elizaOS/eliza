@@ -25,8 +25,8 @@
       "@elizaos/plugin-messages/register": [
         "../../plugins/plugin-messages/src/register.ts"
       ],
-      "@elizaos/plugin-device-settings/register": [
-        "../../plugins/plugin-device-settings/src/register.ts"
+      "@elizaos/plugin-native-settings/register": [
+        "../../plugins/plugin-native-settings/src/register.ts"
       ],
       "@elizaos/plugin-vector-browser/register": [
         "../../plugins/plugin-vector-browser/src/register.ts"

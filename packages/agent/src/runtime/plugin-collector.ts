@@ -270,9 +270,9 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   "browser-bridge": "@elizaos/plugin-browser",
   browserBridge: "@elizaos/plugin-browser",
   /** Native Polymarket app runtime plugin. */
-  polymarket: "@elizaos/plugin-polymarket-app",
-  "app-polymarket": "@elizaos/plugin-polymarket-app",
-  appPolymarket: "@elizaos/plugin-polymarket-app",
+  polymarket: "@elizaos/plugin-polymarket",
+  "app-polymarket": "@elizaos/plugin-polymarket",
+  appPolymarket: "@elizaos/plugin-polymarket",
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
   selfcontrol: "@elizaos/plugin-personal-assistant",
