@@ -5,8 +5,9 @@ import type {
   ProviderResult,
   Room,
   State,
+  UUID,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, stringToUuid } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
@@ -19,7 +20,60 @@ import {
 } from "../shared/conversation-format.ts";
 
 const MAX_RELEVANT_RESULTS = 10;
+const MAX_HASH_MEMORY_RESULTS = 4;
+const HASH_MEMORY_SCAN_LIMIT = 2_000;
 const MATCH_THRESHOLD = 0.7;
+const HASH_MEMORY_SOURCE = "hash_memory";
+
+function scoreMemoryText(text: string, query: string): number {
+  const normalizedText = text.toLowerCase();
+  const normalizedQuery = query.toLowerCase();
+  if (!normalizedText || !normalizedQuery) return 0;
+
+  const terms = normalizedQuery
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2);
+
+  const containsWhole = normalizedText.includes(normalizedQuery) ? 1 : 0;
+  if (terms.length === 0) return containsWhole;
+
+  let termMatches = 0;
+  for (const term of terms) {
+    if (normalizedText.includes(term)) termMatches += 1;
+  }
+  return containsWhole + termMatches / terms.length;
+}
+
+async function loadHashMemories(
+  runtime: IAgentRuntime,
+  query: string,
+): Promise<Memory[]> {
+  const agentName = runtime.character.name?.trim() || "Eliza";
+  const roomId = stringToUuid(`${agentName}-hash-memory-room`) as UUID;
+  const memories = await runtime.getMemories({
+    roomId,
+    tableName: "messages",
+    limit: HASH_MEMORY_SCAN_LIMIT,
+    includeEmbedding: false,
+  });
+
+  return memories
+    .map((memory) => ({
+      memory,
+      score: scoreMemoryText(memory.content.text ?? "", query),
+    }))
+    .filter(({ memory, score }) => {
+      const source = (memory.content as { source?: string } | undefined)?.source;
+      return source === HASH_MEMORY_SOURCE && score > 0;
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return (right.memory.createdAt ?? 0) - (left.memory.createdAt ?? 0);
+    })
+    .slice(0, MAX_HASH_MEMORY_RESULTS)
+    .map(({ memory }) => memory);
+}
 
 export const relevantConversationsProvider: Provider = {
   name: "relevant-conversations",
@@ -39,6 +93,7 @@ export const relevantConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
+  alwaysInResponseState: true,
   roleGate: { minRole: "USER" },
 
   async get(
@@ -61,34 +116,45 @@ export const relevantConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      // Embed the current message for semantic search
-      const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-        text,
-      });
+      const hashMemories = await loadHashMemories(runtime, text);
 
-      const embedding = Array.isArray(embeddingResult)
-        ? embeddingResult
-        : (embeddingResult as { embedding?: number[] })?.embedding;
+      let results: Memory[] = [];
+      try {
+        // Embed the current message for semantic search. This is optional: cloud
+        // agents may boot without a TEXT_EMBEDDING handler, while /api/memory/remember
+        // stores lexical hash memories in the messages table without embeddings.
+        const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+          text,
+        });
 
-      if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
-        return { text: "", values: {}, data: {} };
-      }
+        const embedding = Array.isArray(embeddingResult)
+          ? embeddingResult
+          : (embeddingResult as { embedding?: number[] })?.embedding;
 
-      const results = await runtime.searchMemories({
-        embedding,
-        tableName: "messages",
-        match_threshold: MATCH_THRESHOLD,
-        limit: MAX_RELEVANT_RESULTS + 5, // fetch extra to filter current room
-      });
-
-      if (!results || results.length === 0) {
-        return { text: "", values: {}, data: {} };
+        if (embedding && Array.isArray(embedding) && embedding.length > 0) {
+          results = await runtime.searchMemories({
+            embedding,
+            tableName: "messages",
+            match_threshold: MATCH_THRESHOLD,
+            limit: MAX_RELEVANT_RESULTS + 5, // fetch extra to filter current room
+          });
+        }
+      } catch (error) {
+        logger.debug(
+          "[relevant-conversations] Semantic search unavailable, using lexical hash memories:",
+          error instanceof Error ? error.message : String(error),
+        );
       }
 
       // Filter out messages from the current conversation to avoid echo
       const currentRoomId = message.roomId;
-      const filtered = results
+      const filtered = [...hashMemories, ...(results ?? [])]
         .filter((m) => m.content.text && m.roomId !== currentRoomId)
+        .filter(
+          (memory, index, all) =>
+            !memory.id ||
+            all.findIndex((candidate) => candidate.id === memory.id) === index,
+        )
         .slice(0, MAX_RELEVANT_RESULTS);
 
       if (filtered.length === 0) {
@@ -114,7 +180,9 @@ export const relevantConversationsProvider: Provider = {
         const tag = roomSourceTag(room);
         const ts = formatRelativeTimestamp(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
-        const msgText = (mem.content.text ?? "").slice(0, 200);
+        const source = (mem.content as { source?: string } | undefined)?.source;
+        const snippetLength = source === HASH_MEMORY_SOURCE ? 700 : 200;
+        const msgText = (mem.content.text ?? "").slice(0, snippetLength);
         lines.push(`${tag} (${ts}) ${speaker}: ${msgText}`);
       }
 

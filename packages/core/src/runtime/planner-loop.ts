@@ -906,6 +906,17 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
 	const text = getNonEmptyString(raw.text);
+	const structuredText = text ? parseJsonPlannerOutput(text) : undefined;
+
+	// Some provider/proxy combinations return planner/evaluator JSON in the
+	// native text channel while tool calls are delivered out-of-band. Treat that
+	// JSON as control data, never as user-visible prose. If there are no native
+	// tool calls, fully consume it through the JSON planner parser so embedded
+	// REPLY/tool-call envelopes still work. If native tool calls exist, keep the
+	// tool calls and only carry over a real messageToUser/text field.
+	if (structuredText && nativeToolCalls.length === 0) {
+		return structuredText;
+	}
 
 	let textRecoveredCalls: PlannerToolCall[] = [];
 	const embeddedToolCalls = parseEmbeddedToolCalls(raw.text);
@@ -921,16 +932,20 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 
 	return {
 		toolCalls,
-		// When `raw.text` was itself tool-call JSON it is not a user-facing
-		// message — take the reply from a REPLY call rather than leaking the
-		// raw JSON blob into the channel.
+		// When `raw.text` was itself tool-call/control JSON it is not a
+		// user-facing message — take the reply from a REPLY call rather than
+		// leaking the raw JSON blob into the channel.
 		messageToUser:
 			textRecoveredCalls.length > 0
 				? terminalMessageFromToolCalls(toolCalls)
-				: text,
+				: structuredText
+					? structuredText.messageToUser
+					: text,
+		thought: structuredText?.thought,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
+			...(structuredText ? { parsedText: structuredText.raw } : {}),
 		} as Record<string, unknown>,
 	};
 }
@@ -2746,11 +2761,41 @@ export function looksLikeSpawnEnvelopeJson(text: string): boolean {
 	);
 }
 
+
+export function looksLikeEvaluatorEnvelopeJson(text: string): boolean {
+	let body = text.trim();
+	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (fence?.[1]) body = fence[1].trim();
+	if (!body.startsWith("{") || !body.endsWith("}")) return false;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		return false;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return false;
+	}
+	const record = parsed as Record<string, unknown>;
+	const decision = String(record.decision ?? record.route ?? "").toUpperCase();
+	if (!["FINISH", "CONTINUE", "NEXT_RECOMMENDED"].includes(decision)) {
+		return false;
+	}
+	return (
+		typeof record.success === "boolean" ||
+		typeof record.thought === "string" ||
+		typeof record.nextTool === "object" ||
+		typeof record.recommendedToolCallId === "string"
+	);
+}
+
 function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
-	if (looksLikeSpawnEnvelopeJson(text)) return true;
+	if (looksLikeSpawnEnvelopeJson(text) || looksLikeEvaluatorEnvelopeJson(text)) {
+		return true;
+	}
 	return [
 		/\bto=functions\.[A-Z0-9_]+\b/i,
 		/\bfunctions\.[A-Z0-9_]+\b/i,

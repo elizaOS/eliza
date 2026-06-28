@@ -972,7 +972,21 @@ async function generateTextWithModel(
 
   const operationName = `${modelType} request using ${modelName}`;
 
-  if (params.stream) {
+  // ELIZA_ANTHROPIC_DISABLE_STREAM=1 forces the non-streaming generateText path.
+  // Tool-using Anthropic requests also take the non-streaming path by default:
+  // the AI SDK streaming parser can raise AI_NoOutputGeneratedError when
+  // tool_use content blocks pass through de-streaming proxies, while
+  // generateText preserves response.toolCalls and normal text reliably.
+  // tools may arrive as an array (length) OR as a keyed object (ToolSet record);
+  // detect both so object-shaped tool sets also take the robust non-stream path.
+  const toolsField = paramsWithAttachments.tools as unknown;
+  const hasTools = Array.isArray(toolsField)
+    ? toolsField.length > 0
+    : Boolean(toolsField) && typeof toolsField === "object" && Object.keys(toolsField as object).length > 0;
+  const hasToolSurface = hasTools || Boolean(paramsWithAttachments.toolChoice);
+  const streamDisabled = process.env.ELIZA_ANTHROPIC_DISABLE_STREAM === "1" || hasToolSurface;
+
+  if (params.stream && !streamDisabled) {
     try {
       const streamResult = streamText(generateParams);
       const providerMetadataPromise: Promise<unknown> = Promise.resolve(
