@@ -21,7 +21,7 @@ import { getScreenshareCapabilities } from "../session-store";
 import type {
   CapabilitiesResponse,
   Capability,
-} from "./ScreenshareOperatorSurface.helpers";
+} from "./screenshare-helpers";
 
 // getScreenshareCapabilities() in session-store.ts simply returns
 // detectDesktopControlCapabilities(); both are public re-exports.
@@ -74,7 +74,7 @@ describe("screenshare capabilities contract", () => {
       "linux",
     );
 
-    // Mirror exactly what ScreenshareOperatorSurface does:
+    // Mirror exactly what ScreenshareView / ScreenshareSpatialView do:
     //   capabilities?.capabilities.headfulGui?.available
     //   Object.entries(capabilities.capabilities).map(([name, capability]) =>
     //     `${name}: ${capability.tool}` + capability.available)

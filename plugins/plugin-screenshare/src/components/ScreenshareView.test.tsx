@@ -5,8 +5,8 @@
 // and "xr" modalities. Asserts the host lifecycle (start/rotate/stop), the
 // open-viewer + copy controls, the editable remote-connect fields + connect,
 // the capability list, the refresh, and the error path all reach the screenshare
-// API with the exact arguments — functional parity with the retired
-// per-modality ScreenshareOperatorSurface/ScreenshareTuiView declarations.
+// API with the exact arguments — the single source of truth for the GUI/XR
+// surface now that the per-modality operator/TUI duplicates are retired.
 
 import {
   cleanup,

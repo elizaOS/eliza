@@ -235,8 +235,8 @@ const PLUGIN_REGISTRY: Array<{
     pluginDir: "plugins/plugin-screenshare",
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
     xrComponentSrc:
-      "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
-    requiredTerms: ["ScreenshareOperatorSurface", "useState"],
+      "plugins/plugin-screenshare/src/components/ScreenshareView.tsx",
+    requiredTerms: ["ScreenshareView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-task-coordinator",
@@ -307,8 +307,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
     capabilities: ["get-state", "refresh-agent-status"],
   },
   "plugins/plugin-screenshare": {
-    srcFile:
-      "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.interact.ts",
+    srcFile: "plugins/plugin-screenshare/src/ui/screenshare-interact.ts",
     capabilities: ["terminal-screenshare-state", "terminal-screenshare-start"],
   },
   "plugins/plugin-task-coordinator": {

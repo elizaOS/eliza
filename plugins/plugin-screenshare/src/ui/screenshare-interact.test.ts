@@ -1,8 +1,7 @@
-// Exhaustive coverage for the TUI `interact` capability handler: every input
-// dispatch type (click/double-click/move/type/keypress/scroll) and every
-// missing-arg guard + unknown-capability error branch. The existing
-// ScreenshareTuiView.test.tsx covers the happy path for state/start/session/
-// stop/viewer-url plus keypress; this file fills the input-type and error gaps.
+// Exhaustive coverage for the TUI `interact` capability handler: the happy path
+// for every capability (state/start/session/stop/input/viewer-url), every input
+// dispatch type (click/double-click/move/type/keypress/scroll), and every
+// missing-arg guard + unknown-capability error branch.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,7 +12,7 @@ vi.mock("@elizaos/ui", () => ({
   },
 }));
 
-import { interact } from "./ScreenshareOperatorSurface.interact";
+import { interact } from "./screenshare-interact";
 
 type FetchCall = { url: string; init?: RequestInit };
 let fetchCalls: FetchCall[];
@@ -184,5 +183,140 @@ describe("interact — unknown capability", () => {
     await expect(interact("terminal-screenshare-bogus")).rejects.toThrow(
       'Unsupported capability "terminal-screenshare-bogus"',
     );
+  });
+});
+
+// Happy-path coverage for the remaining capabilities (state/start/session/stop/
+// viewer-url) against a full route mock; the input dispatch types and missing-arg
+// guards are covered above.
+describe("interact — terminal capability happy paths", () => {
+  const sampleCapabilities = {
+    platform: "darwin",
+    capabilities: {
+      screenshot: { available: true, tool: "screencapture (built-in)" },
+      computerUse: { available: true, tool: "cliclick" },
+      windowList: { available: false, tool: "none (grant Accessibility)" },
+      headfulGui: { available: true, tool: "desktop session" },
+    },
+  };
+  const sampleSession = {
+    id: "session-1",
+    label: "This machine",
+    status: "active",
+    createdAt: "2026-05-18T12:00:00.000Z",
+    updatedAt: "2026-05-18T12:00:01.000Z",
+    stoppedAt: null,
+    platform: "darwin",
+    frameCount: 2,
+    inputCount: 1,
+    lastFrameAt: "2026-05-18T12:00:01.000Z",
+    lastInputAt: "2026-05-18T12:00:02.000Z",
+  };
+
+  function mockFullRoutes() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/apps/screenshare/capabilities") {
+          return jsonResponse(sampleCapabilities);
+        }
+        if (url === "/api/apps/screenshare/sessions") {
+          return jsonResponse({ sessions: [sampleSession] });
+        }
+        if (url === "/api/apps/screenshare/session" && init?.method === "POST") {
+          return jsonResponse({
+            session: sampleSession,
+            token: "token-1",
+            viewerUrl:
+              "/api/apps/screenshare/viewer?sessionId=session-1&token=token-1",
+          });
+        }
+        if (url.startsWith("/api/apps/screenshare/session/session-1?")) {
+          return jsonResponse({ session: sampleSession });
+        }
+        if (
+          url === "/api/apps/screenshare/session/session-1/stop" &&
+          init?.method === "POST"
+        ) {
+          return jsonResponse({
+            session: { ...sampleSession, status: "stopped", stoppedAt: "now" },
+          });
+        }
+        if (
+          url === "/api/apps/screenshare/session/session-1/input" &&
+          init?.method === "POST"
+        ) {
+          return jsonResponse({
+            success: true,
+            message: "Keypress sent.",
+            session: { ...sampleSession, inputCount: 2 },
+          });
+        }
+        return jsonResponse({ error: `Unexpected ${url}` }, 404);
+      }),
+    );
+  }
+
+  it("supports state, session lifecycle, input, and viewer URLs", async () => {
+    mockFullRoutes();
+
+    await expect(interact("terminal-screenshare-state")).resolves.toMatchObject(
+      {
+        viewType: "tui",
+        capabilities: sampleCapabilities,
+        sessions: { sessions: [sampleSession] },
+      },
+    );
+
+    await expect(
+      interact("terminal-screenshare-start", { label: "Terminal" }),
+    ).resolves.toMatchObject({
+      viewType: "tui",
+      session: sampleSession,
+      token: "token-1",
+    });
+
+    await expect(
+      interact("terminal-screenshare-session", {
+        sessionId: "session-1",
+        token: "token-1",
+      }),
+    ).resolves.toMatchObject({ viewType: "tui", session: sampleSession });
+
+    await expect(
+      interact("terminal-screenshare-input", {
+        sessionId: "session-1",
+        token: "token-1",
+        type: "keypress",
+        keys: "Enter",
+      }),
+    ).resolves.toMatchObject({
+      viewType: "tui",
+      success: true,
+      message: "Keypress sent.",
+    });
+
+    await expect(
+      interact("terminal-screenshare-stop", {
+        sessionId: "session-1",
+        token: "token-1",
+      }),
+    ).resolves.toMatchObject({
+      viewType: "tui",
+      session: { status: "stopped" },
+    });
+
+    await expect(
+      interact("terminal-screenshare-viewer-url", {
+        sessionId: "session-1",
+        token: "token-1",
+        baseUrl: "https://remote.example",
+      }),
+    ).resolves.toEqual({
+      viewType: "tui",
+      viewerUrl:
+        "https://remote.example/api/apps/screenshare/viewer?sessionId=session-1&token=token-1&remoteBase=https%3A%2F%2Fremote.example",
+    });
   });
 });

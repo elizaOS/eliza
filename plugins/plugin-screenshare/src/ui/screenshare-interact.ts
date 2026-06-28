@@ -1,15 +1,15 @@
-// View-bundle `interact` capability handler, split out of
-// ScreenshareOperatorSurface.tsx so that file exports only React components and
-// stays Fast-Refresh-compatible (Vite would full-reload a component file that
-// also exports a plain function). The view bundle re-exports `interact` via
-// ./screenshare-view-bundle.ts.
+// View-bundle `interact` capability handler, kept in its own module (separate
+// from the ScreenshareView component file) so that file exports only React
+// components and stays Fast-Refresh-compatible (Vite would full-reload a
+// component file that also exports a plain function). The view bundle re-exports
+// `interact` via ./screenshare-view-bundle.ts.
 import {
   buildViewerUrl,
   fetchJson,
   loadScreenshareTuiState,
   type PublicSession,
   type StartSessionResponse,
-} from "./ScreenshareOperatorSurface.helpers";
+} from "./screenshare-helpers";
 
 export async function interact(
   capability: string,

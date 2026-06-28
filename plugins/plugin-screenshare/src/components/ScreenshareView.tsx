@@ -23,7 +23,7 @@ import {
   fetchJson,
   type PublicSession,
   type StartSessionResponse,
-} from "../ui/ScreenshareOperatorSurface.helpers.ts";
+} from "../ui/screenshare-helpers.ts";
 import {
   type ScreenshareCapabilitySnapshot,
   type ScreenshareSnapshot,

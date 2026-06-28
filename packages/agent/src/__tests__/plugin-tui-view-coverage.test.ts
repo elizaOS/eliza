@@ -140,7 +140,11 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-list-views",
     "terminal-open-view",
   ],
-  "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx": [
+  // Screenshare collapsed to ONE declaration (componentExport "ScreenshareView",
+  // modalities gui/xr/tui). The bundle entry re-exports ScreenshareView plus the
+  // `interact` capability handler (from screenshare-interact.ts), so this bundle
+  // entry owns the terminal parity capabilities.
+  "plugins/plugin-screenshare/src/ui/screenshare-view-bundle.ts": [
     "terminal-screenshare-state",
     "terminal-screenshare-start",
     "terminal-screenshare-session",

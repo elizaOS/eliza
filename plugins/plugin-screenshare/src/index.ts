@@ -54,7 +54,6 @@ export {
 
 export default screensharePlugin;
 export * from "./routes.js";
-export * from "./ui/index.js";
 
 // In a terminal host (the Node agent, no DOM), register the screen-share view
 // so it renders inline in the terminal. Lazy + DOM-guarded so the terminal

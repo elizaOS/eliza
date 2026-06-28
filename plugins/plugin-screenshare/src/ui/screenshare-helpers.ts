@@ -1,8 +1,8 @@
 // Shared data contracts + fetch helpers for the Screenshare view, used by both
-// ScreenshareOperatorSurface.tsx (host + connect + TUI components) and the
-// `interact` capability handler (ScreenshareOperatorSurface.interact.ts). Kept
-// out of the .tsx so that file exports only React components and stays
-// Fast-Refresh-compatible in dev.
+// the ScreenshareView data wrapper (components/ScreenshareView.tsx) and the
+// `interact` capability handler (screenshare-interact.ts). Kept out of the .tsx
+// so that file exports only React components and stays Fast-Refresh-compatible
+// in dev.
 import { client } from "@elizaos/ui";
 
 export interface Capability {
