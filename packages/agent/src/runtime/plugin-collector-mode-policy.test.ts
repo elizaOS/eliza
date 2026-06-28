@@ -142,7 +142,6 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("agent-orchestrator")).toBe(true);
   });
 
-
   it("lets ELIZA_AGENT_ORCHESTRATOR=false override coding-agent defaults", () => {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "false";
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
