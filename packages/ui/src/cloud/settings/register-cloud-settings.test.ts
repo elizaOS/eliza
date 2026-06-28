@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { listSettingsSections } from "../../components/settings/settings-section-registry";
 import {
   CLOUD_SETTINGS_GROUP_ID,
   listExtraSettingsGroups,
 } from "./cloud-settings-group";
-// Importing the barrel runs the side-effecting registration.
-import "./index";
+import { registerCloudSettingsSections } from "./register-cloud-settings";
 
 const CLOUD_SECTION_IDS = [
   "cloud-account",
@@ -24,6 +23,10 @@ const SECURITY_ADDITION_IDS = [
 ] as const;
 
 describe("register-cloud-settings", () => {
+  beforeAll(() => {
+    registerCloudSettingsSections();
+  });
+
   it("registers the Cloud group between System and Security", () => {
     const cloud = listExtraSettingsGroups().find(
       (g) => g.id === CLOUD_SETTINGS_GROUP_ID,

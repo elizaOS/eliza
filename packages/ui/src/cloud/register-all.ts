@@ -20,19 +20,18 @@ import "./instances";
 import "./account-security";
 import "./billing/routes";
 import "./organization/routes";
-import "./settings";
 
 import { registerAdminCloudRoutes } from "./admin";
 import { registerApiExplorerCloudRoute } from "./api-explorer";
 import { registerApiKeysCloudRoute } from "./api-keys";
 import { registerApplicationsCloudRoutes } from "./applications";
 import { registerApprovalsCloudRoute } from "./approvals";
-import { registerCloudConnectorsSettingsSection } from "./connectors";
 import { registerDocumentsCloudRoute } from "./documents";
 import { registerJoinFlow } from "./join";
-import { registerMcpsCloudRoute, registerMcpsSettingsSection } from "./mcps";
+import { registerMcpsCloudRoute } from "./mcps";
 import { registerMonetizationCloudRoutes } from "./monetization";
 import { registerPublicPages } from "./public-pages";
+import { registerCloudSettingsSections } from "./settings";
 
 let registered = false;
 
@@ -56,6 +55,5 @@ export function registerAllCloudSurfaces(): void {
   registerAdminCloudRoutes();
   registerMcpsCloudRoute();
 
-  registerCloudConnectorsSettingsSection();
-  registerMcpsSettingsSection();
+  registerCloudSettingsSections();
 }

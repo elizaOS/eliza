@@ -58,6 +58,31 @@ interface Character {
   name: string;
 }
 
+function normalizeCharacters(
+  agents: Array<{ id?: unknown; name?: unknown }> | undefined,
+): Character[] {
+  return (agents ?? []).flatMap((agent) => {
+    if (typeof agent.id !== "string" || agent.id.length === 0) return [];
+    return [
+      {
+        id: agent.id,
+        name:
+          typeof agent.name === "string" && agent.name.length > 0
+            ? agent.name
+            : agent.id,
+      },
+    ];
+  });
+}
+
+async function fetchRuntimeCharacters(signal?: AbortSignal): Promise<Character[]> {
+  const data = await api<{ agents?: Array<{ id?: unknown; name?: unknown }> }>(
+    "/api/agents",
+    { signal, skipAuth: true },
+  );
+  return normalizeCharacters(data.agents);
+}
+
 interface DiscordConnectionPatch {
   characterId: string | null;
   isActive: boolean;
@@ -205,20 +230,38 @@ export function DiscordGatewayConnection() {
       setIsLoadingCharacters(true);
       try {
         const data = await api<{
-          agents?: Array<{ id: string; name: string }>;
+          agents?: Array<{ id?: unknown; name?: unknown }>;
         }>("/api/v1/dashboard", { signal });
         if (!signal?.aborted) {
-          setCharacters(
-            data.agents?.map((a) => ({ id: a.id, name: a.name })) || [],
-          );
+          const nextCharacters = normalizeCharacters(data.agents);
+          const fallbackCharacters =
+            nextCharacters.length > 0
+              ? nextCharacters
+              : await fetchRuntimeCharacters(signal);
+          if (!signal?.aborted) {
+            setCharacters(fallbackCharacters);
+            setCharacterId(
+              (current) => current || fallbackCharacters[0]?.id || "",
+            );
+          }
         }
       } catch {
         if (!signal?.aborted) {
-          toast.error(
-            t("cloud.discord.fetchCharactersFailed", {
-              defaultValue: "Failed to fetch characters",
-            }),
-          );
+          try {
+            const fallbackCharacters = await fetchRuntimeCharacters(signal);
+            if (!signal?.aborted) {
+              setCharacters(fallbackCharacters);
+              setCharacterId(
+                (current) => current || fallbackCharacters[0]?.id || "",
+              );
+            }
+          } catch {
+            toast.error(
+              t("cloud.discord.fetchCharactersFailed", {
+                defaultValue: "Failed to fetch characters",
+              }),
+            );
+          }
         }
       } finally {
         if (!signal?.aborted) {
@@ -1117,7 +1160,11 @@ export function DiscordGatewayConnection() {
               {t("cloud.discord.character", { defaultValue: "Character" })}
             </Label>
             <div className="flex gap-2">
-              <Select value={characterId} onValueChange={setCharacterId}>
+              <Select
+                key={characterId || "discord-gateway-character-unselected"}
+                value={characterId}
+                onValueChange={setCharacterId}
+              >
                 <SelectTrigger id="character" className="flex-1">
                   <SelectValue
                     placeholder={t("cloud.discord.selectCharacterPlaceholder", {
