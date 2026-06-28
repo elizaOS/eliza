@@ -83,6 +83,16 @@ export interface ContainerExecutorDeps {
    * here — a failure must surface so the deploy is retried, not silently stuck.
    */
   markAppDeployed?: (appId: string, productionUrl: string | null) => Promise<void>;
+  /**
+   * Probe whether the app's public URL is HTTP-reachable (#9853). Runs after the
+   * ingress route is registered and BEFORE the app is marked `deployed`, so a
+   * deploy never reports success without a URL that actually answers. Returns
+   * true once the URL completes an HTTP request (2xx/3xx/401/403), false on
+   * connection-refused/timeout/502/504 — with bounded retries inside. Optional:
+   * wired only alongside the ingress hooks (no ingress => no public route to
+   * probe), so when unset the reachability gate is skipped (local dev).
+   */
+  probeAppReachable?: (url: string) => Promise<boolean>;
 }
 
 async function requireRow(store: AppContainerStore, containerId: string): Promise<AppContainerRow> {
@@ -146,6 +156,24 @@ export async function executeContainerProvision(
         extraHostnames,
         hostPort: result.hostPort,
       });
+    }
+    // Reachability gate (#9853): a deploy must NOT report success without a
+    // public URL that actually answers. Once the route is registered, probe the
+    // app's public URL; if it never becomes HTTP-reachable within the bounded
+    // window, throw a clear error instead of marking `deployed`. The job then
+    // retries and, on retry exhaustion, `provisioning-jobs` flips the app to
+    // `failed` — so a phantom-success (live container, route added, app not
+    // serving) surfaces as a failure rather than a stranded "deployed". The
+    // container row stays `running` (it IS live; only the route isn't serving),
+    // same as a route-add failure.
+    if (endpoint && deps.probeAppReachable) {
+      const reachable = await deps.probeAppReachable(endpoint.url);
+      if (!reachable) {
+        throw new Error(
+          `App ${row.appId} container is running but its public URL ${endpoint.url} ` +
+            "is not HTTP-reachable — refusing to report deploy success.",
+        );
+      }
     }
     // Container is running and routable — flip the app to `deployed` so the
     // deploy-status route reports READY (instead of `building` forever).
