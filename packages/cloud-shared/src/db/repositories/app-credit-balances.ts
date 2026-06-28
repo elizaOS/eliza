@@ -23,6 +23,7 @@ export class AppCreditBalancesRepository {
    * Finds an app credit balance by ID.
    */
   async findById(id: string): Promise<AppCreditBalance | undefined> {
+    /* global-scope: by-id balance lookup; callers scope by (app_id, user_id) before use. */
     return await dbRead.query.appCreditBalances.findFirst({
       where: eq(appCreditBalances.id, id),
     });

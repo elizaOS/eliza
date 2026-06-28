@@ -32,12 +32,18 @@ export class DirectPgExecutor implements TenantDbSqlExecutor {
     // DSN-level `sslmode` would otherwise win over an explicit `ssl` object.
     // Verified live against the prod tenant DB (10.30.1.10) via the apps-control
     // node e2e (connection reaches auth; the self-signed reject is gone).
+    // A local/CI throwaway Postgres has no TLS at all. When the DSN explicitly
+    // opts out (`sslmode=disable`) or PGSSLMODE=disable is set, connect in
+    // plaintext. Prod sets neither, so the TLS-with-skip-verify path is
+    // preserved for the self-signed private-network tenant cluster.
+    const noSsl =
+      /[?&]sslmode=disable/i.test(connectionString) || process.env.PGSSLMODE === "disable";
     const cleaned = connectionString
       .replace(/[?&]sslmode=[^&]*/gi, (m) => (m[0] === "?" ? "?" : ""))
       .replace(/\?$/, "");
     const client = new Client({
       connectionString: cleaned,
-      ssl: { rejectUnauthorized: false },
+      ...(noSsl ? {} : { ssl: { rejectUnauthorized: false } }),
     });
     await client.connect();
     return client;

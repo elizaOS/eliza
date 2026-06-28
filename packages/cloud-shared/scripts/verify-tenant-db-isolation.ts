@@ -6,7 +6,9 @@ import {
   SqlTenantDbProvisioner,
 } from "../src/lib/services/tenant-db/tenant-db-provisioner";
 
-const ADMIN = "postgresql://postgres:adminpw@localhost:55432/postgres";
+// sslmode=disable: the throwaway CI Postgres has no TLS, so the admin executor
+// (DirectPgExecutor) must connect in plaintext rather than its prod TLS path.
+const ADMIN = "postgresql://postgres:adminpw@localhost:55432/postgres?sslmode=disable";
 const APP_A = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const APP_B = "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
