@@ -33,6 +33,7 @@
 import {
   _resetBuildVariantForTests,
   isLocalCodeExecutionAllowed,
+  ModelType,
 } from "@elizaos/core";
 import {
   afterEach,
@@ -175,6 +176,11 @@ async function buildHookedRuntime(
 
   const runtime = {
     agentId: "agent-0000-0000-0000-000000000000",
+    character: {
+      name: "TestBot",
+      bio: ["a concise, helpful test assistant"],
+      style: { chat: ["casual", "terse"] },
+    },
     logger,
     getSetting: () => undefined,
     getService: (type: string) => services.get(type) ?? null,
@@ -346,13 +352,26 @@ describe("emitProgress routing ladder + cadence", () => {
     const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
     seedSession(rt, "s-ack", "ack-task");
 
+    // The spawn ack is the model's own one-line acknowledgement (in-voice,
+    // in-language) — not a hardcoded literal. The mocked model returns a fixed
+    // line; the posted ack is that line, sanitized.
+    rt.useModel.mockResolvedValueOnce("On it — starting now.");
+
     // First non-terminal event triggers the single spawn ACK (delayMs is forced
     // to 0 for ack mode, so it posts immediately).
     await fire(rt, "s-ack", "ready");
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
     expect(
       (rt.sendMessageToTarget.mock.calls[0][1] as { text: string }).text,
-    ).toBe("working on it now.");
+    ).toBe("On it — starting now.");
+    // The ack is generated with the small text model.
+    expect(rt.useModel).toHaveBeenCalledWith(
+      ModelType.TEXT_SMALL,
+      expect.objectContaining({
+        system: expect.stringContaining("TestBot"),
+        prompt: expect.any(String),
+      }),
+    );
 
     // Subsequent events (narration, tools) must NOT add more acks.
     await fire(rt, "s-ack", "message", { text: "still working" });
@@ -361,6 +380,55 @@ describe("emitProgress routing ladder + cadence", () => {
     });
     await vi.advanceTimersByTimeAsync(5_000);
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    await rt.dispose();
+  });
+
+  it("ack mode feeds the task text to the model so it can match the user's language", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    // initialTask carries the real user request — the language signal handed to
+    // the model (here: French). The model itself is mocked, but we assert the
+    // request reached it so the in-language behavior is wired.
+    rt.sessions.set("s-fr", {
+      status: "running",
+      metadata: {
+        source: SOURCE,
+        roomId: ROOM,
+        label: "build-site",
+        initialTask: "construis-moi un site vitrine en français",
+      },
+    });
+    rt.useModel.mockResolvedValueOnce("C'est parti.");
+
+    await fire(rt, "s-fr", "ready");
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    expect(
+      (rt.sendMessageToTarget.mock.calls[0][1] as { text: string }).text,
+    ).toBe("C'est parti.");
+    const [, params] = rt.useModel.mock.calls[0] as [
+      unknown,
+      { prompt: string },
+    ];
+    expect(params.prompt).toContain(
+      "construis-moi un site vitrine en français",
+    );
+
+    await rt.dispose();
+  });
+
+  it("ack mode falls back to a short literal when the model call fails", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    seedSession(rt, "s-ack-fail", "ack-task");
+    rt.useModel.mockRejectedValueOnce(new Error("no model registered"));
+
+    await fire(rt, "s-ack-fail", "ready");
+    // Never silence: the ack still posts exactly once, using the fallback.
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    expect(
+      (rt.sendMessageToTarget.mock.calls[0][1] as { text: string }).text,
+    ).toBe("On it.");
 
     await rt.dispose();
   });
