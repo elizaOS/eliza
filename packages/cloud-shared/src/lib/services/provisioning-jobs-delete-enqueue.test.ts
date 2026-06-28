@@ -15,6 +15,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
+import * as realOutboundUrl from "../security/outbound-url";
 
 // ---- captured query state ----
 let capturedSelectWhere: SQL | undefined;
@@ -89,8 +90,13 @@ mock.module("../../db/helpers", () => ({
   writeTransaction: (fn: (t: typeof tx) => Promise<unknown>) => transaction(fn),
 }));
 
-// Avoid the real outbound-URL guard and job hydration/insert-prep pulling in DB.
+// Stub the outbound-URL guard the enqueue path calls so it can't reach out over
+// the network, but keep the module's full export surface intact — `safe-fetch`
+// (pulled in transitively) statically imports `isForbiddenIpAddress`,
+// `normalizeHostname`, and `resolveSafeOutboundTarget`, and a partial mock would
+// break that link with "Export named 'isForbiddenIpAddress' not found".
 mock.module("../security/outbound-url", () => ({
+  ...realOutboundUrl,
   assertSafeOutboundUrl: mock(async (u: string) => u),
 }));
 
