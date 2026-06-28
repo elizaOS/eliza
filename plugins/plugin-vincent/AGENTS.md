@@ -4,7 +4,7 @@ Vincent OAuth + Hyperliquid/Polymarket trading dashboard plugin for elizaOS agen
 
 ## Purpose / role
 
-Adds a Vincent trading integration to an Eliza agent: server-side OAuth (PKCE) against `heyvincent.ai`, REST API routes for connection state and strategy management, and a full-screen React dashboard view (plus XR and TUI variants). Loaded as a named plugin — register `vincentPlugin` from `@elizaos/plugin-vincent` in the agent's plugin list. No default auto-enable; opt-in per agent config.
+Adds a Vincent trading integration to an Eliza agent: server-side OAuth (PKCE) against `heyvincent.ai`, REST API routes for connection state and strategy management, and a single React dashboard view that renders across GUI, XR, and TUI from one spatial source. Loaded as a named plugin — register `vincentPlugin` from `@elizaos/plugin-vincent` in the agent's plugin list. No default auto-enable; opt-in per agent config.
 
 ## Plugin surface
 
@@ -24,13 +24,11 @@ Registered in `vincentPlugin` (exported from `src/plugin.ts`):
 
 **Views** (rendered by the agent UI):
 
-| id | viewType | componentExport | bundlePath |
-|----|----------|-----------------|------------|
-| `vincent` | default | `VincentAppView` | `dist/views/bundle.js` |
-| `vincent` | `xr` | `VincentAppView` | `dist/views/bundle.js` |
-| `vincent` | `tui` | `VincentTuiView` | `dist/views/bundle.js` |
+| id | modalities | componentExport | bundlePath |
+|----|------------|-----------------|------------|
+| `vincent` | `gui`, `xr`, `tui` | `VincentView` | `dist/views/bundle.js` |
 
-**Overlay app**: self-registers `vincentApp` via `registerOverlayApp` at import time (see `src/register.ts` → `src/vincent-app.ts`). Category: `trading`.
+One declaration drives GUI, XR, and TUI from the single `VincentView` spatial source (see `src/plugin.ts`). `VincentView` is the live-data wrapper around the presentational `VincentSpatialView`; the same `VincentSpatialView` renders to the terminal via `src/register-terminal-view.tsx`. There is no separate overlay-app surface.
 
 **Client extensions** (`src/client.ts`): monkey-patches `ElizaClient.prototype` with `vincentStartLogin`, `vincentStatus`, `vincentDisconnect`, `vincentStrategy`, `vincentUpdateStrategy`, `vincentTradingProfile`. Exported as typed `vincentClient`.
 
@@ -41,28 +39,22 @@ No actions, providers, services, or evaluators are registered.
 ```
 src/
   index.ts                     Package re-exports (everything public)
-  plugin.ts                    vincentPlugin object — routes + views declarations
-  register.ts                  Side-effect: self-registers overlay app at import time
+  plugin.ts                    vincentPlugin object — routes + the one view declaration
+  register.ts                  Side-effect: registers the Vincent TUI terminal view (DOM-guarded)
   register-routes.ts           registerAppRoutePluginLoader (lazy plugin load)
-  register-terminal-view.tsx   Registers the Vincent TUI view with @elizaos/tui terminal registry
+  register-terminal-view.tsx   Mounts VincentSpatialView in the @elizaos/tui terminal registry
   routes.ts                    handleVincentRoute — all OAuth + API route logic
   vincent-contracts.ts         Shared TS types/interfaces for all Vincent API shapes
-  vincent-app.ts               vincentApp OverlayApp descriptor + registerOverlayApp call
-  vincent-view-bundle.ts       Vite views-bundle entry — re-exports VincentAppView, VincentTuiView, and interact
+  vincent-view-bundle.ts       Vite views-bundle entry — re-exports VincentView + interact
   client.ts                    ElizaClient prototype extensions (vincentClient)
-  VincentAppView.tsx           Full-screen overlay React component
-  VincentAppView.helpers.ts    Shared helper utilities for VincentAppView
-  VincentAppView.interact.ts   interact() capability handler for TUI agent-driven interaction
-  VincentConnectionCard.tsx    OAuth connect/disconnect card
-  TradingStrategyPanel.tsx     Strategy config UI panel
-  TradingProfileCard.tsx       P&L analytics card
-  WalletStatusCard.tsx         Agent wallet addresses + balances card
+  VincentView.tsx              GUI/XR data wrapper: owns live Vincent data, renders VincentSpatialView in a <SpatialSurface>
+  vincent-interact.ts          interact() capability handler for TUI agent-driven interaction
+  vincent-view-helpers.ts      loadVincentTuiState — shared snapshot loader for the interact handler
   useVincentDashboard.ts       Aggregated data hook (polls every 15 s when connected)
   useVincentState.ts           OAuth login-flow state hook (open external URL, poll for connection)
-  ui.ts                        Re-exports of all UI components
-  VincentTuiView.test.tsx      Unit tests for VincentTuiView
+  ui.ts                        Re-exports of the public view + data hooks
   components/
-    VincentSpatialView.tsx     Spatial/XR view component using @elizaos/ui/spatial vocabulary
+    VincentSpatialView.tsx     The single presentational view, authored with @elizaos/ui/spatial primitives (GUI + XR + TUI)
 ```
 
 ## Commands
@@ -105,11 +97,18 @@ The external OAuth endpoint is hardcoded: `https://heyvincent.ai`. No env overri
 3. Add any new request/response types to `src/vincent-contracts.ts`.
 4. Add the corresponding client method to `src/client.ts` by extending `vincentPrototype`.
 
-**Add a new view:**
+**Extend the view:**
 
-1. Create the React component in `src/`.
-2. Export it from `src/ui.ts` and `src/vincent-view-bundle.ts` (the Vite views bundle entry).
-3. Add a view descriptor to the `views` array in `src/plugin.ts`.
+The plugin ships ONE view drawn from a single spatial source — do not add a second
+overlay-app, GUI, or TUI component.
+
+1. Edit the presentational `src/components/VincentSpatialView.tsx` using only
+   `@elizaos/ui/spatial` primitives, so it stays identical across GUI, XR, and TUI.
+2. Wire any new live data through `src/VincentView.tsx` (the `componentExport`,
+   which renders `VincentSpatialView` in a `<SpatialSurface>`); the terminal renders
+   the same `VincentSpatialView` via `src/register-terminal-view.tsx`.
+3. To add an agent-driven terminal capability, add a branch to `interact()` in
+   `src/vincent-interact.ts` (re-exported by `src/vincent-view-bundle.ts`).
 
 ## Conventions / gotchas
 
@@ -119,5 +118,5 @@ The external OAuth endpoint is hardcoded: `https://heyvincent.ai`. No env overri
 - **OAuth redirect URI is always `http://<host>/callback/vincent`** using the `Host` header from the inbound request. This is intentionally HTTP/loopback since the redirect lands on the local agent server.
 - **Views bundle is built separately** via `vite.config.views.ts`. The `build:views` step must run for the dashboard UI to work; `build:js` alone is insufficient.
 - **Client prototype patching** in `src/client.ts` mutates `ElizaClient.prototype` at import time — import order matters if multiple plugins do this.
-- **`interact()` in `VincentAppView.interact.ts`** provides TUI capabilities (`terminal-vincent-state`, `terminal-vincent-start-login`, `terminal-vincent-disconnect`, `terminal-vincent-update-strategy`) for agent-driven terminal interaction. It is split from `VincentAppView.tsx` to keep that file Fast-Refresh-compatible; the views bundle re-exports it via `vincent-view-bundle.ts`.
+- **`interact()` in `vincent-interact.ts`** provides TUI capabilities (`terminal-vincent-state`, `terminal-vincent-start-login`, `terminal-vincent-disconnect`, `terminal-vincent-update-strategy`) for agent-driven terminal interaction. It is split from the view component so that file exports only React components and stays Fast-Refresh-compatible; the views bundle re-exports it via `vincent-view-bundle.ts`.
 - Dependencies: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/core`, `@elizaos/shared`, `@elizaos/ui`, React 19, lucide-react.

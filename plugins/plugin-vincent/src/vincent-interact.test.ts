@@ -2,7 +2,7 @@
 // dispatch surface the agent terminal drives (terminal-vincent-state /
 // start-login / disconnect / update-strategy). Mocks the client seam (the same
 // seam VincentView.test.tsx uses) and asserts each capability calls through and
-// returns the TUI-tagged payload. Ported from the retired VincentTuiView test.
+// returns the TUI-tagged payload. Ported from the retired standalone TUI test.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -19,7 +19,7 @@ const vincentClientMock = vi.hoisted(() => ({
 
 vi.mock("./client", () => ({ vincentClient: vincentClientMock }));
 
-import { interact } from "./VincentAppView.interact";
+import { interact } from "./vincent-interact";
 
 const sampleStatus = {
   connected: true,

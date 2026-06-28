@@ -69,6 +69,59 @@ function formatWinRate(winRate: number): string {
   return `${Math.round(winRate * 100)}%`;
 }
 
+const DUST_USD = 0.01;
+
+interface WalletBalanceEntry {
+  label: string;
+  valueUsd: number;
+}
+
+interface WalletBalanceSummary {
+  totalUsd: number | null;
+  entries: WalletBalanceEntry[];
+}
+
+/**
+ * Aggregate non-dust USD balances across every EVM chain (native + tokens) and
+ * Solana (SOL + tokens) into a descending-sorted list plus a grand total. Pure
+ * over the snapshot — no fetching, no React. Ported from the retired
+ * retired wallet card so the spatial view stays the single balance renderer.
+ */
+function aggregateWalletBalances(
+  balances: WalletBalancesResponse | null,
+): WalletBalanceSummary {
+  if (!balances) return { totalUsd: null, entries: [] };
+
+  let total = 0;
+  const entries: WalletBalanceEntry[] = [];
+  const add = (label: string, valueUsd: string) => {
+    const value = Number.parseFloat(valueUsd);
+    if (!Number.isFinite(value) || value < DUST_USD) return;
+    total += value;
+    entries.push({ label, valueUsd: value });
+  };
+
+  if (balances.evm) {
+    for (const chain of balances.evm.chains) {
+      add(chain.chain, chain.nativeValueUsd);
+      for (const token of chain.tokens) add(token.symbol, token.valueUsd);
+    }
+  }
+  if (balances.solana) {
+    add("SOL", balances.solana.solValueUsd);
+    for (const token of balances.solana.tokens) {
+      add(token.symbol, token.valueUsd);
+    }
+  }
+
+  entries.sort((a, b) => b.valueUsd - a.valueUsd);
+  return { totalUsd: total > 0 ? total : null, entries };
+}
+
+function formatUsd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
 export interface VincentSpatialViewProps {
   snapshot: VincentSnapshot;
   /** Dispatch by agent id: `connect`, `disconnect`, `refresh`, `start`, `stop`. */
@@ -83,11 +136,17 @@ export function VincentSpatialView({
   const {
     vincentConnected,
     walletAddresses,
+    walletBalances,
     strategy,
     tradingProfile,
     loading,
     error,
   } = snapshot;
+
+  const { totalUsd, entries } = aggregateWalletBalances(walletBalances);
+  const visibleBalances = entries.slice(0, 4);
+  const hiddenBalanceCount = entries.length - visibleBalances.length;
+  const hasBalances = totalUsd !== null || entries.length > 0;
 
   return (
     <Card gap={1} padding={1}>
@@ -180,6 +239,42 @@ export function VincentSpatialView({
           Refresh
         </Button>
       </HStack>
+
+      {vincentConnected && hasBalances ? (
+        <>
+          <Divider label="balances" />
+          <List gap={0}>
+            <HStack gap={1} align="center">
+              <Text style="caption" tone="muted" grow={1}>
+                total
+              </Text>
+              <Text style="caption" tone="success" bold>
+                {totalUsd !== null ? formatUsd(totalUsd) : "--"}
+              </Text>
+            </HStack>
+            {visibleBalances.map((entry) => (
+              <HStack
+                key={entry.label}
+                gap={1}
+                align="center"
+                agent={`balance-${entry.label}`}
+              >
+                <Text grow={1} wrap={false}>
+                  {entry.label}
+                </Text>
+                <Text style="caption" tone="muted" wrap={false}>
+                  {formatUsd(entry.valueUsd)}
+                </Text>
+              </HStack>
+            ))}
+            {hiddenBalanceCount > 0 ? (
+              <Text style="caption" tone="muted">
+                +{hiddenBalanceCount}
+              </Text>
+            ) : null}
+          </List>
+        </>
+      ) : null}
 
       <Divider label="strategy" />
       {strategy ? (

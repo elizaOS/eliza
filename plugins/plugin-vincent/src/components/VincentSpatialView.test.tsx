@@ -83,3 +83,111 @@ describe("VincentSpatialView one source, three modalities", () => {
     }
   });
 });
+
+// Wallet-balance aggregation ported from the retired wallet card: the
+// spatial view is now the single balance renderer, so the dust-filter / total /
+// descending-sort / first-4 + "+N" overflow logic is covered right here.
+const balancesSnapshot: VincentSnapshot = {
+  vincentConnected: true,
+  vincentConnectedAt: 1_700_000_000_000,
+  walletAddresses: {
+    evmAddress: "0xABCDEF0123456789aabbccddeeff00112233aabb",
+    solanaAddress: "So11111111111111111111111111111111111111112",
+  },
+  walletBalances: {
+    evm: {
+      address: "0xABCDEF0123456789aabbccddeeff00112233aabb",
+      chains: [
+        {
+          chain: "ethereum",
+          chainId: 1,
+          nativeBalance: "1",
+          nativeSymbol: "ETH",
+          nativeValueUsd: "3000.00",
+          tokens: [
+            {
+              symbol: "USDC",
+              name: "USD Coin",
+              balance: "500",
+              decimals: 6,
+              valueUsd: "500.00",
+              logoUrl: "",
+              contractAddress: "0xusdc",
+            },
+            {
+              symbol: "PEPE",
+              name: "Pepe",
+              balance: "9",
+              decimals: 18,
+              valueUsd: "250.00",
+              logoUrl: "",
+              contractAddress: "0xpepe",
+            },
+            {
+              symbol: "DUST",
+              name: "Dust",
+              balance: "1",
+              decimals: 18,
+              valueUsd: "0.005",
+              logoUrl: "",
+              contractAddress: "0xdust",
+            },
+          ],
+          error: null,
+        },
+      ],
+    },
+    solana: {
+      address: "So11111111111111111111111111111111111111112",
+      solBalance: "10",
+      solValueUsd: "1500.00",
+      tokens: [
+        {
+          symbol: "BONK",
+          name: "Bonk",
+          balance: "1",
+          decimals: 5,
+          valueUsd: "42.00",
+          logoUrl: "",
+          mint: "bonkmint",
+        },
+      ],
+    },
+  },
+  strategy: null,
+  tradingProfile: null,
+};
+
+describe("VincentSpatialView wallet balances", () => {
+  it("renders dust-filtered, descending, total + first-4 + '+N' overflow", () => {
+    const html = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <VincentSpatialView snapshot={balancesSnapshot} />
+      </SpatialSurface>,
+    );
+
+    // Total = 3000 + 500 + 250 + 1500 + 42 = $5292.00 (DUST $0.005 excluded).
+    expect(html).toContain("$5292.00");
+    // Top 4 by USD render as rows (ETH, SOL, USDC, PEPE).
+    expect(html).toContain("$3000.00");
+    expect(html).toContain("$1500.00");
+    expect(html).toContain("$500.00");
+    expect(html).toContain("$250.00");
+    // The 5th entry (BONK, $42) collapses into the overflow tally, not a row.
+    expect(html).toContain("+1");
+    expect(html).not.toContain("$42.00");
+    // Dust ($0.005) is never aggregated nor rendered.
+    expect(html).not.toContain("DUST");
+  });
+
+  it("renders no balances section when every entry is dust or empty", () => {
+    const html = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <VincentSpatialView
+          snapshot={{ ...balancesSnapshot, walletBalances: { evm: null, solana: null } }}
+        />
+      </SpatialSurface>,
+    );
+    expect(html).not.toContain("balances");
+  });
+});

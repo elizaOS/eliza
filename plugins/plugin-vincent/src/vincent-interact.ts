@@ -1,9 +1,9 @@
-// View-bundle `interact` capability handler, split out of VincentAppView.tsx
+// View-bundle `interact` capability handler. Kept separate from VincentView.tsx
 // so that file exports only React components and stays Fast-Refresh-compatible
 // (Vite would full-reload a component file that also exports a plain function).
 // The view bundle re-exports `interact` via ./vincent-view-bundle.ts.
 import { vincentClient } from "./client";
-import { loadVincentTuiState } from "./VincentAppView.helpers";
+import { loadVincentTuiState } from "./vincent-view-helpers";
 import type { VincentStrategyUpdateRequest } from "./vincent-contracts";
 
 export async function interact(

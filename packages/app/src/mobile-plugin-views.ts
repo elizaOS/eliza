@@ -35,7 +35,7 @@ if (platform === "android" || platform === "ios") {
     path: "/vincent",
     loader: () =>
       import("@elizaos/plugin-vincent").then((m) => ({
-        default: m.VincentAppView,
+        default: m.VincentView,
       })),
   });
 

@@ -262,13 +262,6 @@ function importAppTraining() {
   );
 }
 
-function importAppVincent() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-vincent",
-    () => import("@elizaos/plugin-vincent"),
-  );
-}
-
 function lazyNamedComponent<TProps>(
   load: () => Promise<ComponentType<TProps>>,
 ): ComponentType<TProps> {
@@ -670,8 +663,8 @@ function buildAppBootConfig({
 }
 
 // App plugins imported for their self-registration side effects (PA HTTP client
-// + Blocker cards, Vincent overlay app, task-coordinator surfaces, phone,
-// steward, training) and to pre-warm their React.lazy chunks. The boot config
+// + Blocker cards, task-coordinator surfaces, phone, steward, training) and to
+// pre-warm their React.lazy chunks. The boot config
 // only references these as React.lazy handles (see buildAppBootConfig), so NONE
 // is read synchronously while assembling the config — they must not gate the
 // first visible shell (#9565). Deferred onto the idle path like
@@ -683,7 +676,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
       key: "@elizaos/plugin-personal-assistant",
       load: importPersonalAssistant,
     },
-    { key: "@elizaos/plugin-vincent", load: importAppVincent },
     { key: "@elizaos/plugin-task-coordinator", load: importAppTaskCoordinator },
     {
       key: "@elizaos/plugin-task-coordinator/register",

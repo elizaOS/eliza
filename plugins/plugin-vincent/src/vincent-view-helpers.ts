@@ -1,8 +1,8 @@
 // Shared data helper for the Vincent terminal `interact` capability handler
-// (in VincentAppView.interact.ts), which loads the full dashboard snapshot for
-// the terminal-vincent-state / start-login / disconnect / update-strategy
-// capabilities. Kept out of the .tsx so that file exports only React components
-// and stays Fast-Refresh-compatible in dev.
+// (in vincent-interact.ts), which loads the full dashboard snapshot for the
+// terminal-vincent-state / start-login / disconnect / update-strategy
+// capabilities. Kept out of the view component file so that file exports only
+// React components and stays Fast-Refresh-compatible in dev.
 import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import { vincentClient } from "./client";
 import type {

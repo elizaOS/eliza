@@ -692,7 +692,7 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
     text.includes("../app-core/src/browser.ts") ||
     text.includes("native-stub:node:fs/promises") ||
     text.includes("../ui/src/components/pages/") ||
-    text.includes("../../plugins/plugin-vincent/src/VincentAppView.tsx") ||
+    text.includes("../../plugins/plugin-vincent/src/VincentView.tsx") ||
     text.includes(
       "../../plugins/plugin-facewear/src/protocol/smartglasses.ts",
     ) ||
@@ -2470,7 +2470,6 @@ export const INVALID_TRACER_PROVIDER = {};
       // Side-effect app modules are loaded by the renderer only to register
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[
-        ["@elizaos/plugin-feed", "plugins/plugin-feed/src/ui/index.ts"],
         [
           "@elizaos/plugin-trajectory-logger",
           "plugins/plugin-trajectory-logger/src/register.ts",

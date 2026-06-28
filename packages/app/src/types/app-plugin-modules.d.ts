@@ -200,7 +200,7 @@ declare module "@elizaos/plugin-training" {
 }
 
 declare module "@elizaos/app-vincent" {
-  export const VincentAppView: ComponentType<Record<string, unknown>>;
+  export const VincentView: ComponentType<Record<string, unknown>>;
 }
 
 declare module "@elizaos/plugin-vincent" {

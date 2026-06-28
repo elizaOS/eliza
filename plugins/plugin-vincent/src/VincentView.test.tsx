@@ -6,7 +6,7 @@
 // dashboard (wallet rows, strategy, P&L), and every dispatched interaction:
 // Connect / Disconnect (the OAuth flow through useVincentState), Refresh,
 // Copy EVM / Copy Solana, and Open Vincent — functional parity with the
-// retired VincentTuiView surface and the GUI overlay affordances.
+// retired standalone TUI surface and the GUI overlay affordances.
 
 import {
   cleanup,

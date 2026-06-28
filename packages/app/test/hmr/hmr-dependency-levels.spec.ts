@@ -107,7 +107,7 @@ const LEVELS = [
   },
   {
     name: "plugin view vincent",
-    file: "plugins/plugin-vincent/src/VincentAppView.tsx",
+    file: "plugins/plugin-vincent/src/VincentView.tsx",
   },
   {
     name: "plugin view waifu-imagegen",
