@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 
 /**
  * The tour spotlight: a full-screen overlay that
- *  - draws a breathing orange glow ring around the target (the indicator that
+ *  - draws a breathing orange glow  around the target (the indicator that
  *    points at the next control);
  *  - floats a small instruction card near the target (auto-flips above/below);
  *  - for a centered card (welcome / finish) dims the whole screen instead.
@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
  */
 
 const BRAND = "#FF5800";
-const PAD = 8; // glow ring inset around the target
+const PAD = 8; // glow  inset around the target
 
 export interface SpotlightCardProps {
   title: string;
@@ -232,7 +232,7 @@ function SpotlightCard({
 }): React.ReactElement {
   return (
     <div
-      className="absolute w-[300px] max-w-[calc(100vw-28px)] rounded-2xl border border-white/12 bg-neutral-950/95 p-4 text-white shadow-2xl backdrop-blur-md motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
+      className="absolute w-[300px] max-w-[calc(100vw-28px)] rounded-2xl border border-white/12 bg-neutral-950/95 p-4 text-white motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       style={{ ...cardStyle, pointerEvents: "auto" }}
       data-testid="tutorial-card"
       role="dialog"

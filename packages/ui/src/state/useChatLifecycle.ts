@@ -42,6 +42,18 @@ import { shouldAwaitAgentReadiness } from "./types";
 
 const RESET_LOG_PREFIX = "[eliza][reset]";
 
+/**
+ * Signature of the only `AgentStatus` fields the readiness poll cares about
+ * (`state`, `port`, `canRespond`). The 1.5s poll re-applies the status snapshot
+ * every tick while "waking up…"; comparing this signature lets us skip the
+ * `setAgentStatus` write — and the re-render of every chat-surface subscriber —
+ * when nothing load-bearing changed.
+ */
+export function readinessPollSignature(status: AgentStatus | null): string {
+  if (status == null) return "∅";
+  return `${status.state}|${status.port ?? ""}|${status.canRespond ?? ""}`;
+}
+
 function logResetDebug(
   message: string,
   detail?: Record<string, unknown>,
@@ -105,6 +117,7 @@ export interface UseChatLifecycleDeps {
   // Agent status
   agentStatus: AgentStatus | null;
   setAgentStatus: (s: AgentStatus | null) => void;
+  pollAgentReadiness?: boolean;
 
   // Lifecycle
   lifecycleAction: LifecycleAction | null;
@@ -217,6 +230,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   const {
     agentStatus,
     setAgentStatus,
+    pollAgentReadiness = true,
     lifecycleAction,
     beginLifecycleAction,
     finishLifecycleAction,
@@ -287,6 +301,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
 
   const heartbeatNotificationKeyRef = useRef<string | null>(null);
   const restartNotificationSignatureRef = useRef<string | null>(null);
+  const readinessPollSignatureRef = useRef<string | null>(null);
 
   const handleStartDraftConversation = useCallback(async () => {
     interruptActiveChatPipeline();
@@ -540,16 +555,27 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   // hands-free never unblocks. Runs whenever we're not ready and not in a
   // terminal state (covers a null/early status, not just `state:"running"`);
   // self-limiting — the boolean dep flips false the instant the agent is ready.
-  const awaitingAgentReadiness = shouldAwaitAgentReadiness(agentStatus);
+  const awaitingAgentReadiness =
+    pollAgentReadiness && shouldAwaitAgentReadiness(agentStatus);
   useEffect(() => {
     if (!awaitingAgentReadiness) return;
     let active = true;
+    // Reset the guard for this poll instance; the first result applies, then
+    // every subsequent identical tick is skipped. The ref persists across ticks
+    // within this effect and keeps the dep array (+ interval teardown) untouched.
+    readinessPollSignatureRef.current = null;
     const refresh = async () => {
       if (!active) return;
       if (typeof document !== "undefined" && document.hidden) return;
       try {
         const next = await client.getStatus();
-        if (active) setAgentStatus(next);
+        if (!active) return;
+        // Skip the re-render of every chat-surface subscriber when nothing
+        // load-bearing (state / port / canRespond) actually changed.
+        const signature = readinessPollSignature(next);
+        if (signature === readinessPollSignatureRef.current) return;
+        readinessPollSignatureRef.current = signature;
+        setAgentStatus(next);
       } catch {
         // Transient (agent restarting / IPC hiccup) — keep polling.
       }

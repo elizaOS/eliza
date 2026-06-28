@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelTopicsService } from "../../../services/channel-topics";
+import { createMockRuntime } from "../../../testing/mock-runtime";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -20,18 +21,18 @@ async function makeRuntimeWithService(): Promise<{
 	service: ChannelTopicsService;
 }> {
 	const rooms = new Map<UUID, Room>([[ROOM, makeRoom()]]);
-	const serviceRuntime = {
+	const serviceRuntime = createMockRuntime({
 		getRoom: vi.fn(async (id: UUID) => rooms.get(id) ?? null),
 		updateRoom: vi.fn(async (room: Room) => {
 			rooms.set(room.id, room);
 		}),
-	} as unknown as IAgentRuntime;
+	});
 	const service = await ChannelTopicsService.start(serviceRuntime);
-	const runtime = {
+	const runtime = createMockRuntime({
 		getService: vi.fn((type: string) =>
 			type === ChannelTopicsService.serviceType ? service : null,
 		),
-	} as unknown as IAgentRuntime;
+	});
 	return { runtime, service };
 }
 
@@ -86,9 +87,9 @@ describe("CHANNEL_TOPICS provider", () => {
 	});
 
 	it("no-ops when the service is not registered", async () => {
-		const noService = {
+		const noService = createMockRuntime({
 			getService: vi.fn(() => null),
-		} as unknown as IAgentRuntime;
+		});
 		const result = await channelTopicsProvider.get(
 			noService,
 			makeMessage(),
@@ -110,14 +111,14 @@ describe("CHANNEL_TOPICS provider", () => {
 				},
 			],
 		]);
-		const svcRuntime = {
+		const svcRuntime = createMockRuntime({
 			getRoom: vi.fn(async (id: UUID) => rooms.get(id) ?? null),
 			updateRoom: vi.fn(),
-		} as unknown as IAgentRuntime;
+		});
 		const freshService = await ChannelTopicsService.start(svcRuntime);
-		const providerRuntime = {
+		const providerRuntime = createMockRuntime({
 			getService: vi.fn(() => freshService),
-		} as unknown as IAgentRuntime;
+		});
 
 		const result = await channelTopicsProvider.get(
 			providerRuntime,

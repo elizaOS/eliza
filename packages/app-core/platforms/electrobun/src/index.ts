@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   formatError,
   resolveApiToken,
@@ -33,7 +34,6 @@ import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
-import { shouldCreateDesktopPill } from "./desktop-pill-config";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import {
   shouldCreateDesktopTray,
@@ -95,7 +95,6 @@ import {
   getOnboardingOverlayWindow,
 } from "./onboarding-overlay-window";
 import { getPersistedDeployment } from "./persisted-deployment";
-import { createPillWindow, getPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
   createRendererApiProxyRequestInit,
@@ -929,8 +928,12 @@ async function resolveRendererUrl(): Promise<string> {
   }
 
   if (!rendererUrl) {
-    // Last resort: file:// (may have CORS issues with crossorigin module scripts)
-    rendererUrl = `file://${path.join(resolveRendererAssetDir(import.meta.dir), "index.html")}`;
+    // Last resort: file:// (may have CORS issues with crossorigin module scripts).
+    // pathToFileURL builds a valid file:///C:/… URL on Windows; `file://${winPath}`
+    // would be malformed (backslashes, drive letter parsed as host) and not load.
+    rendererUrl = pathToFileURL(
+      path.join(resolveRendererAssetDir(import.meta.dir), "index.html"),
+    ).href;
     logger.warn(
       "[Main] Falling back to file:// renderer URL — CORS issues possible",
     );
@@ -939,11 +942,32 @@ async function resolveRendererUrl(): Promise<string> {
   return rendererUrl;
 }
 
+function appendApiBaseParam(rendererUrl: string, apiBase: string): string {
+  try {
+    const url = new URL(rendererUrl);
+    if (!url.searchParams.has("apiBase")) {
+      url.searchParams.set("apiBase", apiBase);
+    }
+    return url.toString();
+  } catch {
+    return rendererUrl;
+  }
+}
+
+async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
+  const rendererUrl = await resolveRendererUrl();
+  const runtime = resolveDesktopRuntime();
+  if (runtime.mode === "external" && runtime.externalApi.base) {
+    return appendApiBaseParam(rendererUrl, runtime.externalApi.base);
+  }
+  return rendererUrl;
+}
+
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   const kiosk = isKioskShellMode();
   const rendererUrl = kiosk
-    ? appendKioskShellModeParam(await resolveRendererUrl())
-    : await resolveRendererUrl();
+    ? appendKioskShellModeParam(await resolveRendererUrlForCurrentRuntime())
+    : await resolveRendererUrlForCurrentRuntime();
   const buildInfo = await BuildConfig.get();
   const mainWindowPartition = resolveMainWindowPartition(process.env, {
     platform: process.platform,
@@ -1246,7 +1270,7 @@ async function openOnboardingOverlayWindow(): Promise<BrowserWindow> {
     return existing;
   }
   const { rpc } = createDesktopRpc("onboarding-overlay");
-  const rendererUrl = await resolveRendererUrl();
+  const rendererUrl = await resolveRendererUrlForCurrentRuntime();
   let preload = "";
   try {
     preload = readResolvedPreloadScript(import.meta.dir);
@@ -1687,11 +1711,6 @@ function injectApiBaseIntoOpenRendererWindows(): void {
     injectApiBase(currentWindow);
   }
 
-  const pillWindow = getPillWindow();
-  if (pillWindow && pillWindow !== currentWindow) {
-    injectApiBase(pillWindow);
-  }
-
   surfaceWindowManager?.forEachWindow((w) => {
     injectApiBase(w as BrowserWindow);
   });
@@ -1706,10 +1725,6 @@ function collectOpenRendererWindows(): BrowserWindow[] {
   const windows: BrowserWindow[] = [];
   if (currentWindow) {
     windows.push(currentWindow);
-  }
-  const pillWindow = getPillWindow();
-  if (pillWindow && pillWindow !== currentWindow) {
-    windows.push(pillWindow);
   }
   surfaceWindowManager?.forEachWindow((w) => {
     windows.push(w as BrowserWindow);
@@ -2474,7 +2489,7 @@ async function main(): Promise<void> {
         // The agent rebound to a different loopback port (or recovered from a
         // crash) — the cookies we installed during _startAgent were scoped to
         // the old origin. Re-prime so every renderer's next /api request stays
-        // authenticated, including the OS-level pill window.
+        // authenticated, including any open secondary renderer windows.
         markDesktopSessionStale();
         const apiBase = `http://127.0.0.1:${status.port}`;
         const rendererBase = resolveRendererFacingApiBase(
@@ -2612,19 +2627,6 @@ async function main(): Promise<void> {
       /* non-fatal */
     }
     getFloatingChatManager().configure(url, preload);
-    // In kiosk mode the chat pill lives in-canvas on the KioskShell, so we
-    // never spawn the separate native pill toplevel. Outside kiosk, the pill
-    // loads the same renderer in chat-overlay shell mode so the assistant
-    // lives in its own OS-level window instead of inside the app.
-    if (!isKioskShellMode() && shouldCreateDesktopPill()) {
-      try {
-        createPillWindow({ rendererUrl: url, preload });
-      } catch (err) {
-        logger.warn(
-          `[Main] Failed to spawn pill window: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
   });
 
   // Per-window RPC tracking: surface windows each get their own typed

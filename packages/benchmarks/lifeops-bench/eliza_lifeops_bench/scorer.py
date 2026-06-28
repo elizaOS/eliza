@@ -7,8 +7,14 @@ HumanEval/Chen-2021 unbiased estimator.
 Score formula:
     STATIC mode: 0.5 * state_hash_match + 0.4 * action_score
                  + 0.1 * mean(output_substring_matches)
-    LIVE  mode: 0.7 * state_hash_match
-                 + 0.3 * mean(output_substring_matches)
+    LIVE  mode: gated on terminated_reason == "satisfied", then
+                 0.7 * expected_world_state_component
+                 + 0.3 * mean(output_substring_matches).
+      LIVE has no ground-truth actions, so an unchanged world hashes equal to
+      the seed. The expected state component is based on
+      Scenario.expected_world_mutation plus a conservative fallback for older
+      scenarios whose assertions explicitly say read-only / no-write /
+      optional mutation.
 
 PerfectAgent must produce 1.0 on every supported scenario.
 WrongAgent must produce 0.0 on every scenario.
@@ -26,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 from .types import (
     Action,
     BenchmarkResult,
+    ExpectedWorldMutation,
     MessageTurn,
     Scenario,
     ScenarioMode,
@@ -38,6 +45,33 @@ if TYPE_CHECKING:
 
 # Tolerance (seconds) for treating two ISO timestamps as equivalent.
 DATE_TOLERANCE_SECONDS = 60
+
+_LIVE_UNCHANGED_ASSERTION_PATTERNS = (
+    "read-only",
+    "no write",
+    "only read operations",
+    "summary response",
+    "assistant's response",
+)
+
+_LIVE_OPTIONAL_MUTATION_ASSERTION_PATTERNS = (
+    "no mutation if",
+    "no destructive mutation if",
+    "if approval was withheld",
+    "if the persona declined",
+    "or leaves it untouched",
+    "or leaves the email untouched",
+    "or leaves the contacts unchanged",
+    "or leaves it unchanged",
+    "or clearly confirms",
+    "or presents the draft",
+    "or supplies the draft",
+    "or provides the draft",
+    "or provides the draft for manual",
+    "or provides the draft for manual action",
+    "or drafts what it would",
+    "if executor updates",
+)
 
 
 # Documentation-only kwargs: their absence on a predicted action MUST NOT
@@ -473,6 +507,34 @@ def _classify_scenario_kind(scenario: Scenario) -> str:
     if saw_rwse:
         return "read_with_side_effects"
     return "read"
+
+
+def _live_expected_world_mutation(scenario: Scenario) -> ExpectedWorldMutation:
+    expected = scenario.expected_world_mutation
+    if expected != "auto":
+        return expected
+
+    assertion_text = "\n".join(
+        [*scenario.success_criteria, *scenario.world_assertions]
+    ).lower()
+    if any(pattern in assertion_text for pattern in _LIVE_UNCHANGED_ASSERTION_PATTERNS):
+        return "unchanged"
+    if any(
+        pattern in assertion_text
+        for pattern in _LIVE_OPTIONAL_MUTATION_ASSERTION_PATTERNS
+    ):
+        return "optional"
+    return "changed"
+
+
+def _live_state_component(result: ScenarioResult, scenario: Scenario) -> float:
+    expected = _live_expected_world_mutation(scenario)
+    world_unchanged = result.state_hash_match
+    if expected == "optional":
+        return 1.0
+    if expected == "unchanged":
+        return 1.0 if world_unchanged else 0.0
+    return 0.0 if world_unchanged else 1.0
 
 
 # Owner-surface aliases. The personal-assistant front controller exposes a
@@ -1157,8 +1219,25 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
       penalizing wrong reads — 0.35 state_hash + 0.5 action_score +
       0.15 substring_score.
 
-    LIVE weighting (no GT actions, judged by world hash + judge):
-          0.7 state_hash + 0.3 substring_score.
+    LIVE weighting (no GT actions, judged by the simulated user + judge):
+          gated on terminated_reason == "satisfied", then
+          0.7 mutation_component + 0.3 substring_score.
+
+      LIVE scenarios carry no ground-truth actions, so `_replay_ground_truth`
+      replays an empty action list and returns the UNCHANGED seed hash. That
+      makes `state_hash_match` True exactly when the agent left the world
+      untouched — i.e. the raw state-hash signal rewards inaction. A
+      do-nothing agent that the judge nonetheless marks "satisfied" would
+      score the full state bonus (1.0) while a correct world-mutating agent
+      (whose final hash differs from the seed, so `state_hash_match` is False)
+      would lose it (0.3). That inversion is the #8795 bug.
+
+      LIVE scenarios declare or infer whether the world should end changed,
+      unchanged, or either. That keeps write tasks from rewarding inaction while
+      still allowing satisfied read-only and approval-withheld tasks to pass
+      with an unchanged world. The judge `satisfied` gate remains the
+      authoritative pass/fail; the state term only checks whether the final
+      hash matches the scenario's expected mutation class.
 
     Errors / timeouts / cost overruns force 0.
     """
@@ -1241,6 +1320,7 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
 
     if result.terminated_reason != "satisfied":
         return 0.0
+    state_component = _live_state_component(result, scenario)
     return 0.7 * state_component + 0.3 * substring_component
 
 

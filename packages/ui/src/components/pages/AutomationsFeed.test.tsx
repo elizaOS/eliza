@@ -18,6 +18,8 @@ import { AutomationsFeed } from "./AutomationsFeed";
 
 const clientMock = vi.hoisted(() => ({
   listAutomations: vi.fn(),
+  listScheduledTasks: vi.fn(),
+  applyScheduledTask: vi.fn(),
   runWorkflowDefinition: vi.fn(),
 }));
 
@@ -93,6 +95,7 @@ function responseFixture(): AutomationListResponse {
 beforeEach(() => {
   window.location.hash = "#automations";
   clientMock.listAutomations.mockResolvedValue(responseFixture());
+  clientMock.listScheduledTasks.mockResolvedValue({ tasks: [] });
   clientMock.runWorkflowDefinition.mockResolvedValue({ id: "execution-1" });
 });
 

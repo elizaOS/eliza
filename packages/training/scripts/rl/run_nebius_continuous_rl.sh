@@ -26,7 +26,7 @@ set -euo pipefail
 # Defaults
 HOST=""
 USER="ubuntu"
-MODEL="Qwen/Qwen3-4B"
+MODEL="google/gemma-4-E4B"
 TICKS=200
 AGENTS_PER_TEAM=10
 KONDO_RATE=0.03
@@ -41,7 +41,7 @@ usage() {
   echo "Options:"
   echo "  --host HOST          Nebius VM IP address"
   echo "  --user USER          SSH username (default: ubuntu)"
-  echo "  --model MODEL        Model name (default: Qwen/Qwen3-4B)"
+  echo "  --model MODEL        Model name (default: google/gemma-4-E4B)"
   echo "  --ticks N            Training ticks (default: 200)"
   echo "  --agents N           Agents per team (default: 10)"
   echo "  --kondo-rate R       Kondo gate rate (default: 0.03)"

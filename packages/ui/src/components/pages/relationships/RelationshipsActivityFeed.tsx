@@ -7,25 +7,13 @@ import { Button } from "../../ui/button";
 
 type ActivityType = RelationshipsActivityItem["type"];
 
-const ACTIVITY_TYPE_STYLES: Record<
+const ACTIVITY_TYPE_ICONS: Record<
   ActivityType,
-  { bg: string; fg: string; icon: ComponentType<{ className?: string }> }
+  ComponentType<{ className?: string }>
 > = {
-  relationship: {
-    bg: "rgba(99, 102, 241, 0.15)",
-    fg: "rgb(99, 102, 241)",
-    icon: Link2,
-  },
-  fact: {
-    bg: "rgba(34, 197, 94, 0.15)",
-    fg: "rgb(34, 197, 94)",
-    icon: Tags,
-  },
-  identity: {
-    bg: "rgba(168, 85, 247, 0.15)",
-    fg: "rgb(168, 85, 247)",
-    icon: Fingerprint,
-  },
+  relationship: Link2,
+  fact: Tags,
+  identity: Fingerprint,
 };
 
 const ACTIVITY_PAGE_SIZE = 25;
@@ -118,21 +106,19 @@ export function RelationshipsActivityFeed() {
   return (
     <div className="space-y-1.5">
       {activity.map((item) => {
-        const style = ACTIVITY_TYPE_STYLES[item.type];
-        const ActivityIcon = style.icon;
+        const ActivityIcon = ACTIVITY_TYPE_ICONS[item.type];
         return (
           <div
             key={`${item.personId}-${item.type}-${item.timestamp ?? "none"}-${item.summary}`}
-            className="flex items-center gap-2 rounded-sm border border-border/24 bg-card/28 px-2.5 py-2"
+            className="flex items-center gap-2.5 px-2.5 py-2"
           >
             <span
               role="img"
               aria-label={`${item.type} event`}
               title={item.type}
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
-              style={{ backgroundColor: style.bg, color: style.fg }}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-muted"
             >
-              <ActivityIcon className="h-3 w-3" />
+              <ActivityIcon className="h-3.5 w-3.5" />
             </span>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-txt">

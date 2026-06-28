@@ -124,58 +124,58 @@ describe("assistant launch deep-link routing", () => {
     );
   });
 
-  it("routes Android widget daily brief links into LifeOps overview", () => {
+  it("routes Android widget daily brief links into chat with a planner hint", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "lifeops/daily-brief",
       new URLSearchParams("source=android-widget&action=lifeops.daily-brief"),
       { generateLaunchId: () => "launch-android-widget" },
     );
 
-    expect(hashRoute?.startsWith("#lifeops?")).toBe(true);
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
     expect(params(hashRoute ?? "").get("source")).toBe("android-widget");
     expect(params(hashRoute ?? "").get("action")).toBe("lifeops.daily-brief");
-    expect(params(hashRoute ?? "").get("lifeops.section")).toBe("overview");
+    expect(params(hashRoute ?? "").get("lifeops.section")).toBeNull();
     expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
       "launch-android-widget",
     );
   });
 
-  it("routes Android feature-open inventory to LifeOps daily brief", () => {
+  it("routes Android feature-open inventory to chat with a daily-brief hint", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "feature/open",
       new URLSearchParams("source=android-app-actions&feature=daily%20brief"),
       { generateLaunchId: () => "launch-brief" },
     );
 
-    expect(hashRoute?.startsWith("#lifeops?")).toBe(true);
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
     expect(params(hashRoute ?? "").get("source")).toBe("android-app-actions");
     expect(params(hashRoute ?? "").get("action")).toBe("lifeops.daily-brief");
-    expect(params(hashRoute ?? "").get("lifeops.section")).toBe("overview");
+    expect(params(hashRoute ?? "").get("lifeops.section")).toBeNull();
   });
 
-  it("routes Android feature-open task inventory into LifeOps reminders", () => {
+  it("routes Android feature-open task inventory into chat with a tasks hint", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "feature/open",
       new URLSearchParams("source=android-app-actions&feature=tasks"),
       { generateLaunchId: () => "launch-tasks" },
     );
 
-    expect(hashRoute?.startsWith("#lifeops?")).toBe(true);
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
     expect(params(hashRoute ?? "").get("source")).toBe("android-app-actions");
     expect(params(hashRoute ?? "").get("action")).toBe("lifeops.tasks");
-    expect(params(hashRoute ?? "").get("lifeops.section")).toBe("reminders");
+    expect(params(hashRoute ?? "").get("lifeops.section")).toBeNull();
   });
 
-  it("opens LifeOps reminders when create links do not carry text", () => {
+  it("routes text-free create links into chat with a create hint", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "lifeops/create",
       new URLSearchParams(),
       { generateLaunchId: () => "launch-lifeops-empty" },
     );
 
-    expect(hashRoute?.startsWith("#lifeops?")).toBe(true);
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
     expect(params(hashRoute ?? "").get("action")).toBe("lifeops.create");
-    expect(params(hashRoute ?? "").get("lifeops.section")).toBe("reminders");
+    expect(params(hashRoute ?? "").get("lifeops.section")).toBeNull();
   });
 
   it("fuzzes arbitrary assistant entry query strings without throwing or producing unsafe routes", () => {
@@ -228,7 +228,7 @@ describe("assistant launch deep-link routing", () => {
           });
 
           expect(hashRoute).not.toBeNull();
-          expect(hashRoute).toMatch(/^#(?:chat|lifeops)(?:\?|$)/);
+          expect(hashRoute).toMatch(/^#chat(?:\?|$)/);
           expect(hashRoute).not.toContain("javascript:");
           expect(hashRoute).not.toContain("\n");
           expect(hashRoute).not.toContain("\r");

@@ -722,7 +722,7 @@ function smokePolymarketMarkets() {
           { name: "No", price: "0.13" },
         ],
         // Raw numeric strings — the real Gamma API + BFF parser emit unformatted
-        // numerics (see plugin-polymarket-app routes.contract.test.ts). The view's
+        // numerics (see plugin-polymarket routes.contract.test.ts). The view's
         // shortNumber() does Number(value), so a pre-formatted "$12,345" would
         // render as "—". Keep this matching the validated real DTO shape.
         liquidity: "12345.5",
@@ -1773,6 +1773,33 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     },
   );
 
+  await page.route(/^https:\/\/ipapi\.co\/json\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({
+        latitude: 37.7749,
+        longitude: -122.4194,
+        city: "San Francisco",
+      }),
+    });
+  });
+
+  await page.route("https://api.open-meteo.com/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({
+        current: {
+          temperature_2m: 68,
+          weather_code: 2,
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/health", async (route) => {
     await route.fulfill({
       status: 200,
@@ -1882,6 +1909,29 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // Approval/needs-attention poller — shell-level GET on the home surface. The
+  // zero-key smoke stack has no approval queue, so return the canonical empty
+  // pending-actions shape instead of letting the fallback server emit a 501.
+  await page.route("**/api/approvals**", async (route) => {
+    const url = new URL(route.request().url());
+    if (
+      route.request().method() !== "GET" ||
+      url.pathname !== "/api/approvals"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        approvals: [],
+        pending: [],
+        pendingUserActions: [],
+      }),
+    });
+  });
+
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1970,11 +2020,22 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
             unrealizedPnl: "42",
             returnOnEquity: "0.012",
             liquidationPx: null,
+            markPx: "65000",
+            distanceToLiquidationPct: null,
             marginUsed: "650",
             leverageType: "cross",
             leverageValue: 5,
           },
         ],
+        summary: {
+          accountValue: "12500",
+          totalNotionalPosition: "3250",
+          totalMarginUsed: "650",
+          totalRawUsd: "12500",
+          withdrawable: "11850",
+          totalUnrealizedPnl: "42",
+          effectiveLeverage: 0.26,
+        },
         readBlockedReason: null,
         fetchedAt: SMOKE_GENERATED_AT,
       }),

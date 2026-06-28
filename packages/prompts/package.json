@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/prompts",
   "private": false,
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "Shared prompt templates for elizaOS across TypeScript, Python, and Rust",
   "type": "module",
   "main": "./src/index.ts",
@@ -23,7 +23,7 @@
     "build:action-docs": "node scripts/generate-action-docs.js",
     "build:plugin-action-spec": "node scripts/generate-plugin-action-spec.js && bunx @biomejs/biome format --write specs/actions/plugins.generated.json",
     "check:secrets": "node scripts/check-secrets.js",
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "format:check": "bunx @biomejs/biome format .",

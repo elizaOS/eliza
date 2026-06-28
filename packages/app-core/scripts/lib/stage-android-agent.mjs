@@ -39,7 +39,7 @@
  * The ABI-independent `launch.sh` is the packaged production launcher;
  * `agent-bundle.js` is produced by `bun run --cwd packages/agent build:mobile`.
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -49,6 +49,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(__dirname, "..", "..");
 const ELIZA_REPO_ROOT = path.resolve(APP_CORE_ROOT, "..", "..");
+const CLEANUP_HELPER_SCRIPT = path.join(
+  ELIZA_REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 const BUN_VERSION = "1.3.14";
 // Bun 1.3.13 had a segfault during inference on Cuttlefish at peak
@@ -301,6 +307,13 @@ function run(command, args, { cwd } = {}) {
       resolve();
     });
     child.on("error", reject);
+  });
+}
+
+function removePathRecursiveSync(targetPath) {
+  execFileSync(process.execPath, [CLEANUP_HELPER_SCRIPT, targetPath], {
+    cwd: ELIZA_REPO_ROOT,
+    stdio: "ignore",
   });
 }
 
@@ -589,7 +602,7 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   }
   if (fs.existsSync(bunPath)) fs.unlinkSync(bunPath);
   fs.renameSync(extractedBun, bunPath);
-  fs.rmSync(extractedDir, { recursive: true, force: true });
+  removePathRecursiveSync(extractedDir);
   fs.rmSync(zipPath, { force: true });
   fs.chmodSync(bunPath, 0o755);
   if (expectedRiscv64Sha256) {
@@ -645,7 +658,7 @@ async function ensureAlpineApkExtracted({ cacheDir, alpineArch, log }) {
     return extractDir;
   }
   fs.mkdirSync(archCache, { recursive: true });
-  fs.rmSync(extractDir, { recursive: true, force: true });
+  removePathRecursiveSync(extractDir);
   fs.mkdirSync(extractDir, { recursive: true });
   for (const { pkg, file } of APK_PACKAGES) {
     const apkPath = path.join(archCache, file);

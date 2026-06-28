@@ -63,6 +63,7 @@ import {
   fallbackTranslate,
   OrchestratorAccountsView,
 } from "./agent-orchestrator-accounts-view";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
   ChatSidebarWidgetDefinition,
@@ -249,7 +250,7 @@ function ActivityItemsContent({
             type="button"
             onClick={() => onSelectEvent(event)}
             aria-label={`${openLabel}: ${event.summary}`}
-            className="flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors hover:bg-bg-hover/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+            className="flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors hover:bg-bg-hover/40   "
           >
             <span className="shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted">
               {relativeDuration(event.timestamp)}
@@ -618,6 +619,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
 function OrchestratorActivityWidget({
   events,
   clearEvents,
+  slot,
 }: ChatSidebarWidgetProps) {
   const {
     t: appT,
@@ -629,6 +631,7 @@ function OrchestratorActivityWidget({
     setTab: s.setTab,
   }));
   const t = appT ?? fallbackTranslate;
+  const nav = useWidgetNavigation();
 
   // A click navigates to the activity's origin: a sessionId routes into the
   // terminal channel (mirrors ChatView.focusTerminalSession — clear the inbox
@@ -648,6 +651,25 @@ function OrchestratorActivityWidget({
 
   if (events.length === 0) {
     return null;
+  }
+
+  // Home slot: a single compact, icon-first, whole-card-clickable tile — the
+  // latest activity event's summary as the one datum, event count as the badge.
+  // Tapping opens the Tasks tab. The sidebar keeps the full activity list.
+  if (slot === "home") {
+    const latest = events[0];
+    return (
+      <HomeWidgetCard
+        icon={<Activity />}
+        label={t("taskseventspanel.Activity", { defaultValue: "Activity" })}
+        value={latest.summary}
+        meta={relativeDuration(latest.timestamp)}
+        badge={events.length > 1 ? events.length : undefined}
+        testId="chat-widget-events"
+        ariaLabel={`Activity: ${events.length} events, latest ${latest.summary}. Open tasks.`}
+        onActivate={() => nav.openTab("tasks")}
+      />
+    );
   }
 
   return (

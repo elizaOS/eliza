@@ -50,4 +50,15 @@ describe("AppBackground", () => {
       container.querySelector('[data-testid="app-background-shader"]'),
     ).not.toBeNull();
   });
+
+  it("keeps the apply channel mounted while hiding the visual layer", () => {
+    seed({ mode: "shader", color: "#ef5a1f" });
+    const { container } = render(<AppBackground visible={false} />);
+    expect(
+      container.querySelector('[data-testid="app-background-shader"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="app-background-image"]'),
+    ).toBeNull();
+  });
 });

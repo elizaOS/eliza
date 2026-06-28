@@ -8,6 +8,11 @@
 
 import type { IAgentRuntime, RouteRequestContext } from "@elizaos/core";
 import { requestBrowserWorkspace } from "../workspace/browser-workspace-desktop.js";
+import {
+  type BrowserWorkspaceErrorCode,
+  createBrowserWorkspaceError,
+  isBrowserWorkspaceError,
+} from "../workspace/browser-workspace-errors.js";
 import { assertBrowserWorkspaceUserScriptAllowed } from "../workspace/browser-workspace-helpers.js";
 import type { BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
 import {
@@ -70,6 +75,32 @@ export interface BrowserWorkspaceRouteContext extends RouteRequestContext {
   };
 }
 
+function statusFromBrowserWorkspaceErrorCode(
+  code: BrowserWorkspaceErrorCode,
+  message: string,
+): number {
+  switch (code) {
+    case "invalid_url":
+    case "unknown_element_ref":
+      return 400;
+    case "tab_not_found":
+      return 404;
+    case "target_missing":
+      return 409;
+    case "desktop_only":
+      return message.includes(getBrowserWorkspaceUnavailableMessage())
+        ? 503
+        : 409;
+    case "script_forbidden":
+    case "connector_secret_export_forbidden":
+      return 403;
+    case "timeout":
+      return 504;
+    case "command_failed":
+      return 500;
+  }
+}
+
 function statusFromBrowserWorkspaceError(
   error: unknown,
   message: string,
@@ -80,6 +111,12 @@ function statusFromBrowserWorkspaceError(
     typeof error.status === "number"
   ) {
     return error.status;
+  }
+  if (isBrowserWorkspaceError(error)) {
+    return statusFromBrowserWorkspaceErrorCode(
+      error.browserWorkspaceErrorCode,
+      message,
+    );
   }
   if (message.includes(getBrowserWorkspaceUnavailableMessage())) {
     return 503;
@@ -181,7 +218,11 @@ export async function handleBrowserWorkspaceRoutes(
 
     if (pathname === "/api/browser-workspace/events" && method === "GET") {
       if (!isBrowserWorkspaceBridgeConfigured()) {
-        throw new Error(getBrowserWorkspaceUnavailableMessage());
+        throw createBrowserWorkspaceError(
+          "desktop_only",
+          "events",
+          getBrowserWorkspaceUnavailableMessage(),
+        );
       }
       json(
         res,
@@ -354,7 +395,13 @@ export async function handleBrowserWorkspaceRoutes(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = statusFromBrowserWorkspaceError(error, message);
-    json(res, { error: message }, status);
+    const body: { code?: BrowserWorkspaceErrorCode; error: string } = {
+      error: message,
+    };
+    if (isBrowserWorkspaceError(error)) {
+      body.code = error.browserWorkspaceErrorCode;
+    }
+    json(res, body, status);
     return true;
   }
 }

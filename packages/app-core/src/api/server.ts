@@ -140,8 +140,10 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
+import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleFirstRunTtsRoute } from "./first-run-tts-route";
+import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import {
   isPerfInstrumentEnabled,
@@ -341,7 +343,7 @@ async function clearCompatPgliteDataDir(
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     try {
       await Promise.race([
-        Promise.resolve(runtime.stop()),
+        Promise.resolve(runtime.stop({ fast: true })),
         new Promise<void>((resolve) => {
           timeoutHandle = setTimeout(() => {
             stopTimedOut = true;
@@ -685,6 +687,10 @@ async function handleCompatRouteInner(
   // useRuntimeMode() hook.
   if (await handleRuntimeModeRoute(req, res, state)) return true;
 
+  // First-paint UI language suggestion. Public/advisory only; the client
+  // falls back to English when it is absent, but serving it avoids noisy 404s.
+  if (handleI18nLocaleRoute(req, res)) return true;
+
   // Eliza Cloud thin-client proxy (compat agents, jobs, OAuth, …). Keep this
   // before the local /api/cloud handler so /api/cloud/v1/* forwards to Cloud.
   if (
@@ -799,25 +805,7 @@ async function handleCompatRouteInner(
   // cloud-connection management. `/api/cloud/*` connection management is
   // served by elizaCloudRoutePlugin.routes on the runtime plugin route system.
 
-  if (method === "GET" && url.pathname === "/api/drop/status") {
-    const config = loadElizaConfig() as ElizaConfig & {
-      features?: { dropEnabled?: boolean };
-    };
-    if (config.features?.dropEnabled === true) {
-      return false;
-    }
-    sendJsonResponse(res, 200, {
-      dropEnabled: false,
-      publicMintOpen: false,
-      whitelistMintOpen: false,
-      mintedOut: false,
-      currentSupply: 0,
-      maxSupply: 0,
-      shinyPrice: "0",
-      userHasMinted: false,
-    });
-    return true;
-  }
+  if (handleDropStatusCompatRoute(req, res, method, url.pathname)) return true;
 
   if (method === "POST" && url.pathname === "/api/agent/reset") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) {

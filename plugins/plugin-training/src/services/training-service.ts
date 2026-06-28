@@ -38,6 +38,17 @@ interface TrajectoryServiceLike {
   getTrajectoryDetail: (id: string) => Promise<Trajectory | null>;
 }
 
+function isTrajectoryService(
+  service: unknown,
+): service is TrajectoryServiceLike {
+  if (!service || typeof service !== "object") return false;
+  const candidate = service as Partial<TrajectoryServiceLike>;
+  return (
+    typeof candidate.listTrajectories === "function" &&
+    typeof candidate.getTrajectoryDetail === "function"
+  );
+}
+
 /**
  * Public training API service. Reads trajectories from the runtime
  * `trajectories` DB service and builds privacy-filtered export bundles via
@@ -65,15 +76,8 @@ export class TrainingService implements TrainingServiceWithRuntime {
 
   private trajectoryService(): TrajectoryServiceLike {
     const runtime = this.options.getRuntime();
-    const service = runtime?.getService("trajectories") as unknown as
-      | TrajectoryServiceLike
-      | null
-      | undefined;
-    if (
-      !service ||
-      typeof service.listTrajectories !== "function" ||
-      typeof service.getTrajectoryDetail !== "function"
-    ) {
+    const service = runtime?.getService("trajectories");
+    if (!isTrajectoryService(service)) {
       throw new NotImplementedError(
         "The trajectories service is not available on the current runtime.",
       );

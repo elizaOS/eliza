@@ -55,8 +55,16 @@ function lifecycleLoadersOk(): VoiceLifecycleLoaders {
 	};
 }
 
+function unitEmbedding(index = 0): Float32Array {
+	const out = new Float32Array(256);
+	out[index] = 1;
+	return out;
+}
+
 /** Attribution output with a bound speaker (drives the VOICE_TURN_OBSERVED emit). */
-function attributionOutput(): VoiceAttributionOutput {
+function attributionOutput(
+	embedding: Float32Array = unitEmbedding(),
+): VoiceAttributionOutput {
 	return {
 		turnId: "t1",
 		primarySpeaker: { entityId: "entity-jill", confidence: 0.6 },
@@ -64,6 +72,7 @@ function attributionOutput(): VoiceAttributionOutput {
 			imprintClusterId: "cluster-1",
 			confidence: 0.6,
 			entityId: "entity-jill",
+			embedding,
 		},
 		turn: { metadata: {} },
 		segments: [],
@@ -103,6 +112,7 @@ function bridgeWithJoin(opts: {
 	skipAsr?: boolean;
 	/** Resolve the fake attribution only after this promise (timing control). */
 	attributionGate?: Promise<void>;
+	attributionEmbedding?: Float32Array;
 }): EngineVoiceBridge {
 	const bridge = EngineVoiceBridge.start({
 		bundleRoot: opts.bundleRoot,
@@ -128,7 +138,7 @@ function bridgeWithJoin(opts: {
 	internals.attributionPipeline = {
 		async attribute() {
 			if (opts.attributionGate) await opts.attributionGate;
-			return attributionOutput();
+			return attributionOutput(opts.attributionEmbedding);
 		},
 	};
 	internals.buildPipeline = (_runner, _config, events) => ({
@@ -215,5 +225,54 @@ describe("EngineVoiceBridge runVoiceTurn — transcript join (#8786)", () => {
 		// resolves (with "") rather than hanging the await forever.
 		const payload = await observed;
 		expect(payload.text).toBe("");
+	});
+
+	it("folds live self-voice similarity into the emitted turn signal", async () => {
+		const { runtime, observed } = captureRuntime();
+		const attributionEmbedding = unitEmbedding();
+		const bridge = bridgeWithJoin({
+			bundleRoot,
+			runtime,
+			asrTokens: [{ index: 0, text: "hey eliza" }],
+			attributionEmbedding,
+		});
+		const internals = bridge as unknown as {
+			scheduler: { bargeIn: { setAgentSpeaking(speaking: boolean): void } };
+			selfVoiceImprint: {
+				similarity(embedding: Float32Array): Promise<number | null>;
+			};
+		};
+		internals.scheduler.bargeIn.setAgentSpeaking(true);
+		internals.selfVoiceImprint = {
+			async similarity(embedding) {
+				expect(embedding).toBe(attributionEmbedding);
+				return 0.91;
+			},
+		};
+		let resolveAttribution: (output: VoiceAttributionOutput) => void = () => {};
+		const attributed = new Promise<VoiceAttributionOutput>((resolve) => {
+			resolveAttribution = resolve;
+		});
+		await bridge.arm();
+
+		await bridge.runVoiceTurn(AUDIO, TEXT_RUNNER, CONFIG, {
+			onAttribution(output) {
+				resolveAttribution(output);
+			},
+		});
+		await observed;
+		const attributedOutput = await attributed;
+
+		const signal = attributedOutput.turn.metadata.voiceTurnSignal as
+			| {
+					agentShouldSpeak: boolean | null;
+					nextSpeaker: string;
+					metadata?: { provenance?: string; selfVoiceSimilarity?: number };
+			  }
+			| undefined;
+		expect(signal?.agentShouldSpeak).toBe(false);
+		expect(signal?.nextSpeaker).toBe("user");
+		expect(signal?.metadata?.provenance).toBe("voice-bridge+self-voice");
+		expect(signal?.metadata?.selfVoiceSimilarity).toBeCloseTo(0.91);
 	});
 });

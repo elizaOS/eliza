@@ -1,9 +1,7 @@
 import crypto from "node:crypto";
 import {
-  BROWSER_BRIDGE_KINDS,
-  MAX_BROWSER_FOCUS_WINDOW_MS,
   authenticateBrowserBridgeCompanionCredential,
-  browserBridgeDomainFromUrl,
+  BROWSER_BRIDGE_KINDS,
   type BrowserBridgeCompanionAutoPairResponse,
   type BrowserBridgeCompanionConfig,
   type BrowserBridgeCompanionPairingResponse,
@@ -14,14 +12,16 @@ import {
   type BrowserBridgePageContext,
   type BrowserBridgeSettings,
   type BrowserBridgeTabSummary,
+  browserBridgeDomainFromUrl,
   type CreateBrowserBridgeCompanionAutoPairRequest,
   type CreateBrowserBridgeCompanionPairingRequest,
-  type SyncBrowserBridgeStateRequest,
-  type UpdateBrowserBridgeSettingsRequest,
   createBrowserBridgePageContext,
   createBrowserBridgeTabSummary,
   isoTimestampExpired,
+  MAX_BROWSER_FOCUS_WINDOW_MS,
   resolveBrowserBridgeCompanionPairingTokenExpiresAt,
+  type SyncBrowserBridgeStateRequest,
+  type UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/plugin-browser";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
@@ -206,13 +206,13 @@ function normalizeOptionalBrowserKind(
   return normalizeEnumValue(value, field, BROWSER_BRIDGE_KINDS);
 }
 
+import { DEFAULT_BROWSER_PERMISSION_STATE } from "./browser-constants.js";
 import {
   mergeBrowserTaskLifecycle,
   summarizeBrowserTaskLifecycle,
 } from "./browser-session-lifecycle.js";
 // Imports from repository
 import { createLifeOpsBrowserSession } from "./repository.js";
-import { DEFAULT_BROWSER_PERMISSION_STATE } from "./browser-constants.js";
 
 // ---------------------------------------------------------------------------
 // Browser mixin
@@ -307,6 +307,11 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       if (auth.ok === false) {
         fail(401, auth.message, auth.code);
+      }
+      if (!credential) {
+        // Unreachable when auth.ok is true (the authenticator rejects a missing
+        // credential), but the type system can't see that correlation.
+        fail(404, "Browser companion credential not found");
       }
       if (auth.source === "active") {
         return credential.companion;

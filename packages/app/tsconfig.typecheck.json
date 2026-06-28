@@ -25,28 +25,19 @@
       "@elizaos/plugin-messages/register": [
         "../../plugins/plugin-messages/src/register.ts"
       ],
-      "@elizaos/plugin-device-settings/register": [
-        "../../plugins/plugin-device-settings/src/register.ts"
+      "@elizaos/plugin-native-settings/register": [
+        "../../plugins/plugin-native-settings/src/register.ts"
       ],
       "@elizaos/plugin-vector-browser/register": [
         "../../plugins/plugin-vector-browser/src/register.ts"
       ],
       "@elizaos/plugin-phone": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/plugin-shopify-ui": [
-        "../../plugins/plugin-shopify-ui/dist/index.d.ts"
+      "@elizaos/plugin-shopify": [
+        "../../plugins/plugin-shopify/dist/index.d.ts"
       ],
-      "@elizaos/plugin-steward-app": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-training": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/plugin-vincent": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-wallet-ui": [
         "../../plugins/plugin-wallet-ui/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-feed": ["./src/types/side-effect-app-modules.d.ts"],
-      "@elizaos/plugin-defense-of-the-agents": [
-        "./src/types/side-effect-app-modules.d.ts"
-      ],
-      "@elizaos/plugin-trajectory-logger": [
-        "./src/types/side-effect-app-modules.d.ts"
       ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/dist/index.d.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
@@ -65,6 +56,18 @@
       ],
       "@elizaos/plugin-app-manager/*": [
         "../../plugins/plugin-app-manager/src/*"
+      ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-skills/*": [
+        "../../plugins/plugin-agent-skills/src/*"
       ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
@@ -146,8 +149,8 @@
       ],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/cloud-shared": ["../cloud-shared/src/index.ts"],
-      "@elizaos/cloud-shared/*": ["../cloud-shared/src/*"],
+      "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "csstype": [
         "../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
       ],
@@ -158,9 +161,6 @@
       ],
       "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
       "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
-      "@elizaos/plugin-clawville": [
-        "../../plugins/plugin-clawville/src/index.ts"
-      ],
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/dist/index.d.ts"
       ],

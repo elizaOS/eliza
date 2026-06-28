@@ -15,6 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
+  type AccessContext,
   type Agent,
   type Component,
   type Content,
@@ -556,6 +557,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     roomId?: UUID;
     worldId?: UUID;
     metadata?: Record<string, unknown>;
+    accessContext?: AccessContext;
   }): Promise<Memory[]> {
     let memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (params.entityId && m.entityId !== params.entityId) return false;
@@ -589,6 +591,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     roomIds: UUID[];
     tableName: string;
     limit?: number;
+    accessContext?: AccessContext;
   }): Promise<Memory[]> {
     if (params.roomIds.length === 0) return [];
     const roomSet = new Set(params.roomIds);
@@ -652,6 +655,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     roomId?: UUID;
     worldId?: UUID;
     entityId?: UUID;
+    accessContext?: AccessContext;
   }): Promise<Memory[]> {
     const threshold = params.match_threshold ?? 0.5;
     const limit = params.limit ?? 10;

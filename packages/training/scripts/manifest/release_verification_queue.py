@@ -15,7 +15,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Final, Mapping
 
 try:
     from scripts.manifest.audit_hf_eliza1_release import audit_hf_release
@@ -29,6 +29,14 @@ except ImportError:  # pragma: no cover - script execution path
 TIER_ORDER: tuple[str, ...] = ELIZA_1_TIERS
 BACKEND_ORDER: tuple[str, ...] = ("cpu", "metal", "vulkan", "cuda", "rocm")
 IMAGEGEN_ACCELERATOR_ORDER: tuple[str, ...] = ("cpu", "metal", "vulkan", "cuda")
+REGISTRY_KEY_BY_TIER: Final[Mapping[str, str]] = {
+    "2b": "gemma4-e2b",
+    "4b": "gemma4-e4b",
+    "9b": "gemma4-12b",
+    "27b": "gemma4-31b",
+    "27b-256k": "gemma4-31b",
+}
+FINE_TUNE_TIER: Final[str] = TIER_ORDER[0]
 _TIER_CHECK_RE = re.compile(r"^(?P<tier>\S+) (?P<kind>.+)$")
 _PLATFORM_TARGET_RE = re.compile(r"\b([a-z0-9]+(?:-[a-z0-9]+)+):\s*status='(?:pending|fail|skipped)'")
 
@@ -235,23 +243,24 @@ def _mtp_command(bundle_root: str, tier: str, eval_python: str) -> str:
     )
 
 
-def _finetune_command(eval_python: str) -> str:
+def _finetune_command(eval_python: str, tier: str = FINE_TUNE_TIER) -> str:
+    registry_key = REGISTRY_KEY_BY_TIER[tier]
     return _guarded(
         eval_python,
-        "hf download elizaos/eliza-1-training --type dataset --include 'sft/0_8b/*' "
+        f"hf download elizaos/eliza-1-training --type dataset --include 'sft/{tier}/*' "
         "--local-dir /tmp/eliza-1-training && "
         "cd packages/training && "
         "uv run --extra train python scripts/run_pipeline.py "
-        "--registry-key gemma4-e2b "
-        "--train-file /tmp/eliza-1-training/sft/0_8b/train.jsonl "
-        "--val-file /tmp/eliza-1-training/sft/0_8b/val.jsonl "
-        "--test-file /tmp/eliza-1-training/sft/0_8b/test.jsonl "
-        "--epochs 1 --run-name eliza-1-0_8b-finetuned-v2 && "
+        f"--registry-key {registry_key} "
+        f"--train-file /tmp/eliza-1-training/sft/{tier}/train.jsonl "
+        f"--val-file /tmp/eliza-1-training/sft/{tier}/val.jsonl "
+        f"--test-file /tmp/eliza-1-training/sft/{tier}/test.jsonl "
+        f"--epochs 1 --run-name eliza-1-{tier}-finetuned-v2 && "
         "uv run --extra train python scripts/benchmark/native_tool_call_bench.py "
-        "--model checkpoints/eliza-1-0_8b-finetuned-v2/final "
-        "--test-file /tmp/eliza-1-training/sft/0_8b/test.jsonl "
+        f"--model checkpoints/eliza-1-{tier}-finetuned-v2/final "
+        f"--test-file /tmp/eliza-1-training/sft/{tier}/test.jsonl "
         "--out-dir /tmp/eliza-1-finetune-native-tool-call && "
-        "publish bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf plus "
+        f"publish bundles/{tier}/finetuned-v2/eliza-1-{tier}-sft.gguf plus "
         "evidence/training/fine-tune-comparison.json only after baseline-vs-finetuned "
         "eliza_bench, native_tool_call, and structured_response reports pass",
     )
@@ -505,17 +514,17 @@ def build_queue(
         detail = str(check.get("detail", ""))
         items.append(
             QueueItem(
-                id="0_8b:fine-tune-comparison",
-                tier="0_8b",
+                id=f"{FINE_TUNE_TIER}:fine-tune-comparison",
+                tier=FINE_TUNE_TIER,
                 category="fineTuneComparison",
                 priority=500,
                 requires_hardware=True,
-                command=_finetune_command(eval_python),
+                command=_finetune_command(eval_python, FINE_TUNE_TIER),
                 evidence=(
-                    "bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf",
-                    "evidence/training/0_8b/eliza-bench.json",
-                    "evidence/training/0_8b/native-tool-call.json",
-                    "evidence/training/0_8b/structured-response.json",
+                    f"bundles/{FINE_TUNE_TIER}/finetuned-v2/eliza-1-{FINE_TUNE_TIER}-sft.gguf",
+                    f"evidence/training/{FINE_TUNE_TIER}/eliza-bench.json",
+                    f"evidence/training/{FINE_TUNE_TIER}/native-tool-call.json",
+                    f"evidence/training/{FINE_TUNE_TIER}/structured-response.json",
                     "evidence/training/fine-tune-comparison.json",
                 ),
                 source=name,

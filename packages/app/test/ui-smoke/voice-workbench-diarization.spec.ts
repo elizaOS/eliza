@@ -1,7 +1,11 @@
 /**
- * Voice Workbench — diarization scenario class (#8785). Overlapping/alternating
- * speakers whose turns must be attributed to the right speaker label; the player
- * round-trips each turn and records the expected diarization label in the report.
+ * Voice Workbench — diarization scenario class (#8785, #9427). Alternating
+ * speakers need a real attribution output before DER can be scored.
+ *
+ * The mocked headful lane round-trips each turn through the client player, but
+ * intentionally provides no attribution resolver; it must report diarization as
+ * skipped, never as a fake pass from ground-truth labels. Pure scorer and
+ * headless-service tests cover real misattribution failures separately.
  *
  *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-diarization.spec.ts
  */
@@ -9,7 +13,8 @@ import { runWorkbenchScenarioSpec } from "./voice-workbench-cases";
 
 runWorkbenchScenarioSpec({
   id: "diarization-two-party",
-  description: "Two speakers alternate; each turn attributed to its label.",
+  description:
+    "Two speakers alternate; each turn attributed to its predicted label.",
   classes: ["diarization"],
   participants: [{ label: "speaker_a", isOwner: true }, { label: "speaker_b" }],
   turns: [

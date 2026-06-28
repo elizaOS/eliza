@@ -1,7 +1,11 @@
 import { useEffect } from "react";
 import { SHARE_TARGET_EVENT } from "../../events";
+import { useFrameBudgetMonitor, useLayoutShiftMonitor } from "../../hooks";
+import { PerfOverlay } from "../../perf/PerfOverlay";
+import { bootPerfHud, installPerfHudHotkey } from "../../perf/perf-hud-control";
 import type { ShareTargetPayload } from "../../platform/init";
 
+import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useAppSelector } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import type { ActionNotice } from "../../state/types";
@@ -58,6 +62,14 @@ export function ShellOverlays({
   const setState = useAppSelector(selectSetState);
   const setActionNotice = useAppSelector(selectSetActionNotice);
 
+  useLayoutShiftMonitor();
+  useFrameBudgetMonitor();
+
+  useEffect(() => {
+    bootPerfHud();
+    return installPerfHudHotkey();
+  }, []);
+
   useEffect(() => {
     const handlePayload = (payload: ShareTargetPayload) => {
       const text = formatSharePayload(payload);
@@ -67,7 +79,7 @@ export function ShellOverlays({
         return;
       }
       const preview = text.length > 80 ? `${text.slice(0, 77)}...` : text;
-      setActionNotice(`Shared: ${preview}`, "info", 4000);
+      setActionNotice(`Shared: ${preview}`, "info", TOAST_TTL_MS.notification);
     };
 
     for (const queued of drainShareQueue()) {
@@ -89,6 +101,9 @@ export function ShellOverlays({
 
   return (
     <>
+      {/* Dev-only FPS/long-task overlay (#9141) — self-gates on
+          window.__ELIZA_PERF_HUD__, renders null + starts no loop when off. */}
+      <PerfOverlay />
       <CommandPalette />
       <RestartBanner />
       <BugReportModal />

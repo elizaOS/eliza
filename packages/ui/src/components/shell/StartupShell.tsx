@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { getBootConfig } from "../../config/boot-config-store";
+import { markStartup } from "../../state/startup-telemetry";
 import { ElizaMark } from "../brand/eliza-mark";
 import { BootstrapStep } from "../setup/BootstrapStep";
 import { PairingView } from "./PairingView";
@@ -8,11 +9,16 @@ import type { StartupShellProps } from "./startup-shell-types";
 
 const FONT = "'Poppins', Arial, system-ui, sans-serif";
 
-// Brand surface for the startup splash: the active theme's accent (the
-// elizaOS accent by default) with its readable foreground. Whitelabel seam —
-// no hardcoded brand color.
-const BRAND_SURFACE =
-  "bg-[var(--accent,#FF5800)] text-[var(--accent-foreground,#fff)]";
+// Launch surface for the startup splash + loading: it must match the default
+// HOME background orange (#ef5a1f = DEFAULT_BACKGROUND_COLOR, the home
+// ShaderBackground) so boot/launch flows seamlessly into the home with no
+// orange→orange flash (#9565). NOTE: this is NOT `--bg` — the theme background
+// is white/black (`:root`/`.dark`) or the brand orange #ff8a24 (`.theme-app`),
+// none of which is the home shader color — so a dedicated launch token is used.
+// Whitelabel seam: hosts override `--launch-bg` / `--accent-foreground`; the
+// literal fallbacks are the elizaOS defaults.
+const LAUNCH_SURFACE =
+  "bg-[var(--launch-bg,#ef5a1f)] text-[var(--accent-foreground,#fff)]";
 
 function brandName(): string {
   return getBootConfig().branding?.appName ?? "elizaOS";
@@ -25,6 +31,12 @@ function BrandMark(props: { className?: string }) {
 }
 
 export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
+  // Renderer cold-start checkpoint (#9565): the startup front door has painted.
+  // markStartup dedupes by name, so this records only the first paint.
+  useEffect(() => {
+    markStartup("startup-shell:first-paint", { view: view.kind });
+  }, [view.kind]);
+
   if (view.kind === "error") {
     return <StartupFailureView error={view.error} onRetry={onRetry} />;
   }
@@ -56,7 +68,7 @@ function StartupFirstRunBackground({ children }: { children: ReactNode }) {
   return (
     <div
       data-testid="startup-first-run-background"
-      className={`fixed inset-0 overflow-hidden ${BRAND_SURFACE}`}
+      className={`fixed inset-0 overflow-hidden ${LAUNCH_SURFACE}`}
       style={{ fontFamily: FONT }}
     >
       {children}
@@ -72,7 +84,7 @@ function StartupLoading(props: { phase: string; status: string }) {
       role="status"
       aria-live="polite"
       aria-busy="true"
-      className={`fixed inset-0 flex items-center justify-center overflow-hidden ${BRAND_SURFACE}`}
+      className={`fixed inset-0 flex items-center justify-center overflow-hidden ${LAUNCH_SURFACE}`}
       style={{ fontFamily: FONT }}
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">

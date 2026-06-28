@@ -24,6 +24,8 @@ export interface PullGestureOptions {
   onPullDown?: () => void;
   /** Live vertical drag offset while pressed, in px. Positive = dragging up. */
   onDrag?: (offset: number) => void;
+  /** Reset/cancel live vertical drag visuals without marking a new drag active. */
+  onDragReset?: () => void;
   /** Released after a horizontal swipe LEFT past threshold. */
   onSwipeLeft?: () => void;
   /** Released after a horizontal swipe RIGHT past threshold. */
@@ -38,6 +40,10 @@ export interface PullGestureOptions {
    * (the consumer keeps the live offset) instead of snapping back.
    */
   onSettleFree?: (direction: "up" | "down") => void;
+  /** Gesture was interrupted by pointercancel/lost capture. */
+  onCancel?: () => void;
+  /** Enable horizontal swipe recognition. Defaults to true when swipe handlers exist. */
+  swipeEnabled?: boolean;
   /** Minimum vertical travel (px) to count as a pull. Default 56. */
   distanceThreshold?: number;
   /** Minimum vertical speed (px/ms) to count as a flick. Default 0.5. */
@@ -63,6 +69,8 @@ export interface PullGestureBinding {
    *  (the consumer's morph freezes). Treat it as a release so the sheet settles. */
   onLostPointerCapture: (event: React.PointerEvent) => void;
 }
+
+type GestureAxis = "x" | "y";
 
 /** Decide whether a release should fire a pull, and in which direction. */
 export function resolvePull(
@@ -107,35 +115,98 @@ export function usePullGesture(
     onPullUp,
     onPullDown,
     onDrag,
+    onDragReset,
     onSwipeLeft,
     onSwipeRight,
     onDragX,
     onTap,
     onSettleFree,
+    onCancel,
+    swipeEnabled = true,
     distanceThreshold = 56,
     velocityThreshold = 0.5,
     distanceThresholdX = 64,
     velocityThresholdX = 0.4,
   } = options;
 
-  const hasSwipe = Boolean(onSwipeLeft || onSwipeRight || onDragX);
+  const hasSwipe =
+    swipeEnabled && Boolean(onSwipeLeft || onSwipeRight || onDragX);
+  const hasVerticalPull = Boolean(
+    onDrag || onPullUp || onPullDown || onSettleFree,
+  );
 
-  const start = React.useRef<{ x: number; y: number; t: number } | null>(null);
+  const start = React.useRef<{
+    x: number;
+    y: number;
+    t: number;
+    pointerId: number;
+  } | null>(null);
   // Which axis the gesture committed to, once it crossed AXIS_COMMIT_SLOP.
   const axis = React.useRef<"x" | "y" | null>(null);
 
+  // Coalesce the continuous drag updates to at most one per animation frame.
+  // A trackpad/touch panel emits pointermove well above the display refresh
+  // (up to ~1000Hz), and each call fans out to MotionValue subscribers (vertical
+  // sheet) or a React setState (horizontal swipe `onDragX`) — running that more
+  // than once per painted frame is pure waste (only the last value is shown).
+  // rAF-pacing matches the work to the frame the user actually sees.
+  const pendingDrag = React.useRef<{ axis: GestureAxis; value: number } | null>(
+    null,
+  );
+  const dragRaf = React.useRef(0);
+  const onDragRef = React.useRef(onDrag);
+  const onDragXRef = React.useRef(onDragX);
+  onDragRef.current = onDrag;
+  onDragXRef.current = onDragX;
+  const flushDrag = React.useCallback(() => {
+    dragRaf.current = 0;
+    const pending = pendingDrag.current;
+    pendingDrag.current = null;
+    if (!pending) return;
+    if (pending.axis === "x") onDragXRef.current?.(pending.value);
+    else onDragRef.current?.(pending.value);
+  }, []);
+  const scheduleDrag = React.useCallback(
+    (nextAxis: GestureAxis, value: number) => {
+      pendingDrag.current = { axis: nextAxis, value };
+      if (
+        dragRaf.current === 0 &&
+        typeof requestAnimationFrame === "function"
+      ) {
+        dragRaf.current = requestAnimationFrame(flushDrag);
+      }
+    },
+    [flushDrag],
+  );
+  const cancelDrag = React.useCallback(() => {
+    if (dragRaf.current !== 0 && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(dragRaf.current);
+    }
+    dragRaf.current = 0;
+    pendingDrag.current = null;
+  }, []);
+  const flushPendingDrag = React.useCallback(() => {
+    if (dragRaf.current !== 0 && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(dragRaf.current);
+    }
+    flushDrag();
+  }, [flushDrag]);
+
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent) => {
+      if (start.current && start.current.pointerId !== event.pointerId) return;
       start.current = {
         x: event.clientX,
         y: event.clientY,
         t: performance.now(),
+        pointerId: event.pointerId,
       };
       axis.current = null;
-      // When horizontal swipes are possible we DEFER capture until the gesture
-      // commits to an axis, so a vertical scroll inside the panel still scrolls
-      // natively. Pure-vertical consumers (the drag handle) capture immediately.
-      if (!hasSwipe) {
+      // Pure horizontal swipe surfaces defer capture until axis commit so native
+      // vertical scrolling still works. A vertical pull handle captures
+      // immediately even when it also supports horizontal swipes; otherwise a
+      // mouse/finger can leave the small handle before the first committed move.
+      if (!hasSwipe || hasVerticalPull) {
         try {
           event.currentTarget.setPointerCapture(event.pointerId);
         } catch {
@@ -143,13 +214,13 @@ export function usePullGesture(
         }
       }
     },
-    [hasSwipe],
+    [hasSwipe, hasVerticalPull],
   );
 
   const onPointerMove = React.useCallback(
     (event: React.PointerEvent) => {
       const s = start.current;
-      if (!s) return;
+      if (!s || s.pointerId !== event.pointerId) return;
       const dy = s.y - event.clientY; // up positive
       const dx = s.x - event.clientX; // left positive
 
@@ -157,9 +228,9 @@ export function usePullGesture(
         const ax = Math.abs(dx);
         const ay = Math.abs(dy);
         if (Math.max(ax, ay) >= AXIS_COMMIT_SLOP) {
-          axis.current = hasSwipe && ax > ay ? "x" : "y";
+          axis.current = ax > ay ? "x" : "y";
           // Take over the pointer now that intent is clear (deferred-capture path).
-          if (hasSwipe) {
+          if (hasSwipe && !hasVerticalPull) {
             try {
               event.currentTarget.setPointerCapture(event.pointerId);
             } catch {
@@ -167,22 +238,43 @@ export function usePullGesture(
             }
           }
           // Reset the other axis's live offset to 0 so the committed axis owns
-          // the visual.
-          if (axis.current === "x") onDrag?.(0);
-          else onDragX?.(0);
+          // the visual. Drop any pending pre-commit frame first so it can't
+          // override the reset on the next tick.
+          cancelDrag();
+          if (axis.current === "x") {
+            onDragReset?.();
+            if (!hasSwipe) {
+              try {
+                event.currentTarget.releasePointerCapture?.(event.pointerId);
+              } catch {
+                // best-effort
+              }
+            }
+          } else {
+            onDragX?.(0);
+          }
         }
       }
 
-      if (axis.current === "x") onDragX?.(dx);
-      else if (axis.current === "y") onDrag?.(dy);
-      else onDrag?.(dy); // pre-commit: drive the vertical sheet for responsiveness
+      if (axis.current === "x") {
+        if (hasSwipe) scheduleDrag("x", dx);
+      } else if (axis.current === "y") {
+        scheduleDrag("y", dy);
+      } else {
+        scheduleDrag("y", dy); // pre-commit: drive the vertical sheet
+      }
     },
-    [hasSwipe, onDrag, onDragX],
+    [hasSwipe, hasVerticalPull, onDragReset, onDragX, scheduleDrag, cancelDrag],
   );
 
   const finish = React.useCallback(
     (event: React.PointerEvent) => {
       const s = start.current;
+      if (!s || s.pointerId !== event.pointerId) return;
+      // Apply the latest coalesced drag before deciding the release. Consumers
+      // read that live value to choose the nearest detent, and the canceled rAF
+      // cannot replay stale motion after the settle below.
+      flushPendingDrag();
       const committedAxis = axis.current;
       start.current = null;
       axis.current = null;
@@ -200,7 +292,7 @@ export function usePullGesture(
 
       // A near-stationary release (both axes) is a tap, not a drag/swipe.
       if (movedX < TAP_SLOP && movedY < TAP_SLOP && !isFlickY && !isFlickX) {
-        onDrag?.(0);
+        onDragReset?.();
         onDragX?.(0);
         onTap?.();
         return;
@@ -234,11 +326,12 @@ export function usePullGesture(
         if (deltaUp > 0) onPullUp?.();
         else onPullDown?.();
       } else {
-        onDrag?.(0); // sub-threshold, no free-settle consumer → snap back
+        onDragReset?.(); // sub-threshold, no free-settle consumer → snap back
       }
     },
     [
-      onDrag,
+      flushPendingDrag,
+      onDragReset,
       onDragX,
       onPullUp,
       onPullDown,
@@ -253,11 +346,28 @@ export function usePullGesture(
     ],
   );
 
+  const cancel = React.useCallback(
+    (event: React.PointerEvent) => {
+      const s = start.current;
+      if (!s || s.pointerId !== event.pointerId) return;
+      cancelDrag();
+      start.current = null;
+      axis.current = null;
+      onDragReset?.();
+      onDragX?.(0);
+      onCancel?.();
+    },
+    [cancelDrag, onDragReset, onDragX, onCancel],
+  );
+
+  // Cancel any in-flight coalesced frame if the consumer unmounts mid-gesture.
+  React.useEffect(() => cancelDrag, [cancelDrag]);
+
   return {
     onPointerDown,
     onPointerMove,
     onPointerUp: finish,
-    onPointerCancel: finish,
-    onLostPointerCapture: finish,
+    onPointerCancel: cancel,
+    onLostPointerCapture: cancel,
   };
 }

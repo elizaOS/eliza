@@ -255,8 +255,48 @@ export async function hydrateSessionSpendUsd(
 ): Promise<number> {
   if (!ledgerBackend) return getSessionSpendUsd(sessionId);
   const persisted = await ledgerBackend.load(sessionId);
-  sessionSpendUsd.set(sessionId, persisted);
-  return persisted;
+  // Never lower the in-memory total: a debit committed this run may not have
+  // been persisted yet (the write-through `save` is fire-and-forget), so a
+  // lagging durable read must not erase it — that would let the next command
+  // re-authorize spend already consumed (cap bypass). Spend only grows, so MAX
+  // is correct and also folds in another instance's higher durable total.
+  const merged = Math.max(getSessionSpendUsd(sessionId), persisted);
+  sessionSpendUsd.set(sessionId, merged);
+  return merged;
+}
+
+// Per-session serialization for the hydrate -> check -> commit critical section.
+// Concurrent Cloud commands in one session must not both read the pre-commit
+// total and each self-authorize within a budget the other is about to consume.
+const sessionSpendLocks = new Map<string, Promise<unknown>>();
+
+/**
+ * Run `fn` after any in-flight spend critical section for the same session has
+ * settled, so hydrate/check/commit is atomic per session. A prior section's
+ * failure does not reject the next. In-process only — cross-instance accuracy
+ * relies on the monotonic durable total, matching the cap's "safety throttle,
+ * not a durable ledger" contract.
+ */
+export function withSessionSpendLock<T>(
+  sessionId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prior = sessionSpendLocks.get(sessionId) ?? Promise.resolve();
+  const result = prior.then(
+    () => fn(),
+    () => fn(),
+  );
+  const tail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  sessionSpendLocks.set(sessionId, tail);
+  void tail.then(() => {
+    if (sessionSpendLocks.get(sessionId) === tail) {
+      sessionSpendLocks.delete(sessionId);
+    }
+  });
+  return result;
 }
 
 /** Add to a session's running total; returns the new total. Negative/NaN
@@ -326,9 +366,14 @@ export function createTaskStoreSpendLedger(
     },
     async save(sessionId, totalUsd) {
       const found = await store.findSession(sessionId);
+      // Monotonic write: the running total only grows, so a concurrent save
+      // carrying a stale-lower total (read-modify-write race) must not regress
+      // the persisted value. Keep the larger of what's stored and what we hold.
+      const existing =
+        toNonNegativeNumber(found?.session.metadata?.[SPEND_METADATA_KEY]) ?? 0;
       const metadata = {
         ...(found?.session.metadata ?? {}),
-        [SPEND_METADATA_KEY]: totalUsd,
+        [SPEND_METADATA_KEY]: Math.max(existing, totalUsd),
       };
       await store.updateSession(sessionId, { metadata });
     },

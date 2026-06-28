@@ -113,18 +113,67 @@ const DESKTOP_ONLY_VIEW_MODES = new Set<ViewsMode>([
 	"tile",
 ]);
 
+// The synthetic source stamped on a sub-agent completion relay
+// (SUB_AGENT_SOURCE / ACPX_ROUTER_SOURCE in plugin-agent-orchestrator). The
+// relay also sets metadata.subAgent and preserves the true origin connector on
+// metadata.originSource — this mirrors that plugin's own relay-detection.
+// app-control must not import orchestrator internals, so this constant is kept
+// local and points at the orchestrator's owning constant.
+const SUB_AGENT_RELAY_SOURCE = "sub_agent";
+
+function lowerSource(source: unknown): string {
+	return typeof source === "string" ? source.toLowerCase() : "";
+}
+
+function readContentMetadata(message: Memory): Record<string, unknown> {
+	const metadata = (message.content as { metadata?: unknown } | undefined)
+		?.metadata;
+	return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+		? (metadata as Record<string, unknown>)
+		: {};
+}
+
 /**
- * True when the incoming message arrived over an external text connector that
- * has no Eliza view surface for the user who sent it. Used to keep desktop-only
- * VIEWS modes off the planner surface so a text-connector turn never resolves to
- * a silent view navigation with no chat reply (#8613).
+ * True when this message is a synthetic sub-agent completion relay rather than a
+ * live inbound from a real chat surface. A relay only delivers a sub-agent's
+ * result back to the connector the request came in on; it is not itself a chat
+ * surface, so its `content.source` ("sub_agent") is not where the reply lands.
+ */
+function isSubAgentRelay(message: Memory): boolean {
+	return (
+		lowerSource(message.content?.source) === SUB_AGENT_RELAY_SOURCE ||
+		readContentMetadata(message).subAgent === true
+	);
+}
+
+/**
+ * The connector this turn ultimately surfaces to. For a normal inbound that is
+ * `content.source`. For a sub-agent relay, `content.source` is the synthetic
+ * "sub_agent" marker, so we read the preserved origin connector from
+ * `metadata.originSource` — the surface the result is actually delivered to
+ * (e.g. Discord for a Discord-triggered build, or the in-app dashboard for an
+ * app-triggered one). Empty string when it can't be determined.
+ */
+function effectiveDeliverySource(message: Memory): string {
+	return isSubAgentRelay(message)
+		? lowerSource(readContentMetadata(message).originSource)
+		: lowerSource(message.content?.source);
+}
+
+/**
+ * True when the turn surfaces to an external text connector with no Eliza view
+ * surface for the recipient. Keeps desktop-only VIEWS modes off the planner so
+ * such a turn never resolves to a silent view navigation with no chat reply
+ * (#8613). It resolves the EFFECTIVE delivery surface, so a sub-agent build
+ * relay is judged by where it actually lands: a Discord-triggered relay is
+ * viewless (desktop modes excluded), while an app-triggered one keeps them.
+ * A relay whose origin connector wasn't captured has no confirmed view surface,
+ * so it is treated as viewless too — a relay must not navigate UI into the void.
  */
 export function messageHasNoViewSurface(message: Memory): boolean {
-	const source =
-		typeof message.content?.source === "string"
-			? message.content.source.toLowerCase()
-			: "";
-	return VIEWLESS_TEXT_CONNECTOR_SOURCES.has(source);
+	const source = effectiveDeliverySource(message);
+	if (VIEWLESS_TEXT_CONNECTOR_SOURCES.has(source)) return true;
+	return source === "" && isSubAgentRelay(message);
 }
 
 const MODES: readonly ViewsMode[] = [
@@ -1898,6 +1947,38 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"ADD_CALENDAR_EVENT",
 			"GET_CALENDAR_EVENTS",
 			"LIST_CALENDAR_EVENTS",
+			"GO_EMAIL",
+			"GO_INBOX",
+			"OPEN_EMAIL",
+			"OPEN_INBOX",
+			"SHOW_EMAIL",
+			"SHOW_INBOX",
+			"CHECK_EMAIL",
+			"CHECK_INBOX",
+			"READ_EMAIL",
+			"CHECK_MESSAGES",
+			"OPEN_MESSAGES",
+			"READ_MESSAGES",
+			"SHOW_MESSAGES",
+			"REVISA_CORREO",
+			"REVISAR_CORREO",
+			"ABRE_CORREO",
+			"ABRIR_CORREO",
+			"MOSTRAR_CORREO",
+			"VER_CORREO",
+			"OPEN_SETTINGS",
+			"SHOW_SETTINGS",
+			"GO_SETTINGS",
+			"GO_TO_SETTINGS",
+			"NAVIGATE_SETTINGS",
+			"SWITCH_SETTINGS",
+			"ADD_FEATURE",
+			"ADD_APP_FEATURE",
+			"BUILD_APP_FEATURE",
+			"OPEN_TASK_COORDINATOR",
+			"SHOW_TASK_COORDINATOR",
+			"OPEN_APP_BUILDER",
+			"SHOW_APP_BUILDER",
 			"CREATE_VIEW",
 			"CREATE_PLUGIN",
 			"BUILD_VIEW",
@@ -1933,13 +2014,51 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"sticky-notes",
 			"calendar",
 			"events",
+			"email",
+			"inbox",
+			"messages",
+			"correo",
+			"wallet",
+			"portfolio",
+			"finances",
+			"budget",
+			"subscriptions",
+			"focus",
+			"distractions",
+			"deep-work",
+			"goals",
+			"routines",
+			"reminders",
+			"alarms",
+			"habits",
+			"health",
+			"sleep",
+			"screen-time",
+			"todos",
+			"to-do",
+			"tasks",
+			"checklist",
+			"documents",
+			"files",
+			"docs",
+			"contacts",
+			"relationships",
+			"people",
+			"network",
+			"companion",
+			"avatar",
+			"settings",
+			"preferences",
+			"coding",
+			"app-builder",
+			"task-coordinator",
 		],
 		description:
 			"Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, and records, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin.",
 		descriptionCompressed:
 			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
 		routingHint:
-			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files/notes, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title.",
+			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title.",
 		allowAdditionalParameters: true,
 		suppressPostActionContinuation: true,
 

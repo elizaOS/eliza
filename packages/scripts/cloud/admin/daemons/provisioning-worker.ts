@@ -14,6 +14,7 @@
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AppOrphanReconcileResult } from "@elizaos/cloud-shared/lib/services/app-container-orphan-reconciler";
 import type { OrphanReconcileResult } from "@elizaos/cloud-shared/lib/services/docker-node-workloads";
 import {
   type ProvisioningJobType,
@@ -48,6 +49,8 @@ type WorkerJobsRepository =
   typeof import("@elizaos/cloud-shared/db/repositories/jobs").jobsRepository;
 type WorkerReconcileOrphanContainers =
   typeof import("@elizaos/cloud-shared/lib/services/docker-node-workloads").reconcileOrphanContainersOnNodes;
+type WorkerReconcileOrphanAppContainers =
+  typeof import("@elizaos/cloud-shared/lib/services/app-container-orphan-reconciler").reconcileOrphanAppContainersOnNodes;
 type WorkerWithTimeout =
   typeof import("@elizaos/cloud-shared/lib/utils/with-timeout").withTimeout;
 
@@ -71,6 +74,7 @@ interface WorkerDeps {
   agentSandboxesRepository: WorkerAgentSandboxesRepository;
   jobsRepository: WorkerJobsRepository;
   reconcileOrphanContainersOnNodes: WorkerReconcileOrphanContainers;
+  reconcileOrphanAppContainersOnNodes: WorkerReconcileOrphanAppContainers;
   withTimeout: WorkerWithTimeout;
 }
 
@@ -105,10 +109,12 @@ export interface ProvisioningWorkerConfig {
    */
   watchdogConsecutiveTicks: number;
   /**
-   * When true, the low-cadence orphan-container reconciler sweeps HEALTHY nodes
-   * for `agent-<id>` containers with no live DB row and force-removes them.
-   * Gated OFF by default via `ORPHAN_RECONCILER_ENABLED=1` because it issues
-   * `docker rm -f` and should be armed deliberately.
+   * When true, the low-cadence orphan-container reconcilers sweep HEALTHY nodes
+   * for leaked containers with no live DB row (or a terminal-state row) and
+   * force-remove them — both the agent sweep (`agent-<id>` vs `agent_sandboxes`)
+   * and the apps sweep (`app-<slug>` vs `containers`). Gated OFF by default via
+   * `ORPHAN_RECONCILER_ENABLED=1` because they issue `docker rm -f` and should be
+   * armed deliberately.
    */
   orphanReconcilerEnabled: boolean;
 }
@@ -192,6 +198,9 @@ async function loadDeps(): Promise<WorkerDeps> {
       import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
       import("@elizaos/cloud-shared/db/repositories/jobs"),
       import("@elizaos/cloud-shared/lib/services/docker-node-workloads"),
+      import(
+        "@elizaos/cloud-shared/lib/services/app-container-orphan-reconciler"
+      ),
       import("@elizaos/cloud-shared/lib/utils/with-timeout"),
     ]).then(
       ([
@@ -206,6 +215,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         agentSandboxesModule,
         jobsRepoModule,
         nodeWorkloadsModule,
+        appOrphanReconcilerModule,
         withTimeoutModule,
       ]) => ({
         provisioningJobService: jobsModule.provisioningJobService,
@@ -221,6 +231,8 @@ async function loadDeps(): Promise<WorkerDeps> {
         jobsRepository: jobsRepoModule.jobsRepository,
         reconcileOrphanContainersOnNodes:
           nodeWorkloadsModule.reconcileOrphanContainersOnNodes,
+        reconcileOrphanAppContainersOnNodes:
+          appOrphanReconcilerModule.reconcileOrphanAppContainersOnNodes,
         withTimeout: withTimeoutModule.withTimeout,
       }),
     );
@@ -561,6 +573,20 @@ async function processPoolDrainIdleCycle(): Promise<PoolDrainSummary> {
 async function processOrphanReconcilerCycle(): Promise<OrphanReconcileResult> {
   const { reconcileOrphanContainersOnNodes } = await loadDeps();
   return reconcileOrphanContainersOnNodes();
+}
+
+/**
+ * Apps (Product 2) sibling of the agent orphan reconciler: sweep HEALTHY nodes
+ * for `app-<slug>` containers with no live `containers` row (or a terminal-state
+ * row) and force-remove them. App-container teardown only runs on an explicit
+ * app delete, so a mid-deploy crash or partial failure leaks an app container on
+ * a node forever; this closes that gap. Same safety model as the agent sweep:
+ * it only touches `healthy` nodes (refreshed by the preceding node-health check),
+ * skips a node whose listing failed, and reaps by the immutable container id.
+ */
+async function processAppOrphanReconcilerCycle(): Promise<AppOrphanReconcileResult> {
+  const { reconcileOrphanAppContainersOnNodes } = await loadDeps();
+  return reconcileOrphanAppContainersOnNodes();
 }
 
 let running = true;
@@ -1105,6 +1131,27 @@ async function runInfraMaintenanceCycle(
           reaped: result.reaped,
           reapFailed: result.reapFailed,
         });
+      },
+    );
+
+    // Apps (Product 2) sibling sweep — same `healthy`-only, fresh-node-status,
+    // reap-by-id model. Runs right after the agent sweep so it shares the same
+    // freshly-refreshed node health and the same `docker rm -f` gating.
+    await runBoundedPhase(
+      logger,
+      "app orphan reconciler cycle",
+      () => processAppOrphanReconcilerCycle(),
+      (result) => {
+        logger.info(
+          "[provisioning-worker] app orphan reconciler cycle complete",
+          {
+            event: "app_orphan_reconciler.reaped",
+            nodesScanned: result.nodesScanned,
+            nodesSkipped: result.nodesSkipped,
+            reaped: result.reaped,
+            reapFailed: result.reapFailed,
+          },
+        );
       },
     );
   }

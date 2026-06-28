@@ -67,9 +67,9 @@ export function LlmProviderSection({
               <Button
                 key={option.value}
                 type="button"
-                variant={active ? "default" : "outline"}
+                variant={active ? "default" : "ghost"}
                 size="sm"
-                className="h-9 justify-start rounded-lg px-2.5 text-xs font-semibold"
+                className="h-8 justify-start px-2 text-xs font-semibold"
                 onClick={() => setPref("ELIZA_LLM_PROVIDER", option.value)}
                 aria-pressed={active}
               >
@@ -148,20 +148,34 @@ export function LlmProviderSection({
       {isCloud && (
         <div className="flex flex-col gap-3">
           {prefs._CLOUD_API_KEY ? (
-            <SettingsControls.MutedText className="inline-flex items-center gap-1.5 text-xs text-ok">
-              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-              {t("codingagentsettingssection.CloudPaired", {
+            <SettingsControls.MutedText
+              className="inline-flex items-center gap-1.5 text-xs text-ok"
+              title={t("codingagentsettingssection.CloudPaired", {
                 defaultValue:
                   "Using your Eliza Cloud account for coding agent LLM calls.",
               })}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+              <span className="sr-only">
+                {t("codingagentsettingssection.CloudPaired", {
+                  defaultValue:
+                    "Using your Eliza Cloud account for coding agent LLM calls.",
+                })}
+              </span>
             </SettingsControls.MutedText>
           ) : (
-            <SettingsControls.MutedText className="inline-flex items-center gap-1.5 text-xs text-warn">
-              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-              {t("codingagentsettingssection.CloudUnpaired", {
-                defaultValue:
-                  "No Eliza Cloud account connected. Pair your account in the Cloud settings section first.",
+            <SettingsControls.MutedText
+              className="inline-flex items-center gap-1.5 text-xs text-warn"
+              title={t("codingagentsettingssection.CloudUnpaired", {
+                defaultValue: "Unavailable",
               })}
+            >
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+              <span className="sr-only">
+                {t("codingagentsettingssection.CloudUnpaired", {
+                  defaultValue: "Unavailable",
+                })}
+              </span>
             </SettingsControls.MutedText>
           )}
         </div>

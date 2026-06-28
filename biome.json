@@ -1,7 +1,13 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
   "root": true,
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -16,11 +22,12 @@
       "!**/build",
       "!**/.next",
       "!**/node_modules",
-      "!packages/cloud-sdk/src/**/*.d.ts",
+      "!packages/cloud/sdk/src/**/*.d.ts",
       "!packages/plugin-remote-manifest/src/**/*.d.ts",
       "!packages/plugin-worker-runtime/src/**/*.d.ts",
+      "!packages/logger/src/**/*.d.ts",
       "!**/vendor",
-      "!**/vendor/**",
+      "!**/vendor",
       "!**/public",
       "!packages/inference/llama.cpp",
       "!packages/inference/reports",
@@ -37,10 +44,10 @@
       "!packages/feed/apps/web/public",
       "!packages/feed/apps/web/.next",
       "!packages/feed/apps/mobile/public",
-      "!packages/feed/**/python/**",
-      "!packages/feed/**/venv/**",
-      "!packages/feed/**/drizzle/migrations/**",
-      "!packages/feed/**/.vercel/**",
+      "!packages/feed/**/python",
+      "!packages/feed/**/venv",
+      "!packages/feed/**/drizzle/migrations",
+      "!packages/feed/**/.vercel",
       "!reports",
       "!docs/audits",
       "!docs/**/*.json",
@@ -131,11 +138,103 @@
       }
     },
     {
-      "includes": ["packages/cloud-api/**/*.ts"],
+      "includes": ["packages/cloud/api/**/*.ts"],
       "linter": {
         "rules": {
           "style": {
             "noNonNullAssertion": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "plugins/plugin-task-coordinator/src/**/*.ts",
+        "plugins/plugin-calendar/src/**/*.ts",
+        "plugins/plugin-scheduling/src/**/*.ts",
+        "plugins/plugin-blocker/src/**/*.ts",
+        "plugins/plugin-relationships/src/**/*.ts",
+        "plugins/plugin-health/src/**/*.ts",
+        "plugins/plugin-sql/src/**/*.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["plugins/**/src/**/*.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/**/src/**/*.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "plugins/**/src/**/*.ts",
+        "!plugins/plugin-ainex/**",
+        "!plugins/plugin-anthropic-proxy/**",
+        "!plugins/plugin-aosp-local-inference/**",
+        "!plugins/plugin-computeruse/**",
+        "!plugins/plugin-facewear/**",
+        "!plugins/plugin-form/**",
+        "!plugins/plugin-inbox/**",
+        "!plugins/plugin-lmstudio/**",
+        "!plugins/plugin-native-llama/**",
+        "!plugins/plugin-native-macosalarm/**",
+        "!plugins/plugin-personal-assistant/**",
+        "!plugins/plugin-sql/**",
+        "!plugins/plugin-todos/**",
+        "!plugins/plugin-training/**",
+        "!plugins/plugin-vision/**",
+        "!plugins/plugin-xr/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/**/src/**/*.ts",
+        "!packages/agent/**",
+        "!packages/app-core/**",
+        "!packages/benchmarks/**",
+        "!packages/cloud/api/**",
+        "!packages/cloud/shared/**",
+        "!packages/examples/**",
+        "!packages/os/**",
+        "!packages/research/robot/**",
+        "!packages/scenario-runner/**",
+        "!packages/scripts/**",
+        "!packages/security/**",
+        "!packages/test/**",
+        "!packages/tui/**",
+        "!packages/ui/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "error"
           }
         }
       }

@@ -1837,7 +1837,7 @@
   },
   {
     "domain": "Platform coverage for coding agents (cloud / desktop / AOSP / Debian / Google Play / iOS, plus remote-container delegation)",
-    "summary": "elizaOS has two real, distinct coding-execution substrates and a clean per-platform gate between them. (1) Local subprocess/PTY execution via @elizaos/plugin-agent-orchestrator, which spawns ACP coding agents (claude/codex/opencode/elizaos/pi-agent) and is gated at plugin-construction time by isLocalCodeExecutionAllowed() (direct build only) AND detectOrchestratorTerminalSupport() (shell + runtime-mode checks). (2) Remote-container execution via E2BRemoteCapabilityRouterService (providers: e2b, eliza-cloud, home) which routes fs/pty/git capabilities over HTTP to a hosted runner (packages/cloud-services/coding-remote-runner), with the cloud control plane provisioning coding containers (packages/cloud-api/v1/coding-containers + cloud-shared coding-containers service + agent-sandboxes repo). Platform reality: desktop (Electrobun, direct build) and cloud both run local execution with fs access; STORE builds (Mac App Store/MS Store/Flathub) are hard-blocked to a TASKS stub; iOS is blocked entirely (no shell) and is expected to delegate to remote containers via the same agent runtime; Android/AOSP direct builds can run local execution only with local-yolo mode + a staged /system/bin/sh, otherwise stub. IMPORTANT framing correction: plugin-host-shim-android/ios/electrobun, plugin-worker-runtime, and plugin-remote-manifest are NOT coding-agent infrastructure — they are the wire bridge for remote-mode plugin VIEW bundles / remote plugin execution; they live under packages/ (not plugins/) and are unrelated to running coding agents. Maturity is partial-to-solid in source and unit/integration tests, but there is essentially NO captured cross-platform evidence (no trajectory/screenshot/video/timeline of a coding agent actually creating/modifying code on AOSP/Debian/iOS/Play, nor of the iOS->remote-container delegation end-to-end).",
+    "summary": "elizaOS has two real, distinct coding-execution substrates and a clean per-platform gate between them. (1) Local subprocess/PTY execution via @elizaos/plugin-agent-orchestrator, which spawns ACP coding agents (claude/codex/opencode/elizaos/pi-agent) and is gated at plugin-construction time by isLocalCodeExecutionAllowed() (direct build only) AND detectOrchestratorTerminalSupport() (shell + runtime-mode checks). (2) Remote-container execution via E2BRemoteCapabilityRouterService (providers: e2b, eliza-cloud, home) which routes fs/pty/git capabilities over HTTP to a hosted runner (packages/cloud/services/coding-remote-runner), with the cloud control plane provisioning coding containers (packages/cloud/api/v1/coding-containers + cloud-shared coding-containers service + agent-sandboxes repo). Platform reality: desktop (Electrobun, direct build) and cloud both run local execution with fs access; STORE builds (Mac App Store/MS Store/Flathub) are hard-blocked to a TASKS stub; iOS is blocked entirely (no shell) and is expected to delegate to remote containers via the same agent runtime; Android/AOSP direct builds can run local execution only with local-yolo mode + a staged /system/bin/sh, otherwise stub. IMPORTANT framing correction: plugin-host-shim-android/ios/electrobun, plugin-worker-runtime, and plugin-remote-manifest are NOT coding-agent infrastructure — they are the wire bridge for remote-mode plugin VIEW bundles / remote plugin execution; they live under packages/ (not plugins/) and are unrelated to running coding agents. Maturity is partial-to-solid in source and unit/integration tests, but there is essentially NO captured cross-platform evidence (no trajectory/screenshot/video/timeline of a coding agent actually creating/modifying code on AOSP/Debian/iOS/Play, nor of the iOS->remote-container delegation end-to-end).",
     "maturity": "partial",
     "existing": [
       {
@@ -1866,13 +1866,13 @@
       },
       {
         "component": "Cloud coding-remote-runner HTTP service (the container-side runner)",
-        "path": "/Users/shawwalters/eliza/packages/cloud-services/coding-remote-runner/src/index.ts + Dockerfile",
+        "path": "/Users/shawwalters/eliza/packages/cloud/services/coding-remote-runner/src/index.ts + Dockerfile",
         "whatItDoes": "Bun.serve runner exposing /v1/health, /v1/fs/entries, /v1/fs/file (GET/PUT), /v1/processes/run with token auth, workspace-root jail (realpath + ensureInsideRoot), symlink rejection, bounded output. This is what runs inside the remote container for Play/iOS/cloud delegation.",
         "maturity": "solid"
       },
       {
         "component": "Cloud control-plane coding-container provisioning",
-        "path": "/Users/shawwalters/eliza/packages/cloud-api/v1/coding-containers/route.ts + /Users/shawwalters/eliza/packages/cloud-shared/src/lib/services/coding-containers.ts + .../db/repositories/agent-sandboxes.ts",
+        "path": "/Users/shawwalters/eliza/packages/cloud/api/v1/coding-containers/route.ts + /Users/shawwalters/eliza/packages/cloud/shared/src/lib/services/coding-containers.ts + .../db/repositories/agent-sandboxes.ts",
         "whatItDoes": "Cloud API endpoint + service that allocates a coding container (agent/image/env/workspace), image allowlist enforcement, returns a public bridge URL the E2B router treats as the remote runner. Backed by agent-sandboxes DB repo (warm pool, backups).",
         "maturity": "solid"
       },
@@ -1933,13 +1933,13 @@
         "gaps": "Single happy-path test; no auth-failure, no large output, no concurrent sessions, no iOS/Android process actually involved (fetch is mocked)."
       },
       {
-        "path": "/Users/shawwalters/eliza/packages/cloud-services/coding-remote-runner/__tests__/server.test.ts",
+        "path": "/Users/shawwalters/eliza/packages/cloud/services/coding-remote-runner/__tests__/server.test.ts",
         "kind": "unit",
         "covers": "Runner HTTP server: health, fs entries/read/write, process run, auth token enforcement, workspace jail / path traversal / symlink rejection.",
         "gaps": "No live container, no coding-agent (claude/codex/opencode) actually invoked inside the runner."
       },
       {
-        "path": "/Users/shawwalters/eliza/packages/cloud-shared/src/lib/services/coding-containers.test.ts + /Users/shawwalters/eliza/packages/cloud-api/v1/coding-containers/route.test.ts",
+        "path": "/Users/shawwalters/eliza/packages/cloud/shared/src/lib/services/coding-containers.test.ts + /Users/shawwalters/eliza/packages/cloud/api/v1/coding-containers/route.test.ts",
         "kind": "unit",
         "covers": "Coding-container payload/image selection, request schema (default agent=claude, drop unknown fields), session response URL preference, image allowlist (fail-closed, wildcard, exact), custom-image as custom execution tier.",
         "gaps": "No end-to-end provision->run->return; no real container lifecycle; route test is schema/allowlist focused."
@@ -2058,11 +2058,11 @@
       "/Users/shawwalters/eliza/packages/agent/src/services/sandbox-engine.ts",
       "/Users/shawwalters/eliza/packages/agent/scripts/live-sandbox-smoke.ts",
       "/Users/shawwalters/eliza/packages/agent/docs/e2b-capability-routing.md",
-      "/Users/shawwalters/eliza/packages/cloud-services/coding-remote-runner/src/index.ts",
-      "/Users/shawwalters/eliza/packages/cloud-services/coding-remote-runner/__tests__/server.test.ts",
-      "/Users/shawwalters/eliza/packages/cloud-shared/src/lib/services/coding-containers.ts",
-      "/Users/shawwalters/eliza/packages/cloud-api/v1/coding-containers/route.ts",
-      "/Users/shawwalters/eliza/packages/cloud-shared/src/db/repositories/agent-sandboxes.ts",
+      "/Users/shawwalters/eliza/packages/cloud/services/coding-remote-runner/src/index.ts",
+      "/Users/shawwalters/eliza/packages/cloud/services/coding-remote-runner/__tests__/server.test.ts",
+      "/Users/shawwalters/eliza/packages/cloud/shared/src/lib/services/coding-containers.ts",
+      "/Users/shawwalters/eliza/packages/cloud/api/v1/coding-containers/route.ts",
+      "/Users/shawwalters/eliza/packages/cloud/shared/src/db/repositories/agent-sandboxes.ts",
       "/Users/shawwalters/eliza/packages/app/playwright.android.config.ts",
       "/Users/shawwalters/eliza/packages/app/test/ui-smoke/orchestrator-gui-workbench.spec.ts",
       "/Users/shawwalters/eliza/packages/app/test/ui-smoke/remote-capability-view.spec.ts",
@@ -2075,7 +2075,7 @@
   },
   {
     "domain": "Domain J — Model backends for coding/orchestration (model routing for built-in vs sub-agent coding paths; gpt-oss-120b/Cerebras, claude, codex, z.ai wiring across cloud-routing, plugin-elizacloud, plugin-anthropic(+proxy), plugin-codex-cli, plugin-cli-inference, plugin-openai/openrouter, plugin-agent-orchestrator)",
-    "summary": "The model-backend layer for coding/orchestration is mature and well-architected, with a clear separation between two paths. (1) The BUILT-IN path (agent answers/plans itself) routes through `runtime.useModel(ModelType.*)`; the eliza-cloud built-in coding model is gpt-oss-120b, wired as the default TEXT_SMALL via `DEFAULT_ELIZA_CLOUD_TEXT_MODEL = \"gpt-oss-120b\"` in packages/core/src/contracts/service-routing.ts and plugin-elizacloud's `getSmallModel`; the cloud gateway transparently routes gpt-oss to Cerebras (detected by `isCerebrasServedModel`). Large/planner tier defaults to `zai-glm-4.7` (z.ai). plugin-openai independently supports a direct Cerebras mode (CEREBRAS_API_KEY/base-url). (2) The SUB-AGENT path spawns external coding CLIs (elizaos, pi-agent, opencode, codex, claude) as ACP subprocesses; model selection is per-agent-type in AcpService.buildEnv (sets OPENAI_MODEL/ANTHROPIC_MODEL/OPENCODE_MODEL), opencode resolves provider+model via buildOpencodeSpawnConfig (Cerebras gpt-oss-120b default), and a multi-account credential bridge (coding-account-selection.ts) rotates pooled accounts for claude/codex/opencode. cloud-routing/resolve.ts is the local-key-vs-cloud-proxy-vs-disabled decider but is generic and NOT itself coding-aware. Unit coverage is strong (multi-account spawn rotation, opencode auto-detect, codex auth/backend, cerebras response_format gate, cloud-routing resolve). LIVE-model coverage exists but is narrow and entirely opt-in (gated by CEREBRAS_API_KEY+ELIZA_RUN_LIVE_TESTS, RUN_LIVE_NATIVE_ACP, RUN_LIVE_ACPX) — no committed trajectory/screenshot/video/timeline evidence ties a real coding task end-to-end to a chosen model, and there is no live test that asserts an actual sub-agent COMPLETES a coding task on gpt-oss-120b vs claude vs codex with captured artifacts.",
+    "summary": "The model-backend layer for coding/orchestration is mature and well-architected, with a clear separation between two paths. (1) The BUILT-IN path (agent answers/plans itself) routes through `runtime.useModel(ModelType.*)`; the eliza-cloud built-in coding model is gpt-oss-120b, wired as the default TEXT_SMALL via `DEFAULT_ELIZA_CLOUD_TEXT_MODEL = \"gpt-oss-120b\"` in packages/core/src/contracts/service-routing.ts and plugin-elizacloud's `getSmallModel`; the cloud gateway transparently routes gpt-oss to Cerebras (detected by `isCerebrasServedModel`). Large/planner tier defaults to `zai-glm-4.7` (z.ai). plugin-openai independently supports a direct Cerebras mode (CEREBRAS_API_KEY/base-url). (2) The SUB-AGENT path spawns external coding CLIs (elizaos, pi-agent, opencode, codex, claude) as ACP subprocesses; model selection is per-agent-type in AcpService.buildEnv (sets OPENAI_MODEL/ANTHROPIC_MODEL/OPENCODE_MODEL), opencode resolves provider+model via buildOpencodeSpawnConfig (Cerebras gpt-oss-120b default), and a multi-account credential bridge (coding-account-selection.ts) rotates pooled accounts for claude/codex/opencode. cloud/routing/resolve.ts is the local-key-vs-cloud-proxy-vs-disabled decider but is generic and NOT itself coding-aware. Unit coverage is strong (multi-account spawn rotation, opencode auto-detect, codex auth/backend, cerebras response_format gate, cloud-routing resolve). LIVE-model coverage exists but is narrow and entirely opt-in (gated by CEREBRAS_API_KEY+ELIZA_RUN_LIVE_TESTS, RUN_LIVE_NATIVE_ACP, RUN_LIVE_ACPX) — no committed trajectory/screenshot/video/timeline evidence ties a real coding task end-to-end to a chosen model, and there is no live test that asserts an actual sub-agent COMPLETES a coding task on gpt-oss-120b vs claude vs codex with captured artifacts.",
     "maturity": "partial",
     "existing": [
       {
@@ -2098,7 +2098,7 @@
       },
       {
         "component": "cloud-routing resolver (local-key vs cloud-proxy vs disabled)",
-        "path": "packages/cloud-routing/src/resolve.ts",
+        "path": "packages/cloud/routing/src/resolve.ts",
         "whatItDoes": "resolveCloudRoute/resolveFeatureCloudRoute pick a route source per RouteSpec; isCloudConnected gates on ELIZAOS_CLOUD_API_KEY + ELIZAOS_CLOUD_ENABLED. Generic per-feature policy (local/cloud/auto). NOTE: not coding-specific — it is the transport router, not the model chooser for sub-agents.",
         "maturity": "solid"
       },
@@ -2207,7 +2207,7 @@
         "gaps": "No live ChatGPT /responses call; supported-model rejection not tested live."
       },
       {
-        "path": "packages/cloud-routing/src/resolve.test.ts",
+        "path": "packages/cloud/routing/src/resolve.test.ts",
         "kind": "unit",
         "covers": "resolveCloudRoute/resolveFeatureCloudRoute local-key-vs-cloud-proxy-vs-disabled, per-feature policy, isCloudConnected.",
         "gaps": "Generic; no coding-specific routing scenarios (it is not coding-aware)."
@@ -2299,7 +2299,7 @@
       "/Users/shawwalters/eliza/packages/core/src/contracts/service-routing.ts",
       "/Users/shawwalters/eliza/plugins/plugin-elizacloud/src/models/text.ts",
       "/Users/shawwalters/eliza/plugins/plugin-elizacloud/src/utils/config.ts",
-      "/Users/shawwalters/eliza/packages/cloud-routing/src/resolve.ts",
+      "/Users/shawwalters/eliza/packages/cloud/routing/src/resolve.ts",
       "/Users/shawwalters/eliza/plugins/plugin-agent-orchestrator/src/services/acp-service.ts",
       "/Users/shawwalters/eliza/plugins/plugin-agent-orchestrator/src/services/opencode-config.ts",
       "/Users/shawwalters/eliza/plugins/plugin-agent-orchestrator/src/services/coding-account-selection.ts",

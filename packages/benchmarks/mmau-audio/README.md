@@ -4,8 +4,9 @@
 > ICLR 2025, gamma-lab-umd/MMAU-test-mini). It is **not** related to
 > Salesforce's MMAU agent-capability benchmark (Yin et al.,
 > arXiv:2407.18961). The PyPI distribution is published as
-> `elizaos-mmau-audio` to reflect this. The legacy CLI entries
-> `elizaos-mmau` and `mmau` are kept temporarily as aliases.
+> `elizaos-mmau-audio` to reflect this. Use the `mmau-audio` package path,
+> `python -m elizaos_mmau_audio`, or the installed `mmau-audio` /
+> `elizaos-mmau-audio` console scripts.
 
 Vendored Python implementation of Audio MMAU (ICLR 2025) for the elizaOS
 benchmark suite.
@@ -52,8 +53,9 @@ packages/benchmarks/
 
 ## Run
 
-Two equivalent invocations work — pick whichever fits the calling
-context. Run from this package root or with it on `PYTHONPATH`:
+Use the canonical module path from scripts and the registry, or the installed
+console scripts when the package is installed. Run from this package root or
+with it on `PYTHONPATH`:
 
 ```bash
 # canonical module path (preferred from scripts / the registry)
@@ -63,10 +65,6 @@ python -m elizaos_mmau_audio --mock --output ./results --json
 # installed console scripts (preferred when installed)
 mmau-audio --mock --limit 2
 elizaos-mmau-audio --mock --output ./results --json
-
-# legacy aliases kept temporarily for downstream compatibility
-mmau --mock --limit 2
-elizaos-mmau --mock --output ./results --json
 ```
 
 Run through the elizaOS bridge (cascaded STT -> text agent baseline):

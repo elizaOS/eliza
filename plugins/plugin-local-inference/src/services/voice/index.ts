@@ -34,6 +34,13 @@ export {
 	type MockSnapshotSource,
 } from "./checkpoint-manager";
 export {
+	computeDiarizationErrorRate,
+	type DerOptions,
+	type DerResult,
+	type DiarizationSegment,
+	diarizationWithinBudget,
+} from "./diarization-error-rate";
+export {
 	type BuildDeterministicFn,
 	type BuildMessageDependentFn,
 	type ContextPartial,
@@ -42,6 +49,20 @@ export {
 	type FullContext,
 	mergeContext,
 } from "./eager-context-builder";
+export {
+	DEFAULT_PLAYBACK_DELAY_MS,
+	type EchoDelayEstimate,
+	type EchoDelayOptions,
+	estimateEchoDelaySamples,
+	PLATFORM_PLAYBACK_DELAY_DEFAULTS,
+	platformPlaybackDelayMs,
+	platformPlaybackDelaySamples,
+} from "./echo-delay";
+export { computeErle } from "./echo-metrics";
+export {
+	EchoReferenceBuffer,
+	type EchoReferenceBufferOptions,
+} from "./echo-reference-buffer";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
@@ -153,6 +174,10 @@ export {
 	pipeMicToRingBuffer,
 	resolveDesktopRecorder,
 } from "./mic-source";
+export {
+	NlmsEchoCanceller,
+	type NlmsEchoCancellerOptions,
+} from "./nlms-echo-canceller";
 export {
 	DEFAULT_OPTIMISTIC_EOT_THRESHOLD,
 	OptimisticGenerationPolicy,
@@ -335,9 +360,9 @@ export * from "./types";
 export {
 	createSileroVadDetector,
 	createVadDetector,
+	type ExternalVadAdapter,
 	GgmlSileroVad,
 	NativeSileroVad,
-	type QwenToolkitVadAdapter,
 	type ResolvedVadProvider,
 	RmsEnergyGate,
 	type RmsEnergyGateConfig,

@@ -1,19 +1,6 @@
-declare module "@elizaos/plugin-feed";
-declare module "@elizaos/plugin-defense-of-the-agents";
-declare module "@elizaos/plugin-clawville";
-declare module "@elizaos/plugin-trajectory-logger";
-declare module "@elizaos/plugin-shopify-ui";
-declare module "@elizaos/plugin-hyperliquid-app";
-declare module "@elizaos/plugin-polymarket-app";
-declare module "@elizaos/plugin-waifu-imagegen-app";
-declare module "@elizaos/plugin-waifu-swap-app";
-declare module "@elizaos/plugin-wallet-ui/register";
+// Bare side-effect specifiers still imported directly by the app shell (main.tsx)
+// rather than through the manifest-driven loader list. The model-tester entry is
+// imported eagerly for the standalone model-tester page; task-coordinator's chat
+// inline-widget registration must run before first render.
 declare module "@elizaos/app-model-tester";
-declare module "@elizaos/plugin-vector-browser/register";
-declare module "@elizaos/plugin-contacts/register";
-declare module "@elizaos/plugin-device-settings/register";
-declare module "@elizaos/plugin-messages/register";
-declare module "@elizaos/plugin-phone/register";
 declare module "@elizaos/plugin-task-coordinator/register";
-declare module "@elizaos/plugin-wifi/register";
-declare module "@elizaos/plugin-facewear/register";

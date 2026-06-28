@@ -1,6 +1,7 @@
 // End-to-end Playwright spec for the chat task widget contract:
-//   1. Boot the chat route with a mocked conversation backend.
-//   2. The seeded assistant message contains `[TASK:<uuid>]<title>[/TASK]`.
+//   1. Boot the app's real continuous-chat surface with a mocked backend.
+//   2. Send a user request through the composer and stream an assistant reply
+//      containing `[TASK:<uuid>]<title>[/TASK]`.
 //   3. `MessageContent` resolves the block to a TaskWidget that polls
 //      `client.getCodingAgentTaskThread` (mocked at `/api/coding-agents/...`).
 //   4. Clicking the widget dispatches `eliza:navigate:view` →
@@ -154,17 +155,18 @@ function statusFor(detail: JsonRecord) {
 }
 
 /**
- * Installs the minimal chat-backend mock for this spec. We pre-seed a single
- * assistant message whose text contains a `[TASK:<id>]title[/TASK]` block. The
- * default `installDefaultAppRoutes` covers all the orthogonal startup routes;
- * this helper only adds the chat-conversation surface itself.
+ * Installs the minimal chat-backend mock for this spec. The default
+ * `installDefaultAppRoutes` covers all the orthogonal startup routes; this
+ * helper only adds the chat-conversation surface and task detail endpoints.
  */
-async function installSeededChatRoutes(
+async function installTaskChatRoutes(
   page: Page,
   assistantText: string,
-): Promise<{ taskFetches: number }> {
+): Promise<{ taskFetches: number; streamRequests: string[] }> {
   const detail = taskDetail();
   let taskFetches = 0;
+  let sequence = 0;
+  const streamRequests: string[] = [];
   const conversation = {
     id: CONVERSATION_ID,
     roomId: ROOM_ID,
@@ -172,24 +174,14 @@ async function installSeededChatRoutes(
     updatedAt: NOW,
     createdAt: NOW,
   };
-  const messages = [
-    {
-      id: "seed-user-1",
-      role: "user" as const,
-      text: "Spin up the planner task.",
-      source: "eliza",
-      roomId: ROOM_ID,
-      timestamp: NOW_MS - 5_000,
-    },
-    {
-      id: "seed-assistant-1",
-      role: "assistant" as const,
-      text: assistantText,
-      source: "eliza",
-      roomId: ROOM_ID,
-      timestamp: NOW_MS - 2_000,
-    },
-  ];
+  const messages: Array<{
+    id: string;
+    role: "assistant" | "user";
+    text: string;
+    source: string;
+    roomId: string;
+    timestamp: number;
+  }> = [];
 
   await page.route("**/api/conversations**", async (route) => {
     const url = new URL(route.request().url());
@@ -234,15 +226,44 @@ async function installSeededChatRoutes(
   await page.route(
     `**/api/conversations/${CONVERSATION_ID}/messages/stream`,
     async (route) => {
-      // No-op stream — the spec only exercises the pre-seeded assistant turn.
+      const body = JSON.parse(route.request().postData() ?? "{}") as {
+        text?: string;
+      };
+      const userText = (body.text ?? "").trim();
+      streamRequests.push(userText);
+      sequence += 1;
+      messages.push(
+        {
+          id: `task-user-${sequence}`,
+          role: "user",
+          text: userText,
+          source: "eliza",
+          roomId: ROOM_ID,
+          timestamp: Date.now(),
+        },
+        {
+          id: `task-assistant-${sequence}`,
+          role: "assistant",
+          text: assistantText,
+          source: "eliza",
+          roomId: ROOM_ID,
+          timestamp: Date.now() + 1,
+        },
+      );
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
-        body: `data: ${JSON.stringify({
-          type: "done",
-          fullText: "",
-          agentName: "Eliza",
-        })}\n\n`,
+        body:
+          `data: ${JSON.stringify({
+            type: "token",
+            text: assistantText,
+            fullText: assistantText,
+          })}\n\n` +
+          `data: ${JSON.stringify({
+            type: "done",
+            fullText: assistantText,
+            agentName: "Eliza",
+          })}\n\n`,
       });
     },
   );
@@ -314,7 +335,8 @@ async function installSeededChatRoutes(
     get taskFetches() {
       return taskFetches;
     },
-  } as { taskFetches: number };
+    streamRequests,
+  } as { taskFetches: number; streamRequests: string[] };
 }
 
 test.describe("chat task widget", () => {
@@ -324,15 +346,29 @@ test.describe("chat task widget", () => {
     await seedAppStorage(page);
     await installDefaultAppRoutes(page);
     const assistantText = `Created the task you asked for.\n\n[TASK:${TASK_ID}]${TASK_TITLE}[/TASK]\n\nThe builders are running.`;
-    const handles = await installSeededChatRoutes(page, assistantText);
+    const handles = await installTaskChatRoutes(page, assistantText);
 
     await openAppPath(page, "/chat");
 
-    // The pre-seeded assistant turn renders. Surrounding prose is preserved.
-    await expect(page.getByText("Created the task you asked for.")).toBeVisible(
-      { timeout: 30_000 },
-    );
-    await expect(page.getByText("The builders are running.")).toBeVisible();
+    const userPrompt = "Spin up the planner task.";
+    await page.getByTestId("chat-composer-textarea").fill(userPrompt);
+    await page.getByTestId("chat-composer-action").click();
+
+    await expect.poll(() => handles.streamRequests).toContain(userPrompt);
+
+    // The streamed assistant turn renders. Surrounding prose is preserved.
+    await expect(
+      page
+        .getByTestId("thread-line")
+        .filter({ hasText: "Created the task you asked for." })
+        .first(),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page
+        .getByTestId("thread-line")
+        .filter({ hasText: "The builders are running." })
+        .first(),
+    ).toBeVisible({ timeout: 30_000 });
 
     // The TASK block resolves into a TaskWidget. Title is the fetched title
     // (taskDetail() returns the same title as the fallback here), and the

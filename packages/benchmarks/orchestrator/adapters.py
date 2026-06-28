@@ -68,44 +68,28 @@ IGNORED_BENCHMARK_DIRS = {
     ".git",
     ".pytest_cache",
     "benchmark_results",
-    "claw-eval",
-    "claw_eval_matrix",
-    "clawbench_matrix",
-    "qwen_claw_bench_matrix",
     "agentbench_matrix",
-    "swe_bench_pro_matrix",
-    # Legacy compatibility shim for benchmarks.mmau, not a separate benchmark.
-    "mmau",
-    "elizaos_mmau",
     "eliza-adapter",
-    "app_eval",
     # Documentation, load/perf tooling, and unnormalized legacy packages.
     "docs",
     "gaia",
     "loadperf",
+    "memperf",
+    "mobile-resource",
     "voice",
     # Legacy/partial shim with no source files in this checkout.
     "eliza-format",
     "hermes-adapter",
     "openclaw-adapter",
     "smithers-adapter",
-    "openclaw_benchmark",
     "lib",
     "nl2repo",
     "orchestrator",
-    "qwen-claw-bench",
-    "qwen-web-bench",
     # Python package shim for benchmarks.registry, not a benchmark adapter dir.
     "registry",
     "scripts",
-    "skillsbench",
-    "swe-bench-pro",
-    "swe-bench-multilingual",
     "swe-bench-workspace",
     "tests",
-    # Standalone dialogue runner; not wired into the normalized benchmark
-    # orchestrator contract yet.
-    "three-agent-dialogue",
     "viewer",
     # Standalone package; not yet wired as an orchestrator adapter.
     "voice-emotion",
@@ -146,7 +130,6 @@ SMITHERS_BENCHMARKS: frozenset[str] = frozenset(
         "swe_bench",
         "swe_bench_orchestrated",
         "webshop",
-        "loca_bench",
         "osworld",
     }
 )
@@ -1464,105 +1447,6 @@ def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -
     return env
 
 
-def _command_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    return [sys.executable, "-m", "benchmarks.evm.eliza_explorer"]
-
-
-def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-    existing = ctx.env.get("PYTHONPATH", "")
-    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
-    harness = str(
-        ctx.request.extra_config.get("agent")
-        or ctx.request.extra_config.get("harness")
-        or ctx.request.agent
-    ).strip().lower()
-    env: dict[str, str] = {
-        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
-        "BENCHMARK_HARNESS": harness,
-        "ELIZA_BENCH_HARNESS": harness,
-    }
-    model = _provider_model_name(ctx.request.provider, ctx.request.model)
-    provider = ctx.request.provider.strip().lower()
-    model_name = model if "/" in model or not provider else f"{provider}/{model}"
-    env.update({
-        "BENCHMARK_MODEL_PROVIDER": provider,
-        "BENCHMARK_MODEL_NAME": model,
-        "MODEL_NAME": model_name,
-        "MAX_MESSAGES": str(int(ctx.request.extra_config.get("max_messages", 50))),
-        "METRICS_DIR": str(ctx.output_root / "metrics"),
-    })
-
-    passthrough = {
-        "chain": "CHAIN",
-        "environment_config": "ENVIRONMENT_CONFIG",
-        "rpc_url": "RPC_URL",
-        "chain_id": "CHAIN_ID",
-        "fork_url": "FORK_URL",
-        "agent_private_key": "AGENT_PRIVATE_KEY",
-        "code_file": "CODE_FILE",
-        "run_index": "RUN_INDEX",
-    }
-    for config_key, env_key in passthrough.items():
-        value = ctx.request.extra_config.get(config_key)
-        if value is not None and str(value).strip():
-            env[env_key] = str(value).strip()
-
-    if "use_external_node" in ctx.request.extra_config:
-        env["USE_EXTERNAL_NODE"] = (
-            "true" if bool(ctx.request.extra_config["use_external_node"]) else "false"
-        )
-    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
-        "include_edge_scenarios"
-    ) is True:
-        env["EXPAND_SCENARIOS"] = "true"
-
-    return env
-
-
-def _score_from_evm(path: Path) -> ScoreSummary:
-    import json
-
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
-    raw = data.get("final_reward")
-    if not isinstance(raw, (int, float)):
-        raise ValueError("evm result is incomplete: missing numeric final_reward")
-    max_reward_raw = data.get("max_reward")
-    if isinstance(max_reward_raw, (int, float)):
-        max_reward = float(max_reward_raw)
-    else:
-        try:
-            from benchmarks.evm.skill_templates import (
-                get_total_expected_deterministic_reward,
-            )
-
-            max_reward = float(get_total_expected_deterministic_reward())
-        except Exception:
-            max_reward = float(raw) if float(raw) > 0 else 1.0
-    normalized_raw = data.get("normalized_score")
-    if isinstance(normalized_raw, (int, float)):
-        score = float(normalized_raw)
-    else:
-        score = float(raw) / max_reward if max_reward > 0 else 0.0
-    score = max(0.0, min(1.0, score))
-    return ScoreSummary(
-        score=score,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "normalized_score": score,
-            "final_reward": raw,
-            "max_reward": max_reward,
-            "raw_unit": "unique_selectors",
-            "final_contracts": data.get("final_contracts", 0),
-            "model": data.get("model", ""),
-            "run_id": data.get("run_id", ""),
-            "chain": data.get("chain", ""),
-        },
-    )
-
-
 def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     return [
         sys.executable,
@@ -2215,82 +2099,6 @@ def _score_from_framework(path: Path) -> ScoreSummary:
     )
 
 
-def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    harness = str(
-        ctx.request.extra_config.get("agent")
-        or ctx.request.extra_config.get("harness")
-        or ctx.request.agent
-    ).strip().lower()
-    if harness == "hermes":
-        default_method = "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
-    elif harness == "openclaw":
-        default_method = (
-            "eliza_compactbench/openclaw_compactor.py:OpenClawNativeToolCompactor"
-        )
-    else:
-        default_method = "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
-    method = str(ctx.request.extra_config.get("method", default_method))
-    compactbench_root = Path(adapter.cwd)
-    python_executable = _compactbench_python_executable(compactbench_root)
-    args = [
-        python_executable,
-        "run_cerebras.py",
-        "--method",
-        method,
-        "--model",
-        ctx.request.model,
-        "--output",
-        str(ctx.output_root / "compactbench-results.jsonl"),
-        "--case-count",
-        str(int(ctx.request.extra_config.get("case_count", ctx.request.extra_config.get("max_tasks", 1)))),
-        "--drift-cycles",
-        str(int(ctx.request.extra_config.get("drift_cycles", 1))),
-    ]
-    suite = ctx.request.extra_config.get("suite")
-    if isinstance(suite, str) and suite.strip():
-        args.extend(["--suite", suite.strip()])
-    difficulty = ctx.request.extra_config.get("difficulty")
-    if isinstance(difficulty, str) and difficulty.strip():
-        args.extend(["--difficulty", difficulty.strip()])
-    benchmarks_dir = ctx.request.extra_config.get("benchmarks_dir")
-    if isinstance(benchmarks_dir, str) and benchmarks_dir.strip():
-        args.extend(["--benchmarks-dir", benchmarks_dir.strip()])
-    if ctx.request.extra_config.get("resume") is True:
-        args.append("--resume")
-    if ctx.request.extra_config.get("score") is True:
-        args.append("--score")
-    if ctx.request.extra_config.get("analyze_valid_hits", True) is not False:
-        args.append("--analyze-valid-hits")
-        args.extend(
-            [
-                "--valid-hit-output",
-                str(ctx.output_root / "compactbench-results.valid-hits.jsonl"),
-            ]
-        )
-    return args
-
-
-def _compactbench_python_executable(compactbench_root: Path) -> str:
-    candidates: list[str] = []
-    venv_python = compactbench_root / ".venv" / "bin" / "python"
-    if venv_python.exists():
-        candidates.append(str(venv_python))
-    candidates.append(sys.executable)
-    for binary in ("python3", "python"):
-        resolved = shutil.which(binary)
-        if resolved:
-            candidates.append(resolved)
-
-    seen: set[str] = set()
-    for candidate in candidates:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        if _python_can_import(candidate, "ruamel.yaml"):
-            return candidate
-    return candidates[0] if candidates else sys.executable
-
-
 def _python_can_import(python_executable: str, module: str) -> bool:
     try:
         completed = subprocess.run(
@@ -2307,256 +2115,6 @@ def _python_can_import(python_executable: str, module: str) -> bool:
     except (OSError, subprocess.TimeoutExpired):
         return False
     return completed.returncode == 0
-
-
-def _env_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-    provider = ctx.request.provider.strip().lower()
-    env: dict[str, str] = {}
-    if provider:
-        env["HERMES_BENCH_PROVIDER"] = provider
-        env["OPENCLAW_BENCH_PROVIDER"] = provider
-    return env
-
-
-def _score_from_compactbench(path: Path) -> ScoreSummary:
-    import json
-
-    if path.name.endswith(".valid-hits.jsonl"):
-        valid_path = path
-    else:
-        valid_path = path.with_name(f"{path.stem}.valid-hits.jsonl")
-    if not valid_path.exists():
-        raise ValueError(
-            "compactbench repaired valid-hit analysis is required; "
-            "set analyze_valid_hits=true or run run_cerebras.py with "
-            "--analyze-valid-hits"
-        )
-    analysis_end: dict[str, Any] | None = None
-    for line in valid_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line.strip():
-            continue
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(item, dict) and item.get("event") == "analysis_end":
-            analysis_end = item
-    if analysis_end is None:
-        raise ValueError("compactbench valid-hit analysis missing analysis_end event")
-    raw = analysis_end.get("overall_score")
-    score = float(raw) if isinstance(raw, (int, float)) else None
-    return ScoreSummary(
-        score=score,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "scorer_name": "repaired_valid_hits",
-            "overall_score": raw,
-            "benchmark_quality_score": analysis_end.get(
-                "benchmark_quality_score"
-            ),
-            "raw_lexical_overall_score": analysis_end.get(
-                "raw_lexical_overall_score"
-            ),
-            "valid_false_negatives": analysis_end.get("valid_false_negatives"),
-            "semantic_false_positives": analysis_end.get(
-                "semantic_false_positives"
-            ),
-            "failures_remaining": analysis_end.get("failures_remaining"),
-            "repaired_expected_conflicts": analysis_end.get(
-                "repaired_expected_conflicts"
-            ),
-            "removed_invalid_items": analysis_end.get("removed_invalid_items"),
-            "judge_refusals": analysis_end.get("judge_refusals"),
-        },
-    )
-
-
-def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    args = [
-        sys.executable,
-        "-m",
-        "eliza_loca.run_cerebras",
-        "--model",
-        ctx.request.model,
-        "--output-dir",
-        str(ctx.output_root / "loca-output"),
-        "--max-workers",
-        str(int(ctx.request.extra_config.get("max_workers", 1))),
-        "--max-tool-uses",
-        str(int(ctx.request.extra_config.get("max_tool_uses", 10))),
-        "--max-tokens",
-        str(int(ctx.request.extra_config.get("max_tokens", 2048))),
-        "--timeout",
-        str(int(ctx.request.extra_config.get("timeout", 300))),
-        "--max-retries",
-        str(int(ctx.request.extra_config.get("max_retries", 1))),
-    ]
-    config = ctx.request.extra_config.get("config")
-    if isinstance(config, str) and config.strip():
-        args.extend(["--config", config.strip()])
-    else:
-        args.extend(["--config", "task-configs/debug.json"])
-    strategy = ctx.request.extra_config.get("strategy")
-    if isinstance(strategy, str) and strategy.strip():
-        args.extend(["--strategy", strategy.strip()])
-    max_steps = ctx.request.extra_config.get("max_steps", ctx.request.extra_config.get("max_tasks"))
-    if isinstance(max_steps, int) and max_steps > 0:
-        args.extend(["--max-steps", str(max_steps)])
-    for key, flag, caster in [
-        ("max_context_size", "--max-context-size", int),
-        ("reset_size", "--reset-size", int),
-        ("reset_ratio", "--reset-ratio", float),
-        ("memory_warning_threshold", "--memory-warning-threshold", float),
-        ("keep_thinking", "--keep-thinking", int),
-    ]:
-        if key in ctx.request.extra_config:
-            args.extend([flag, str(caster(ctx.request.extra_config[key]))])
-    context_summary = ctx.request.extra_config.get("context_summary")
-    if context_summary is True:
-        args.append("--context-summary")
-    if ctx.request.extra_config.get("context_awareness") is True:
-        args.append("--context-awareness")
-    reasoning_effort = ctx.request.extra_config.get("reasoning_effort")
-    if isinstance(reasoning_effort, str) and reasoning_effort.strip():
-        args.extend(["--reasoning-effort", reasoning_effort.strip()])
-    if ctx.request.extra_config.get("dry_run") is True:
-        args.append("--dry-run")
-        args.append("--allow-empty")
-    if ctx.request.extra_config.get("expand_scenarios") is True or ctx.request.extra_config.get(
-        "include_edge_scenarios"
-    ) is True:
-        args.append("--expand-scenarios")
-    return args
-
-
-def _score_from_loca_bench(path: Path) -> ScoreSummary:
-    import json
-
-    def _external_telemetry_tokens(audit_path: Path) -> int:
-        total = 0
-        for candidate in (
-            audit_path.parent / "telemetry.jsonl",
-            audit_path.parent.parent / "telemetry.jsonl",
-        ):
-            if not candidate.exists():
-                continue
-            for line in candidate.read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                for raw_tokens in (
-                    row.get("total_tokens"),
-                    (row.get("usage") or {}).get("totalTokens")
-                    if isinstance(row.get("usage"), dict)
-                    else None,
-                    (row.get("usage") or {}).get("total_tokens")
-                    if isinstance(row.get("usage"), dict)
-                    else None,
-                ):
-                    if isinstance(raw_tokens, (int, float)) and raw_tokens > 0:
-                        total += int(raw_tokens)
-                        break
-        return total
-
-    data = json.loads(path.read_text(encoding="utf-8"))
-    summary = data.get("summary") if isinstance(data, dict) else None
-    if not isinstance(summary, dict):
-        raise ValueError("loca-bench audit missing summary")
-    raw = summary.get("avg_accuracy")
-    trajectory_count = summary.get("trajectory_count")
-    aggregate_trajectory_count = summary.get("aggregate_trajectory_count")
-    metadata_total_tasks = summary.get("metadata_total_tasks")
-    failed_trajectory_count = summary.get("failed_trajectory_count")
-    score = float(raw) if isinstance(raw, (int, float)) else None
-    if score is None and raw is None:
-        all_observed_trajectories_failed = (
-            isinstance(failed_trajectory_count, int)
-            and isinstance(metadata_total_tasks, int)
-            and metadata_total_tasks > 0
-            and failed_trajectory_count == metadata_total_tasks
-        )
-        if all_observed_trajectories_failed:
-            score = 0.0
-    if score is None:
-        raise ValueError("loca-bench audit missing summary.avg_accuracy")
-    if summary.get("issue_count"):
-        raise ValueError(f"loca-bench audit has {summary.get('issue_count')} issue(s)")
-    has_trajectories = (
-        (isinstance(trajectory_count, int) and trajectory_count > 0)
-        or (
-            isinstance(aggregate_trajectory_count, int)
-            and aggregate_trajectory_count > 0
-        )
-    )
-    if not has_trajectories:
-        raise ValueError("loca-bench run has no captured trajectories")
-    summary_total_api_tokens = summary.get("total_api_tokens")
-    telemetry_total_tokens = (
-        _external_telemetry_tokens(path)
-        if summary_total_api_tokens in (None, 0)
-        else 0
-    )
-    effective_total_api_tokens = summary_total_api_tokens or telemetry_total_tokens
-    if effective_total_api_tokens in (None, 0) and (
-        isinstance(metadata_total_tasks, int) and metadata_total_tasks > 0
-    ):
-        raise ValueError("loca-bench run has tasks but no API token usage")
-    return ScoreSummary(
-        score=score,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "avg_accuracy": raw,
-            "aggregate_trajectory_count": aggregate_trajectory_count,
-            "issue_count": summary.get("issue_count"),
-            "metadata_total_tasks": metadata_total_tasks,
-            "total_api_tokens": effective_total_api_tokens,
-            "external_telemetry_tokens": telemetry_total_tokens,
-            "max_prompt_tokens": summary.get("max_prompt_tokens"),
-            "max_total_tokens": summary.get("max_total_tokens"),
-            "trajectory_count": trajectory_count,
-            "failed_trajectory_count": failed_trajectory_count,
-        },
-    )
-
-
-def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-    del adapter
-    env: dict[str, str] = {}
-    max_context_size = ctx.request.extra_config.get("max_context_size")
-    if isinstance(max_context_size, int) and max_context_size > 0:
-        env["MAX_CONVERSATION_TOKENS"] = str(max_context_size)
-    timeout = ctx.request.extra_config.get("timeout")
-    if isinstance(timeout, int) and timeout > 10:
-        env["LOCA_HARNESS_TIMEOUT_S"] = str(max(5, min(timeout - 5, 240)))
-    harness = str(
-        ctx.request.extra_config.get("agent")
-        or ctx.request.extra_config.get("harness")
-        or ctx.request.agent
-    ).strip().lower()
-    if harness == "eliza" and ctx.request.extra_config.get("allow_stub_embedding") is True:
-        # Diagnostic-only opt-in. Release-evidence runs must use a real
-        # embedding handler from plugin-local-inference.
-        env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] = "1"
-    if harness == "openclaw":
-        openclaw_thinking = ctx.request.extra_config.get("openclaw_thinking")
-        if isinstance(openclaw_thinking, str) and openclaw_thinking.strip():
-            env["LOCA_OPENCLAW_THINKING"] = openclaw_thinking.strip()
-        else:
-            reasoning_effort = ctx.request.extra_config.get("reasoning_effort")
-            if isinstance(reasoning_effort, str) and reasoning_effort.strip():
-                env["LOCA_OPENCLAW_THINKING"] = reasoning_effort.strip()
-        # LOCA relies on native OpenAI chat/tool payloads. OpenClaw's CLI
-        # transport flattens those into text, so use the adapter's direct
-        # OpenAI-compatible path for this benchmark-specific bridge.
-        env["LOCA_OPENCLAW_MODE"] = "direct-openai-compatible"
-        env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
-        env["OPENCLAW_USE_CLI"] = "0"
-    return env
 
 
 def _command_interrupt_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -2612,6 +2170,48 @@ def _score_from_interrupt_bench(path: Path) -> ScoreSummary:
             "boundary_violations": boundary_violations,
             "mode": data.get("mode"),
             "model": data.get("model"),
+        },
+    )
+
+
+def _command_three_agent_dialogue(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    # Spawns three Eliza agents (Alice/Bob/Cleo) through the canonical scripted
+    # dialogue and writes verification.json. GROQ_API_KEY (propagated by the
+    # runner) enables real TTS/ASR; without it the harness falls back to
+    # synthetic audio while still exercising the real Eliza dialogue agents.
+    return [
+        "bun",
+        "run",
+        "runner/run-dialogue.ts",
+        "--scenario=canonical",
+        f"--output={ctx.output_root}",
+    ]
+
+
+def _score_from_three_agent_dialogue(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("three-agent-dialogue verification result is not an object")
+    turns = data.get("turnsTaken")
+    if not isinstance(turns, (int, float)) or turns <= 0:
+        raise ValueError("three-agent-dialogue run captured no turns")
+    fraction = data.get("emotionDetectedFraction")
+    if not isinstance(fraction, (int, float)):
+        raise ValueError(
+            "three-agent-dialogue verification missing emotionDetectedFraction"
+        )
+    return ScoreSummary(
+        score=float(fraction),
+        unit="emotion_detected_fraction",
+        higher_is_better=True,
+        metrics={
+            "pass": bool(data.get("pass", False)),
+            "turns_taken": int(turns),
+            "distinct_speakers": int(data.get("distinctSpeakersDetected", 0) or 0),
+            "emotions_detected": int(data.get("emotionsDetected", 0) or 0),
+            "duration_sec": float(data.get("durationSec", 0.0) or 0.0),
         },
     )
 
@@ -3083,41 +2683,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             },
         ),
         _make_extra_adapter(
-            adapter_id="compactbench",
-            directory="compactbench",
-            description="CompactBench conversation-compaction benchmark",
-            cwd=str((benchmarks_root / "compactbench").resolve()),
-            command_builder=_command_compactbench,
-            env_builder=_env_compactbench,
-            result_patterns=["compactbench-results.jsonl", "*.jsonl"],
-            score_extractor=_score_from_compactbench,
-            default_extra_config={
-                "case_count": 1,
-                "drift_cycles": 1,
-            },
-            default_timeout_seconds=7200,
-        ),
-        _make_extra_adapter(
-            adapter_id="loca_bench",
-            directory="loca-bench",
-            description="LOCA long-context agent benchmark via elizaOS/Cerebras wrapper",
-            cwd=str((benchmarks_root / "loca-bench").resolve()),
-            command_builder=_command_loca_bench,
-            result_patterns=["loca-output/eliza_loca_audit.json", "**/eliza_loca_audit.json"],
-            score_extractor=_score_from_loca_bench,
-            env_builder=_env_loca_bench,
-            default_extra_config={
-                "max_steps": 36,
-                "max_tool_uses": 40,
-                "max_retries": 3,
-                "timeout": 900,
-                "context_summary": False,
-                "max_context_size": 32768,
-                "reset_size": 16384,
-            },
-            default_timeout_seconds=7200,
-        ),
-        _make_extra_adapter(
             adapter_id="interrupt_bench",
             directory="interrupt-bench",
             description="InterruptBench response-handler interruption benchmark",
@@ -3137,6 +2702,16 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             result_patterns=["report.json"],
             score_extractor=_score_from_personality_bench,
             default_timeout_seconds=600,
+        ),
+        _make_extra_adapter(
+            adapter_id="three_agent_dialogue",
+            directory="three-agent-dialogue",
+            description="Three Eliza agents (Alice/Bob/Cleo) voice dialogue: diarization + emotion + ASR + non-blank audio",
+            cwd=str((benchmarks_root / "three-agent-dialogue").resolve()),
+            command_builder=_command_three_agent_dialogue,
+            result_patterns=["verification.json"],
+            score_extractor=_score_from_three_agent_dialogue,
+            default_timeout_seconds=900,
         ),
         _make_extra_adapter(
             adapter_id="rolodex",
@@ -3214,17 +2789,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
                 "evaluator": "heuristic",
                 "random_seed": 1,
             },
-        ),
-        _make_extra_adapter(
-            adapter_id="evm",
-            directory="evm",
-            description="EVM exploration benchmark",
-            cwd=str((benchmarks_root / "evm").resolve()),
-            command_builder=_command_evm,
-            env_builder=_env_evm,
-            result_patterns=["metrics/evm_*_metrics.json"],
-            score_extractor=_score_from_evm,
-            default_extra_config={"max_messages": 2, "expand_scenarios": True},
         ),
         _make_extra_adapter(
             adapter_id="solana",

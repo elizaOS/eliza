@@ -24,12 +24,12 @@ committed tripwire test so it is change-detected. Status below.
 
 ## Fixed
 
-- **plugin-vincent — TUI read wrong wallet fields.** `VincentTuiView` read
-  `walletAddresses.evm` / `.solana`, but the canonical `WalletAddresses` type
-  (`@elizaos/shared`) and the GUI `WalletStatusCard` use `.evmAddress` /
-  `.solanaAddress`, so the TUI always rendered null addresses. Fixed + locked by
-  the new view tests. (commit: "fix(vincent): TUI view read canonical wallet
-  address fields + tests".)
+- **plugin-vincent — terminal view read wrong wallet fields.** The terminal
+  view read `walletAddresses.evm` / `.solana`, but the canonical
+  `WalletAddresses` type (`@elizaos/shared`) and GUI Vincent view use
+  `.evmAddress` / `.solanaAddress`, so the terminal view always rendered null
+  addresses. Fixed + locked by the new view tests. (commit: "fix(vincent):
+  terminal view read canonical wallet address fields + tests".)
 
 - **plugin-companion — EmotePicker grid diverged from the catalog.** The picker
   shipped a hardcoded 29-item grid where 17 ids were absent from `EMOTE_CATALOG`

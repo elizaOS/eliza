@@ -27,12 +27,13 @@ import {
 } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTimeout } from "../../hooks/useTimeout";
-import { useApp } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state";
 import {
   navigatePreOpenedWindow,
   openExternalUrl,
   preOpenWindow,
 } from "../../utils";
+import { safeAttachmentUrl } from "../../utils/attachment-url";
 import { formatTime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -46,10 +47,10 @@ import {
 } from "./viewer-auth";
 
 /**
- * Optional self-learning telemetry fields the "Defense of the Agents" game loop
- * may push into {@link AppSessionState.telemetry}. Every field is optional: the
- * loop only emits the keys it currently tracks, so absent fields must render an
- * explicit empty state rather than a fabricated default.
+ * Optional self-learning telemetry fields a game loop may push into
+ * {@link AppSessionState.telemetry}. Every field is optional: the loop only
+ * emits the keys it currently tracks, so absent fields must render an explicit
+ * empty state rather than a fabricated default.
  */
 interface GameLearningTelemetry {
   abilityPriority?: string[];
@@ -188,7 +189,7 @@ export function DesktopGameWindowControls({
 }: {
   gameWindowId: string | null;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -623,7 +624,24 @@ export function GameView() {
     setState,
     setActionNotice,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    activeGameRunId: s.activeGameRunId,
+    activeGameApp: s.activeGameApp,
+    activeGameDisplayName: s.activeGameDisplayName,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    activeGameSandbox: s.activeGameSandbox,
+    activeGamePostMessageAuth: s.activeGamePostMessageAuth,
+    activeGamePostMessagePayload: s.activeGamePostMessagePayload,
+    activeGameSession: s.activeGameSession,
+    gameOverlayEnabled: s.gameOverlayEnabled,
+    logs: s.logs,
+    logLoadError: s.logLoadError,
+    loadLogs: s.loadLogs,
+    setState: s.setState,
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
   const isElectrobun = isElectrobunRuntime();
   const isCompactLayout = useMediaQuery("(max-width: 1023px)");
   const [stopping, setStopping] = useState(false);
@@ -690,8 +708,15 @@ export function GameView() {
   const hasActiveRun = Boolean(activeGameRun);
   const hasViewer = Boolean(activeGameRun?.viewer?.url);
   const viewerAttached = activeGameRun?.viewerAttachment === "attached";
-  const openableUrl =
-    resolvedActiveGameViewerUrl || resolvedActiveGameLaunchUrl || "";
+  // Scheme-guard the viewer/launch URL before it reaches a navigation sink
+  // (<a href>, popup.location.href via navigatePreOpenedWindow). viewer.url /
+  // launchUrl come from a plugin/cloud-app run record (attacker-influenceable),
+  // and a javascript:/data: value would otherwise execute in the app origin or
+  // open-redirect the tab. safeAttachmentUrl returns "" for a disallowed scheme,
+  // which disables the open affordance / omits the href.
+  const openableUrl = safeAttachmentUrl(
+    resolvedActiveGameViewerUrl || resolvedActiveGameLaunchUrl || "",
+  );
   const canAttachViewer =
     Boolean(activeGameRun?.viewer?.url) &&
     activeGameRun?.viewerAttachment === "detached";
@@ -1517,7 +1542,7 @@ export function GameView() {
             {activeSessionState.goalLabel}
           </div>
         ) : null}
-        {/* Defense of the Agents telemetry dashboard */}
+        {/* Optional hero telemetry dashboard */}
         {activeSessionState?.telemetry?.heroClass != null ? (
           <div className="px-2 py-2 text-2xs space-y-1.5">
             <div className="flex items-center gap-2">
@@ -1710,7 +1735,7 @@ export function GameView() {
               }
             }}
             placeholder={t("game.chatPlaceholder")}
-            className="flex-1 h-8 text-xs bg-bg focus-visible:ring-accent"
+            className="flex-1 h-8 text-xs bg-bg "
             disabled={sendingChat}
           />
           <Button

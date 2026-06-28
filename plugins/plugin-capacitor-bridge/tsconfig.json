@@ -4,7 +4,7 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"esModuleInterop": true,
-		"strict": false,
+		"strict": true,
 		"strictNullChecks": true,
 		"skipLibCheck": true,
 		"ignoreDeprecations": "6.0",
@@ -67,6 +67,8 @@
 			],
 			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
 			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+			"@elizaos/plugin-capacitor-bridge": ["./src/index.ts"],
+			"@elizaos/plugin-capacitor-bridge/*": ["./src/*"],
 			"@elizaos/plugin-commands": [
 				"../../plugins/plugin-commands/src/index.ts"
 			],

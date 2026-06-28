@@ -29,41 +29,20 @@ export const appPhonePlugin: Plugin = {
   actions: [],
   providers: [phoneCallLogProvider],
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single PhoneView
+    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build.
     {
       id: "phone",
       label: "Phone",
       description: "Android dialer and recent-calls log",
       icon: "Phone",
       path: "/phone",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "PhonePluginView",
+      componentExport: "PhoneView",
       tags: ["phone", "calls", "android"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "phone",
-      label: "Phone XR",
-      description: "Android dialer and recent-calls log",
-      icon: "Phone",
-      path: "/phone",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "PhonePluginView",
-      tags: ["phone", "calls", "android"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "phone",
-      label: "Phone TUI",
-      description: "Terminal Android dialer and recent-calls log",
-      icon: "Phone",
-      path: "/phone/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "PhoneTuiView",
-      tags: ["phone", "calls", "android", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

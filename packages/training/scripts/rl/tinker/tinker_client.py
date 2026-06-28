@@ -37,9 +37,11 @@ TINKER_API_KEY_ENV_VARS = (
     "TM_API_KEY",
     "THINKINGMACHINES_API_KEY",
 )
-STALE_TINKER_MODEL_ALIASES = {
-    "Qwen/Qwen3-30B-A3B-Instruct": "Qwen/Qwen3-30B-A3B-Instruct-2507",
-    "Qwen/Qwen3-4B-Instruct": "Qwen/Qwen3-4B-Instruct-2507",
+TINKER_MODEL_ALIASES = {
+    "elizaos/eliza-1-2b": "google/gemma-4-E2B",
+    "elizaos/eliza-1-4b": "google/gemma-4-E4B",
+    "elizaos/eliza-1-9b": "google/gemma-4-12B",
+    "elizaos/eliza-1-27b": "google/gemma-4-31B",
 }
 
 # Lazy import tinker to allow graceful degradation
@@ -77,7 +79,7 @@ def resolve_tinker_base_model(
     if requested_model in available_models:
         return requested_model
 
-    alias = STALE_TINKER_MODEL_ALIASES.get(requested_model)
+    alias = TINKER_MODEL_ALIASES.get(requested_model)
     if alias in available_models:
         return alias
 
@@ -89,8 +91,10 @@ def resolve_tinker_base_model(
     if len(dated_matches) == 1:
         return dated_matches[0]
 
-    qwen_models = [model_name for model_name in available_models if "qwen" in model_name.lower()]
-    suggested_models = qwen_models[:5] if qwen_models else list(available_models[:5])
+    gemma_models = [
+        model_name for model_name in available_models if "gemma" in model_name.lower()
+    ]
+    suggested_models = gemma_models[:5] if gemma_models else list(available_models[:5])
     suggestion_text = ", ".join(suggested_models)
     raise RuntimeError(
         f"Tinker base model {requested_model} is not supported. "

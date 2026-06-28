@@ -223,8 +223,8 @@ Discovered gateways include metadata from TXT records: stable ID, TLS configurat
 Full conversation mode via the `TalkModeManager` class, integrating speech-to-text (STT) and text-to-speech (TTS).
 
 **STT Engines:**
-- **Whisper** (default) -- Offline speech recognition routed through `@elizaos/plugin-local-inference` (Qwen3-ASR via libelizainference / llama.cpp). Supports streaming transcription.
-- **Web Speech API** -- Falls back to the browser's built-in speech recognition when Whisper is unavailable.
+- **Web Speech API** (desktop default) -- The Electrobun native module forwards audio chunks to the renderer, where the browser speech recognizer handles transcription.
+- **Local-inference ASR** -- Available only when a verified Gemma ASR bundle is explicitly configured for `@elizaos/plugin-local-inference` through the fused `libelizainference` path.
 
 **TTS Engines:**
 - **ElevenLabs** -- High-quality streaming TTS via the ElevenLabs API. Configurable voice ID, model ID (default: `eleven_v3`), stability, similarity boost, and speed. Audio chunks are streamed to the renderer as base64-encoded data.
@@ -244,13 +244,13 @@ Audio data flows from the renderer to the main process via `talkmode:audioChunk`
 
 ### Swabble (Voice Wake)
 
-Wake word detection for hands-free activation via the `SwabbleManager` class. Uses Whisper for continuous speech transcription combined with a `WakeWordGate` that performs timing-based wake word matching.
+Wake word detection for hands-free activation via the `SwabbleManager` class. The Electrobun native module forwards microphone chunks to the renderer, where Web Speech transcription is combined with a `WakeWordGate` that performs timing-based wake word matching.
 
 **Configuration:**
 - `triggers` -- Array of wake word phrases (e.g., `["eliza", "hey eliza"]`)
 - `minPostTriggerGap` -- Minimum pause (seconds) after the wake word before the command starts (default: 0.45s)
 - `minCommandLength` -- Minimum number of words in the command after the wake word (default: 1)
-- `modelSize` -- Whisper model size to use
+- `modelSize` -- Legacy compatibility field; ignored by the Web Speech desktop path
 
 The wake word gate includes **fuzzy matching** for common transcription variations (e.g., "melody" matches "eliza", "okay" matches "ok").
 

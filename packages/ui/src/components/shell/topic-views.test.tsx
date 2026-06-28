@@ -1,25 +1,12 @@
 // @vitest-environment jsdom
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConversationUndoToast } from "./ConversationUndoToast";
-import {
-  dismissConversationUndo,
-  getConversationUndoSnapshot,
-  showConversationUndo,
-} from "./conversation-undo-store";
 import { TopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
 
 afterEach(() => {
   cleanup();
-  dismissConversationUndo();
 });
 
 describe("TopicChipsBar", () => {
@@ -93,32 +80,5 @@ describe("TopicGroup", () => {
     );
     expect(screen.getByTestId("topic-group-untitled")).toBeTruthy();
     expect(screen.queryByTestId("topic-group-header")).toBeNull();
-  });
-});
-
-describe("ConversationUndoToast", () => {
-  it("shows the label + action and restores on Undo", () => {
-    const onUndo = vi.fn();
-    render(<ConversationUndoToast />);
-    expect(screen.queryByTestId("conversation-undo-toast")).toBeNull();
-    act(() => {
-      showConversationUndo({
-        label: "Conversation cleared",
-        actionLabel: "Undo",
-        onUndo,
-      });
-    });
-    const button = screen.getByTestId("conversation-undo-button");
-    expect(button.textContent).toBe("Undo");
-    expect(screen.getByTestId("conversation-undo-toast").textContent).toContain(
-      "Conversation cleared",
-    );
-    act(() => {
-      fireEvent.click(button);
-    });
-    expect(onUndo).toHaveBeenCalledOnce();
-    // Dismissed after undo (store is the source of truth; the toast then
-    // exit-animates out of the DOM).
-    expect(getConversationUndoSnapshot()).toBeNull();
   });
 });

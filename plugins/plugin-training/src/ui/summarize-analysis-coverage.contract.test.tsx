@@ -66,10 +66,34 @@ vi.mock("@elizaos/ui", () => ({
     selector(fineTuningAppState),
 }));
 
+vi.mock("@elizaos/ui/api", () => ({
+  client: trainingClient,
+}));
+
+vi.mock("@elizaos/ui/api/index", () => ({
+  client: trainingClient,
+}));
+
+vi.mock("../../../../packages/ui/src/api/index.ts", () => ({
+  client: trainingClient,
+}));
+
 // FineTuningView reads useApp/useAppSelector from @elizaos/ui/state (not the
 // root barrel); mock that subpath too or the real store runs and `t` yields
 // raw i18n keys instead of resolved labels.
 vi.mock("@elizaos/ui/state", () => ({
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
+}));
+
+vi.mock("@elizaos/ui/state/index", () => ({
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
+}));
+
+vi.mock("../../../../packages/ui/src/state/index.ts", () => ({
   useApp: () => fineTuningAppState,
   useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
     selector(fineTuningAppState),
@@ -106,8 +130,14 @@ vi.mock("@elizaos/ui/utils", () => ({
 }));
 
 vi.mock("@elizaos/ui/components", () => ({
+  Button: ({
+    children,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+    React.createElement("button", { type: "button", ...props }, children),
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
+  registerDetailExtension: vi.fn(),
 }));
 
 vi.mock("@elizaos/ui/components/ui/select", () => ({

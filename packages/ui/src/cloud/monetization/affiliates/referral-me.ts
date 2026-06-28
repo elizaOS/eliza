@@ -6,7 +6,7 @@
  * because `@elizaos/ui` deliberately does not depend on the cloud-shared server
  * bundle (same convention as `../organization/data/cloud-org-types.ts`). The
  * shape is the canonical API contract — keep it in sync with
- * `packages/cloud-shared/src/lib/types/referral-me.ts`.
+ * `packages/cloud/shared/src/lib/types/referral-me.ts`.
  *
  * The raw `fetch` of the original was swapped for the cloud {@link api} client so
  * the Steward Bearer token is injected on native targets (same-origin cookie

@@ -23,7 +23,6 @@ import type {
 import {
   Button,
   Card,
-  Divider,
   HStack,
   List,
   type SpatialTone,
@@ -65,6 +64,12 @@ export interface FeedConversationSnapshot {
 
 /** Single source of truth for the Feed operator surface across all modalities. */
 export interface FeedSnapshot {
+  /**
+   * Whether a live Feed session/run is attached. When false the surface renders
+   * the waiting state (no dashboard data, autonomy controls disabled) instead of
+   * the operator dashboard.
+   */
+  hasSession: boolean;
   agentStatus: FeedAgentStatus | null;
   portfolio: FeedPortfolioSnapshot | null;
   goal: FeedAgentGoal | null;
@@ -120,6 +125,7 @@ export interface FeedSpatialViewProps {
 export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   const {
+    hasSession,
     agentStatus,
     portfolio,
     goal,
@@ -137,13 +143,32 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
     sending,
   } = snapshot;
 
+  if (!hasSession) {
+    return (
+      <Card gap={1} padding={1}>
+        <Text bold>Ready to trade?</Text>
+        <Text style="caption" tone="muted">
+          Spawn a Feed agent to watch prediction markets and trade autonomously.
+        </Text>
+        <Button grow={1} agent="spawn-agent" onPress={dispatch("spawn")}>
+          Spawn agent
+        </Button>
+        {statusMessage ? (
+          <Text style="caption" tone="muted" wrap={false}>
+            {statusMessage}
+          </Text>
+        ) : null}
+      </Card>
+    );
+  }
+
   const autonomyActive = controlAction === "pause";
   const displayName =
     agentStatus?.displayName ?? agentStatus?.name ?? "Waiting";
   const recentChat = chatMessages.slice(-2);
 
   return (
-    <Card title="Feed Operator" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"
@@ -180,7 +205,6 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </Text>
       ) : null}
 
-      <Divider label="portfolio" />
       {portfolio ? (
         <VStack gap={0}>
           <HStack gap={1} align="center">
@@ -195,7 +219,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </VStack>
       ) : (
         <Text tone="muted" style="caption">
-          Portfolio is not available yet.
+          No open positions yet
         </Text>
       )}
 
@@ -212,10 +236,9 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </VStack>
       ) : null}
 
-      <Divider label="markets" />
       {predictionMarkets.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          Market data is not available yet.
+          No live markets
         </Text>
       ) : (
         <List gap={0}>
@@ -235,7 +258,6 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </List>
       )}
 
-      <Divider label="recent trades" />
       {recentTrades.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
           No recent trades
@@ -262,7 +284,6 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </List>
       )}
 
-      <Divider label="team" />
       <HStack gap={1} align="center">
         <Text grow={1} wrap={false}>
           {team.ownerName ?? `${team.agentCount} agents`}
@@ -302,17 +323,15 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </List>
       ) : null}
 
-      <Divider label="wallet" />
       <HStack gap={1} align="center">
         <Text grow={1}>
-          {wallet ? formatCurrency(wallet.balance) : "Waiting for wallet"}
+          {wallet ? formatCurrency(wallet.balance) : "No wallet"}
         </Text>
         <Text style="caption" tone="muted">
           {`trading ${formatCurrency(tradingBalance)}`}
         </Text>
       </HStack>
 
-      <Divider label="steering" />
       {suggestedPrompts.length > 0 ? (
         <HStack gap={1} wrap>
           {suggestedPrompts.slice(0, 2).map((prompt, index) => (

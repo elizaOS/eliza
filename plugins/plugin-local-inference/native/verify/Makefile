@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract istft-verify two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke android-vulkan-graph-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-dispatch-smoke cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented mmproj-verify force clean
+.PHONY: all reference-test kernel-contract istft-verify two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke android-vulkan-graph-smoke metal metal-verify metal-verify-shipped metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-dispatch-smoke cpu-qjl-polar-attn-smoke cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented mmproj-verify force clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -125,6 +125,24 @@ endif
 VULKAN_BENCH_JSON ?=
 vulkan-bench: vulkan_bench vulkan-spirv
 	MESA_SHADER_CACHE_DISABLE=1 ./vulkan_bench $(if $(VULKAN_BENCH_JSON),--json $(VULKAN_BENCH_JSON),)
+
+# mul_mm GEMM micro-benchmark (#9584/#9715): scalar vs shared-mem-tiled vs
+# register-blocked, the cooperative-matrix-free prefill mul_mat study. Same
+# header/lib resolution as vulkan_bench. On Mali-G715 the register-blocked
+# variant is the only one that beats scalar (~1.4-2.3x); naive tiling loses.
+mul_mm_bench: mul_mm_bench.cpp
+ifdef VULKAN_SDK
+	$(CXX) $(CXXFLAGS) -I$(VULKAN_SDK)/include -I. mul_mm_bench.cpp -L$(VULKAN_SDK)/lib -lvulkan -lm -o mul_mm_bench
+else ifneq ($(strip $(HOMEBREW_VULKAN_HEADERS)$(HOMEBREW_VULKAN_LIB)),)
+	$(CXX) $(CXXFLAGS) -I/opt/homebrew/include -I. mul_mm_bench.cpp -L/opt/homebrew/opt/vulkan-loader/lib -lvulkan -lm -o mul_mm_bench
+else ifneq ($(SYSTEM_LIBVULKAN),)
+	$(CXX) $(CXXFLAGS) -I$(ELIZA_MTP_VULKAN_HEADERS_DIR) -I. mul_mm_bench.cpp $(SYSTEM_LIBVULKAN) -lm -o mul_mm_bench
+else
+	@echo "mul_mm_bench needs Vulkan headers + libvulkan (VULKAN_SDK / brew / system)."; false
+endif
+
+mul_mm-bench: mul_mm_bench vulkan-spirv
+	MESA_SHADER_CACHE_DISABLE=1 ./mul_mm_bench --spv-dir ../vulkan
 
 # Run vulkan_verify against the QJL + Polar fixtures (needs a Vulkan-capable
 # host — fails cleanly with "no Vulkan devices" on machines without an ICD).
@@ -282,6 +300,34 @@ metal-verify: metal_verify reference-test
 	@echo "[kernels/verify] metal polar pre-Hadamard query + QJL residual..."
 	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json
 
+# Runtime-source-of-truth gate. metal-verify above tests the verify-harness copy
+# under ../metal/; the SHIPPED kernels the fork actually embeds into
+# default.metallib live in the llama.cpp submodule under eliza-shipped/. Those two
+# copies MUST stay in lockstep — when they drifted (fork commit 412b8487b regressed
+# eliza-shipped/turbo3+turbo4 to 0/8 while ../metal/ stayed 8/8) the metal-verify
+# gate went green but the runtime shipped broken TBQ3_0/TBQ4_0 attention scores.
+# This target runs the same parity checks against the embedded kernels so the
+# regression class fails CI instead of shipping silently.
+SHIPPED_METAL := ../llama.cpp/ggml/src/ggml-metal/eliza-shipped
+metal-verify-shipped: metal_verify reference-test
+	@test -d $(SHIPPED_METAL) || { echo "[kernels/verify] $(SHIPPED_METAL) missing — run git submodule update --init"; exit 1; }
+	@echo "[kernels/verify] SHIPPED metal turbo3..."
+	./metal_verify $(SHIPPED_METAL)/turbo3.metal     kernel_turbo3_dot          fixtures/turbo3.json
+	@echo "[kernels/verify] SHIPPED metal turbo4..."
+	./metal_verify $(SHIPPED_METAL)/turbo4.metal     kernel_turbo4_dot          fixtures/turbo4.json
+	@echo "[kernels/verify] SHIPPED metal turbo3_tcq..."
+	./metal_verify $(SHIPPED_METAL)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json
+	@echo "[kernels/verify] SHIPPED metal qjl..."
+	./metal_verify $(SHIPPED_METAL)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json
+	@echo "[kernels/verify] SHIPPED metal polar (+QJL residual)..."
+	./metal_verify $(SHIPPED_METAL)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json
+	./metal_verify $(SHIPPED_METAL)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar_qjl.json
+	@echo "[kernels/verify] SHIPPED metal fused QJL-K + TBQ3-V..."
+	./metal_verify $(SHIPPED_METAL)/fused_attn_qjl_tbq.metal   kernel_fused_attn_qjl_tbq3_f32  fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] SHIPPED metal fused QJL-K + Q4_POLAR-V..."
+	./metal_verify $(SHIPPED_METAL)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json
+	@echo "[kernels/verify] SHIPPED metal set PASS — runtime-embedded kernels match the C reference"
+
 # Additive check for the long-context multi-block Metal entrypoints. These
 # are separate symbols from the compatibility entrypoints and need direct
 # harness coverage whenever their dispatch shape changes.
@@ -393,6 +439,26 @@ cpu-dispatch-smoke: $(CPU_DISPATCH_SMOKE_BIN)
 	LD_LIBRARY_PATH=$(ELIZA_MTP_CPU_BIN_DIR):$${LD_LIBRARY_PATH:-} \
 	./$(CPU_DISPATCH_SMOKE_BIN)
 
+# QJL1_256-K / Q4_POLAR-V flash_attn_ext dispatch smoke. Builds the post-cast
+# (F16 K/V) attention graph through ggml_flash_attn_ext and asserts finite,
+# non-zero output — guards the dequant-hop path in src/llama-graph.cpp from
+# regressing back to a NULL-vec_dot call on the K-cache-only quant types.
+# Needs a built ggml CPU lib (set ELIZA_MTP_CPU_BIN_DIR + GGML_INC_DIR; e.g.
+# a stock llama.cpp build: ELIZA_MTP_CPU_BIN_DIR=<build>/bin
+# GGML_INC_DIR=<src>/ggml/include).
+CPU_QJL_POLAR_ATTN_SMOKE_BIN ?= cpu_qjl_polar_attn_smoke.$(HOST_MTP_TARGET)
+
+$(CPU_QJL_POLAR_ATTN_SMOKE_BIN): cpu_qjl_polar_attn_smoke.c
+	@test -n "$(ELIZA_MTP_CPU_BIN_DIR)" || { echo "cpu-qjl-polar-attn-smoke needs a built llama.cpp CPU-compatible binary dir (set ELIZA_MTP_CPU_BIN_DIR)."; exit 1; }
+	$(CC) $(CFLAGS) -I$(GGML_INC_DIR) cpu_qjl_polar_attn_smoke.c \
+		-L$(ELIZA_MTP_CPU_BIN_DIR) -lggml -lggml-base -lggml-cpu \
+		-Wl,-rpath,$(ELIZA_MTP_CPU_BIN_DIR) -lm -o $(CPU_QJL_POLAR_ATTN_SMOKE_BIN)
+
+cpu-qjl-polar-attn-smoke: $(CPU_QJL_POLAR_ATTN_SMOKE_BIN)
+	DYLD_LIBRARY_PATH=$(ELIZA_MTP_CPU_BIN_DIR):$${DYLD_LIBRARY_PATH:-} \
+	LD_LIBRARY_PATH=$(ELIZA_MTP_CPU_BIN_DIR):$${LD_LIBRARY_PATH:-} \
+	./$(CPU_QJL_POLAR_ATTN_SMOKE_BIN)
+
 cpu-bench: cpu_bench
 cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 	$(CC) $(CFLAGS) -I../reference cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ) -lm -o cpu_bench
@@ -472,7 +538,10 @@ VULKAN_SHADERS = \
     ../vulkan/turbo3_tcq_multi.spv \
     ../vulkan/qjl_multi.spv \
     ../vulkan/fused_attn_qjl_tbq.spv \
-    ../vulkan/fused_attn_qjl_polar.spv
+    ../vulkan/fused_attn_qjl_polar.spv \
+    ../vulkan/mul_mm_scalar.spv \
+    ../vulkan/mul_mm_tiled.spv \
+    ../vulkan/mul_mm_reg.spv
 
 vulkan-spirv: $(VULKAN_SHADERS)
 

@@ -163,6 +163,11 @@ async function main() {
     `${a1?.accountId} vs ${a2?.accountId}`,
   );
 
+  // Follow-up prompts use the cli transport's fresh subprocess path. It must
+  // re-resolve credentials for the SAME selected session/account rather than
+  // drifting to a different least-used account.
+  await acp.sendToSession(s1.sessionId, "follow-up prompt for c1");
+
   // One Codex spawn → per-account CODEX_HOME materialized.
   const s3 = await acp.spawnSession({
     agentType: "codex",
@@ -186,10 +191,22 @@ async function main() {
   const claudeTokens = new Set(
     claudeLines.map((p) => p.CLAUDE_CODE_OAUTH_TOKEN),
   );
+  const argv = (p: Record<string, unknown>): string[] =>
+    Array.isArray(p.argv) ? p.argv.map(String) : [];
+  const hasArgs = (p: Record<string, unknown>, needles: string[]): boolean => {
+    const args = argv(p);
+    return needles.every((needle) => args.includes(needle));
+  };
+  const c1Spawn = claudeLines.find((p) =>
+    hasArgs(p, ["claude", "sessions", "new", "--name", "c1"]),
+  );
+  const c1FollowUp = claudeLines.find((p) =>
+    hasArgs(p, ["claude", "prompt", "-s", "c1"]),
+  );
 
   check(
     "real subprocess received an injected Claude OAuth token",
-    claudeLines.length >= 2,
+    claudeLines.length >= 3,
     `${claudeLines.length} claude invocations`,
   );
   check(
@@ -200,6 +217,14 @@ async function main() {
   check(
     "parent ANTHROPIC_API_KEY was DROPPED from claude subprocess env",
     claudeLines.every((p) => p.ANTHROPIC_API_KEY === null),
+  );
+  check(
+    "Claude follow-up subprocess reused spawn 1's selected account token",
+    Boolean(c1Spawn?.CLAUDE_CODE_OAUTH_TOKEN) &&
+      c1Spawn?.CLAUDE_CODE_OAUTH_TOKEN === c1FollowUp?.CLAUDE_CODE_OAUTH_TOKEN,
+    `${String(c1Spawn?.CLAUDE_CODE_OAUTH_TOKEN)} -> ${String(
+      c1FollowUp?.CLAUDE_CODE_OAUTH_TOKEN,
+    )}`,
   );
   check(
     "codex subprocess received a per-account CODEX_HOME",

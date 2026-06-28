@@ -71,9 +71,17 @@ src/
                               downloader, engine, assignments), app-updates
   storage/                    Client-side storage utilities
   terminal/                   Terminal palette + theme helpers
-  backgrounds/                Static solid background host (BackgroundHost) for the
-                              agent shell. Marketing/landing/login pages use a solid theme
-                              background directly — no animated/video background.
+  backgrounds/                The unified app background. AppBackground (mounted once at
+                              the shell root) renders the persisted BackgroundConfig as a
+                              ShaderBackground (breathing color field) or ImageBackground
+                              (cover image), shared by the home + every view. It also
+                              installs useBackgroundApplyChannel — the single subscriber to
+                              the agent's `background:apply` view event (chat → background).
+                              BackgroundHost is a separate static solid host for
+                              marketing/landing/login pages. State + undo history live in
+                              state/useDisplayPreferences + state/persistence; the
+                              /background view and the BACKGROUND action (plugin-app-control)
+                              both drive the same store.
   companion/                  Companion bar (desktop) — CompanionBar, push-to-talk
   views/                      View event bus + interact protocol (STANDARD_CAPABILITIES)
   hooks/                      ~35 hooks (useMediaQuery, useActivityEvents, useRenderGuard, ...);

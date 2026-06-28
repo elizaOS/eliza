@@ -83,7 +83,7 @@ Examples:
   # Basic training run
   python scripts/run_tinker_training.py --steps 100
 
-  # Use a larger Qwen model
+  # Use a larger Gemma model
   python scripts/run_tinker_training.py --model google/gemma-4-31B
 
   # Adjust hyperparameters

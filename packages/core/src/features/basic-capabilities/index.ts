@@ -14,6 +14,7 @@ import { v4 } from "uuid";
 import { withCanonicalActionDocs } from "../../action-docs.ts";
 import { createUniqueUuid } from "../../entities.ts";
 import { logger } from "../../logger.ts";
+import { fetchWithSsrfGuard } from "../../network/index.ts";
 import {
 	imageDescriptionTemplate,
 	postCreationTemplate,
@@ -22,10 +23,13 @@ import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
 import {
 	bridgeActionCompletedToStreams,
 	bridgeActionStartedToStreams,
+	bridgeConnectorMessageReceivedToStreams,
 	bridgeEvaluatorCompletedToStreams,
 	bridgeEvaluatorStartedToStreams,
+	bridgeMessageReceivedToStreams,
 	bridgeRunEndedToStreams,
 	bridgeRunStartedToStreams,
+	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
 } from "../../services/agent-event-bridge.ts";
 import { ChannelTopicsService } from "../../services/channel-topics.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
@@ -44,6 +48,7 @@ import type {
 	ControlMessagePayload,
 	EntityPayload,
 	EvaluatorEventPayload,
+	EventPayload,
 	IAgentRuntime,
 	IMessageBusService,
 	InvokePayload,
@@ -239,13 +244,22 @@ export async function fetchMediaData(
 	return Promise.all(
 		attachments.map(async (attachment: Media) => {
 			if (/^(http|https):\/\//.test(attachment.url)) {
-				const response = await fetch(attachment.url);
-				if (!response.ok) {
-					throw new Error(`Failed to fetch file: ${attachment.url}`);
+				// Attachment URLs are caller/agent-supplied — route through the SSRF
+				// guard so a crafted URL can't reach internal/metadata endpoints.
+				const { response, release } = await fetchWithSsrfGuard({
+					url: attachment.url,
+					timeoutMs: 30_000,
+				});
+				try {
+					if (!response.ok) {
+						throw new Error(`Failed to fetch file: ${attachment.url}`);
+					}
+					const mediaBuffer = Buffer.from(await response.arrayBuffer());
+					const mediaType = attachment.contentType || "image/png";
+					return { data: mediaBuffer, mediaType };
+				} finally {
+					await release();
 				}
-				const mediaBuffer = Buffer.from(await response.arrayBuffer());
-				const mediaType = attachment.contentType || "image/png";
-				return { data: mediaBuffer, mediaType };
 			}
 			throw new Error(
 				`File not found: ${attachment.url}. Make sure the path is correct.`,
@@ -939,7 +953,28 @@ const controlMessageHandler = async ({
 // Events Configuration
 // ============================================================================
 
+const connectorMessageReceivedEvents = Object.fromEntries(
+	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES.map((eventType) => [
+		eventType,
+		[
+			async (payload: EventPayload) => {
+				await bridgeConnectorMessageReceivedToStreams(eventType, payload);
+			},
+		],
+	]),
+) as PluginEvents;
+
 const events: PluginEvents = {
+	...connectorMessageReceivedEvents,
+
+	// Bridge every connector's inbound message onto the AgentEventService
+	// `message` stream so the home activity rail shows the agent fielding
+	// messages (Discord/Telegram/etc.), not just orchestrator tasks (#9449).
+	[EventType.MESSAGE_RECEIVED]: [
+		async (payload: MessagePayload) => {
+			await bridgeMessageReceivedToStreams(payload);
+		},
+	],
 	[EventType.REACTION_RECEIVED]: [
 		async (payload: MessagePayload) => {
 			await reactionReceivedHandler(payload);

@@ -164,7 +164,7 @@ export class AutonomousA2AService {
     const portfolio = (await a2aClient.sendRequest(
       "a2a.getPortfolio",
       {},
-    )) as unknown as {
+    )) as {
       balance: number;
       positions: Array<PortfolioPosition>;
       pnl: number;

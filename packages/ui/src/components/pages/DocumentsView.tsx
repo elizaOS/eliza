@@ -36,7 +36,7 @@ import {
   maybeCompressDocumentUploadImage,
 } from "../../utils/documents-upload-image";
 import { formatByteSize } from "../../utils/format";
-import { ChatSearchHint } from "../composites/chat-search-hint";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
@@ -307,7 +307,7 @@ const DocumentListItem = memo(function DocumentListItem({
           </div>
         </div>
       </button>
-      <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
+      <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 ">
         <ConfirmDeleteControl
           triggerClassName="h-7 rounded-sm border border-transparent px-2 text-2xs font-bold !bg-transparent text-danger/70 transition-all hover:!bg-danger/12 hover:border-danger/25 hover:text-danger"
           confirmClassName="h-7 rounded-sm border border-danger/25 bg-danger/14 px-2 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
@@ -1157,7 +1157,7 @@ export function DocumentsView({
   );
 
   const documentContent = (
-    <div className="order-2 flex min-w-0 flex-1 lg:order-1">
+    <div className="order-2 flex min-w-0 flex-1 md:order-1">
       <DocumentViewer
         documentId={selectedDocId}
         onUpdated={() => {
@@ -1169,15 +1169,15 @@ export function DocumentsView({
 
   const selectorRail = (
     <div
-      className={`order-1 flex w-full shrink-0 flex-col gap-3 lg:order-2 ${
+      className={`order-1 flex w-full shrink-0 flex-col gap-3 md:order-2 ${
         useCompactSelectorRail
-          ? "lg:w-[18.5rem] xl:w-[20rem]"
-          : "lg:w-[22rem] xl:w-[24rem]"
+          ? "md:w-[16rem] lg:w-[18.5rem] xl:w-[20rem]"
+          : "md:w-[18rem] lg:w-[22rem] xl:w-[24rem]"
       }`}
     >
       <PagePanel
         variant="inset"
-        className={`${useCompactSelectorRail ? "p-2" : "p-3"} !rounded-none !border-0 !bg-transparent !shadow-none !ring-0`}
+        className={`${useCompactSelectorRail ? "p-2" : "p-3"} !rounded-none !border-0 !bg-transparent !shadow-none `}
       >
         <UploadZone
           fileInputId={fileInputId}
@@ -1191,31 +1191,11 @@ export function DocumentsView({
 
       <PagePanel
         variant="inset"
-        className={`flex flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0 ${
+        className={`flex flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none  ${
           useCompactSelectorRail ? "min-h-[14rem]" : "min-h-[18rem]"
         }`}
       >
-        <div className="mb-2 flex items-center justify-between gap-3 px-1">
-          <div className="min-w-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-            {isShowingSearchResults
-              ? t("documentsview.SearchResults", {
-                  defaultValue: "Search results",
-                })
-              : t("documentsview.Documents", { defaultValue: "Documents" })}
-          </div>
-          <div className="shrink-0 text-2xs text-muted">
-            {documents.length === 1
-              ? t("documentsview.DocumentCountOne", {
-                  defaultValue: "1 doc",
-                })
-              : t("documentsview.DocumentCountMany", {
-                  defaultValue: "{{count}} docs",
-                  count: documents.length,
-                })}
-          </div>
-        </div>
-        <ChatSearchHint noun="documents" query={searchQuery} className="px-1" />
-        <div className="mt-2">{scopeFilterStrip}</div>
+        <div className="px-1">{scopeFilterStrip}</div>
 
         <div className="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-0.5 py-0.5">
           {loading && !isShowingSearchResults && documents.length === 0 && (
@@ -1223,11 +1203,36 @@ export function DocumentsView({
           )}
 
           {!loading && !isShowingSearchResults && documents.length === 0 && (
-            <PagePanel.Empty
-              variant="inset"
-              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
-              description={t("documentsview.UploadFilesOrImpo")}
-              title={t("documentsview.NoDocumentsYet")}
+            <ChatEmptyStateWithRecommendations
+              icon={FileText}
+              title={t("documentsview.NoDocumentsYet", {
+                defaultValue: "No documents yet",
+              })}
+              recommendations={[
+                {
+                  label: t("documentsview.RecImportUrl", {
+                    defaultValue: "Import a document from a URL",
+                  }),
+                  prompt: t("documentsview.RecImportUrlPrompt", {
+                    defaultValue:
+                      "Import a document into my knowledge base from this URL: ",
+                  }),
+                },
+                {
+                  label: t("documentsview.RecCreateNote", {
+                    defaultValue: "Create a text note",
+                  }),
+                  prompt: t("documentsview.RecCreateNotePrompt", {
+                    defaultValue:
+                      "Create a text knowledge document for me to remember: ",
+                  }),
+                },
+                {
+                  label: t("documentsview.RecWhatToAdd", {
+                    defaultValue: "What should I add to Knowledge?",
+                  }),
+                },
+              ]}
             />
           )}
 
@@ -1237,7 +1242,7 @@ export function DocumentsView({
             filteredDocuments.length === 0 && (
               <PagePanel.Empty
                 variant="inset"
-                className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+                className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
                 description={t("documentsview.SearchTips", {
                   defaultValue:
                     "Try a filename, topic, or phrase from the document body.",
@@ -1251,7 +1256,7 @@ export function DocumentsView({
           {isShowingSearchResults && visibleSearchResults.length === 0 && (
             <PagePanel.Empty
               variant="inset"
-              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
               description={t("documentsview.SearchTips", {
                 defaultValue:
                   "Try a filename, topic, or phrase from the document body.",
@@ -1287,14 +1292,9 @@ export function DocumentsView({
   const compactDocumentStrip = !shouldRenderSelectorRail ? (
     <PagePanel
       variant="inset"
-      className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+      className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none "
     >
-      <div className="flex flex-col gap-2 md:flex-row md:items-center">
-        <ChatSearchHint
-          noun="documents"
-          query={searchQuery}
-          className="min-w-0 flex-1"
-        />
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
         {fileInputId ? (
           <label
             htmlFor={fileInputId}
@@ -1353,10 +1353,12 @@ export function DocumentsView({
       {isServiceLoading && (
         <PagePanel
           variant="inset"
-          className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+          className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none "
         >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          {t("documentsview.DocumentServiceIs")}
+          {t("documentsview.DocumentServiceIs", {
+            defaultValue: "Knowledge service is initializing...",
+          })}
         </PagePanel>
       )}
 
@@ -1389,7 +1391,7 @@ export function DocumentsView({
 
       {compactDocumentStrip}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
         {documentContent}
         {shouldRenderSelectorRail ? selectorRail : null}
       </div>

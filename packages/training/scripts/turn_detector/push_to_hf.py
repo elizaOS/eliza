@@ -155,7 +155,7 @@ mid-utterance prefix as a negative (EOU=0)).
 {arch_note} The runtime
 (`plugins/plugin-local-inference/src/services/voice/eot-classifier.ts`)
 scores end-of-turn probability as
-`softmax(logits[:, last_real_pos, :])[<|im_end|>]` — same shape as the
+`softmax(logits[:, last_real_pos, :])[<end_of_turn>]` — same shape as the
 upstream LiveKit ONNX, drop-in compatible.
 
 ## Files
@@ -172,7 +172,7 @@ fine-tune).
 - Optimizer: APOLLO-Mini (rank-1 tensor-wise scaling, smallest optimizer
   state — see `packages/training/AGENTS.md` §1).
 - Loss: binary cross-entropy on
-  `(im_end_logit - logsumexp(other_logits))` at the last real token
+  `(end_of_turn_logit - logsumexp(other_logits))` at the last real token
   position. This is the same quantity the runtime softmax-projects.
 {training_block}
 

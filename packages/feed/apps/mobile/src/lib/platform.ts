@@ -8,17 +8,41 @@ interface PlatformInfo {
   platform: "ios" | "android" | "web" | "ssr";
 }
 
+interface CapacitorBridge {
+  isNativePlatform?: () => boolean;
+  getPlatform?: () => string;
+}
+
+interface CapacitorWindow extends Window {
+  Capacitor?: CapacitorBridge;
+}
+
 let cached: PlatformInfo | undefined;
+
+function normalizeCapacitorPlatform(
+  platform: string | undefined,
+): PlatformInfo["platform"] {
+  switch (platform) {
+    case "ios":
+    case "android":
+    case "web":
+      return platform;
+    default:
+      return "android";
+  }
+}
 
 function detect(): PlatformInfo {
   if (typeof window === "undefined") {
     return { isNative: false, platform: "ssr" };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Capacitor global
-  const cap = (window as any)?.Capacitor;
+  const cap = (window as CapacitorWindow).Capacitor;
   if (cap?.isNativePlatform?.()) {
-    return { isNative: true, platform: cap.getPlatform?.() ?? "android" };
+    return {
+      isNative: true,
+      platform: normalizeCapacitorPlatform(cap.getPlatform?.()),
+    };
   }
 
   const origin = window.location.origin;

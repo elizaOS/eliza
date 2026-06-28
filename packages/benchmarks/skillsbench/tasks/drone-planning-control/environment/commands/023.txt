@@ -1,1 +1,0 @@
-Fly from (0,0,2) to (1,1,2) in 5 seconds

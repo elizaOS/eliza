@@ -303,7 +303,7 @@ export default function AppChargePaymentPage() {
         id="main"
         className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center"
       >
-        <section className="w-full border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/30 sm:p-7">
+        <section className="w-full border border-white/10 bg-white/[0.06] p-5 sm:p-7">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               {details.app.logo_url ? (

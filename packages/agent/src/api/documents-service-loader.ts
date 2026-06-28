@@ -1,4 +1,10 @@
-import type { AgentRuntime, Memory, Service, UUID } from "@elizaos/core";
+import type {
+  AccessContext,
+  AgentRuntime,
+  Memory,
+  Service,
+  UUID,
+} from "@elizaos/core";
 
 // Canonical union types for the documents service surface.
 // Plugin packages (e.g. @elizaos/plugin-documents) re-export these so route
@@ -54,6 +60,7 @@ export interface DocumentsServiceLike {
     message: Memory,
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
     searchMode?: DocumentSearchMode,
+    accessContext?: AccessContext,
   ): Promise<
     Array<{
       id: UUID;

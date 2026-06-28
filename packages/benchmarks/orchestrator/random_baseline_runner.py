@@ -230,17 +230,6 @@ def _eliza_1_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _evm_payload(score: float) -> dict[str, Any]:
-    return {
-        "normalized_score": score,
-        "final_reward": score,
-        "max_reward": 1.0,
-        "final_contracts": _passed_count(score),
-        "model": "synthetic-calibration",
-        "run_id": "synthetic-calibration",
-    }
-
-
 def _solana_payload(score: float) -> dict[str, Any]:
     return {
         "normalized_score": score,
@@ -324,21 +313,6 @@ def _interrupt_payload(score: float) -> dict[str, Any]:
             }
         ],
         "mode": "synthetic-calibration",
-    }
-
-
-def _loca_payload(score: float) -> dict[str, Any]:
-    return {
-        "summary": {
-            "avg_accuracy": score,
-            "aggregate_trajectory_count": 1,
-            "trajectory_count": 1,
-            "issue_count": 0,
-            "metadata_total_tasks": 1,
-            "total_api_tokens": 1,
-            "max_prompt_tokens": 1,
-            "max_total_tokens": 1,
-        }
     }
 
 
@@ -426,6 +400,23 @@ def _personality_payload(score: float) -> dict[str, Any]:
             "reviewRate": 0,
             "mismatches": [],
         }
+    }
+
+
+def _three_agent_dialogue_payload(score: float) -> dict[str, Any]:
+    # verification.json shape (VerificationResult). The benchmark score is the
+    # emotion-detected fraction across turns; the synthetic calibration payload
+    # sets it to the requested score and marks a non-empty 2-turn run.
+    return {
+        "transcriptNotNull": score > 0.0,
+        "audioNotBlank": score > 0.0,
+        "distinctSpeakersDetected": 3,
+        "emotionsDetected": _passed_count(score, 2),
+        "emotionDetectedFraction": score,
+        "turnsTaken": 2,
+        "durationSec": 1.0,
+        "pass": score >= 1.0,
+        "failures": [] if score >= 1.0 else ["calibration"],
     }
 
 
@@ -640,25 +631,6 @@ def _gauntlet_payload(score: float) -> dict[str, Any]:
     }
 
 
-def _compactbench_payload(score: float) -> str:
-    return json.dumps(
-        {
-            "event": "analysis_end",
-            "overall_score": score,
-            "benchmark_quality_score": score,
-            "raw_lexical_overall_score": score,
-            "valid_false_negatives": 0,
-            "semantic_false_positives": 0,
-            "failures_remaining": 0 if score > 0 else 1,
-            "repaired_expected_conflicts": 0,
-            "removed_invalid_items": 0,
-            "judge_refusals": 0,
-        },
-        sort_keys=True,
-        ensure_ascii=True,
-    ) + "\n"
-
-
 def _generic_payload(benchmark_id: str, harness: str, score: float) -> dict[str, Any]:
     return {
         "benchmark_id": benchmark_id,
@@ -692,12 +664,10 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "scambench": ("scambench-results.json", _scambench_payload),
     "app-eval": ("summary.json", _app_eval_payload),
     "clawbench": ("trajectory_random_v1.json", _clawbench_payload),
-    "compactbench": ("compactbench-results-random_v1.valid-hits.jsonl", _compactbench_payload),
     "configbench": ("configbench-results-random_v1.json", _configbench_payload),
     "context_bench": ("context_bench_random_v1.json", _context_bench_payload),
     "eliza_replay": ("eliza-replay-results.json", _eliza_replay_payload),
     "eliza_1": ("eliza-1-results.json", _eliza_1_payload),
-    "evm": ("metrics/evm_random_v1_metrics.json", _evm_payload),
     "experience": ("experience-results.json", _experience_payload),
     "framework": ("framework-results.json", _framework_payload),
     "gauntlet": ("gauntlet-results.json", _gauntlet_payload),
@@ -711,7 +681,6 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "hyperliquidbench": ("hyperliquid_bench-random_v1.json", _hyperliquid_payload),
     "interrupt_bench": ("report.json", _interrupt_payload),
     "lifeops_bench": ("lifeops-bench-random_v1.json", _lifeops_payload),
-    "loca_bench": ("loca-output/eliza_loca_audit.json", _loca_payload),
     "mind2web": ("mind2web-results.json", _mind2web_payload),
     "mint": ("mint-benchmark-results.json", _mint_payload),
     "mmau": ("mmau_random_v1.json", _mmau_payload),
@@ -725,6 +694,7 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "social_alpha": ("benchmark_results_random_v1.json", _social_alpha_payload),
     "solana": ("eliza_random_v1_metrics.json", _solana_payload),
     "swe_bench": ("swe-bench-results.json", _swe_bench_payload),
+    "three_agent_dialogue": ("verification.json", _three_agent_dialogue_payload),
     "swe_bench_orchestrated": ("swe-bench-orchestrated-results.json", _swe_bench_orchestrated_payload),
     "tau_bench": ("tau-bench-results.json", _tau_bench_payload),
     "terminal_bench": ("terminal-bench-results.json", _terminal_bench_payload),

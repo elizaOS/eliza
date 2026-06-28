@@ -309,7 +309,7 @@ function Frame({ children }: { children: React.ReactNode }) {
     <div className="relative flex min-h-screen w-full flex-col overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-black via-zinc-900 to-black" />
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
-        <BrandCard className="w-full max-w-md backdrop-blur-sm bg-black/60">
+        <BrandCard className="w-full max-w-md bg-black/85">
           <CornerBrackets size="md" className="opacity-50" />
           <div className="relative z-10 flex flex-col items-center gap-6 py-8 px-2">
             {children}

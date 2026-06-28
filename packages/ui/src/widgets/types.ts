@@ -5,16 +5,14 @@ import type { UiSpec } from "../config/ui-spec";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 
 /** Named injection points where plugin widgets can render. */
-export type WidgetSlot =
-  | "chat-sidebar"
-  | "chat-inline"
-  | "wallet"
-  | "browser"
-  | "heartbeats"
-  | "character"
-  | "settings"
-  | "nav-page"
-  | "automations";
+export const WIDGET_SLOTS = [
+  "chat-sidebar",
+  "character",
+  "nav-page",
+  "home",
+] as const;
+
+export type WidgetSlot = (typeof WIDGET_SLOTS)[number];
 
 /**
  * Serializable widget metadata declared by a plugin.
@@ -35,6 +33,19 @@ export interface WidgetProps {
   pluginState?: PluginInfo;
   events?: ActivityEvent[];
   clearEvents?: () => void;
+  /**
+   * The slot this instance is rendering in. Lets a widget shared between the
+   * chat sidebar and the home grid adapt — e.g. render `null` instead of an
+   * empty-state card on `home` (the home surface must not show empty
+   * placeholders; #9143).
+   */
+  slot?: WidgetSlot;
+  /**
+   * Static Tailwind grid-span classes for the home 4-col grid, derived from the
+   * declaration's `size` by the host (e.g. "col-span-2 row-span-1"). The widget
+   * applies this to its single root grid-item element. Absent off the home slot.
+   */
+  spanClassName?: string;
 }
 
 /**

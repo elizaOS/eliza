@@ -310,6 +310,9 @@ export function statSync(): typeof emptyStats {
 export async function access(): Promise<void> {
   return unavailable("fs.promises.access");
 }
+export async function open(): Promise<never> {
+  return unavailable("fs.promises.open");
+}
 export async function mkdir(): Promise<void> {}
 export async function readFile(): Promise<never> {
   return unavailable("fs.promises.readFile");
@@ -338,6 +341,7 @@ export const promises = {
   access,
   cp,
   mkdir,
+  open,
   readFile,
   writeFile,
   rename,

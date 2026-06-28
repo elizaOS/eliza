@@ -81,10 +81,17 @@ function normalizeCreateTaskRequest(
     input.windowPolicy,
     `${field}.windowPolicy`,
   );
-  if (windowPolicy) {
-    // normalizeOptionalRecord validates structure at the boundary; the return
-    // type is Record<string,unknown> but the value satisfies LifeOpsWindowPolicy.
-    request.windowPolicy = windowPolicy as LifeOpsWindowPolicy;
+  if (
+    windowPolicy &&
+    typeof windowPolicy.timezone === "string" &&
+    Array.isArray(windowPolicy.windows)
+  ) {
+    // Build the policy from the boundary-validated fields rather than asserting
+    // the whole Record across a non-overlapping type.
+    request.windowPolicy = {
+      timezone: windowPolicy.timezone,
+      windows: windowPolicy.windows as LifeOpsTimeWindowDefinition[],
+    };
   }
   const progressionRule = normalizeOptionalRecord(
     input.progressionRule,
@@ -93,15 +100,12 @@ function normalizeCreateTaskRequest(
   if (progressionRule) {
     request.progressionRule = progressionRule as LifeOpsProgressionRule;
   }
-  if (input.websiteAccess !== undefined) {
-    request.websiteAccess =
-      input.websiteAccess === null
-        ? null
-        : (requireRecord(
-            input.websiteAccess,
-            `${field}.websiteAccess`,
-            // requireRecord validates structure at the boundary.
-          ) as LifeOpsWebsiteAccessPolicy);
+  const websiteAccess = normalizeWebsiteAccessPolicy(
+    input.websiteAccess,
+    `${field}.websiteAccess`,
+  );
+  if (websiteAccess !== undefined) {
+    request.websiteAccess = websiteAccess;
   }
   if (input.reminderPlan !== undefined) {
     request.reminderPlan =

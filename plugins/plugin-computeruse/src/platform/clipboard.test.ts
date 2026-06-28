@@ -194,14 +194,20 @@ describe("clipboard — Windows", () => {
     expect(args).toEqual(["-NoProfile", "-Command", "Get-Clipboard -Raw"]);
   });
 
-  it("write pipes to PowerShell Set-Clipboard via $input", async () => {
+  it("write pipes to PowerShell Set-Clipboard via [Console]::In.ReadToEnd()", async () => {
     setPlatform("win32");
     spawnSyncMock.mockReturnValue({ status: 0, stdout: "", stderr: "" });
     const { writeClipboard } = await importClipboard();
     await writeClipboard("hello windows");
     const [cmd, args, options] = spawnSyncMock.mock.calls[0] ?? [];
     expect(cmd).toBe("powershell");
-    expect(args).toEqual(["-NoProfile", "-Command", "$input | Set-Clipboard"]);
+    // `$input | Set-Clipboard` hangs under -Command (does not consume piped
+    // stdin); read stdin to EOF explicitly instead.
+    expect(args).toEqual([
+      "-NoProfile",
+      "-Command",
+      "Set-Clipboard -Value ([Console]::In.ReadToEnd())",
+    ]);
     expect((options as { input: string }).input).toBe("hello windows");
   });
 });

@@ -36,6 +36,43 @@ function segmentAt(segments: Transcript["segments"], ms: number): number {
   return found;
 }
 
+interface TranscriptWordProps {
+  text: string;
+  startMs: number;
+  isActive: boolean;
+  testId: string;
+  onSeek: (startMs: number) => void;
+}
+
+// Memoized so that, as playback advances, only the word whose active-state flips
+// re-renders — not every word button in the transcript on every audio frame.
+// `onSeek` is stable (ref-backed in the parent), so `isActive` is the only prop
+// that changes.
+const TranscriptWord = React.memo(function TranscriptWord({
+  text,
+  startMs,
+  isActive,
+  testId,
+  onSeek,
+}: TranscriptWordProps): React.JSX.Element {
+  return (
+    <>
+      <button
+        type="button"
+        data-testid={testId}
+        data-active={isActive ? "true" : undefined}
+        onClick={() => onSeek(startMs)}
+        className={cn(
+          "rounded px-0.5 transition-colors hover:bg-bg-muted/40",
+          isActive && "bg-accent/16 text-accent-fg",
+        )}
+      >
+        {text}
+      </button>{" "}
+    </>
+  );
+});
+
 export function TranscriptBody({
   transcript,
   currentTimeMs,
@@ -48,6 +85,13 @@ export function TranscriptBody({
   const activeFlat = activeWordIndex(flat, currentTimeMs);
   const active = activeFlat >= 0 ? flat[activeFlat] : undefined;
   const fallbackSeg = segmentAt(transcript.segments, currentTimeMs);
+  // Stable seek handler so the memoized words don't see a new prop every frame.
+  const onSeekRef = React.useRef(onSeekMs);
+  onSeekRef.current = onSeekMs;
+  const handleSeek = React.useCallback(
+    (ms: number) => onSeekRef.current?.(ms),
+    [],
+  );
 
   return (
     <div className="space-y-4 leading-relaxed text-txt">
@@ -67,33 +111,25 @@ export function TranscriptBody({
               )}
             >
               {seg.words.length > 0 ? (
-                seg.words.map((w, wi) => {
-                  const isActive =
-                    active !== undefined &&
-                    active.segmentIndex === si &&
-                    active.wordIndex === wi;
-                  return (
-                    <React.Fragment key={`${seg.id}-${w.startMs}-${w.text}`}>
-                      <button
-                        type="button"
-                        data-testid={`transcript-word-${si}-${wi}`}
-                        data-active={isActive ? "true" : undefined}
-                        onClick={() => onSeekMs?.(w.startMs)}
-                        className={cn(
-                          "rounded px-0.5 transition-colors hover:bg-bg-muted/40",
-                          isActive && "bg-accent/16 text-accent-fg",
-                        )}
-                      >
-                        {w.text}
-                      </button>{" "}
-                    </React.Fragment>
-                  );
-                })
+                seg.words.map((w, wi) => (
+                  <TranscriptWord
+                    key={`${seg.id}-${w.startMs}-${w.text}`}
+                    text={w.text}
+                    startMs={w.startMs}
+                    isActive={
+                      active !== undefined &&
+                      active.segmentIndex === si &&
+                      active.wordIndex === wi
+                    }
+                    testId={`transcript-word-${si}-${wi}`}
+                    onSeek={handleSeek}
+                  />
+                ))
               ) : (
                 <button
                   type="button"
                   data-testid={`transcript-segment-text-${si}`}
-                  onClick={() => onSeekMs?.(seg.startMs)}
+                  onClick={() => handleSeek(seg.startMs)}
                   className="text-left"
                 >
                   {seg.text}

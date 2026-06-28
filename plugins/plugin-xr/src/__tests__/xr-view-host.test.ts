@@ -3,40 +3,17 @@
  *
  * These tests call the real route handler directly — no mock server,
  * no Playwright — proving that the elizaOS plugin infrastructure
- * produces correct, complete HTML for every one of the 23 registered
- * XR view IDs.  This is the "real elizaOS plugin infrastructure at scale"
- * validation layer that complements the Playwright simulator tests.
+ * produces correct, complete HTML for arbitrary XR view IDs. This validates
+ * the shared host template without carrying a copied inventory of plugin views.
  */
 
 import { describe, expect, it } from "vitest";
 import { xrViewHostRoute } from "../routes/xr-view-host.ts";
 
-// All 23 registered XR view IDs — mirrors ALL_VIEW_IDS in all-views-crud.spec.ts
-// and the VIEW_MANIFESTS list in plugin-tui-view-coverage.test.ts.
-const ALL_VIEW_IDS = [
-  "wallet",
-  "companion",
-  "training",
-  "task-coordinator",
-  "orchestrator",
-  "views-manager",
-  "polymarket",
-  "vincent",
-  "steward",
-  "shopify",
-  "phone",
-  "contacts",
-  "messages",
-  "feed",
-  "defense-of-the-agents",
-  "clawville",
-  "hyperliquid",
-  "lifeops",
-  "screenshare",
-  "trajectory-logger",
-  "model-tester",
-  "smartglasses",
-  "facewear",
+const VIEW_HOST_SMOKE_IDS = [
+  "xr-route-smoke",
+  "hyphenated-view",
+  "space-panel",
 ] as const;
 
 function makeCtx(viewId: string) {
@@ -62,8 +39,8 @@ describe("xrViewHostRoute — real route handler", () => {
     expect(result.status).toBe(400);
   });
 
-  it("returns 200 with Content-Type text/html for every registered view id", async () => {
-    for (const id of ALL_VIEW_IDS) {
+  it("returns 200 with Content-Type text/html for representative view ids", async () => {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const result = await xrViewHostRoute.routeHandler(makeCtx(id) as never);
       expect(result.status, `${id}: expected status 200`).toBe(200);
       expect(
@@ -73,8 +50,8 @@ describe("xrViewHostRoute — real route handler", () => {
     }
   });
 
-  it("every view-host page has a DOCTYPE and html[data-view-id] set to the view id", async () => {
-    for (const id of ALL_VIEW_IDS) {
+  it("each view-host page has a DOCTYPE and html[data-view-id] set to the view id", async () => {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const html = await fetchHtml(id);
       expect(html, `${id}: should start with <!DOCTYPE html>`).toMatch(
         /^<!DOCTYPE html>/i,
@@ -85,8 +62,8 @@ describe("xrViewHostRoute — real route handler", () => {
     }
   });
 
-  it("every view-host page contains the XR shell structure", async () => {
-    for (const id of ALL_VIEW_IDS) {
+  it("each view-host page contains the XR shell structure", async () => {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const html = await fetchHtml(id);
       expect(html, `${id}: missing #xr-shell`).toContain('id="xr-shell"');
       expect(html, `${id}: missing #xr-bar`).toContain('id="xr-bar"');
@@ -98,8 +75,8 @@ describe("xrViewHostRoute — real route handler", () => {
     }
   });
 
-  it("every view-host page includes the voice transcript routing script", async () => {
-    for (const id of ALL_VIEW_IDS) {
+  it("each view-host page includes the voice transcript routing script", async () => {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const html = await fetchHtml(id);
       // The page must listen for xr:transcript messages and route to focused input
       expect(html, `${id}: missing xr:transcript handler`).toContain(
@@ -114,8 +91,8 @@ describe("xrViewHostRoute — real route handler", () => {
     }
   });
 
-  it("every view-host page sends xr:view-ready to parent on mount", async () => {
-    for (const id of ALL_VIEW_IDS) {
+  it("each view-host page sends xr:view-ready to parent on mount", async () => {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const html = await fetchHtml(id);
       expect(html, `${id}: missing xr:view-ready postMessage`).toContain(
         "xr:view-ready",
@@ -127,8 +104,8 @@ describe("xrViewHostRoute — real route handler", () => {
     }
   });
 
-  it("every view-host page has a React importmap pointing to esm.sh", async () => {
-    for (const id of ALL_VIEW_IDS) {
+  it("each view-host page has a React importmap pointing to esm.sh", async () => {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const html = await fetchHtml(id);
       expect(html, `${id}: missing importmap`).toContain('type="importmap"');
       expect(
@@ -138,8 +115,8 @@ describe("xrViewHostRoute — real route handler", () => {
     }
   });
 
-  it("every view-host page constructs the bundle URL from the agent origin", async () => {
-    for (const id of ALL_VIEW_IDS) {
+  it("each view-host page constructs the bundle URL from the agent origin", async () => {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const html = await fetchHtml(id);
       // Bundle URL must reference the view id and the agent origin
       expect(html, `${id}: bundle URL must include view id`).toContain(
@@ -148,8 +125,8 @@ describe("xrViewHostRoute — real route handler", () => {
     }
   });
 
-  it("every view-host page has XR-friendly form styling (min-height 44px)", async () => {
-    for (const id of ALL_VIEW_IDS) {
+  it("each view-host page has XR-friendly form styling (min-height 44px)", async () => {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const html = await fetchHtml(id);
       expect(html, `${id}: missing 44px touch target rule`).toContain(
         "min-height: 44px",
@@ -157,8 +134,8 @@ describe("xrViewHostRoute — real route handler", () => {
     }
   });
 
-  it("every view-host page includes a transcript toast element", async () => {
-    for (const id of ALL_VIEW_IDS) {
+  it("each view-host page includes a transcript toast element", async () => {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const html = await fetchHtml(id);
       expect(html, `${id}: missing #transcript-toast`).toContain(
         'id="transcript-toast"',
@@ -167,7 +144,7 @@ describe("xrViewHostRoute — real route handler", () => {
   });
 
   it("Content-Security-Policy header allows the agent origin and esm.sh", async () => {
-    for (const id of ALL_VIEW_IDS) {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const result = await xrViewHostRoute.routeHandler(makeCtx(id) as never);
       const csp = result.headers?.["Content-Security-Policy"] ?? "";
       expect(csp, `${id}: CSP must include esm.sh`).toContain("esm.sh");
@@ -177,9 +154,9 @@ describe("xrViewHostRoute — real route handler", () => {
     }
   });
 
-  it("all 23 view-host pages are distinct (each embeds its own VIEW_ID)", async () => {
+  it("view-host pages are distinct (each embeds its own VIEW_ID)", async () => {
     const htmlMap = new Map<string, string>();
-    for (const id of ALL_VIEW_IDS) {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       htmlMap.set(id, await fetchHtml(id));
     }
     // Every page should differ because VIEW_ID is embedded

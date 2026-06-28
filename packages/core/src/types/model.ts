@@ -789,10 +789,32 @@ export interface GenerateTextOptions {
  */
 export interface GenerateTextResult {
 	text: string;
+	/**
+	 * Raw assistant content as returned by some provider adapters: either a flat
+	 * string or an array of content parts (e.g. Anthropic/OpenAI v5 message
+	 * parts). Normalized to `text` by `getV5ModelText`/`extractGenerateTextContentText`.
+	 */
+	content?: string | GenerateTextContentPart[];
+	/**
+	 * Some provider adapters surface the assistant message under `response`
+	 * instead of `text`. Normalized away by the same helpers.
+	 */
+	response?: string;
 	usage?: TokenUsage;
 	finishReason?: string;
 	toolCalls?: ToolCall[];
 	providerMetadata?: Record<string, JsonValue | object | undefined>;
+}
+
+/**
+ * A single content part within a {@link GenerateTextResult.content} array, as
+ * returned by chat-completion provider adapters (text/output_text parts carry
+ * their string under `text`; some carry it under `content`).
+ */
+export interface GenerateTextContentPart {
+	type?: string;
+	text?: string;
+	content?: string;
 }
 
 /**
@@ -842,6 +864,14 @@ export interface ImageGenerationParams {
 export interface ImageDescriptionParams {
 	imageUrl: string;
 	prompt?: string;
+	signal?: AbortSignal;
+	/**
+	 * Explicit opt-in token-by-token streaming of the generated description.
+	 * Hidden preprocessing calls must leave this false/undefined so ambient chat
+	 * streaming callbacks are not exposed to the user.
+	 */
+	stream?: boolean;
+	onStreamChunk?: StreamChunkCallback;
 }
 export interface ImageDescriptionResult {
 	title: string;
@@ -858,6 +888,12 @@ export interface TranscriptionParams {
 	audioUrl: string;
 	prompt?: string;
 	signal?: AbortSignal;
+	/**
+	 * Reserved for incremental ASR providers. Current first-party local handlers
+	 * are buffered and ignore this field.
+	 */
+	stream?: boolean;
+	onStreamChunk?: StreamChunkCallback;
 }
 
 /**

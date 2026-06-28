@@ -1,6 +1,6 @@
 # eliza-1 — Training Pipeline
 
-Fine-tunes the **eliza-1** model series (`eliza-1-0_8b`, `eliza-1-2b`,
+Fine-tunes the **eliza-1** model series (`eliza-1-2b`,
 `eliza-1-4b`, `eliza-1-9b`, `eliza-1-27b`) on Eliza-native Vercel AI SDK
 trajectory rows: the exact
 request sent to the model plus the exact normalized response returned by the
@@ -26,21 +26,20 @@ arXiv:2412.05270), not LoRA.
 
 | registry key | eliza release | base               | tier        | default training target             | optimizer    |
 |--------------|---------------|--------------------|-------------|-------------------------------------|--------------|
-| qwen3.5-0.8b | eliza-1-0_8b  | Qwen/Qwen3.5-0.8B-Base | local       | 16 GB consumer GPU                  | apollo_mini  |
-| qwen3.5-2b   | eliza-1-2b    | Qwen/Qwen3.5-2B-Base   | local       | 16 GB consumer GPU                  | apollo_mini  |
-| qwen3.5-4b   | eliza-1-4b    | Qwen/Qwen3.5-4B-Base   | local       | 24 GB consumer/workstation GPU      | apollo_mini  |
-| qwen3.5-9b   | eliza-1-9b    | Qwen/Qwen3.5-9B        | workstation | 80 GB-class GPU                     | apollo       |
-| qwen3.6-27b  | eliza-1-27b   | Qwen/Qwen3.6-27B       | cloud       | 2x H200 / B200                      | apollo       |
+| gemma4-e2b   | eliza-1-2b    | google/gemma-4-E2B | local       | 16 GB consumer GPU                  | apollo_mini  |
+| gemma4-e4b   | eliza-1-4b    | google/gemma-4-E4B | local       | 24 GB consumer/workstation GPU      | apollo_mini  |
+| gemma4-12b   | eliza-1-9b    | google/gemma-4-12B | workstation | 80 GB-class GPU                     | apollo       |
+| gemma4-31b   | eliza-1-27b   | google/gemma-4-31B | cloud       | 2x H200 / B200                      | apollo       |
 
-After training, two **post-training quantization** passes run:
-**PolarQuant** (4-bit weights via Hadamard rotation, arXiv:2603.29078) and
-**TurboQuant** (online KV-cache quantization, arXiv:2504.19874). KV
-compression is rounded out by **QJL** (1-bit JL-projected K cache,
-arXiv:2406.03482).
+After training, the Gemma publish path produces GGUF q4/q6/q8 release
+artifacts and MTP drafter manifests for speculative decoding. The older KV
+compression recipes (**PolarQuant**, **TurboQuant**, and **QJL**) remain in
+the tree for legacy experiments, but Gemma 4's MQA + windowed SWA KV layout
+makes them optional rather than required release gates.
 
 A unified pipeline runner (`scripts/run_pipeline.py`) chains:
 
-  base bench → APOLLO SFT → fine-tuned bench → PolarQuant + TurboQuant + QJL → quantized bench
+  base bench → APOLLO SFT → fine-tuned bench → GGUF q4/q6/q8 + MTP manifest → quantized bench
 
 Per-task benchmarks live in `scripts/benchmark/native_tool_call_bench.py` and
 score native tool-call structure, tool names, argument keys, and JSON routing
@@ -75,12 +74,12 @@ data/raw/* ──▶ normalize.py ──▶ data/normalized/<slug>.jsonl
                        ┌──────────┴──────────┐
                        ▼                     ▼
               train_local.py        train_vast.sh
-              (APOLLO, 0.8B/2B)     (APOLLO, 4B remote GPU)
+              (APOLLO, E2B/E4B)     (APOLLO, remote GPU)
                                   │
                                   ▼
               ┌─────────────┬─────┴─────┬─────────────┐
               ▼             ▼           ▼             ▼
-       polarquant_apply  turboquant_apply  qjl_apply (vendored)
+       gguf_eliza1_apply  MTP drafter verify  optional legacy KV recipes
                                   │
                                   ▼
                           native_tool_call_bench.py
@@ -143,22 +142,22 @@ uv run --extra train python scripts/trajectories_to_sft.py \
 
 # One-command local APOLLO fine-tune from trajectory export(s)
 uv run --extra train python scripts/run_pipeline.py \
-    --registry-key qwen3.5-2b \
+    --registry-key gemma4-e2b \
     --trajectory-export ../trajectory-export.jsonl \
     --epochs 1 --skip-base-bench
 
-# Smoke test on 0.8B (smallest active eliza-1 size, trains on 16 GB)
+# Smoke test on E2B (entry active eliza-1 size, trains on 16 GB)
 uv run --extra train python scripts/run_pipeline.py \
-    --registry-key qwen3.5-0.8b --max-samples 1000 --epochs 1
+    --registry-key gemma4-e2b --max-samples 1000 --epochs 1
 
-# Full pipeline on 2B (eliza-1-2b, real local run)
+# Full pipeline on E2B (eliza-1-2b, real local run)
 uv run --extra train python scripts/run_pipeline.py \
-    --registry-key qwen3.5-2b --epochs 3
+    --registry-key gemma4-e2b --epochs 3
 
-# Remote GPU pipeline for the active 4B APOLLO tier
+# Remote GPU pipeline for the active E4B APOLLO tier
 VAST_API_KEY=... HUGGING_FACE_HUB_TOKEN=... \
     bash scripts/train_vast.sh provision-and-train \
-    --registry-key qwen3.5-4b --epochs 1 --bootstrap hf
+    --registry-key gemma4-e4b --epochs 1 --bootstrap hf
 
 # Push the trained checkpoint to elizaos/eliza-1 (gated bundle path).
 # publish_model.py --mode bundle runs the full publish orchestrator:
@@ -167,24 +166,23 @@ VAST_API_KEY=... HUGGING_FACE_HUB_TOKEN=... \
 HF_TOKEN=hf_xxx uv run python -m scripts.publish.publish_model \
     --mode bundle \
     --tier 4b \
-    --bundle-dir checkpoints/qwen3-5-4b-apollo/final
+    --bundle-dir checkpoints/gemma4-e4b-apollo/final
 ```
 
 See `RL_STRATEGY.md` for the post-SFT plan (DPO + GRPO via verl).
 
 ### Renting GPUs
 
-The active 0.8B, 2B, 4B, 9B, and 27B APOLLO tiers can train on **Vast.ai** via `scripts/train_vast.sh`
+The active E2B, E4B, 12B, and 31B APOLLO tiers can train on **Vast.ai** via `scripts/train_vast.sh`
 (subcommands: `search`, `provision`, `sync`, `run`,
 `quantize`, `bench`, `fetch`, `status`, `pull-checkpoints`,
 `kill-and-teardown`, `teardown`, `provision-and-train`). The script
 auto-picks the GPU target from `REGISTRY_KEY`:
 
-- `qwen3.5-0.8b` / `eliza-1-0_8b` → smallest active smoke/default tier.
-- `qwen3.5-2b` / `eliza-1-2b` → local 16 GB training tier.
-- `qwen3.5-4b` / `eliza-1-4b` → 48 GB-class training tier, optimized for 24 GB inference after quantization.
-- `qwen3.5-9b` / `eliza-1-9b` → workstation tier.
-- `qwen3.6-27b` / `eliza-1-27b` → cloud tier.
+- `gemma4-e2b` / `eliza-1-2b` → entry local 16 GB training tier.
+- `gemma4-e4b` / `eliza-1-4b` → 48 GB-class training tier, optimized for local inference after quantization.
+- `gemma4-12b` / `eliza-1-9b` → workstation tier.
+- `gemma4-31b` / `eliza-1-27b` → cloud tier.
 
 Lower-level helpers live in `scripts/lib/vast.py` (searchable via
 `python -m scripts.lib.vast pick blackwell6000-2x`). `scripts/day0_smoke.sh`
@@ -196,16 +194,14 @@ extend the Nebius path.
 
 - **APOLLO** — `scripts/training/optimizer.py` (`apollo-torch` package).
   Validation: `scripts/training/test_apollo.py`.
-- **PolarQuant** — `scripts/quantization/polarquant_apply.py` plus the
-  vendored `scripts/quantization/polarquant/` library. 4-bit weight codes
-  + fp16 norms in a sidecar safetensors.
-- **TurboQuant** — `scripts/quantization/turboquant_apply.py` (`turbokv`
-  package, pure-PyTorch reference) and
-  `scripts/quantization/fused_turboquant_apply.py` (Triton-fused, vendored
-  in `scripts/quantization/fused_turboquant_vendored/`). Inference-time KV
-  cache quantizer.
-- **QJL** — `scripts/quantization/qjl_apply.py` plus the vendored
-  `scripts/quantization/qjl/` CUDA extension. 1-bit JL-projected K cache.
+- **GGUF release quantization** — `scripts/quantization/gguf_eliza1_apply.py`
+  produces the q4/q6/q8 artifacts consumed by the local inference manifests.
+- **MTP drafter verify** — Gemma 4 uses separate official drafter checkpoints;
+  publish gates validate the drafter manifest rather than same-model EAGLE
+  distillation.
+- **Legacy KV recipes** — `scripts/quantization/polarquant_apply.py`,
+  `scripts/quantization/turboquant_apply.py`, and `scripts/quantization/qjl_apply.py`
+  remain available for experiments but are not required Gemma release gates.
 - **Instrumentation** — `scripts/training/instrumentation.py`. JSONL trace
   with peak memory + tokens/sec per logging window; hard-fails the run
   when `torch.cuda.max_memory_reserved()` exceeds the registry budget by
@@ -245,16 +241,18 @@ using it as the remote root dataset.
 
 ## System prerequisites
 
-Three of the four memory optimizations rely on JIT-compiled or
-hand-written CUDA kernels:
+The active Gemma training path only requires the normal PyTorch stack, with
+Liger strongly recommended for the entry local tier. Legacy KV recipes still
+have their own build requirements when you run those experimental paths:
 
 - **Liger kernel** (training): Triton JIT — needs `gcc` + Python dev
   headers.
-- **Fused TurboQuant** (inference V cache): same Triton JIT requirements.
-- **QJL** (inference K cache): hand-written CUDA C++ extensions in
+- **Legacy Fused TurboQuant** (inference V cache): same Triton JIT requirements.
+- **Legacy QJL** (inference K cache): hand-written CUDA C++ extensions in
   `scripts/quantization/qjl/csrc/` — needs `nvcc` from the CUDA toolkit
   in addition to Python dev headers.
-- **PolarQuant** and **APOLLO**: pure-PyTorch / pip — no system deps.
+- **GGUF release quantization**, **APOLLO**, and **PolarQuant**: pure-PyTorch /
+  pip — no system deps.
 
 One-shot install on Debian/Ubuntu:
 
@@ -266,11 +264,11 @@ cd scripts/quantization/qjl && python setup.py build_ext --inplace
 TORCH_CUDA_ARCH_LIST="12.0+PTX" python setup.py build_ext --inplace
 ```
 
-Without these, every kernel path has a documented fallback (Liger → HF
-defaults; fused-turboquant → pure-PyTorch turbokv; QJL → bf16 K cache —
-you lose the K-side compression but retain V-side TurboQuant). The
-training/inference script logs a warning at startup so you know which
-path is actually running.
+Without Liger, `train_local.py` falls back to HF defaults and the 12 GB smoke
+lane has much less headroom. The legacy KV paths also keep documented fallbacks
+(fused-turboquant → pure-PyTorch turbokv; QJL → bf16 K cache). The
+training/inference scripts log a warning at startup so you know which path is
+actually running.
 
 ## Quickstart
 
@@ -283,19 +281,19 @@ uv run python scripts/normalize.py
 uv run python scripts/synthesize_targets.py --task should_respond  # optional
 uv run python scripts/pack_dataset.py
 
-# Smoke test (small subset, no Liger — proves the path end to end on 2B)
+# Smoke test (small subset, no Liger — proves the path end to end on E2B)
 uv run --extra train python scripts/train_local.py \
-    --registry-key qwen3.5-2b --max-samples 256 --epochs 1 \
+    --registry-key gemma4-e2b --max-samples 256 --epochs 1 \
     --use-liger off
 
-# Real local 2B run with Liger (8k seq_len, APOLLO, instrumentation)
+# Real local E2B run with Liger (8k seq_len, APOLLO, instrumentation)
 uv run --extra train python scripts/train_local.py \
-    --registry-key qwen3.5-2b --epochs 3 --full-finetune \
+    --registry-key gemma4-e2b --epochs 3 --full-finetune \
     --max-chars 24000
 
 # Full pipeline: base bench → APOLLO SFT → fine-tuned bench → quant → quant bench
 uv run --extra train python scripts/run_pipeline.py \
-    --registry-key qwen3.5-2b --epochs 3
+    --registry-key gemma4-e2b --epochs 3
 ```
 
 For cloud-tier runs see `scripts/train_vast.sh` and `scripts/CLOUD_VAST.md`.
@@ -305,29 +303,26 @@ For inference see `scripts/inference/serve_vllm.py` (vLLM serve launcher) and
 
 ## Running on a 12 GB consumer GPU (RTX 3060 / 4070 class)
 
-The registry's `qwen3.5-2b` default targets a 16 GB local GPU (seq_len=8192,
-budget=15.5 GB). On a 12 GB card that OOMs at the fp32 logits transient
-(B·S·V·4 bytes; Qwen vocab=248k makes this dominant). The `--low-vram-smoke`
+The registry's `gemma4-e2b` default targets a 16 GB local GPU (seq_len=8192,
+budget=15.5 GB). On a 12 GB card that can OOM at the fp32 logits transient
+(B·S·V·4 bytes; Gemma 4 vocab=262k makes this dominant). The `--low-vram-smoke`
 flag is a preset bundle that brings the SFT path inside a 12 GB envelope
 so the train→quant→bench plumbing can be validated end-to-end on commodity
 hardware before reaching for a rented H100/H200.
 
 ```bash
-# 0.8B — the realistic tier for a 12 GB card. Smallest published eliza-1 base.
+# E2B — the entry active tier for a 12 GB smoke.
 uv run --extra train python scripts/train_local.py \
-    --registry-key qwen3.5-0.8b --low-vram-smoke
+    --registry-key gemma4-e2b --low-vram-smoke
 
-# 2B — feasible inside 12 GB only with Liger + flash-linear-attention
-# kernels installed (see prerequisites below). Without those kernels the
-# 248k-vocab fp32 logits transient saturates the card and the run will
-# either OOM at the first backward pass or run unusably slowly.
+# E4B — use only for preflight or machines with extra VRAM headroom.
 uv run --extra train python scripts/train_local.py \
-    --registry-key qwen3.5-2b --low-vram-smoke
+    --registry-key gemma4-e4b --low-vram-smoke
 ```
 
 What the preset overrides (CLI flags the caller passes still win):
 
-- `seq_len = 2048`                    (registry default 4096 for 0.8B, 8192 for 2B)
+- `seq_len = 2048`                    (registry default 8192 for E2B, 4096 for E4B)
 - `per_device_batch_size = 1`
 - `gradient_accumulation_steps = 16`  (effective batch stays at 16)
 - `max_samples = 1000`
@@ -336,26 +331,18 @@ What the preset overrides (CLI flags the caller passes still win):
 - Liger fused chunked-CE stays on (registry default, when installed and
   Triton can JIT-compile — see the System Prerequisites section)
 - Activation checkpointing stays on (default in `train_local.py`)
-- APOLLO-Mini (registry default for 0.8B/2B/4B) remains the optimizer;
+- APOLLO-Mini (registry default for E2B/E4B) remains the optimizer;
   rank=1 keeps optimizer state effectively free.
 
-**Kernel prerequisites for the 2B path**. The preset's budget at 2B depends
-on two things being live:
-- Liger fused chunked-CE — cuts the fp32 logits transient ~4–8× on Qwen's
-  248k vocab. Requires Triton, which JIT-compiles a small CUDA helper at the
-  first kernel launch — `gcc`, `python3.x-dev`, and a CUDA toolkit Triton
-  can use must all be installed. Without them, `train_local.py` logs a
-  warning at startup and falls back to HF defaults.
-- Flash-linear-attention — the Qwen3.5 hybrid linear-attn layers (6 of 24
-  in the 0.8B/2B configs) have a fast Triton path through
-  https://github.com/fla-org/flash-linear-attention. Without it, transformers
-  falls back to a pure-PyTorch linear-attn implementation that is roughly
-  10× slower per step.
+**Kernel prerequisites for the E2B path**. The preset's budget at E2B depends
+on Liger fused chunked-CE to reduce the fp32 logits transient over Gemma 4's
+262k vocab. Liger requires Triton, which JIT-compiles a small CUDA helper at
+the first kernel launch — `gcc`, `python3.x-dev`, and a CUDA toolkit Triton
+can use must all be installed. Without them, `train_local.py` logs a warning
+at startup and falls back to HF defaults.
 
-When either kernel is missing, the 2B-on-12 GB path is effectively gated to
-preflight + small-step verification — full SFT will run but extremely slowly.
-The 0.8B preset is the realistic full-run option on stock WSL2 / no-toolchain
-hosts.
+When Liger is missing, the E2B-on-12 GB path is effectively gated to preflight
++ small-step verification — full SFT may run but has little headroom.
 
 **Verify the wiring without running SFT.** `--preflight-only` validates the
 preset's flag bundle, the dataset format, and the APOLLO classification
@@ -363,7 +350,7 @@ without loading model weights or touching CUDA:
 
 ```bash
 uv run --extra train python scripts/train_local.py \
-    --registry-key qwen3.5-2b --low-vram-smoke \
+    --registry-key gemma4-e2b --low-vram-smoke \
     --train-file data/final-eliza1-smoke/train.jsonl \
     --val-file data/final-eliza1-smoke/val.jsonl \
     --preflight-only
@@ -376,8 +363,8 @@ JIT toolchain available, 314 smoke records in `data/final-eliza1-smoke/`):**
 
 | tier | preflight | peak VRAM (load + step 0) | notes                                               |
 |------|-----------|---------------------------|-----------------------------------------------------|
-| 0.8B | ok        | ~12.0 GB                  | runs to completion, but each step is slow without Liger + flash-linear-attn |
-| 2B   | ok        | ~12.0 GB                  | hits the 12 GB ceiling at the first backward without Liger; first step does not complete in a useful time window |
+| E2B  | ok        | ~12.0 GB                  | runs only as a smoke path without Liger; full SFT needs the Triton toolchain |
+| E4B  | ok        | >12.0 GB                  | preflight-only on 12 GB; use a larger GPU for training |
 
 The instrumentation callback (enabled because `--memory-budget-gb` is set)
 fails the run loud the moment `torch.cuda.max_memory_reserved()` exceeds
@@ -399,41 +386,41 @@ the budget by more than 10 %.
 **If it still OOMs**: the preset's headroom is conservative but real-world
 allocator fragmentation can still tip a 12 GB card over. Drop seq_len with
 `--low-vram-smoke --max-seq-len 1024` (or 768) and retry. If you cannot
-install the Liger / flash-linear-attention kernels (Windows / WSL2 without
-a CUDA toolkit and Python dev headers), prefer the 0.8B tier — it is the
-smallest published eliza-1 base and validates the same end-to-end pipeline.
+install the Liger kernel (Windows / WSL2 without a CUDA toolkit and Python
+dev headers), keep this lane to preflight + tiny smoke runs and move full
+training to a larger GPU.
 
 ## Memory budgets
 
 The full quantization stack at inference is:
 
 - **APOLLO / APOLLO-Mini** at training time — projected optimizer state
-  keeps the 2B local run inside the consumer-GPU budget.
-- **PolarQuant** — 4-bit weight quantization (arXiv:2603.29078).
-- **QJL** — 1-bit JL-projected K cache (arXiv:2406.03482).
-- **Fused TurboQuant** — Triton-fused 4-bit V cache (arXiv:2504.19874).
+  keeps the entry local run inside the consumer-GPU budget.
+- **GGUF body quantization** — q4/q6/q8 release artifacts for local inference.
+- **MTP drafter** — separate Gemma 4 drafter GGUFs for speculative decoding.
+- **Legacy KV recipes** — PolarQuant, QJL, and Fused TurboQuant remain available
+  for experiments; Gemma 4 does not require them in the publish path.
 
 Run `scripts/training/memory_calc.py` for the actual numbers — every
 table below comes from there. **Do not transcribe these tables into other
 docs**; the calculator is the source of truth.
 
 ```bash
-uv run --extra train python scripts/training/memory_calc.py --shape qwen3.5-2b
-uv run --extra train python scripts/training/memory_calc.py --shape qwen3.5-4b
+uv run --extra train python scripts/training/memory_calc.py --shape gemma4-e2b
+uv run --extra train python scripts/training/memory_calc.py --shape gemma4-e4b
 ```
 
 The `memory_calc` output covers APOLLO training memory across `seq_len ∈
 {4k…147k}`, inference memory at the same context lengths for every
 (weight-quant, K-quant, V-quant)
 combination, an inference fit table across modern local GPUs, and the maximum
-context per card with the full quant stack.
+context per card with the configured quantization combinations.
 
-### Reality on Qwen3.5 V-side
+### Gemma KV Status
 
-Upstream `fused_turboquant.hf` 0.1.0's `make_fused_attention_forward`
-does not handle the gated `q_proj` layout (`q_proj.out_features =
-2 * num_heads * head_dim`) used by the Qwen3.5 attention block.
-The vendored `quantization.fused_turboquant_vendored` package adds the
-gated branch; until that lands and is smoke-tested end-to-end the V-side
-path stays on bf16. K-side QJL is independent of the gated patch and is
-on today against the head_dim=256 CUDA kernel.
+Gemma 4 uses dense attention with MQA, windowed SWA, shared KV layers, and
+dual KV head dimensions. The current memory calculator intentionally
+overestimates KV by treating every KV-bearing layer as full-context at the
+global head dimension. Keep the Gemma release path on GGUF body quantization
+and MTP drafter verification until a Gemma-aware KV calculator and publish gate
+land.

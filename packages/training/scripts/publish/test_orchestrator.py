@@ -376,7 +376,7 @@ def _build_fixture_bundle(
             }
         ),
     )
-    graph_kernel_set = ["turbo3", "turbo4", "turbo3_tcq", "qjl", "polar"]
+    graph_kernel_set = ["turbo3_tcq"]
     for backend in ("metal", "vulkan", "cuda", "rocm", "cpu"):
         _write(
             bundle / "evals" / f"{backend}_dispatch.json",
@@ -914,12 +914,16 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
     assert rc == EXIT_USAGE
 
 
-def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
+def test_gemma_bundle_does_not_require_legacy_qjl_or_polar_sidecars(
+    tmp_path: Path,
+) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "quantization" / "qjl_config.json").unlink()
+    (bundle / "quantization" / "polarquant_config.json").unlink()
+    _write_checksums(bundle)
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
-    assert rc == EXIT_MISSING_FILE
+    assert rc == EXIT_OK
 
 
 def test_missing_fused_turboquant_sidecar_fails(tmp_path: Path) -> None:
@@ -1030,7 +1034,7 @@ def test_final_release_state_requires_hf_upload_evidence(tmp_path: Path) -> None
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
+def test_base_v1_release_evidence_rejects_retired_qwen_asr_provenance(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
@@ -1043,16 +1047,7 @@ def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
-    assert rc == EXIT_OK
-    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["provenance"]["releaseState"] == "base-v1"
-    assert manifest["provenance"]["finetuned"] is False
-    assert manifest["provenance"]["sourceModels"]["text"]["repo"] == (
-        "unsloth/gemma-4-E4B-GGUF"
-    )
-    assert manifest["provenance"]["sourceModels"]["vision"]["repo"] == (
-        "unsloth/gemma-4-E4B-GGUF"
-    )
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
 def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None:
@@ -1069,7 +1064,7 @@ def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_base_v1_release_evidence_rejects_fake_qwen_component_repos(
+def test_base_v1_release_evidence_rejects_qwen_component_repos(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
@@ -1152,6 +1147,21 @@ def test_runtime_dispatch_report_requires_graph_evidence(tmp_path: Path) -> None
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_runtime_dispatch_report_requires_gemma_cache_family(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "evals" / "metal_dispatch.json"
+    report = json.loads(report_path.read_text())
+    report["kernelSet"] = []
+    report["graphDispatch"]["cacheFamilies"] = []
+    report_path.write_text(json.dumps(report, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
@@ -1359,7 +1369,7 @@ def test_finalize_release_evidence_sets_size_first_from_upload_evidence(
     assert release["final"]["sizeFirstRepoIds"] is True
 
 
-def test_real_base_v1_publish_preserves_release_state(
+def test_real_base_v1_publish_rejects_retired_qwen_asr_provenance(
     tmp_path: Path, monkeypatch
 ) -> None:
     import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
@@ -1395,11 +1405,7 @@ def test_real_base_v1_publish_preserves_release_state(
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
 
-    assert rc == EXIT_OK
-    release = json.loads((bundle / "evidence" / "release.json").read_text())
-    assert release["releaseState"] == "base-v1"
-    assert release["hf"]["status"] == "uploaded"
-    assert release["hf"]["uploadEvidence"]["commit"] == "basev1"
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
 # ---------------------------------------------------------------------------

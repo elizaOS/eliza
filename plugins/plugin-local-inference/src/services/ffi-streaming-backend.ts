@@ -97,13 +97,14 @@ export interface FfiBackendSession {
 	readonly mmprojPath: string | null;
 	/**
 	 * Per-load runtime config the fused libelizainference path applies at its
-	 * first `llmStreamOpen` (gpuLayers + KV-cache quant types). The desktop
+	 * first `llmStreamOpen` (context size, gpuLayers + KV-cache quant types). The desktop
 	 * libllama runtime applies these at `loadModel()` instead and leaves this
 	 * `null` — the backend forwards them into the runner's per-call config only
 	 * when present, so the fused path mirrors the libllama load decision without
 	 * the libllama path double-applying them.
 	 */
 	readonly loadConfig?: {
+		contextSize?: number;
 		gpuLayers?: number;
 		cacheTypeK?: string | null;
 		cacheTypeV?: string | null;
@@ -195,7 +196,9 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			gpuLayers: loadConfig?.gpuLayers,
 			cacheTypeK: loadConfig?.cacheTypeK,
 			cacheTypeV: loadConfig?.cacheTypeV,
+			contextSize: loadConfig?.contextSize,
 			signal: args.signal,
+			maxTokensPerStep: args.maxTokensPerStep,
 			onTextChunk: args.onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,
 		});
@@ -280,8 +283,33 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			gpuLayers: loadConfig?.gpuLayers,
 			cacheTypeK: loadConfig?.cacheTypeK,
 			cacheTypeV: loadConfig?.cacheTypeV,
+			contextSize: loadConfig?.contextSize,
 		});
 		return true;
+	}
+
+	currentRuntimeLoadConfig() {
+		if (!this.session) return null;
+		const loadConfig = this.session.loadConfig;
+		return {
+			modelId: null,
+			modelPath: this.loadedPath,
+			contextSize: loadConfig?.contextSize ?? null,
+			cacheTypeK: loadConfig?.cacheTypeK ?? null,
+			cacheTypeV: loadConfig?.cacheTypeV ?? null,
+			gpuLayers:
+				typeof loadConfig?.gpuLayers === "number" ? loadConfig.gpuLayers : null,
+			parallel: this.parallelSlots(),
+			binaryPath: null,
+			backend: this.id,
+			mtp: this.session.mtp
+				? {
+						specType: "draft-mtp" as const,
+						draftMin: this.session.mtp.draftMin,
+						draftMax: this.session.mtp.draftMax,
+					}
+				: null,
+		};
 	}
 
 	/**
@@ -327,6 +355,10 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		maxTokens?: number;
 		temperature?: number;
 		signal?: AbortSignal;
+		/** Per-token callback — when set + the runtime supports streaming vision,
+		 * the description is decoded token-by-token through the same pipe as chat. */
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		maxTokensPerStep?: number;
 	}): Promise<{ text: string; projectorMs?: number; decodeMs?: number }> {
 		if (!this.session) {
 			throw new Error(
@@ -342,7 +374,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		// The runtime adapter has visionSupported() + describeImage(args).
 		// We re-shape `bytes` → `imageBytes` and merge in the resolved
 		// mmprojPath; the rest of args pass through unchanged.
-		const runtime = this.runtime as unknown as {
+		const runtime = this.runtime as FfiBackendRuntime & {
 			describeImage?: (args: {
 				imageBytes: Uint8Array;
 				mmprojPath: string;
@@ -350,6 +382,8 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 				maxTokens?: number;
 				temperature?: number;
 				signal?: AbortSignal;
+				onTextChunk?: (chunk: string) => void | Promise<void>;
+				maxTokensPerStep?: number;
 			}) => Promise<{ text: string; projectorMs?: number; decodeMs?: number }>;
 		};
 		if (!runtime.describeImage) {
@@ -364,6 +398,8 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			maxTokens: args.maxTokens,
 			temperature: args.temperature,
 			signal: args.signal,
+			onTextChunk: args.onTextChunk,
+			maxTokensPerStep: args.maxTokensPerStep,
 		});
 	}
 

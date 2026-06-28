@@ -2252,7 +2252,7 @@ X-GNOME-Autostart-enabled=true
       error instanceof Error ? error.message : error ? String(error) : null;
 
     try {
-      const localInfo = await Updater.getLocallocalInfo();
+      const localInfo = await Updater.getLocalInfo();
       currentVersion = localInfo.version;
       currentHash = localInfo.hash;
       channel = localInfo.channel;

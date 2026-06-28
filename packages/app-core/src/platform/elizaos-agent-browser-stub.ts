@@ -127,7 +127,6 @@ export const routeAutonomyTextToUser = noop;
 export const runCoordinatorPreflight = noop;
 export const saveElizaConfig = noop;
 export const scanDropInPlugins = noop;
-export const setStewardEvmBridgeActive = noop;
 export const shutdownRuntime = noop;
 export const startApiServer = noop;
 export const startEliza = noop;

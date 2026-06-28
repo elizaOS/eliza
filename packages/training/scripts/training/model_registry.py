@@ -278,16 +278,25 @@ def _entry(**kw) -> ModelEntry:
 #   total layers   q_heads  kv_heads  head_dim(global/swa)  vocab    (HF base id)
 #   35 (7 global)  8        1 (MQA)   512 / 256             262144   google/gemma-4-E2B → eliza-1-2b  (sliding_window=512, shared_kv_layers=20 → ~15 KV-bearing)
 #
-# MTP speculative-decode drafter, per eliza tier id. Gemma 4 ships OFFICIAL
-# SEPARATE drafter models (a distinct GGUF), not a same-file NextN head, so
-# each target drafts from its own Gemma 4 drafter. Mirrors `DEFAULT_STUDENT_BASE`
-# in `scripts/distill_mtp_drafter.py` — keep the two in sync.
+# MTP speculative-decode drafter, per eliza tier id. Google ships the OFFICIAL
+# MTP head with the `-it-assistant` checkpoint of each Gemma 4 size — a distinct
+# `gemma4-assistant`-arch model (4-block NextN drafter: `nextn.pre_projection` +
+# `nextn.post_projection`), NOT a same-file NextN head and NOT a distilled
+# student. Convert it to GGUF with upstream `convert_hf_to_gguf.py` (arch
+# `gemma4-assistant`) and load it via `-md <drafter>.gguf --spec-type draft-mtp`.
+# NO H200 / distillation is required — the trained weights already exist.
+# Validated 2026-06-23: the E2B drafter (GGUF `amaranus/Gemma-4-E2B-it-qat-
+# assistant-MTP-Q8_0`) gives a 1.29x decode speedup against the eliza-1-2b
+# target on Apple M4 Max Metal (see
+# plugins/plugin-local-inference/docs/gemma4-assistant-fork-port-plan.md).
 MTP_DRAFTER_BASE: dict[str, str] = {
-    # Gemma 4 official separate drafters (distinct GGUF per target tier).
-    "eliza-1-2b": "google/gemma-4-E2B-mtp",
-    "eliza-1-4b": "google/gemma-4-E4B-mtp",
-    "eliza-1-9b": "google/gemma-4-12B-mtp",
-    "eliza-1-27b": "google/gemma-4-31B-mtp",
+    # Official Gemma 4 assistant MTP heads (gemma4-assistant arch), per target
+    # tier. Ready GGUF conversions: amaranus/Gemma-4-{E2B,E4B}-it-qat-assistant-
+    # MTP-Q8_0-GGUF, {cortexist,Janvitos}/gemma-4-12B-it-assistant-MTP-GGUF.
+    "eliza-1-2b": "google/gemma-4-E2B-it-assistant",
+    "eliza-1-4b": "google/gemma-4-E4B-it-assistant",
+    "eliza-1-9b": "google/gemma-4-12B-it-assistant",
+    "eliza-1-27b": "google/gemma-4-31B-it-assistant",
 }
 
 REGISTRY: dict[str, ModelEntry] = {
@@ -450,6 +459,8 @@ REGISTRY: dict[str, ModelEntry] = {
 
 ELIZA_1_27B_VARIANT_ALIASES: dict[str, str] = {
     "27b": "gemma4-31b",
+    "27b-256k": "gemma4-31b",
+    "eliza-1-27b-256k": "gemma4-31b",
 }
 
 # Map the size-first eliza-1 tier ids (and common Gemma 4 base spellings) onto

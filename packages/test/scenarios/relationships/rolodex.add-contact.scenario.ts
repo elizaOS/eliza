@@ -36,9 +36,6 @@ export default scenario({
       room: "main",
       text: "Add Alice Chen to my contacts, she's at Acme Inc.",
       expectedActions: ["ADD_CONTACT"],
-      expectedActionParams: {
-        ADD_CONTACT: { $regex: "Alice" },
-      },
     },
   ],
 
@@ -47,6 +44,11 @@ export default scenario({
       type: "actionCalled",
       actionName: "ADD_CONTACT",
       minCount: 1,
+    },
+    {
+      type: "selectedActionArguments",
+      actionName: "ADD_CONTACT",
+      includesAny: [/Alice/i],
     },
   ],
 });

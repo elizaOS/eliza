@@ -13,7 +13,7 @@
       ],
       "@elizaos/plugin-facewear": ["./plugins/plugin-facewear/dist/index.d.ts"],
       "@elizaos/plugin-facewear/*": ["./plugins/plugin-facewear/dist/*.d.ts"],
-      "@elizaos/cloud-routing": ["./packages/cloud-routing/dist/index.d.ts"],
+      "@elizaos/cloud-routing": ["./packages/cloud/routing/dist/index.d.ts"],
       "@elizaos/agent": ["./packages/agent/dist/index.d.ts"],
       "@elizaos/agent/*": ["./packages/agent/dist/*.d.ts"],
       "@elizaos/shared": ["./packages/shared/dist/index.d.ts"],
@@ -188,8 +188,8 @@
       "@elizaos/plugin-companion": [
         "./plugins/plugin-companion/dist/index.d.ts"
       ],
-      "@elizaos/plugin-polymarket-app": [
-        "./plugins/plugin-polymarket-app/dist/index.d.ts"
+      "@elizaos/plugin-polymarket": [
+        "./plugins/plugin-polymarket/dist/index.d.ts"
       ],
       "@elizaos/plugin-computeruse": [
         "./plugins/plugin-computeruse/dist/index.d.ts"
@@ -228,19 +228,15 @@
       "@elizaos/plugin-elizamaker": [
         "./plugins/plugin-elizamaker/dist/index.d.ts"
       ],
-      "@elizaos/plugin-shopify-ui": [
-        "./plugins/plugin-shopify-ui/dist/index.d.ts"
-      ],
       "@elizaos/plugin-app-control": [
         "./plugins/plugin-app-control/dist/index.d.ts"
       ],
       "@elizaos/plugin-app-manager": [
         "./plugins/plugin-app-manager/src/index.ts"
       ],
-      "@elizaos/plugin-hyperliquid-app": [
-        "./plugins/plugin-hyperliquid-app/dist/index.d.ts"
+      "@elizaos/plugin-hyperliquid": [
+        "./plugins/plugin-hyperliquid/dist/index.d.ts"
       ],
-      "@elizaos/plugin-rlm": ["./plugins/plugin-rlm/dist/index.d.ts"],
       "@elizaos/plugin-anthropic": [
         "./plugins/plugin-anthropic/dist/index.d.ts"
       ],
@@ -270,12 +266,6 @@
       "@elizaos/plugin-music-player": [
         "./plugins/plugin-music/dist/index.d.ts"
       ],
-      "@elizaos/plugin-minecraft": [
-        "./plugins/plugin-minecraft/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-minecraft-mineflayer-server": [
-        "./plugins/plugin-minecraft/mineflayer-server/dist/index.d.ts"
-      ],
       "@elizaos/plugin-local-storage": [
         "./plugins/plugin-local-storage/dist/index.d.ts"
       ],
@@ -293,10 +283,6 @@
       ],
       "@elizaos/plugin-elevenlabs": [
         "./plugins/plugin-elevenlabs/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-vincent": ["./plugins/plugin-vincent/dist/index.d.ts"],
-      "@elizaos/plugin-mysticism": [
-        "./plugins/plugin-mysticism/dist/index.d.ts"
       ],
       "@elizaos/plugin-groq": ["./plugins/plugin-groq/dist/index.d.ts"],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/dist/index.d.ts"],
@@ -348,9 +334,6 @@
       ],
       "@elizaos/plugin-contacts": ["./plugins/plugin-contacts/dist/index.d.ts"],
       "@elizaos/plugin-form": ["./plugins/plugin-form/dist/index.d.ts"],
-      "@elizaos/plugin-defense-of-the-agents": [
-        "./plugins/plugin-defense-of-the-agents/dist/index.d.ts"
-      ],
       "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/dist/index.d.ts"],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/dist/index.d.ts"
@@ -360,7 +343,7 @@
         "./plugins/plugin-bluebubbles/dist/index.d.ts"
       ],
       "@elizaos/plugin-training": ["./plugins/plugin-training/dist/index.d.ts"],
-      "@elizaos/cloud-sdk": ["./packages/cloud-sdk/dist/index.d.ts"]
+      "@elizaos/cloud-sdk": ["./packages/cloud/sdk/dist/index.d.ts"]
     }
   },
   "include": [
@@ -370,7 +353,7 @@
     "plugins/*/src/**/*",
     "plugins/*/typescript/**/*.ts",
     "packages/cloud-*/src/**/*",
-    "packages/cloud-services/*/src/**/*"
+    "packages/cloud/services/*/src/**/*"
   ],
   "exclude": [
     "**/node_modules/**",

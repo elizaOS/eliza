@@ -1,30 +1,28 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isLocalElizaDisabled } from "./lib/eliza-source-mode.mjs";
 
 const LOG_PREFIX = "[ensure-elizaos-optional-app-stubs]";
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..");
 const nodeModulesDir = path.join(repoRoot, "node_modules");
+const cleanupHelperPath = path.join(scriptDir, "rm-path-recursive.mjs");
 
 const optionalPackages = [
-  "@elizaos/plugin-clawville",
   "@elizaos/plugin-companion",
   "@elizaos/plugin-elizamaker",
-  "@elizaos/plugin-hyperliquid-app",
+  "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-documents",
   "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-polymarket",
+  "@elizaos/plugin-shopify",
   "@elizaos/plugin-steward-app",
   "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-training",
-  "@elizaos/plugin-vincent",
 ];
 
 const forcedStubPackages = ["@elizaos/plugin-whatsapp"];
@@ -47,7 +45,6 @@ export const plugin = optionalStub;
 export const shopifyPlugin = optionalStub;
 export const stewardPlugin = optionalStub;
 export const trainingPlugin = optionalStub;
-export const vincentPlugin = optionalStub;
 
 export const documentsRoutes = Object.freeze([]);
 export const trainingRoutes = Object.freeze([]);
@@ -125,6 +122,21 @@ function packageDir(packageName) {
   return path.join(nodeModulesDir, ...packageName.split("/"));
 }
 
+function removePathRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [cleanupHelperPath, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `rm-path-recursive failed for ${targetPath} with status ${result.status}`,
+    );
+  }
+}
+
 function ensureStubPackage(packageName, { force = false } = {}) {
   const dir = packageDir(packageName);
   const packageJsonPath = path.join(dir, "package.json");
@@ -138,7 +150,7 @@ function ensureStubPackage(packageName, { force = false } = {}) {
     } catch {
       // Replace unreadable package metadata with a known stub below.
     }
-    fs.rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 
   try {

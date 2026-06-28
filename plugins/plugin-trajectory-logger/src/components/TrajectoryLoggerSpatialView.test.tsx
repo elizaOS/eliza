@@ -129,7 +129,6 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Trajectories");
       expect(flat).toContain("recording");
       expect(flat).toContain("now");
       expect(flat).toContain("last");
@@ -149,7 +148,6 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
     expect(gui).toContain('data-spatial-surface="gui"');
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
-      expect(html).toContain("Trajectories");
       expect(html).toContain("HANDLE");
       expect(html).toContain("sendMessage");
       expect(html).toContain('data-agent-id="strip-now"');
@@ -168,9 +166,78 @@ describe("TrajectoryLoggerSpatialView one source, three modalities", () => {
       const lines = component?.render(50) ?? [];
       expect(lines.length).toBeGreaterThan(0);
       for (const line of lines) expect(visibleWidth(line)).toBe(50);
-      expect(lines.join("\n")).toContain("Trajectories");
     } finally {
       unregister();
     }
+  });
+
+  it("renders the calm unavailable message instead of the strips when unavailable", () => {
+    const unavailable: TrajectorySnapshot = {
+      ...snapshot,
+      unavailable: true,
+    };
+    const gui = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <TrajectoryLoggerSpatialView snapshot={unavailable} />
+      </SpatialSurface>,
+    );
+    expect(gui).toContain("Trajectory logging unavailable on this surface");
+    // Strips are suppressed under the unavailable state.
+    expect(gui).not.toContain('data-agent-id="strip-now"');
+  });
+
+  it("ACTION drilldown surfaces tool args and result", () => {
+    const actionWithIo: PhaseSummary = {
+      phase: "ACTION",
+      status: "done",
+      summary: "REPLY",
+      llmCalls: [],
+      providerAccesses: [],
+      toolEvents: [
+        {
+          id: "io1",
+          type: "tool_result",
+          actionName: "REPLY",
+          status: "completed",
+          success: true,
+          durationMs: 42,
+          args: { text: "hello world" },
+          result: { sent: true },
+        },
+      ],
+      evaluationEvents: [],
+    };
+    const snap: TrajectorySnapshot = {
+      ready: true,
+      recording: false,
+      error: null,
+      now: {
+        hasTrajectory: true,
+        phases: [handle, plan, actionWithIo, evaluate],
+      },
+      last: { hasTrajectory: false, phases: [handle, plan, action, evaluate] },
+      selected: { slot: "now", phase: "ACTION" },
+    };
+    const html = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <TrajectoryLoggerSpatialView snapshot={snap} />
+      </SpatialSurface>,
+    );
+    // args + result values surface in the expanded ACTION drilldown body.
+    expect(html).toContain("hello world");
+    expect(html).toContain("sent");
+  });
+
+  it("exposes a Back affordance that dispatches the back action", () => {
+    const actions: string[] = [];
+    const gui = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <TrajectoryLoggerSpatialView
+          snapshot={snapshot}
+          onAction={(action) => actions.push(action)}
+        />
+      </SpatialSurface>,
+    );
+    expect(gui).toContain('data-agent-id="back"');
   });
 });

@@ -22,6 +22,10 @@ vi.mock("@elizaos/agent", () => ({
   hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
+vi.mock("@elizaos/agent/security/access", () => ({
+  hasOwnerAccess: mocks.hasOwnerAccess,
+}));
+
 import {
   __resetInboxFetchersForTests,
   type InboxItem,

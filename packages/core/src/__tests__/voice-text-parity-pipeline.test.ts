@@ -15,10 +15,8 @@
  *   - the response-handler evaluators that ran (BUILTIN_RESPONSE_HANDLER_EVALUATORS).
  * Parity holds iff the two transports produce identical sets.
  *
- * The utterance ("Can you check my calendar?") carries an action verb
- * ("check"/"calendar"), so the DM does NOT take the direct-reply fast path
- * (`shouldUseDirectReplyFastPath` bails on those tokens) — both transports run
- * the full Stage-1 path, which is where divergence would actually show up.
+ * The utterance ("Can you check my calendar?") runs the full Stage-1 path on
+ * both transports, which is where divergence would actually show up.
  * Zero LLM spend: the model is a fixture queue.
  */
 
@@ -30,6 +28,7 @@ import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	runV5MessageRuntimeStage1,
 } from "../services/message";
+import { createMockRuntime } from "../testing/mock-runtime";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -158,7 +157,7 @@ function makeTracingRuntime(): {
 		},
 	};
 
-	const runtime = {
+	const runtime = createMockRuntime({
 		agentId: AGENT,
 		character: {
 			name: "Test Agent",
@@ -201,7 +200,7 @@ function makeTracingRuntime(): {
 			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 		],
 		responseHandlerEvaluators: [probe],
-	} as unknown as IAgentRuntime;
+	});
 
 	return { runtime, trace };
 }

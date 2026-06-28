@@ -6,13 +6,14 @@
  * and eliza-1-27b-256k.
  * These ship Gemma 4 bases: E2B/E4B/12B/31B mapped onto the
  * 2B/4B/9B/27B release tiers (the 2026-06-22 cutover from the legacy
- * Qwen3.5/3.6 line — see #9033 and
- * packages/training/scripts/training/model_registry.py for the active
- * registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
+ * hybrid line — see #9033 and packages/training/scripts/training/model_registry.py
+ * for the active registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
  * (PLE) + MQA architecture; KV is already minimal so the legacy
  * QJL/PolarQuant KV kernels are not used (stock KV), while TurboQuant
- * weight-quant + separate-drafter MTP still apply. External Hub search
- * remains custom/opt-in and never enters first-run or default eligibility.
+ * weight-quant remains active. External Hub search remains custom/opt-in and
+ * never enters first-run or default eligibility.
+ * Separate-drafter MTP is still the required release shape, but runtime
+ * metadata is gated until the Gemma drafter GGUFs are actually hosted.
  */
 
 import { resolveHfDownloadBase } from "./hf-proxy.js";
@@ -58,12 +59,40 @@ export const ELIZA_1_MTP_TIER_IDS = [
   "eliza-1-27b-256k",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
-const _ELIZA_1_MTP_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
-  ELIZA_1_MTP_TIER_IDS,
+/**
+ * Tiers whose Gemma MTP drafter GGUFs are present at
+ * `bundles/<tier>/mtp/drafter-<tier>.gguf` in the active HF tree.
+ *
+ * Current HF state (2026-06-25): the active bundles only expose legacy
+ * `dflash/` drafter paths, while the Gemma candidate publishes
+ * `candidates/gemma-2b-base-v1/mtp/MISSING.txt`. Keep this empty so the
+ * runtime and downloader do not advertise or fetch missing MTP artifacts.
+ */
+export const ELIZA_1_HOSTED_MTP_TIER_IDS =
+  [] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+function hostedMtpDrafterAvailableForTier(id: Eliza1TierId): boolean {
+  return ELIZA_1_HOSTED_MTP_TIER_IDS.some((mtpId) => mtpId === id);
+}
+
+/**
+ * On-device (mobile-class) tiers. These are the tiers small enough to run on
+ * a phone, so they advertise the Gemma-4 QAT `Q4_0` quant as the
+ * mobile-preferred variant and ship a LiteRT `.litertlm` bundle for the
+ * on-device LiteRT-LM runtime (NPU/GPU delegate). Mirrors the Kokoro-only
+ * voice policy and the SD-1.5 image-gen tiering (2b/4b).
+ */
+export const ELIZA_1_ON_DEVICE_TIER_IDS = [
+  "eliza-1-2b",
+  "eliza-1-4b",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+const _ELIZA_1_ON_DEVICE_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_ON_DEVICE_TIER_IDS,
 );
 
-function mtpSupportedForTier(id: Eliza1TierId): boolean {
-  return _ELIZA_1_MTP_TIER_ID_SET.has(id);
+export function isOnDeviceTier(id: Eliza1TierId): boolean {
+  return _ELIZA_1_ON_DEVICE_TIER_ID_SET.has(id);
 }
 
 // The quantized 2B (Gemma 4 E2B) is the shipped first-run default chat model:
@@ -195,11 +224,10 @@ interface TierSpec {
   hasVision?: boolean;
   /**
    * WS3: whether this tier ships a default image-gen model in the bundle
-   * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). Mobile-class
-   * tiers (2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
-   * tiers (9b/27b) default to Z-Image-Turbo Q4_K_M
-   * (~3.4 GB). The diffusion weights are runtime-downloaded — they are
-   * NOT part of the base-v1 bundle.
+   * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). All active
+   * tiers default to SD 1.5 Q5_0 until a legacy-free split-diffusion text
+   * encoder is available. The diffusion weights are runtime-downloaded —
+   * they are NOT part of the base-v1 bundle.
    */
   hasImageGen?: boolean;
 }
@@ -220,8 +248,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     // 361,518,784 bytes, published 2026-05-14); the arbiter owns the
     // swap with the text weights under pressure.
     hasVision: true,
-    // WS3: image-gen on the standard small-phone default uses SD 1.5
-    // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
+    // WS3: image-gen on the standard small-phone default uses SD 1.5 Q5_0.
     hasImageGen: true,
   },
   "eliza-1-4b": {
@@ -241,8 +268,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     textFile: "text/eliza-1-4b-128k.gguf",
     hasEmbedding: true,
     hasVision: true,
-    // WS3: 4B is the last tier that defaults to SD 1.5; flagship-phone
-    // optional path can upgrade to SDXL-Turbo Q4_0.
+    // WS3: 4B uses the same monolithic SD 1.5 default as the rest of the
+    // Gemma cutover catalog.
     hasImageGen: true,
   },
   "eliza-1-9b": {
@@ -257,9 +284,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     gpuProfile: "rtx-3090",
     hasEmbedding: true,
     hasVision: true,
-    // WS3: 9B is the boundary tier where Z-Image-Turbo Q4_K_M (~3.4 GB)
-    // becomes the default. FLUX.1 schnell remains opt-in for >=24 GB
-    // shared RAM / >=12 GB VRAM.
+    // WS3: keep 9B on the monolithic SD 1.5 default until a legacy-free
+    // split-diffusion text encoder is available.
     hasImageGen: true,
   },
   "eliza-1-27b": {
@@ -354,7 +380,7 @@ function bundleComponent(
  *
  * R8 §2 + omnivoice.cpp/AGENTS.md PolarQuant note: the K-quant family
  * (Q3..Q6) is the only weight-quant currently wired for OmniVoice's
- * Qwen3-shaped LM head — PolarQuant / TurboQuant for the LM weight bank
+ * MaskGIT LM weight bank — PolarQuant / TurboQuant for that LM bank
  * is *plausible* (same arch) but no recipe wires it yet; QJL is N/A
  * (OmniVoice has no KV cache between MaskGIT steps); V-cache PolarQuant
  * is N/A for the same reason. See `docs/inference/voice-quant-matrix.md`.
@@ -424,9 +450,22 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const components: SourceComponentMap = {
     text: bundleComponent(id, spec.textFile),
     voice: bundleComponent(id, primaryVoiceFileForTier(id)),
-    asr: bundleComponent(id, "asr/eliza-1-asr.gguf"),
     vad: bundleComponent(id, "vad/silero-vad-v5.gguf"),
   };
+
+  // Gemma ASR artifacts are not hosted yet. Do not advertise retired pre-Gemma
+  // ASR files as active tier components. Runtime ASR remains gated by bundle
+  // manifest provenance until Gemma ASR files are published.
+
+  // LiteRT-LM single-file bundle for the on-device runtime: text + vision +
+  // audio + MTP packed into one QAT (.litertlm) artifact, parallel to the
+  // GGUF `text` component. Only the mobile-class tiers ship it.
+  if (isOnDeviceTier(id)) {
+    components.litert = bundleComponent(
+      id,
+      `text/eliza-1-${tierSlug(id)}.litertlm`,
+    );
+  }
 
   if (spec.hasEmbedding) {
     components.embedding = bundleComponent(
@@ -440,11 +479,11 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       `vision/mmproj-${tierSlug(id)}.gguf`,
     );
   }
-  // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
-  // (speculative decoding), so each MTP tier downloads a `mtp/drafter-<tier>.gguf`
-  // companion alongside the text GGUF — unlike the retired Qwen3.5 same-file
-  // NextN head.
-  if (mtpSupportedForTier(id)) {
+  // Separate-drafter MTP remains the Gemma release target, but the active HF
+  // tree does not host `mtp/drafter-<tier>.gguf` yet. The available `dflash/`
+  // files are legacy artifacts, so only advertise this component when the
+  // hosted Gemma drafter list is explicitly populated.
+  if (hostedMtpDrafterAvailableForTier(id)) {
     components.mtp = bundleComponent(id, `mtp/drafter-${tierSlug(id)}.gguf`);
   }
 
@@ -474,17 +513,28 @@ function runtimeForTier(
     },
   };
 
-  if (mtpSupportedForTier(id)) {
+  if (hostedMtpDrafterAvailableForTier(id)) {
     // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
     // GGUF, loaded via `-md mtp/drafter-<tier>.gguf --spec-type draft-mtp`.
-    // Google reports up to ~3x decode with no quality loss; we keep a
-    // conservative default draft window and let the runtime widen it under
-    // a `heuristic` acceptance schedule.
+    //
+    // Draft window = 1 (single speculative token). The bionic/desktop FFI
+    // MTP engine uses a FIXED window equal to `draftMax` (no adaptive
+    // acceptance schedule; `eliza-inference-ffi.cpp` sets
+    // `sp.draft.n_max = draft_max`), so the catalog value is the live window.
+    // The gemma4-assistant NextN head reliably predicts exactly one token;
+    // its multi-token acceptance collapses past the first, so a larger window
+    // burns draft forwards that get rejected and regresses decode. Measured on
+    // Apple M-series Metal against the eliza-1-2b (Q8) target, greedy, across
+    // 3 prompts:
+    //   draftMax=1 => 1.37-1.66x win | =2 => ~0.90x | =4 => 0.61x | =6 => 0.37x
+    // draftMax=1 is the measured-optimal, never-regress window for this drafter
+    // on every tier; widening it is a per-tier/per-device tuning question that
+    // needs on-hardware measurement before it can beat 1.
     runtime.mtp = {
       specType: "draft-mtp",
       drafterFile: `mtp/drafter-${tierSlug(id)}.gguf`,
       draftMin: 1,
-      draftMax: 4,
+      draftMax: 1,
       gpuLayers: "auto",
     };
   }
@@ -494,47 +544,90 @@ function runtimeForTier(
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
   q3_k_m: "q3_k_m",
+  // Google's official Gemma-4 QAT quant. `Q4_0` is the GGUF block format
+  // their QAT checkpoints export to — distinct from the post-training
+  // `q4_k_m` we ship as the desktop default.
   q4_0: "Q4_0",
   q4_k_m: "q4_k_m",
   q5_k_m: "q5_k_m",
   q6_k: "q6_k",
   q8_0: "q8_0",
+  // LiteRT-LM mobile bundle suffix. The artifact is a `.litertlm`, not a
+  // `.gguf`; `textLiteRtComponent` overrides the filename, so this suffix
+  // only feeds the non-LiteRT variant-id naming path defensively.
+  wna8o8: "wna8o8",
 };
 
 function textQuantizationMatrix(args: {
   primaryGgufFile: string;
   q4SizeGb: number;
   q4MinRamGb: number;
+  /**
+   * On-device (mobile-class) tier. When true the Gemma-4 QAT `Q4_0` variant
+   * is flagged `mobilePreferred` so the on-device selector picks it over the
+   * post-training `q4_k_m` default.
+   */
+  onDevice: boolean;
 }): NonNullable<CatalogModel["quantization"]> {
   const fileBase = args.primaryGgufFile.replace(/\.gguf$/, "");
+  const litertFile = `${fileBase.replace(/-128k$|-256k$/, "")}.litertlm`;
   const mk = (
     id: CatalogQuantizationId,
     label: CatalogQuantizationVariant["label"],
     scale: number,
     minRamScale: number,
     status: CatalogQuantizationVariant["status"],
+    extra?: Pick<
+      CatalogQuantizationVariant,
+      "mobilePreferred" | "artifactFormat"
+    >,
   ): CatalogQuantizationVariant => ({
     id,
     label,
     ggufFile:
-      id === "q4_k_m"
-        ? args.primaryGgufFile
-        : `${fileBase}-${QUANT_SUFFIX[id]}.gguf`,
+      extra?.artifactFormat === "litertlm"
+        ? litertFile
+        : id === "q4_k_m"
+          ? args.primaryGgufFile
+          : `${fileBase}-${QUANT_SUFFIX[id]}.gguf`,
     sizeGb: Number((args.q4SizeGb * scale).toFixed(1)),
     minRamGb: Math.ceil(args.q4MinRamGb * minRamScale),
     status,
+    ...extra,
   });
 
-  return {
-    defaultVariantId: "q4_k_m",
-    variants: [
-      mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
-      mk("q4_k_m", "4-bit", 1, 1, "published"),
-      mk("q5_k_m", "5-bit", 1.22, 1.18, "planned"),
-      mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
-      mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
-    ],
-  };
+  const variants: CatalogQuantizationVariant[] = [
+    mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
+    // Gemma-4 QAT Q4_0: same ~4-bit footprint as q4_k_m but the official
+    // quantization-aware-trained checkpoint. Keep this planned until the
+    // tier-specific `*-Q4_0.gguf` artifacts are present in the hosted bundle.
+    mk(
+      "q4_0",
+      "4-bit",
+      0.94,
+      0.95,
+      "planned",
+      args.onDevice ? { mobilePreferred: true } : undefined,
+    ),
+    mk("q4_k_m", "4-bit", 1, 1, "published"),
+    mk("q5_k_m", "5-bit", 1.22, 1.18, "planned"),
+    mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
+    mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
+  ];
+
+  // On-device tiers also advertise the LiteRT-LM `.litertlm` bundle: the
+  // wNa8o8 (4-bit weight / 8-bit activation) mobile schema run by the
+  // LiteRT-LM runtime (NPU/GPU delegate), not llama.cpp. It carries the same
+  // ~4-bit footprint as the QAT Q4_0 GGUF.
+  if (args.onDevice) {
+    variants.push(
+      mk("wna8o8", "4-bit", 0.94, 0.95, "planned", {
+        artifactFormat: "litertlm",
+      }),
+    );
+  }
+
+  return { defaultVariantId: "q4_k_m", variants };
 }
 
 function blurbForTier(id: Eliza1TierId): string {
@@ -582,6 +675,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
       primaryGgufFile: bundlePath(id, spec.textFile),
       q4SizeGb: spec.sizeGb,
       q4MinRamGb: spec.q4MinRamGb,
+      onDevice: isOnDeviceTier(id),
     }),
     blurb: blurbForTier(id),
     publishStatus: eliza1TierPublishStatus(id),

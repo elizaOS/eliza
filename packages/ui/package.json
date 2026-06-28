@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -38,7 +38,10 @@
     "test:home-screen-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e2e.mjs",
     "test:onboarding-e2e": "bun run --cwd ../.. packages/ui/src/first-run/__e2e__/run-onboarding-e2e.mjs",
     "test:chat-ambient-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-ambient-e2e.mjs",
+    "test:view-parity": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts registered-view-parity",
+    "test:view-screens": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./stories/view-screens-tui.config.ts && bunx playwright test --config ./stories/registered-views/registered-views.config.ts && bun stories/registered-views/build-index.mjs",
     "test:background-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-background-e2e.mjs",
+    "test:springboard-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-springboard-e2e.mjs",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
@@ -159,6 +162,11 @@
       "types": "./dist/components/index.d.ts",
       "import": "./dist/components/index.js",
       "default": "./dist/components/index.js"
+    },
+    "./components/composites/page-panel": {
+      "types": "./dist/components/composites/page-panel/index.d.ts",
+      "import": "./dist/components/composites/page-panel/index.js",
+      "default": "./dist/components/composites/page-panel/index.js"
     },
     "./components/*": {
       "types": "./dist/components/*.d.ts",
@@ -391,6 +399,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.184.0",
     "@types/ws": "^8.18.1",
+    "fast-check": "^4.8.0",
     "jsdom": "^29.0.0",
     "react": "19.2.5",
     "react-dom": "19.2.5",

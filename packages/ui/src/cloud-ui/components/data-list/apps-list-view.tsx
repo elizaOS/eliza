@@ -151,7 +151,7 @@ export function AppsListView({
                     icon: deletingId === app.id ? Loader2 : Trash2,
                     disabled: deletingId === app.id,
                     className:
-                      "cursor-pointer bg-red-500/10 text-red-500 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500 [&_svg]:text-red-500 data-[disabled]:opacity-60",
+                      "cursor-pointer bg-red-500/10 text-red-500 hover:bg-red-500/20   [&_svg]:text-red-500 data-[disabled]:opacity-60",
                     onSelect: () => onDeleteApp?.(app),
                   },
                 ]}

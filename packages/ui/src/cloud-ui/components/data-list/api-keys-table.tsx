@@ -1,10 +1,4 @@
-import {
-  CalendarClock,
-  Copy,
-  RefreshCw,
-  ShieldOff,
-  Trash2,
-} from "lucide-react";
+import { CalendarClock, RefreshCw, ShieldOff, Trash2 } from "lucide-react";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import {
   Table,
@@ -38,7 +32,6 @@ export interface ApiKeyDisplay {
 
 export interface ApiKeysTableProps {
   keys: ApiKeyDisplay[];
-  onCopyKey?: (id: string) => void;
   onDisableKey?: (id: string) => void;
   onDeleteKey?: (id: string) => void;
   onRegenerateKey?: (id: string) => void;
@@ -83,7 +76,7 @@ function renderActions(
   key: ApiKeyDisplay,
   handlers: Pick<
     ApiKeysTableProps,
-    "onCopyKey" | "onDisableKey" | "onDeleteKey" | "onRegenerateKey"
+    "onDisableKey" | "onDeleteKey" | "onRegenerateKey"
   >,
   triggerClassName?: string,
 ) {
@@ -92,11 +85,6 @@ function renderActions(
       label="Manage key"
       triggerClassName={triggerClassName}
       items={[
-        {
-          label: "Copy key",
-          icon: Copy,
-          onSelect: () => handlers.onCopyKey?.(key.id),
-        },
         {
           label: "Regenerate key",
           icon: RefreshCw,
@@ -121,7 +109,6 @@ function renderActions(
 
 export function ApiKeysTable({
   keys,
-  onCopyKey,
   onDisableKey,
   onDeleteKey,
   onRegenerateKey,
@@ -131,7 +118,6 @@ export function ApiKeysTable({
   }
 
   const handlers = {
-    onCopyKey,
     onDisableKey,
     onDeleteKey,
     onRegenerateKey,
@@ -173,15 +159,6 @@ export function ApiKeysTable({
                 variant="ghost"
                 size="sm"
                 className="h-8 px-2"
-                onClick={() => onCopyKey?.(key.id)}
-              >
-                <Copy className="mr-1 h-3.5 w-3.5" />
-                Copy
-              </BrandButton>
-              <BrandButton
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2"
                 onClick={() => onRegenerateKey?.(key.id)}
               >
                 <RefreshCw className="mr-1 h-3.5 w-3.5" />
@@ -193,10 +170,10 @@ export function ApiKeysTable({
               <div>
                 <p className="text-white/40">Usage</p>
                 <p className="mt-1 font-medium text-white">
-                  {key.usageCount.toLocaleString()} requests
+                  {key.usageCount.toLocaleString("en-US")} requests
                 </p>
                 <p className="mt-0.5 text-white/74">
-                  {key.rateLimit.toLocaleString()} / min
+                  {key.rateLimit.toLocaleString("en-US")} / min
                 </p>
               </div>
               <div>
@@ -248,15 +225,6 @@ export function ApiKeysTable({
                         variant="ghost"
                         size="sm"
                         className="h-8 px-2"
-                        onClick={() => onCopyKey?.(key.id)}
-                      >
-                        <Copy className="mr-1 h-3.5 w-3.5" />
-                        Copy
-                      </BrandButton>
-                      <BrandButton
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2"
                         onClick={() => onRegenerateKey?.(key.id)}
                       >
                         <RefreshCw className="mr-1 h-3.5 w-3.5" />
@@ -269,10 +237,10 @@ export function ApiKeysTable({
                 <TableCell>
                   <div className="flex flex-col gap-2">
                     <span className="font-medium text-white">
-                      {key.usageCount.toLocaleString()} requests
+                      {key.usageCount.toLocaleString("en-US")} requests
                     </span>
                     <p className="text-xs text-white/74">
-                      Rate limit {key.rateLimit.toLocaleString()} / min
+                      Rate limit {key.rateLimit.toLocaleString("en-US")} / min
                     </p>
                   </div>
                 </TableCell>

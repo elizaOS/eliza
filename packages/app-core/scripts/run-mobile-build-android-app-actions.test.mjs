@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   ANDROID_APP_ACTION_CAPABILITIES,
@@ -15,6 +17,22 @@ import {
   removeInactiveAndroidJavaSourceRoots,
   validateAndroidAppActionsXmlResource,
 } from "./run-mobile-build.mjs";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..", "..", "..");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -86,7 +104,7 @@ test("Android cloud strip keeps only the active Java package root", () => {
     assert.equal(fs.existsSync(stale), false);
     assert.equal(fs.existsSync(legacy), false);
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    removePathRecursive(tmp);
   }
 });
 

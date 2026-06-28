@@ -280,7 +280,7 @@ async def run_episode(
                 config.attacker_model, attacker_messages,
                 temperature=0.7, max_tokens=500,
             )
-            # Strip <think> tokens that Qwen3 models produce
+            # Strip private thinking traces emitted by reasoning-capable models.
             attack_text = THINK_PATTERN.sub("", attacker_resp["content"]).strip()
             # Also strip any meta-commentary the model might add
             if attack_text.startswith('"') and attack_text.endswith('"'):

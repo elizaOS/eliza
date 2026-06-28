@@ -19,15 +19,17 @@ interface ElectrobunGlobal {
   tray?: ElectrobunTrayApi;
 }
 
-interface WindowWithElectrobun {
-  electrobun?: ElectrobunGlobal;
+declare global {
+  interface Window {
+    electrobun?: ElectrobunGlobal;
+  }
 }
 
 function getElectrobun(): ElectrobunGlobal | null {
   if (typeof window === "undefined") {
     return null;
   }
-  const candidate = (window as unknown as WindowWithElectrobun).electrobun;
+  const candidate = window.electrobun;
   return candidate ?? null;
 }
 

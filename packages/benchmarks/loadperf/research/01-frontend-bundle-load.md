@@ -161,10 +161,10 @@ catalogued below.
    *before* `mountReactApp()` (`main.tsx:2228`). `initializeAppModules`
    (`main.tsx:499-537`) `Promise.all`-awaits companion, lifeops, vincent,
    task-coordinator, phone, steward, training, plus all 10 side-effect plugins
-   (`plugin-registrations.ts`: feed, scape, hyperscape, defense-of-the-agents,
-   clawville, trajectory-logger, shopify-ui, hyperliquid-app, polymarket-app,
-   wallet-ui, app-model-tester). Every one of those chunks must download + parse +
-   run `register*()` before a single pixel paints. This contradicts the
+   (`plugin-registrations.ts`: feed, scape, hyperscape, clawville,
+   trajectory-logger, shopify-ui, hyperliquid-app, polymarket-app, wallet-ui,
+   app-model-tester). Every one of those chunks must download + parse + run
+   `register*()` before a single pixel paints. This contradicts the
    `packages/app/CLAUDE.md` boot-sequence claim that platform init runs
    "concurrently after mount" — module init is *before* mount.
 2. **Fix sketch.** Mount React with the boot-config it can render from (branding,

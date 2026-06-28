@@ -19,13 +19,13 @@ eliza plugins install @elizaos/plugin-nearai
 | `NEARAI_API_KEY` | Yes | - | NEAR AI API key (not needed in browser; use a proxy) |
 | `NEARAI_BASE_URL` | No | `https://cloud-api.near.ai/v1` | OpenAI-compatible API base URL (Node only) |
 | `NEARAI_BROWSER_BASE_URL` | No | - | Proxy base URL for browser builds (omit API key in-browser) |
-| `NEARAI_SMALL_MODEL` | No | `Qwen/Qwen3.6-35B-A3B-FP8` | Small model id |
-| `NEARAI_LARGE_MODEL` | No | `zai-org/GLM-5.1-FP8` | Large model id |
+| `NEARAI_SMALL_MODEL` | No | `google/gemma-4-31B-it` | Small model id |
+| `NEARAI_LARGE_MODEL` | No | `google/gemma-4-31B-it` | Large model id |
 | `NEARAI_EXPERIMENTAL_TELEMETRY` | No | `false` | Set `true` to enable Vercel AI SDK telemetry |
 
 Model ids come from the public NEAR AI catalog at
-`https://cloud-api.near.ai/v1/model/list`. The default models were selected
-from TEE-verifiable text models in that catalog.
+`https://cloud-api.near.ai/v1/models`. The default model was selected from
+ready TEE-verifiable Gemma text models in that catalog.
 
 ## Usage
 

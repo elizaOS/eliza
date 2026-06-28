@@ -17,6 +17,9 @@ const VALID_APPROVAL_MODES: ApprovalMode[] = [
 
 const SAFE_COMMANDS = new Set<string>([
   "screenshot",
+  "get_cursor_position",
+  "ocr",
+  "detect_elements",
   "browser_screenshot",
   "browser_state",
   "browser_info",
@@ -32,6 +35,9 @@ const SAFE_COMMANDS = new Set<string>([
   "directory_list",
   "file_list_downloads",
   "file_download",
+  "file_read_bytes",
+  "file_directory_exists",
+  "file_get_file_size",
   "terminal_read",
   "terminal_connect",
   "list_windows",

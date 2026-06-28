@@ -342,6 +342,28 @@ export function repairBrokenInstallRecord(
 }
 
 /** Read package.json exports/main to find the importable entry file. */
+type PackageExportEntry =
+  | string
+  | {
+      "eliza-source"?: PackageExportEntry;
+      import?: string;
+      default?: string;
+    };
+
+function packageExportCandidates(entry: PackageExportEntry): string[] {
+  if (typeof entry === "string") {
+    return [entry];
+  }
+
+  return [
+    ...(entry["eliza-source"]
+      ? packageExportCandidates(entry["eliza-source"])
+      : []),
+    ...(typeof entry.import === "string" ? [entry.import] : []),
+    ...(typeof entry.default === "string" ? [entry.default] : []),
+  ];
+}
+
 /** @internal Exported for testing. */
 export async function resolvePackageEntry(
   pkgRoot: string,
@@ -392,7 +414,7 @@ export async function resolvePackageEntry(
     const pkg = JSON.parse(raw) as {
       name?: string;
       main?: string;
-      exports?: Record<string, string | Record<string, string>> | string;
+      exports?: Record<string, PackageExportEntry> | string;
     };
 
     if (
@@ -400,14 +422,10 @@ export async function resolvePackageEntry(
       pkg.exports[exportSubpath] !== undefined
     ) {
       const entry = pkg.exports[exportSubpath];
-      const resolved =
-        typeof entry === "string" ? entry : entry.import || entry.default;
-      if (typeof resolved === "string") {
-        return chooseExisting(
-          path.resolve(pkgRoot, resolved),
-          ...fallbackCandidates,
-        );
-      }
+      const resolved = packageExportCandidates(entry).map((candidate) =>
+        path.resolve(pkgRoot, candidate),
+      );
+      return chooseExisting(...resolved, ...fallbackCandidates);
     }
     if (exportSubpath === "." && typeof pkg.exports === "string") {
       return chooseExisting(

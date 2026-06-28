@@ -44,7 +44,7 @@ export const sellPredictionAction: Action = {
       description: "Number of shares to sell",
       required: true,
     },
-  } as unknown as Action["parameters"],
+  },
   examples: [
     [
       {

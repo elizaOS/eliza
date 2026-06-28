@@ -254,7 +254,7 @@ EXAMPLES:
   feed model upload-dataset --repo=feedlabs/game-data
   feed model upload --model=v1 --hf-name=org/model --private
   feed model ollama list
-  feed model ollama pull --name=qwen3.5:4b-instruct
+  feed model ollama pull --name=hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0
   feed model ollama status
 
 ADVANCED:
@@ -666,8 +666,10 @@ async function ollamaList(): Promise<void> {
   if (models.length === 0) {
     console.log("No models installed.\n");
     console.log("To install a model:");
-    console.log("  feed model ollama pull --name=qwen3.5:4b-instruct");
-    console.log("  ollama pull qwen3.5:4b-instruct");
+    console.log(
+      "  feed model ollama pull --name=hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
+    );
+    console.log("  ollama pull hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0");
     return;
   }
 
@@ -714,7 +716,9 @@ async function ollamaPull(args: ReturnType<typeof parseArgs>): Promise<void> {
 
   if (!modelName) {
     logger.fail("--name is required");
-    console.log("\nExample: feed model ollama pull --name=qwen3.5:4b-instruct");
+    console.log(
+      "\nExample: feed model ollama pull --name=hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
+    );
     process.exit(1);
   }
 
@@ -755,7 +759,7 @@ async function ollamaDelete(args: ReturnType<typeof parseArgs>): Promise<void> {
   if (!modelName) {
     logger.fail("--name is required");
     console.log(
-      "\nExample: feed model ollama delete --name=qwen3.5:4b-instruct",
+      "\nExample: feed model ollama delete --name=hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
     );
     process.exit(1);
   }
@@ -800,8 +804,8 @@ async function ollamaStatus(): Promise<void> {
 
     // Check if recommended models are available
     const recommendedModels = [
-      "qwen3.5:4b-instruct",
-      "qwen3.5:9b-instruct",
+      "hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
+      "hf.co/google/gemma-4-12B-it-qat-q4_0-gguf:Q4_0",
       "llama3.2:3b",
       "mistral:7b",
     ];
@@ -817,7 +821,9 @@ async function ollamaStatus(): Promise<void> {
 
     if (modelCount === 0) {
       console.log("\n📥 To install the default model:");
-      console.log("  feed model ollama pull --name=qwen3.5:4b-instruct");
+      console.log(
+        "  feed model ollama pull --name=hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0",
+      );
     }
   } else {
     logger.fail(`Ollama returned status ${response.status}`);

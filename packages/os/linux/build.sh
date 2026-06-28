@@ -28,6 +28,10 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${HERE}/../../.." && pwd)"
+RM_PATH_RECURSIVE_SCRIPT="${REPO_ROOT}/packages/scripts/rm-path-recursive.mjs"
+# shellcheck source=packages/os/linux/scripts/submodule-checkout.sh
+source "${HERE}/scripts/submodule-checkout.sh"
 TAILS_SRC="${TAILS_SRC:-${HERE}/tails}"
 OUT="${HERE}/out"
 # Target architecture for the ISO. Default amd64 keeps every existing
@@ -67,6 +71,15 @@ case "${STAGE}" in
         ;;
 esac
 
+[ -r "${RM_PATH_RECURSIVE_SCRIPT}" ] || {
+    echo "ERROR: recursive cleanup helper not found at ${RM_PATH_RECURSIVE_SCRIPT}" >&2
+    exit 1
+}
+
+rm_path_recursive() {
+    node "${RM_PATH_RECURSIVE_SCRIPT}" "$@"
+}
+
 if [ ! -d "${TAILS_SRC}/config" ]; then
     echo "ERROR: no Tails source at ${TAILS_SRC} (expected config/, auto/, …)" >&2
     echo "Set TAILS_SRC=/path/to/tails or vendor it as ./tails/" >&2
@@ -83,18 +96,12 @@ echo "=== building image ${IMAGE} ==="
 # context needs that source available as tails-live-build/. The vendored
 # Tails tree may omit submodule checkouts, so clone the pinned revision
 # when tails/submodules/live-build is absent.
-trap 'rm -rf "${HERE}/tails-live-build"' EXIT
-rm -rf "${HERE}/tails-live-build"
-if [ -d "${TAILS_SRC}/submodules/live-build" ] \
-    && find "${TAILS_SRC}/submodules/live-build" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
-    cp -r "${TAILS_SRC}/submodules/live-build" "${HERE}/tails-live-build"
-else
-    echo "no ${TAILS_SRC}/submodules/live-build — fetching ${LIVE_BUILD_REF}"
-    git init -q "${HERE}/tails-live-build"
-    git -C "${HERE}/tails-live-build" remote add origin "${LIVE_BUILD_URL}"
-    git -C "${HERE}/tails-live-build" fetch --depth 1 origin "${LIVE_BUILD_REF}"
-    git -C "${HERE}/tails-live-build" checkout -q FETCH_HEAD
-fi
+trap 'rm_path_recursive "${HERE}/tails-live-build"' EXIT
+materialize_submodule_checkout \
+    "${TAILS_SRC}/submodules/live-build" \
+    "${HERE}/tails-live-build" \
+    "${LIVE_BUILD_URL}" \
+    "${LIVE_BUILD_REF}"
 # Pin the build platform so the Dockerfile pulls the matching debian
 # base image and resolves arch-specific apt packages. For amd64 this
 # also prevents Apple Silicon hosts (default arm64) from pulling the
@@ -103,8 +110,27 @@ fi
 # registered (Docker Desktop ships this; on bare Linux,
 # `apt-get install qemu-user-static binfmt-support` then `docker run
 # --rm --privileged tonistiigi/binfmt --install all`).
-docker build --platform "linux/${ARCH}" --build-arg "TARGETARCH=${ARCH}" -t "${IMAGE}" "${HERE}"
-rm -rf "${HERE}/tails-live-build"
+docker_build_args=(
+    --platform "linux/${ARCH}"
+    --build-arg "TARGETARCH=${ARCH}"
+    -t "${IMAGE}"
+)
+if [ "${ELIZAOS_DOCKER_BUILDX_GHA_CACHE:-0}" = "1" ]; then
+    if ! docker buildx version >/dev/null 2>&1; then
+        echo "ERROR: ELIZAOS_DOCKER_BUILDX_GHA_CACHE=1 requires docker buildx." >&2
+        exit 1
+    fi
+    CACHE_SCOPE="${ELIZAOS_DOCKER_BUILDX_CACHE_SCOPE:-elizaos-linux-iso-${ARCH}}"
+    docker buildx build \
+        "${docker_build_args[@]}" \
+        --load \
+        --cache-from "type=gha,scope=${CACHE_SCOPE}" \
+        --cache-to "type=gha,scope=${CACHE_SCOPE},mode=max" \
+        "${HERE}"
+else
+    docker build "${docker_build_args[@]}" "${HERE}"
+fi
+rm_path_recursive "${HERE}/tails-live-build"
 
 # Create the apt-cacher-ng cache volume on first run.
 if ! docker volume inspect "${ACNG_VOLUME}" >/dev/null 2>&1; then

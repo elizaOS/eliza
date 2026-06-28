@@ -457,12 +457,14 @@ def main() -> None:
     parser.add_argument(
         "--mode",
         choices=["direct", "eliza-agent", "eliza-bridge"],
-        default="direct",
+        default="eliza-bridge",
         help=(
-            "Benchmark mode: 'direct' tests ExperienceService directly (default), "
-            "'eliza-agent' is an alias for the TypeScript bridge, "
-            "'eliza-bridge' routes the LLM call through the elizaOS TypeScript "
-            "benchmark bridge (requires ELIZA_BENCH_URL/ELIZA_BENCH_TOKEN)."
+            "Benchmark mode (default: eliza-bridge — routes the LLM call "
+            "through the elizaOS TypeScript benchmark bridge against the real "
+            "AgentRuntime, #9475; requires ELIZA_BENCH_URL/ELIZA_BENCH_TOKEN). "
+            "'eliza-agent' is an alias for the bridge. 'direct' tests "
+            "ExperienceService in-process with no LLM (retrieval-only smoke) "
+            "and must be requested explicitly."
         ),
     )
     parser.add_argument("--experiences", type=int, default=1000, help="Number of synthetic experiences")

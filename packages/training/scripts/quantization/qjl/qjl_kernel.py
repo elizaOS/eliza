@@ -1,8 +1,8 @@
 """Python dispatch layer for the vendored QJL CUDA extensions.
 
 The CUDA kernels are compiled per (head_dim in {128, 256}) instantiation --
-upstream hard-coded EMB_DIM=128, while active Qwen3.5 text models use
-head_dim=256. The wrappers below pick the right
+upstream hard-coded EMB_DIM=128, while Gemma-era validation needs a
+256-dim specialization. The wrappers below pick the right
 specialization at call-time based on the input tensor shape, so
 downstream callers (e.g. ``LlamaAttention_QJL``) never have to know.
 

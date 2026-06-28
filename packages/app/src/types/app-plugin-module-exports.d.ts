@@ -70,18 +70,6 @@ declare module "@elizaos/plugin-phone" {
   >;
 }
 
-declare module "@elizaos/plugin-steward-app" {
-  export const ApprovalQueue: import("react").ComponentType<
-    import("@elizaos/ui").StewardApprovalQueueProps
-  >;
-  export const StewardLogo: import("react").ComponentType<
-    import("@elizaos/ui").StewardLogoProps
-  >;
-  export const TransactionHistory: import("react").ComponentType<
-    import("@elizaos/ui").StewardTransactionHistoryProps
-  >;
-}
-
 declare module "@elizaos/plugin-task-coordinator" {
   export const CodingAgentControlChip: import("react").ComponentType<
     Record<string, never>
@@ -98,9 +86,4 @@ declare module "@elizaos/plugin-training" {
   export const FineTuningView: import("react").ComponentType<
     import("@elizaos/ui").FineTuningViewProps
   >;
-}
-
-declare module "@elizaos/plugin-vincent" {
-  // Imported only for its self-registration side effect.
-  export {};
 }

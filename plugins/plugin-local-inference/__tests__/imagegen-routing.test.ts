@@ -6,11 +6,10 @@
  * why):
  *
  *   1. `services/imagegen/backend-selector.ts#TIER_TO_DEFAULT_IMAGE_MODEL`
- *   2. `eliza/packages/chip/ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`
+ *   2. `eliza/packages/research/chip/ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`
  *
- * This test asserts they agree, plus that the small/desktop split lands
- * where the bundle plan expects (sd-1.5 for 2b/4b; z-image-turbo
- * for 9b/27b/27b-256k).
+ * This test asserts they agree, plus that every tier lands on the SD 1.5
+ * default until a legacy-free split-diffusion encoder is available.
  */
 
 import { describe, expect, it } from "vitest";
@@ -25,7 +24,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXTRAS_PATH = resolve(
 	__dirname,
-	"../../../packages/chip/ELIZA_1_BUNDLE_EXTRAS.json",
+	"../../../packages/research/chip/ELIZA_1_BUNDLE_EXTRAS.json",
 );
 
 interface ExtrasShape {
@@ -42,23 +41,17 @@ interface ExtrasShape {
 }
 
 describe("WS3 routing — tier → default image-gen model", () => {
-	it("mobile tiers default to sd-1.5 Q5_0", () => {
-		for (const tier of ["eliza-1-2b", "eliza-1-4b"]) {
-			const entry = TIER_TO_DEFAULT_IMAGE_MODEL[tier];
-			expect(entry?.modelId).toBe("imagegen-sd-1_5-q5_0");
-			expect(entry?.file).toBe("imagegen/sd-1.5-Q5_0.gguf");
-		}
-	});
-
-	it("desktop tiers default to z-image-turbo Q4_K_M", () => {
+	it("all tiers default to sd-1.5 Q5_0", () => {
 		for (const tier of [
+			"eliza-1-2b",
+			"eliza-1-4b",
 			"eliza-1-9b",
 			"eliza-1-27b",
 			"eliza-1-27b-256k",
 		]) {
 			const entry = TIER_TO_DEFAULT_IMAGE_MODEL[tier];
-			expect(entry?.modelId).toBe("imagegen-z-image-turbo-q4_k_m");
-			expect(entry?.file).toBe("imagegen/z-image-turbo-Q4_K_M.gguf");
+			expect(entry?.modelId).toBe("imagegen-sd-1_5-q5_0");
+			expect(entry?.file).toBe("imagegen/sd-1.5-Q5_0.gguf");
 		}
 	});
 
@@ -67,7 +60,7 @@ describe("WS3 routing — tier → default image-gen model", () => {
 			"imagegen-sd-1_5-q5_0",
 		);
 		expect(resolveDefaultImageGenModel("eliza-1-9b")?.modelId).toBe(
-			"imagegen-z-image-turbo-q4_k_m",
+			"imagegen-sd-1_5-q5_0",
 		);
 	});
 
@@ -75,9 +68,6 @@ describe("WS3 routing — tier → default image-gen model", () => {
 		expect(resolveDefaultImageGenModel("imagegen-sd-1_5-q5_0")?.modelId).toBe(
 			"imagegen-sd-1_5-q5_0",
 		);
-		expect(
-			resolveDefaultImageGenModel("imagegen-z-image-turbo-q4_k_m")?.modelId,
-		).toBe("imagegen-z-image-turbo-q4_k_m");
 	});
 
 	it("resolveDefaultImageGenModel returns null on unknown input", () => {

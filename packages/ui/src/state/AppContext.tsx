@@ -60,6 +60,7 @@ import {
 } from "./persistence";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
+import { isTrustedRestoreApiBaseUrl } from "./startup-phase-restore";
 import { useTranslation } from "./TranslationContext.hooks";
 import { TranslationProvider } from "./TranslationProvider";
 import { useAppLifecycleEvents } from "./useAppLifecycleEvents";
@@ -149,6 +150,7 @@ function AppProviderInner({
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
       backgroundConfig,
+      canUndoBackground,
     },
     setUiTheme,
     setUiThemeMode,
@@ -156,6 +158,7 @@ function AppProviderInner({
     setCompanionAnimateWhenHidden,
     setCompanionHalfFramerateMode,
     setBackgroundConfig,
+    undoBackgroundConfig,
   } = displayPrefs;
 
   // Apply the host app's brand theme (set via BrandingConfig.theme).
@@ -172,7 +175,6 @@ function AppProviderInner({
     state: {
       connected,
       agentStatus,
-      cloudHandoffPhase,
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
@@ -563,7 +565,9 @@ function AppProviderInner({
   } = characterHook;
 
   // elizaCloud* state, refs, and callbacks are now provided by useCloudState (cloudHook above).
-  const shellState = useAppShellState();
+  const shellState = useAppShellState({
+    syncServerFavorites: firstRunComplete,
+  });
   const {
     state: {
       ownerName,
@@ -970,6 +974,7 @@ function AppProviderInner({
     promptModal,
     agentName: agentStatus?.agentName,
     characterName: characterDraft?.name,
+    hydrateServerConfig: firstRunComplete,
   });
   const {
     state: {
@@ -1141,6 +1146,7 @@ function AppProviderInner({
     appendAutonomousEvent,
     loadConversations,
     loadConversationMessages,
+    prefetchConversationMessages,
     getBscTradePreflight,
     getBscTradeQuote,
     getBscTradeTxStatus,
@@ -1231,6 +1237,7 @@ function AppProviderInner({
     resetBackendConnection,
     loadConversations,
     loadConversationMessages,
+    prefetchConversationMessages,
     loadPlugins,
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -1249,6 +1256,7 @@ function AppProviderInner({
     setElizaCloudUserId,
     setElizaCloudStatusReason,
     setElizaCloudLoginError,
+    firstRunComplete,
     firstRunCompletionCommittedRef,
     setFirstRunUiRevealNonce,
     setFirstRunLoading,
@@ -1721,6 +1729,17 @@ function AppProviderInner({
       );
       if (!profile) return;
 
+      // The profile registry is persisted in localStorage, so a tampered/
+      // attacker-written profile could point a "remote" agent at an untrusted
+      // host. Refuse to switch to (and dial / send the bearer token to) such a
+      // profile — same trust gate the boot-restore path uses.
+      if (
+        profile.kind === "remote" &&
+        !isTrustedRestoreApiBaseUrl(profile.apiBase)
+      ) {
+        return;
+      }
+
       setActiveProfileId(profileId);
 
       // Conversation ids are per-account, so saved drafts from the old
@@ -1865,9 +1884,17 @@ function AppProviderInner({
   // streaming updates re-render only the chat surfaces (ChatView + the shell
   // controller behind ContinuousChatOverlay) instead of cascading through
   // AppContext to all ~135 useApp() subscribers.
+  const removeConversationMessage = useCallback(
+    (messageId: string) => {
+      setConversationMessages((prev) =>
+        prev.filter((message) => message.id !== messageId),
+      );
+    },
+    [setConversationMessages],
+  );
   const conversationMessagesValue = useMemo(
-    () => ({ conversationMessages }),
-    [conversationMessages],
+    () => ({ conversationMessages, removeConversationMessage }),
+    [conversationMessages, removeConversationMessage],
   );
 
   // Live assistant-turn status (rich status indicator) lives in its own context
@@ -1917,12 +1944,12 @@ function AppProviderInner({
       uiTheme,
       uiThemeMode,
       backgroundConfig,
+      canUndoBackground,
       companionVrmPowerMode,
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
       connected,
       agentStatus,
-      cloudHandoffPhase,
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
@@ -2206,6 +2233,7 @@ function AppProviderInner({
       setUiTheme,
       setUiThemeMode,
       setBackgroundConfig,
+      undoBackgroundConfig,
       setCompanionVrmPowerMode,
       setCompanionAnimateWhenHidden,
       setCompanionHalfFramerateMode,
@@ -2336,12 +2364,12 @@ function AppProviderInner({
       uiTheme,
       uiThemeMode,
       backgroundConfig,
+      canUndoBackground,
       companionVrmPowerMode,
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
       connected,
       agentStatus,
-      cloudHandoffPhase,
       firstRunComplete,
       firstRunUiRevealNonce,
       firstRunLoading,
@@ -2632,6 +2660,7 @@ function AppProviderInner({
       setUiTheme,
       setUiThemeMode,
       setBackgroundConfig,
+      undoBackgroundConfig,
       setCompanionVrmPowerMode,
       setCompanionAnimateWhenHidden,
       setCompanionHalfFramerateMode,

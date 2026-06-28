@@ -274,7 +274,7 @@ describe("WifiAppView — network list", () => {
 
     renderView();
 
-    expect(await screen.findByText("No networks found")).toBeTruthy();
+    expect(await screen.findByText("None")).toBeTruthy();
     expect(screen.getByText("Check Wi-Fi and location access.")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Scan again/ })).toBeTruthy();
     expect(

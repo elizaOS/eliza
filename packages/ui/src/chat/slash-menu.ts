@@ -8,6 +8,12 @@
  * its own copy of the type rather than depending on the runtime package.
  */
 
+import {
+  matchShortcut,
+  type ShortcutDefinition,
+  type ShortcutPattern,
+  type ShortcutTarget,
+} from "@elizaos/core";
 import type {
   ClientCommandAction,
   CommandArgSource,
@@ -239,6 +245,294 @@ export function filterArgChoices(choices: string[], query: string): string[] {
     (c) => !c.toLowerCase().startsWith(q) && c.toLowerCase().includes(q),
   );
   return [...starts, ...includes];
+}
+
+// ── Natural client shortcuts ────────────────────────────────────────────────
+
+const NAVIGATION_VERB_PATTERN =
+  "(?:open|show(?:\\s+me)?|go\\s+to|switch\\s+to|take\\s+me\\s+to|pull\\s+up|bring\\s+up)";
+const OPTIONAL_OBJECT_PATTERN = "(?:(?:the|my)\\s+)?";
+const SLOT_WORD_PATTERN = "[\\p{L}\\p{N}]+(?:\\s+[\\p{L}\\p{N}]+)*";
+const SLOT_WORD_PATTERN_LAZY = "[\\p{L}\\p{N}]+(?:\\s+[\\p{L}\\p{N}]+)*?";
+
+export interface ResolveClientShortcutOptions {
+  allowNatural?: boolean;
+  isAuthorized?: boolean;
+  isElevated?: boolean;
+  resolveChoices?: (source: CommandArgSource) => string[];
+}
+
+function normalizeShortcutPhrase(value: string | undefined): string {
+  return (value ?? "")
+    .replace(/^\//, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function phraseRegexSource(phrase: string): string {
+  return normalizeShortcutPhrase(phrase)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+}
+
+function regexPattern(source: string, confidence: number): ShortcutPattern {
+  return { regex: new RegExp(source, "iu"), confidence };
+}
+
+function primaryAlias(command: SlashCommandCatalogItem): string {
+  return command.textAliases[0] ?? `/${command.nativeName}`;
+}
+
+function commandPhrases(command: SlashCommandCatalogItem): string[] {
+  const phrases = new Map<string, string>();
+  const add = (value: string | undefined) => {
+    const normalized = normalizeShortcutPhrase(value);
+    if (!normalized || phrases.has(normalized)) return;
+    phrases.set(normalized, normalized);
+  };
+
+  for (const alias of command.textAliases) add(alias);
+  add(command.nativeName);
+  add(command.key);
+  if (command.target.kind === "navigate") {
+    add(command.target.tab);
+    add(command.target.viewId);
+    if (command.target.section) add(`${command.target.section} settings`);
+  }
+  return [...phrases.values()];
+}
+
+function shortcutTargetForCommand(
+  command: SlashCommandCatalogItem,
+): ShortcutTarget {
+  if (command.target.kind === "client") {
+    return { kind: "client", clientAction: command.target.clientAction };
+  }
+  if (command.target.kind === "navigate") {
+    return {
+      kind: "navigate",
+      path: command.target.path ?? "",
+      tab: command.target.tab,
+      viewId: command.target.viewId,
+      section: command.target.section,
+    };
+  }
+  return { kind: "client", clientAction: command.key };
+}
+
+function naturalPatternsForCommand(
+  command: SlashCommandCatalogItem,
+): ShortcutPattern[] {
+  const target = command.target;
+  if (target.kind === "agent") return [];
+
+  if (target.kind === "client") {
+    switch (target.clientAction) {
+      case "clear-chat":
+        return [
+          regexPattern(
+            "^(?:clear|reset)\\s+(?:the\\s+|current\\s+)?(?:chat|conversation|thread)$",
+            0.95,
+          ),
+        ];
+      case "new-conversation":
+        return [
+          regexPattern(
+            "^(?:new|start|open)\\s+(?:a\\s+)?(?:chat|conversation|thread)$",
+            0.92,
+          ),
+        ];
+      case "toggle-fullscreen":
+        return [
+          regexPattern(
+            "^(?:toggle|enter|exit|open|close)\\s+(?:full\\s+screen|fullscreen)(?:\\s+chat)?$",
+            0.9,
+          ),
+          regexPattern("^(?:full\\s+screen|fullscreen)\\s+chat$", 0.86),
+        ];
+      case "open-command-palette":
+      case "show-commands":
+        return [
+          regexPattern(
+            `^${NAVIGATION_VERB_PATTERN}\\s+(?:the\\s+)?(?:command\\s+palette|commands)$`,
+            0.9,
+          ),
+          regexPattern("^(?:show|list)\\s+(?:available\\s+)?commands$", 0.9),
+        ];
+      case "toggle-transcription":
+        return [
+          regexPattern(
+            "^(?:toggle|start|stop|turn\\s+on|turn\\s+off)\\s+(?:transcription|transcribe|dictation)$",
+            0.9,
+          ),
+          regexPattern("^(?:transcribe|dictate)$", 0.84),
+        ];
+    }
+  }
+
+  const patterns: ShortcutPattern[] = [];
+  const phrases = commandPhrases(command)
+    .map(phraseRegexSource)
+    .filter(Boolean);
+  if (phrases.length > 0) {
+    patterns.push(
+      regexPattern(
+        `^${NAVIGATION_VERB_PATTERN}\\s+${OPTIONAL_OBJECT_PATTERN}(?:${phrases.join("|")})$`,
+        0.94,
+      ),
+    );
+  }
+
+  if (target.kind === "navigate" && target.tab === "settings") {
+    patterns.push(
+      regexPattern(
+        `^${NAVIGATION_VERB_PATTERN}\\s+${OPTIONAL_OBJECT_PATTERN}(?<section>${SLOT_WORD_PATTERN})\\s+settings$`,
+        0.91,
+      ),
+      regexPattern(
+        `^(?:change|configure|edit|set)\\s+${OPTIONAL_OBJECT_PATTERN}(?<section>${SLOT_WORD_PATTERN})\\s+settings$`,
+        0.88,
+      ),
+    );
+  }
+
+  if (target.kind === "navigate" && commandHasArgSource(command, "views")) {
+    patterns.push(
+      regexPattern(
+        `^${NAVIGATION_VERB_PATTERN}\\s+${OPTIONAL_OBJECT_PATTERN}(?<view>${SLOT_WORD_PATTERN_LAZY})\\s+(?:view|app|screen)$`,
+        0.75,
+      ),
+      regexPattern(
+        `^${NAVIGATION_VERB_PATTERN}\\s+${OPTIONAL_OBJECT_PATTERN}(?<view>${SLOT_WORD_PATTERN})$`,
+        0.72,
+      ),
+    );
+  }
+
+  return patterns;
+}
+
+function naturalShortcutDefinitions(commands: SlashCommandCatalogItem[]): {
+  definitions: ShortcutDefinition[];
+  commandById: Map<string, SlashCommandCatalogItem>;
+} {
+  const commandById = new Map<string, SlashCommandCatalogItem>();
+  const definitions: ShortcutDefinition[] = [];
+
+  for (const command of commands) {
+    if (command.target.kind === "agent") continue;
+    const patterns = naturalPatternsForCommand(command);
+    if (patterns.length === 0) continue;
+    const id = `client-command:${command.key}`;
+    commandById.set(id, command);
+    definitions.push({
+      id,
+      kind: "natural",
+      patterns,
+      target: shortcutTargetForCommand(command),
+      confidence: 0.9,
+      priority: command.target.kind === "navigate" ? 20 : 10,
+      requiresAuth: command.requiresAuth,
+      requiresElevated: command.requiresElevated,
+    });
+  }
+
+  return { definitions, commandById };
+}
+
+function cleanSlotValue(value: string | undefined): string {
+  return normalizeShortcutPhrase(value)
+    .replace(/^(?:the|my)\s+/, "")
+    .replace(/\s+(?:view|app|screen)$/, "")
+    .trim();
+}
+
+function resolveChoice(
+  value: string | undefined,
+  choices: readonly string[],
+): string | undefined {
+  const normalized = cleanSlotValue(value);
+  if (!normalized || choices.length === 0) return undefined;
+  return choices.find(
+    (choice) => normalizeShortcutPhrase(choice) === normalized,
+  );
+}
+
+function resolveSectionSlot(
+  value: string | undefined,
+  resolveSection: (token: string) => string | undefined,
+): string | undefined {
+  const normalized = cleanSlotValue(value);
+  if (!normalized) return undefined;
+  return (
+    resolveSection(normalized) ??
+    resolveSection(normalized.replace(/\s+/g, "-"))
+  );
+}
+
+/**
+ * Resolve caller-enabled natural-language client shortcuts (e.g. "open settings",
+ * "show me my calendar", "clear chat") into the same execution objects as
+ * slash commands. Agent-targeted commands deliberately fall through to normal
+ * chat; only deterministic navigate/client commands are eligible here.
+ */
+export function resolveClientShortcutExecution(
+  commands: SlashCommandCatalogItem[],
+  text: string,
+  resolveSection: (token: string) => string | undefined = (t) => t,
+  options: ResolveClientShortcutOptions = {},
+): SlashExecution | null {
+  if (!options.allowNatural) return null;
+  const raw = text.trim();
+  if (
+    !raw ||
+    raw.startsWith("/") ||
+    raw.startsWith("!") ||
+    raw.includes("\n")
+  ) {
+    return null;
+  }
+
+  const { definitions, commandById } = naturalShortcutDefinitions(commands);
+  const match = matchShortcut(definitions, raw, {
+    allowNatural: true,
+    isAuthorized: options.isAuthorized ?? true,
+    isElevated: options.isElevated ?? true,
+  });
+  if (!match) return null;
+
+  const command = commandById.get(match.shortcut.id);
+  if (!command) return null;
+
+  const alias = primaryAlias(command);
+  if (match.parameters.section) {
+    const section = resolveSectionSlot(
+      match.parameters.section,
+      resolveSection,
+    );
+    if (!section) return null;
+    return resolveSlashExecution(
+      command,
+      `${alias} ${section}`,
+      resolveSection,
+    );
+  }
+
+  if (match.parameters.view) {
+    const view = resolveChoice(
+      match.parameters.view,
+      options.resolveChoices?.("views") ?? [],
+    );
+    if (!view) return null;
+    return resolveSlashExecution(command, `${alias} ${view}`, resolveSection);
+  }
+
+  return resolveSlashExecution(command, alias, resolveSection);
 }
 
 // ── Completion (Tab) ─────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -8,7 +9,6 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
-  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -18,6 +18,7 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
+const CLEANUP_HELPER_SCRIPT = resolveCleanupHelperScript();
 const ROOT_NODE_MODULES = path.join(REPO_ROOT, "node_modules");
 const ELIZA_NODE_MODULES = path.join(REPO_ROOT, "eliza", "node_modules");
 const GLOBAL_TYPES_CACHE_DIR = path.join(
@@ -56,7 +57,50 @@ const MATERIALIZED_TYPE_PACKAGES = [
   "three",
   "ws",
 ];
-const MATERIALIZED_PACKAGES = ["bun-types"];
+const MATERIALIZED_PACKAGES = ["bun-types", "csstype"];
+
+function resolveCleanupHelperScript() {
+  const candidates = [
+    path.join(REPO_ROOT, "packages", "scripts", "rm-path-recursive.mjs"),
+    path.join(
+      REPO_ROOT,
+      "eliza",
+      "packages",
+      "scripts",
+      "rm-path-recursive.mjs",
+    ),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
+function removePathRecursive(targetPath) {
+  if (!existsSync(targetPath)) {
+    return;
+  }
+
+  const result = spawnSync(
+    "node",
+    [CLEANUP_HELPER_SCRIPT, path.relative(REPO_ROOT, targetPath)],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      stdio: "pipe",
+    },
+  );
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const output = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    throw new Error(
+      `cleanup helper failed for ${targetPath}${output ? `:\n${output}` : ""}`,
+    );
+  }
+}
 
 function collectBrokenBundledTypePackages() {
   const packageNames = new Set();
@@ -132,7 +176,7 @@ function repairBrokenDirectoryLink(dir) {
 }
 
 function recreateTypeRoot(targetTypesDir) {
-  rmSync(targetTypesDir, { recursive: true, force: true });
+  removePathRecursive(targetTypesDir);
   mkdirSync(targetTypesDir, { recursive: true });
 }
 
@@ -176,7 +220,7 @@ function removeExistingTypeEntry(targetPath) {
     throw error;
   }
   if (stat.isDirectory()) {
-    rmSync(targetPath, { recursive: true, force: true });
+    removePathRecursive(targetPath);
   } else {
     unlinkSync(targetPath);
   }

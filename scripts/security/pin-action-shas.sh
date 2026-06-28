@@ -35,6 +35,7 @@ for arg in "$@"; do
 done
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
+RM_PATH_RECURSIVE=(node "${REPO_ROOT}/packages/scripts/rm-path-recursive.mjs")
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
   shopt -s nullglob
   TARGETS=("${REPO_ROOT}/.github/workflows/"*.yml "${REPO_ROOT}/.github/workflows/"*.yaml)
@@ -44,7 +45,10 @@ command -v gh >/dev/null || { echo "gh CLI required" >&2; exit 1; }
 gh auth status >/dev/null 2>&1 || { echo "gh not authenticated" >&2; exit 1; }
 
 SHA_CACHE_DIR=$(mktemp -d)
-trap 'rm -rf "$SHA_CACHE_DIR"' EXIT
+cleanup_sha_cache() {
+  "${RM_PATH_RECURSIVE[@]}" "$SHA_CACHE_DIR"
+}
+trap cleanup_sha_cache EXIT
 
 resolve_sha() {
   local owner_repo="$1" ref="$2" key cache_key cache_file sha obj_type obj_sha

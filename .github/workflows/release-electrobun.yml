@@ -198,20 +198,6 @@ jobs:
       - name: Regression matrix contract
         run: bun run test:regression-matrix:release
 
-      - name: Prepare Whisper model artifact
-        run: |
-          bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en
-          mkdir -p .artifacts/whisper-model
-          cp "$HOME/.cache/eliza/whisper/ggml-base.en.bin" .artifacts/whisper-model/ggml-base.en.bin
-
-      - name: Upload Whisper model artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: whisper-model-base-en
-          path: .artifacts/whisper-model/ggml-base.en.bin
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Align version with release tag
         run: |
           node packages/app-core/scripts/align-electrobun-version.mjs
@@ -369,10 +355,10 @@ jobs:
         with:
           name: browser-bridge-store-bundles
           path: |
-            packages/browser-bridge-extension/dist/artifacts/browser-bridge-chrome-v*.zip
-            packages/browser-bridge-extension/dist/artifacts/browser-bridge-safari-v*.zip
-            packages/browser-bridge-extension/dist/artifacts/browser-bridge-safari-project-v*.zip
-            packages/browser-bridge-extension/dist/artifacts/browser-bridge-release-manifest-v*.json
+            packages/browser-extension/dist/artifacts/browser-bridge-chrome-v*.zip
+            packages/browser-extension/dist/artifacts/browser-bridge-safari-v*.zip
+            packages/browser-extension/dist/artifacts/browser-bridge-safari-project-v*.zip
+            packages/browser-extension/dist/artifacts/browser-bridge-release-manifest-v*.json
           if-no-files-found: error
           retention-days: 30
 
@@ -709,7 +695,7 @@ jobs:
           echo "core-cache-dir=$package_dir/dist-$electrobun_core_target" >> "$GITHUB_OUTPUT"
 
       - name: Cache Electrobun CLI and core binaries
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
         with:
           path: |
             ${{ steps.resolve-electrobun.outputs.cache-dir }}
@@ -736,7 +722,7 @@ jobs:
         working-directory: packages/app-core/platforms/electrobun
         run: |
           out_dir="$RUNNER_TEMP/electrobun-entry-probe"
-          rm -rf "$out_dir"
+          node "$GITHUB_WORKSPACE/packages/scripts/rm-path-recursive.mjs" "$out_dir"
           bun build src/index.ts --target=bun --packages=external --outdir "$out_dir"
 
       - name: Build patched Electrobun CLI
@@ -1036,7 +1022,7 @@ jobs:
 
       - name: Cache Windows embedding model
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
         with:
           path: ~/.eliza/models
           key: embedding-model-nomic-embed-text-v1.5-Q4_K_S

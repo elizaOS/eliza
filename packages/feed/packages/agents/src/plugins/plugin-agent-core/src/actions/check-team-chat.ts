@@ -26,7 +26,7 @@ export const checkTeamChatAction: Action = {
       description: "Number of recent messages to fetch (default: 10, max: 50)",
       optional: true,
     },
-  } as unknown as Action["parameters"],
+  },
   examples: [
     [
       {

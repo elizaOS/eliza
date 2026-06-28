@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
 	AssignmentRejectedError,
-	canServeRuntimeClassOnHost,
 	readAssignments,
 	setAssignment,
 } from "./assignments";
@@ -31,7 +30,9 @@ afterEach(() => {
 	}
 });
 
-async function registerGenericModel(): Promise<InstalledModel> {
+async function registerForeignModel(): Promise<InstalledModel> {
+	// A model whose id is NOT a curated Eliza-1 tier. The setAssignment boundary
+	// must reject it — the local stack is Eliza-1 only (#8808).
 	const dir = elizaModelsDir();
 	fs.mkdirSync(dir, { recursive: true });
 	const filePath = path.join(dir, "llama-3.2-3b-q4.gguf");
@@ -44,7 +45,6 @@ async function registerGenericModel(): Promise<InstalledModel> {
 		installedAt: new Date().toISOString(),
 		lastUsedAt: null,
 		source: "eliza-download",
-		runtimeClass: "generic-gguf",
 	};
 	await upsertElizaModel(model);
 	return model;
@@ -71,25 +71,14 @@ async function registerFusedModel(): Promise<InstalledModel> {
 	return model;
 }
 
-describe("canServeRuntimeClassOnHost", () => {
-	it("serves fused Eliza-1 everywhere", async () => {
-		expect(await canServeRuntimeClassOnHost("fused-eliza1")).toBe(true);
-	});
-
-	it("refuses generic GGUF on desktop (no explicit-modelPath binding)", async () => {
-		delete process.env.ELIZA_PLATFORM;
-		expect(await canServeRuntimeClassOnHost("generic-gguf")).toBe(false);
-	});
-
-	it("serves generic GGUF on mobile (capacitor explicit-path binding)", async () => {
-		process.env.ELIZA_PLATFORM = "android";
-		expect(await canServeRuntimeClassOnHost("generic-gguf")).toBe(true);
-	});
-});
+// (Removed "canServeRuntimeClassOnHost" suite — the generic-gguf runtime
+// class + its host-servability helper were retired in the eliza-1-only
+// cutover (#8808/#9033). The setAssignment boundary tests below now own the
+// "non-eliza-1 models are rejected" contract.)
 
 describe("setAssignment boundary validation", () => {
-	it("rejects a generic GGUF on desktop before assignment writes", async () => {
-		const model = await registerGenericModel();
+	it("rejects a non-Eliza-1 model on desktop before assignment writes", async () => {
+		const model = await registerForeignModel();
 		await expect(setAssignment("TEXT_LARGE", model.id)).rejects.toBeInstanceOf(
 			AssignmentRejectedError,
 		);
@@ -97,9 +86,9 @@ describe("setAssignment boundary validation", () => {
 		expect(await readAssignments()).toEqual({});
 	});
 
-	it("rejects a generic GGUF on mobile too", async () => {
+	it("rejects a non-Eliza-1 model on mobile too", async () => {
 		process.env.ELIZA_PLATFORM = "ios";
-		const model = await registerGenericModel();
+		const model = await registerForeignModel();
 		await expect(setAssignment("TEXT_LARGE", model.id)).rejects.toThrow(
 			/curated Eliza-1/i,
 		);

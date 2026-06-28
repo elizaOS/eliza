@@ -9,10 +9,14 @@ import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   client,
-  isApiError,
   isElectrobunRuntime,
-  loadDesktopWorkspaceSnapshot,
 } from "@elizaos/ui";
+// isApiError / loadDesktopWorkspaceSnapshot live on the /api and /browser
+// subpaths, not the @elizaos/ui root barrel; importing them from the root left
+// isApiError untyped, which collapsed its type-guard (hence the downstream
+// "'error' is of type 'unknown'" errors).
+import { isApiError } from "@elizaos/ui/api";
+import { loadDesktopWorkspaceSnapshot } from "@elizaos/ui/browser";
 import { useEffect, useRef } from "react";
 import type {
   CaptureLifeOpsActivitySignalRequest,

@@ -1,4 +1,5 @@
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -17,6 +18,12 @@ if (!packageDirArg || assetPaths.length === 0) {
 
 const packageDir = path.resolve(repoRoot, packageDirArg);
 const distDir = path.join(packageDir, "dist");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const COPY_RETRY_ATTEMPTS = 3;
 const COPY_RETRY_DELAY_MS = 100;
 const EXCLUDED_ASSET_DIRS = new Set([
@@ -49,12 +56,36 @@ function shouldRetryCopy(error, sourcePath, attempt) {
   );
 }
 
+function removePathRecursive(targetPath) {
+  const completed = spawnSync(
+    "node",
+    [cleanupHelperScript, path.relative(repoRoot, targetPath)],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (completed.error) throw completed.error;
+  if (completed.status !== 0) {
+    throw new Error(
+      [
+        `failed to remove ${targetPath}`,
+        completed.stdout.trim(),
+        completed.stderr.trim(),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+}
+
 async function copyAssetWithRetry(sourcePath, targetPath) {
   let lastError;
   for (let attempt = 1; attempt <= COPY_RETRY_ATTEMPTS; attempt++) {
     try {
       if (existsSync(targetPath)) {
-        rmSync(targetPath, { recursive: true, force: true });
+        removePathRecursive(targetPath);
       }
       mkdirSync(path.dirname(targetPath), { recursive: true });
       cpSync(sourcePath, targetPath, {

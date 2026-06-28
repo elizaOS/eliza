@@ -1,0 +1,68 @@
+{
+  "_source": "Fitbit Web API (api.fitbit.com) documented response shapes for a US-locale (en_US) account — same endpoints as fitbit.recorded.json. With profile.user.distanceUnit / weightUnit = `en_US` and no Accept-Language override, summary.distances[].distance is in MILES and body.log.weight[].weight is in POUNDS. See https://dev.fitbit.com/build/reference/web-api/developer-guide/application-design/#Localization (en_US => United States: distance miles, weight pounds).",
+  "_why": "Imperial-locale variant. Replayed through syncHealthConnectorData({token:{provider:'fitbit'}}) to assert distance_meters/weight_kg are CONVERTED to SI (5.0 mi => 8046.72 m, 150 lb => 68.0388... kg) instead of passed through as if metric.",
+  "_captured": "2026-06-24",
+  "profile": {
+    "user": {
+      "encodedId": "GGNJL9",
+      "fullName": "Grace Hopper",
+      "displayName": "Grace",
+      "gender": "FEMALE",
+      "age": 41,
+      "height": 65.7,
+      "weight": 150.0,
+      "timezone": "America/New_York",
+      "distanceUnit": "en_US",
+      "weightUnit": "en_US",
+      "memberSince": "2024-01-02"
+    }
+  },
+  "activity": {
+    "summary": {
+      "steps": 11842,
+      "caloriesOut": 2415,
+      "activityCalories": 1180,
+      "fairlyActiveMinutes": 28,
+      "veryActiveMinutes": 41,
+      "lightlyActiveMinutes": 210,
+      "sedentaryMinutes": 640,
+      "distances": [
+        { "activity": "total", "distance": 5.0 },
+        { "activity": "tracker", "distance": 5.0 },
+        { "activity": "veryActive", "distance": 2.4 }
+      ]
+    },
+    "goals": { "steps": 10000, "caloriesOut": 2300 }
+  },
+  "sleep": {
+    "summary": {
+      "totalMinutesAsleep": 456,
+      "totalSleepRecords": 1,
+      "totalTimeInBed": 486,
+      "stages": { "deep": 108, "light": 252, "rem": 96, "wake": 30 }
+    },
+    "sleep": []
+  },
+  "heart": {
+    "activities-heart": [
+      {
+        "dateTime": "2026-05-01",
+        "value": { "restingHeartRate": 54, "heartRateZones": [] }
+      }
+    ]
+  },
+  "weight": {
+    "weight": [
+      {
+        "logId": 38291077001,
+        "date": "2026-05-01",
+        "time": "07:15:00",
+        "weight": 150.0,
+        "bmi": 24.45,
+        "fat": 23.1,
+        "source": "API",
+        "weightUnit": "POUND"
+      }
+    ]
+  }
+}

@@ -17,10 +17,11 @@
 // See `packages/native/plugins/face-cpp/AGENTS.md` for the port plan.
 
 import { promises as fs } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
-import sharp from "sharp";
+import { getSharp } from "./image/sharp-compat";
 import type { BoundingBox } from "./types";
 
 const MODULE_TAG = "[BlazeFaceGgml]";
@@ -81,8 +82,7 @@ function defaultLibraryPath(): string {
 
 function defaultModelDir(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ??
-    path.join(process.env.HOME ?? "/tmp", ".eliza");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "models", "face-cpp");
 }
 
@@ -189,7 +189,7 @@ async function loadBindings(): Promise<FaceDetectBindings | null> {
     } catch (error) {
       logger.warn(
         `${MODULE_TAG} dlopen failed for ${libPath}:`,
-        error instanceof Error ? error.message : error,
+        error instanceof Error ? error.message : String(error),
       );
       return null;
     }
@@ -345,6 +345,7 @@ export class BlazeFaceGgmlDetector {
     if (!this.initialized) await this.initialize();
     if (!this.bindings || !this.handle) return [];
 
+    const sharp = await getSharp();
     const meta = await sharp(imageBuffer).metadata();
     const origW = meta.width ?? 0;
     const origH = meta.height ?? 0;

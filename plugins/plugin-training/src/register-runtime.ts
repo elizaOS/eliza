@@ -29,7 +29,7 @@ export async function registerTrainingRuntimeHooks(
       .catch(() => null);
     if (!optimizedPromptService) {
       await runtime.registerService(
-        OptimizedPromptService as unknown as Parameters<
+        OptimizedPromptService as Parameters<
           typeof runtime.registerService
         >[0],
       );

@@ -14,7 +14,7 @@
 
 import type { Plugin } from "@elizaos/core";
 import { appAction, createAppAction } from "./actions/app.js";
-import { homescreenAction } from "./actions/homescreen.js";
+import { backgroundAction } from "./actions/background.js";
 import {
 	closeAllViewsAction,
 	closeViewAction,
@@ -34,16 +34,18 @@ import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
 import { AppWorkerHostService } from "./services/app-worker-host-service.js";
 import { VerificationRoomBridgeService } from "./services/verification-room-bridge.js";
+import { viewNavigationShortcuts } from "./shortcuts.js";
 
 export type { AppMode } from "./actions/app.js";
 export type {
-	HomescreenEventPayload,
-	HomescreenMode,
-} from "./actions/homescreen.js";
+	BackgroundApplyOp,
+	BackgroundApplyPayload,
+} from "./actions/background.js";
 export {
-	createHomescreenAction,
-	homescreenAction,
-} from "./actions/homescreen.js";
+	backgroundAction,
+	createBackgroundAction,
+	inferBackgroundPlan,
+} from "./actions/background.js";
 export {
 	__matcherData,
 	MATCHER_VIEW_IDS,
@@ -91,6 +93,10 @@ export {
 	VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE,
 	VerificationRoomBridgeService,
 } from "./services/verification-room-bridge.js";
+export {
+	VIEW_NAVIGATION_SHORTCUT_ID,
+	viewNavigationShortcuts,
+} from "./shortcuts.js";
 export type {
 	AppLaunchResult,
 	AppRunSummary,
@@ -119,8 +125,9 @@ export const appControlPlugin: Plugin = {
 		viewsAction,
 		closeViewAction,
 		closeAllViewsAction,
-		homescreenAction,
+		backgroundAction,
 	],
+	shortcuts: viewNavigationShortcuts,
 	// Three-stage view-switch cascade:
 	//  1. EARLY  — viewCommandShortcutEvaluator (responseHandlerEvaluator, no
 	//     model): on an explicit multilingual command ("open settings"), FORCES
@@ -129,7 +136,9 @@ export const appControlPlugin: Plugin = {
 	//     resolveIntentView → matchViewCommand. The agent may also pick it.
 	//  3. POST   — viewContextEvaluator (small model): catches CONTEXTUAL intent
 	//     the user never spelled out ("fix the login bug" -> task-coordinator).
-	//     Its gate defers whenever the rigid matcher already matched.
+	//     Its gate defers whenever resolveIntentView already matches a direct
+	//     surface (the rigid matchViewCommand matcher, or the legacy intent
+	//     rules it falls back to), so it never contends with the action.
 	// view-followup-routing handles mutation follow-ups on the active view.
 	evaluators: [viewContextEvaluator],
 	responseHandlerEvaluators: [
@@ -174,39 +183,22 @@ export const appControlPlugin: Plugin = {
 			?.stop();
 	},
 	views: [
+		// ONE declaration → GUI + XR + TUI, all drawn from the single
+		// ViewManagerView spatial-catalog source (the rich deduped manager:
+		// collapse-by-id + modality chips + per-view open/available state). The
+		// terminal surface renders the registered ViewManagerSpatialView via the
+		// spatial terminal registry (see register-terminal-view.tsx). `modalities`
+		// is a plain literal here (index.ts is not in the view bundle), so no
+		// brand-new `@elizaos/core` runtime export reaches the bundle build.
 		{
 			id: "views-manager",
 			label: "Views",
 			description: "Browse and open available views contributed by plugins",
 			icon: "LayoutGrid",
 			path: "/views",
+			modalities: ["gui", "xr", "tui"],
 			bundlePath: "dist/views/bundle.js",
 			componentExport: "ViewManagerView",
-			visibleInManager: true,
-			desktopTabEnabled: true,
-		},
-		{
-			id: "views-manager",
-			label: "Views XR",
-			description: "Browse and open available views contributed by plugins",
-			icon: "LayoutGrid",
-			path: "/views",
-			viewType: "xr",
-			bundlePath: "dist/views/bundle.js",
-			componentExport: "ViewManagerView",
-			visibleInManager: true,
-			desktopTabEnabled: true,
-		},
-		{
-			id: "views-manager",
-			label: "Views TUI",
-			description:
-				"Terminal view for browsing and opening available plugin views",
-			icon: "Terminal",
-			path: "/views/tui",
-			viewType: "tui",
-			bundlePath: "dist/views/bundle.js",
-			componentExport: "ViewManagerTuiView",
 			visibleInManager: true,
 			desktopTabEnabled: true,
 			capabilities: [

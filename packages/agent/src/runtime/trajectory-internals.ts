@@ -2095,10 +2095,7 @@ async function replaceStepsForTrajectoryInternal(
       typeof step.script === "string" && step.script.length > 0
         ? step.script
         : null;
-    const { script: _script, ...payloadObj } = step as unknown as Record<
-      string,
-      unknown
-    >;
+    const { script: _script, ...payloadObj } = step;
     const payload = JSON.stringify(payloadObj);
     const startedAt = Number.isFinite(step.timestamp) ? step.timestamp : null;
     const endedAt = startedAt;
@@ -2222,17 +2219,19 @@ export async function writeCompressedJsonlRows(
 }
 
 /**
- * Trajectory persistence is unconditionally on. The only paths that disable it:
+ * Resolves whether trajectory persistence is on by default:
  *
- *   1. `NODE_ENV === "test"` — keeps the test runner free of background DB writes.
- *   2. `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` — explicit operator opt-out.
+ *   1. `NODE_ENV === "test"` — off (keeps the test runner free of background
+ *      DB writes).
+ *   2. `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` — off (explicit operator opt-out).
+ *   3. `NODE_ENV === "production"` — off by default; operators must opt in with
+ *      `ELIZA_TRAJECTORY_LOGGING=1` (SOC2 O-5).
+ *   4. Otherwise (dev / unset `NODE_ENV`) — on, for the local debugging workflow.
  *
- * We deliberately stopped honoring the legacy `ENABLE_TRAJECTORIES`,
- * `ELIZA_TRAJECTORY_LOGGING`, `TRAJECTORY_LOGGING_ENABLED`, and
- * `ELIZA_CLOUD_PROVISIONED` knobs: each represented a different historical
+ * The other legacy knobs (`ENABLE_TRAJECTORIES`, `TRAJECTORY_LOGGING_ENABLED`,
+ * `ELIZA_CLOUD_PROVISIONED`) are not honored: each was a different historical
  * attempt to gate persistence, and shipping multiple opt-in paths produced
- * silent gaps where debugging and training data went missing. One opt-out,
- * otherwise on.
+ * silent gaps where debugging and training data went missing.
  */
 export function shouldEnableTrajectoryLoggingByDefault(
   env: NodeJS.ProcessEnv = process.env,

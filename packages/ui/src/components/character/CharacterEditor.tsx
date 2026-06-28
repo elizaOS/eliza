@@ -102,8 +102,6 @@ const accentGradientStyle = {
     "linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white 8%) 0%, var(--accent) 100%)",
   color: "var(--accent-foreground, #1a1f26)",
   borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.5)",
-  boxShadow:
-    "0 0 14px rgba(var(--accent-rgb, 240, 185, 11), 0.16), inset 0 1px 0 var(--soft-white-glow)",
 } as const;
 
 const idleSaveBtnStyle = {
@@ -111,11 +109,7 @@ const idleSaveBtnStyle = {
     "linear-gradient(180deg, rgba(var(--accent-rgb,240,185,11),0.16) 0%, rgba(var(--accent-rgb,240,185,11),0.1) 100%)",
   color: "rgba(var(--accent-rgb, 240, 185, 11), 0.78)",
   borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.22)",
-  boxShadow: "none",
 } as const;
-
-const pageTabsBoxShadow =
-  "0 10px 26px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.05)";
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 
@@ -249,10 +243,12 @@ function CharacterAgentButton({
 /* ── Component ─────────────────────────────────────────────────────── */
 
 export function CharacterEditor({
+  initialPage,
   sceneOverlay = false,
   inModal: _inModal = false,
   onHeaderActionsChange,
 }: {
+  initialPage?: CharacterEditorPage;
   sceneOverlay?: boolean;
   inModal?: boolean;
   onHeaderActionsChange?: (actions: ReactNode | null) => void;
@@ -361,7 +357,7 @@ export function CharacterEditor({
   );
 
   const [activePage, setActivePage] = useState<CharacterEditorPage>(
-    tab === "documents" ? "documents" : "personality",
+    initialPage ?? (tab === "documents" ? "documents" : "personality"),
   );
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
@@ -378,12 +374,17 @@ export function CharacterEditor({
     else if (activePage === "examples") setRightTab("examples");
   }, [activePage]);
 
-  // Sync activePage when tab changes externally (e.g. nav to /documents)
+  // Sync activePage when tab changes externally (e.g. nav to /documents) or
+  // when an embedded router renders a specific built-in subpage in split view.
   useEffect(() => {
+    if (initialPage && activePage !== initialPage) {
+      setActivePage(initialPage);
+      return;
+    }
     if (tab === "documents" && activePage !== "documents") {
       setActivePage("documents");
     }
-  }, [tab, activePage]);
+  }, [initialPage, tab, activePage]);
 
   /* ── Style entry state ──────────────────────────────────────────── */
   const [pendingStyleEntries, setPendingStyleEntries] = useState<
@@ -1271,7 +1272,7 @@ export function CharacterEditor({
         <div
           className={
             sceneOverlay
-              ? `relative flex flex-col justify-end w-full flex-1 gap-2 overflow-hidden select-none transition-[width,margin-left] duration-[400ms] ease-in-out [-webkit-tap-highlight-color:transparent] max-[600px]:overflow-visible [&_input]:select-text [&_textarea]:select-text [&_*:focus-visible:not(input):not(textarea)]:outline-none [&_*:focus-visible:not(input):not(textarea)]:shadow-none [&_button:focus-visible]:outline-none [&_button:focus-visible]:shadow-none${customizing ? " md:w-[40%] md:ml-auto" : ""}`
+              ? `relative flex flex-col justify-end w-full flex-1 gap-2 overflow-hidden select-none transition-[width,margin-left] duration-[400ms] ease-in-out [-webkit-tap-highlight-color:transparent] max-[600px]:overflow-visible [&_input]:select-text [&_textarea]:select-text${customizing ? " md:w-[40%] md:ml-auto" : ""}`
               : "relative flex min-h-0 w-full flex-1 flex-col select-none [&_input]:select-text [&_textarea]:select-text"
           }
         >
@@ -1299,7 +1300,6 @@ export function CharacterEditor({
               <div className="flex flex-wrap items-center gap-3 shrink-0">
                 <div
                   className="flex shrink-0 items-center gap-1 rounded-sm border border-border bg-elevated p-1"
-                  style={{ boxShadow: pageTabsBoxShadow }}
                   role="tablist"
                   aria-label={t("charactereditor.TabbedEditorGroupLabel", {
                     defaultValue: "Character editor sections",
@@ -1444,6 +1444,11 @@ export function CharacterEditor({
           {/* ── Standalone page: character hub */}
           {!sceneOverlay && (
             <CharacterHubView
+              initialSection={
+                initialPage === "documents" || initialPage === "personality"
+                  ? initialPage
+                  : undefined
+              }
               d={d}
               bioText={bioText}
               normalizedMessageExamples={normalizedMessageExamples}
@@ -1553,7 +1558,7 @@ export function CharacterEditor({
             if (!open) setPendingNavigation(null);
           }}
         >
-          <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg backdrop-blur-xl">
+          <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg">
             <DialogHeader className="gap-3">
               <DialogTitle>
                 {t("charactereditor.UnsavedChangesTitle", {
@@ -1628,7 +1633,7 @@ export function CharacterEditor({
             if (!open) setResetConfirmOpen(false);
           }}
         >
-          <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg backdrop-blur-xl">
+          <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg">
             <DialogHeader className="gap-3">
               <DialogTitle>
                 {t("charactereditor.ResetToDefaults", {

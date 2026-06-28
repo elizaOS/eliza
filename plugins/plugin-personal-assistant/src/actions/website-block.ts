@@ -23,7 +23,7 @@ import {
   requestSelfControlPermission,
   SELFCONTROL_ACCESS_ERROR,
   stopSelfControlBlock,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
 import { activateBlockRule } from "../website-blocker/chat-integration/block-activator.js";
 import {
   BlockRuleReader,

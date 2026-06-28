@@ -18,6 +18,7 @@
 //   node packages/os/scripts/check-confidential-artifacts.mjs
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   expectedCmdlineTokens,
   expectedMaskedUnits,
@@ -132,6 +133,6 @@ async function main() {
 
 export { ARTIFACT_PATHS, loadArtifacts };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }

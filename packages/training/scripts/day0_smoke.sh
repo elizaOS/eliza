@@ -6,18 +6,18 @@
 #
 # Required env: VAST_API_KEY, instance id in .vast_instance_id
 #
-# Optional env (parametrized so the same script smokes 0.8B / 2B / 4B):
+# Optional env (parametrized so the same script smokes 2B / 4B):
 #   REGISTRY_KEY      default: gemma4-e2b
-#                     supported: gemma4-e2b | gemma4-e2b | gemma4-e4b
+#                     supported: gemma4-e2b | gemma4-e4b
 #   FSDP_WORLD_SIZE   default: matches the registry's recommended world size
 #                     (1 for all active tiers on a single GPU).
-#   SMOKE_MAX_SAMPLES default: 48 (0.8B), 32 (2B), 16 (4B)
-#   SMOKE_MAX_SEQ_LEN default: 2048 (0.8B/2B), 4096 (4B)
+#   SMOKE_MAX_SAMPLES default: 32 (2B), 16 (4B)
+#   SMOKE_MAX_SEQ_LEN default: 2048 (2B), 4096 (4B)
 #   SMOKE_BENCH_PER_BUCKET  default: 32
 #
 # Usage:
 #   bash scripts/day0_smoke.sh                            # 2B
-#   REGISTRY_KEY=gemma4-e2b bash scripts/day0_smoke.sh   # 0.8B
+#   REGISTRY_KEY=gemma4-e2b bash scripts/day0_smoke.sh     # 2B
 #   REGISTRY_KEY=gemma4-e4b bash scripts/day0_smoke.sh     # 4B (needs ~24 GB GPU)
 
 set -euo pipefail
@@ -30,14 +30,6 @@ REGISTRY_KEY="${REGISTRY_KEY:-gemma4-e2b}"
 
 # Per-size defaults (caller can override any of them via env).
 case "$REGISTRY_KEY" in
-  gemma4-e2b)
-    BASE_HF_ID="google/gemma-4-E2B"
-    DEFAULT_FSDP_WORLD_SIZE=1
-    DEFAULT_MAX_SAMPLES=48
-    DEFAULT_MAX_SEQ_LEN=2048
-    DEFAULT_BENCH_PER_BUCKET=32
-    DEFAULT_OPTIMIZER=apollo_mini
-    ;;
   gemma4-e2b)
     BASE_HF_ID="google/gemma-4-E2B"
     DEFAULT_FSDP_WORLD_SIZE=1

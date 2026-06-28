@@ -5,14 +5,14 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 ## What it does
 
 - **Text generation** (`TEXT_SMALL`, `TEXT_LARGE`) via an in-process llama.cpp FFI binding. There are two text runtime classes, picked per model by the dispatcher (`services/backend.ts`):
-  - **fused Eliza-1 bundles** (`runtimeClass: "fused-eliza1"`) run through the fused `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`) — the full local pipeline: same-file MTP speculative decoding, fork KV kernels (TurboQuant/QJL/PolarQuant), native tokenization over the resident Qwen3.5 vocab, and fused voice/vision. This is the default/recommended path.
+  - **fused Eliza-1 bundles** (`runtimeClass: "fused-eliza1"`) run through the fused `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`) — the full local pipeline: manifest-gated MTP speculative decoding, fork kernels where applicable, native tokenization over the active Eliza-1 bundle tokenizer, and fused voice/vision/ASR. This is the default/recommended path.
   - **generic single-file GGUF** (`runtimeClass: "generic-gguf"`) — a model you downloaded/scanned (Hugging Face / ModelScope / LM Studio / Ollama) loaded from an explicit `modelPath` with stock f16 KV and *reduced optimizations* (no MTP, no fork kernels, no fused voice/vision). The explicit-`modelPath` binding ships on mobile (`llama-cpp-capacitor`); on desktop it is not yet built into the shipping `libelizainference`, so an assigned generic model is rejected at the assignment boundary with a typed reason rather than failing silently at load.
 - `node-llama-cpp` has been retired; there is no node-llama-cpp fallback.
 - **Text embeddings** (`TEXT_EMBEDDING`) via a dedicated embedding GGUF loaded separately from the chat model.
-- **Text-to-speech** (`TEXT_TO_SPEECH`) via the Kokoro TTS engine (ONNX-based, runs locally).
-- **Automatic speech recognition** (`TRANSCRIPTION`) via whisper.cpp (GGML-based).
+- **Text-to-speech** (`TEXT_TO_SPEECH`) via the local Kokoro/OmniVoice runtime selected by tier and policy.
+- **Automatic speech recognition** (`TRANSCRIPTION`) via the eligible bundled local ASR head in fused `libelizainference`; there is no whisper.cpp fallback.
 - **Image generation** (`IMAGE`) via sd.cpp, CoreML (Apple Silicon), mflux, TensorRT, or AOSP backends; selected by hardware and catalog entry.
-- **Image description / vision** (`IMAGE_DESCRIPTION`) via the Qwen3-VL multimodal projector attached to the active text model.
+- **Image description / vision** (`IMAGE_DESCRIPTION`) via the tier-matched Eliza-1 multimodal projector attached to the active text model.
 - **Model catalog, download management, and hardware-fit recommendation** exposed as HTTP routes for the elizaOS dashboard.
 - **Voice pipeline**: barge-in, VAD, speaker imprint, phrase streaming, voice profiles, and first-run onboarding.
 
@@ -23,8 +23,8 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 | `GENERATE_MEDIA` action | Agent responds to "draw me a ...", "say ...", "speak ...", etc. by calling the local image or TTS backend. |
 | `TEXT_SMALL` / `TEXT_LARGE` handler | Agent uses the active Eliza-1 text model for all reasoning and response generation. |
 | `TEXT_EMBEDDING` handler | Agent embeds memories using the local embedding GGUF; avoids cloud API calls for RAG. |
-| `TEXT_TO_SPEECH` handler | Agent converts text to audio using Kokoro (or another registered TTS backend). |
-| `TRANSCRIPTION` handler | Agent transcribes audio using whisper.cpp. |
+| `TEXT_TO_SPEECH` handler | Agent converts text to audio using the selected local TTS backend. |
+| `TRANSCRIPTION` handler | Agent transcribes audio using the eligible bundled local ASR runtime. |
 | `IMAGE` handler | Agent generates images using the active local diffusion backend. |
 | `IMAGE_DESCRIPTION` handler | Agent describes images using the active multimodal model. |
 
@@ -32,7 +32,7 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 
 - Node.js 20+ or Bun runtime.
 - The fused `libelizainference` native library for the desktop text/voice/vision path (built from `tools/omnivoice`; resolved via `ELIZA_INFERENCE_LIBRARY` / `ELIZA_INFERENCE_LIB_DIR` or the bundle's `lib/` dir). Generic single-file GGUF additionally needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile).
-- Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows, `mflux` for Apple Silicon image-gen, `whisper.cpp` built with the shared library flag for ASR.
+- Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows and `mflux` for Apple Silicon image-gen.
 - An Eliza-1 GGUF bundle downloaded via the model catalog (dashboard → Models, or `POST /api/local-inference/downloads`).
 
 ## Enabling the plugin
@@ -68,7 +68,6 @@ Key environment variables (all optional unless noted):
 | `SD_CPP_BIN` | Absolute path to sd.cpp binary |
 | `MFLUX_BIN` | Absolute path to mflux binary |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | Default Kokoro TTS voice |
-| `ELIZA_WHISPER_USE_GPU` | Enable GPU for Whisper ASR |
 
 ## Architecture notes
 
@@ -154,5 +153,44 @@ scoring lib (`e2e-harness.ts`, now promoted to the source of truth), a two-agent
 benches, and the single-turn headful self-test (`voice-selftest`). Those remain
 runnable, but **new** voice coverage should be authored as a `VoiceScenario` +
 corpus and scored through `e2e-harness.ts`, not as a new bespoke harness.
+
+## Real-weight Kokoro smoke (#9588 loader↔GGUF drift gate)
+
+`scripts/kokoro-real-smoke.ts` loads the fused `libelizainference`, loads the
+**real** published Kokoro GGUF, synthesizes a phrase, and asserts non-empty
+24 kHz PCM whose amplitude envelope looks like speech (envelope-cv ≫ 0.4) rather
+than the flat noise the #9588 dtype/tensor-name bug produced. With an ASR bundle
+staged (`ELIZA_ASR_BUNDLE`) it additionally gates intelligibility by WER.
+
+It exits `0` on pass, `1` on a real failure, and `2` when the lib/model aren't
+staged (so a dev box without them is skipped). Set **`KOKORO_SMOKE_REQUIRE=1`**
+to turn every skip into a hard failure (exit `1`) — that is how the CI gate makes
+a lane that is *supposed* to have staged the assets go RED instead of passing
+silently.
+
+Stage + run locally:
+
+```bash
+# 0. From a fresh checkout, install workspace dependencies first.
+bun install
+bun run --cwd packages/core prebuild
+
+# 1. Build + stage the fused lib with Kokoro folded in.
+node packages/app-core/scripts/stage-desktop-fused-lib.mjs --variant cpu --out /tmp/fused-lib
+
+# 2. Stage the published Kokoro GGUF + a voice pack (af_bella is the fallback voice).
+DIR=/tmp/kokoro-model; mkdir -p "$DIR/voices"
+base="https://huggingface.co/elizaos/eliza-1/resolve/main"
+curl -fSL -o "$DIR/kokoro-82m-v1_0.gguf" "$base/bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf?download=true"
+curl -fSL -o "$DIR/voices/af_bella.bin" "$base/bundles/2b/tts/kokoro/voices/af_bella.bin?download=true"
+
+# 3. Run the gate.
+ELIZA_INFERENCE_LIB_DIR=/tmp/fused-lib LD_LIBRARY_PATH=/tmp/fused-lib \
+  ELIZA_KOKORO_MODEL_DIR="$DIR" KOKORO_SMOKE_REQUIRE=1 \
+  bun plugins/plugin-local-inference/scripts/kokoro-real-smoke.ts
+```
+
+CI runs exactly this on Linux via `.github/workflows/kokoro-real-smoke.yml`
+(opt-in: `workflow_dispatch`, a `kokoro-smoke-*` tag, or a loader/converter/smoke/submodule change).
 
 For agent-facing documentation see `CLAUDE.md` / `AGENTS.md` in this directory.

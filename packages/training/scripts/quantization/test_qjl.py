@@ -1,4 +1,4 @@
-"""End-to-end validation of QJL on a real Qwen3 model on the local 5080.
+"""End-to-end validation of QJL on a real Gemma model on the local 5080.
 
 Honest about what QJL is: a *runtime KV-cache* quantizer for the **K
 (keys) side** of attention. It does NOT shrink ``model.safetensors`` on

@@ -28,9 +28,15 @@ import {
   getDefaultTriageService,
   logger,
   ModelType,
+  resolveOptimizedPromptForRuntime,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import {
+  BRIEF_NARRATIVE_INSTRUCTIONS,
+  MEETING_PREP_INSTRUCTIONS,
+} from "../lifeops/optimized-prompt-instructions.js";
 import type {
   LifeOpsBriefing,
   LifeOpsBriefingCalendarItem,
@@ -42,6 +48,11 @@ import type {
   LifeOpsBriefingSections,
 } from "../types/briefing.js";
 
+export {
+  BRIEF_NARRATIVE_INSTRUCTIONS,
+  MEETING_PREP_INSTRUCTIONS,
+} from "../lifeops/optimized-prompt-instructions.js";
+
 const ACTION_NAME = "BRIEF";
 
 const SUBACTIONS = [
@@ -51,6 +62,7 @@ const SUBACTIONS = [
 ] as const;
 
 type Subaction = (typeof SUBACTIONS)[number];
+type BriefOptimizationTask = "morning_brief" | "meeting_prep";
 
 const SIMILE_NAMES: readonly string[] = [
   "BRIEF",
@@ -60,6 +72,9 @@ const SIMILE_NAMES: readonly string[] = [
   "WEEKLY_BRIEF",
   "COMPOSE_BRIEFING",
   "DAILY_DIGEST",
+  "MEETING_PREP",
+  "PREBRIEF",
+  "MEETING_DOSSIER",
 ];
 
 const SIMILE_TO_SUBACTION: Readonly<Record<string, Subaction>> = {
@@ -97,6 +112,7 @@ interface BriefActionParameters {
   period?: LifeOpsBriefingPeriod | string;
   include?: BriefIncludeFlags;
   format?: "narrative" | "json";
+  optimizationTask?: BriefOptimizationTask | string;
 }
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
@@ -111,25 +127,13 @@ interface BriefLifeOpsService {
     reminders?: readonly unknown[];
     goals?: readonly unknown[];
   }>;
-  getRecurringCharges(request: Record<string, never>): Promise<
-    Array<{
-      merchantNormalized: string;
-      merchantDisplay: string;
-      cadence: unknown;
-      averageAmountUsd: number;
-      nextExpectedAt: string | null;
-    }>
-  >;
 }
 
 async function getBriefLifeOpsService(
   runtime: IAgentRuntime,
 ): Promise<BriefLifeOpsService> {
   const { LifeOpsService } = await import("../lifeops/service.js");
-  // Single-step cast: LifeOpsService is a mixin-composed class that
-  // structurally satisfies BriefLifeOpsService, but TypeScript cannot verify
-  // this through the composed type so a cast is required.
-  return new LifeOpsService(runtime) as BriefLifeOpsService;
+  return new LifeOpsService(runtime);
 }
 
 function periodWindow(period: LifeOpsBriefingPeriod): {
@@ -233,6 +237,7 @@ async function loadCalendarFromLifeOps(args: {
     const events = Array.isArray(feed.events) ? feed.events : [];
     return events.map((event) => {
       const record = asRecord(event);
+      const location = readString(record, "location");
       return {
         id: readString(record, "id") ?? "calendar-event",
         title: readString(record, "title") ?? "Untitled event",
@@ -244,9 +249,7 @@ async function loadCalendarFromLifeOps(args: {
           readString(record, "endAt") ??
           readString(record, "end") ??
           end.toISOString(),
-        ...(readString(record, "location")
-          ? { location: readString(record, "location")! }
-          : {}),
+        ...(location ? { location } : {}),
       };
     });
   } catch (error) {
@@ -318,8 +321,10 @@ async function loadMoneyFromPayments(args: {
   runtime: IAgentRuntime;
 }): Promise<readonly LifeOpsBriefingMoneyItem[]> {
   try {
-    const service = await getBriefLifeOpsService(args.runtime);
-    const charges = await service.getRecurringCharges({});
+    // Recurring-charge data moved out of LifeOpsService to FinancesService
+    // (@elizaos/plugin-finances); call it there directly.
+    const finances = new FinancesService(args.runtime);
+    const charges = await finances.getRecurringCharges({});
     return charges.slice(0, 25).map((charge) => ({
       id: `${charge.merchantNormalized}:${charge.cadence}`,
       merchant: charge.merchantDisplay,
@@ -447,10 +452,40 @@ function newBriefingId(): string {
   return `brief-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function buildNarrativePrompt(args: {
+function messageText(message: Memory): string {
+  const value = message.content.text;
+  return typeof value === "string" ? value : "";
+}
+
+function resolveBriefOptimizationTask(args: {
+  params: BriefActionParameters;
+  message: Memory;
+}): BriefOptimizationTask {
+  if (args.params.optimizationTask === "meeting_prep") {
+    return "meeting_prep";
+  }
+  if (args.params.optimizationTask === "morning_brief") {
+    return "morning_brief";
+  }
+
+  const text = messageText(args.message).toLowerCase();
+  const asksForMeetingPrep =
+    /\b(prep|prebrief|brief me|dossier|agenda|risk register)\b/u.test(text) &&
+    /\b(meeting|board|client|call|agenda|presentation|interview)\b/u.test(text);
+  return asksForMeetingPrep ? "meeting_prep" : "morning_brief";
+}
+
+// Static instruction block for the briefing narrative. This is the optimization
+// target for the `morning_brief` LifeOps task (#8795): an OptimizedPromptService
+// artifact, when present, replaces it; otherwise this inline baseline is used,
+// so the absence of an artifact is a no-op. The dynamic header line and the data
+// payload are composed around the resolved instructions, never optimized away.
+export function buildNarrativePrompt(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  runtime?: IAgentRuntime;
+  optimizationTask?: BriefOptimizationTask;
 }): string {
   const payload = JSON.stringify(
     {
@@ -461,12 +496,26 @@ function buildNarrativePrompt(args: {
     null,
     2,
   );
+  const optimizationTask = args.optimizationTask ?? "morning_brief";
+  const instructions =
+    optimizationTask === "meeting_prep"
+      ? args.runtime
+        ? resolveOptimizedPromptForRuntime(
+            args.runtime,
+            "meeting_prep",
+            MEETING_PREP_INSTRUCTIONS,
+          )
+        : MEETING_PREP_INSTRUCTIONS
+      : args.runtime
+        ? resolveOptimizedPromptForRuntime(
+            args.runtime,
+            "morning_brief",
+            BRIEF_NARRATIVE_INSTRUCTIONS,
+          )
+        : BRIEF_NARRATIVE_INSTRUCTIONS;
   return `You are composing the owner's ${args.kind} briefing for ${args.period}.
 
-Render a concise narrative paragraph (2-5 sentences). Lead with the
-schedule-changing or reply-needed items first. Mention each non-empty domain
-once. If a domain is empty, omit it rather than saying "nothing to report".
-No invented facts; only describe items in the data below.
+${instructions}
 
 Data:
 ${payload}`;
@@ -477,6 +526,7 @@ async function composeNarrative(args: {
   kind: LifeOpsBriefingKind;
   period: LifeOpsBriefingPeriod;
   sections: LifeOpsBriefingSections;
+  optimizationTask: BriefOptimizationTask;
 }): Promise<string | undefined> {
   if (typeof args.runtime.useModel !== "function") {
     return undefined;
@@ -485,11 +535,31 @@ async function composeNarrative(args: {
     kind: args.kind,
     period: args.period,
     sections: args.sections,
+    runtime: args.runtime,
+    optimizationTask: args.optimizationTask,
   });
-  const raw = await runWithTrajectoryContext(
-    { purpose: "lifeops-brief-compose" },
-    () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
-  );
+  // Tag the trajectory with the exact LifeOps prompt task resolved above so the
+  // call buckets into its per-capability dataset for the GEPA loop (#8795).
+  // A failed compose pass degrades to a narrative-less structured briefing —
+  // symmetric with the other LifeOps LLM consumers (scheduling, reminders),
+  // which all fall back to a safe default rather than propagating the error.
+  let raw: unknown;
+  try {
+    raw = await runWithTrajectoryContext(
+      { purpose: args.optimizationTask },
+      () => args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+    );
+  } catch (error) {
+    logger.warn(
+      {
+        src: "action:brief",
+        task: args.optimizationTask,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[BRIEF] narrative compose model call failed; returning structured briefing without a narrative",
+    );
+    return undefined;
+  }
   return typeof raw === "string" ? raw.trim() : undefined;
 }
 
@@ -499,6 +569,7 @@ async function assembleBriefing(args: {
   period: LifeOpsBriefingPeriod;
   include: ReturnType<typeof resolveIncludeFlags>;
   format: "narrative" | "json";
+  optimizationTask: BriefOptimizationTask;
 }): Promise<LifeOpsBriefing> {
   const composers = activeComposers;
   const [calendarItems, inboxItems, lifeItems, moneyItems] = await Promise.all([
@@ -531,6 +602,7 @@ async function assembleBriefing(args: {
       kind,
       period: args.period,
       sections,
+      optimizationTask: args.optimizationTask,
     });
   }
 
@@ -646,6 +718,7 @@ export const briefAction: Action & {
     const period = resolvePeriod(params, subaction);
     const format: "narrative" | "json" =
       params.format === "json" ? "json" : "narrative";
+    const optimizationTask = resolveBriefOptimizationTask({ params, message });
 
     const briefing = await assembleBriefing({
       runtime,
@@ -653,6 +726,7 @@ export const briefAction: Action & {
       period,
       include,
       format,
+      optimizationTask,
     });
 
     const text =
@@ -674,6 +748,7 @@ export const briefAction: Action & {
       text,
       data: {
         subaction,
+        optimizationTask,
         briefing,
         briefingId: briefing.id,
       },

@@ -24,7 +24,7 @@ type ElizaCloudRoutesModule = {
 async function loadElizaCloudRoutes(): Promise<ElizaCloudRoutesModule> {
   return import(
     "@elizaos/plugin-elizacloud"
-  ) as unknown as Promise<ElizaCloudRoutesModule>;
+  ) as Promise<ElizaCloudRoutesModule>;
 }
 
 export async function handleCloudBillingRoute(
@@ -228,12 +228,56 @@ export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
 export * from "./runtime/version.ts";
 export * from "./security/index.ts";
+// Runtime owner-approval queue promoted from LifeOps (Slice 4). Named
+// re-export — same rationale as the knowledge graph / pending-prompts below:
+// keep it out of the broad services barrel to avoid TS2308.
+export {
+  APPROVAL_SERVICE,
+  type ApprovalAction,
+  type ApprovalChannel,
+  type ApprovalEnqueueInput,
+  type ApprovalListFilter,
+  ApprovalNotFoundError,
+  type ApprovalPayload,
+  type ApprovalQueue,
+  type ApprovalQueueOptions,
+  type ApprovalRequest,
+  type ApprovalRequestState,
+  type ApprovalResolution,
+  ApprovalService,
+  ApprovalStateTransitionError,
+  type ApprovalTravelCalendarSync,
+  type ApprovalTravelPassenger,
+  createApprovalQueue,
+  PgApprovalQueue,
+  resolveApprovalService,
+} from "./services/approval/index.ts";
 export * from "./services/cove-quote.ts";
 export * from "./services/dstack-tee-provider.ts";
 export {
-  isStewardEvmBridgeActive,
-  setStewardEvmBridgeActive,
-} from "./services/external-bridge-state.ts";
+  createGlobalPauseStore,
+  GLOBAL_PAUSE_CACHE_KEY,
+  GLOBAL_PAUSE_SERVICE,
+  GlobalPauseService,
+  type GlobalPauseStatus,
+  type GlobalPauseStore,
+  type GlobalPauseWindow,
+  resolveGlobalPauseService,
+} from "./services/global-pause/index.ts";
+export {
+  createHandoffStore,
+  describeResumeCondition,
+  evaluateResume,
+  HANDOFF_SERVICE,
+  type HandoffEnterOpts,
+  HandoffService,
+  type HandoffStatus,
+  type HandoffStore,
+  type ResumeCondition,
+  type ResumeEvaluation,
+  type ResumeEvaluationInput,
+  resolveHandoffService,
+} from "./services/handoff/index.ts";
 export * from "./services/index.ts";
 export {
   type JsRuntimeBridge,
@@ -256,6 +300,20 @@ export {
   RelationshipStore,
   resolveKnowledgeGraphService,
 } from "./services/knowledge-graph/index.ts";
+// Cache-backed runtime stores promoted from LifeOps (pending-prompts /
+// global-pause / handoff). Named re-exports — same rationale as the knowledge
+// graph above: keep them out of the broad services barrel to avoid TS2308.
+export {
+  createPendingPromptsStore,
+  type ExpectedReplyKind,
+  PENDING_PROMPTS_SERVICE,
+  type PendingPrompt,
+  type PendingPromptRecordInput,
+  PendingPromptsService,
+  type PendingPromptsStore,
+  type RecordedPendingPrompt,
+  resolvePendingPromptsService,
+} from "./services/pending-prompts/index.ts";
 export * from "./services/plugin-installer";
 export type {
   CoreManagerLike,

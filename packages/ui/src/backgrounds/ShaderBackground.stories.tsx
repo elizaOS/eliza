@@ -36,8 +36,8 @@ type Story = StoryObj<typeof meta>;
 /** Default warm-orange shader (the prior home look). */
 export const Default: Story = {};
 
-/** A cool slate color drives the same gentle rim pulse. */
-export const Slate: Story = { args: { color: "#334155" } };
+/** A neutral stone color drives the same gentle rim pulse. */
+export const Stone: Story = { args: { color: "#57534e" } };
 
 /** A vivid color shows the rim glow inherits the chosen hue. */
-export const Violet: Story = { args: { color: "#7c3aed" } };
+export const Rose: Story = { args: { color: "#e11d48" } };

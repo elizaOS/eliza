@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import { useT } from "../lib/i18n";
 
@@ -140,7 +141,6 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
   const base = `/api/v1/eliza/agents/${agentId}/api/wallet`;
@@ -184,12 +184,11 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
   useEffect(() => {
     mountedRef.current = true;
     fetchData();
-    intervalRef.current = setInterval(fetchData, 30_000);
     return () => {
       mountedRef.current = false;
-      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchData]);
+  useIntervalWhenDocumentVisible(fetchData, 30_000);
 
   if (loading) {
     return (

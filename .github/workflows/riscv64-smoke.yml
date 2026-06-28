@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 90
     env:
       ELIZA_RISCV64_SMOKE: "1"
+      ZIG_VERSION: "0.14.0"
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -36,14 +37,26 @@ jobs:
             qemu-user-static binfmt-support \
             cmake build-essential file binutils python3 jq
 
+      - name: Restore Zig toolchain cache
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        with:
+          path: ~/.cache/elizaos/zig/${{ env.ZIG_VERSION }}
+          key: zig-${{ runner.os }}-x86_64-${{ env.ZIG_VERSION }}
+          restore-keys: |
+            zig-${{ runner.os }}-x86_64-
+
       - name: Install Zig 0.14
         run: |
-          set -e
-          ZIG_VERSION=0.14.0
-          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
-            -o /tmp/zig.tar.xz
-          sudo tar -C /opt -xJf /tmp/zig.tar.xz
-          sudo ln -sf "/opt/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig
+          set -euo pipefail
+          ZIG_ROOT="$HOME/.cache/elizaos/zig/${ZIG_VERSION}"
+          if [ ! -x "${ZIG_ROOT}/zig" ]; then
+            node packages/scripts/rm-path-recursive.mjs "${ZIG_ROOT}"
+            mkdir -p "${ZIG_ROOT}"
+            curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
+              -o /tmp/zig.tar.xz
+            tar -C "${ZIG_ROOT}" --strip-components=1 -xJf /tmp/zig.tar.xz
+          fi
+          sudo ln -sf "${ZIG_ROOT}/zig" /usr/local/bin/zig
           zig version
 
       - name: Setup Bun
@@ -53,6 +66,40 @@ jobs:
 
       - name: Install workspace deps
         run: bun install --frozen-lockfile
+
+      # Fingerprint the riscv64 build inputs from the git index (blob SHAs of
+      # tracked native sources + submodule pins). Fast (no byte reads), and it
+      # cannot self-pollute because build outputs land in gitignored build/
+      # dirs that `git ls-files` never lists.
+      - name: Compute riscv64 source fingerprint
+        id: riscv64-fp
+        run: |
+          set -euo pipefail
+          {
+            git submodule status --recursive
+            git ls-files -s \
+              packages/native/plugins \
+              scripts/build-riscv64-artifacts.sh \
+              packages/app-core/scripts/aosp/compile-libllama.mjs \
+              plugins/plugin-local-inference/native/build-omnivoice.mjs
+          } | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"
+
+      # build-riscv64-artifacts.sh is idempotent via existence sentinels, but its
+      # outputs never persist across runs. Restore them so an unchanged native
+      # source tree replays from the sentinels instead of recompiling every
+      # artifact (~30 min). EXACT-MATCH ONLY (no restore-keys): a stale prefix
+      # restore would let should_build skip a needed rebuild and smoke a stale
+      # artifact — a false green. A source/submodule change busts the key and
+      # forces a full rebuild.
+      - name: Cache riscv64 build outputs
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
+        with:
+          path: |
+            packages/native/plugins/*/build/riscv64
+            packages/app-core/platforms/android/app/src/main/assets/agent/riscv64
+            plugins/plugin-local-inference/native/build-omnivoice-linux-riscv64-cpu
+            ~/.cache/eliza-android-agent/seccomp-shim/riscv64
+          key: riscv64-out-${{ runner.os }}-${{ steps.riscv64-fp.outputs.hash }}
 
       - name: Build every riscv64 artifact (linux only; android skipped)
         run: |

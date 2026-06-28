@@ -1,6 +1,9 @@
 /**
  * Real integration tests for terminal command execution.
  */
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   checkDangerousCommand,
@@ -11,6 +14,17 @@ import {
   connectTerminal,
   executeTerminal,
 } from "../platform/terminal.js";
+
+/**
+ * A real, guaranteed-existing temp directory whose canonical path we can match
+ * against shell output. `/tmp` is unsafe as a cwd on Windows — it resolves to
+ * `C:\tmp`, which need not exist on a CI runner, so `execFile` would ENOENT
+ * before the command ever runs. macOS resolves the temp dir through `/private`,
+ * so we canonicalize with `realpathSync` and assert on the unique leaf name.
+ */
+function makeRealCwd(): string {
+  return realpathSync(mkdtempSync(join(tmpdir(), "cua-cwd-")));
+}
 
 describe("terminal execution (real)", () => {
   it("executes a simple command", async () => {
@@ -29,26 +43,39 @@ describe("terminal execution (real)", () => {
   });
 
   it("respects cwd", async () => {
-    const result = await executeTerminal({ command: "pwd", cwd: "/tmp" });
-    expect(result.success).toBe(true);
-    // /tmp may resolve to /private/tmp on macOS
-    expect(result.output).toMatch(/\/tmp/);
+    const dir = makeRealCwd();
+    try {
+      const result = await executeTerminal({ command: "pwd", cwd: dir });
+      expect(result.success).toBe(true);
+      // `pwd` prints the path with backslashes on Windows (PowerShell
+      // Get-Location); normalize separators and match on the unique leaf so the
+      // assertion holds on Windows/macOS/Linux alike.
+      const leaf = basename(dir);
+      expect(result.output.replace(/\\/g, "/")).toContain(leaf);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("creates and uses terminal sessions", async () => {
-    const session = await connectTerminal("/tmp");
-    expect(session.success).toBe(true);
-    expect(session.sessionId).toBeDefined();
+    const dir = makeRealCwd();
+    try {
+      const session = await connectTerminal(dir);
+      expect(session.success).toBe(true);
+      expect(session.sessionId).toBeDefined();
 
-    const exec = await executeTerminal({
-      command: "echo session-test",
-      sessionId: session.sessionId,
-    });
-    expect(exec.success).toBe(true);
-    expect(exec.output).toContain("session-test");
+      const exec = await executeTerminal({
+        command: "echo session-test",
+        sessionId: session.sessionId,
+      });
+      expect(exec.success).toBe(true);
+      expect(exec.output).toContain("session-test");
 
-    const close = await closeTerminal(session.sessionId);
-    expect(close.success).toBe(true);
+      const close = await closeTerminal(session.sessionId);
+      expect(close.success).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("handles command timeout", async () => {

@@ -228,8 +228,37 @@
 						}
 					}
 				},
+				"specDecode": {
+					"description": "Optional speculative-decode capability metadata (drafter-agnostic: MTP separate drafter, embedded draft head, or EAGLE3 head). Independent from required tier kernel names.",
+					"type": "object",
+					"properties": {
+						"enabled": {
+							"type": "boolean"
+						},
+						"capability": {
+							"type": "string",
+							"minLength": 1
+						},
+						"specType": {
+							"type": "string",
+							"minLength": 1
+						},
+						"model": {
+							"type": "string",
+							"minLength": 1
+						},
+						"maxDraftTokens": {
+							"type": "integer",
+							"minimum": 1
+						},
+						"failure": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				},
 				"eagle3": {
-					"description": "Optional EAGLE3 speculative-decoding capability metadata. This is independent from required tier kernel names.",
+					"description": "Back-compat alias for specDecode accepted for one release; same shape as specDecode.",
 					"type": "object",
 					"properties": {
 						"enabled": {
@@ -402,8 +431,34 @@
 						}
 					}
 				},
+				"specDecode": {
+					"description": "Optional speculative-decode eval metadata (drafter-agnostic). Passing claims require measured acceptanceRate and speedup in runtime validators.",
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"acceptanceRate": {
+							"type": ["number", "null"],
+							"minimum": 0,
+							"maximum": 1
+						},
+						"speedup": {
+							"type": ["number", "null"],
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						},
+						"pass": {
+							"type": "boolean"
+						},
+						"failure": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				},
 				"eagle3": {
-					"description": "Optional EAGLE3 speculative-decoding eval metadata. Passing claims require measured acceptanceRate and speedup in runtime validators.",
+					"description": "Back-compat alias for specDecode eval metadata accepted for one release; same shape as specDecode.",
 					"type": "object",
 					"additionalProperties": false,
 					"properties": {
@@ -588,6 +643,28 @@
 		},
 		"defaultEligible": {
 			"type": "boolean"
+		},
+		"schemaVersion": {
+			"description": "Manifest format version. \"2\" adds the Gemma 4 tokenizer/kv/mtp identity block; absent/\"1\" is the pre-cutover shape.",
+			"oneOf": [{ "type": "string" }, { "type": "integer" }]
+		},
+		"tokenizer": {
+			"description": "Shared Gemma 4 tokenizer identity (schemaVersion 2).",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["family", "vocabSize"],
+			"properties": {
+				"family": { "type": "string" },
+				"vocabSize": { "type": "integer", "minimum": 1 }
+			}
+		},
+		"kv": {
+			"description": "KV-cache mode the bundle ships (e.g. \"stock-q8_0\").",
+			"type": "string"
+		},
+		"mtp": {
+			"description": "Speculative-decode MTP mode. Gemma 4 tiers ship a separate drafter GGUF (mtp/drafter-<tier>.gguf).",
+			"enum": ["separate-drafter", "embedded-draft-head"]
 		}
 	},
 	"allOf": [
@@ -664,6 +741,11 @@
 				"ctx": {
 					"type": "integer",
 					"minimum": 131072
+				},
+				"runtimeClass": {
+					"description": "Optional runtime-class discriminator for a files.text entry. Absent defaults to 'llama-cpp' (GGUF, the default path). A '.litertlm' text artifact declares 'litert-lm' so the loader routes it to the in-process LiteRT-LM backend (Android NPU/GPU delegate) instead of the fused llama.cpp path.",
+					"type": "string",
+					"enum": ["llama-cpp", "litert-lm"]
 				}
 			}
 		},

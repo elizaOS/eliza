@@ -84,6 +84,7 @@ bun run --cwd packages/app typecheck                  # tsc --noEmit
 bun run --cwd packages/app test                       # Vitest unit tests
 bun run --cwd packages/app test:watch                 # Vitest watch mode
 bun run --cwd packages/app test:e2e                   # Playwright UI smoke (ui-smoke config)
+bun run --cwd packages/app audit:app                  # All-views visual audit + manual-review stubs
 bun run --cwd packages/app test:dev-smoke             # Playwright dev-smoke config
 bun run --cwd packages/app test:hmr                   # HMR smoke tests
 

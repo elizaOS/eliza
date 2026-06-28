@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
   "type": "module",
   "main": "dist/node/index.node.js",
@@ -91,7 +91,7 @@
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -101,6 +101,8 @@
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
     "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",
     "test:e2e:multi-account": "bun --conditions=eliza-source scripts/compose-multi-account-e2e.ts",
+    "test:scenarios": "bun --conditions=eliza-source ../../packages/scenario-runner/src/cli.ts run test/scenarios --lane pr-deterministic",
+    "test:scenarios:live": "bun --conditions=eliza-source ../../packages/scenario-runner/src/cli.ts run test/scenarios --lane live-only",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

@@ -1,39 +1,39 @@
 {
   "name": "@elizaos/plugin-registry",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Plugin registry plugin: consolidates plugin discovery, manifest reading, install/uninstall lifecycle, and HTTP routes for plugin management. Owns the cross-package plugin-routes (agent-tier) and plugins-routes (app-core compat-tier) surfaces and the install-orchestration helpers that forward into the agent runtime.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
-		".": {
-			"types": "./dist/index.d.ts",
-			"eliza-source": {
-				"types": "./src/index.ts",
-				"import": "./src/index.ts",
-				"default": "./src/index.ts"
-			},
-			"import": "./dist/index.js",
-			"default": "./dist/index.js"
-		},
-		"./api/plugin-routes": {
-			"types": "./dist/api/plugin-routes.d.ts",
-			"eliza-source": {
-				"types": "./src/api/plugin-routes.ts",
-				"import": "./src/api/plugin-routes.ts",
-				"default": "./src/api/plugin-routes.ts"
-			},
-			"import": "./dist/api/plugin-routes.js",
-			"default": "./dist/api/plugin-routes.js"
-		}
-	},
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./api/plugin-routes": {
+      "types": "./dist/api/plugin-routes.d.ts",
+      "eliza-source": {
+        "types": "./src/api/plugin-routes.ts",
+        "import": "./src/api/plugin-routes.ts",
+        "default": "./src/api/plugin-routes.ts"
+      },
+      "import": "./dist/api/plugin-routes.js",
+      "default": "./dist/api/plugin-routes.js"
+    }
+  },
   "scripts": {
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run",
     "build": "bun run build:js && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

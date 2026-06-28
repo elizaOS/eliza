@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
 import type { GenerateTextResult } from "../types/index";
-import { shouldRetryStage1Generation } from "./message";
+import { getStage1RetryReason, shouldRetryStage1Generation } from "./message";
 
 /**
  * Stage-1 retry policy (latency fix): a "malformed HANDLE_RESPONSE tool call"
@@ -130,5 +131,51 @@ describe("shouldRetryStage1Generation", () => {
 				undefined,
 			),
 		).toBe(false);
+	});
+});
+
+function toolCallResult(args: string): GenerateTextResult {
+	return {
+		toolCalls: [{ name: HANDLE_RESPONSE_TOOL_NAME, arguments: args }],
+	} as unknown as GenerateTextResult;
+}
+
+describe("getStage1RetryReason duplicate tool-call recovery", () => {
+	it("recovers identical double-emitted HANDLE_RESPONSE args", () => {
+		expect(
+			getStage1RetryReason(
+				toolCallResult('{"replyText":"hi"}{"replyText":"hi"}'),
+			),
+		).toBeNull();
+	});
+
+	it("still parses normal single-object HANDLE_RESPONSE args", () => {
+		expect(
+			getStage1RetryReason(toolCallResult('{"replyText":"hi"}')),
+		).toBeNull();
+	});
+
+	it("rejects conflicting double-emitted HANDLE_RESPONSE args", () => {
+		expect(
+			getStage1RetryReason(
+				toolCallResult('{"replyText":"hi"}{"replyText":"bye"}'),
+			),
+		).toBe("malformed HANDLE_RESPONSE tool call");
+	});
+
+	it("rejects arrays, primitives, and prose-embedded objects as tool args", () => {
+		for (const args of [
+			'["not","an","object"]',
+			'"not an object"',
+			'model said {"replyText":"hi"}',
+		]) {
+			expect(getStage1RetryReason(toolCallResult(args))).toBe(
+				"malformed HANDLE_RESPONSE tool call",
+			);
+		}
+	});
+
+	it("still flags an empty completion", () => {
+		expect(getStage1RetryReason("")).toBe("empty completion");
 	});
 });

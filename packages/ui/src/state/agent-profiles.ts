@@ -130,6 +130,25 @@ export function removeAgentProfile(id: string): void {
   saveAgentProfileRegistry(registry);
 }
 
+/**
+ * Drop the bearer access token from every persisted agent profile while keeping
+ * the rest of each profile (label/kind/apiBase/active selection). Call this on
+ * sign-out: the token is a JWT and leaving copies in localStorage after sign-out
+ * is an at-rest leak, but clearing the whole registry would needlessly forget
+ * which backends to re-authenticate against.
+ */
+export function scrubPersistedAgentProfileTokens(): void {
+  const registry = loadAgentProfileRegistry();
+  let changed = false;
+  registry.profiles = registry.profiles.map((profile) => {
+    if (!profile.accessToken) return profile;
+    changed = true;
+    const { accessToken, ...rest } = profile;
+    return rest;
+  });
+  if (changed) saveAgentProfileRegistry(registry);
+}
+
 export function updateAgentProfile(
   id: string,
   updates: Partial<Omit<AgentProfile, "id" | "createdAt">>,

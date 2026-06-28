@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-facewear",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Unified facewear plugin — Meta Quest 3, XReal, Even Realities G1/G2, Apple Vision Pro. Bidirectional voice+camera streaming, smartglasses display, view panels, device management.",
   "main": "./dist/index.js",
@@ -33,17 +33,17 @@
     }
   },
   "scripts": {
-    "typecheck": "bunx tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
     "test": "bun run build:views && bun run emulator:build && NODE_OPTIONS='--experimental-sqlite' vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "bunx tsc --noCheck -p tsconfig.build.json",
+    "build:types": "bunx tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "emulator:build": "cd emulator && bun install --force && bun run build",
     "emulator:watch": "cd emulator && bun run build:watch",
     "emulator:cli": "bun run --cwd emulator src/cli.ts",
-    "verify:app": "bunx vitest --root ../.. run packages/app-core/src/registry/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
+    "verify:app": "bunx vitest --root ../.. run packages/registry/src/first-party/facewear-registry.test.ts packages/app/src/plugin-registrations.test.ts"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
@@ -78,7 +78,8 @@
     "plugin": {
       "displayName": "Facewear",
       "category": "hardware"
-    }
+    },
+    "appRegister": "register"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
@@ -131,6 +132,7 @@
   },
   "types": "./dist/index.d.ts",
   "files": [
+    "registry-entry.json",
     "assets",
     "dist",
     "docs"

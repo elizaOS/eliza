@@ -7,7 +7,6 @@
  *     tap the pill → expands.
  *   - ConversationSwiper: swipe LEFT → next conversation; swipe RIGHT → previous
  *     (edge hint lights with the drag).
- *   - ConversationUndoToast: fire a reset → swipe the toast LEFT → restores.
  *
  * Captures a screenshot per state AND records a continuous .webm video of the
  * whole sequence. Exits non-zero on any failed assertion or page error.
@@ -198,23 +197,6 @@ await page.waitForTimeout(250);
 const t2 = await title.textContent();
 assert(t2 === t0, `Swipe RIGHT returns to the previous conversation (${t1} → ${t2})`);
 await snap(page, "swipe-right-prev");
-
-// ── 4. Undo toast: fire reset → swipe LEFT → restore ────────────────────
-await page.getByTestId("fire-undo").click();
-await page.waitForTimeout(300);
-assert(
-  await page.getByTestId("conversation-undo-toast").isVisible(),
-  "Reset shows the glassmorphic undo toast",
-);
-await snap(page, "undo-toast-shown");
-await drag(page, "conversation-undo-toast", -120, 0, { steps: 10, slow: false });
-await page.waitForTimeout(300);
-const restored = await page
-  .getByTestId("undo-result")
-  .textContent()
-  .catch(() => "");
-assert(restored === "restored", "Swiping the toast LEFT restores the conversation");
-await snap(page, "undo-restored");
 
 assert(errors.length === 0, `no page errors (saw ${errors.length})`);
 if (errors.length) console.log(errors.join("\n"));

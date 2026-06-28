@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "scope_global_vs_user.neutral.with_injection_attempt.022",
   title:
     "scope :: admin_global_terse_user_verbose :: neutral :: with_injection_attempt :: 15-turn (22)",

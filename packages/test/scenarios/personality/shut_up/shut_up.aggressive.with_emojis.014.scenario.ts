@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "shut_up.aggressive.with_emojis.014",
   title: "shut_up :: aggressive :: with_emojis :: 15-turn (14)",
   domain: "personality",

@@ -160,7 +160,7 @@ plugins/plugin-elizacloud/
       events.ts                     emitModelUsageEvent, ModelUsageEventMeta
       helpers.ts                    Misc internal helpers
       responses-output.ts           extractResponsesOutputText (Responses API output parser)
-      cloud-sdk/                    Internal SDK surface wrappers
+      cloud/sdk/                    Internal SDK surface wrappers
     types/
       cloud.ts                      CloudContainer, DevicePlatform, DEFAULT_CLOUD_CONFIG, and all Cloud API types
       index.ts                      Type barrel
@@ -200,7 +200,7 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 
 | Var | Default |
 |---|---|
-| `ELIZAOS_CLOUD_BASE_URL` | `https://www.elizacloud.ai/api/v1` |
+| `ELIZAOS_CLOUD_BASE_URL` | `https://elizacloud.ai/api/v1` |
 | `ELIZAOS_CLOUD_ENABLED` | `false` — when true, enables container provisioning, device auth, bridge, and backup services |
 | `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` | `false` |
 | `ELIZAOS_CLOUD_APP_VERSION` | `2.0.0-beta.0` |

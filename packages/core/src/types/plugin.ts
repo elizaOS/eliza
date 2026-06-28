@@ -359,6 +359,17 @@ export interface PluginAppBridge {
 }
 
 /**
+ * How the app shell treats the screen background while a view is active.
+ *
+ * - `opaque` (default): the host paints a full-window theme background behind
+ *   the view, covering status/home-indicator safe areas so the shared wallpaper
+ *   cannot leak through.
+ * - `shared`: the view intentionally sits on the same unified background used
+ *   by Home/Springboard.
+ */
+export type AppShellBackgroundPolicy = "opaque" | "shared";
+
+/**
  * A nav-tab declaration so an app/plugin can register its own page in the
  * shell's main navigation without app-core hard-coding it. Resolved by the
  * shell at startup from the loaded plugin's `app.navTabs` field.
@@ -390,6 +401,8 @@ export interface PluginAppNavTab {
 	 * grouped tab strips, e.g. workbench/dev/wallet groupings).
 	 */
 	group?: string;
+	/** Screen background policy for this tab. Defaults to `"opaque"`. */
+	backgroundPolicy?: AppShellBackgroundPolicy;
 	/**
 	 * Optional package export specifier the shell will dynamically import
 	 * when the tab is activated, e.g. "@elizaos/plugin-wallet-ui#InventoryView".
@@ -405,22 +418,22 @@ export interface PluginAppNavTab {
  * client-side type in `@elizaos/app-core/widgets` but lives here so plugins
  * can self-declare without depending on app-core.
  */
+export const PLUGIN_WIDGET_SLOTS = [
+	"chat-sidebar",
+	"character",
+	"nav-page",
+	"home",
+] as const;
+
+export type PluginWidgetSlot = (typeof PLUGIN_WIDGET_SLOTS)[number];
+
 export interface PluginWidgetDeclaration {
 	/** Unique within the owning plugin, e.g. "lifeops-overview". */
 	id: string;
 	/** Owning plugin ID. */
 	pluginId: string;
 	/** Where this widget renders. */
-	slot:
-		| "chat-sidebar"
-		| "chat-inline"
-		| "wallet"
-		| "browser"
-		| "heartbeats"
-		| "character"
-		| "settings"
-		| "nav-page"
-		| "automations";
+	slot: PluginWidgetSlot;
 	/** Human-readable label. */
 	label: string;
 	/** Lucide icon name. */
@@ -446,6 +459,26 @@ export interface PluginWidgetDeclaration {
 	 * when rendering. Format: "<package-subpath>#<named-export>".
 	 */
 	componentExport?: string;
+	/**
+	 * Opt-in shared "default" widget sink for the `home` slot (#9143). A plugin
+	 * that has live state but no bundled React component of its own sets this to
+	 * surface that state through one of the shared frontpage widgets instead of
+	 * shipping a component. Ignored unless `slot` is `"home"` and no own
+	 * component is registered for this declaration's `pluginId`/`id`.
+	 */
+	defaultWidget?: "notifications" | "messages" | "activity";
+	/**
+	 * Home-slot attention signals this widget responds to (#9143 priority). When
+	 * the home surface receives a live activity/notification signal of one of
+	 * these kinds, this widget's importance is boosted (decayed by recency) so it
+	 * bubbles up — that is how "what needs attention shows first" works. Kinds are
+	 * the keys of the home signal-weight table (e.g. `blocked`, `escalation`,
+	 * `approval`, `reminder`, `message`, `check-in`, `nudge`, `workflow`,
+	 * `activity`). Omit for widgets that should rank by static `order` only.
+	 */
+	signalKinds?: readonly string[];
+	/** Home-grid footprint (4-col grid). Default 2x1. */
+	size?: { cols: number; rows: number };
 }
 
 export interface PluginAppUiExtension {
@@ -464,6 +497,72 @@ export type ViewPlatform =
 
 /** Presentation/runtime family for a view. */
 export type ViewType = "gui" | "tui" | "xr";
+
+/**
+ * A surface a view renders on. Same set as {@link ViewType}; named separately
+ * because a single view declaration can render on several modalities at once
+ * (one component, drawn to GUI/XR DOM and TUI lines by `@elizaos/ui/spatial`).
+ */
+export type ViewModality = ViewType;
+
+const MODALITY_ORDER: readonly ViewModality[] = ["gui", "xr", "tui"];
+
+/** Order + de-duplicate a modality list as gui, xr, tui. */
+export function dedupeModalities(
+	mods: readonly ViewModality[],
+): ViewModality[] {
+	const seen = new Set(mods);
+	return MODALITY_ORDER.filter((m) => seen.has(m));
+}
+
+/**
+ * The surfaces a view declaration renders on: the explicit `modalities` list
+ * when set, otherwise the single `viewType` (default "gui").
+ */
+export function getViewModalities(
+	view: Pick<ViewDeclaration, "modalities" | "viewType">,
+): ViewModality[] {
+	if (view.modalities && view.modalities.length > 0) {
+		return dedupeModalities(view.modalities);
+	}
+	return [view.viewType ?? "gui"];
+}
+
+/** A logical view: one entry per `id`, with every surface it renders on. */
+export interface CollapsedView extends ViewDeclaration {
+	/** Union of the surfaces this view renders on (across same-id declarations). */
+	modalities: ViewModality[];
+}
+
+/**
+ * Collapse view declarations to one entry per `id`, unioning the surfaces each
+ * declaration supports. The "gui" declaration (clean label, no surface suffix)
+ * is preferred as the canonical base. This is the single source the view
+ * catalog and the modality hosts use so a view appears ONCE with modality
+ * badges instead of one duplicate row per surface ("Phone" / "Phone XR" /
+ * "Phone TUI").
+ */
+export function collapseViewDeclarations(
+	views: readonly ViewDeclaration[],
+): CollapsedView[] {
+	const order: string[] = [];
+	const byId = new Map<string, CollapsedView>();
+	for (const view of views) {
+		const mods = getViewModalities(view);
+		const existing = byId.get(view.id);
+		if (!existing) {
+			order.push(view.id);
+			byId.set(view.id, { ...view, modalities: mods });
+			continue;
+		}
+		const merged = dedupeModalities([...existing.modalities, ...mods]);
+		const isGui = (view.viewType ?? "gui") === "gui";
+		const baseWasGui = (existing.viewType ?? "gui") === "gui";
+		const base = isGui && !baseWasGui ? view : existing;
+		byId.set(view.id, { ...base, modalities: merged });
+	}
+	return order.map((id) => byId.get(id) as CollapsedView);
+}
 
 /**
  * XR-specific panel options for a view rendered in a WebXR overlay.
@@ -552,6 +651,14 @@ export interface ViewDeclaration {
 	 * mode.
 	 */
 	viewType?: ViewType;
+	/**
+	 * Surfaces this single declaration renders on. Prefer one declaration with
+	 * `modalities: ["gui", "xr", "tui"]` over duplicate per-`viewType`
+	 * declarations sharing an `id`: the spatial renderer draws the one component
+	 * to each surface (GUI/XR DOM, TUI lines) and the catalog lists the view
+	 * once. When omitted, falls back to `[viewType ?? "gui"]`.
+	 */
+	modalities?: ViewModality[];
 	/** One-line description used for semantic view search. */
 	description?: string;
 	/** Lucide icon name (e.g. "Wallet", "MessageSquare"). */
@@ -564,6 +671,8 @@ export interface ViewDeclaration {
 	tags?: string[];
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
+	/** Screen background policy for this view. Defaults to `"opaque"`. */
+	backgroundPolicy?: AppShellBackgroundPolicy;
 	/**
 	 * Platforms this view supports. Omit to support all platforms.
 	 * Dynamic plugin install is disabled on restricted store builds (ios, android).
@@ -974,8 +1083,8 @@ export interface Plugin {
 	providers?: Provider[];
 	/**
 	 * Pre-LLM action shortcuts (#8791): deterministic slash/`!` commands and
-	 * (flag-gated) natural-language phrases that resolve to a target before the
-	 * first model call. Registered into the runtime's `ShortcutRegistry`.
+	 * confidence-floored natural-language phrases that resolve to a target before
+	 * the first model call. Registered into the runtime's `ShortcutRegistry`.
 	 */
 	shortcuts?: ShortcutDefinition[];
 	evaluators?: RegisteredEvaluator[];

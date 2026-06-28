@@ -3,12 +3,13 @@
 // Update*, Extension*, Workbench*, Character*, Voice*, Skill*
 // ---------------------------------------------------------------------------
 
-import type { ViewKind } from "@elizaos/core";
+import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import type { MessageExampleContent, PluginParamDef } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 import type {
   ConversationScope,
   ReleaseChannel,
+  ScheduledTaskView,
   TriggerRunRecord,
   TriggerSummary,
 } from "./client-types-core";
@@ -171,6 +172,8 @@ export interface PluginInfo {
     developerOnly?: boolean;
     viewKind?: ViewKind;
     componentExport?: string;
+    defaultWidget?: "notifications" | "messages" | "activity";
+    signalKinds?: readonly string[];
   }>;
   /**
    * App metadata declared by the plugin (`Plugin.app`). Surfaces nav-tab
@@ -193,6 +196,7 @@ export interface PluginInfo {
       developerOnly?: boolean;
       viewKind?: ViewKind;
       group?: string;
+      backgroundPolicy?: AppShellBackgroundPolicy;
       componentExport?: string;
     }>;
   };
@@ -1621,7 +1625,8 @@ export type AutomationSource =
   | "workflow"
   | "workflow_draft"
   | "workflow_shadow"
-  | "automation_draft";
+  | "automation_draft"
+  | "scheduled_task";
 export type AutomationStatus =
   | "active"
   | "paused"
@@ -1670,6 +1675,13 @@ export interface AutomationItem {
   task?: WorkbenchTask;
   trigger?: TriggerSummary;
   workflow?: import("./client-types-chat").WorkflowDefinition;
+  /**
+   * Raw LifeOps scheduled task this item was adapted from, when
+   * `source === "scheduled_task"`. Lets a scheduled-task editor read the
+   * original record without re-fetching. Absent for workflow/task/trigger
+   * items.
+   */
+  scheduledTask?: ScheduledTaskView;
   schedules: TriggerSummary[];
   room?: AutomationRoomBinding | null;
   lastExecution?: AutomationLastExecution;
@@ -1725,7 +1737,7 @@ export type VoiceMode = "cloud" | "own-key";
 /**
  * Speech-to-text provider. The legacy `whisper.cpp` pipeline has been
  * retired; on-device transcription now flows through the same local-inference
- * runtime that hosts the LLM (Qwen3-ASR bundle). Settings UI surfaces an
+ * runtime that hosts the LLM (Gemma ASR bundle). Settings UI surfaces an
  * advanced override so users can switch to Eliza Cloud or OpenAI Whisper.
  */
 export type AsrProvider = "local-inference" | "eliza-cloud" | "openai";

@@ -211,6 +211,8 @@ describe("handleCommandsRoutes", () => {
       expect(restart).toBeDefined();
       // `restart` is auth-required in the registry; the route must not flatten it.
       expect(restart?.requiresAuth).toBe(true);
+      const compact = payload.commands.find((c) => c.key === "compact");
+      expect(compact?.requiresAuth).toBe(true);
       // A non-auth command stays false so the flag is genuinely sourced, not constant.
       const help = payload.commands.find((c) => c.key === "help");
       expect(help?.requiresAuth).toBe(false);
@@ -230,6 +232,13 @@ describe("handleCommandsRoutes", () => {
       const views = payload.commands.find((c) => c.key === "views");
       const viewArg = views?.args.find((a) => a.name === "view");
       expect(viewArg?.dynamicChoices).toBe("views");
+    });
+
+    it("emits the model arg's dynamicChoices source", async () => {
+      const payload = await fetchCatalog();
+      const model = payload.commands.find((c) => c.key === "model");
+      const modelArg = model?.args.find((a) => a.name === "model");
+      expect(modelArg?.dynamicChoices).toBe("models");
     });
   });
 

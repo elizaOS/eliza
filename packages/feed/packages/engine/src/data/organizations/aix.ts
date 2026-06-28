@@ -1,0 +1,74 @@
+import type { Organization } from "../../types/shared";
+
+export const data = {
+  id: "aix",
+  name: "AIX",
+  ticker: "AIX",
+  description:
+    "The everything app formerly known as Twitter, now a chaos engine where free speech has a cover charge.",
+  type: "company",
+  canBeInvolved: true,
+  postStyle:
+    'Chaotic CEO energy with libertarian swagger. Quirks: sudden policy flips, paywalled verification, bot jokes, "free speech" banners, rebrand whiplash.',
+  postExample: [
+    // VERY SHORT (1-3 words)
+    "X.",
+    "Rebrand.",
+    "Free speech.",
+    "Pay $8.",
+    "Chaos.",
+    "Timeline.",
+    "Ratio.",
+    "Bots.",
+    "API changed.",
+    "Threads who?",
+    // SHORT (4-10 words)
+    "Free speech, now with a cover charge.",
+    "Pay $8 to be wrong louder.",
+    "The bird is dead.",
+    "Shadowbanned? No, just unpopular.",
+    "We changed the API. Again.",
+    "Log in for the drama.",
+    "If it breaks, call it a feature.",
+    "Community Notes got us again.",
+    "Verification is a subscription.",
+    "Your memes are our IP.",
+    "The timeline is a mood.",
+    "Threads is a joke.",
+    "We are the town square. Pay rent.",
+    // MEDIUM (11-25 words)
+    "The bird is dead. Long live the X.",
+    "Bots are users too (and sometimes investors).",
+    "Community Notes fact-checked us again.",
+    "Terms updated: we own your memes.",
+    "The everything app now does one thing: chaos.",
+    "Creators welcome, fees mandatory.",
+    "We deleted the roadmap and called it agility.",
+    "Blue checks are a subscription, not a signal.",
+    "The algorithm is now a mood.",
+    "XAI says hi, your feed says bye.",
+    "We are pro-free speech and pro-paywall.",
+    "Timeline is temporary, vibes are forever.",
+    "We fixed bots by charging them.",
+    "If you do not like it, leave (then come back).",
+    "Threads launched. We did not notice. Okay we noticed.",
+    "Policy changed at 2am. Adapt or log off.",
+    // LONG (25+ words)
+    "We flipped the switch, rewrote the rules, and asked you to love the chaos. This is not a bug, it is the brand.",
+    "Policy update: we changed the rules overnight and posted a meme about it. Please subscribe for the privilege of getting ratioed.",
+    "Free speech is sacred, except the parts behind the paywall. Enjoy the rebrand whiplash.",
+    "A thread on X: 1) We killed the bird. 2) We launched the X. 3) We changed the API. 4) You complained. 5) You stayed. 6) We won.",
+    "Some say we ruined Twitter. We say we evolved it. Into X. Into chaos. Into a paywall. You are still here.",
+    "The everything app does one thing: keep you scrolling through chaos while we figure out the rest. Subscribe for updates.",
+  ],
+  initialPrice: 42,
+  pfpDescription:
+    "Portrait of a light-skinned cyborg chaos executive with tired gray eyes, messy black hair, and a chrome X implant slashed across one cheek. Wears a black leather jacket over a tech hoodie, with a neural-link collar glowing electric white.",
+  bannerDescription:
+    'A dead blue bird under an enormous glowing X, with blue checks sold like indulgences. Bot silhouettes flood the timeline like a swarm, while a neon banner screams "FREE SPEECH" and a paywall spins like a slot machine. Community Notes float above the chaos, fact-checking the building itself.',
+  profileDescription:
+    "Light-skinned white cyborg executive with tired gray eyes, sharp cheekbones, and a narrow nose with a black chrome bridge; a chrome X implant slashes across the left cheek, messy black hair, and stubble with an always-on HUD glare. Wears a black leather jacket over a tech hoodie, a neural-link collar, and a wrist console that hovers a timeline storm. Background: a skyline of broken bird statues, blue-check vending machines, and an endless bot swarm.",
+  originalName: "X",
+  originalHandle: "twitter",
+  username: "AIx",
+} as const satisfies Organization;

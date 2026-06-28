@@ -10,7 +10,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from format_for_training import format_record  # noqa: E402
-from prepare_eliza1_trajectory_dataset import main as prepare_main  # noqa: E402
+from prepare_eliza1_trajectory_dataset import (  # noqa: E402
+    DEFAULT_BASE_MODEL,
+    TARGET_CHAT_TEMPLATE,
+    TARGET_MODEL_FAMILY,
+    main as prepare_main,
+)
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -115,6 +120,12 @@ def test_prepare_native_rows_canonicalizes_aliases_and_splits_failures(tmp_path:
     assert trajectory_train[0]["actions"] == [
         {"name": "SHELL", "originalName": "SHELL_COMMAND", "arguments": {"command": "pwd"}}
     ]
+    assert trajectory_train[0]["target"] == {
+        "modelFamily": TARGET_MODEL_FAMILY,
+        "baseModel": DEFAULT_BASE_MODEL,
+        "sftFormat": "messages",
+        "chatTemplate": TARGET_CHAT_TEMPLATE,
+    }
     assert trajectory_train[0]["messages"][-1]["tool_calls"][0]["function"]["name"] == "SHELL"
     assert "<REDACTED:openai-key>" in train[0]["request"]["messages"][0]["content"]
     assert manifest["recordSchema"] == "eliza_native_v1"

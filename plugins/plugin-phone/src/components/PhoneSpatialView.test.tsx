@@ -45,7 +45,6 @@ describe("PhoneSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Phone");
       expect(flat).toContain("call-ready");
       expect(flat).toContain("Ada Lovelace");
       expect(flat).toContain("555-0100"); // dialed number
@@ -67,6 +66,40 @@ describe("PhoneSpatialView one source, three modalities", () => {
       expect(html).toContain("call-ready");
       expect(html).toContain('data-agent-id="call"');
     }
+  });
+
+  it("renders a distinct direction mark per call type (incoming/missed/outgoing)", () => {
+    // Strip ANSI styling so the glyph-to-row binding is asserted on plain text
+    // (ESC built via fromCharCode so no control char appears in the source).
+    const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+    const flat = renderViewToLines(view, 54).join("\n").replace(ansi, "");
+    // Each row carries its own direction glyph: incoming `<`, missed `x`,
+    // outgoing `>` (the spatial-primitive stand-in for the lucide
+    // phone-incoming/-missed/-outgoing icons of the retired overlay).
+    expect(flat).toContain("< Ada Lovelace");
+    expect(flat).toContain("x +15550200");
+    expect(flat).toContain("> Grace Hopper");
+  });
+
+  it("renders the dialed number, an empty-recent fallback, and the error line", () => {
+    const populated = renderViewToLines(view, 54).join("\n");
+    expect(populated).toContain("Call"); // place-call control
+    expect(populated).toContain("Contacts"); // contacts link
+
+    const emptyErr = renderViewToLines(
+      <PhoneSpatialView
+        snapshot={{
+          callReady: false,
+          dialed: "",
+          calls: [],
+          error: "READ_CALL_LOG denied",
+        }}
+      />,
+      54,
+    ).join("\n");
+    expect(emptyErr).toContain("call-blocked");
+    expect(emptyErr).toContain("None");
+    expect(emptyErr).toContain("READ_CALL_LOG denied");
   });
 
   it("registers as a terminal view the agent terminal can mount and render", () => {

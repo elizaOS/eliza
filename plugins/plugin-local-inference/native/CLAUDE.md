@@ -72,10 +72,11 @@ Backbones (do not change without explicit human approval):
   | `9b`                  | OmniVoice **and** Kokoro| OmniVoice|
   | `27b` / `27b-256k` | OmniVoice only  | OmniVoice|
 
-  - **Kokoro** = Kokoro-82M ONNX (`onnx-community/Kokoro-82M-v1.0-ONNX`,
-    ~80 MB int8). ~97ms CPU TTFB. Fixed voice packs, no per-user
-    cloning. Bundled at `tts/kokoro/{model_q4.onnx,tokenizer.json,
-    voices/<voice>.bin}` in each shipping tier. Backend implementation:
+  - **Kokoro** = Kokoro-82M GGUF staged from `elizaos/eliza-1`
+    (original `hexgrad/Kokoro-82M`, Q4_K_M). Fixed voice packs, no per-user
+    cloning. Bundled at
+    `tts/kokoro/{kokoro-82m-v1_0-Q4_K_M.gguf,tokenizer.json,voices/<voice>.bin}`
+    in each shipping tier. Backend implementation:
     `plugins/plugin-local-inference/src/services/voice/kokoro/`.
   - **OmniVoice** = Qwen3-TTS lineage. Upstream at
     `https://github.com/ServeurpersoCom/omnivoice.cpp`, mirrored at
@@ -131,14 +132,18 @@ Backbones (do not change without explicit human approval):
   (`kokoro|omnivoice|auto`), voice-cloning requirements, and measured
   RTF / TTFB.
 
-- **ASR:** Qwen3-ASR via the fused FFI on every tier. Source artifacts:
-  `ggml-org/Qwen3-ASR-0.6B-GGUF` for lite/mobile/desktop tiers,
-  `ggml-org/Qwen3-ASR-1.7B-GGUF` for pro/server. Bundled as
-  `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` (mmproj
-  sidecar is REQUIRED — Qwen3-ASR is a multimodal audio-in / text-out
-  model). Activated through `libelizainference`'s
-  `eliza_pick_asr_files()`. OmniVoice has no ASR head — do not route
-  ASR through it. The standalone `plugin-omnivoice`'s
+- **ASR:** Local ASR is fused-FFI only and artifact-gated. A
+  default-eligible Gemma 4 release must record real Gemma ASR lineage
+  in the manifest and must not ship Qwen ASR provenance; the runtime and
+  manifest validator reject strict/defaultEligible Qwen ASR stand-ins.
+  Bundled files remain `asr/eliza-1-asr.gguf` +
+  `asr/eliza-1-asr-mmproj.gguf` (mmproj sidecar is REQUIRED for the
+  audio-in / text-out path). Activated through `libelizainference`'s
+  `eliza_pick_asr_files()`. The public Qwen3-ASR artifacts and the
+  `qwen3a` mtmd backport are compatibility/scaffolding only until
+  verified Gemma ASR artifacts are staged; do not expose them as
+  default/recommended. OmniVoice has no ASR head — do not route ASR
+  through it. The standalone `plugin-omnivoice`'s
   `ModelType.TRANSCRIPTION` handler throws
   `OmnivoiceTranscriptionNotSupported` to make that explicit.
 
@@ -197,11 +202,25 @@ hosted under the `elizalabs` HuggingFace org under `eliza-1`.
 
 | Tier            | Tagline                       | Text  | Voice           | Vision | Context  | MTP | Quant default                   |
 | --------------- | ----------------------------- | ----- | --------------- | ------ | -------- | ------ | ------------------------------- |
-| `2b`         | small / low-RAM phones (entry) | 2B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
-| `4b`         | flagship phones, small desktops| 4B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
-| `9b`         | desktop / midrange GPU          | 9B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b`        | flagship GPU                    | 27B   | OmniVoice       | mmproj | 128k     | yes    | TurboQuant Q4 + QJL + Polar TCQ |
-| `27b-256k`  | long-context flagship            | 27B   | OmniVoice       | mmproj | 256k     | yes    | + turbo3_tcq                    |
+| `2b`         | small / low-RAM phones (entry) | 2B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + stock Gemma KV  |
+| `4b`         | flagship phones, small desktops| 4B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + stock Gemma KV  |
+| `9b`         | desktop / midrange GPU          | 9B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + stock Gemma KV  |
+| `27b`        | flagship GPU                    | 27B   | OmniVoice       | mmproj | 128k     | yes    | TurboQuant Q4 + turbo3_tcq      |
+| `27b-256k`  | long-context flagship            | 27B   | OmniVoice       | mmproj | 256k     | yes    | + turbo3_tcq (long ctx)         |
+
+> **Quant default — Gemma 4 reality (binding, see §1/§3 + `catalog.ts`).** The
+> shipped tiers run **Gemma 4** bases. Gemma's KV is already minimal (MQA +
+> windowed-SWA + shared-KV, dual head dims 512 global / 256 swa), so the runtime
+> ships **stock KV (f16/q8_0)** and the mandatory optimization set is
+> **TurboQuant weight-quant (`turbo3`/`turbo4`, + `turbo3_tcq` on the big/long-ctx
+> tiers) + MTP**. The legacy **head_dim=128 QJL K-cache / PolarQuant (TBQ) V-cache
+> fused-attn kernels are NOT used on Gemma** — they were the Qwen3.5/3.6-era KV
+> optimizations. The kernels still ship and pass `metal_verify`/`vulkan_verify`,
+> but the decode graph never routes a Gemma KV through them (the dequant-to-F16
+> hop in `src/llama-graph.cpp` only fires for `QJL1_256`/`TBQ3_TCQ`/`Q4_POLAR`
+> cache types, which Gemma never allocates). `catalog.test.ts`
+> (`"advertises only safe runtime optimizations for the shipped gemma4 tiers"`)
+> pins this contract.
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which
@@ -222,7 +241,7 @@ elizaos/eliza-1/
       eliza-1-<tier>-<ctx>.gguf    # text (+ inline vision where supported)
     tts/
       # Kokoro fallback shipped on 2b/4b/9b:
-      kokoro/model_q4.onnx
+      kokoro/kokoro-82m-v1_0-Q4_K_M.gguf
       kokoro/tokenizer.json
       kokoro/voices/<voice>.bin
       # OmniVoice shipped on every active tier. Default install stages a
@@ -235,8 +254,8 @@ elizaos/eliza-1/
       omnivoice-base-<quant>.gguf
       omnivoice-tokenizer-<quant>.gguf
     asr/
-      eliza-1-asr.gguf             # Qwen3-ASR text head, every tier
-      eliza-1-asr-mmproj.gguf      # mmproj audio projector sidecar, every tier
+      eliza-1-asr.gguf             # eligible local ASR text head
+      eliza-1-asr-mmproj.gguf      # local ASR audio projector sidecar
     vad/
       silero-vad-v5.gguf           # native silero-vad-cpp, every tier
     vision/
@@ -517,7 +536,7 @@ catalogs drift from it — generate them.
   "version": "1.0.0",
   "publishedAt": "2026-MM-DDTHH:MM:SSZ",
   "lineage": {
-    "text": { "base": "qwen3.5-4b", "license": "..." },
+    "text": { "base": "gemma-4-E4B", "license": "..." },
     "voice": { "base": "omnivoice-base-Q4_K_M", "license": "..." },
     "drafter": { "base": "mtp-4b-drafter", "license": "..." }
   },
@@ -679,11 +698,11 @@ backend nightly.
 
 ---
 
-## 11. ONNX deprecation status (updated K7, 2026-05-15)
+## 11. ONNX deprecation status (updated Kokoro GGUF, 2026-06-25)
 
 **Single on-device runtime: ONE managed library (`libelizainference`), ONE
 pipe, no sidecar/subprocess/TCP. No ONNX in resolved code path as of K7 for:
-VAD, wake-word, turn-detector (preferred), Kokoro (default=fork), OmniVoice,
+VAD, wake-word, turn-detector (preferred), Kokoro (fused GGUF), OmniVoice,
 ASR. Three voice classifier models remain ONNX-active, blocked on K1/K2/K3
 native ports.**
 
@@ -707,11 +726,11 @@ deprecated and will be removed from the runtime path once all native ports land.
 | OmniVoice TTS | fork FFI `libelizainference` (`tools/omnivoice/`) | DONE (W3-3) |
 | Silero VAD | standalone `silero-vad-cpp` FFI `libsilero_vad` + `vad/silero-vad-v5.gguf` | DONE (I1/K7 verified) — vad.ts imports zero onnxruntime-node |
 | hey-eliza wakeword | fork FFI `eliza_inference_wakeword_*` | DONE (I1/K7 verified) — wake-word.ts imports zero onnxruntime-node |
-| ASR (Qwen3-ASR) | fork FFI `eliza_pick_asr_files()` | DONE (T-asr) |
+| ASR (eligible local ASR) | fork FFI `eliza_pick_asr_files()` | DONE (runtime) / GATED (Gemma artifacts) |
 | MTP speculative decoding | fork `llama-server` `--spec-type mtp` | DONE |
 | Text EOT (Eliza1EotClassifier) | fork `node-llama-cpp` P(`<|im_end|>`) | DONE (preferred path when text model loaded) |
 | LiveKit EOT (GGUF) | `eot-classifier-ggml.ts::LiveKitGgmlTurnDetector` | DONE (J1.d) — preferred over ONNX when GGUF on disk |
-| Kokoro TTS | `pick-runtime.ts` defaults to `KOKORO_BACKEND=fork` → llama-server `/v1/audio/speech` | DONE (J2/K4 default) — ONNX reachable only via env override |
+| Kokoro TTS | fused FFI `eliza_inference_kokoro_*` + `tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf` | DONE (#9588) — GGUF-only runtime discovery |
 
 ### Compute-gated (ONNX still active in resolved runtime)
 
@@ -721,7 +740,6 @@ deprecated and will be removed from the runtime path once all native ports land.
 | WeSpeaker R34-LM | scalar C forward exists in `voice-classifier-cpp/src/voice_speaker.c`; production TS still routes ONNX until GGUF binding/parity promotion | K2 | parity + pipeline promotion |
 | pyannote-3 diarizer | scalar C forward exists in `voice-classifier-cpp/src/voice_diarizer.c`; production TS still routes ONNX until GGUF binding/parity promotion | K3 | parity + pipeline promotion |
 | LiveKit EOT (ONNX last-resort) | ONNX is last-resort in engine.ts chain (Eliza1Eot → GgmlTD → OnnxTD → Heuristic); ONNX reachable when GGUF not on disk | K7/J1.d | Remove OnnxTD from chain or guarantee GGUF on all tiers |
-| Kokoro ONNX runway | `KokoroOnnxRuntime` reachable via `KOKORO_BACKEND=onnx` | K4 | Remove class after K4 GGUF lands |
 
 **Rule:** do NOT remove `onnxruntime-node` from `plugin-local-inference/package.json`
 until every compute-gated head above is replaced. Premature removal crashes the

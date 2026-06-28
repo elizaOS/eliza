@@ -1,0 +1,37 @@
+# Real google/gemma-4-E2B (eliza-1 2b base) — Metal validation, M4 Max, 2026-06-23
+# fork main-b10024-05b4209-7-gbcae29e65; model candidates/gemma-2b-base-v1/text/eliza-1-2b-128k.gguf (Q8_0, 4.61 GiB)
+
+attempt 1: resuming from 1812MB / 4737MB
+attempt 2: resuming from 2408MB / 4737MB
+attempt 3: resuming from 2863MB / 4737MB
+complete: 4737MB
+=== RUN gemma4 generation on Metal ===
+ggml_metal_library_init: loaded in 0.029 sec
+llama_model_loader: - kv   0:                       general.architecture str              = gemma4
+llama_model_loader: - kv   9:                         gemma4.block_count u32              = 35
+llama_model_loader: - kv  10:                      gemma4.context_length u32              = 131072
+llama_model_loader: - kv  11:                    gemma4.embedding_length u32              = 1536
+llama_model_loader: - kv  12:                 gemma4.feed_forward_length arr[i32,35]      = [6144, 6144, 6144, 6144, 6144, 6144, ...
+llama_model_loader: - kv  13:                gemma4.attention.head_count u32              = 8
+llama_model_loader: - kv  14:             gemma4.attention.head_count_kv u32              = 1
+llama_model_loader: - kv  15:                      gemma4.rope.freq_base f32              = 1000000.000000
+llama_model_loader: - kv  16:                  gemma4.rope.freq_base_swa f32              = 10000.000000
+llama_model_loader: - kv  17:    gemma4.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  18:                gemma4.attention.key_length u32              = 512
+llama_model_loader: - kv  19:              gemma4.attention.value_length u32              = 512
+llama_model_loader: - kv  20:             gemma4.final_logit_softcapping f32              = 30.000000
+llama_model_loader: - kv  21:            gemma4.attention.sliding_window u32              = 512
+
+model: 4737MB / 4737MB
+=== correctness gen (my shim, Metal FA) ===
+ggml_metal_library_init: loaded in 0.008 sec
+sched_reserve: Flash Attention was auto, set to enabled
+loaded in 1141ms
+eval=40 pred=20 1642ms 12.2tok/s
+OUTPUT: "The capital of France is Paris. Two famous landmarks there are the Eiffel Tower and the Louvre Museum."
+RESULT=OK
+=== llama-bench gemma-4-E2B on Metal (-ngl 99 -fa 1) ===
+| model                          |       size |     params | backend    | threads | fa |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | ------: | -: | --------------: | -------------------: |
+| gemma4 E2B Q8_0                |   4.61 GiB |     4.65 B | MTL,BLAS   |      12 |  1 |           pp512 |      636.44 ± 125.51 |
+| gemma4 E2B Q8_0                |   4.61 GiB |     4.65 B | MTL,BLAS   |      12 |  1 |           tg128 |         23.22 ± 1.67 |

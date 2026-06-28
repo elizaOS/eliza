@@ -62,6 +62,8 @@ export interface AospLlmStreamConfig {
   cacheTypeK?: string | null;
   /** KV-cache V quant type name (e.g. `q4_polar`); null/absent = f16. */
   cacheTypeV?: string | null;
+  /** KV context size in tokens. ABI v9 appends this at offset 80; 0 = native default. */
+  contextSize?: number | null;
 }
 
 /**
@@ -192,11 +194,11 @@ export interface AospFfiPointerHelpers {
   cString(value: string): Buffer;
 }
 
-const LLM_STREAM_CONFIG_SIZE = 80;
+const LLM_STREAM_CONFIG_SIZE = 88;
 
 /**
- * Marshal an `AospLlmStreamConfig` into the 80-byte `eliza_llm_stream_config_t`
- * struct (ABI v8/v9, 8-byte aligned). Returns the struct buffer plus the
+ * Marshal an `AospLlmStreamConfig` into the 88-byte `eliza_llm_stream_config_t`
+ * struct (ABI v9, 8-byte aligned). Returns the struct buffer plus the
  * string-arg buffers it points into — the caller MUST keep those alive until
  * after `llm_stream_open` returns (GC of a referenced Buffer would dangle the
  * pointer). Mirrors the desktop binding's `llmStreamOpen` marshaller exactly.
@@ -236,6 +238,8 @@ export function marshalAospLlmStreamConfig(
   buf.writeInt32LE(gpuLayers === undefined ? -1 : gpuLayers, 60);
   buf.writeBigUInt64LE(ptrFor(config.cacheTypeK ?? null), 64);
   buf.writeBigUInt64LE(ptrFor(config.cacheTypeV ?? null), 72);
+  // off 80 = context_size (ABI v9). 0 lets the native side keep its default.
+  buf.writeInt32LE(config.contextSize ?? 0, 80);
   return { struct: buf, keepAlive };
 }
 
@@ -275,7 +279,7 @@ export function createAospStreamingLlmBinding(deps: {
   const isNull = (p: unknown): boolean =>
     p === null || p === undefined || p === 0 || p === 0n;
   const toBig = (p: AospLlmStreamHandle): bigint =>
-    typeof p === "bigint" ? p : BigInt(p as unknown as number);
+    typeof p === "bigint" ? p : BigInt(p);
 
   return {
     llmStreamSupported(): boolean {

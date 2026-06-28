@@ -82,14 +82,14 @@ export function GlassIconButton({
       onMouseDown={handleMouseDown}
       className={cn(
         "grid h-9 w-9 shrink-0 place-items-center transition-transform",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0",
+        "   ",
         disabled ? "opacity-40" : "hover:scale-105",
         active && "animate-pulse",
       )}
     >
       <svg
         viewBox="0 0 36 36"
-        className="pointer-events-none h-full w-full drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)]"
+        className="pointer-events-none h-full w-full"
         aria-hidden="true"
       >
         <path

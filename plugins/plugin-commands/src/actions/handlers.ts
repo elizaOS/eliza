@@ -2,14 +2,19 @@
  * Deterministic command handlers.
  *
  * `runCommand` is the single source of truth for what an agent-target command
- * *does*. It is a pure-ish function over the runtime + parsed command + context:
- * it reads real runtime/registry state, persists option settings, and returns a
- * deterministic `CommandResult`. No LLM call, no improvisation — the same input
- * yields the same reply on every surface (web, TUI, Discord, Telegram). This is
- * the "agent-target action handler" layer #8790 asks for.
+ * does. It reads real runtime/registry state, persists option settings, invokes
+ * owned runtime actions when needed, and returns a deterministic
+ * `CommandResult`. No LLM improvisation: the same command path runs on web,
+ * TUI, Discord, and Telegram.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+	Action,
+	HandlerCallback,
+	IAgentRuntime,
+	Memory,
+	UUID,
+} from "@elizaos/core";
 import {
 	findCommandByKeyForRuntime,
 	getCommandsByCategoryForRuntime,
@@ -22,31 +27,45 @@ import type {
 	CommandResult,
 	ParsedCommand,
 } from "../types";
-import { type CommandSettings, getCommandSettings } from "./command-settings";
+import {
+	type CommandSettings,
+	clearCommandSettings,
+	getCommandSettings,
+	setCommandSetting,
+} from "./command-settings";
 
 /**
- * Commands whose entire effect is the reply `runCommand` produces — safe to
- * short-circuit before the LLM. Lifecycle/management commands (reset, new,
- * compact, stop, restart, allowlist, …) and runtime option commands (think,
- * model, tts, elevated, …) have side effects owned by the existing pipeline and
- * must flow through it, so they are intentionally excluded from the always-on
- * gate.
+ * Commands whose effects are fully owned by this deterministic layer. Broader
+ * lifecycle/management commands (`stop`, `restart`, `allowlist`, `approve`, …)
+ * still flow through the pipeline that owns their side effects.
  */
-export const GATE_SAFE_COMMAND_KEYS: readonly string[] = [
+export const DETERMINISTIC_COMMAND_KEYS: readonly string[] = [
 	"help",
 	"commands",
 	"status",
 	"whoami",
 	"context",
+	"reset",
+	"new",
+	"compact",
 	"models",
 	"usage",
+	"think",
+	"verbose",
+	"reasoning",
+	"queue",
+	"elevated",
+	"model",
+	"tts",
 ];
 
-const GATE_SAFE_KEYS: ReadonlySet<string> = new Set(GATE_SAFE_COMMAND_KEYS);
+const DETERMINISTIC_KEYS: ReadonlySet<string> = new Set(
+	DETERMINISTIC_COMMAND_KEYS,
+);
 
-/** Whether a command's whole effect is its deterministic reply (gate-safe). */
-export function isGateSafeCommand(key: string): boolean {
-	return GATE_SAFE_KEYS.has(key);
+/** Whether a command's whole effect is handled by this deterministic layer. */
+export function isDeterministicCommand(key: string): boolean {
+	return DETERMINISTIC_KEYS.has(key);
 }
 
 const CATEGORY_ORDER: CommandCategory[] = [
@@ -59,6 +78,19 @@ const CATEGORY_ORDER: CommandCategory[] = [
 	"docks",
 	"skills",
 ];
+
+const OPTION_COMMANDS = {
+	think: { key: "thinking", label: "Thinking" },
+	verbose: { key: "verbose", label: "Verbose" },
+	reasoning: { key: "reasoning", label: "Reasoning" },
+	queue: { key: "queue", label: "Queue mode" },
+	elevated: { key: "elevated", label: "Elevated mode" },
+	model: { key: "model", label: "Model" },
+	tts: { key: "tts", label: "TTS" },
+} as const satisfies Record<
+	string,
+	{ key: keyof CommandSettings; label: string }
+>;
 
 function reply(text: string): CommandResult {
 	return { handled: true, reply: text, shouldContinue: false };
@@ -100,6 +132,77 @@ function resolveModelLabel(runtime: IAgentRuntime): string {
 	return "default";
 }
 
+async function countRoomMessages(
+	runtime: IAgentRuntime,
+	roomId: string,
+): Promise<number | null> {
+	if (typeof runtime.countMemories !== "function") return null;
+	try {
+		return await runtime.countMemories({
+			roomIds: [roomId as UUID],
+			tableName: "messages",
+			unique: false,
+		});
+	} catch {
+		return null;
+	}
+}
+
+async function clearRoomMessages(
+	runtime: IAgentRuntime,
+	roomId: string,
+): Promise<number | null> {
+	const before = await countRoomMessages(runtime, roomId);
+	if (typeof runtime.deleteAllMemories !== "function") return null;
+	await runtime.deleteAllMemories([roomId as UUID], "messages");
+	return before;
+}
+
+function findAction(runtime: IAgentRuntime, name: string): Action | undefined {
+	return runtime.actions?.find((action) => action.name === name);
+}
+
+async function runCompactAction(
+	runtime: IAgentRuntime,
+	message: Memory | undefined,
+	callback?: HandlerCallback,
+): Promise<CommandResult> {
+	const action = findAction(runtime, "COMPACT_CONVERSATION");
+	if (!action || !message) {
+		return reply("Conversation compaction is not available in this runtime.");
+	}
+	const result = await action.handler(
+		runtime,
+		message,
+		undefined,
+		undefined,
+		callback,
+	);
+	if (result?.text && result.text.trim().length > 0) return reply(result.text);
+	return reply("Conversation compaction completed.");
+}
+
+async function setOptionCommand(
+	runtime: IAgentRuntime,
+	roomId: string,
+	parsed: ParsedCommand,
+	option: { key: keyof CommandSettings; label: string },
+): Promise<CommandResult> {
+	const rawValue = parsed.rawArgs?.trim() ?? parsed.args[0]?.trim() ?? "";
+	if (!rawValue) {
+		const settings = await getCommandSettings(runtime, roomId);
+		const current =
+			option.key === "model"
+				? (settings.model ?? resolveModelLabel(runtime))
+				: (settings[option.key] ?? "default");
+		return reply(`${option.label} is ${current}.`);
+	}
+
+	const result = await setCommandSetting(runtime, roomId, option.key, rawValue);
+	if ("error" in result) return reply(result.error);
+	return reply(`${option.label} set to ${result.value}.`);
+}
+
 /**
  * Run a parsed command deterministically. Returns a `CommandResult` whose
  * `reply` is shown to the user. `handled: false` means this layer doesn't own
@@ -129,14 +232,18 @@ export async function runCommand(
 
 		case "status": {
 			const settings = await getCommandSettings(runtime, roomId);
+			const messageCount = await countRoomMessages(runtime, roomId);
 			const lines = [
 				`Agent: ${runtime.character?.name ?? runtime.agentId}`,
 				`Model: ${settings.model ?? resolveModelLabel(runtime)}`,
 				`Thinking: ${settings.thinking ?? "default"}`,
 				`Reasoning: ${settings.reasoning ?? "default"}`,
 				`Verbose: ${settings.verbose ?? "default"}`,
+				`Queue: ${settings.queue ?? "default"}`,
+				`TTS: ${settings.tts ?? "default"}`,
+				messageCount === null ? null : `Messages: ${messageCount}`,
 				`Commands enabled: ${getEnabledCommandsForRuntime(agentId).length}`,
-			];
+			].filter(Boolean) as string[];
 			return reply(lines.join("\n"));
 		}
 
@@ -174,8 +281,41 @@ export async function runCommand(
 			);
 		}
 
+		case "think":
+		case "verbose":
+		case "reasoning":
+		case "queue":
+		case "elevated":
+		case "model":
+		case "tts":
+			return setOptionCommand(
+				runtime,
+				roomId,
+				parsed,
+				OPTION_COMMANDS[parsed.key],
+			);
+
+		case "reset": {
+			await clearCommandSettings(runtime, roomId);
+			const deleted = await clearRoomMessages(runtime, roomId);
+			if (deleted === null) {
+				return reply(
+					"Reset command settings for this room. Message history is unchanged because memory deletion is unavailable.",
+				);
+			}
+			return reply(
+				`Reset this room: cleared command settings and ${deleted} message(s).`,
+			);
+		}
+
+		case "new":
+			await clearCommandSettings(runtime, roomId);
+			return reply("Started a new conversation context for this room.");
+
+		case "compact":
+			return runCompactAction(runtime, context.message, context.callback);
+
 		default:
-			// Not a gate-safe command this layer owns — let it flow to the pipeline.
 			return { handled: false, shouldContinue: true };
 	}
 }

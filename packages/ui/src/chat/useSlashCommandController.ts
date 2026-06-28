@@ -16,6 +16,7 @@ import {
   resolveSettingsSectionToken,
   SETTINGS_SECTION_SUGGESTIONS,
 } from "../components/settings/settings-section-tokens";
+import { useBootConfig } from "../config/boot-config-react.hooks";
 import { COMMAND_PALETTE_EVENT } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
@@ -58,6 +59,37 @@ export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
   }
 }
 
+/**
+ * Report a user-fired keyboard / command-palette shortcut to the agent (#8792).
+ * Fire-and-forget, fully guarded: a failure here must never break the shortcut.
+ * The server emits SHORTCUT_FIRED for the proactive decider, which decides
+ * (governed) whether a scoped comment helps. Only meaningful, intent-bearing
+ * shortcuts should report — not every keystroke — to keep the judge cheap.
+ */
+export function reportShortcutFired(
+  shortcutId: string,
+  context?: string,
+): void {
+  try {
+    const base = getElizaApiBase();
+    if (!base || typeof fetch === "undefined") return;
+    const token = getElizaApiToken();
+    void fetch(`${base}/api/interactions/shortcut`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        shortcutId,
+        ...(context ? { context } : {}),
+      }),
+    }).catch(() => {});
+  } catch {
+    // Best-effort observability only.
+  }
+}
+
 export interface NavigateSettingsDetail {
   section?: string;
 }
@@ -66,6 +98,8 @@ export interface SlashCommandController {
   /** The merged catalog (server commands + custom actions + saved commands). */
   commands: SlashCommandCatalogItem[];
   loading: boolean;
+  /** Whether natural-language navigate/client shortcuts may short-circuit send. */
+  naturalShortcutsEnabled: boolean;
   /** Resolve dynamic argument completions for a named source. */
   resolveChoices: (source: CommandArgSource) => string[];
   /** Map a user-typed settings token to a canonical section id. */
@@ -151,6 +185,7 @@ export function useSlashCommandController(
   options: SlashCommandControllerOptions = {},
 ): SlashCommandController {
   const { isAuthorized = true, isElevated = true } = options;
+  const bootConfig = useBootConfig();
   const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
     setTab: s.setTab,
     handleChatClear: s.handleChatClear,
@@ -202,6 +237,8 @@ export function useSlashCommandController(
       }),
     [serverCommands, customCommands, isAuthorized, isElevated],
   );
+  const naturalShortcutsEnabled =
+    bootConfig.shortcutFlags?.naturalLanguage === true;
 
   const resolveChoices = React.useCallback(
     (source: CommandArgSource): string[] => {
@@ -275,6 +312,7 @@ export function useSlashCommandController(
     () => ({
       commands,
       loading,
+      naturalShortcutsEnabled,
       resolveChoices,
       resolveSection: resolveSettingsSectionToken,
       navigateTab,
@@ -286,6 +324,7 @@ export function useSlashCommandController(
     [
       commands,
       loading,
+      naturalShortcutsEnabled,
       resolveChoices,
       navigateTab,
       navigateSettings,

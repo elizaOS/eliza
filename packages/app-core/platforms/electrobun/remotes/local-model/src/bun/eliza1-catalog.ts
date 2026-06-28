@@ -28,22 +28,6 @@ const LOCAL_CATALOG_PATH = resolveLocalCatalogPath();
 
 const TIER_SNAPSHOTS: TierSnapshot[] = [
   {
-    tier: "0_6b",
-    params: "0.6B",
-    displayName: "Eliza-1 0.6B",
-    activeTier: false,
-    roles: ["chat"],
-    capabilities: ["text-generation"],
-  },
-  {
-    tier: "1_7b",
-    params: "1.7B",
-    displayName: "Eliza-1 1.7B",
-    activeTier: false,
-    roles: ["chat"],
-    capabilities: ["text-generation"],
-  },
-  {
     tier: "2b",
     params: "2B",
     displayName: "Eliza-1 2B",
@@ -363,7 +347,7 @@ export function getEliza1Catalog(): LocalModelCatalogEntry[] {
     default: tier.defaultTier === true,
     source: {
       localCatalog: source,
-      eliza1BaseLineage: "Qwen",
+      eliza1BaseLineage: "Gemma",
       fineTuned: false,
     },
     raw: {

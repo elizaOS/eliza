@@ -1,10 +1,10 @@
 {
   "name": "@elizaos/plugin-tee",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/node/index.js",
   "module": "dist/node/index.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/node/index.d.ts",
   "description": "Trusted Execution Environment (TEE) integration plugin for elizaOS - Multi-language support (TypeScript, Python, Rust)",
   "repository": {
     "type": "git",
@@ -13,7 +13,7 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/node/index.d.ts",
       "eliza-source": {
         "types": "./src/index.ts",
         "import": "./src/index.ts",
@@ -32,12 +32,13 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
+      "types": "./dist/node/*.d.ts",
+      "import": "./dist/node/*.js",
+      "default": "./dist/node/*.js"
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "README.md",
     "LICENSE"
@@ -58,7 +59,7 @@
   "scripts": {
     "build:typescript": "tsc --noCheck -p tsconfig.build.json",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "echo \"Typecheck skipped for release\"",

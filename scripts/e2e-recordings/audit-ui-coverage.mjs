@@ -18,10 +18,9 @@ import {
 
 const REQUIRED_STANDALONE_UI_DIRS = [
   "packages/app",
-  "packages/cloud-frontend",
   "packages/test/cloud-e2e",
   "packages/homepage",
-  "packages/os-homepage",
+  "packages/os/homepage",
   "packages/os/usb-installer",
   "packages/ui",
   "plugins/plugin-facewear/app-xr",

@@ -15,7 +15,7 @@ Usage:
         --scenarios scripts/synth/scenarios/all.jsonl \\
         --max 5000 \\
         --concurrency 8 \\
-        --model Qwen/Qwen3-235B-A22B-Instruct-2507-tput
+        --model google/gemma-4-31B-it
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = ROOT / "data" / "synthesized" / "together-synth"
+DEFAULT_TOGETHER_MODEL = "google/gemma-4-31B-it"
 
 
 def system_prompt_for(scenario: dict) -> str:
@@ -155,8 +156,7 @@ def main() -> int:
                     default=ROOT / "scripts/synth/scenarios/all.jsonl")
     ap.add_argument("--max", type=int, default=0)
     ap.add_argument("--concurrency", type=int, default=8)
-    ap.add_argument("--model", type=str,
-                    default="Qwen/Qwen3-235B-A22B-Instruct-2507-tput")
+    ap.add_argument("--model", type=str, default=DEFAULT_TOGETHER_MODEL)
     args = ap.parse_args()
 
     if not os.environ.get("TOGETHER_API_KEY"):

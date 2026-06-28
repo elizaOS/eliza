@@ -19,14 +19,14 @@ export interface AppIdentitySource {
 }
 
 const APP_TILE_PALETTES = [
-  ["#0ea5e9", "#8b5cf6"],
-  ["#10b981", "#14b8a6"],
+  ["#f97316", "#e11d48"],
+  ["#10b981", "#84cc16"],
   ["#f59e0b", "#f97316"],
   ["#ef4444", "#f43f5e"],
   ["#22c55e", "#84cc16"],
-  ["#06b6d4", "#3b82f6"],
-  ["#a855f7", "#ec4899"],
-  ["#64748b", "#0f766e"],
+  ["#dc2626", "#f97316"],
+  ["#e11d48", "#fb7185"],
+  ["#57534e", "#78716c"],
 ] as const;
 
 function hashString(value: string): number {
@@ -146,7 +146,7 @@ export function AppIdentityTile({
 
   return (
     <div
-      className={`relative shrink-0 overflow-hidden border border-white/10 ring-1 ring-black/5 ${outerSize} ${className}`}
+      className={`relative shrink-0 overflow-hidden border border-white/10   ${outerSize} ${className}`}
       style={
         {
           backgroundImage: `linear-gradient(135deg, ${palette[0]} 0%, ${palette[1]} 100%)`,

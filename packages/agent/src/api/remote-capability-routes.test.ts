@@ -1216,6 +1216,33 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(json).not.toHaveBeenCalled();
   });
 
+  it.each([
+    "http://169.254.169.254/latest/meta-data",
+    "http://127.0.0.1:9200/",
+    "http://10.0.0.5/",
+    "http://192.168.1.1/",
+    "http://localhost/admin",
+    "http://metadata.google.internal/",
+    "http://vault.internal/",
+  ])("rejects an endpoint baseUrl targeting an internal address (SSRF): %s", async (baseUrl) => {
+    const connectEndpointProvider = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      { endpoint: { baseUrl } },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "endpoint.baseUrl must not target a private, loopback, link-local, or internal address.",
+      400,
+    );
+    // The unguarded fetch is never reached for a blocked target.
+    expect(connectEndpointProvider).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("normalizes endpoint URL query and fragment out of persisted identity", async () => {
     const connectEndpointProvider = vi.fn().mockResolvedValue({
       providerId: "direct",

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { useAppSelector } from "../../state";
@@ -35,7 +36,7 @@ export interface PluginCardProps {
   notInstalledLabel: string;
 }
 
-export function PluginCard({
+export const PluginCard = memo(function PluginCard({
   plugin: p,
   allowCustomOrder,
   pluginSettingsOpen,
@@ -164,9 +165,7 @@ export function PluginCard({
         hasParams ? "cursor-pointer" : ""
       } ${
         isOpen ? "bg-accent/10" : "hover:bg-bg-hover"
-      } ${isDragging ? "opacity-30" : ""} ${
-        isDragOver ? "ring-2 ring-accent/60" : ""
-      }`}
+      } ${isDragging ? "opacity-30" : ""} ${isDragOver ? " " : ""}`}
       data-plugin-id={p.id}
     >
       <PluginVisual plugin={p} />
@@ -219,4 +218,4 @@ export function PluginCard({
       )}
     </li>
   );
-}
+});

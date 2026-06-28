@@ -296,6 +296,67 @@ function launchIosSimulatorApp() {
   return { udid, installed: true, fullBunSmokeRequestedAtMs };
 }
 
+/**
+ * Assert the renderer baked into the INSTALLED app bundle is the freshly built
+ * one — the on-device proof that the simulator is running the latest UI, not
+ * stale code (issue #9309). Reads the build stamp Capacitor copied into the
+ * .app (`<App.app>/public/eliza-renderer-build.json`) and compares its buildId
+ * to the freshly built `packages/app/dist` manifest. Skips gracefully when
+ * either manifest is absent (e.g. a build without the manifest plugin); throws
+ * only on a genuine stale-UI mismatch.
+ */
+function assertInstalledIosRendererIsFresh(udid) {
+  const id = appId();
+  const container = tryExec("xcrun", [
+    "simctl",
+    "get_app_container",
+    udid,
+    id,
+    "app",
+  ]);
+  if (!container) {
+    console.warn(
+      `[local-chat-smoke] cannot verify renderer stamp — ${id} not installed.`,
+    );
+    return;
+  }
+  const installedManifest = path.join(
+    container,
+    "public",
+    "eliza-renderer-build.json",
+  );
+  // Resolve the fresh renderer from the SAME dist the installed shell was built
+  // from. A white-label shell (ELIZA_SMOKE_APP_ID) builds from its own dist
+  // (e.g. apps/app/dist); comparing against packages/app/dist would be a
+  // guaranteed buildId mismatch and a false "stale UI" failure.
+  const rendererDist = process.env.ELIZA_SMOKE_RENDERER_DIST
+    ? path.resolve(process.env.ELIZA_SMOKE_RENDERER_DIST)
+    : path.join(repoRoot, "packages", "app", "dist");
+  const freshManifest = path.join(rendererDist, "eliza-renderer-build.json");
+  if (!fs.existsSync(freshManifest)) {
+    console.warn(
+      `[local-chat-smoke] no freshly built renderer manifest at ${freshManifest}; skipping stamp check.`,
+    );
+    return;
+  }
+  if (!fs.existsSync(installedManifest)) {
+    throw new Error(
+      `[local-chat-smoke] installed app has no renderer build stamp at ${installedManifest} — missing/stale UI.`,
+    );
+  }
+  const fresh = JSON.parse(fs.readFileSync(freshManifest, "utf8"));
+  const installed = JSON.parse(fs.readFileSync(installedManifest, "utf8"));
+  if (installed.buildId !== fresh.buildId) {
+    throw new Error(
+      `[local-chat-smoke] installed renderer buildId ${installed.buildId} != freshly built ${fresh.buildId} — ` +
+        `the simulator is running STALE UI.`,
+    );
+  }
+  console.log(
+    `[local-chat-smoke] renderer build stamp OK: installed == fresh (${String(fresh.buildId).slice(0, 12)} built ${fresh.builtAt}).`,
+  );
+}
+
 function writeIosDefaultsString(udid, domain, key, value) {
   const nativeKey = `CapacitorStorage.${key}`;
   const dataContainer = tryExec(
@@ -492,7 +553,7 @@ function stageIosFullBunSmokeModel(udid, id) {
     models: [
       {
         id: IOS_FULL_BUN_SMOKE_MODEL_ID,
-        displayName: "eliza-1-0.8B",
+        displayName: "eliza-1-2B",
         path: modelPath,
         sizeBytes: sourceStats.size,
         installedAt: now,
@@ -897,7 +958,7 @@ function writeAndroidLocalInferenceRegistry(context, localInferenceDir) {
       models: [
         {
           id: ANDROID_SMOKE_MODEL_ID,
-          displayName: "eliza-1-0.8B",
+          displayName: "eliza-1-2B",
           path: absoluteModelPath,
           sizeBytes: ANDROID_SMOKE_MODEL_SIZE_BYTES,
           installedAt: now,
@@ -2367,6 +2428,9 @@ async function main() {
   try {
     if (platform === "ios" || platform === "both") {
       iosContext = launchIosSimulatorApp();
+      if (iosContext?.installed) {
+        assertInstalledIosRendererIsFresh(iosContext.udid);
+      }
     }
     if (platform === "android" || platform === "both") {
       androidContext = await launchAndroidEmulatorApp();

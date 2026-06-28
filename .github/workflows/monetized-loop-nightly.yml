@@ -1,24 +1,36 @@
-name: Monetized Loop Nightly (real Hetzner)
+name: Monetized + Showcase Loop Nightly
 
-# Real-Hetzner parity SCAFFOLD for the monetized full loop (#8935). The active
-# coverage is the mock-stack variant, which runs per-PR via cloud-e2e.yml (it
-# globs every packages/test/cloud-e2e/tests/*.spec.ts, including
-# monetized-full-loop.spec.ts). This workflow is the live-infra counterpart: it
-# sets MONETIZED_LOOP_REAL=1, under which monetized-full-loop.spec.ts currently
-# SKIPS (a describe-level skip, so no mock stack is booted and no mock assertion
-# is ever passed off as real). Wiring the live driver — one that drives
-# MONETIZED_LOOP_BASE_URL with a real key instead of the mock `stack` fixture and
-# lets autoscale/provision stand up an actual Hetzner node — is a tracked #8935
-# follow-up. The workflow is landed now so it activates the moment that driver +
-# secrets exist; until then a real run reports green-but-skipped.
+# Two scheduled jobs guard the cloud monetization system end to end:
 #
-# Honest-skip: when the required secrets are absent the job exits 0 with a
+#   1. `showcase-mock` (#9300) - ACTIVE green coverage, no secrets. Boots the same
+#      in-process mock stack as cloud-e2e.yml and drives the example apps showcase
+#      loop (EDAD + Clone Ur Crush: deploy -> app subdomain -> monetize ->
+#      charge -> creator earning -> redeemable) plus the monetized full loop.
+#      This is the scheduled regression net that fails the moment app-registration
+#      / container-deploy / usage / billing / monetization drift - even when no PR
+#      touches the cloud paths (e.g. a dependency bump). Always runs; never skips.
+#
+#   2. `loop` - Real-Hetzner parity SCAFFOLD for the monetized full loop + the
+#      example-apps showcase (#8935 / #9300). The per-PR mock-stack variant runs
+#      via cloud-e2e.yml (it globs every packages/test/cloud-e2e/tests/*.spec.ts).
+#      This job is the live-infra counterpart: it sets MONETIZED_LOOP_REAL=1, under
+#      which both specs currently SKIP at the describe level (so no mock stack is
+#      booted and no mock assertion is ever passed off as real). Wiring the live
+#      driver - one that drives MONETIZED_LOOP_BASE_URL with a real showcase key
+#      instead of the mock `stack` fixture and lets provision/deploy stand up an
+#      actual Hetzner node - is a tracked #8935/#9300 follow-up. The job is landed
+#      now so it activates the moment that driver + secrets exist; until then a
+#      real run reports green-but-skipped.
+#
+# Honest-skip (job 2): when the required secrets are absent the job exits 0 with a
 # warning (so the workflow can land on develop and be activated later); a manual
 # workflow_dispatch with missing secrets fails loudly.
 #
 # Required secrets / config (GitHub environment: ci-hetzner-e2e):
 #   HCLOUD_TOKEN_CI        - Hetzner Cloud API token (CI-scoped project)
-#   CLOUD_E2E_API_KEY      - Eliza Cloud staging bearer token (long-lived)
+#   CLOUD_E2E_API_KEY      - Eliza Cloud staging showcase bearer token (long-lived).
+#                            The showcase account is documented in
+#                            packages/test/cloud-e2e/docs/showcase-apps-coverage.md.
 #
 # Optional:
 #   MONETIZED_LOOP_BASE_URL - staging cloud-api base URL the loop drives.
@@ -136,9 +148,9 @@ jobs:
           fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - name: Run monetized full loop (real Hetzner)
+      - name: Run monetized full loop + example-apps showcase (real Hetzner)
         if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
-        run: bun run cloud:e2e -- monetized-full-loop.spec.ts
+        run: bun run cloud:e2e -- monetized-full-loop.spec.ts example-apps-showcase.spec.ts example-edad-real-deploy.spec.ts example-clone-ur-crush-real-deploy.spec.ts
         env:
           CI: "true"
           E2E_RECORD: "1"
@@ -164,6 +176,77 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: monetized-loop-nightly-logs-${{ github.run_attempt }}
+          path: |
+            packages/test/cloud-e2e/.logs
+          retention-days: 14
+          include-hidden-files: true
+          if-no-files-found: ignore
+
+  # ACTIVE scheduled coverage (#9300): mock-stack example-apps showcase.
+  # No secrets, never skips. Drives EDAD + Clone Ur Crush end to end (deploy -> app
+  # subdomain -> monetize -> charge -> creator earning -> redeemable) plus the
+  # monetized full loop against the in-process mock stack, on the nightly schedule.
+  # This is the always-green regression net the real-Hetzner job (above) cannot be
+  # until its live driver + secrets land. Mirrors cloud-e2e.yml's mock setup.
+  showcase-mock:
+    name: Example-apps showcase loop (mock stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/cloud-setup-test-env
+
+      - name: Install Playwright browsers (chromium only)
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build cloud-shared (drizzle artifacts)
+        # cloud-e2e fixture re-runs migrations against PGlite so build is best-effort.
+        run: bun run --cwd packages/cloud/shared build || true
+
+      - name: Run example-apps showcase + monetized full loop (mock stack)
+        # monetized-mock-llm-journey drives the real POST /api/v1/messages +
+        # x-app-id billing seam through an in-process OpenAI mock (keyless), the
+        # always-on counterpart to the CEREBRAS-gated real-LLM journey — included
+        # here so the scheduled regression net also guards the messages route.
+        run: bun run cloud:e2e -- example-apps-showcase.spec.ts monetized-full-loop.spec.ts monetized-mock-llm-journey.spec.ts
+        env:
+          CI: "true"
+          CLOUD_E2E: "1"
+          E2E_RECORD: "1"
+          # mocks read these
+          MOCK_REDIS: "1"
+          MOCK_HETZNER_LATENCY: "0"
+          MOCK_HETZNER_ACTION_MS: "30"
+          CONTROL_PLANE_TICK_MS: "50"
+          # placeholder values so client code doesn't crash on lookup; no real creds
+          DATABASE_URL: "pglite://./.eliza-ci/.pgdata"
+          HCLOUD_TOKEN: "test-token"
+          CONTAINER_CONTROL_PLANE_TOKEN: "test-token"
+          CRON_SECRET: "test-cron-secret"
+
+      - name: Upload Playwright report + video
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: showcase-mock-report-${{ github.run_attempt }}
+          path: |
+            packages/test/cloud-e2e/playwright-report
+            packages/test/cloud-e2e/test-results
+            e2e-recordings/cloud-e2e
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload process logs (boot diagnostics)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: showcase-mock-logs-${{ github.run_attempt }}
           path: |
             packages/test/cloud-e2e/.logs
           retention-days: 14

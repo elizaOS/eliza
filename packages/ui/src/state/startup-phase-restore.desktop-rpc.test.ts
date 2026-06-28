@@ -2,6 +2,10 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  enableForceFreshFirstRun,
+  isForceFreshFirstRunEnabled,
+} from "../platform";
+import {
   clearPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
@@ -108,5 +112,30 @@ describe("runRestoringSession desktop bridge startup calls", () => {
       type: "SESSION_RESTORED",
       target: "embedded-local",
     });
+  });
+
+  it("clears the one-shot force-fresh flag after consuming it so the next launch is not forced to onboard again", async () => {
+    enableForceFreshFirstRun();
+    savePersistedActiveServer({
+      id: "local",
+      kind: "local",
+      label: "Local Agent",
+    });
+    expect(isForceFreshFirstRunEnabled()).toBe(true);
+
+    const deps = makeDeps();
+    const dispatch = vi.fn();
+    const ctxRef = { current: null };
+
+    await runRestoringSession(deps, dispatch, ctxRef, { current: false });
+
+    // This launch still onboards (the one-shot directive is honored)...
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "NO_SESSION",
+      hadPriorFirstRun: false,
+    });
+    // ...but the flag is gone, so the next launch is back to normal behavior
+    // even if onboarding completes via a path that never POSTs first-run.
+    expect(isForceFreshFirstRunEnabled()).toBe(false);
   });
 });

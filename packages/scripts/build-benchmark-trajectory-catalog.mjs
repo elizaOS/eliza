@@ -1,22 +1,20 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-);
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
+const RM_RECURSIVE_SCRIPT = path.join(SCRIPT_DIR, "rm-path-recursive.mjs");
 const INDEX_DATA_PATH = path.join(
   REPO_ROOT,
   "reports",
@@ -42,25 +40,38 @@ function readIndexData() {
   );
 }
 
+function rmRecursive(targetPath) {
+  execFileSync("node", [RM_RECURSIVE_SCRIPT, targetPath], {
+    cwd: REPO_ROOT,
+    stdio: "inherit",
+  });
+}
+
 function rel(target, from = DEFAULT_REPORT_DIR) {
   return path.relative(from, target).replaceAll(path.sep, "/");
 }
 
 function safeSegment(value) {
-  return String(value || "unknown")
-    .replace(/[^A-Za-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 140) || "unknown";
+  return (
+    String(value || "unknown")
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 140) || "unknown"
+  );
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[char]);
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char],
+  );
 }
 
 function listFiles(root) {
@@ -72,7 +83,8 @@ function listFiles(root) {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) stack.push(full);
-      else if (entry.isFile() && /\.(jsonl|json)$/i.test(entry.name)) out.push(full);
+      else if (entry.isFile() && /\.(jsonl|json)$/i.test(entry.name))
+        out.push(full);
     }
   }
   return out.sort();
@@ -108,7 +120,10 @@ function parseTrajectoryFile(filePath) {
 function preview(value) {
   if (value === null || value === undefined) return "";
   const text = typeof value === "string" ? value : JSON.stringify(value);
-  return String(text || "").replace(/\s+/g, " ").trim().slice(0, PREVIEW_CHARS);
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, PREVIEW_CHARS);
 }
 
 function pick(record, keys) {
@@ -132,7 +147,8 @@ function pickWithSource(record, keys) {
 function safeRepoFileText(filePath) {
   if (!filePath || typeof filePath !== "string") return "";
   const absolute = path.resolve(filePath);
-  if (!absolute.startsWith(REPO_ROOT + path.sep) || !existsSync(absolute)) return "";
+  if (!absolute.startsWith(REPO_ROOT + path.sep) || !existsSync(absolute))
+    return "";
   try {
     return readFileSync(absolute, "utf8");
   } catch {
@@ -145,12 +161,21 @@ function mirroredPrivateTmpFileText(filePath) {
   const match = String(filePath).match(/^\/private\/tmp\/([^/]+)\/(.+)$/);
   if (!match) return "";
   return safeRepoFileText(
-    path.join(REPO_ROOT, "reports", "benchmarks", "code-agent-runs", match[1], match[2]),
+    path.join(
+      REPO_ROOT,
+      "reports",
+      "benchmarks",
+      "code-agent-runs",
+      match[1],
+      match[2],
+    ),
   );
 }
 
 function fallbackInputWithSource(record) {
-  const promptPath = safeRepoFileText(record.prompt_path) || mirroredPrivateTmpFileText(record.prompt_path);
+  const promptPath =
+    safeRepoFileText(record.prompt_path) ||
+    mirroredPrivateTmpFileText(record.prompt_path);
   if (promptPath) return { key: "prompt_path", value: promptPath };
   const taskYaml = safeRepoFileText(record.task_yaml);
   if (taskYaml) return { key: "task_yaml", value: taskYaml };
@@ -158,14 +183,17 @@ function fallbackInputWithSource(record) {
   if (action !== undefined && action !== null && action !== "") {
     return { key: "action", value: action };
   }
-  if (record.parse_error && record.raw) return { key: "parse_error.raw", value: record.raw };
+  if (record.parse_error && record.raw)
+    return { key: "parse_error.raw", value: record.raw };
   return { key: "", value: undefined };
 }
 
 function jsonStringFieldFromRaw(raw, field) {
   if (!raw || typeof raw !== "string") return "";
   const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = raw.match(new RegExp(`"${escapedField}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+  const match = raw.match(
+    new RegExp(`"${escapedField}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`),
+  );
   if (!match) return "";
   try {
     return JSON.parse(`"${match[1]}"`);
@@ -177,7 +205,7 @@ function jsonStringFieldFromRaw(raw, field) {
 function parseMaybeJson(value) {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
-  if (!trimmed || !/^[\[{]/.test(trimmed)) return value;
+  if (!trimmed || !/^[[{]/.test(trimmed)) return value;
   try {
     return JSON.parse(trimmed);
   } catch {
@@ -206,7 +234,8 @@ function assistantTextFromTranscript(transcript) {
   const assistantTexts = [];
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
-    const message = item.message && typeof item.message === "object" ? item.message : item;
+    const message =
+      item.message && typeof item.message === "object" ? item.message : item;
     if (message.role !== "assistant") continue;
     const text = textFromContent(message.content);
     if (text.trim()) assistantTexts.push(text.trim());
@@ -216,12 +245,14 @@ function assistantTextFromTranscript(transcript) {
 
 function fallbackOutputWithSource(record) {
   const transcriptOutput = assistantTextFromTranscript(record.transcript);
-  if (transcriptOutput) return { key: "transcript.assistant_text", value: transcriptOutput };
+  if (transcriptOutput)
+    return { key: "transcript.assistant_text", value: transcriptOutput };
   if (!record.parse_error || !record.raw) return { key: "", value: undefined };
   const responseText =
     jsonStringFieldFromRaw(record.raw, "response_text") ||
     jsonStringFieldFromRaw(record.raw, "responseText");
-  if (responseText) return { key: "parse_error.response_text", value: responseText };
+  if (responseText)
+    return { key: "parse_error.response_text", value: responseText };
   return { key: "", value: undefined };
 }
 
@@ -249,7 +280,9 @@ function toolCallArguments(record) {
   return record.tool_calls
     .map((call) => call?.function?.arguments)
     .filter((value) => value !== undefined && value !== null)
-    .map((value) => (typeof value === "string" ? value : JSON.stringify(value)));
+    .map((value) =>
+      typeof value === "string" ? value : JSON.stringify(value),
+    );
 }
 
 function benchmarkCommandFromToolCalls(record) {
@@ -267,7 +300,9 @@ function benchmarkCommandFromToolCalls(record) {
 
 function recentActionsFromPrompt(text) {
   const source = String(text || "");
-  const match = source.match(/# Recent actions\s*([\s\S]*?)(?:\nYou are|\n\nYou are|$)/);
+  const match = source.match(
+    /# Recent actions\s*([\s\S]*?)(?:\nYou are|\n\nYou are|$)/,
+  );
   if (!match) return [];
   return match[1]
     .split(/\r?\n/)
@@ -319,7 +354,11 @@ function normalizeRecord(record, index) {
     "token_metrics.output_tokens",
   ]);
   const totalTokens =
-    numeric(record, ["total_tokens", "usage.total_tokens", "token_metrics.total_tokens"]) ??
+    numeric(record, [
+      "total_tokens",
+      "usage.total_tokens",
+      "token_metrics.total_tokens",
+    ]) ??
     (promptTokens !== null || completionTokens !== null
       ? (promptTokens || 0) + (completionTokens || 0)
       : null);
@@ -336,7 +375,8 @@ function normalizeRecord(record, index) {
     "token_metrics.cached_token_percent",
   ]);
   const taskId = String(
-    pick(record, ["task_id", "task", "metadata.task_id", "scenario", "id"]) || "",
+    pick(record, ["task_id", "task", "metadata.task_id", "scenario", "id"]) ||
+      "",
   );
   const snapshotStep = lastSnapshotStep(record);
   const context = snapshotStep?.context || {};
@@ -354,9 +394,16 @@ function normalizeRecord(record, index) {
         "turn",
         "message_index",
       ]) ?? index + 1,
-    kind: String(pick(record, ["kind", "type", "event", "modelType"]) || "record"),
-    model: String(pick(record, ["model", "model_name", "metadata.model_name"]) || ""),
-    provider: String(pick(record, ["provider", "model_provider", "metadata.model_provider"]) || ""),
+    kind: String(
+      pick(record, ["kind", "type", "event", "modelType"]) || "record",
+    ),
+    model: String(
+      pick(record, ["model", "model_name", "metadata.model_name"]) || "",
+    ),
+    provider: String(
+      pick(record, ["provider", "model_provider", "metadata.model_provider"]) ||
+        "",
+    ),
     latencyMs: numeric(record, ["latency_ms", "duration_ms", "durationMs"]),
     promptTokens,
     completionTokens,
@@ -369,25 +416,40 @@ function normalizeRecord(record, index) {
       "usage.cache_creation_tokens",
     ]),
     cachePercent:
-      explicitCachePercent ?? cachePercent(promptTokens || totalTokens, cacheReadTokens),
+      explicitCachePercent ??
+      cachePercent(promptTokens || totalTokens, cacheReadTokens),
     actions: Array.isArray(record.actions) ? record.actions.map(String) : [],
     toolNames,
     toolSchemaCount:
       numeric(record, ["tool_schema_count", "metadata.tool_schema_count"]) ??
       (Array.isArray(record.tools) ? record.tools.length : null),
     toolCallNames: Array.isArray(record.tool_calls)
-      ? record.tool_calls.map((call) => String(call?.function?.name || "")).filter(Boolean)
+      ? record.tool_calls
+          .map((call) => String(call?.function?.name || ""))
+          .filter(Boolean)
       : [],
     toolCallArgumentsPreview: preview(toolCallArguments(record).join("\n")),
     benchmarkCommand: benchmarkCommandFromToolCalls(record),
-    diagnosticsEndpoint: String(pick(record, ["diagnostics_endpoint", "metadata.diagnostics_endpoint"]) || ""),
-    trajectoryEndpoint: String(pick(record, ["trajectory_endpoint", "metadata.trajectory_endpoint"]) || ""),
+    diagnosticsEndpoint: String(
+      pick(record, ["diagnostics_endpoint", "metadata.diagnostics_endpoint"]) ||
+        "",
+    ),
+    trajectoryEndpoint: String(
+      pick(record, ["trajectory_endpoint", "metadata.trajectory_endpoint"]) ||
+        "",
+    ),
     trajectorySnapshotStatus: String(record.trajectory_snapshot?.status || ""),
-    trajectorySnapshotError: preview(record.trajectory_snapshot_error || record.trajectory_snapshot?.error || ""),
+    trajectorySnapshotError: preview(
+      record.trajectory_snapshot_error ||
+        record.trajectory_snapshot?.error ||
+        "",
+    ),
     webshopPage: String(context.page || ""),
     webshopGoal: String(context.goal || context.instruction || ""),
     webshopBudget: context.budget ?? null,
-    webshopAvailableActions: stringArray(context.available_actions || context.actionSpace),
+    webshopAvailableActions: stringArray(
+      context.available_actions || context.actionSpace,
+    ),
     webshopRecentActions: recentActionsFromPrompt(record.prompt_text),
     webshopObservationPreview: preview(context.observation || ""),
     responseChars: numeric(record, ["response_chars", "responseChars"]),
@@ -417,10 +479,14 @@ function summarizeRecords(records) {
     llmLikeRecords: 0,
   };
   for (const item of normalized) {
-    if (typeof item.promptTokens === "number") totals.promptTokens += item.promptTokens;
-    if (typeof item.completionTokens === "number") totals.completionTokens += item.completionTokens;
-    if (typeof item.totalTokens === "number") totals.totalTokens += item.totalTokens;
-    if (typeof item.cacheReadTokens === "number") totals.cacheReadTokens += item.cacheReadTokens;
+    if (typeof item.promptTokens === "number")
+      totals.promptTokens += item.promptTokens;
+    if (typeof item.completionTokens === "number")
+      totals.completionTokens += item.completionTokens;
+    if (typeof item.totalTokens === "number")
+      totals.totalTokens += item.totalTokens;
+    if (typeof item.cacheReadTokens === "number")
+      totals.cacheReadTokens += item.cacheReadTokens;
     if (typeof item.latencyMs === "number") totals.latencyMs += item.latencyMs;
     if (
       item.promptTokens !== null ||
@@ -453,11 +519,14 @@ function inputOutputSummary(entries) {
       if (record.inputPreview) summary.recordsWithInput += 1;
       if (record.outputPreview) summary.recordsWithOutput += 1;
       if (record.inputSource === "prompt_text") summary.promptTextRecords += 1;
-      if (record.outputSource === "response_text") summary.responseTextRecords += 1;
+      if (record.outputSource === "response_text")
+        summary.responseTextRecords += 1;
       const inputSource = record.inputSource || "none";
       const outputSource = record.outputSource || "none";
-      summary.byInputSource[inputSource] = (summary.byInputSource[inputSource] || 0) + 1;
-      summary.byOutputSource[outputSource] = (summary.byOutputSource[outputSource] || 0) + 1;
+      summary.byInputSource[inputSource] =
+        (summary.byInputSource[inputSource] || 0) + 1;
+      summary.byOutputSource[outputSource] =
+        (summary.byOutputSource[outputSource] || 0) + 1;
     }
   }
   return summary;
@@ -564,20 +633,26 @@ function writePlayback(entry) {
 
 function buildCatalog() {
   const indexData = readIndexData();
-  const latestRows = Object.values(indexData.latest_by_benchmark || {}).sort((a, b) =>
-    String(a.benchmark || "").localeCompare(String(b.benchmark || "")),
+  const latestRows = Object.values(indexData.latest_by_benchmark || {}).sort(
+    (a, b) =>
+      String(a.benchmark || "").localeCompare(String(b.benchmark || "")),
   );
   const latestKeys = new Set(
-    latestRows.map((row) => `${row.benchmark}\0${row.run_id}\0${row.generated_at}`),
+    latestRows.map(
+      (row) => `${row.benchmark}\0${row.run_id}\0${row.generated_at}`,
+    ),
   );
   const sourceRows = (indexData.benchmark_rows || [])
     .filter((row) => row.benchmark && row.run_id)
-    .sort((a, b) =>
-      [
-        String(a.benchmark || "").localeCompare(String(b.benchmark || "")),
-        String(a.generated_at || "").localeCompare(String(b.generated_at || "")),
-        String(a.run_id || "").localeCompare(String(b.run_id || "")),
-      ].find((value) => value !== 0) || 0,
+    .sort(
+      (a, b) =>
+        [
+          String(a.benchmark || "").localeCompare(String(b.benchmark || "")),
+          String(a.generated_at || "").localeCompare(
+            String(b.generated_at || ""),
+          ),
+          String(a.run_id || "").localeCompare(String(b.run_id || "")),
+        ].find((value) => value !== 0) || 0,
     );
   const seenSources = new Set();
   const entries = [];
@@ -591,10 +666,19 @@ function buildCatalog() {
       seenSources.add(sourceKey);
       let files = listFiles(trajectoryDir);
       if (files.length === 0 && row.run_root && row.benchmark && adapter) {
-        const outputRoot = path.join(row.run_root, String(row.benchmark), String(adapter), "output");
+        const outputRoot = path.join(
+          row.run_root,
+          String(row.benchmark),
+          String(adapter),
+          "output",
+        );
         files = listFiles(outputRoot).filter((filePath) => {
           const name = path.basename(filePath).toLowerCase();
-          return name === "traj.jsonl" || name.includes("trajectory") || name.includes("trajectories");
+          return (
+            name === "traj.jsonl" ||
+            name.includes("trajectory") ||
+            name.includes("trajectories")
+          );
         });
       }
       for (const filePath of files) {
@@ -612,9 +696,15 @@ function buildCatalog() {
           filePath,
           fileHref: rel(filePath),
           fileSize: statSync(filePath).size,
-          relativePath: path.relative(trajectoryDir, filePath).replaceAll(path.sep, "/"),
+          relativePath: path
+            .relative(trajectoryDir, filePath)
+            .replaceAll(path.sep, "/"),
           viewerHref: row.viewer_href,
-          taskIds: [...new Set(summary.records.map((record) => record.taskId).filter(Boolean))],
+          taskIds: [
+            ...new Set(
+              summary.records.map((record) => record.taskId).filter(Boolean),
+            ),
+          ],
           totals: summary.totals,
           records: summary.records,
         };
@@ -655,10 +745,22 @@ function buildCatalog() {
       benchmarkCount: Object.keys(byBenchmark).length,
       trajectoryFiles: entries.length,
       playbackFiles: entries.filter((entry) => entry.playbackHref).length,
-      trajectoryRecords: entries.reduce((sum, entry) => sum + entry.totals.records, 0),
-      llmLikeRecords: entries.reduce((sum, entry) => sum + entry.totals.llmLikeRecords, 0),
-      totalTokens: entries.reduce((sum, entry) => sum + (entry.totals.totalTokens || 0), 0),
-      cacheReadTokens: entries.reduce((sum, entry) => sum + (entry.totals.cacheReadTokens || 0), 0),
+      trajectoryRecords: entries.reduce(
+        (sum, entry) => sum + entry.totals.records,
+        0,
+      ),
+      llmLikeRecords: entries.reduce(
+        (sum, entry) => sum + entry.totals.llmLikeRecords,
+        0,
+      ),
+      totalTokens: entries.reduce(
+        (sum, entry) => sum + (entry.totals.totalTokens || 0),
+        0,
+      ),
+      cacheReadTokens: entries.reduce(
+        (sum, entry) => sum + (entry.totals.cacheReadTokens || 0),
+        0,
+      ),
       inputOutput: ioSummary,
     },
     byBenchmark,
@@ -761,7 +863,9 @@ function renderMarkdown(payload) {
     "| benchmark | files | records | total tokens | cache read | cache % |",
     "|---|---:|---:|---:|---:|---:|",
   ];
-  for (const [benchmark, bucket] of Object.entries(payload.byBenchmark).sort()) {
+  for (const [benchmark, bucket] of Object.entries(
+    payload.byBenchmark,
+  ).sort()) {
     lines.push(
       `| \`${benchmark}\` | ${bucket.files} | ${bucket.records} | ${bucket.totalTokens} | ${bucket.cacheReadTokens} | ${bucket.cachePercent ?? ""} |`,
     );
@@ -772,7 +876,7 @@ function renderMarkdown(payload) {
 
 function main() {
   mkdirSync(DEFAULT_REPORT_DIR, { recursive: true });
-  rmSync(PLAYBACK_DIR, { recursive: true, force: true });
+  rmRecursive(PLAYBACK_DIR);
   const payload = buildCatalog();
   writeFileSync(
     path.join(DEFAULT_REPORT_DIR, "trajectory-catalog-data.js"),
@@ -781,10 +885,14 @@ function main() {
   );
   writeFileSync(
     path.join(DEFAULT_REPORT_DIR, "trajectory-catalog.json"),
-    JSON.stringify(payload, null, 2) + "\n",
+    `${JSON.stringify(payload, null, 2)}\n`,
     "utf8",
   );
-  writeFileSync(path.join(DEFAULT_REPORT_DIR, "README.md"), renderMarkdown(payload), "utf8");
+  writeFileSync(
+    path.join(DEFAULT_REPORT_DIR, "README.md"),
+    renderMarkdown(payload),
+    "utf8",
+  );
   writeFileSync(path.join(DEFAULT_REPORT_DIR, "index.html"), html(), "utf8");
   process.stdout.write(
     `benchmark trajectory catalog ${payload.summary.trajectoryFiles} files, ${payload.summary.trajectoryRecords} records\n`,

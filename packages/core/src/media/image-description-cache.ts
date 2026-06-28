@@ -135,6 +135,7 @@ export async function describeImageCached(
 		response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
 			prompt,
 			imageUrl: url,
+			stream: false,
 		});
 	} catch (error) {
 		runtime.logger.warn(

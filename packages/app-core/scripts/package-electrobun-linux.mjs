@@ -7,7 +7,6 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -25,6 +24,12 @@ const electrobunRoot = path.join(
 const buildRoot = path.join(electrobunRoot, "build");
 const artifactRoot = path.join(electrobunRoot, "artifacts");
 const iconPath = path.join(electrobunRoot, "assets/appIcon.png");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 const args = new Map(
   process.argv.slice(2).map((arg) => {
@@ -73,6 +78,10 @@ function sh(command, commandArgs, options = {}) {
     cwd: repoRoot,
     ...options,
   });
+}
+
+function removePathRecursive(targetPath) {
+  sh(process.execPath, [cleanupHelperScript, targetPath]);
 }
 
 function latestBuildDir() {
@@ -142,7 +151,7 @@ function writeDesktopFile(dest, execName = namespace) {
 }
 
 async function stagePackageRoot(buildDir, destRoot) {
-  rmSync(destRoot, { recursive: true, force: true });
+  removePathRecursive(destRoot);
   mkdirSync(path.join(destRoot, optDir), { recursive: true });
   mkdirSync(path.join(destRoot, "usr/bin"), { recursive: true });
   mkdirSync(path.join(destRoot, "usr/share/applications"), { recursive: true });
@@ -199,9 +208,12 @@ async function buildDeb(buildDir) {
       "",
     ].join("\n"),
   );
-  const out = path.join(artifactRoot, `${packageName}_${version}_${debArch}.deb`);
+  const out = path.join(
+    artifactRoot,
+    `${packageName}_${version}_${debArch}.deb`,
+  );
   sh("dpkg-deb", ["--build", root, out]);
-  rmSync(root, { recursive: true, force: true });
+  removePathRecursive(root);
   return out;
 }
 
@@ -246,9 +258,12 @@ async function buildRpm(buildDir) {
   const rpmDir = path.join(top, "RPMS", rpmArch);
   const rpm = readdirSync(rpmDir).find((name) => name.endsWith(".rpm"));
   if (!rpm) throw new Error("rpmbuild did not produce an rpm");
-  const out = path.join(artifactRoot, `${packageName}-${version}.${rpmArch}.rpm`);
+  const out = path.join(
+    artifactRoot,
+    `${packageName}-${version}.${rpmArch}.rpm`,
+  );
   copyFileSync(path.join(rpmDir, rpm), out);
-  rmSync(top, { recursive: true, force: true });
+  removePathRecursive(top);
   return out;
 }
 
@@ -284,7 +299,7 @@ async function buildAppImage(buildDir) {
   sh(tool, [appDir, out], {
     env: { ...process.env, ARCH: rpmArch, APPIMAGE_EXTRACT_AND_RUN: "1" },
   });
-  rmSync(appDir, { recursive: true, force: true });
+  removePathRecursive(appDir);
   return out;
 }
 

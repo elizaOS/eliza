@@ -8,9 +8,21 @@ in the suite orchestrator — run scripts directly with Bun.
 ## Run
 
 ```bash
-# End-to-end: 3 real voices (2 human + agent), full pipeline with real models
-ELIZA_VOICE_CLASSIFIER_LIB=<repo-root>/build-darwin/libvoice_classifier.dylib \
-  bun packages/benchmarks/voice/three-voice-e2e-real.mjs
+# Local real-acoustic eval: real pyannote diarizer + WeSpeaker encoder on real
+# audio (Apple Silicon Metal, no GPU runner / no ElevenLabs)
+ELIZA_INFERENCE_LIBRARY=<repo-root>/libelizainference.dylib ELIZA_BUNDLE_DIR=<bundle> \
+ELIZA_PYANNOTE_GGUF=<pyannote.gguf> ELIZA_WESPEAKER_GGUF=<wespeaker.gguf> \
+ELIZA_SPK_A_WAV=<a.wav> ELIZA_SPK_B_WAV=<b.wav> \
+  bun packages/benchmarks/voice/local-acoustic-eval.mjs
+
+# Provisioned CI real matrix: fused lib + GGUFs + generated speech.
+# Fails instead of skipping when any real dependency is absent.
+ELIZA_ASR_BUNDLE=<bundle> \
+ELIZA_INFERENCE_LIBRARY=<libelizainference> \
+ELIZA_SPEAKER_GGUF=<wespeaker.gguf> \
+ELIZA_DIARIZ_GGUF=<pyannote.gguf> \
+ELEVENLABS_API_KEY=<key> \
+  bun packages/benchmarks/voice/voice-real-ci-matrix.mjs
 
 # Three-voice scenario with synthetic fixtures (no real TTS models needed)
 bun packages/benchmarks/voice/three-voice-scenario.mjs [--bundle <path>]
@@ -27,17 +39,6 @@ bun packages/benchmarks/voice/test-speaker-encoder.mjs
 # Kokoro agent voice + ASR roundtrip
 bun packages/benchmarks/voice/verify-kokoro-agent-voice.mjs
 
-# Real-WAV speaker separation via WeSpeaker encoder
-bun packages/benchmarks/voice/verify-real-voice-separation.mjs
-
-# Real diarization on a live OmniVoice-generated stream
-bun packages/benchmarks/voice/verify-real-diarization.mjs
-
-# Enrollment attribution pipeline
-bun packages/benchmarks/voice/verify-enrollment-attribution.mjs
-
-# GGML native library availability check
-bun packages/benchmarks/voice/verify-native-ggml.mjs
 ```
 
 ## Smoke test (no TTS/ASR models)
@@ -62,22 +63,21 @@ count and exits 1 on any failure.
 
 | Path | Role |
 | --- | --- |
-| `three-voice-e2e-real.mjs` | Full E2E: OmniVoice TTS, Kokoro agent voice, pyannote diarizer, WeSpeaker encoder, eliza-1 ASR, should-respond |
+| `local-acoustic-eval.mjs` | Local real-acoustic eval: real pyannote diarizer + WeSpeaker encoder on real audio (Apple Silicon Metal, no GPU runner / no ElevenLabs) — diarizer counts, DER proxy, WeSpeaker cosine |
+| `voice-real-ci-matrix.mjs` | Provisioned CI real matrix: ElevenLabs owner/impostor speech + fused on-device agent TTS/ASR/diarizer/speaker encoder, producing DER/WER/echo-rejection/owner-security metrics |
 | `three-voice-scenario.mjs` | Same scenario with synthetic-fixture PCM (no real TTS) |
 | `owner-voice-first-run.mjs` | Owner enrollment, recognition, rejection, injection-attack defense (pure-JS, self-contained) |
 | `test-diarizer.mjs` | Diarizer GGUF smoke test; falls back to pure-JS classifyFramesToSegments |
 | `test-speaker-encoder.mjs` | WeSpeaker encoder smoke test; falls back to pure-JS cosine pipeline |
 | `verify-kokoro-agent-voice.mjs` | Kokoro ONNX TTS + ASR roundtrip |
-| `verify-real-voice-separation.mjs` | Real encoder on OmniVoice WAVs — same-voice vs cross-voice cosine |
-| `verify-real-diarization.mjs` | Real pyannote diarization on a live OmniVoice-generated stream |
-| `verify-enrollment-attribution.mjs` | Enrollment + nearest-centroid re-ID pipeline |
-| `verify-native-ggml.mjs` | Checks that libvoice_classifier.dylib is loadable |
 | `reports/` | JSON + Markdown reports written by scripts at runtime (not committed) |
 
 ## Notes
 
-- Full E2E requires the eliza-1-2b.bundle at `~/.eliza/local-inference/models/`
-  and the compiled `libvoice_classifier.dylib` + `omnivoice-tts` binary.
+- The retired standalone `libvoice_classifier` scripts were removed after the
+  direct GGML encoder/diarizer exports were retired. Use `local-acoustic-eval.mjs`
+  for local real-audio diarizer/encoder checks, or `voice-real-ci-matrix.mjs`
+  for the provisioned fused-library CI lane.
 - Reports write to `packages/benchmarks/voice/reports/` at runtime (not in git).
 - Not registered in `registry/commands.py` — no orchestrator `--benchmarks` ID.
 - The pure-JS fallback paths in `test-diarizer.mjs` and `test-speaker-encoder.mjs`

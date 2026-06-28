@@ -11,11 +11,11 @@ const MIGRATIONS_SCHEMA = "drizzle";
 const MIGRATIONS_TABLE = "__drizzle_migrations";
 const MIGRATIONS_DIR =
   [
-    path.join(process.cwd(), "packages/cloud-shared/src/db/migrations"),
+    path.join(process.cwd(), "packages/cloud/shared/src/db/migrations"),
     path.join(process.cwd(), "src/db/migrations"),
   ].find((candidate) =>
     existsSync(path.join(candidate, "meta/_journal.json")),
-  ) ?? path.join(process.cwd(), "packages/cloud-shared/src/db/migrations");
+  ) ?? path.join(process.cwd(), "packages/cloud/shared/src/db/migrations");
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
 
 interface JournalEntry {

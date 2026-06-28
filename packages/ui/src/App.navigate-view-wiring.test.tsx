@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,6 +18,16 @@ const appState = vi.hoisted(() => ({
 const desktopTabsMock = vi.hoisted(() => ({
   closeTab: vi.fn(),
   openTab: vi.fn(),
+}));
+
+const desktopTabsState = vi.hoisted(() => ({
+  tabs: [] as Array<{
+    viewId: string;
+    label: string;
+    path: string;
+    icon?: string;
+    pinned: boolean;
+  }>,
 }));
 
 const desktopBridgeMock = vi.hoisted(() => ({
@@ -77,21 +93,56 @@ const notesView = {
   viewType: "gui" as const,
 };
 
-const calendarView = {
-  id: "calendar",
-  label: "Calendar",
+const simpleCalendarView = {
+  id: "simple-calendar",
+  label: "Simple Calendar",
   available: true,
   pluginName: "@elizaos/plugin-simple-views",
-  path: "/calendar",
-  bundleUrl: "/api/views/calendar/bundle.js",
+  path: "/simple-calendar",
+  bundleUrl: "/api/views/simple-calendar/bundle.js",
   viewType: "gui" as const,
 };
+
+const sharedCanvasView = {
+  id: "shared-canvas",
+  label: "Shared Canvas",
+  available: true,
+  pluginName: "@elizaos/plugin-shared-canvas",
+  path: "/shared-canvas",
+  bundleUrl: "/api/views/shared-canvas/bundle.js",
+  viewType: "gui" as const,
+  backgroundPolicy: "shared" as const,
+};
+
+const documentsView = {
+  id: "documents",
+  label: "Knowledge",
+  available: true,
+  pluginName: "@elizaos/plugin-documents",
+  path: "/documents",
+  bundleUrl: "/api/views/documents/bundle.js",
+  viewType: "gui" as const,
+};
+
+const mockAvailableViews = [
+  remoteLedgerView,
+  viewsManagerView,
+  viewsManagerTuiView,
+  notesView,
+  simpleCalendarView,
+  sharedCanvasView,
+  documentsView,
+];
 
 vi.mock("@capacitor/keyboard", () => ({
   Keyboard: { setScroll: vi.fn(async () => undefined) },
 }));
 
 vi.mock("./bridge/electrobun-rpc", () => desktopBridgeMock);
+
+vi.mock("./bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => true,
+}));
 
 vi.mock("./platform/init", () => ({
   isDesktopPlatform: () => false,
@@ -102,7 +153,7 @@ vi.mock("./platform/init", () => ({
 
 vi.mock("./hooks/useDesktopTabs", () => ({
   useDesktopTabs: () => ({
-    tabs: [],
+    tabs: desktopTabsState.tabs,
     closeTab: desktopTabsMock.closeTab,
     openTab: desktopTabsMock.openTab,
   }),
@@ -110,13 +161,10 @@ vi.mock("./hooks/useDesktopTabs", () => ({
 
 vi.mock("./hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({
-    views: [
-      remoteLedgerView,
-      viewsManagerView,
-      viewsManagerTuiView,
-      notesView,
-      calendarView,
-    ],
+    views: mockAvailableViews,
+  }),
+  useRoutableViews: () => ({
+    views: mockAvailableViews,
   }),
 }));
 
@@ -154,13 +202,22 @@ vi.mock("./state", () => {
     actionNotice: null,
     activeGameViewerUrl: null,
     activeOverlayApp: null,
+    agentStatus: null,
     backendConnection: { state: "connected" },
+    copyToClipboard: vi.fn(),
+    databaseSubTab: "overview",
+    dismissActionBanner: vi.fn(),
+    dismissSystemWarning: vi.fn(),
+    elizaCloudConnected: false,
+    elizaCloudVoiceProxyAvailable: false,
     gameOverlayEnabled: false,
+    handlePluginToggle: vi.fn(),
     loadDropStatus: vi.fn(async () => undefined),
     firstRunComplete: true,
     ownerName: "Test Owner",
     plugins: [],
     retryStartup: vi.fn(),
+    setActionNotice: vi.fn(),
     setState: vi.fn(),
     setTab: appState.setTab,
     setUiLanguage: vi.fn(),
@@ -171,6 +228,7 @@ vi.mock("./state", () => {
       retry: vi.fn(),
     },
     startupError: null,
+    systemWarnings: [],
     tab: appState.tab,
     t: (_key: string, options?: { defaultValue?: string }) =>
       options?.defaultValue ?? "",
@@ -256,8 +314,19 @@ vi.mock("./components/pages/ChatView", () => ({
   __resetCompanionSpeechMemoryForTests: vi.fn(),
 }));
 
-vi.mock("./components/pages/ViewCatalog", () => ({
-  ViewCatalog: () => <div data-testid="view-manager-page" />,
+vi.mock("./components/character/CharacterEditor", () => ({
+  CharacterEditor: ({ initialPage }: { initialPage?: string }) => (
+    <div
+      data-initial-page={initialPage ?? ""}
+      data-testid={
+        initialPage === "documents" ? "documents-view" : "character-editor"
+      }
+    />
+  ),
+}));
+
+vi.mock("./components/pages/SpringboardSurface", () => ({
+  SpringboardSurface: () => <div data-testid="springboard-surface" />,
 }));
 
 vi.mock("./components/settings/SecretsManagerSection", () => ({
@@ -289,7 +358,12 @@ function navigateView(detail: Record<string, unknown>) {
 describe("App navigate-view event wiring", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
+    Reflect.deleteProperty(window, "__ELIZA_API_BASE__");
+    Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
+    Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
+    Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
     appState.tab = "chat";
+    desktopTabsState.tabs = [];
     appState.setTab.mockClear();
     desktopTabsMock.openTab.mockClear();
     desktopTabsMock.closeTab.mockClear();
@@ -300,6 +374,7 @@ describe("App navigate-view event wiring", () => {
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it("routes view-manager events through the mounted App listener", async () => {
@@ -352,7 +427,7 @@ describe("App navigate-view event wiring", () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/apps/remote-ledger");
 
-    const { container, getByTestId } = render(<App />);
+    const { container, getByTestId, queryByTestId } = render(<App />);
 
     await waitFor(() => {
       expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
@@ -364,6 +439,7 @@ describe("App navigate-view event wiring", () => {
         undefined,
       );
     });
+
     const loader = getByTestId("dynamic-view-loader");
     expect(loader.getAttribute("data-bundle-url")).toBe(
       "/api/views/remote-ledger/bundle.js",
@@ -375,6 +451,101 @@ describe("App navigate-view event wiring", () => {
         .querySelector('[data-shell-content-region="true"]')
         ?.className.includes("pb-[var(--eliza-continuous-chat-clearance"),
     ).toBe(true);
+    expect(getByTestId("app-opaque-background")).toBeTruthy();
+    expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("renders shell back chrome on app routes and uses browser history", async () => {
+    appState.tab = "apps";
+    window.history.replaceState(null, "", "/chat");
+    window.history.pushState(null, "", "/apps/remote-ledger");
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("shell-back-button")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("shell-back-button"));
+
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(appState.setTab).not.toHaveBeenCalledWith("chat");
+  });
+
+  it("lets a view explicitly share the Home/Springboard background", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/shared-canvas");
+
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    await waitFor(() => {
+      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bundleUrl: "/api/views/shared-canvas/bundle.js",
+          viewId: "shared-canvas",
+        }),
+        undefined,
+      );
+    });
+
+    expect(getByTestId("app-background-shader")).toBeTruthy();
+    expect(queryByTestId("app-opaque-background")).toBeNull();
+  });
+
+  it("reports user desktop-tab clicks to the agent without a navigation echo", async () => {
+    appState.tab = "apps";
+    window.history.replaceState(null, "", "/apps");
+    desktopTabsState.tabs = [
+      {
+        viewId: "remote-ledger",
+        label: "Remote Ledger",
+        path: "/apps/remote-ledger",
+        pinned: true,
+      },
+    ];
+    (
+      window as Window & {
+        __ELIZA_API_BASE__?: string;
+        __ELIZAOS_API_BASE__?: string;
+      }
+    ).__ELIZA_API_BASE__ = "http://agent.local";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/commands")) {
+          return new Response(JSON.stringify({ commands: [] }), {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+        if (url.includes("/api/custom-actions")) {
+          return new Response(JSON.stringify({ actions: [] }), {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+        return new Response("{}", { status: 200 });
+      }),
+    );
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remote Ledger" }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "http://agent.local/api/views/remote-ledger/navigate",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            source: "user",
+            path: "/apps/remote-ledger",
+          }),
+        }),
+      );
+    });
+    expect(window.location.pathname).toBe("/apps/remote-ledger");
   });
 
   it("renders split-view events as a live dynamic view layout", async () => {
@@ -386,7 +557,7 @@ describe("App navigate-view event wiring", () => {
     navigateView({
       action: "split-view",
       viewId: "notes",
-      views: ["notes", "calendar"],
+      views: ["notes", "simple-calendar"],
       layout: "horizontal",
       placement: "right",
     });
@@ -395,29 +566,61 @@ describe("App navigate-view event wiring", () => {
       expect(getByTestId("view-layout-surface")).toBeTruthy();
     });
     expect(getByTestId("view-layout-pane-notes")).toBeTruthy();
-    expect(getByTestId("view-layout-pane-calendar")).toBeTruthy();
+    expect(getByTestId("view-layout-pane-simple-calendar")).toBeTruthy();
     const loaders = getAllByTestId("dynamic-view-loader");
     expect(
       loaders.map((loader) => loader.getAttribute("data-view-id")),
-    ).toEqual(["notes", "calendar"]);
+    ).toEqual(["notes", "simple-calendar"]);
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(notesView, {
       pinned: false,
     });
-    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(simpleCalendarView, {
       pinned: false,
     });
   });
 
-  it("keeps /views on the built-in manager page instead of the remote manager bundle", async () => {
+  it("renders registered documents bundles inside split-view when registry wins", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/views");
+
+    const { getAllByTestId, getByTestId } = render(<App />);
+
+    navigateView({
+      action: "split-view",
+      viewId: "documents",
+      views: ["documents", "simple-calendar"],
+      layout: "horizontal",
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("view-layout-surface")).toBeTruthy();
+    });
+    expect(getByTestId("view-layout-pane-documents")).toBeTruthy();
+    expect(
+      getAllByTestId("dynamic-view-loader").map((loader) =>
+        loader.getAttribute("data-view-id"),
+      ),
+    ).toEqual(["documents", "simple-calendar"]);
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(documentsView, {
+      pinned: false,
+    });
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(simpleCalendarView, {
+      pinned: false,
+    });
+  });
+
+  it("keeps /views on the built-in Springboard instead of the remote manager bundle", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/views");
 
     const { getByTestId, queryByTestId } = render(<App />);
 
     await waitFor(() => {
-      expect(getByTestId("view-manager-page")).toBeTruthy();
+      expect(getByTestId("springboard-surface")).toBeTruthy();
     });
     expect(queryByTestId("dynamic-view-loader")).toBeNull();
     expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
+    expect(getByTestId("app-background-shader")).toBeTruthy();
+    expect(queryByTestId("app-opaque-background")).toBeNull();
   });
 });

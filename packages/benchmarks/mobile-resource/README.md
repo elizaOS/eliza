@@ -1,5 +1,9 @@
 # Mobile Resource Workbench
 
+> **What this measures:** device/mobile resource KPIs (CPU, memory, battery) —
+> **not** agent task quality. This is a direct device-profiling harness, not an
+> orchestrator benchmark adapter.
+
 End-to-end on-device resource profiling for elizaOS local inference on **iOS +
 Android**: battery drain, peak/steady RSS, prefill/decode tokens/sec, TTFT,
 thermal-state timeline, and low-power transitions — with per-tier budgets, a

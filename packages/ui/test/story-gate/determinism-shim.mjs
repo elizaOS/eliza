@@ -28,6 +28,17 @@ export function determinismShim(frozenEpochMs) {
   const FIXED =
     typeof frozenEpochMs === "number" ? frozenEpochMs : 1748779200000;
 
+  // The static Storybook catalog has no API backend. Seed the persisted UI
+  // language so TranslationProvider treats the run as a returning visitor and
+  // skips the best-effort /api/i18n/locale geo-suggestion request.
+  try {
+    if (!localStorage.getItem("eliza:ui-language")) {
+      localStorage.setItem("eliza:ui-language", "en");
+    }
+  } catch {
+    /* localStorage unavailable - non-fatal */
+  }
+
   // ---- Date / Date.now -----------------------------------------------------
   const RealDate = Date;
   class FixedDate extends RealDate {

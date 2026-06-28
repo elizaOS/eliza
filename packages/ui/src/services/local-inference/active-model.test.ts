@@ -35,6 +35,8 @@ function makeTempElizaBundle(
   const bundleRoot = mkdtempSync(pathJoin(tmpdir(), "eliza-ui-mtp-"));
   mkdirSync(pathJoin(bundleRoot, "text"), { recursive: true });
   const textPath = pathJoin(bundleRoot, "text", `eliza-1-${tier}-32k.gguf`);
+  // Shape a would-be separate-drafter MTP file. The resolver should ignore it
+  // until the shared catalog says that hosted Gemma drafter GGUFs are present.
   const drafterPath = pathJoin(bundleRoot, "mtp", `drafter-${tier}.gguf`);
   writeFileSync(textPath, "fake-text-gguf");
   if (options.hasMtp !== false) {
@@ -119,25 +121,24 @@ describe("resolveLocalInferenceLoadArgs", () => {
     expect(args.kvOffload).toEqual({ gpuLayers: 10 });
   });
 
-  it("activates separate-drafter MTP for every MTP Eliza-1 tier", async () => {
+  it("does not enable MTP args until hosted Gemma drafter GGUFs are cataloged", async () => {
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const tier = id.replace("eliza-1-", "");
       const bundle = makeTempElizaBundle(tier);
       const target = makeInstalledModel(id, bundle.textPath, bundle.bundleRoot);
       try {
         const args = await resolveLocalInferenceLoadArgs(target);
-        expect(args.draftModelPath).toBe(bundle.drafterPath);
-        expect(args.draftMin).toBeGreaterThan(0);
-        expect(args.draftMax).toBeGreaterThan(0);
-        expect(args.speculativeSamples).toBe(args.draftMax);
-        expect(args.mobileSpeculative).toBe(true);
+        expect(args.draftModelPath).toBeUndefined();
+        expect(args.draftMin).toBeUndefined();
+        expect(args.draftMax).toBeUndefined();
+        expect(args.mobileSpeculative).toBeUndefined();
       } finally {
         rmSync(bundle.bundleRoot, { recursive: true, force: true });
       }
     }
   });
 
-  it("throws when a separate-drafter MTP bundle is missing its drafter GGUF", async () => {
+  it("does not require a drafter GGUF while hosted Gemma MTP is unavailable", async () => {
     const bundle = makeTempElizaBundle("2b", { hasMtp: false });
     try {
       const target = makeInstalledModel(
@@ -145,9 +146,9 @@ describe("resolveLocalInferenceLoadArgs", () => {
         bundle.textPath,
         bundle.bundleRoot,
       );
-      await expect(resolveLocalInferenceLoadArgs(target)).rejects.toThrow(
-        /separate-drafter MTP/,
-      );
+      const args = await resolveLocalInferenceLoadArgs(target);
+      expect(args.draftModelPath).toBeUndefined();
+      expect(args.mobileSpeculative).toBeUndefined();
     } finally {
       rmSync(bundle.bundleRoot, { recursive: true, force: true });
     }

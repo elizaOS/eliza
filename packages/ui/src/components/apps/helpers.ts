@@ -61,29 +61,22 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
 const FEATURED_APP_NAMES = new Set<string>([
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-companion",
-  "@elizaos/plugin-defense-of-the-agents",
-  "@elizaos/plugin-clawville",
 ]);
 
 const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
   "@elizaos/plugin-companion",
-  "@elizaos/plugin-defense-of-the-agents",
-  "@elizaos/plugin-clawville",
 ]);
 
 const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
   "@elizaos/plugin-elizamaker",
-  "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-shopify-ui",
-  "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-vincent",
+  "@elizaos/plugin-hyperliquid",
+  "@elizaos/plugin-polymarket",
+  "@elizaos/plugin-shopify",
 ]);
 
 const WALLET_SCOPED_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-vincent",
+  "@elizaos/plugin-hyperliquid",
+  "@elizaos/plugin-polymarket",
 ]);
 
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
@@ -338,10 +331,7 @@ export function getAppCatalogSectionKey(
     return "featured";
   }
 
-  if (
-    app.name === "@elizaos/plugin-steward-app" ||
-    app.name === "@elizaos/plugin-elizamaker"
-  ) {
+  if (app.name === "@elizaos/plugin-elizamaker") {
     return "finance";
   }
 
@@ -353,15 +343,11 @@ export function getAppCatalogSectionKey(
   switch (canonicalName) {
     case "@elizaos/plugin-companion":
       return "games";
-    case "@elizaos/plugin-vincent":
-    case "@elizaos/plugin-shopify-ui":
-    case "@elizaos/plugin-hyperliquid-app":
-    case "@elizaos/plugin-polymarket-app":
+    case "@elizaos/plugin-shopify":
+    case "@elizaos/plugin-hyperliquid":
+    case "@elizaos/plugin-polymarket":
       return "finance";
     case "@elizaos/plugin-feed":
-      return "games";
-    case "@elizaos/plugin-defense-of-the-agents":
-    case "@elizaos/plugin-clawville":
       return "games";
   }
 

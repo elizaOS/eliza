@@ -8,8 +8,8 @@
  * updated", "the latest information I have is from". The agent has a character
  * (a name, a role, a persona); the model beneath it does not exist to the user.
  * Weaker / safety-tuned hosted planner models (Cerebras-served `gpt-oss-120b`,
- * `qwen-3-235b-a22b-instruct-2507`) still emit these phrases even with the
- * prompt rule in place — the same class of prompt-contract violation that
+ * GLM/Gemma-class dedicated endpoints, etc.) still emit these phrases even
+ * with the prompt rule in place — the same class of prompt-contract violation that
  * motivated `looksLikeRefusal` (see `refusal-detector.ts`).
  *
  * This detector is the structural net for that rule: a closed, distinctive set

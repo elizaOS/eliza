@@ -31,19 +31,26 @@ bun run build
 
 ## Development (With Cloud)
 
-From the `vendor/cloud` directory:
+Run this app's dev server and point it at a running Eliza Cloud (local or hosted):
 
 ```bash
-# Start both Cloud and Crush together
-bun run crush
+# from packages/examples/cloud/clone-ur-crush
+NEXT_PUBLIC_ELIZA_CLOUD_URL=http://localhost:3000 bun run dev
+# → Clone Your Crush on http://localhost:3012, redirecting into Cloud chat
 
-# This will start:
-# - ElizaOS Cloud on http://localhost:3000
-# - Fake Girlfriend on http://localhost:3012
-
-# Run e2e tests (starts both services and runs tests)
-bun run crush:test
+# Defaults to https://www.elizacloud.ai when NEXT_PUBLIC_ELIZA_CLOUD_URL is unset.
 ```
+
+## Showcase deploy + continuous validation (#9300)
+
+This app is one of the two flagship monetized showcase apps. Its container image
+(`ghcr.io/elizaos/example-clone-ur-crush:showcase`) is built + smoke-tested by
+[`build-example-app-images.yml`](../../../../.github/workflows/build-example-app-images.yml)
+(Next.js `output: "standalone"` via `Dockerfile.bundle`). The #9300 real-staging
+showcase loop uses `Dockerfile.cloud` through the normal source-build app deploy
+path, then drives register → deploy → subdomain → monetize → earn end to end via
+the cloud e2e harness. Full runbook (mock + real-staging activation):
+[`packages/test/cloud-e2e/docs/showcase-apps-coverage.md`](../../../test/cloud-e2e/docs/showcase-apps-coverage.md).
 
 ## Environment Variables
 

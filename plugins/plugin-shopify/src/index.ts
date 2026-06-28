@@ -47,3 +47,12 @@ export * from "./accounts.js";
 export { createShopifyConnectorAccountProvider } from "./connector-account-provider.js";
 export type { ShopifyPluginConfig } from "./types.js";
 export { ShopifyService };
+
+// Dashboard UI surface (merged from the former @elizaos/plugin-shopify-ui).
+// `shopifyPlugin` from ./plugin is the route + views plugin; re-exported under
+// a distinct name so it does not collide with the default agent plugin above.
+export { shopifyPlugin as shopifyRoutePlugin } from "./plugin";
+export * from "./register";
+export * from "./routes";
+export { ShopifyView } from "./ShopifyView";
+export * from "./useShopifyDashboard";

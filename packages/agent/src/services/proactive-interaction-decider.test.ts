@@ -4,12 +4,16 @@ import type {
   SlashCommandInvokedPayload,
   ViewSwitchedPayload,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { EventType } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildProactiveJudgePrompt,
   decideProactiveComment,
   interactionSurface,
+  parseProactiveJudgeDecisionOutput,
   parseProactiveJudgeOutput,
+  registerProactiveInteractionDecider,
 } from "./proactive-interaction-decider.ts";
 import {
   configForChattiness,
@@ -26,6 +30,10 @@ function payload(over: Partial<ViewSwitchedPayload> = {}): ViewSwitchedPayload {
   };
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("decideProactiveComment (#8792)", () => {
   it("returns the judge offer when user-initiated, settled, and admitted", async () => {
     const gate = new ProactiveInteractionGate(configForChattiness("subtle"));
@@ -36,6 +44,26 @@ describe("decideProactiveComment (#8792)", () => {
       now: 0,
     });
     expect(res.text).toBe("Want me to pull your latest balances?");
+    expect(res.delivery).toBe("chat");
+  });
+
+  it("preserves notify delivery for low-urgency admitted offers", async () => {
+    const gate = new ProactiveInteractionGate(configForChattiness("subtle"));
+    const res = await decideProactiveComment({
+      payload: payload(),
+      gate,
+      judge: async () => ({
+        text: "I can summarize this view later.",
+        delivery: "notify",
+        title: "View suggestion",
+      }),
+      now: 0,
+    });
+    expect(res).toMatchObject({
+      text: "I can summarize this view later.",
+      delivery: "notify",
+      title: "View suggestion",
+    });
   });
 
   it("stays silent on agent-initiated switches (no double-talk with the ack)", async () => {
@@ -125,6 +153,56 @@ describe("parseProactiveJudgeOutput", () => {
   });
 });
 
+describe("parseProactiveJudgeDecisionOutput", () => {
+  it("extracts chat delivery by default", () => {
+    expect(
+      parseProactiveJudgeDecisionOutput('{"comment":"pull balances?"}'),
+    ).toEqual({
+      text: "pull balances?",
+      delivery: "chat",
+      title: undefined,
+      deepLink: undefined,
+      groupKey: undefined,
+    });
+  });
+
+  it("extracts notify delivery metadata", () => {
+    expect(
+      parseProactiveJudgeDecisionOutput(
+        '{"comment":"I can summarize this later.","delivery":"notify","title":"Suggestion","deepLink":"/tasks","groupKey":"view:tasks"}',
+      ),
+    ).toEqual({
+      text: "I can summarize this later.",
+      delivery: "notify",
+      title: "Suggestion",
+      deepLink: "/tasks",
+      groupKey: "view:tasks",
+    });
+  });
+
+  it("treats low-confidence judge output as silence", () => {
+    expect(
+      parseProactiveJudgeDecisionOutput(
+        '{"comment":"Want help here?","confidence":0.42}',
+      ),
+    ).toBeNull();
+  });
+
+  it("routes low-urgency judge output to notifications", () => {
+    expect(
+      parseProactiveJudgeDecisionOutput(
+        '{"comment":"I can summarize this later.","delivery":"chat","urgency":"low"}',
+      ),
+    ).toEqual({
+      text: "I can summarize this later.",
+      delivery: "notify",
+      title: undefined,
+      deepLink: undefined,
+      groupKey: undefined,
+    });
+  });
+});
+
 describe("buildProactiveJudgePrompt", () => {
   it("names the switched view in the prompt", () => {
     const p = buildProactiveJudgePrompt(payload({ viewLabel: "Calendar" }));
@@ -162,6 +240,24 @@ describe("interactionSurface — per-event policy (#8792)", () => {
     };
     expect(interactionSurface(slash)).toBeNull();
   });
+  it("denies control/dismiss/help shortcuts before the judge (no surface)", () => {
+    for (const id of [
+      "close-modal",
+      "send-message",
+      "focus-composer",
+      "pause-resume-agent",
+      "restart-agent",
+      "toggle-terminal",
+      "show-keyboard-shortcuts",
+    ]) {
+      const shortcut: ShortcutFiredPayload = {
+        runtime: {} as IAgentRuntime,
+        shortcutId: id,
+        initiatedBy: "user",
+      };
+      expect(interactionSurface(shortcut)).toBeNull();
+    }
+  });
 });
 
 describe("decideProactiveComment — new interaction types", () => {
@@ -197,5 +293,76 @@ describe("decideProactiveComment — new interaction types", () => {
     });
     expect(res.text).toBeNull();
     expect(res.reason).toContain("policy-silent");
+  });
+});
+
+describe("registerProactiveInteractionDecider delivery routing", () => {
+  it("suppresses comments while a foreground chat turn is active", async () => {
+    const handlers = new Map<EventType, (payload: unknown) => Promise<void>>();
+    const runtime = createMockRuntime({
+      getSetting: () => "chatty",
+      registerEvent: vi.fn((event: EventType, handler) => {
+        handlers.set(event, handler as (payload: unknown) => Promise<void>);
+      }),
+      useModel: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          comment: "Want help with this view?",
+          delivery: "chat",
+        }),
+      ),
+    });
+    const route = vi.fn();
+
+    registerProactiveInteractionDecider(runtime, {
+      gate: new ProactiveInteractionGate(configForChattiness("chatty")),
+      route,
+      shouldSuppress: () => true,
+    });
+
+    await handlers.get(EventType.VIEW_SWITCHED)?.(payload());
+
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(route).not.toHaveBeenCalled();
+  });
+
+  it("routes notify delivery to notifications instead of chat", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const handlers = new Map<EventType, (payload: unknown) => Promise<void>>();
+    const runtime = createMockRuntime({
+      getSetting: () => "chatty",
+      registerEvent: vi.fn((event: EventType, handler) => {
+        handlers.set(event, handler as (payload: unknown) => Promise<void>);
+      }),
+      useModel: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          comment: "I can summarize this view later.",
+          delivery: "notify",
+          title: "View suggestion",
+        }),
+      ),
+    });
+    const route = vi.fn();
+    const notify = vi.fn();
+
+    registerProactiveInteractionDecider(runtime, {
+      gate: new ProactiveInteractionGate(configForChattiness("chatty")),
+      route,
+      notify,
+      now: () => now,
+    });
+
+    await handlers.get(EventType.VIEW_SWITCHED)?.(payload());
+    now = 1_000;
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(route).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "I can summarize this view later.",
+        delivery: "notify",
+        title: "View suggestion",
+      }),
+    );
   });
 });

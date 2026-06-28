@@ -55,6 +55,7 @@ import {
 	VisionBackendUnavailableError,
 	loadAospVisionBackend,
 	loadCapacitorLlamaVisionBackend,
+	type VisionDescribeRequest,
 } from "../src/services/vision";
 import { SharedResourceRegistry } from "../src/services/voice/shared-resources";
 
@@ -70,6 +71,7 @@ interface FakeVisionState {
 	described: number;
 	prompts: string[];
 	receivedProjected: boolean[];
+	lastRequest?: VisionDescribeRequest;
 }
 
 function makeFakeBackend(state: FakeVisionState): VisionDescribeBackend {
@@ -78,6 +80,7 @@ function makeFakeBackend(state: FakeVisionState): VisionDescribeBackend {
 		async describe(req, args) {
 			state.described += 1;
 			state.prompts.push(req.prompt ?? "<no prompt>");
+			state.lastRequest = req;
 			state.receivedProjected.push(Boolean(args?.projectedTokens));
 			return {
 				title: "A small image",
@@ -184,6 +187,56 @@ describe("WS1↔WS2 seam — provider IMAGE_DESCRIPTION uses the arbiter when ca
 		});
 	});
 
+	it("forwards image-description streaming only when explicitly requested", async () => {
+		const arbiter = new MemoryArbiter({
+			registry: new SharedResourceRegistry(),
+			visionCache: new VisionEmbeddingCache(),
+		});
+		const state: FakeVisionState = {
+			loaded: [],
+			disposed: 0,
+			described: 0,
+			prompts: [],
+			receivedProjected: [],
+		};
+		const reg = createVisionCapabilityRegistration({
+			arbiterCache: arbiter,
+			loader: async (k) => {
+				state.loaded.push(k);
+				return makeFakeBackend(state);
+			},
+		});
+		arbiter.registerCapability(reg);
+
+		const { runtime } = runtimeWithArbiter(arbiter);
+		const handlers = createLocalInferenceModelHandlers();
+		const onStreamChunk = vi.fn();
+		const dataUrl = `data:image/png;base64,${Buffer.from(tinyPngBytes()).toString("base64")}`;
+
+		await handlers[ModelType.IMAGE_DESCRIPTION]?.(runtime as never, {
+			imageUrl: dataUrl,
+			prompt: "hidden preprocessing",
+			onStreamChunk,
+		} as never);
+		const firstPayload = state.lastRequest as
+			| { onTextChunk?: (chunk: string) => void | Promise<void> }
+			| undefined;
+		expect(firstPayload?.onTextChunk).toBeUndefined();
+
+		await handlers[ModelType.IMAGE_DESCRIPTION]?.(runtime as never, {
+			imageUrl: dataUrl,
+			prompt: "visible describe",
+			stream: true,
+			onStreamChunk,
+		} as never);
+		const secondPayload = state.lastRequest as
+			| { onTextChunk?: (chunk: string) => void | Promise<void> }
+			| undefined;
+		expect(typeof secondPayload?.onTextChunk).toBe("function");
+		await secondPayload?.onTextChunk?.("token");
+		expect(onStreamChunk).toHaveBeenCalledWith("token");
+	});
+
 	it("falls through to legacy describeImage when the arbiter has no vision-describe capability", async () => {
 		const arbiter = new MemoryArbiter({
 			registry: new SharedResourceRegistry(),
@@ -268,7 +321,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 		arbiter.registerCapability(visionReg);
 
 		const tHandle = await arbiter.acquire("text", "eliza-1-2b");
-		const vHandle = await arbiter.acquire("vision-describe", "qwen3-vl");
+		const vHandle = await arbiter.acquire("vision-describe", "gemma-vl");
 		await tHandle.release();
 		await vHandle.release();
 
@@ -287,7 +340,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 		expect(evictions).toHaveLength(1);
 		expect(evictions[0]).toMatchObject({
 			capability: "vision-describe",
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			reason: "pressure",
 		});
 	});
@@ -319,7 +372,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 		);
 
 		const t = await arbiter.acquire("text", "eliza-1-2b");
-		const v = await arbiter.acquire("vision-describe", "qwen3-vl");
+		const v = await arbiter.acquire("vision-describe", "gemma-vl");
 		await t.release();
 		await v.release();
 
@@ -331,7 +384,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 
 		// And per docs: while critical, further non-text acquires throw.
 		await expect(
-			arbiter.acquire("vision-describe", "qwen3-vl"),
+			arbiter.acquire("vision-describe", "gemma-vl"),
 		).rejects.toThrow(/critical/);
 	});
 
@@ -359,7 +412,7 @@ describe("WS1↔WS2 seam — mobile pressure dispatch evicts non-text roles", ()
 				loader: async () => makeFakeBackend(visionState),
 			}),
 		);
-		const v = await arbiter.acquire("vision-describe", "qwen3-vl");
+		const v = await arbiter.acquire("vision-describe", "gemma-vl");
 		await v.release();
 
 		// Desktop reports nominal; mobile dispatches critical via the
@@ -405,7 +458,7 @@ describe("WS1↔WS2 seam — eviction order uses real WS2 wrapper", () => {
 		// Order is intentional: text first, then vision. We are testing
 		// that priority (not insertion order) drives the pressure pick.
 		const t = await arbiter.acquire("text", "eliza-1-2b");
-		const v = await arbiter.acquire("vision-describe", "qwen3-vl");
+		const v = await arbiter.acquire("vision-describe", "gemma-vl");
 		await t.release();
 		await v.release();
 
@@ -459,7 +512,7 @@ describe("WS1↔WS2 seam — AOSP backend unavailable surfaces cleanly", () => {
 		);
 		await expect(
 			arbiter.requestVisionDescribe({
-				modelKey: "qwen3-vl",
+				modelKey: "gemma-vl",
 				payload: {
 					image: { kind: "bytes", bytes: tinyPngBytes() },
 					prompt: "x",
@@ -471,7 +524,7 @@ describe("WS1↔WS2 seam — AOSP backend unavailable surfaces cleanly", () => {
 		// return stale data.
 		await expect(
 			arbiter.requestVisionDescribe({
-				modelKey: "qwen3-vl",
+				modelKey: "gemma-vl",
 				payload: {
 					image: { kind: "bytes", bytes: tinyPngBytes() },
 					prompt: "x",
@@ -567,7 +620,7 @@ describe("WS1↔WS2 seam — in-flight vision-describe + pressure", () => {
 
 		// Fire a describe in the background; it holds the vision refcount.
 		const inflight = arbiter.requestVisionDescribe({
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			payload: {
 				image: { kind: "bytes", bytes: tinyPngBytes() },
 				prompt: "x",

@@ -26,6 +26,22 @@ vi.mock("@elizaos/ui", () => ({
   ) => selector(calendarWeekAppValue),
 }));
 
+vi.mock("@elizaos/ui/api", () => ({
+  client: uiClient,
+  ElizaClient: class {
+    fetch = vi.fn(async () => ({}));
+  },
+}));
+
+vi.mock("@elizaos/ui/state", () => ({
+  useApp: () => calendarWeekAppValue,
+  useAppSelector: <T>(selector: (value: typeof calendarWeekAppValue) => T) =>
+    selector(calendarWeekAppValue),
+  useAppSelectorShallow: <T>(
+    selector: (value: typeof calendarWeekAppValue) => T,
+  ) => selector(calendarWeekAppValue),
+}));
+
 import { useCalendarWeek } from "./useCalendarWeek.js";
 
 function event(

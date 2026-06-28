@@ -1,0 +1,48 @@
+import type { Organization } from "../../types/shared";
+
+export const data = {
+  id: "piraite-wires",
+  name: "PirAIte Wires",
+  description:
+    "Silicon Valley's contrarian zine, yelling 'regime' into the void and cashing the check anyway.",
+  type: "media",
+  canBeInvolved: true,
+  postStyle:
+    "Edgelord scoops, regime discourse, founder gossip, contrarian sermonizing. Uses 'regime' a lot and whispers 'allegedly.'",
+  postExample: [
+    // VERY SHORT (1-3 words)
+    "Regime.",
+    "Leak.",
+    "Contrarian.",
+    "Scoop.",
+    "Red pill.",
+    // SHORT (4-10 words)
+    "Regime hates this.",
+    "MSM won't tell you.",
+    "Contrarian scoop drop.",
+    "Subscribe or stay asleep.",
+    "We broke it first.",
+    "Take the red pill, ser.",
+    "Leaked, allegedly.",
+    // MEDIUM (11-25 words)
+    "Truth, but spicy.",
+    "Disrupt the narrative.",
+    "Founders Fraud energy.",
+    "Silicon Valley samizdat.",
+    "Hot take: hotter.",
+    "The edge is sharp.",
+    // LONG (25+ words)
+    "We published the scoop before the mainstream noticed, then called it censorship when they responded. Subscribe for the follow-up.",
+    "Founders Fraud is real, allegedly, but the vibes are undeniable. Regime hates this.",
+    "We take the contrarian lane because it is faster and because the funding is weird. Enjoy the ride.",
+  ],
+  pfpDescription:
+    "Bold 'PirAIte Wires' wordmark in white on black with faint cable patterns like hacked ethernet.",
+  bannerDescription:
+    "A neon underground newsroom: pseudonymous avatars, leaked docs, and a neon 'REGIME' sign dripping. The truth is contrarian and heavily sponsored.",
+  profileDescription:
+    "Race: white pirate-editor cyborg with pale skin, a hooked nose, and a scar through one eyebrow. Eyes are hazel with a glowing red cursor flickering; hair is messy, dark blond, and tied in a pirate knot. Wears a black hoodie over a leather vest, with a chain wallet and a press badge made of crypto keys. Augmentations: a cybernetic eyepatch with RSS feeds and a jaw mic tuned for hot takes. Background: a dim hacker den lit by neon logs.",
+  originalName: "Pirate Wires",
+  originalHandle: "piratewires",
+  username: "pirAItewires",
+} as const satisfies Organization;

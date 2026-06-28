@@ -25,7 +25,7 @@ const DEFAULT_BUNDLE = path.join(
   ".eliza",
   "local-inference",
   "models",
-  "eliza-1-0_8b.bundle",
+  "eliza-1-2b.bundle",
 );
 const DEFAULT_WAV = "/tmp/omnivoice-metal-fused-codec-cpu-fallback.wav";
 const DEFAULT_REPORT = path.join(

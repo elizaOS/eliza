@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createMockRuntime } from "../testing/mock-runtime";
 import type { AgentNotification } from "../types/notification.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { ServiceType } from "../types/service.ts";
@@ -23,7 +24,7 @@ function createRuntime(): {
 			emitted.push(event);
 		},
 	};
-	const runtime = {
+	const runtime = createMockRuntime({
 		agentId: "00000000-0000-0000-0000-0000000000aa",
 		getCache: async <T>(key: string): Promise<T | undefined> =>
 			cache.get(key) as T | undefined,
@@ -34,7 +35,7 @@ function createRuntime(): {
 		deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
 		getService: (type: string) =>
 			type === ServiceType.AGENT_EVENT ? bus : null,
-	} as unknown as IAgentRuntime;
+	});
 	return { runtime, cache, emitted };
 }
 
@@ -160,6 +161,33 @@ describe("NotificationService", () => {
 		const list = restarted.list();
 		expect(list).toHaveLength(1);
 		expect(list[0].title).toBe("Persisted");
+		expect(restarted.getUnreadCount()).toBe(1);
+	});
+
+	it("excludes a notification whose explicit expiresAt has passed", async () => {
+		await service.notify({ title: "Gone", expiresAt: Date.now() - 1000 });
+		await service.notify({ title: "Stays" });
+		const list = service.list();
+		expect(list).toHaveLength(1);
+		expect(list[0].title).toBe("Stays");
+		expect(service.getUnreadCount()).toBe(1);
+	});
+
+	it("retains a notification with a future expiresAt", async () => {
+		await service.notify({ title: "Later", expiresAt: Date.now() + 60_000 });
+		expect(service.list()).toHaveLength(1);
+		expect(service.getUnreadCount()).toBe(1);
+	});
+
+	it("drops expired notifications on rehydrate", async () => {
+		await service.notify({ title: "Expired", expiresAt: Date.now() - 1000 });
+		await service.notify({ title: "Alive" });
+		const restarted = (await NotificationService.start(
+			ctx.runtime,
+		)) as NotificationService;
+		const list = restarted.list();
+		expect(list).toHaveLength(1);
+		expect(list[0].title).toBe("Alive");
 		expect(restarted.getUnreadCount()).toBe(1);
 	});
 

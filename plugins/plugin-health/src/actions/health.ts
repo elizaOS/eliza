@@ -9,13 +9,16 @@ import type {
   ModelTypeName,
   State,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ModelType, resolveOptimizedPromptForRuntime } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";
 import type {
   HealthBackend,
   HealthDailySummary,
   HealthDataPoint,
 } from "../health-bridge/health-bridge.js";
+import { HEALTH_PLAN_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
+
+export { HEALTH_PLAN_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 
 type Subaction = "today" | "trend" | "by_metric" | "status";
 type HealthMetric = HealthDataPoint["metric"];
@@ -189,26 +192,17 @@ async function resolveHealthPlanWithLlm(args: {
   const paramsText = Object.entries(args.params)
     .map(([key, value]) => `${key}: ${String(value)}`)
     .join("\n");
+  // Route the static planner instructions through OptimizedPromptService for
+  // the `health_checkin` task (#8795). Falls back to HEALTH_PLAN_INSTRUCTIONS
+  // verbatim when no optimized artifact is registered, so the composed prompt
+  // is byte-identical to the prior inline version unless an optimization loads.
+  const instructions = resolveOptimizedPromptForRuntime(
+    args.runtime,
+    "health_checkin",
+    HEALTH_PLAN_INSTRUCTIONS,
+  );
   const prompt = [
-    "Plan the HEALTH action for this request.",
-    "The user may speak in any language.",
-    "Return JSON only as a single object with exactly these fields:",
-    "subaction: today|trend|by_metric|status|null",
-    "metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes|null",
-    "days: number|null",
-    "shouldAct: true|false",
-    "response: string|null",
-    "",
-    "Choose status when the user asks about health backend connection or availability.",
-    "Choose trend when the user asks for fitness/health activity over a window of days, a week, or recent history.",
-    "Choose by_metric when the user names a specific metric and wants its current or recent value.",
-    "Choose today (default) when the user asks for today's overall summary.",
-    "metric must be one of the listed enum values when subaction=by_metric, otherwise null.",
-    "days must be a positive integer the user implies (e.g. 7 for 'this week'); null when not stated.",
-    "Set shouldAct=false only when the request is too vague to choose any subaction.",
-    "When shouldAct=false, response must be a short clarifying question in the user's language.",
-    "",
-    'Example: {"subaction":"today","metric":null,"days":null,"shouldAct":true,"response":null}',
+    instructions,
     "",
     "Current request:",
     currentMessage || "(empty)",
@@ -227,7 +221,12 @@ async function resolveHealthPlanWithLlm(args: {
     failureMessage: "Health planning model call failed",
     source: "action:health",
     modelType: ModelType.TEXT_SMALL,
-    purpose: "planner",
+    // Tag this trajectory with the `health_checkin` LifeOps task (#8795) so it
+    // buckets into the health_checkin training dataset — matching the
+    // resolveOptimizedPromptForRuntime task above. The generic "planner" tag
+    // normalizes to no known training task and was dropped on ingest, so the
+    // health_checkin optimization loop collected zero real trajectories.
+    purpose: "health_checkin",
   });
   const parsed = result?.parsed;
   if (!parsed) {

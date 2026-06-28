@@ -1,6 +1,6 @@
 """APOLLO validation harness.
 
-Loads a real Qwen model on the local GPU, runs ONE full training step with
+Loads a real Gemma model on the local GPU, runs ONE full training step with
 both APOLLO and APOLLO-Mini on a real batch from `data/final/train.jsonl`,
 and asserts that the APOLLO optimizer path is actually wired.
 

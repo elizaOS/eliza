@@ -188,7 +188,7 @@ export function makeCloudFallbackHandler(
 ) => Promise<string> {
 	const log = opts.log ?? (() => undefined);
 	return async (runtime, params) => {
-		const generateParams = params as unknown as GenerateTextParams;
+		const generateParams = params as GenerateTextParams;
 		const local = await opts.localGenerate(runtime, generateParams);
 		if (local.kind === "ok") {
 			return local.text;

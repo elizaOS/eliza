@@ -73,6 +73,9 @@ src/
     workspace-setup.ts             Workspace setup routes
     workspace.ts                   Workspace routes
     workspace-account-gate.ts      Account gate middleware
+  parity/
+    browser-matrix.ts              Machine-checkable BROWSER action parity matrix (#9476)
+    index.ts                       Parity tooling barrel
   targets/
     bridge-target.ts               `bridge` BrowserTarget — dispatches to Chrome/Safari companion
     stagehand-target.ts            `stagehand` BrowserTarget — Playwright/Stagehand fallback
@@ -80,6 +83,7 @@ src/
     browser-workspace.ts           Public API surface and main command router (executeBrowserWorkspaceCommand)
     browser-workspace-types.ts     All workspace types and interfaces
     browser-workspace-state.ts     Mutable tab/session state
+    browser-workspace-errors.ts    Structured workspace error codes
     browser-workspace-helpers.ts   Utilities and command normalization
     browser-workspace-desktop.ts   Desktop bridge HTTP client
     browser-workspace-jsdom.ts     JSDOM document loading and DOM setup

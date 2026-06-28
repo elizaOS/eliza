@@ -76,7 +76,7 @@ async function importLocalInferenceServices() {
   return import("@elizaos/plugin-local-inference/services");
 }
 
-const MODEL_TESTER_HTML = String.raw`<!doctype html>
+const MODEL_TESTER_HTML = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -179,11 +179,18 @@ const MODEL_TESTER_HTML = String.raw`<!doctype html>
         const output = value.ok ? value.output : value.error;
         let audio = "";
         if (value.ok && id === "text-to-speech" && output && typeof output === "object") {
-          audio = '<audio controls src="data:' + (output.contentType || "audio/wav") + ';base64,' + (output.base64 || "") + '"></audio>';
+          // escapeHtml the provider-supplied contentType/base64 before they enter
+          // innerHTML: an unescaped value could break out of the src attribute and
+          // inject an active element (XSS).
+          audio = '<audio controls src="data:' + escapeHtml(output.contentType || "audio/wav") + ';base64,' + escapeHtml(output.base64 || "") + '"></audio>';
         }
         let images = "";
         if (value.ok && id === "image" && output && typeof output === "object") {
-          images = (output.images || []).map((img) => img.url ? '<img class="preview" src="' + img.url + '" alt="">' : "").join("");
+          // escapeHtml the provider-supplied image URL: it is chosen by the image
+          // provider/proxy (attacker-influenceable via a malicious/MITM endpoint),
+          // and an unescaped '"><img onerror=...>' would break out of the src
+          // attribute and execute in the model-tester origin.
+          images = (output.images || []).map((img) => img.url ? '<img class="preview" src="' + escapeHtml(img.url) + '" alt="">' : "").join("");
         }
         box.innerHTML = audio + images + "<pre>" + escapeHtml(JSON.stringify(value, null, 2)) + "</pre>";
       }

@@ -128,7 +128,13 @@ export const DEFAULT_PACKS: ReadonlyArray<DefaultPack> = [
   inboxTriageStarterPack,
   habitStartersPack,
   executiveAssistantPack,
-  ...HEALTH_DEFAULT_PACKS,
+  // Health ships the byte-identical DefaultPack shape but types
+  // requiredCapabilities as optional; normalize to PA's required form at the
+  // registry boundary (the packs always provide it).
+  ...HEALTH_DEFAULT_PACKS.map((pack) => ({
+    ...pack,
+    requiredCapabilities: pack.requiredCapabilities ?? [],
+  })),
 ];
 
 export function getAllDefaultPacks(): DefaultPack[] {

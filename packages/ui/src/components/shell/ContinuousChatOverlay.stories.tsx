@@ -3,12 +3,13 @@ import type * as React from "react";
 import type { SlashCommandCatalogItem } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
-import type { ShellController } from "./useShellController";
+import type { ShellMessage } from "./shell-state";
+import type { ConversationNav, ShellController } from "./useShellController";
 
 // Mock the slice of ShellController the overlay reads — it takes the controller
 // as a prop (pure/presentational), so no provider is needed.
 const NOW = 1780000000000;
-const MESSAGES = [
+const MESSAGES: ShellMessage[] = [
   {
     id: "m1",
     role: "assistant",
@@ -31,14 +32,34 @@ const MESSAGES = [
   },
 ];
 
+const NO_NAV: ConversationNav = {
+  hasPrev: false,
+  hasNext: false,
+  goPrev: () => {},
+  goNext: () => {},
+};
+
+// A COMPLETE ShellController so the overlay renders (and runs its mount effects)
+// without throwing — every method the overlay calls on mount (setDictationSink,
+// setTranscriptSessionSink, setComposerHasDraft, …) must be present, not just a
+// subset, so the mock is the full typed interface (no `as` escape).
 function makeController(
   overrides: Partial<ShellController> = {},
 ): ShellController {
   return {
     phase: "summoned",
+    responding: false,
+    turnStatus: null,
     messages: MESSAGES,
     canSend: true,
-    modelStatus: { blocksSend: false },
+    modelStatus: {
+      kind: "ready",
+      blocksSend: false,
+      percent: null,
+      etaMs: null,
+      modelName: null,
+      errors: [],
+    },
     recording: false,
     waveformMode: "idle",
     analyser: null,
@@ -49,18 +70,27 @@ function makeController(
     toggleRecording: () => {},
     startRecording: () => {},
     stopRecording: () => {},
-    muted: false,
-    toggleMute: () => {},
     transcript: "",
-    // Newer controller surface the overlay reads in effects — without these the
-    // overlay throws on mount (e.g. `setDictationSink is not a function`).
+    speaking: false,
+    agentVoiceMuted: false,
+    toggleAgentVoiceMute: () => {},
+    needsAudioUnlock: false,
+    unlockAudio: () => {},
     handsFree: false,
     toggleHandsFree: () => {},
+    transcriptionMode: false,
+    toggleTranscriptionMode: () => {},
+    stopTranscriptionAndMic: () => {},
     setDictationSink: () => {},
+    setTranscriptSessionSink: () => {},
     setComposerHasDraft: () => {},
     clearConversation: () => {},
+    openSettings: () => {},
+    stop: () => {},
+    conversationNav: NO_NAV,
+    conversationLoading: false,
     ...overrides,
-  } as unknown as ShellController;
+  };
 }
 
 const Backdrop = ({ children }: { children: React.ReactNode }) => (
@@ -185,6 +215,7 @@ const SLASH_COMMANDS: SlashCommandCatalogItem[] = [
 const SLASH_CONTROLLER: SlashCommandController = {
   commands: SLASH_COMMANDS,
   loading: false,
+  naturalShortcutsEnabled: false,
   resolveChoices: () => [],
   resolveSection: (t: string) =>
     ({ model: "ai-model", voice: "voice", connectors: "connectors" })[t],

@@ -1,17 +1,14 @@
 /**
  * #8808 acceptance criterion 4 — fused eliza-1 no-regression.
  *
- * Adding the generic single-file GGUF runtime must NOT change how a fused
- * Eliza-1 tier is served. This test pins the invariants:
+ * The local stack is Eliza-1 only (#8808 cutover), so serving is deterministic.
+ * This test pins the invariants:
  *   - `decideBackend` / `BackendDispatcher` route a `runtimeClass:"fused-eliza1"`
- *     model to the fused `llama-cpp` runtime (never to the generic backend),
- *   - a `runtimeClass:"generic-gguf"` model routes to the explicit-`modelPath`
- *     generic backend,
+ *     model to the fused `llama-cpp` runtime,
  *   - the fused path retains its full-pipeline binding: the `BackendPlan` that
- *     reaches the fused backend still carries the catalog entry (with its
- *     `runtime.mtp` speculative-decode block) and the bundle-root override that
- *     `DesktopFusedFfiBackendRuntime.acquire()` reads to anchor the fused
- *     context and enable same-file MTP.
+ *     reaches the fused backend still carries the catalog entry and the
+ *     bundle-root override that `DesktopFusedFfiBackendRuntime.acquire()` reads
+ *     to anchor the fused context.
  *
  * It complements `backend-runtime-class.test.ts` (which proves the binary
  * routing) by asserting that the FULL fused load contract is forwarded intact.
@@ -51,44 +48,38 @@ function makeBackend(id: LocalInferenceBackend["id"]): LocalInferenceBackend & {
 }
 
 describe("fused eliza-1 no-regression (C4)", () => {
-	it("the catalog tier under test really is a fused-eliza1 MTP tier", () => {
-		// Guards the test's own premise: if the catalog ever stopped shipping an
-		// MTP block for this tier, the full-pipeline assertion below would be
-		// vacuous. eliza-1-4b is an MTP tier.
+	it("the catalog tier under test really is a fused-eliza1 tier", () => {
 		expect(FUSED_TIER).toBeTruthy();
-		expect(FUSED_TIER.runtime?.mtp?.specType).toBe("draft-mtp");
+		expect(FUSED_TIER.runtimeClass).toBe("fused-eliza1");
+		expect(FUSED_TIER.runtime?.mtp).toBeUndefined();
 	});
 
-	it("decideBackend routes a fused tier to the fused llama-cpp runtime", () => {
+	it("decideBackend routes a fused Eliza-1 tier to the fused llama-cpp runtime", () => {
 		const decision = decideBackend({
 			override: "auto",
 			catalog: FUSED_TIER,
-			runtimeClass: "fused-eliza1",
 			llamaCppAvailable: true,
 		});
-		expect(decision.runtimeClass).toBe("fused-eliza1");
 		expect(decision.backend).toBe("llama-cpp");
 	});
 
-	it("decideBackend routes a generic-gguf model to the explicit-modelPath runtime", () => {
+	it("decideBackend routes everything to llama-cpp — the stack is Eliza-1 only", () => {
+		// Post-#8808 cutover: there is no generic-gguf backend; every model
+		// (even an unknown catalog entry) routes to the fused llama-cpp runtime.
 		const decision = decideBackend({
 			override: "auto",
 			catalog: undefined,
-			runtimeClass: "generic-gguf",
 			llamaCppAvailable: true,
 		});
-		expect(decision.runtimeClass).toBe("generic-gguf");
-		expect(decision.backend).toBe("generic-gguf");
+		expect(decision.backend).toBe("llama-cpp");
 	});
 
-	it("dispatcher forwards the fused full-pipeline binding (catalog + mtp + bundleRoot) to the fused backend", async () => {
+	it("dispatcher forwards the fused full-pipeline binding (catalog + bundleRoot) to the fused backend", async () => {
 		const ffi = makeBackend("llama-cpp");
-		const generic = makeBackend("generic-gguf");
 		const dispatcher = new BackendDispatcher(
 			ffi,
 			() => true,
 			() => null,
-			generic,
 		);
 
 		const bundleRoot = "/models/eliza-1-4b";
@@ -108,19 +99,17 @@ describe("fused eliza-1 no-regression (C4)", () => {
 
 		await dispatcher.load(plan);
 
-		// Routed to the fused runtime, never the generic one.
-		expect(generic.loaded).toHaveLength(0);
+		// Routed to the fused runtime.
 		expect(ffi.loaded).toHaveLength(1);
 		expect(dispatcher.activeBackendId()).toBe("llama-cpp");
 
 		// The full-pipeline binding survives dispatch: the fused backend receives
-		// the same catalog entry (the source of the MTP speculative-decode block
-		// that DesktopFusedFfiBackendRuntime.acquire() reads) plus the bundle-root
-		// + drafter overrides that anchor the fused context and enable same-file
-		// MTP and fork KV-cache kernels.
+		// the same catalog entry plus the bundle-root and explicit drafter
+		// overrides that anchor the fused context and preserve fork KV-cache
+		// kernel settings.
 		const forwarded = ffi.loaded[0];
 		expect(forwarded.catalog).toBe(FUSED_TIER);
-		expect(forwarded.catalog?.runtime?.mtp?.specType).toBe("draft-mtp");
+		expect(forwarded.catalog?.runtime?.mtp).toBeUndefined();
 		expect(forwarded.overrides?.bundleRoot).toBe(bundleRoot);
 		expect(forwarded.overrides?.draftModelPath).toBe(
 			`${bundleRoot}/text/eliza-1-4b-mtp.gguf`,
@@ -129,17 +118,15 @@ describe("fused eliza-1 no-regression (C4)", () => {
 		expect(forwarded.overrides?.cacheTypeV).toBe("tbq3_0");
 	});
 
-	it("env-override=llama-cpp keeps a fused tier on the fused path (no generic detour)", async () => {
+	it("env-override=llama-cpp keeps a fused tier on the fused path", async () => {
 		const prev = process.env.ELIZA_INFERENCE_BACKEND;
 		process.env.ELIZA_INFERENCE_BACKEND = "llama-cpp";
 		try {
 			const ffi = makeBackend("llama-cpp");
-			const generic = makeBackend("generic-gguf");
 			const dispatcher = new BackendDispatcher(
 				ffi,
 				() => true,
 				() => null,
-				generic,
 			);
 			const decision = dispatcher.decide({
 				modelPath: "/models/eliza-1-4b/text/eliza-1-4b-128k.gguf",

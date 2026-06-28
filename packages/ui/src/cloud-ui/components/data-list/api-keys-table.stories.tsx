@@ -48,7 +48,6 @@ const meta = {
   tags: ["autodocs"],
   args: {
     keys: baseKeys,
-    onCopyKey: noop,
     onDisableKey: noop,
     onDeleteKey: noop,
     onRegenerateKey: noop,

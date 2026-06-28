@@ -348,7 +348,7 @@ export function LogViewer({
                   placeholder={search.placeholder ?? "Search logs..."}
                   value={search.value}
                   onChange={(event) => search.onChange(event.target.value)}
-                  className="rounded-none border-white/10 bg-black/40 pl-9 text-white placeholder:text-white/40 focus-visible:ring-[#FF5800]/50"
+                  className="rounded-none border-white/10 bg-black/40 pl-9 text-white placeholder:text-white/40 "
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 />
               </div>

@@ -36,6 +36,10 @@ import {
 	handleLiveVoiceAttribution,
 } from "../../runtime/voice-entity-binding.js";
 import type { VoiceTurnSignal } from "./eot-classifier.js";
+import {
+	NlmsEchoCanceller,
+	type ResidualSuppressionOptions,
+} from "./nlms-echo-canceller.js";
 import type {
 	VoiceAttributionOutput,
 	VoiceAttributionPipeline,
@@ -176,7 +180,35 @@ export interface AttributionPipelineLike {
  */
 export interface RuntimeEventSink {
 	emitEvent(type: unknown, payload: Record<string, unknown>): Promise<void>;
+	/**
+	 * Optional host-supplied far-end (agent TTS playback) reference for the live
+	 * AEC path (#9583). When a host wires this, the live diarization route threads
+	 * it into the session's NLMS echo canceller instead of relying on the
+	 * playback-frames ingest route. Absent on headless/core runtimes.
+	 */
+	voiceEchoReferenceProvider?: EchoReferenceProvider;
 }
+
+/**
+ * Transcribe a finalized turn's buffered PCM to text (#8786). When injected, the
+ * consumer joins the ASR transcript into the diarization attribution so
+ * `VOICE_TURN_OBSERVED` carries the real text — previously the live audio-frame
+ * path attributed *who* spoke but always emitted `text: ""`, so name/partner
+ * extraction (`VoiceObserver.ingestTurn`) could never fire from live audio.
+ *
+ * Returns the transcript, or `null`/empty for silence / no decode. Best-effort:
+ * the consumer swallows a rejection (counted in `transcriptionErrors`) and falls
+ * back to a transcript-less turn rather than dropping the diarized turn.
+ */
+export type TurnTranscriber = (
+	pcm: Float32Array,
+	sampleRate: number,
+) => Promise<string | null> | string | null;
+
+export type SelfVoiceSimilarityResolver = (
+	embedding: Float32Array,
+	output: VoiceAttributionOutput,
+) => Promise<number | null | undefined> | number | null | undefined;
 
 // ---------------------------------------------------------------------------
 // Consumer
@@ -189,7 +221,38 @@ export interface AudioFrameConsumerDeps {
 	pipeline: AttributionPipelineLike;
 	/** Runtime event sink for VOICE_TURN_OBSERVED. */
 	runtime: RuntimeEventSink;
+	/**
+	 * Optional ASR for the finalized turn's PCM (#8786). When present, its text
+	 * rides on `VOICE_TURN_OBSERVED` so live name/entity extraction runs. When
+	 * absent the path stays diarization-only (transcript `""`, as before).
+	 */
+	transcribe?: TurnTranscriber;
+	/**
+	 * Optional live acoustic self-voice resolver. When wired, the consumer passes
+	 * the turn's WeSpeaker embedding to the host's agent-TTS centroid matcher and
+	 * forwards the resulting cosine into the ambient gate.
+	 */
+	resolveSelfVoiceSimilarity?: SelfVoiceSimilarityResolver;
+	/**
+	 * Optional agent-playback (far-end) reference for acoustic echo cancellation
+	 * (#9455). Given a mic frame's clock timestamp and sample count, returns the
+	 * agent's TTS playback PCM for that exact window (Float32 16 kHz), or null
+	 * when the agent is not playing. When wired, the consumer runs an NLMS echo
+	 * canceller on every mic frame BEFORE VAD/attribution so the agent never
+	 * transcribes its own TTS. Absent → no AEC (unchanged behavior). The caller
+	 * owns the playback capture + the playback→mic delay calibration.
+	 */
+	echoReference?: EchoReferenceProvider;
 }
+
+/**
+ * Returns the agent's TTS playback PCM (the far-end echo reference) aligned to a
+ * mic frame's time window, or null when the agent is silent. See #9455.
+ */
+export type EchoReferenceProvider = (
+	timestampMs: number,
+	samples: number,
+) => Float32Array | null;
 
 export interface AudioFrameConsumerConfig {
 	/** Source metadata stamped onto every attributed turn. */
@@ -208,6 +271,12 @@ export interface AudioFrameConsumerConfig {
 	 * out of the attribution buffer. Default 0.3 s.
 	 */
 	preRollSeconds?: number;
+	/**
+	 * Opt-in nonlinear residual-echo suppressor forwarded to the NLMS canceller
+	 * (#9583/#9649). Default-off; only meaningful when an `echoReference` is wired
+	 * (no canceller exists otherwise). See {@link NlmsEchoCancellerOptions.residualSuppression}.
+	 */
+	residualSuppression?: boolean | ResidualSuppressionOptions;
 }
 
 /** A finalized, attributed turn the consumer surfaces to its caller. */
@@ -237,6 +306,11 @@ export class AudioFrameConsumer {
 	private readonly vad: VadSegmenter;
 	private readonly pipeline: AttributionPipelineLike;
 	private readonly runtime: RuntimeEventSink;
+	private readonly transcribe: TurnTranscriber | null;
+	private readonly resolveSelfVoiceSimilarity: SelfVoiceSimilarityResolver | null;
+	private readonly echoReference: EchoReferenceProvider | null;
+	/** NLMS echo canceller, instantiated only when an `echoReference` is wired. */
+	private readonly echoCanceller: NlmsEchoCanceller | null;
 	private readonly source: VoiceInputSource | undefined;
 	private readonly attributionOptions: HandleLiveVoiceAttributionOptions;
 	private readonly maxTurnSamples: number;
@@ -261,6 +335,15 @@ export class AudioFrameConsumer {
 	/** Count of frames that failed to decode (surfaced via getters, not thrown). */
 	droppedFrames = 0;
 
+	/** Count of turns whose ASR transcribe threw (degraded to a transcript-less
+	 *  turn rather than dropping the diarized turn). */
+	transcriptionErrors = 0;
+
+	/** Count of mic frames the echo canceller actually processed (i.e. the agent
+	 *  was playing). Frames skipped while the agent is silent do not count, so
+	 *  this also measures how often AEC took the cheap passthrough path. */
+	echoFramesCancelled = 0;
+
 	constructor(
 		deps: AudioFrameConsumerDeps,
 		config: AudioFrameConsumerConfig = {},
@@ -268,6 +351,16 @@ export class AudioFrameConsumer {
 		this.vad = deps.vad;
 		this.pipeline = deps.pipeline;
 		this.runtime = deps.runtime;
+		this.transcribe = deps.transcribe ?? null;
+		this.resolveSelfVoiceSimilarity = deps.resolveSelfVoiceSimilarity ?? null;
+		this.echoReference = deps.echoReference ?? null;
+		this.echoCanceller = this.echoReference
+			? new NlmsEchoCanceller(
+					config.residualSuppression
+						? { residualSuppression: config.residualSuppression }
+						: {},
+				)
+			: null;
 		this.source = config.source;
 		this.attributionOptions = config.attributionOptions ?? {};
 		const sr = AUDIO_FRAME_PIPELINE_SAMPLE_RATE;
@@ -329,18 +422,42 @@ export class AudioFrameConsumer {
 		timestampMs: number,
 	): Promise<void> {
 		if (this.closed) return;
+		// #9455/#9649: cancel the agent's TTS echo before VAD/attribution so the
+		// agent never transcribes its own playback. When the reference provider
+		// returns null/empty the agent is silent — skip the FIR canceller so AEC
+		// is cheap and exactly passthrough on the common no-playback path.
+		const micPcm = this.cancelEcho(pcm, timestampMs);
 		this.lastFrameEndMs =
-			timestampMs + (pcm.length / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) * 1000;
+			timestampMs + (micPcm.length / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) * 1000;
 		if (this.capturing) {
-			this.appendTurnChunk(pcm);
+			this.appendTurnChunk(micPcm);
 		} else {
-			this.appendPreRoll(pcm);
+			this.appendPreRoll(micPcm);
 		}
 		await this.vad.pushFrame({
-			pcm,
+			pcm: micPcm,
 			sampleRate: AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
 			timestampMs,
 		});
+	}
+
+	/**
+	 * Run the echo canceller on one mic frame when (and only when) the agent is
+	 * playing. The reference provider returns null while the agent is silent, in
+	 * which case the mic frame is passed through verbatim and the FIR
+	 * `process()` loop is not invoked. The canceller still observes the silent
+	 * far-end so stale playback history is cleared before playback resumes.
+	 * Returns the echo-cancelled (or untouched) mic frame.
+	 */
+	private cancelEcho(pcm: Float32Array, timestampMs: number): Float32Array {
+		if (!this.echoCanceller || !this.echoReference) return pcm;
+		const reference = this.echoReference(timestampMs, pcm.length);
+		if (!reference || reference.length === 0) {
+			this.echoCanceller.observeFarEndSilence(pcm);
+			return pcm;
+		}
+		this.echoFramesCancelled += 1;
+		return this.echoCanceller.process(pcm, reference);
 	}
 
 	/**
@@ -426,10 +543,15 @@ export class AudioFrameConsumer {
 			endedAtMs: args.endedAtMs,
 			...(this.source ? { source: this.source } : {}),
 		});
+		// Join the ASR transcript for this turn (#8786) so VOICE_TURN_OBSERVED
+		// carries the real text and live name/entity extraction can fire. ASR is
+		// best-effort: a decode failure degrades to a transcript-less turn (the
+		// diarized speaker is still emitted), never a dropped turn.
+		const opts = await this.resolveTurnOptions(args.pcm, output);
 		const signal = await handleLiveVoiceAttribution(
 			this.runtime as Parameters<typeof handleLiveVoiceAttribution>[0],
 			output,
-			this.attributionOptions,
+			opts,
 		);
 		const turn: AttributedTurn = {
 			turnId: args.turnId,
@@ -440,6 +562,44 @@ export class AudioFrameConsumer {
 			samples: args.pcm.length,
 		};
 		for (const listener of this.turnListeners) listener(turn);
+	}
+
+	/**
+	 * Merge the per-turn ASR transcript into the attribution options. Returns the
+	 * base options unchanged when no transcriber is wired or the decode yields no
+	 * text; a thrown decode is swallowed (counted in `transcriptionErrors`) so a
+	 * diarized turn is never dropped over an ASR failure.
+	 */
+	private async resolveTurnOptions(
+		pcm: Float32Array,
+		output: VoiceAttributionOutput,
+	): Promise<HandleLiveVoiceAttributionOptions> {
+		let options = this.attributionOptions;
+		try {
+			if (this.transcribe) {
+				const transcript = await this.transcribe(
+					pcm,
+					AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
+				);
+				const trimmed = transcript?.trim();
+				if (trimmed) {
+					options = { ...options, transcript: trimmed };
+				}
+			}
+		} catch {
+			this.transcriptionErrors += 1;
+		}
+		const embedding = output.observation?.embedding;
+		if (this.resolveSelfVoiceSimilarity && embedding) {
+			const similarity = await this.resolveSelfVoiceSimilarity(
+				embedding,
+				output,
+			);
+			if (typeof similarity === "number" && Number.isFinite(similarity)) {
+				options = { ...options, selfVoiceSimilarity: similarity };
+			}
+		}
+		return options;
 	}
 
 	// ---- buffering ---------------------------------------------------------

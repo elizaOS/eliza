@@ -32,7 +32,7 @@ async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   // that requires Bun.build to statically follow this specifier.
   return import(
     /* webpackIgnore: true */ "@elizaos/app-core/services/vault-mirror"
-  ) as unknown as Promise<AppCoreRuntimeModule>;
+  ) as Promise<AppCoreRuntimeModule>;
 }
 
 function resolveDefaultAgentName(config: AutonomousConfigLike): string {
@@ -176,7 +176,7 @@ export async function handleAgentAdminRoutes(
   if (method === "POST" && pathname === "/api/agent/reset") {
     try {
       if (state.runtime) {
-        await state.runtime.stop();
+        await state.runtime.stop({ fast: true });
         state.runtime = null;
       }
 

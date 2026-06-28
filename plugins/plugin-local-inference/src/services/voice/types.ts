@@ -3,10 +3,10 @@ export interface TextToken {
 	text: string;
 	/**
 	 * Text-model vocabulary token id, when the producer knows it. ASR
-	 * (fused Qwen3-ASR) and the text backbone share the Qwen2 BPE 151 936
-	 * vocab + merges (AGENTS.md §1), so an ASR-emitted token id is the same
-	 * id the text model would assign — a downstream in-process handoff can
-	 * inject `id` directly into the text KV cache without detokenize →
+	 * (fused Gemma ASR) and the text backbone share the Gemma tokenizer, so an
+	 * ASR-emitted token id is the same id the text model would assign — a
+	 * downstream in-process handoff can inject `id` directly into the text KV
+	 * cache without detokenize →
 	 * retokenize. Absent for producers that only have surface text (the
 	 * word-chunk approximation in `splitTranscriptToTokens`).
 	 */
@@ -258,7 +258,7 @@ export interface VoiceTurnMetadata {
  * VAD gating + barge-in word-confirm (`voice/vad.ts`, `voice/barge-in.ts`),
  * the turn controller / speculative-on-pause path, and the overlapped
  * `VoicePipeline` (`voice/pipeline.ts`). The `StreamingTranscriber` below
- * is the single ASR contract; the two fused adapters (fused Qwen3-ASR
+ * is the single ASR contract; the two fused adapters (fused Gemma ASR
  * streaming and fused batch, both via libelizainference) implement it in
  * `voice/transcriber.ts`. It consumes the canonical `PcmFrame` (defined
  * below in the audio front-end section) off a `MicSource` and is gated by
@@ -284,7 +284,7 @@ export interface TranscriptUpdate {
 	turn?: VoiceTurnMetadata;
 	/**
 	 * Text-model token ids for `partial`, when the backend can supply them
-	 * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent when the
+	 * cheaply (fused Gemma ASR shares the text vocabulary). Absent when the
 	 * decoder reports surface text only (re-tokenization is the LLM stage's
 	 * job there).
 	 */
@@ -682,7 +682,7 @@ export type VoiceSchedulerTelemetryListener = (
 // ---------------------------------------------------------------------------
 
 /** Minimal VAD model contract consumed by the fused `GgmlSileroVad` and the
- *  optional injected qwen-toolkit adapter. */
+ *  optional injected external adapter. */
 export interface VadLike {
 	readonly windowSamples: number;
 	readonly sampleRate: number;

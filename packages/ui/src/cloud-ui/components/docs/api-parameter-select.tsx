@@ -33,7 +33,7 @@ export function ApiParameterSelect({
     <Select value={value} onValueChange={onValueChange}>
       <SelectTrigger
         className={cn(
-          "h-10 rounded-none border-border bg-background/80 text-foreground hover:bg-muted focus:ring-primary/40",
+          "h-10 rounded-none border-border bg-background/80 text-foreground hover:bg-muted ",
           className,
         )}
       >

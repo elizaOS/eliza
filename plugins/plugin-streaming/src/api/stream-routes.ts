@@ -51,9 +51,7 @@ interface BrowserCaptureModule {
 const PLUGIN_BROWSER_PACKAGE = "@elizaos/plugin-browser";
 
 async function loadBrowserCapture(): Promise<BrowserCaptureModule> {
-  return (await import(
-    PLUGIN_BROWSER_PACKAGE
-  )) as unknown as BrowserCaptureModule;
+  return (await import(PLUGIN_BROWSER_PACKAGE)) as BrowserCaptureModule;
 }
 
 // ---------------------------------------------------------------------------

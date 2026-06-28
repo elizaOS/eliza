@@ -1,11 +1,11 @@
-# M7 — Gemma 4 verification on Linux x64 (CPU lane)
+# M7 — Gemma 4 verification on Linux x64 (CPU + Vulkan GPU)
 
 > Milestone **M7** of the [Gemma 4 cutover](../docs/gemma4-cutover-plan.md).
-> Host: linux-x64, AMD CPU (8 threads used), **RTX 5080 Laptop present but CUDA
-> runtime-blocked — see "Blocked platforms" below**.
-> Fork build: `c849143c9` (`b10028`) — the `eliza/gemma-kv-swa-checkpoint-fix`
-> branch (M3 seam). Tool: `build-static-fused/bin/llama-bench`, FA = AUTO.
-> Date: 2026-06-22.
+> Host: linux-x64, AMD CPU + **RTX 5080 Laptop GPU via Vulkan** (CUDA runtime is
+> blocked — see "Blocked platforms" — but Vulkan drives the GPU; see the GPU
+> section). Fork build: `c849143c9` (`b10028`, M3-seam branch) for CPU; the
+> Vulkan `llama-bench` is a desktop `GGML_VULKAN=ON` build of the same tree.
+> Tool: `llama-bench`, FA = AUTO. Date: 2026-06-22 (GPU section added 2026-06-23).
 
 ## Acceptance-criteria slice proven here
 
@@ -58,16 +58,44 @@ FA **engages for Gemma's 512-dim global-attention layers on CPU** and eliminates
 the dual-head-dim V-cache padding (`llama_kv_cache: V embeddings have different
 sizes across layers and FA is not enabled - padding V cache to 512`). See
 [`M6-gemma-kv-geometry-and-fa.md`](M6-gemma-kv-geometry-and-fa.md) for the
-geometry detail and the GPU-engage verification gap.
+geometry detail.
+
+## GPU — Vulkan on the RTX 5080 (the GPU half; CUDA is blocked, Vulkan is not)
+
+CUDA is toolkit-blocked on this host (below), but **Vulkan uses the DRM path, not
+UVM, so it drives the RTX 5080 fine** (`ggml_vulkan: 1 = NVIDIA GeForce RTX 5080
+Laptop GPU`). Built a desktop Vulkan `llama-bench`/`llama-cli` with the Android
+NDK's host `glslc` (shaderc v2022.3) + the system spirv-headers. Note: that glslc
+predates coopmat, so `matrix cores: none` — this is the **scalar Vulkan path, not
+tensor-core-optimal**; real numbers would be higher with a coopmat-capable glslc.
+
+| tier | quant | pp512 t/s | tg128 t/s | vs CPU (tg) |
+|---|---|---:|---:|---:|
+| gemma-4-E2B | Q8_0 | **1486** | **122.9** | 8.3× |
+| gemma-4-E4B | Q8_0 | 634 | 65.2 | 8.5× |
+| gemma3n-E2B | Q4_K_M | 1238 | 112.1 | 7.0× |
+| `eliza-1-4b` (retired qwen35) | Q4_K_M | 1007 | 106.0 | — |
+
+(`-ngl 99`, all layers offloaded. gemma-4-E2B is **26× CPU on prefill**, 8.3× on
+decode.) Gemma again ≥ the retired Qwen line at matched precision on GPU
+(gemma3n-E2B-Q4 112 tg vs qwen35-4b-Q4 106).
+
+- **FA on Vulkan:** `flash_attn = enabled`, engages for the 512 global dim (no
+  `padding V cache` line), and **helps prefill** (gemma-4-E2B pp512 1353→1546,
+  +14%; decode flat within noise on the no-coopmat path).
+- **Correctness verified:** `llama-cli` on the GPU with `-fa 1` produced coherent
+  output (a correct prompt analysis), **not** the Mali-style FA garbage — so
+  NVIDIA desktop Vulkan FA is numerically sound for Gemma's geometry.
 
 ## Blocked platforms (documented, not faked)
 
 - **CUDA / RTX 5080 (sm_120, Blackwell):** `nvidia-smi`/NVML see the GPU, but the
   CUDA *runtime* returns `no CUDA-capable device is detected` under both the 12.0
-  and 12.8 toolkits (and a hand-built `sm_120` deviceQuery). Blackwell sm_120 +
-  driver 595.71.05 needs **CUDA 13.x**, which is not installed. This is a host
-  toolkit gap, not a code defect. Unblock = install CUDA 13.x, build the CUDA
-  `llama-bench`, re-run this sweep + `cuda_verify` + FA-engage check (below).
+  and 12.8 toolkits (and a hand-built `sm_120` deviceQuery); `nvidia-modprobe -u`
+  fails (UVM device init). Blackwell sm_120 + driver 595.71.05 needs **CUDA 13.x**
+  (not installed), or a live `nvidia_uvm` module reload. Host toolkit/driver gap,
+  not a code defect. The **Vulkan path above already provides GPU evidence**;
+  CUDA would add coopmat/tensor-core numbers + the CUDA `cuda_verify` 8/8.
 - **Pixel / Android NPU (LiteRT, M4)** and **Apple Silicon (MLX/CoreML, M5):**
   backends are scaffolded + gated OFF; need a Pixel 9a/Pro and an Apple-Silicon
   Mac. Out of reach on this host.

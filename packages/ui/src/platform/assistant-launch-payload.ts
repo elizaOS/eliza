@@ -146,9 +146,6 @@ export function clearAssistantLaunchPayloadFromHash(): void {
   for (const key of ASSISTANT_LAUNCH_PARAM_KEYS) {
     params.delete(key);
   }
-  if (routePart.replace(/^#\/?|\/+$/g, "") === "chat") {
-    params.delete("lifeops.section");
-  }
 
   const nextHash = params.toString() ? `${routePart}?${params}` : routePart;
   if (nextHash === window.location.hash) return;

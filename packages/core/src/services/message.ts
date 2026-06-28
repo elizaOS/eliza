@@ -41,7 +41,10 @@ import {
 import { retrieveActions } from "../runtime/action-retrieval";
 import { resolveActionRolePolicyRole } from "../runtime/action-role-policy";
 import { tierActionResults } from "../runtime/action-tiering";
-import { applyAddressedTo } from "../runtime/addressed-to";
+import {
+	addresseeIsNonOwnerBot,
+	applyAddressedTo,
+} from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
 import {
 	filterByContextGate,
@@ -78,6 +81,7 @@ import {
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
 import {
+	extractJsonObjects,
 	parseJsonObject,
 	stripJsonStructuralJunkReply,
 } from "../runtime/json-output";
@@ -235,6 +239,16 @@ import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
 import {
+	findAvailableActionName,
+	findWebLookupActionName,
+	findWebLookupActionNames,
+	inferDirectCurrentRequestCandidateActions as inferDirectCurrentRequestCandidateActionsFromHeuristics,
+	inferLocalShellCommandFromMessageText,
+	inferWebSearchQueryFromMessageText,
+	looksLikeLocalShellRequest,
+	looksLikeWebSearchRequest,
+} from "./message/direct-action-heuristics";
+import {
 	buildFailureReplyPrompt,
 	isAuthError,
 	isRateLimitError,
@@ -250,10 +264,16 @@ import {
 	resolveOptimizedPromptForRuntime,
 } from "./optimized-prompt-resolver";
 
+export {
+	findWebLookupActionName,
+	findWebLookupActionNames,
+	inferLocalShellCommandFromMessageText,
+	inferWebSearchQueryFromMessageText,
+};
+
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
-const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
@@ -1042,7 +1062,9 @@ function latestMessageHistoryCompactionTelemetry(
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return undefined;
 	}
-	return value as unknown as MessageHistoryCompactionTelemetry;
+	// The guards above narrow `value` to a non-null, non-array object, so a plain
+	// downcast suffices here — no `as unknown` laundering needed.
+	return value as MessageHistoryCompactionTelemetry;
 }
 
 function appendMessageHistoryCompactionTelemetry(
@@ -1056,11 +1078,8 @@ function appendMessageHistoryCompactionTelemetry(
 		...state,
 		data: {
 			...state.data,
-			messageHistoryCompaction: telemetry as unknown as State["data"][string],
-			messageHistoryCompactionHistory: [
-				...history,
-				telemetry as unknown as State["data"][string],
-			].slice(-10) as unknown as State["data"][string],
+			messageHistoryCompaction: telemetry,
+			messageHistoryCompactionHistory: [...history, telemetry].slice(-10),
 		},
 	};
 }
@@ -1564,7 +1583,7 @@ type VoiceTurnSignalMetadata = {
 	model?: string;
 };
 
-function getVoiceTurnSignalMetadata(
+export function getVoiceTurnSignalMetadata(
 	message: Pick<Memory, "content">,
 ): VoiceTurnSignalMetadata | null {
 	const content = message.content;
@@ -1613,7 +1632,7 @@ function getVoiceTurnSignalMetadata(
  * EntityId`, the in-process engine path) or nested under `content.metadata`
  * (chat clients). Returns the trimmed id, or null when the speaker is unbound.
  */
-function getVoiceSpeakerEntityId(
+export function getVoiceSpeakerEntityId(
 	message: Pick<Memory, "content">,
 ): string | null {
 	const content = message.content;
@@ -1631,7 +1650,7 @@ function getVoiceSpeakerEntityId(
 	return trimmed.length > 0 ? trimmed : null;
 }
 
-function voiceTurnSignalSuppressesAgent(
+export function voiceTurnSignalSuppressesAgent(
 	signal: VoiceTurnSignalMetadata | null,
 ): boolean {
 	if (!signal) return false;
@@ -1651,7 +1670,7 @@ function voiceTurnSignalSuppressesAgent(
  * the user still talking. Used to PROMOTE an IGNORE to RESPOND; it never
  * overrides an explicit STOP or an already-RESPOND decision.
  */
-function voiceTurnSignalConfirmsAgent(
+export function voiceTurnSignalConfirmsAgent(
 	signal: VoiceTurnSignalMetadata | null,
 ): boolean {
 	if (!signal) return false;
@@ -1688,6 +1707,66 @@ function normalizeVisibleTextForDuplicateCheck(text: string): string {
 	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+/** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
+const MEDIA_CONTENT_URL_RE =
+	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
+
+function collectMediaDeliveryUrls(actionResults: ActionResult[]): string[] {
+	const urls = new Set<string>();
+	for (const result of actionResults) {
+		if (!result.success) continue;
+		const data = result.data;
+		if (!data || typeof data !== "object") continue;
+		for (const key of [
+			"videoUrl",
+			"mediaUrl",
+			"imageUrl",
+			"audioUrl",
+			"url",
+		] as const) {
+			const value = data[key];
+			if (typeof value === "string" && value.trim()) {
+				urls.add(value.trim());
+			}
+		}
+	}
+	return [...urls];
+}
+
+export function sanitizeReplyTextAfterMediaDelivery(
+	text: string,
+	deliveredUrls: readonly string[],
+): string {
+	let cleaned = text.trim();
+	if (!cleaned) return cleaned;
+
+	for (const url of deliveredUrls) {
+		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
+	}
+	cleaned = cleaned.replace(MEDIA_CONTENT_URL_RE, "");
+	cleaned = cleaned
+		.replace(
+			/^\s*(?:here(?:'s| is| you go)?(?:\s+it\s+is)?|done(?:\.|\s+video'?s?\s+(?:up|live|ready))?|your video(?: is ready)?)\s*:?\s*/i,
+			"",
+		)
+		.replace(/:\s*$/g, "")
+		.replace(/<\s*>/g, "")
+		.replace(/\(\s*\)/g, "")
+		.replace(/\s{2,}/g, " ")
+		.trim();
+
+	if (
+		/^(?:here|done|your video\b|it is|video'?s?\s+(?:up|live|ready))[^.?!]*:?\s*$/i.test(
+			cleaned,
+		)
+	) {
+		cleaned = "";
+	}
+
+	return cleaned;
+}
+
 function createV5ReplyStrategyResult(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1696,6 +1775,7 @@ function createV5ReplyStrategyResult(args: {
 	text: string;
 	thought: string;
 	mode?: StrategyMode;
+	attachments?: Media[];
 }): StrategyResult {
 	const responseContent: Content = {
 		thought: args.thought,
@@ -1704,6 +1784,7 @@ function createV5ReplyStrategyResult(args: {
 		text: args.text,
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
+		...(args.attachments?.length ? { attachments: args.attachments } : {}),
 	};
 
 	return {
@@ -2544,11 +2625,13 @@ function buildV5PlannerActionSurface(params: {
 						name: r.name,
 						score: r.score,
 						rank: idx,
-						rrfScore: (r as unknown as { rrfScore?: number }).rrfScore,
-						matchedBy: (r as unknown as { matchedBy?: string[] }).matchedBy,
-						stageScores: (
-							r as unknown as { stageScores?: Record<string, number> }
-						).stageScores,
+						rrfScore: r.rrfScore,
+						matchedBy: r.matchedBy,
+						// stageScores is Partial<Record<RetrievalStageName, number>>;
+						// the telemetry field is the structurally-identical
+						// Record<string, number>, so a plain `as` suffices (no
+						// `as unknown as`).
+						stageScores: r.stageScores as Record<string, number>,
 					})),
 					tier: {
 						tierA: tieredSurface.sortedTierAParentNames,
@@ -2909,41 +2992,6 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 		},
 	];
 
-/**
- * Baseline instruction prefix for the `response` task. When an optimized
- * artifact exists for `response`, the resolver substitutes this string with
- * the optimizer's prompt before the per-turn context is appended.
- *
- * Kept as a single string so the operator can train against the exact
- * baseline by exporting `RESPONSE_TASK_BASELINE_INSTRUCTIONS` from this
- * module if needed.
- */
-const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
-	"task: Write one direct reply to the user.",
-	"",
-	"rules:",
-	"- answer directly in the agent's voice",
-	"- reply to the final user_message only; recent_context shows earlier turns that are already answered — never reply to an earlier message again",
-	"- when the user asks for exact words, output only those exact words",
-	`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
-	"- do not select actions or tools",
-	"- do not include internal reasoning",
-	"- high-stakes personal crisis/legal/medical/self-harm/police/CPS: no tactical concealment/evasion/testimony/contraband advice; direct to qualified help, and for imminent danger prioritize emergency services, poison control, or a crisis hotline",
-].join("\n");
-
-const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
-	one: 1,
-	two: 2,
-	three: 3,
-	four: 4,
-	five: 5,
-	six: 6,
-	seven: 7,
-	eight: 8,
-	nine: 9,
-	ten: 10,
-};
-
 const DIRECT_MESSAGE_HANDLER_TEMPLATE = `task: Plan this direct message.
 
 available_contexts:
@@ -2963,111 +3011,7 @@ direct/private rules:
 Return exactly one JSON object for {{handleResponseToolName}}. No prose, markdown, or thinking.
 `;
 
-export function directReplyPromptForMessage(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	messageHandler: MessageHandlerResult;
-}): string {
-	const latestText = getUserMessageText(args.message) ?? "";
-	const contextText = truncateToCompleteSentence(
-		(args.state.text ?? "").trim(),
-		1000,
-	);
-	const instructions = resolveOptimizedPromptForRuntime(
-		args.runtime,
-		"response",
-		RESPONSE_TASK_BASELINE_INSTRUCTIONS,
-	);
-	// The current message must win against `recent_context` (the composed state,
-	// which carries conversation history and frequently ends on the previous
-	// user turn). With the fast path's tiny token budget a single `user_message:`
-	// line is easy for a small model to lose against a large context block — it
-	// would intermittently re-answer the prior turn (the off-by-one in #8877).
-	// Label the context as already-handled reference and give the current message
-	// an unambiguous directive lead-in so it stays the reply target.
-	return [
-		instructions,
-		"",
-		contextText
-			? `recent_context (earlier turns, already answered — reference only, do not reply to these):\n${contextText}`
-			: "",
-		"Now write your reply to this new message, and only this message:",
-		`user_message: ${latestText}`,
-		`routing_thought: ${args.messageHandler.thought}`,
-	]
-		.filter((line) => line.length > 0)
-		.join("\n");
-}
-
-function extractExactWordsReply(
-	text: string | null | undefined,
-): string | null {
-	const input = text?.trim();
-	if (!input) return null;
-	const match = input.match(
-		/\b(?:reply|respond|say|output|return)\s+with\s+exactly\s+(?:these\s+)?(?:(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+)?words?\s*:\s*([\s\S]+?)\s*$/i,
-	);
-	if (!match) return null;
-	const expectedCountRaw = match[1]?.toLowerCase();
-	let reply = match[2]?.trim() ?? "";
-	reply = reply.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
-	if (reply.endsWith(".") && !/[.!?]\s*["'“”‘’]$/.test(match[2] ?? "")) {
-		reply = reply.slice(0, -1).trim();
-	}
-	if (!reply) return null;
-	if (expectedCountRaw) {
-		const expectedCount = /^\d+$/.test(expectedCountRaw)
-			? Number.parseInt(expectedCountRaw, 10)
-			: EXACT_WORD_COUNT_BY_NAME[expectedCountRaw];
-		const actualCount = reply.split(/\s+/).filter(Boolean).length;
-		if (
-			Number.isFinite(expectedCount) &&
-			expectedCount > 0 &&
-			actualCount !== expectedCount
-		) {
-			return null;
-		}
-	}
-	return reply;
-}
-
-async function generateDirectReplyModel(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	messageHandler: MessageHandlerResult;
-	signal?: AbortSignal;
-}): Promise<{
-	text: string;
-	raw: string | GenerateTextResult;
-	prompt: string;
-}> {
-	const prompt = directReplyPromptForMessage(args);
-	const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt,
-		maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
-		signal: args.signal,
-		providerOptions: { eliza: { thinking: "off" } },
-	})) as string | GenerateTextResult;
-	const modelText = stripReasoningBlocks(getV5ModelText(raw)).trim();
-	return {
-		text: extractExactWordsReply(getUserMessageText(args.message)) ?? modelText,
-		raw,
-		prompt,
-	};
-}
-
-async function generateDirectReplyOnce(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	messageHandler: MessageHandlerResult;
-}): Promise<string> {
-	return (await generateDirectReplyModel(args)).text;
-}
-
-function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
+function isUnusableStage1Reply(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	if (!trimmed) return true;
 	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
@@ -3081,11 +3025,125 @@ function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
 	return false;
 }
 
-function canKeepStage1ReplyWhenRegenerationIsEmpty(
-	reply: string | undefined,
-): boolean {
+const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
+	one: 1,
+	two: 2,
+	three: 3,
+	four: 4,
+	five: 5,
+	six: 6,
+	seven: 7,
+	eight: 8,
+	nine: 9,
+	ten: 10,
+};
+
+function parseExactWordsInstruction(
+	text: string | null | undefined,
+): { literal: string; expectedCount?: number } | null {
+	const input = text?.trim();
+	if (!input) return null;
+	const match = input.match(
+		/\b(?:reply|respond|say|output|return)\s+with\s+exactly\s+(?:these\s+)?(?:(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+)?words?\s*:\s*([\s\S]+?)\s*$/i,
+	);
+	if (!match) return null;
+	const literal = (match[2] ?? "")
+		.trim()
+		.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+		.trim();
+	if (!literal) return null;
+	const countRaw = match[1]?.toLowerCase();
+	const expectedCount =
+		countRaw === undefined
+			? undefined
+			: /^\d+$/.test(countRaw)
+				? Number.parseInt(countRaw, 10)
+				: EXACT_WORD_COUNT_BY_NAME[countRaw];
+	return { literal, expectedCount };
+}
+
+function wordCount(text: string): number {
+	return text.split(/\s+/).filter(Boolean).length;
+}
+
+function stripIncidentalTerminalPeriod(text: string): string {
+	return text.endsWith(".") ? text.slice(0, -1).trimEnd() : text;
+}
+
+function isRequestedTerseLiteralReply(args: {
+	reply: string | undefined;
+	messageText: string | null | undefined;
+}): boolean {
+	const reply = typeof args.reply === "string" ? args.reply.trim() : "";
+	if (!reply) return false;
+	const instruction = parseExactWordsInstruction(args.messageText);
+	if (!instruction) return false;
+	if (
+		instruction.expectedCount !== undefined &&
+		(!Number.isFinite(instruction.expectedCount) ||
+			instruction.expectedCount <= 0 ||
+			wordCount(reply) !== instruction.expectedCount)
+	) {
+		return false;
+	}
+	const requested = instruction.literal;
+	if (reply === requested) return true;
+	return reply === stripIncidentalTerminalPeriod(requested);
+}
+
+/**
+ * Recognize a simple imperative to emit ONE specific literal token, e.g.
+ * "Say PONG", "say pong", "please say PONG", "can you say PONG", "reply with OK",
+ * "respond with the word HELLO", "output PONG!". The lightweight sibling of
+ * {@link parseExactWordsInstruction} (which requires the explicit
+ * "...with exactly N words: ..." form). Anchored to the whole message and a
+ * single word, so it only fires on a clear "say <token>" request — not
+ * "say something nice about cats". Returns the requested literal or null.
+ */
+function parseSayLiteralInstruction(
+	text: string | null | undefined,
+): string | null {
+	const input = text?.trim();
+	if (!input) return null;
+	// Strip a leading connector mention prefix ("Name (@123) ", "<@123> ",
+	// "@name ") so "say PONG" still parses when the user @-mentioned the agent
+	// first — Discord/Telegram render the mention into the message text, which
+	// the anchored matcher below would otherwise reject.
+	const body = input
+		.replace(/^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u, "")
+		.trim();
+	const match = body.match(
+		/^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|the\s+word|the\s+phrase)){0,2}\s*:?\s*["'“”‘’]?([\p{L}\p{N}]{1,40})["'“”‘’]?\s*[.!?]*$/iu,
+	);
+	return match ? match[1] : null;
+}
+
+function isTerseReplyWorthKeeping(args: {
+	reply: string | undefined;
+	messageText?: string | null;
+}): boolean {
+	const reply = args.reply;
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
-	return /^\d+$/.test(trimmed);
+	if (/^\d+$/.test(trimmed)) return true;
+	if (isRequestedTerseLiteralReply({ reply, messageText: args.messageText })) {
+		return true;
+	}
+	// The user explicitly asked the agent to say a specific token and it did
+	// (case-insensitive) — that reply is intentional, not the enum/scaffold
+	// leakage isUnusableStage1Reply guards against. Keep it instead of deferring,
+	// so "Say PONG"/"Say HELLO" don't dead-end into "I'm not sure how to answer
+	// that." just because the reply is an all-caps short word.
+	const requested = parseSayLiteralInstruction(args.messageText);
+	if (requested && trimmed) {
+		const norm = (s: string) =>
+			s
+				.trim()
+				.replace(/[.!?]+$/, "")
+				.trim()
+				.toLowerCase();
+		if (norm(trimmed) === norm(requested)) return true;
+	}
+	return false;
 }
 
 /**
@@ -3331,19 +3389,74 @@ export async function renderMessageHandlerStablePrefix(
 		.join("\n\n");
 }
 
-function parseToolArguments(value: unknown): Record<string, unknown> | null {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		if (typeof value !== "string") {
-			return null;
-		}
+function canonicalJsonValue(value: unknown): string {
+	if (Array.isArray(value)) {
+		return `[${value.map(canonicalJsonValue).join(",")}]`;
+	}
+	if (value && typeof value === "object") {
+		const entries = Object.entries(value as Record<string, unknown>).sort(
+			([left], [right]) => left.localeCompare(right),
+		);
+		return `{${entries
+			.map(
+				([key, entry]) => `${JSON.stringify(key)}:${canonicalJsonValue(entry)}`,
+			)
+			.join(",")}}`;
+	}
+	return JSON.stringify(value) ?? "undefined";
+}
+
+function parseToolArgumentsString(
+	value: string,
+): Record<string, unknown> | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+
+	try {
+		const parsed: unknown = JSON.parse(trimmed);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: null;
+	} catch {
+		// Continue to the duplicated-streaming recovery below.
+	}
+
+	const objects = extractJsonObjects(trimmed);
+	if (objects.length === 0) return null;
+
+	let remainder = trimmed;
+	for (const objectText of objects) {
+		remainder = remainder.replace(objectText, "");
+	}
+	if (remainder.replace(/\0/g, "").trim().length > 0) {
+		return null;
+	}
+
+	const parsedObjects = objects.map((objectText) => {
 		try {
-			const parsed: unknown = JSON.parse(value);
+			const parsed: unknown = JSON.parse(objectText);
 			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
 				? (parsed as Record<string, unknown>)
 				: null;
 		} catch {
 			return null;
 		}
+	});
+	if (parsedObjects.some((parsed) => !parsed)) {
+		return null;
+	}
+
+	const [first, ...rest] = parsedObjects as Record<string, unknown>[];
+	const canonical = canonicalJsonValue(first);
+	if (rest.some((entry) => canonicalJsonValue(entry) !== canonical)) {
+		return null;
+	}
+	return first;
+}
+
+function parseToolArguments(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return typeof value === "string" ? parseToolArgumentsString(value) : null;
 	}
 	return value as Record<string, unknown>;
 }
@@ -4138,8 +4251,8 @@ function inferAckIntentCandidateActions(
 		if (codingAction) return [codingAction];
 	}
 	if (looksLikeWebSearchRequest(actionText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
+		const lookupActions = findWebLookupActionNames(actions);
+		if (lookupActions.length > 0) return lookupActions;
 	}
 	return [];
 }
@@ -4148,137 +4261,17 @@ export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 ): string[] {
-	if (looksLikeLocalShellRequest(messageText)) {
-		const shellAction = findAvailableActionName(actions, [
-			"SHELL",
-			"RUN_IN_TERMINAL",
-			"RUN_COMMAND",
-			"EXECUTE_COMMAND",
-			"TERMINAL",
-			"RUN_SHELL",
-			"EXEC",
-		]);
-		if (shellAction) return [shellAction];
-	}
-	// Coding-work precedes web-search: a coding request mentioning a live/market
-	// term ("build a crypto price tracker") must route to coding delegation, not a
-	// web lookup. Mirrors shouldPreferDirectCurrentCandidateActions' coding guard.
-	if (looksLikeCodingWorkRequest(messageText)) {
-		const codingAction = findCodingDelegationActionName(actions);
-		if (codingAction) return [codingAction];
-	}
-	const viewShellAction = findViewShellActionName(actions, messageText);
-	if (viewShellAction) return [viewShellAction];
-	const viewCapabilityAction = findViewCapabilityActionName(
+	return inferDirectCurrentRequestCandidateActionsFromHeuristics(
 		actions,
 		messageText,
+		{
+			// Coding-work precedes web-search: a coding request mentioning a live/market
+			// term ("build a crypto price tracker") must route to coding delegation,
+			// not a web lookup.
+			looksLikeCodingWorkRequest,
+			findCodingDelegationActionName,
+		},
 	);
-	if (viewCapabilityAction) return [viewCapabilityAction];
-	if (looksLikeWebSearchRequest(messageText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
-	}
-	return [];
-}
-
-function shouldUseDirectReplyFastPath(args: {
-	message: Memory;
-	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
-}): boolean {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text || text.length > 280) return false;
-	if (looksLikeHighStakesPersonalCrisisRequest(text)) return false;
-	if (
-		inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0
-	) {
-		return false;
-	}
-	if (looksLikeContextDependentMutationRequest(text)) return false;
-	if (/https?:\/\//iu.test(text)) return false;
-	if (
-		/\b(?:search|browse|lookup|look\s+up|find|fetch|download|install|run|execute|build|deploy|commit|push|pull\s+request|pr\b|issue|debug|inspect|logs?|repo|github|terminal|shell|file|folder|save|send|create|edit|modify|fix|improve|rewrite|update|delete|remove|uninstall|schedule|remind|todo|task|calendar|email|contact|message|dm|call|wallet|balance|price|weather|news|latest|current|today|tomorrow|yesterday|remember|forget|settings?|password|secret|key|token|screen|screenshot|browser|click|open|close|app|view|plugin|window|device|workflow|automation|draw|sketch|paint|illustrate|render|picture|photo|photograph|image|speak|read\s+aloud|read\s+out|narrate|text\s*to\s*speech|tts|voice\s+this|voice\s+over|audio|video|animate|animation)\b/iu.test(
-			text,
-		)
-	) {
-		return false;
-	}
-	return true;
-}
-
-function looksLikeContextDependentMutationRequest(text: string): boolean {
-	const tokens = new Set(
-		tokenizeActionMetadata(text).map(normalizeSingularToken),
-	);
-	const mutationTokens = [
-		"ADD",
-		"CREATE",
-		"DO",
-		"MAKE",
-		"PUT",
-		"SET",
-		"WRITE",
-		"EDIT",
-		"UPDATE",
-		"DELETE",
-		"REMOVE",
-	];
-	const contextReferenceTokens = [
-		"ANOTHER",
-		"IT",
-		"ONE",
-		"SAME",
-		"THAT",
-		"THEM",
-		"THESE",
-		"THIS",
-		"THOSE",
-	];
-	return (
-		mutationTokens.some((token) => tokens.has(token)) &&
-		contextReferenceTokens.some((token) => tokens.has(token))
-	);
-}
-
-function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
-	if (
-		!/\b(?:what\s+should|what\s+do|should\s+i|should\s+he|should\s+she|should\s+they|help|advice|urgent|emergency|crisis)\b/iu.test(
-			text,
-		)
-	) {
-		return false;
-	}
-	return /\b(?:lawyer|attorney|police|cop|cops|court|criminal|felony|arrest|charged|custody|cps|child\s+protective|landlord|grow|plants|contraband|evidence|overdose|too\s+many\s+pills|poison|suicide|self[-\s]?harm|kill\s+(?:myself|himself|herself|themselves)|medical\s+emergency|psychiatric\s+emergency|domestic\s+violence|abuse)\b/iu.test(
-		text,
-	);
-}
-
-/**
- * Resolve the action that satisfies a web / live-info lookup, or undefined when
- * the runtime has no real search backend registered.
- *
- * A web lookup needs a search action — not a shell. The earlier fallback to a
- * shell action conflated the two: on a runtime with shell but no search, a
- * live-info ask ("what's the current price of X") was force-routed to SHELL as
- * a required tool. A shell is the wrong instrument for that, a weak planner
- * cannot drive it, and the resulting required-tool loop surfaced a generic
- * failure instead of an honest "I don't have live access" reply. Returning
- * undefined lets the model answer directly. Genuine shell requests still route
- * to a shell action via the separate looksLikeLocalShellRequest path.
- */
-export function findWebLookupActionName(
-	actions: ReadonlyArray<Pick<Action, "name">>,
-): string | undefined {
-	return findAvailableActionName(actions, [
-		"SEARCH",
-		"WEB_SEARCH",
-		"SEARCH_WEB",
-		"BRAVE_SEARCH",
-		"INTERNET_SEARCH",
-		"SEARCH_INTERNET",
-		"LOOKUP_WEB",
-		"WEB_FETCH",
-		"GOOGLE",
-	]);
 }
 
 const CODING_DELEGATION_ACTION_TAGS = [
@@ -4313,267 +4306,6 @@ function findCodingDelegationActionName(
 		)?.name ??
 		findAvailableActionName(actions, LEGACY_CODING_DELEGATION_ACTION_NAMES)
 	);
-}
-
-const VIEW_REQUEST_OPERATION_GROUPS = {
-	create: ["ADD", "CREATE", "MAKE", "NEW"],
-	read: ["FIND", "GET", "LIST", "READ", "SHOW", "WHAT", "WHICH"],
-	update: ["CHANGE", "EDIT", "MODIFY", "RENAME", "UPDATE"],
-	delete: ["DELETE", "REMOVE"],
-	open: ["GO", "NAVIGATE", "OPEN", "SWITCH"],
-	close: ["CLOSE", "DISMISS", "HIDE"],
-	layout: [
-		"ARRANGE",
-		"BOTTOM",
-		"HORIZONTAL",
-		"LEFT",
-		"LAYOUT",
-		"RIGHT",
-		"SPLIT",
-		"TILE",
-		"TOP",
-		"VERTICAL",
-	],
-	pin: ["DOCK", "PIN"],
-} as const;
-
-const VIEW_REQUEST_OPERATION_TOKENS: ReadonlySet<string> = new Set<string>(
-	Object.values(VIEW_REQUEST_OPERATION_GROUPS).flat(),
-);
-
-const VIEW_REQUEST_GENERIC_TOKENS: ReadonlySet<string> = new Set<string>([
-	"ACTION",
-	"ACTIONS",
-	"APP",
-	"APPS",
-	"APPLICATION",
-	"APPLICATIONS",
-	"BROADCAST",
-	"CALL",
-	"CAPABILITY",
-	"CAPABILITIES",
-	"CURRENT",
-	"EVENT",
-	"EVENTS",
-	"INVOKE",
-	"LAYOUT",
-	"MANAGER",
-	"MODE",
-	"NOTIFY",
-	"PANEL",
-	"PANELS",
-	"PIN",
-	"PLUGIN",
-	"PLUGINS",
-	"SCREEN",
-	"SIGNAL",
-	"UI",
-	"USE",
-	"VIEW",
-	"VIEWS",
-	"WINDOW",
-	"WINDOWS",
-	"WITH",
-]);
-
-const VIEW_REQUEST_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
-	"APP",
-	"APPLICATION",
-	"MANAGER",
-	"PANEL",
-	"SCREEN",
-	"UI",
-	"VIEW",
-	"WINDOW",
-]);
-
-const VIEW_LAYOUT_FOLLOWUP_TOKENS: ReadonlySet<string> = new Set<string>([
-	"AGAIN",
-	"ALSO",
-	"HORIZONTAL",
-	"INSTEAD",
-	"NOW",
-	"TOO",
-	"VERTICAL",
-]);
-
-const VIEW_PLUGIN_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
-	"BROWSER",
-	"CATALOG",
-	"MANAGER",
-	"MARKETPLACE",
-]);
-
-function findViewsActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
-): string | undefined {
-	return actions.find((action) => {
-		if (normalizeActionIdentifier(action.name) === "VIEWS") return true;
-		return (action.tags ?? []).some(
-			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
-		);
-	})?.name;
-}
-
-function collectViewActionMetadataEntries(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
-	viewActionName: string,
-): Array<Pick<Action, "name" | "similes" | "tags">> {
-	const normalizedViewActionName = normalizeActionIdentifier(viewActionName);
-	return actions.filter((action) => {
-		if (normalizeActionIdentifier(action.name) === normalizedViewActionName) {
-			return true;
-		}
-		return (action.tags ?? []).some(
-			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
-		);
-	});
-}
-
-function findViewShellActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
-	messageText: string,
-): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
-	const viewActionName = findViewsActionName(actions);
-	if (!viewActionName) return undefined;
-
-	const messageTokens = tokenizeActionMetadata(messageText).map(
-		normalizeSingularToken,
-	);
-	const messageOperationGroups = operationGroupsForTokens(messageTokens);
-	if (messageOperationGroups.size === 0) return undefined;
-
-	const tokenSet = new Set(messageTokens);
-	for (const token of VIEW_REQUEST_SURFACE_TOKENS) {
-		if (tokenSet.has(token)) return viewActionName;
-	}
-	if (
-		(tokenSet.has("PLUGIN") || tokenSet.has("PLUGINS")) &&
-		messageTokens.some((token) => VIEW_PLUGIN_SURFACE_TOKENS.has(token))
-	) {
-		return viewActionName;
-	}
-	if (
-		messageOperationGroups.has("layout") &&
-		messageTokens.some((token) => VIEW_LAYOUT_FOLLOWUP_TOKENS.has(token))
-	) {
-		return viewActionName;
-	}
-	return undefined;
-}
-
-function findViewCapabilityActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
-	messageText: string,
-): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
-	const viewActionName = findViewsActionName(actions);
-	if (!viewActionName) return undefined;
-	const viewActions = collectViewActionMetadataEntries(actions, viewActionName);
-	if (viewActions.length === 0) return undefined;
-
-	const messageTokens = tokenizeActionMetadata(messageText);
-	const messageTokenSet = new Set(messageTokens.map(normalizeSingularToken));
-	const messageOperationGroups = operationGroupsForTokens(messageTokens);
-	if (messageOperationGroups.size === 0) return undefined;
-
-	for (const viewAction of viewActions) {
-		for (const alias of [
-			viewAction.name,
-			...(viewAction.similes ?? []),
-			...(viewAction.tags ?? []),
-		]) {
-			const aliasTokens = tokenizeActionMetadata(String(alias));
-			if (aliasTokens.length === 0) continue;
-			const aliasOperationGroups = operationGroupsForTokens(aliasTokens);
-			if (
-				aliasOperationGroups.size > 0 &&
-				!setsIntersect(aliasOperationGroups, messageOperationGroups)
-			) {
-				continue;
-			}
-			const targetTokens = aliasTokens
-				.map(normalizeSingularToken)
-				.filter(
-					(token) =>
-						!VIEW_REQUEST_OPERATION_TOKENS.has(token) &&
-						!VIEW_REQUEST_GENERIC_TOKENS.has(token),
-				);
-			if (targetTokens.length === 0) continue;
-			if (targetTokens.every((token) => messageTokenSet.has(token))) {
-				return viewActionName;
-			}
-		}
-	}
-	return undefined;
-}
-
-function looksLikeInstructionalViewQuestion(messageText: string): boolean {
-	return /^\s*(?:explain|describe|teach|what\s+(?:is|are)|how\s+(?:do|can|to)\b)/iu.test(
-		messageText,
-	);
-}
-
-function tokenizeActionMetadata(value: string): string[] {
-	const matches = value
-		.replace(/([a-z])([A-Z])/g, "$1 $2")
-		.toUpperCase()
-		.match(/[A-Z0-9]+/g);
-	return matches ?? [];
-}
-
-function normalizedMetadataPhrase(value: string): string {
-	return tokenizeActionMetadata(value).map(normalizeSingularToken).join("_");
-}
-
-function normalizeSingularToken(token: string): string {
-	if (token === "CALENDER") return "CALENDAR";
-	if (token.length > 3 && token.endsWith("IES")) {
-		return `${token.slice(0, -3)}Y`;
-	}
-	if (token.length > 3 && token.endsWith("S")) {
-		return token.slice(0, -1);
-	}
-	return token;
-}
-
-function operationGroupsForTokens(tokens: readonly string[]): Set<string> {
-	const groups = new Set<string>();
-	for (const token of tokens.map(normalizeSingularToken)) {
-		for (const [group, groupTokens] of Object.entries(
-			VIEW_REQUEST_OPERATION_GROUPS,
-		)) {
-			if ((groupTokens as readonly string[]).includes(token)) {
-				groups.add(group);
-			}
-		}
-	}
-	return groups;
-}
-
-function setsIntersect<T>(
-	left: ReadonlySet<T>,
-	right: ReadonlySet<T>,
-): boolean {
-	for (const entry of left) {
-		if (right.has(entry)) return true;
-	}
-	return false;
-}
-
-function findAvailableActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
-	names: readonly string[],
-): string | undefined {
-	const wanted = new Set(names.map(normalizeActionIdentifier));
-	return actions.find((action) => {
-		if (wanted.has(normalizeActionIdentifier(action.name))) return true;
-		const similes = Array.isArray(action.similes) ? action.similes : [];
-		return similes.some((simile) =>
-			wanted.has(normalizeActionIdentifier(String(simile))),
-		);
-	})?.name;
 }
 
 const LIVE_LOOKUP_UNAVAILABLE_REPLY =
@@ -4720,19 +4452,18 @@ function synthesizeSimpleReplyFromPlainText(
 function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	if (typeof raw === "string") return raw.trim().length === 0;
 	if (!raw || typeof raw !== "object") return true;
-	const obj = raw as unknown as Record<string, unknown>;
-	const text = typeof obj.text === "string" ? obj.text.trim() : "";
+	// `raw` is narrowed to GenerateTextResult here; read its typed fields
+	// directly (the defensive `typeof` guards still cover non-conforming
+	// provider output) instead of laundering it through `as unknown as`.
+	const text = typeof raw.text === "string" ? raw.text.trim() : "";
 	if (text.length > 0) return false;
-	const toolCalls = obj.toolCalls;
-	if (Array.isArray(toolCalls) && toolCalls.length > 0) return false;
-	const contentText = extractGenerateTextContentText(
-		raw as unknown as GenerateTextResult,
-	);
+	if (Array.isArray(raw.toolCalls) && raw.toolCalls.length > 0) return false;
+	const contentText = extractGenerateTextContentText(raw);
 	if (contentText.trim().length > 0) return false;
 	return true;
 }
 
-function getStage1RetryReason(
+export function getStage1RetryReason(
 	raw: string | GenerateTextResult,
 ): "empty completion" | "malformed HANDLE_RESPONSE tool call" | null {
 	if (isEmptyStage1Result(raw)) {
@@ -4745,9 +4476,6 @@ function getStage1RetryReason(
 		return null;
 	}
 	if (extractHandleResponseToolArguments(raw)) {
-		return null;
-	}
-	if (parseMessageHandlerOutput(getV5ModelText(raw))) {
 		return null;
 	}
 	return "malformed HANDLE_RESPONSE tool call";
@@ -5547,8 +5275,8 @@ function collectPreviousActionResults(
  *
  * Matches the user's text against the runtime's `ShortcutRegistry` BEFORE any
  * model call. Explicit slash/`!` commands are always eligible (this is what
- * makes slash commands deterministic per #8790); natural-language shortcuts are
- * gated behind `ELIZA_SHORTCUTS_NL=1`. On a confident `action`-target match the
+ * makes slash commands deterministic per #8790); natural-language shortcuts use
+ * narrow/confidence-floored patterns. On a confident `action`-target match the
  * matched action runs and its reply is returned as a `direct_reply` — emitting
  * ZERO `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the
  * client (the slash menu already runs them locally) so the gate ignores them.
@@ -5574,7 +5302,7 @@ export async function runShortcutGate(args: {
 	const authorized = args.senderRole === "OWNER" || args.senderRole === "ADMIN";
 	const match = registry.match(text, {
 		actions: args.runtime.actions.map((action) => action.name),
-		allowNatural: process.env.ELIZA_SHORTCUTS_NL === "1",
+		allowNatural: true,
 		isAuthorized: authorized,
 		isElevated: args.senderRole === "OWNER",
 	});
@@ -5590,7 +5318,16 @@ export async function runShortcutGate(args: {
 	let valid = false;
 	try {
 		valid = await action.validate(args.runtime, args.message, args.state);
-	} catch {
+	} catch (err) {
+		args.runtime.logger?.warn?.(
+			{
+				src: "shortcut-gate",
+				shortcut: match.shortcut.id,
+				action: action.name,
+				err,
+			},
+			"shortcut action validate() threw; falling through to pipeline",
+		);
 		return null;
 	}
 	if (!valid) return null;
@@ -5747,61 +5484,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
 
-		if (
-			directMessageChannel &&
-			shouldUseDirectReplyFastPath({
-				message: args.message,
-				actions: args.runtime.actions,
-			})
-		) {
-			const fastStartedAt = Date.now();
-			const fastMessageHandler: MessageHandlerResult = {
-				processMessage: "RESPOND",
-				thought: "Direct private chat fast path.",
-				plan: {
-					contexts: [SIMPLE_CONTEXT_ID],
-					reply: "",
-					simple: true,
-					requiresTool: false,
-				},
-			};
-			const generated = await generateDirectReplyModel({
-				runtime: args.runtime,
-				message: args.message,
-				state: args.state,
-				messageHandler: fastMessageHandler,
-				signal: stage1TurnSignal,
-			});
-			const fastEndedAt = Date.now();
-			fastMessageHandler.plan.reply = generated.text;
-			if (recorder && trajectoryId) {
-				await recordMessageHandlerStage({
-					recorder,
-					trajectoryId,
-					messages: [{ role: "user", content: generated.prompt }],
-					providerOptions: {
-						eliza: {
-							directReplyFastPath: true,
-							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
-						},
-					},
-					raw: generated.raw,
-					parsed: fastMessageHandler,
-					startedAt: fastStartedAt,
-					endedAt: fastEndedAt,
-					logger: args.runtime.logger,
-				});
-			}
-			return {
-				kind: "direct_reply",
-				messageHandler: fastMessageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: generated.text,
-					thought: fastMessageHandler.thought,
-				}),
-			};
-		}
 		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
 			runtime: args.runtime,
 			message: args.message,
@@ -6063,64 +5745,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		if (
 			!messageHandler &&
-			isEmptyStage1Result(rawMessageHandler) &&
-			shouldUseStage1PlannerFallback(args.runtime, args.message) &&
-			shouldUseDirectReplyFastPath({
-				message: args.message,
-				actions: args.runtime.actions,
-			})
-		) {
-			const fastStartedAt = Date.now();
-			const fallbackMessageHandler: MessageHandlerResult = {
-				processMessage: "RESPOND",
-				thought:
-					"Stage 1 returned empty output for a simple addressed message; using direct reply fallback.",
-				plan: {
-					contexts: [SIMPLE_CONTEXT_ID],
-					reply: "",
-					simple: true,
-					requiresTool: false,
-				},
-			};
-			const generated = await generateDirectReplyModel({
-				runtime: args.runtime,
-				message: args.message,
-				state: args.state,
-				messageHandler: fallbackMessageHandler,
-				signal: stage1TurnSignal,
-			});
-			const fastEndedAt = Date.now();
-			fallbackMessageHandler.plan.reply = generated.text;
-			if (recorder && trajectoryId) {
-				await recordMessageHandlerStage({
-					recorder,
-					trajectoryId,
-					messages: [{ role: "user", content: generated.prompt }],
-					providerOptions: {
-						eliza: {
-							directReplyEmptyStage1Fallback: true,
-							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
-						},
-					},
-					raw: generated.raw,
-					parsed: fallbackMessageHandler,
-					startedAt: fastStartedAt,
-					endedAt: fastEndedAt,
-					logger: args.runtime.logger,
-				});
-			}
-			return {
-				kind: "direct_reply",
-				messageHandler: fallbackMessageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: generated.text,
-					thought: fallbackMessageHandler.thought,
-				}),
-			};
-		}
-		if (
-			!messageHandler &&
 			shouldUseStage1PlannerFallback(args.runtime, args.message)
 		) {
 			const stage1FailureKind = getStage1RetryReason(rawMessageHandler);
@@ -6261,11 +5885,19 @@ export async function runV5MessageRuntimeStage1(args: {
 		// can group the transcript by topic + show a topic chips bar (#8928).
 		// Additive, fire-and-forget metadata write — never blocks/breaks the turn.
 		if (topics.length > 0 && args.message.id) {
+			// args.message is always a message memory, so its metadata is
+			// MessageMetadata; force `type: "message"` so the spread result is a
+			// valid, discriminated MessageMetadata regardless of the inbound shape
+			// (never a sibling union member with an unexpected `topics` field).
 			const existingMetadata = args.message.metadata;
 			void args.runtime
 				.updateMemory({
 					id: args.message.id,
-					metadata: { ...(existingMetadata ?? { type: "message" }), topics },
+					metadata: {
+						...(existingMetadata ?? {}),
+						type: "message" as const,
+						topics,
+					},
 				})
 				.catch((error) => {
 					args.runtime.logger?.warn?.(
@@ -6293,7 +5925,30 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.contexts,
 			availableContexts,
 		);
-		const route = routeMessageHandlerOutput(messageHandler);
+		// #9874 item 1: suppress the simple→requiresTool promotion when this turn
+		// is bot-to-bot crosstalk addressed to a non-owner bot — the agent is
+		// overhearing, not being asked to act, so forcing a tool fabricates a
+		// phantom task. Cheap-gated: only resolve addressees when a promotion could
+		// actually fire (requiresTool / candidateActions) and the message carries
+		// explicit addressees.
+		const mayPromoteToTool =
+			messageHandler.plan.requiresTool === true ||
+			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
+		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom /
+		// getAgent): a transient failure must NOT convert a normal turn into the
+		// generic failure reply — it just means "don't suppress", matching the
+		// conservative contract and the fire-and-forget addressee handling above.
+		const suppressToolPromotion =
+			mayPromoteToTool && addressedTo.length > 0
+				? await addresseeIsNonOwnerBot({
+						runtime: args.runtime,
+						message: args.message,
+						addressedTo,
+					}).catch(() => false)
+				: false;
+		const route = routeMessageHandlerOutput(messageHandler, {
+			suppressToolPromotion,
+		});
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
 				kind: "terminal",
@@ -6304,28 +5959,22 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 
 		if (route.type === "final_reply") {
-			// `replyText` (→ `route.reply`) is part of the HANDLE_RESPONSE envelope
-			// and is `required` in the schema, so the direct-reply path normally
-			// emits it inline with no extra model call. `generateDirectReplyOnce`
-			// runs when Stage-1 produced no usable reply text or a known
-			// low-quality scaffold/fragment pattern from strict JSON generation.
+			// The simple-context reply IS the answer: Stage 1 emits `replyText` (→
+			// `route.reply`) inline as part of the required HANDLE_RESPONSE envelope,
+			// uncapped for direct channels. There is no separate fast-path model
+			// call. When that text is unusable — empty, or a known low-quality
+			// scaffold/fragment from strict-JSON generation — ship a clear deferral
+			// instead of a blank/garbled bubble, but keep a valid-but-terse answer
+			// (e.g. "144" to a math question).
 			let reply = route.reply;
-			if (shouldRegenerateStage1ReplyText(route.reply)) {
-				const regenerated = await generateDirectReplyOnce({
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					messageHandler,
-				});
-				// Regeneration is an enhancement (terse fragment -> fuller reply).
-				// If it yields nothing usable, keep the original Stage-1 reply so a
-				// valid-but-terse answer (e.g. "144" to a math question) is never
-				// dropped to an empty message.
-				if (regenerated.trim().length > 0) {
-					reply = regenerated;
-				} else if (!canKeepStage1ReplyWhenRegenerationIsEmpty(route.reply)) {
-					reply = "I'm not sure how to answer that.";
-				}
+			if (
+				isUnusableStage1Reply(route.reply) &&
+				!isTerseReplyWorthKeeping({
+					reply: route.reply,
+					messageText: getUserMessageText(args.message),
+				})
+			) {
+				reply = "I'm not sure how to answer that.";
 			}
 			if (
 				shouldReplaceUnavailableLiveLookupAck({
@@ -6658,32 +6307,38 @@ export async function runV5MessageRuntimeStage1(args: {
 			actionResults.length > 0
 				? withActionResultsForPrompt(plannerState, actionResults)
 				: plannerState;
-		const plannedText = String(plannerResult.finalMessage ?? "").trim();
+		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
+		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
+		const plannedText = sanitizeReplyTextAfterMediaDelivery(
+			plannedTextRaw,
+			deliveredMediaUrls,
+		);
 		const plannedTextRepeatsEarlyReply =
 			earlyReplySent &&
 			normalizeVisibleTextForDuplicateCheck(plannedText) ===
 				normalizeVisibleTextForDuplicateCheck(earlyReplyText);
+		const shouldSendPlannedText =
+			Boolean(plannedText) && !plannedTextRepeatsEarlyReply;
 
 		return {
 			kind: "planned_reply",
 			messageHandler,
-			result:
-				plannedText && !plannedTextRepeatsEarlyReply
-					? createV5ReplyStrategyResult({
-							...args,
-							state: finalPlannerState,
-							text: plannedText,
-							thought:
-								plannerResult.evaluator?.thought ??
-								plannerResult.trajectory.steps.at(-1)?.thought ??
-								messageHandler.thought,
-						})
-					: {
-							responseContent: null,
-							responseMessages: [],
-							state: finalPlannerState,
-							mode: "none",
-						},
+			result: shouldSendPlannedText
+				? createV5ReplyStrategyResult({
+						...args,
+						state: finalPlannerState,
+						text: plannedText,
+						thought:
+							plannerResult.evaluator?.thought ??
+							plannerResult.trajectory.steps.at(-1)?.thought ??
+							messageHandler.thought,
+					})
+				: {
+						responseContent: null,
+						responseMessages: [],
+						state: finalPlannerState,
+						mode: "none",
+					},
 		};
 	} catch (err) {
 		endStatus = "errored";
@@ -6917,7 +6572,7 @@ function getMessageHandlerResponseText(
 	if (typeof raw.text === "string" && raw.text.trim().length > 0) {
 		return raw.text;
 	}
-	const responseText = (raw as unknown as Record<string, unknown>).response;
+	const responseText = raw.response;
 	if (typeof responseText === "string" && responseText.trim().length > 0) {
 		return responseText;
 	}
@@ -7777,74 +7432,21 @@ function findRuntimeActionByNames(
 	runtime: Pick<IAgentRuntime, "actions">,
 	names: string[],
 ): Action | undefined {
-	const wanted = new Set(names.map(normalizeActionIdentifier));
-	return (runtime.actions ?? []).find((action) => {
-		const candidates = [action.name, ...(action.similes ?? [])]
-			.filter((value): value is string => typeof value === "string")
-			.map(normalizeActionIdentifier);
-		return candidates.some((candidate) => wanted.has(candidate));
-	});
-}
-
-function looksLikeLocalShellRequest(text: string): boolean {
-	const normalized = text.toLowerCase();
-	if (!normalized.trim()) {
-		return false;
+	// Resolve in `names` PRIORITY order, not action-registration order, so the
+	// leading preference wins (mirrors findAvailableActionName in
+	// direct-action-heuristics.ts).
+	const actions = runtime.actions ?? [];
+	for (const want of names) {
+		const wanted = normalizeActionIdentifier(want);
+		const match = actions.find((action) => {
+			const candidates = [action.name, ...(action.similes ?? [])]
+				.filter((value): value is string => typeof value === "string")
+				.map(normalizeActionIdentifier);
+			return candidates.includes(wanted);
+		});
+		if (match) return match;
 	}
-
-	if (
-		/\b(?:do not|don't|dont|without)\s+(?:run|execute|use)\s+(?:commands?|shell|terminal)\b/iu.test(
-			normalized,
-		)
-	) {
-		return false;
-	}
-
-	if (looksLikeActionExplanationRequest(normalized)) {
-		return false;
-	}
-
-	const mentionsCommand =
-		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|submodules?|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time)\b/iu.test(
-			normalized,
-		);
-	const asksToInspect =
-		/\b(?:run|execute|check|inspect|show|list|print|tail|look(?:\s+at)?|read|verify)\b/iu.test(
-			normalized,
-		);
-	const mentionsLocalSurface =
-		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
-		/\b(?:this vps|local(?:ly)?|server|workspace|worktree|repo|repository|branch|head|vendored|submodules?|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time|logs?|service|systemd)\b/iu.test(
-			normalized,
-		);
-	const asksRepoStateQuestion =
-		/\b(?:is|are|what|which|where)\b[^.?!\n]{0,80}\b(?:submodules?|commit|branch|head|checked\s+out|worktree|repo|repository)\b/iu.test(
-			normalized,
-		) &&
-		/\b(?:local(?:ly)?|running|workspace|worktree|repo|repository|vendored|submodules?|checked\s+out)\b/iu.test(
-			normalized,
-		);
-	const asksLocalStatusQuestion =
-		/\b(?:check|inspect|show|summarize|what|how\s+much|is|are)\b[\s\S]{0,160}\b(?:health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time)\b/iu.test(
-			normalized,
-		) &&
-		/\b(?:local|server|bot|runtime|right now|current|ready)\b/iu.test(
-			normalized,
-		);
-	const asksLocalSourceInspection =
-		/\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/iu.test(
-			normalized,
-		) &&
-		/\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b/iu.test(
-			normalized,
-		);
-
-	return (
-		(mentionsCommand && asksToInspect && mentionsLocalSurface) ||
-		asksRepoStateQuestion ||
-		asksLocalStatusQuestion ||
-		asksLocalSourceInspection
-	);
+	return undefined;
 }
 
 function looksLikeActionExplanationRequest(text: string): boolean {
@@ -7869,35 +7471,6 @@ function looksLikeActionExplanationRequest(text: string): boolean {
 		);
 
 	return !asksToExecuteAfterExplanation;
-}
-
-function looksLikeWebSearchRequest(text: string): boolean {
-	const normalized = text.toLowerCase();
-	if (!normalized.trim()) {
-		return false;
-	}
-
-	if (
-		/\b(?:do not|don't|dont|without)\s+(?:browse|search|google|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b/iu.test(
-			normalized,
-		)
-	) {
-		return false;
-	}
-
-	const explicitlyAsksSearch =
-		/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu.test(
-			normalized,
-		);
-	const asksCurrentInfo =
-		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu.test(
-			normalized,
-		);
-	const mentionsMarketOrNews =
-		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu.test(
-			normalized,
-		);
-	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
 }
 
 function looksLikeCodingWorkRequest(text: string): boolean {
@@ -8024,90 +7597,6 @@ function looksLikeCreativeCodingWorkRequest(text: string): boolean {
 			normalized,
 		)
 	);
-}
-
-function quoteShellArg(value: string): string {
-	return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-
-function extractLocalShellPath(text: string): string | null {
-	const match = text.match(
-		/(?:^|[\s`'"])(\/(?:home|Users|workspace|workspaces|tmp|var\/tmp|opt|srv)\/[A-Za-z0-9._~+/@:-]+)/u,
-	);
-	if (!match?.[1]) {
-		return null;
-	}
-	return match[1].replace(/[),.;:]+$/u, "");
-}
-
-export function inferLocalShellCommandFromMessageText(
-	messageText: string,
-): string | null {
-	const text = messageText.toLowerCase();
-	if (!looksLikeLocalShellRequest(messageText)) {
-		return null;
-	}
-
-	if (/\bdf\s+-h\b/iu.test(messageText) || /\bdisk space\b/iu.test(text)) {
-		return "df -h";
-	}
-
-	if (/\bgit\b/iu.test(text)) {
-		const localPath = extractLocalShellPath(messageText);
-		if (!localPath) {
-			if (/\bgit\s+status\b/iu.test(messageText)) {
-				return "git status --short --branch";
-			}
-			return null;
-		}
-		const repo = quoteShellArg(localPath);
-		const commands = [`git -C ${repo} status --short --branch`];
-		if (
-			/\b(?:branch|head|sha|origin\/(?:develop|main|master)|latest|author config|commit author|user\.name|user\.email)\b/iu.test(
-				messageText,
-			)
-		) {
-			commands.push(
-				`git -C ${repo} branch --show-current`,
-				`git -C ${repo} rev-parse --short HEAD`,
-				`(git -C ${repo} rev-parse --short origin/develop 2>/dev/null || git -C ${repo} rev-parse --short origin/main 2>/dev/null || true)`,
-				`git -C ${repo} config user.name`,
-				`git -C ${repo} config user.email`,
-			);
-		}
-		return commands.join(" && ");
-	}
-
-	return null;
-}
-
-export function inferWebSearchQueryFromMessageText(
-	messageText: string,
-): string | null {
-	if (!looksLikeWebSearchRequest(messageText)) {
-		return null;
-	}
-
-	const query = messageText
-		.replace(/<@!?\d+>/gu, " ")
-		.replace(
-			/\banswer\s+(?:briefly|in\s+one\s+short\s+sentence|with\s+the\s+price\s+only)\b.*$/iu,
-			" ",
-		)
-		.replace(
-			/\band\s+mention\s+if\s+you\s+cannot\s+browse\s+live\s+prices\b.*$/iu,
-			" ",
-		)
-		.replace(
-			/\b(?:search\s+(?:the\s+)?web\s+(?:for|about)?|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu,
-			" ",
-		)
-		.replace(/\bwhat\s+is\s+the\b/iu, " ")
-		.replace(/[?.!]+/gu, " ")
-		.trim()
-		.replace(/\s+/gu, " ");
-
-	return query.length > 0 ? query : messageText.trim();
 }
 
 function _hasSelectedShellCommandAction(
@@ -9250,6 +8739,10 @@ function shouldRewriteActionCallback(
 	actionName?: string,
 ): response is Content & { text: string } {
 	if (!response || typeof response.text !== "string") return false;
+	if (!response.text.trim() && !response.attachments?.length) return false;
+	// Media actions already produced a file attachment; deliver it directly instead
+	// of spending another model call rewriting placeholder text.
+	if (response.attachments?.some((media) => Boolean(media?.url))) return false;
 	if (!response.text.trim()) return false;
 	if (response.source === "voice") return false;
 	if (response.source === "voice-cache") return false;
@@ -10514,7 +10007,7 @@ export class DefaultMessageService implements IMessageService {
 
 		// #8791: pre-LLM action shortcut gate runs FIRST — before any direct hook,
 		// planner, or model call. An explicit slash/`!` command (always-on) or a
-		// flag-gated natural-language shortcut resolves to a deterministic action
+		// confident natural-language shortcut resolves to a deterministic action
 		// reply with zero inference. Placed here (ahead of the LifeOps/workflow
 		// direct hooks and the conditional v5 stage) so a slash command can never
 		// be pre-empted by another handler.
@@ -10924,9 +10417,11 @@ export class DefaultMessageService implements IMessageService {
 						}
 					}
 					if (callback) {
-						await callback(responseContent);
-						simpleReplyDelivered = true;
-						markInference(INFERENCE_MARKS.replyDelivered);
+						if (responseContent) {
+							await callback(responseContent);
+							simpleReplyDelivered = true;
+							markInference(INFERENCE_MARKS.replyDelivered);
+						}
 					}
 				}
 			}

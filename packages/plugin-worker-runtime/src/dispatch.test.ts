@@ -368,14 +368,22 @@ describe("dispatcher action callbacks", () => {
       },
     } as WorkerRpcMessage);
 
-    expect(callbackCalls).toEqual([
-      ["callback-1", { text: "callback text" }, "DO_STUFF"],
-    ]);
-    expect(channel.outbox[0]).toMatchObject({
+    // The dispatcher proxies the action's callback to the host as a
+    // worker-action-callback message on the channel (the host-side bridge —
+    // remote-plugin-bridge.ts — looks the callback up by callbackId and invokes
+    // runtime.actionCallback there; see remote-plugin-bridge.test.ts). The
+    // worker-side dispatcher does NOT call runtime.actionCallback locally, so
+    // assert the proxied channel message, then the action's own rpc result.
+    expect(callbackCalls).toEqual([]);
+    expect(channel.outbox[0]).toEqual({
+      type: "worker-action-callback",
+      callbackId: "callback-1",
+      payload: { text: "callback text" },
+    });
+    expect(channel.outbox[1]).toMatchObject({
       type: "worker-rpc-result",
       requestId: 6,
       ok: true,
-      payload: { callbackResult: [{ id: "memory-1" }] },
     });
   });
 

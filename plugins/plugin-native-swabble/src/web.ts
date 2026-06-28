@@ -74,8 +74,8 @@ function subscribeDesktopBridgeEvent(options: {
 }
 
 const getSpeechRecognition = (): SpeechRecognitionCtor | null =>
-  (window as unknown as SpeechRecognitionWindow).SpeechRecognition ||
-  (window as unknown as SpeechRecognitionWindow).webkitSpeechRecognition ||
+  (window as SpeechRecognitionWindow).SpeechRecognition ||
+  (window as SpeechRecognitionWindow).webkitSpeechRecognition ||
   null;
 
 function normalizeConfig(config: SwabbleConfig): SwabbleConfig {

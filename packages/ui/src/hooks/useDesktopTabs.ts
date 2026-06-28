@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import { SPRINGBOARD_DOCK_LIMIT } from "../state/springboard-layout";
 import type { ViewRegistryEntry } from "./useAvailableViews";
 
 export interface DesktopTab {
@@ -61,6 +62,24 @@ function tabFromView(view: ViewRegistryEntry, pinned: boolean): DesktopTab {
   };
 }
 
+/**
+ * iOS-style dock cap: at most SPRINGBOARD_DOCK_LIMIT pinned tabs. Pinning past
+ * the limit evicts (unpins) the oldest pinned tabs first, never the one the user
+ * just pinned (`keepId`). Unpinned tabs stay open; they just leave the dock.
+ */
+function capPinnedTabs(tabs: DesktopTab[], keepId: string): DesktopTab[] {
+  const pinnedCount = tabs.filter((t) => t.pinned).length;
+  if (pinnedCount <= SPRINGBOARD_DOCK_LIMIT) return tabs;
+  let toEvict = pinnedCount - SPRINGBOARD_DOCK_LIMIT;
+  return tabs.map((tab) => {
+    if (toEvict > 0 && tab.pinned && tab.viewId !== keepId) {
+      toEvict -= 1;
+      return { ...tab, pinned: false };
+    }
+    return tab;
+  });
+}
+
 export interface UseDesktopTabsResult {
   tabs: DesktopTab[];
   openTab(view: ViewRegistryEntry, options?: { pinned?: boolean }): void;
@@ -86,16 +105,14 @@ export function useDesktopTabs(): UseDesktopTabsResult {
       setTabs((current) => {
         const exists = current.find((t) => t.viewId === view.id);
         const nextPinned = options?.pinned === true;
-        if (exists) {
-          return current.map((tab) =>
-            tab.viewId === view.id
-              ? {
-                  ...tabFromView(view, tab.pinned || nextPinned),
-                }
-              : tab,
-          );
-        }
-        return [...current, tabFromView(view, nextPinned)];
+        const next = exists
+          ? current.map((tab) =>
+              tab.viewId === view.id
+                ? { ...tabFromView(view, tab.pinned || nextPinned) }
+                : tab,
+            )
+          : [...current, tabFromView(view, nextPinned)];
+        return nextPinned ? capPinnedTabs(next, view.id) : next;
       });
     },
     [],
@@ -111,9 +128,10 @@ export function useDesktopTabs(): UseDesktopTabsResult {
     setTabs((current) => {
       const exists = current.find((t) => t.viewId === viewId);
       if (!exists) return current;
-      return current.map((t) =>
+      const next = current.map((t) =>
         t.viewId === viewId ? { ...t, pinned: true } : t,
       );
+      return capPinnedTabs(next, viewId);
     });
   }, []);
 

@@ -42,7 +42,7 @@ export const SidebarSearchBar = React.forwardRef<
           type="text"
           value={value}
           placeholder={inputPlaceholder}
-          className="h-10 w-full rounded-sm border border-border/34 bg-card pl-10 pr-10 text-sm text-txt placeholder:text-muted focus-visible:border-accent/28 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/24 disabled:cursor-not-allowed disabled:opacity-50 "
+          className="h-10 w-full rounded-sm border border-border/34 bg-card pl-10 pr-10 text-sm text-txt placeholder:text-muted     disabled:cursor-not-allowed disabled:opacity-50 "
           {...props}
         />
         {loading ? (
@@ -51,7 +51,7 @@ export const SidebarSearchBar = React.forwardRef<
           <button
             type="button"
             aria-label={clearLabel}
-            className="absolute right-2.5 inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35"
+            className="absolute right-2.5 inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted transition-colors hover:text-txt   "
             onClick={onClear}
           >
             <X className="h-3.5 w-3.5" />

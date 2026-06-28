@@ -28,6 +28,17 @@ import {
   type VoiceSelfTestReport,
 } from "./voice-selftest-harness";
 
+declare global {
+  interface Window {
+    /** Legacy vendor-prefixed AudioContext (Safari / older WebKit). */
+    webkitAudioContext?: typeof AudioContext;
+    /** e2e automation hook — runs the self-test and returns its report. */
+    __voiceSelfTest?: (opts?: {
+      mode?: VoiceSelfTestMode;
+    }) => Promise<VoiceSelfTestReport>;
+  }
+}
+
 function detectPlatform(): VoiceSelfTestPlatform {
   if (isAndroid) return "android";
   if (isElectrobunRuntime()) return "desktop";
@@ -44,11 +55,7 @@ function resolveTtsRoute(
 }
 
 function getAudioCtx(): AudioContext {
-  const Ctor =
-    (window as unknown as { AudioContext?: typeof AudioContext })
-      .AudioContext ??
-    (window as unknown as { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext;
+  const Ctor = window.AudioContext ?? window.webkitAudioContext;
   if (!Ctor) throw new Error("AudioContext unavailable");
   return new Ctor();
 }
@@ -105,13 +112,7 @@ export function VoiceSelfTestShell() {
 
   // Expose the harness to automation + auto-run once on mount.
   useEffect(() => {
-    (
-      window as unknown as {
-        __voiceSelfTest?: (opts?: {
-          mode?: VoiceSelfTestMode;
-        }) => Promise<VoiceSelfTestReport>;
-      }
-    ).__voiceSelfTest = (opts) => run(opts?.mode ?? "wav-direct");
+    window.__voiceSelfTest = (opts) => run(opts?.mode ?? "wav-direct");
     void run("wav-direct");
   }, [run]);
 

@@ -14,9 +14,8 @@ const MODEL_TESTER_COMMAND_TO_TEST: Record<string, string> = {
 };
 
 // The TUI capability ids this view registers (matches plugin.ts `capabilities`
-// and the interact() handler below). Exported so ModelTesterTuiView surfaces them
-// as terminal commands instead of an empty list — without this the registered
-// capabilities never render in the terminal UI.
+// and the interact() handler below). The view bundle re-exports `interact`, so
+// the terminal surface dispatches these capabilities through the same handler.
 export const MODEL_TESTER_TUI_CAPABILITIES: readonly string[] = [
   "get-status",
   ...Object.keys(MODEL_TESTER_COMMAND_TO_TEST),

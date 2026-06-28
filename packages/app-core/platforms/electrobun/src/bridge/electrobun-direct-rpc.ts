@@ -15,10 +15,7 @@ import { Electroview } from "electrobun/view";
 import { httpErrorDiagnosticLevel } from "../diagnostic-format.js";
 import type { RpcMessageListener } from "../types.js";
 import { getBrowserTabsRendererImpl } from "./browser-tabs-renderer-registry.js";
-import {
-  type ElectrobunBootConfigWindow,
-  updateElectrobunBootConfig,
-} from "./electrobun-boot-config.js";
+import { updateElectrobunBootConfig } from "./electrobun-boot-config.js";
 import { ensureElectrobunGlobal } from "./electrobun-stub.js";
 
 type RendererRequestHandler = (params: unknown) => Promise<unknown>;
@@ -66,8 +63,21 @@ ensureElectrobunGlobal();
 
 function dispatchMessage(messageName: string, payload: unknown): void {
   if (messageName === "apiBaseUpdate") {
-    const apiBaseUpdate = payload as { base: string; token?: string };
+    const apiBaseUpdate = payload as {
+      base: string;
+      token?: string;
+      externalApiBase?: string | null;
+    };
     window.__ELIZA_API_BASE__ = apiBaseUpdate.base;
+    if (
+      typeof apiBaseUpdate.externalApiBase === "string" &&
+      apiBaseUpdate.externalApiBase.trim()
+    ) {
+      window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__ =
+        apiBaseUpdate.externalApiBase.trim();
+    } else {
+      Reflect.deleteProperty(window, "__ELIZA_DESKTOP_EXTERNAL_API_BASE__");
+    }
     if (apiBaseUpdate.token) {
       Object.defineProperty(window, "__ELIZA_API_TOKEN__", {
         value: apiBaseUpdate.token,
@@ -79,13 +89,10 @@ function dispatchMessage(messageName: string, payload: unknown): void {
     // Propagate to boot config so the appClient picks up port changes.
     // We modify it directly instead of importing @elizaos/app-core
     // to prevent bundling React and the entire UI layer into the preload script.
-    updateElectrobunBootConfig(
-      window as unknown as ElectrobunBootConfigWindow,
-      {
-        apiBase: apiBaseUpdate.base,
-        ...(apiBaseUpdate.token ? { apiToken: apiBaseUpdate.token } : {}),
-      },
-    );
+    updateElectrobunBootConfig(window, {
+      apiBase: apiBaseUpdate.base,
+      ...(apiBaseUpdate.token ? { apiToken: apiBaseUpdate.token } : {}),
+    });
   }
 
   const listeners = listenersByRpcMessage[messageName];
@@ -202,6 +209,7 @@ declare global {
   interface Window {
     __ELIZA_API_BASE__?: string;
     __ELIZA_API_TOKEN__: string;
+    __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: string;
     __ELIZA_ELECTROBUN_RPC__?: typeof electrobunRpc;
   }
 }

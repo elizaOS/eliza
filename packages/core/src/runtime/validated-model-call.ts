@@ -3,7 +3,7 @@
  * {@link IAgentRuntime.useModel}.
  *
  * WHY THIS EXISTS:
- * For local models (e.g. eliza-1, 0.8B Qwen 3.5) we constrain output at the
+ * For local models (e.g. Eliza-1/Gemma local tiers) we constrain output at the
  * sampler with GBNF grammars, so the model *cannot* emit out-of-schema values.
  * For remote models (Anthropic, OpenAI, Cerebras llama3.1-8b, etc.) we have no
  * such guarantee — a parse-valid response can still contain out-of-enum values

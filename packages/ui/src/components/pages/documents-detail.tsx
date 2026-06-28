@@ -67,8 +67,7 @@ export function DocumentViewer({
 
   useEffect(() => {
     const id = documentId ?? "";
-    const refreshToken = reloadToken;
-    void refreshToken;
+    void reloadToken; // re-run on manual refresh (kept in deps below)
     if (!id) {
       setDoc(null);
       setFragments([]);
@@ -214,7 +213,7 @@ export function DocumentViewer({
   };
 
   return (
-    <PagePanel className="flex flex-col overflow-hidden !rounded-none !border-0 !bg-transparent !shadow-none !ring-0">
+    <PagePanel className="flex flex-col overflow-hidden !rounded-none !border-0 !bg-transparent !shadow-none ">
       <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
         {loading && (
           <div className="py-10 text-center font-bold tracking-wide text-muted animate-pulse">
@@ -223,16 +222,12 @@ export function DocumentViewer({
           </div>
         )}
 
-        {error && (
-          <div className="rounded-sm border border-danger/25 bg-danger/10 py-8 text-center text-sm font-medium text-danger">
-            {error}
-          </div>
-        )}
+        {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
 
         {!loading && !error && !doc && (
           <PagePanel.Empty
             variant="inset"
-            className="px-0 py-12 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+            className="px-0 py-12 !rounded-none !border-0 !bg-transparent !shadow-none "
             description={t("documentsview.NoDocumentSelectedDesc", {
               defaultValue:
                 "Select a document from the list to view its fragments and metadata.",
@@ -386,11 +381,8 @@ export function DocumentViewer({
 
             <PagePanel
               variant="inset"
-              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
             >
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                {t("common.preview", { defaultValue: "Preview" })}
-              </div>
               {editing ? (
                 <Textarea
                   value={draftText}
@@ -413,13 +405,8 @@ export function DocumentViewer({
 
             <PagePanel
               variant="inset"
-              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
             >
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                {t("documentsview.FragmentsLabel", {
-                  defaultValue: "Fragments",
-                })}
-              </div>
               <div className="divide-y divide-border/20">
                 {fragments.map((fragment, index) => {
                   const createdLabel = formatDocumentTimestamp(
@@ -478,7 +465,7 @@ export function DocumentViewer({
                 {fragments.length === 0 && (
                   <PagePanel.Empty
                     variant="inset"
-                    className="min-h-[8rem] py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+                    className="min-h-[8rem] py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
                     title={t("documentsview.NoFragmentsFound")}
                   />
                 )}

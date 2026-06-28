@@ -120,7 +120,7 @@ export function AgentPicker({
               type="button"
               data-testid="onboarding-agent-retry"
               onClick={onRetry}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-opacity hover:opacity-90 active:scale-[0.98] motion-reduce:active:scale-100"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] motion-reduce:active:scale-100"
             >
               <RefreshCw className="h-4 w-4" />
               Try again
@@ -149,7 +149,7 @@ export function AgentPicker({
                   disabled={disabled}
                   aria-current={isActive ? "true" : undefined}
                   onClick={() => onPick(agent.agent_id)}
-                  className="group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-4 py-3.5 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:active:scale-100"
+                  className="group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-4 py-3.5 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:active:scale-100"
                 >
                   <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]">
                     <Bot className="h-5 w-5 text-white/90" />
@@ -209,7 +209,7 @@ export function AgentPicker({
               data-testid="onboarding-agent-create"
               disabled={binding}
               onClick={onCreateNew}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100"
             >
               {binding ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

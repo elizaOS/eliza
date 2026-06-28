@@ -178,6 +178,11 @@ export function AppDomains({ appId }: AppDomainsProps) {
     const primaryDomain = domains.find((d) => d.isPrimary);
     if (primaryDomain?.customDomain && !primaryDomain.customDomainVerified) {
       pollIntervalRef.current = setInterval(() => {
+        if (
+          typeof document !== "undefined" &&
+          document.visibilityState !== "visible"
+        )
+          return;
         checkDomainStatus(primaryDomain.customDomain ?? "", true);
       }, 15000);
 
@@ -495,7 +500,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setNewDomain("");
                             }
                           }}
-                          className="flex-1 bg-black/30 border-white/10 focus:border-[#FF5800]/50 rounded-sm placeholder:text-neutral-600"
+                          className="flex-1 bg-black/30 border-white/10  rounded-sm placeholder:text-neutral-600"
                         />
                         <div className="flex gap-2">
                           <Button
@@ -947,7 +952,7 @@ function DnsConfigPanel({
           {lastChecked && (
             <span className="text-xs text-neutral-500 hidden sm:block">
               {t("cloud.appDomains.lastChecked", {
-                time: lastChecked.toLocaleTimeString(),
+                time: lastChecked.toLocaleTimeString("en-US"),
                 defaultValue: "Last checked: {{time}}",
               })}
             </span>

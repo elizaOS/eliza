@@ -106,7 +106,7 @@ export const PagePanelCollapsibleSection = React.forwardRef<
       className={cn(
         expandOnCollapsedSurfaceClick &&
           !isExpanded &&
-          "cursor-pointer transition-[border-color,box-shadow,transform] hover:border-border/60 ",
+          "cursor-pointer transition-colors hover:text-txt",
         className,
       )}
       onClick={handleSurfaceClick}
@@ -141,9 +141,7 @@ export const PagePanelCollapsibleSection = React.forwardRef<
         bordered={isExpanded && bordered}
       />
       {isExpanded ? (
-        <div className={cn("px-4 pb-4 pt-1 sm:px-5 sm:pb-5", bodyClassName)}>
-          {children}
-        </div>
+        <div className={cn("px-1 pb-3 pt-1", bodyClassName)}>{children}</div>
       ) : null}
     </PagePanelRoot>
   );

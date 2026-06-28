@@ -12,6 +12,7 @@ import {
 import { getActivityTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import {
   getNumberValue,
   getRecordValue,
@@ -219,7 +220,7 @@ export const getActivityAction: Action = {
 
             limit = getNumberValue(parsed.limit) || 10;
           } catch (parseError) {
-            logger.warn("Failed to parse activity filters:", parseError);
+            logger.warn("Failed to parse activity filters:", formatUnknownError(parseError));
           }
         }
       }
@@ -248,7 +249,7 @@ export const getActivityAction: Action = {
           : "No recent Linear activity found.";
         await callback?.({
           text: noActivityMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: noActivityMessage,
@@ -280,7 +281,7 @@ export const getActivityAction: Action = {
       const resultMessage = `${headerText}\n\n${activityText}`;
       await callback?.({
         text: resultMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
 
       return {
@@ -315,11 +316,11 @@ export const getActivityAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to get activity:", error);
+      logger.error("Failed to get activity:", formatUnknownError(error));
       const errorMessage = `❌ Failed to get activity: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,

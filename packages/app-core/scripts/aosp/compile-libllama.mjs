@@ -29,8 +29,11 @@
 //   its musl Android targets, so the resulting ABI matches what bun expects
 //   when it dlopen()s libllama.so via bun:ffi at runtime.
 //
-//   Minimum tested: zig 0.13.0. Earlier versions ship older libc++ headers
-//   that miss <bit> / <span> shims llama.cpp's CMake feature checks rely on.
+//   Arm64/aarch64-musl is pinned to zig 0.13.x. Earlier versions ship older
+//   libc++ headers that miss <bit> / <span> shims llama.cpp's CMake feature
+//   checks rely on, and newer host toolchains have regressed this lane (zig
+//   0.16's lld SIGSEGVs the aarch64-linux-musl link). Keep that target on the
+//   tested 0.13 line until the upstream linker crash is cleared.
 //
 // llama.cpp pin (matches the fork the runtime loads via
 // plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts):
@@ -159,16 +162,18 @@
 //   call (Commandment 8: don't hide broken pipelines behind fallbacks).
 //
 // Repo-root resolution:
-//   The script defaults `--assets-dir` to
-//   `<repoRoot>/packages/app/android/app/src/main/assets/agent` and
-//   `--cache-dir` to `~/.cache/eliza-android-agent/llama-cpp-<tag>`.
+//   The script defaults `--assets-dir` to the first app shell found under
+//   `<repoRoot>/packages/app`, `<repoRoot>/apps/app`, or
+//   `<repoRoot>/eliza/packages/app`, then appends
+//   `android/app/src/main/assets/agent`. `--cache-dir` defaults to
+//   `~/.cache/eliza-android-agent/llama-cpp-<tag>`.
 //   `<repoRoot>` is derived from this script's location: walk up from
 //   `eliza/packages/app-core/scripts/aosp/` to the host repo root by
 //   default, but when the parent host repo invokes this via the
 //   `eliza/` submodule the same algorithm finds the host repo root
 //   (it stops at the first ancestor that has a `package.json`).
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -182,7 +187,19 @@ import {
 import { verifyFusedSymbols } from "../build-helpers/verify-fused-symbols.mjs";
 import { patchVulkanKernels } from "../kernel-patches/vulkan-kernels.mjs";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
+import {
+  compareSemver,
+  resolveAndroidNdkHostDir,
+  resolveDefaultAndroidAssetsDir as resolveDefaultAndroidAssetsDirForRoot,
+  resolveHomebrewFormulaIncludeDirs,
+} from "./compile-libllama-paths.mjs";
 import { main as compileShimMain } from "./compile-shim.mjs";
+
+export {
+  compareSemver,
+  resolveAndroidNdkHostDir,
+  resolveHomebrewFormulaIncludeDirs,
+};
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // Walk up from `eliza/packages/app-core/scripts/aosp/` until we hit
@@ -190,6 +207,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // On a parent-host invocation that's `<host-root>`; when running
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const RECURSIVE_CLEANUP_SCRIPT = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 // elizaOS/llama.cpp @ 33c888a7b. Composes TBQ (apothic) +
 // QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + MTP spec-decode
@@ -212,9 +235,17 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
 export const LLAMA_CPP_TAG = "v1.2.0-eliza";
-export const LLAMA_CPP_COMMIT = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
+// Must track the `plugins/plugin-local-inference/native/llama.cpp` submodule
+// gitlink on develop. The old pin `33c888a7be` predated the Mali flash-attn
+// subgroup-race fix (the `VK_VENDOR_ID_ARM` `disable_subgroups` branch), so the
+// fused Vulkan lib built from it SIGABRTed mid-decode on Mali GPUs (#9508). This
+// commit is a forward descendant that bakes the mitigation in; the
+// `verify-fused-symbols` gate enforces the marker is present post-build.
+export const LLAMA_CPP_COMMIT = "32a7911dced6230ce544c43a6399f5bd721cab90";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
+export const AARCH64_MUSL_ZIG_MIN_VERSION = "0.13.0";
+export const AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE = "0.14.0";
 // Floor for the RVV-on riscv64 build. Zig 0.13's bundled LLVM rejects the
 // GCC-style `-march=rv64gcv*` ISA string the vendored llama.cpp's
 // ggml-cpu/CMakeLists hard-codes when GGML_RVV / GGML_RV_ZFH / etc. are ON;
@@ -227,6 +258,31 @@ export const MIN_ZIG_VERSION = "0.13.0";
 // q5_1/q8_0/q8_1/q4_K/q5_K/q6_K/q8_K/iq*/tq1_0/tq2_0/mxfp4 in
 // ggml/src/ggml-cpu/arch/riscv/quants.c) light up.
 export const MIN_ZIG_RVV_VERSION = "0.14.0";
+
+// Pinned zig series (MAJOR.MINOR) for the aarch64/x86_64 `*-linux-musl`
+// cross-link that produces the Android/cuttlefish + fused (libelizainference)
+// libs. zig 0.16 bundles an LLVM whose `lld` SIGSEGVs while linking the
+// aarch64-linux-musl shared object — a host-toolchain regression that aborts
+// the link with no actionable diagnostic (it looks like an OOM / random crash,
+// not a config error). zig 0.13.x links these targets cleanly, so we pin the
+// series rather than only enforcing a floor: a newer-is-fine `>=` check would
+// silently route an operator's `brew install zig` (0.16) straight into the
+// SIGSEGV. This is intentionally a series pin, not an exact-patch pin — any
+// 0.13.x patch release links fine. The riscv64 RVV path keeps its own
+// MIN_ZIG_RVV_VERSION floor (it needs 0.14+ for the RVV ISA string) and is a
+// distinct musl triple, so it is exempt from this pin (see
+// `assertZigPinForTargets`). An operator who has independently verified their
+// zig's lld links aarch64-linux-musl can override with
+// ELIZA_ALLOW_UNPINNED_ZIG=1, but the default refuses the broken toolchain.
+export const PINNED_ZIG_SERIES_FOR_MUSL_LINK = "0.13";
+// zig triples whose lld link is covered by the 0.13.x pin above. riscv64 is
+// deliberately absent: its RVV build path requires 0.14+ and is gated by
+// MIN_ZIG_RVV_VERSION instead.
+export const PINNED_ZIG_LINK_TRIPLES = Object.freeze([
+  "aarch64-linux-musl",
+  "x86_64-linux-musl",
+]);
+export const ALLOW_UNPINNED_ZIG_ENV = "ELIZA_ALLOW_UNPINNED_ZIG";
 
 // The in-repo submodule checkout of the fork.
 // `repoRoot` resolves to the repo root that contains a top-level package.json.
@@ -267,6 +323,33 @@ export const ABI_TARGETS = [
     cmakeProcessor: "riscv64",
   },
 ];
+
+/**
+ * Map a list of Android ABI directory names (`arm64-v8a` | `x86_64` |
+ * `riscv64`) to the distinct zig cross-link triples (`zigTarget`) they build
+ * through. Used to decide which targets the zig-series pin applies to. Throws
+ * on an unknown ABI rather than silently dropping it.
+ *
+ * Exported for tests.
+ *
+ * @param {readonly string[]} abis
+ * @returns {string[]}
+ */
+export function zigTriplesForAbis(abis) {
+  const triples = new Set();
+  for (const abi of abis) {
+    const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
+    if (!target) {
+      throw new Error(
+        `[compile-libllama] unknown Android ABI ${abi}; expected one of ${ABI_TARGETS.map(
+          (t) => t.androidAbi,
+        ).join(", ")}.`,
+      );
+    }
+    triples.add(target.zigTarget);
+  }
+  return [...triples];
+}
 
 // `*-fused` android targets that are wired to real AOSP artifacts.
 // Membership in this set is the only way the fused (omnivoice-grafted) build
@@ -336,6 +419,20 @@ export function parseAndroidTarget(target) {
   return { target, arch, backend, fused, androidAbi };
 }
 
+function removeDirectoryRecursive(targetPath) {
+  try {
+    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(detail || error?.message || String(error), {
+      cause: error,
+    });
+  }
+}
+
 /**
  * GGML_VULKAN CMake flags for the android-arm64 Vulkan backend. Points cmake at
  * the NDK's host `glslc` (the shader compiler ggml-vulkan's codegen invokes),
@@ -368,11 +465,24 @@ export function resolveAndroidVulkanCmakeFlags({
     );
   }
   const ndk = path.join(ndkRoot, ndks[ndks.length - 1]);
-  const sysroot = path.join(
+  // Resolve the NDK host-prebuilt dir from the actual host, not a hardcoded
+  // `linux-x86_64` — the same NDK ships `darwin-x86_64` on macOS hosts, so
+  // hardcoding linux made the Android Vulkan build Linux-only (#9508).
+  const prebuiltRoot = path.join(ndk, "toolchains/llvm/prebuilt");
+  const hostDir = resolveAndroidNdkHostDir(prebuiltRoot);
+  if (!hostDir) {
+    throw new Error(
+      `[compile-libllama] No NDK host toolchain under ${prebuiltRoot} ` +
+        `(need a host-matching linux/darwin/windows prebuilt).`,
+    );
+  }
+  const sysroot = path.join(prebuiltRoot, hostDir, "sysroot");
+  const glslc = path.join(
     ndk,
-    "toolchains/llvm/prebuilt/linux-x86_64/sysroot",
+    "shader-tools",
+    hostDir,
+    os.platform() === "win32" ? "glslc.exe" : "glslc",
   );
-  const glslc = path.join(ndk, "shader-tools/linux-x86_64/glslc");
   const libBase = path.join(sysroot, "usr/lib/aarch64-linux-android");
   const apis = fs.existsSync(libBase)
     ? fs
@@ -401,6 +511,7 @@ export function resolveAndroidVulkanCmakeFlags({
     process.env.VULKAN_SDK && path.join(process.env.VULKAN_SDK, "include"),
     "/usr/include",
     "/usr/local/include",
+    ...resolveHomebrewFormulaIncludeDirs("vulkan-headers"),
   ].filter(Boolean);
   const hostVulkanDir = headerCandidates
     .map((d) => path.join(d, "vulkan"))
@@ -417,7 +528,7 @@ export function resolveAndroidVulkanCmakeFlags({
     ? path.resolve(stagingDir)
     : path.join(os.tmpdir(), "eliza-vulkan-headers");
   const stagedVulkan = path.join(incRoot, "vulkan");
-  fs.rmSync(stagedVulkan, { recursive: true, force: true });
+  removeDirectoryRecursive(stagedVulkan);
   fs.mkdirSync(incRoot, { recursive: true });
   fs.cpSync(hostVulkanDir, stagedVulkan, { recursive: true });
   // vulkan_core.h `#include <vk_video/...>` the video-codec extension headers,
@@ -426,7 +537,7 @@ export function resolveAndroidVulkanCmakeFlags({
   const hostVkVideoDir = path.join(path.dirname(hostVulkanDir), "vk_video");
   if (fs.existsSync(hostVkVideoDir)) {
     const stagedVkVideo = path.join(incRoot, "vk_video");
-    fs.rmSync(stagedVkVideo, { recursive: true, force: true });
+    removeDirectoryRecursive(stagedVkVideo);
     fs.cpSync(hostVkVideoDir, stagedVkVideo, { recursive: true });
   }
 
@@ -442,6 +553,7 @@ export function resolveAndroidVulkanCmakeFlags({
     process.env.VULKAN_SDK && path.join(process.env.VULKAN_SDK, "include"),
     "/usr/include",
     "/usr/local/include",
+    ...resolveHomebrewFormulaIncludeDirs("spirv-headers"),
   ].filter(Boolean);
   const hostSpirvRoot = spirvCandidates.find((d) =>
     fs.existsSync(path.join(d, "spirv/unified1/spirv.hpp")),
@@ -455,8 +567,10 @@ export function resolveAndroidVulkanCmakeFlags({
     );
   }
   const stagedSpirv = path.join(incRoot, "spirv");
-  fs.rmSync(stagedSpirv, { recursive: true, force: true });
-  fs.cpSync(path.join(hostSpirvRoot, "spirv"), stagedSpirv, { recursive: true });
+  removeDirectoryRecursive(stagedSpirv);
+  fs.cpSync(path.join(hostSpirvRoot, "spirv"), stagedSpirv, {
+    recursive: true,
+  });
 
   for (const [name, p] of [
     ["vulkan/vulkan.hpp", path.join(stagedVulkan, "vulkan.hpp")],
@@ -477,19 +591,13 @@ export function resolveAndroidVulkanCmakeFlags({
   ];
 }
 
+export function resolveDefaultAndroidAssetsDir({ root = repoRoot } = {}) {
+  return resolveDefaultAndroidAssetsDirForRoot({ root });
+}
+
 export function parseArgs(argv) {
   const args = {
-    androidAssetsDir: path.join(
-      repoRoot,
-      "packages",
-      "app",
-      "android",
-      "app",
-      "src",
-      "main",
-      "assets",
-      "agent",
-    ),
+    androidAssetsDir: resolveDefaultAndroidAssetsDir(),
     cacheDir: path.join(
       os.homedir(),
       ".cache",
@@ -507,6 +615,15 @@ export function parseArgs(argv) {
     srcDir: null,
     cacheDirExplicit: false,
     dryRun: false,
+    // Optional source dir of prebuilt LiteRT-LM `.litertlm` text artifacts to
+    // stage into the on-device bundle assets (`models/text/`), parallel to the
+    // `.so`/.gguf staging. Defaults to ELIZA_LITERTLM_DIR; absent ⇒ no-op (the
+    // GGUF-only default bundle is byte-identical).
+    litertlmDir:
+      process.env.ELIZA_LITERTLM_DIR &&
+      process.env.ELIZA_LITERTLM_DIR.trim().length > 0
+        ? path.resolve(process.env.ELIZA_LITERTLM_DIR.trim())
+        : null,
   };
 
   const readFlagValue = (flag, index) => {
@@ -528,6 +645,9 @@ export function parseArgs(argv) {
       i += 1;
     } else if (arg === "--src-dir") {
       args.srcDir = path.resolve(readFlagValue(arg, i));
+      i += 1;
+    } else if (arg === "--litertlm-dir") {
+      args.litertlmDir = path.resolve(readFlagValue(arg, i));
       i += 1;
     } else if (arg === "--abi") {
       const value = readFlagValue(arg, i);
@@ -562,7 +682,11 @@ export function parseArgs(argv) {
         "Usage: node eliza/packages/app-core/scripts/aosp/compile-libllama.mjs " +
           "[--assets-dir <PATH>] [--cache-dir <PATH>] [--src-dir <PATH>] " +
           "[--abi <arm64-v8a|x86_64|riscv64>] [--target <android-<arch>-<backend>[-fused]>] " +
-          "[--jobs <N>] [--skip-if-present] [--dry-run]\n" +
+          "[--litertlm-dir <PATH>] [--jobs <N>] [--skip-if-present] [--dry-run]\n" +
+          "  --litertlm-dir <PATH>  Stage prebuilt LiteRT-LM .litertlm text artifacts from\n" +
+          "                    PATH into the on-device bundle assets (models/text/), parallel\n" +
+          "                    to the .so/.gguf staging. Defaults to ELIZA_LITERTLM_DIR.\n" +
+          "                    Omit ⇒ GGUF-only bundle (the default).\n" +
           "  --target <TRIPLE>  Build a single target: android-{arm64,x86_64,riscv64}-cpu[-fused].\n" +
           "                    riscv64 requires NDK r27+ (first stable NDK with a real\n" +
           "                    riscv64-linux-android sysroot); older NDKs will fail the\n" +
@@ -599,28 +723,6 @@ export function parseArgs(argv) {
   }
 
   return args;
-}
-
-/**
- * Compare two semver-ish version strings (zig follows MAJOR.MINOR.PATCH for
- * stable releases; dev builds add `-dev.NNN+sha` which we strip).
- * Returns negative when `a < b`, positive when `a > b`, zero on equal.
- */
-export function compareSemver(a, b) {
-  const norm = (v) =>
-    String(v)
-      .replace(/^v/, "")
-      .split(/[-+]/)[0]
-      .split(".")
-      .map((n) => Number.parseInt(n, 10) || 0);
-  const aa = norm(a);
-  const bb = norm(b);
-  for (let i = 0; i < Math.max(aa.length, bb.length); i += 1) {
-    const x = aa[i] ?? 0;
-    const y = bb[i] ?? 0;
-    if (x !== y) return x - y;
-  }
-  return 0;
 }
 
 /**
@@ -662,6 +764,90 @@ export function probeZig({
     );
   }
   return version;
+}
+
+/**
+ * Extract the MAJOR.MINOR series from a zig version string. `0.13.0` -> `0.13`,
+ * `0.13.0-dev.46+abc` -> `0.13`. Returns `null` for an unparseable input so
+ * callers can decide how to treat a missing/garbage version.
+ *
+ * Exported for tests.
+ *
+ * @param {string} version
+ * @returns {string | null}
+ */
+export function zigSeries(version) {
+  if (typeof version !== "string") return null;
+  const parts = version
+    .replace(/^v/, "")
+    .split(/[-+]/)[0]
+    .split(".")
+    .map((n) => Number.parseInt(n, 10));
+  if (
+    parts.length < 2 ||
+    !Number.isFinite(parts[0]) ||
+    !Number.isFinite(parts[1])
+  ) {
+    return null;
+  }
+  return `${parts[0]}.${parts[1]}`;
+}
+
+/**
+ * Enforce the zig-series pin (PINNED_ZIG_SERIES_FOR_MUSL_LINK) for any requested
+ * target whose link goes through one of PINNED_ZIG_LINK_TRIPLES (the
+ * aarch64/x86_64 `*-linux-musl` Android / fused libs). zig 0.16's bundled lld
+ * SIGSEGVs that link, so a plain `>=` floor is not enough — we must reject a
+ * newer-but-broken toolchain too. riscv64-only target sets are exempt (their
+ * RVV path needs 0.14+, gated separately by MIN_ZIG_RVV_VERSION).
+ *
+ * Pure + deterministic: takes the detected version + the resolved triple list +
+ * env, throws on a pin violation, returns nothing on success. No side effects.
+ *
+ * Exported for tests.
+ *
+ * @param {object} params
+ * @param {string} params.version    zig version string from probeZig().
+ * @param {readonly string[]} params.zigTriples  the `zigTarget` triples the run
+ *   will cross-link (e.g. ["aarch64-linux-musl"]).
+ * @param {NodeJS.ProcessEnv} [params.env]
+ */
+export function assertZigPinForTargets({
+  version,
+  zigTriples,
+  env = process.env,
+}) {
+  const pinnedTriples = zigTriples.filter((t) =>
+    PINNED_ZIG_LINK_TRIPLES.includes(t),
+  );
+  if (pinnedTriples.length === 0) {
+    // No pinned-link triple in this run (e.g. riscv64-only) — nothing to pin.
+    return;
+  }
+  if (env[ALLOW_UNPINNED_ZIG_ENV] === "1") {
+    console.warn(
+      `[compile-libllama] ${ALLOW_UNPINNED_ZIG_ENV}=1 set; skipping the zig ` +
+        `${PINNED_ZIG_SERIES_FOR_MUSL_LINK}.x pin for ${pinnedTriples.join(", ")} ` +
+        `(zig ${version}). Only safe if you have verified this zig's lld links ` +
+        `aarch64-linux-musl without SIGSEGV.`,
+    );
+    return;
+  }
+  const series = zigSeries(version);
+  if (series !== PINNED_ZIG_SERIES_FOR_MUSL_LINK) {
+    throw new Error(
+      `[compile-libllama] zig ${version} (series ${series ?? "unknown"}) is not ` +
+        `the pinned zig ${PINNED_ZIG_SERIES_FOR_MUSL_LINK}.x required to link ` +
+        `${pinnedTriples.join(", ")}.\n` +
+        `zig 0.16's bundled lld SIGSEGVs the aarch64-linux-musl link, aborting ` +
+        `the fused/Android build with no actionable diagnostic; zig 0.13.x links ` +
+        `it cleanly. Install zig ${PINNED_ZIG_SERIES_FOR_MUSL_LINK}.x and re-run:\n` +
+        `  download the 0.13.x tarball from https://ziglang.org/download/ and put ` +
+        `\`zig\` on PATH (the package-manager \`zig\` is frequently 0.16).\n` +
+        `If you have independently verified your zig's lld links ` +
+        `aarch64-linux-musl, override with ${ALLOW_UNPINNED_ZIG_ENV}=1.`,
+    );
+  }
 }
 
 /**
@@ -834,7 +1020,7 @@ export function ensureLlamaCppCheckout({
     log(
       `[compile-libllama] Cloning llama.cpp ${LLAMA_CPP_TAG} into ${cacheDir}`,
     );
-    fs.rmSync(cacheDir, { recursive: true, force: true });
+    removeDirectoryRecursive(cacheDir);
     fs.mkdirSync(cacheDir, { recursive: true });
     spawn(
       "git",
@@ -855,6 +1041,16 @@ export function ensureLlamaCppCheckout({
       cwd: cacheDir,
     });
   }
+  // The pinned commit is authoritative and may NOT be the tag tip — the moving
+  // LLAMA_CPP_TAG and LLAMA_CPP_COMMIT can diverge (e.g. the commit lives on a
+  // feature branch while the tag was re-pointed at a release). A
+  // `--branch <tag>` shallow clone only carries the tag's commit, so a bare
+  // `git checkout <commit>` then fails with "unable to read tree". Fetch the
+  // exact pinned commit by sha first (GitHub serves any ref-reachable sha) so
+  // the working tree always lands on LLAMA_CPP_COMMIT, never the tag.
+  spawn("git", ["fetch", "--depth", "1", "origin", LLAMA_CPP_COMMIT], {
+    cwd: cacheDir,
+  });
   spawn("git", ["checkout", "--detach", LLAMA_CPP_COMMIT], {
     cwd: cacheDir,
   });
@@ -1092,18 +1288,18 @@ export function ensureZigDrivers({
   // forwards the whole array with every quote and space preserved.
   const riscv64ArgFilter =
     abi === "riscv64" && !riscv64MarchPassthrough
-      ? '_n=$#\n' +
-        'i=0\n' +
-        'while [ $i -lt $_n ]; do\n' +
-        '  arg=$1\n' +
-        '  shift\n' +
-        '  i=$((i+1))\n' +
+      ? "_n=$#\n" +
+        "i=0\n" +
+        "while [ $i -lt $_n ]; do\n" +
+        "  arg=$1\n" +
+        "  shift\n" +
+        "  i=$((i+1))\n" +
         '  case "$arg" in\n' +
-        '    -march=rv64gc|-march=rv64gc_*) ;;\n' +
-        '    -mabi=lp64d|-mabi=lp64) ;;\n' +
+        "    -march=rv64gc|-march=rv64gc_*) ;;\n" +
+        "    -mabi=lp64d|-mabi=lp64) ;;\n" +
         '    *) set -- "$@" "$arg" ;;\n' +
-        '  esac\n' +
-        'done\n'
+        "  esac\n" +
+        "done\n"
       : null;
 
   // arm64: the ggml-cpu CMakeLists emits the GCC-style ISA string
@@ -1121,22 +1317,22 @@ export function ensureZigDrivers({
   // through untouched (there shouldn't be one for arm64).
   const arm64ArgFilter =
     abi === "arm64-v8a"
-      ? '_n=$#\n' +
-        'i=0\n' +
-        'while [ $i -lt $_n ]; do\n' +
-        '  arg=$1\n' +
-        '  shift\n' +
-        '  i=$((i+1))\n' +
+      ? "_n=$#\n" +
+        "i=0\n" +
+        "while [ $i -lt $_n ]; do\n" +
+        "  arg=$1\n" +
+        "  shift\n" +
+        "  i=$((i+1))\n" +
         '  case "$arg" in\n' +
-        '    -march=armv8.*-a+*)\n' +
+        "    -march=armv8.*-a+*)\n" +
         '      _feats=""\n' +
-        '      case "$arg" in *+dotprod*) _feats="${_feats}+dotprod" ;; esac\n' +
-        '      case "$arg" in *+i8mm*) _feats="${_feats}+i8mm" ;; esac\n' +
-        '      case "$arg" in *+fp16*) _feats="${_feats}+fullfp16" ;; esac\n' +
-        '      set -- "$@" "-mcpu=generic${_feats}" ;;\n' +
+        `      case "$arg" in *+dotprod*) _feats="\${_feats}+dotprod" ;; esac\n` +
+        `      case "$arg" in *+i8mm*) _feats="\${_feats}+i8mm" ;; esac\n` +
+        `      case "$arg" in *+fp16*) _feats="\${_feats}+fullfp16" ;; esac\n` +
+        `      set -- "$@" "-mcpu=generic\${_feats}" ;;\n` +
         '    *) set -- "$@" "$arg" ;;\n' +
-        '  esac\n' +
-        'done\n'
+        "  esac\n" +
+        "done\n"
       : null;
 
   const argFilter = riscv64ArgFilter ?? arm64ArgFilter;
@@ -1241,7 +1437,10 @@ export function buildLibllamaForAbi({
         `reason=${riscv64Plan.reason}`,
     );
   }
-  const riscv64BuildFlags = riscv64CmakeFlagsForPlan({ abi, plan: riscv64Plan });
+  const riscv64BuildFlags = riscv64CmakeFlagsForPlan({
+    abi,
+    plan: riscv64Plan,
+  });
 
   // x86_64: the mobile x86_64 ABI only ever runs on cuttlefish / the Android
   // x86_64 emulator (both KVM-backed by an AVX2-class host, and our emulator
@@ -1421,12 +1620,28 @@ export function buildLibllamaForAbi({
   // The target name is `llama-server` on the apothic fork (verified against
   // the upstream b8198 examples/server/CMakeLists.txt: `add_executable(
   // ${TARGET} server.cpp ...)` with `set(TARGET llama-server)`).
+  //
+  // Non-fatal for the library build: llama-server is the optional AOSP
+  // MTP/spec-decode HTTP path, but the required in-process libs below
+  // (libllama.so/libggml*.so and, for fused targets, libelizainference.so) are
+  // verified separately. On the musl cross-link this target can fail to resolve
+  // its httplib/OpenSSL deps (undefined `httplib::*` / `SSLClient` symbols).
+  // In that case stage-android-agent warns about the missing server and runtime
+  // falls back to the non-MTP path instead of losing the whole native build.
   log(`[compile-libllama] Compiling llama-server for ${abi} with -j${jobs}`);
-  spawn(
-    "cmake",
-    ["--build", buildDir, "--target", "llama-server", "-j", String(jobs)],
-    {},
-  );
+  try {
+    spawn(
+      "cmake",
+      ["--build", buildDir, "--target", "llama-server", "-j", String(jobs)],
+      {},
+    );
+  } catch (err) {
+    log(
+      `[compile-libllama] WARN: llama-server failed to build for ${abi}; ` +
+        `continuing — it bundles nothing into the APK and libllama.so/libelizainference.so are unaffected. ` +
+        `Cause: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   // libllama.so and the ggml shared-library family are all transitive build
   // products of the `llama` target. b4500's NEEDED chain (verified via
@@ -1452,7 +1667,7 @@ export function buildLibllamaForAbi({
   let llamaOut = null;
   let ggmlOuts = [];
   let runtimeSiblingOuts = [];
-  let sonameAliases = [];
+  const sonameAliases = [];
   if (!isStaticFused) {
     const builtLlama = locateBuiltLib(buildDir, "libllama.so");
     if (!builtLlama) {
@@ -1614,7 +1829,6 @@ export function buildLibllamaForAbi({
     omnivoiceServer: fusedServerOut,
   };
 }
-
 
 /**
  * Find every `libggml*.so` under the build tree. b4500 shipped plain .so
@@ -1834,7 +2048,7 @@ function locateBuiltLib(buildDir, soName) {
  */
 // Cache of the resolved llvm-strip path (from the Android NDK toolchain).
 // Set once on first call so we don't re-walk the NDK dir for every artifact.
-let _ndkLlvmStripPathCache = undefined;
+let _ndkLlvmStripPathCache;
 function locateNdkLlvmStrip() {
   if (_ndkLlvmStripPathCache !== undefined) return _ndkLlvmStripPathCache;
   // Honor the same env-var ladder as build-llama-cpp-mtp's resolveAndroidNdk()
@@ -1932,11 +2146,9 @@ function stripBinary({ filePath, zigBin, log }) {
   // for riscv64 until Zig 0.14's objcopy lands across all build hosts.
   const llvmStrip = locateNdkLlvmStrip();
   if (llvmStrip) {
-    const llvmStripResult = spawnSync(
-      llvmStrip,
-      ["--strip-all", filePath],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
+    const llvmStripResult = spawnSync(llvmStrip, ["--strip-all", filePath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     if (llvmStripResult.status === 0) return true;
     log(
       `[compile-libllama] DEBUG: NDK llvm-strip (${llvmStrip}) failed ` +
@@ -1964,6 +2176,75 @@ export function applyOmnivoiceGraft({ srcDir: _srcDir, log = console.log }) {
     "[compile-libllama] omnivoice: merged in-fork path (legacy graft removed)",
   );
   return { mode: "merged", source: "tools/omnivoice" };
+}
+
+/**
+ * Stage prebuilt LiteRT-LM `.litertlm` text artifacts into the on-device
+ * bundle assets, parallel to the `.so` libs this script stages and the `.gguf`
+ * models `stage-default-models.mjs` stages. The destination is
+ * `<androidAssetsDir>/models/text/` — the same `text/` subdir the GGUF text
+ * weights land in (`models/text/eliza-1-<tier>-128k.gguf`) and the path the
+ * C-side `llm_backend_select` / `find_litertlm_artifact` probes at runtime
+ * (`<bundleRoot>/text/*.litertlm`, see
+ * `tools/omnivoice/src/backends/litert-backend.cpp`).
+ *
+ * GGUF stays the default: when no `litertlmDir` is configured (no
+ * `--litertlm-dir` / `ELIZA_LITERTLM_DIR`) or the dir holds no `.litertlm`,
+ * this is a no-op and the bundle is byte-identical to a GGUF-only build. A
+ * configured dir that does not exist is a hard error (the operator asked for
+ * LiteRT staging but pointed us at nothing — don't silently ship GGUF-only).
+ *
+ * `.litertlm` artifacts are model files, arch-independent like the GGUFs, so
+ * they are staged ONCE into the shared `models/text/` dir — not per-ABI.
+ *
+ * Exported for unit tests.
+ */
+export function stageLitertlmArtifacts({
+  litertlmDir,
+  androidAssetsDir,
+  log = console.log,
+  dryRun = false,
+}) {
+  if (!litertlmDir) return [];
+  if (!fs.existsSync(litertlmDir)) {
+    throw new Error(
+      `[compile-libllama] --litertlm-dir ${litertlmDir} does not exist. ` +
+        `Point it at a directory of prebuilt .litertlm artifacts, or omit it to ` +
+        `ship the GGUF-only bundle.`,
+    );
+  }
+  const artifacts = fs
+    .readdirSync(litertlmDir, { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith(".litertlm"))
+    .map((e) => e.name);
+  if (artifacts.length === 0) {
+    log(
+      `[compile-libllama] No .litertlm artifacts under ${litertlmDir}; LiteRT ` +
+        `staging is a no-op (GGUF-only bundle).`,
+    );
+    return [];
+  }
+  const textDir = path.join(androidAssetsDir, "models", "text");
+  if (dryRun) {
+    log(
+      `[compile-libllama] (dry-run) would stage ${artifacts.length} .litertlm ` +
+        `artifact(s) into ${textDir}: ${artifacts.join(", ")}`,
+    );
+    return artifacts.map((name) => path.join(textDir, name));
+  }
+  fs.mkdirSync(textDir, { recursive: true });
+  const staged = [];
+  for (const name of artifacts) {
+    const src = path.join(litertlmDir, name);
+    const dst = path.join(textDir, name);
+    fs.copyFileSync(src, dst);
+    staged.push(dst);
+    log(
+      `[compile-libllama] Staged LiteRT artifact ${name} -> ${dst} ` +
+        `(${(fs.statSync(dst).size / (1024 * 1024)).toFixed(2)} MB).`,
+    );
+  }
+  return staged;
 }
 
 /**
@@ -2004,6 +2285,12 @@ export function describeAndroidTargetDryRun({
   log(`  src=${srcDir}`);
   log(`  build=${buildDir}`);
   log(`  install=${abiAssetDir}`);
+  if (parsed.androidAbi === "arm64-v8a") {
+    log(
+      `  zig requirement: ${AARCH64_MUSL_ZIG_MIN_VERSION} <= version < ` +
+        `${AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE} (aarch64-linux-musl pin)`,
+    );
+  }
   if (parsed.fused) {
     log(`  omnivoice: merged in-fork path (tools/omnivoice/)`);
   }
@@ -2092,6 +2379,10 @@ export async function main(argv = process.argv.slice(2)) {
   if (!args.dryRun) {
     const zigVersion = probeZig();
     console.log(`[compile-libllama] Found zig ${zigVersion}`);
+    assertZigPinForTargets({
+      version: zigVersion,
+      zigTriples: zigTriplesForAbis(args.abis),
+    });
   } else {
     console.log(`[compile-libllama] (dry-run) skipping zig toolchain probe`);
   }
@@ -2224,6 +2515,14 @@ export async function main(argv = process.argv.slice(2)) {
   // the production-landing checklist.
   await compileShimMain(["--skip-if-present"]);
 
+  // Stage any prebuilt LiteRT-LM `.litertlm` text artifacts into the shared
+  // on-device bundle assets (arch-independent, so once — not per ABI). No-op
+  // unless --litertlm-dir / ELIZA_LITERTLM_DIR is configured; GGUF stays default.
+  stageLitertlmArtifacts({
+    litertlmDir: args.litertlmDir,
+    androidAssetsDir: args.androidAssetsDir,
+  });
+
   console.log(
     `[compile-libllama] Built libllama.so + libggml*.so + llama-server for ` +
       `${args.abis.join(", ")} (${srcDescription}).`,
@@ -2296,6 +2595,10 @@ export async function mainTargets(args) {
   if (!args.dryRun) {
     const zigVersion = probeZig();
     console.log(`[compile-libllama] Found zig ${zigVersion}`);
+    assertZigPinForTargets({
+      version: zigVersion,
+      zigTriples: zigTriplesForAbis(args.targets.map((t) => t.androidAbi)),
+    });
   } else {
     console.log(`[compile-libllama] (dry-run) skipping zig toolchain probe`);
   }
@@ -2403,6 +2706,11 @@ export async function mainTargets(args) {
   }
 
   if (args.dryRun) {
+    stageLitertlmArtifacts({
+      litertlmDir: args.litertlmDir,
+      androidAssetsDir: args.androidAssetsDir,
+      dryRun: true,
+    });
     console.log(
       `[compile-libllama] (dry-run) plan complete: ${args.targets.length} target(s) (${srcDescription}).`,
     );
@@ -2414,6 +2722,14 @@ export async function mainTargets(args) {
   if (args.targets.some((t) => t.androidAbi === "x86_64")) {
     await compileShimMain(["--skip-if-present"]);
   }
+
+  // Stage any prebuilt LiteRT-LM `.litertlm` text artifacts into the shared
+  // on-device bundle assets (once — arch-independent). No-op unless
+  // --litertlm-dir / ELIZA_LITERTLM_DIR is configured; GGUF stays the default.
+  stageLitertlmArtifacts({
+    litertlmDir: args.litertlmDir,
+    androidAssetsDir: args.androidAssetsDir,
+  });
 
   console.log(
     `[compile-libllama] Built ${args.targets.map((t) => t.target).join(", ")} (${srcDescription}).`,

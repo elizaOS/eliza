@@ -29,13 +29,13 @@ Usage::
 
     # Print the entry + where to put it (recommended):
     uv run python scripts/emit_eliza1_catalog.py \\
-        --manifest checkpoints/eliza-1-0_8b/gguf/eliza1_manifest.json
+        --manifest checkpoints/eliza-1-2b/gguf/eliza1_manifest.json
 
     # Also produce a unified diff against the canonical shared catalog:
     uv run python scripts/emit_eliza1_catalog.py \\
-        --manifest checkpoints/eliza-1-0_8b/gguf/eliza1_manifest.json \\
+        --manifest checkpoints/eliza-1-2b/gguf/eliza1_manifest.json \\
         --catalog packages/shared/src/local-inference/catalog.ts \\
-        --output reports/training/catalog-eliza-1-0_8b.diff
+        --output reports/training/catalog-eliza-1-2b.diff
 
 Notes:
   * Eliza-1 tiers are *default-eligible* models. The tier ids and the
@@ -63,6 +63,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from manifest.eliza1_manifest import ELIZA_1_TIERS
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -76,52 +78,59 @@ log = logging.getLogger("emit_eliza1_catalog")
 CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
 
 
+def _bundle_repo(tier: str) -> str:
+    return f"elizaos/eliza-1/bundles/{tier}"
+
+
+ACTIVE_BUNDLE_REPOS = tuple(_bundle_repo(tier) for tier in ELIZA_1_TIERS)
+
+
 # Heuristic mapping from base model name → catalog metadata. New
 # entries go here when adding a new optimization target.
 KNOWN_BASE_MODELS = {
-    "elizaos/eliza-1/bundles/0_8b": {
-        "params": "0.8B",
-        "context_length": 131072,
-        "tokenizer_family": "eliza1",
-        "category": "chat",
-        "bucket": "small",
-        "min_ram_gb": 2,
-        "size_gb_estimate": 0.5,  # Q4_K_M 0.8B ≈ 530 MB with metadata.
-    },
-    "elizaos/eliza-1/bundles/2b": {
+    _bundle_repo("2b"): {
         "params": "2B",
         "context_length": 131072,
-        "tokenizer_family": "eliza1",
+        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 4,
         "size_gb_estimate": 1.4,
     },
-    "elizaos/eliza-1/bundles/4b": {
+    _bundle_repo("4b"): {
         "params": "4B",
         "context_length": 131072,
-        "tokenizer_family": "eliza1",
+        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "mid",
-        "min_ram_gb": 10,
+        "min_ram_gb": 6,
         "size_gb_estimate": 2.6,
     },
-    "elizaos/eliza-1/bundles/9b": {
+    _bundle_repo("9b"): {
         "params": "9B",
         "context_length": 131072,
-        "tokenizer_family": "eliza1",
+        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 12,
         "size_gb_estimate": 5.4,
     },
-    "elizaos/eliza-1/bundles/27b": {
+    _bundle_repo("27b"): {
         "params": "27B",
         "context_length": 131072,
-        "tokenizer_family": "eliza1",
+        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 32,
+        "size_gb_estimate": 16.8,
+    },
+    _bundle_repo("27b-256k"): {
+        "params": "27B",
+        "context_length": 262144,
+        "tokenizer_family": "gemma4",
+        "category": "chat",
+        "bucket": "large",
+        "min_ram_gb": 48,
         "size_gb_estimate": 16.8,
     },
 }
@@ -232,8 +241,8 @@ def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
         raise SystemExit("manifest.runtime must be an object")
     args_list = runtime.get("args") or []
 
-    cache_type_k = "qjl1_256"
-    cache_type_v = "tbq3_0"
+    cache_type_k = "q8_0"
+    cache_type_v = "q8_0"
     spec_type: str | None = "mtp"
     drafter_model_id: str | None = None
     if isinstance(args_list, list):

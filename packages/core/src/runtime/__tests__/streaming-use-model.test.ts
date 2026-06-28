@@ -248,6 +248,79 @@ describe("AgentRuntime structured streaming", () => {
 		expect(streamed).toEqual(["Hello", " there."]);
 	});
 
+	it("does not leak hidden local image-description calls into ambient chat streams", async () => {
+		const runtime = makeRuntime();
+		const streamed: string[] = [];
+		const handler = vi.fn(async (_runtime, params: unknown) => {
+			const streamingParams = params as {
+				stream?: boolean;
+				onStreamChunk?: (chunk: string) => Promise<void> | void;
+			};
+			expect(streamingParams.stream).toBe(false);
+			expect(streamingParams.onStreamChunk).toBeUndefined();
+			return { title: "Image", description: "internal caption" };
+		});
+		runtime.registerModel(
+			ModelType.IMAGE_DESCRIPTION,
+			handler,
+			"eliza-local-inference",
+		);
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "message-1",
+				onStreamChunk: (chunk) => {
+					streamed.push(chunk);
+				},
+			},
+			() =>
+				runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+					imageUrl: "data:image/png;base64,aa==",
+				}),
+		);
+
+		expect(result).toEqual({ title: "Image", description: "internal caption" });
+		expect(streamed).toEqual([]);
+	});
+
+	it("passes image-description stream callbacks only when explicitly requested", async () => {
+		const runtime = makeRuntime();
+		const streamed: string[] = [];
+		const handler = vi.fn(async (_runtime, params: unknown) => {
+			const streamingParams = params as {
+				stream?: boolean;
+				onStreamChunk?: (chunk: string) => Promise<void> | void;
+			};
+			expect(streamingParams.stream).toBe(true);
+			expect(typeof streamingParams.onStreamChunk).toBe("function");
+			await streamingParams.onStreamChunk?.("visible ");
+			await streamingParams.onStreamChunk?.("caption");
+			return { title: "Image", description: "visible caption" };
+		});
+		runtime.registerModel(
+			ModelType.IMAGE_DESCRIPTION,
+			handler,
+			"eliza-local-inference",
+		);
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "message-1",
+				onStreamChunk: (chunk) => {
+					streamed.push(chunk);
+				},
+			},
+			() =>
+				runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+					imageUrl: "data:image/png;base64,aa==",
+					stream: true,
+				}),
+		);
+
+		expect(result).toEqual({ title: "Image", description: "visible caption" });
+		expect(streamed).toEqual(["visible ", "caption"]);
+	});
+
 	it("treats built-in Eliza local providers as local model routes", () => {
 		expect(isLocalProvider("eliza-local-inference")).toBe(true);
 		expect(isLocalProvider("eliza-device-bridge")).toBe(true);

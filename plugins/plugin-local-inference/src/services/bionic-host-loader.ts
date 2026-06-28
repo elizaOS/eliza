@@ -28,6 +28,10 @@ import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
 } from "./active-model";
+import {
+	bundleHasAsrModelFiles,
+	readBundleAsrProvenanceBlockers,
+} from "./asr-provenance";
 
 /** Connect + full round-trip budget. A cold GPU decode of a long reply fits. */
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -41,6 +45,13 @@ interface BionicGenerateResponse {
 	tokens?: number;
 	ms?: number;
 	tokS?: number;
+}
+
+/** {ok, text} response for the asr / image ops (transcript / description). */
+interface BionicTextResponse {
+	ok: boolean;
+	text?: string;
+	error?: string;
 }
 
 /**
@@ -101,6 +112,67 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		if (typeof res.tokS === "number") {
 			logger.debug(
 				`[BionicHostLoader] generated ${res.tokens ?? "?"} tok @ ${res.tokS.toFixed(1)} tok/s on the bionic GPU host`,
+			);
+		}
+		return res.text ?? "";
+	}
+
+	/**
+	 * On-device STT: transcribe mono fp32 PCM via the bionic host's fused
+	 * Gemma ASR path (op="asr"). The musl agent can't load the fused lib, so
+	 * the TRANSCRIPTION delegate routes the audio here over the UDS and gets
+	 * the transcript back. `pcm` is little-endian fp32 already base64-encoded.
+	 */
+	async transcribe(args: {
+		pcmBase64: string;
+		sampleRate: number;
+	}): Promise<string> {
+		if (!this.bundleDir || !bundleHasAsrModelFiles(this.bundleDir)) {
+			throw new Error(
+				"[BionicHostLoader] host asr requires an active Gemma ASR-capable bundle; refusing to use the bionic host default bundle",
+			);
+		}
+		const blockers = readBundleAsrProvenanceBlockers(this.bundleDir);
+		if (blockers.length > 0) {
+			throw new Error(
+				`[BionicHostLoader] host asr refused non-Gemma ASR provenance: ${blockers.join("; ")}`,
+			);
+		}
+		const res = await this.roundTrip<BionicTextResponse>({
+			op: "asr",
+			bundleDir: this.bundleDir,
+			pcmBase64: args.pcmBase64,
+			sampleRate: args.sampleRate,
+		});
+		if (!res.ok) {
+			throw new Error(
+				`[BionicHostLoader] host asr failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		return res.text ?? "";
+	}
+
+	/**
+	 * On-device vision / screen-recognition: describe a raw image (PNG/JPEG/WebP
+	 * bytes, base64) via the bionic host's mmproj describe-image (op="image").
+	 * `mmprojPath` may be empty — the host resolves the projector from the
+	 * bundle's `vision/` dir.
+	 */
+	async describeImage(args: {
+		imageBase64: string;
+		mmprojPath?: string;
+		prompt?: string;
+	}): Promise<string> {
+		const res = await this.roundTrip<BionicTextResponse>({
+			op: "image",
+			bundleDir: this.bundleDir,
+			imageBase64: args.imageBase64,
+			mmprojPath: args.mmprojPath ?? "",
+			prompt: args.prompt ?? "",
+		});
+		if (!res.ok) {
+			throw new Error(
+				`[BionicHostLoader] host image describe failed: ${res.error ?? "unknown error"}`,
 			);
 		}
 		return res.text ?? "";

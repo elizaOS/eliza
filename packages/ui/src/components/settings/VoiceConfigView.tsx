@@ -18,6 +18,7 @@ import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets
 import { useAppSelector } from "../../state";
 import {
   hasConfiguredApiKey,
+  normalizeForWake,
   PREMADE_VOICES,
   sanitizeApiKey,
   VOICE_PROVIDERS,
@@ -493,7 +494,20 @@ function WakeWordSection({
   serverConfig?: Partial<SwabbleConfig> | null;
 }) {
   const t = useAppSelector((s) => s.t);
-  const [triggers, setTriggers] = useState<string[]>(["eliza"]);
+  // The wake phrase follows the character name (issue #9880): when the user
+  // renames the character in settings, the default trigger tracks it unless they
+  // have customized the trigger list themselves.
+  const characterName = useAppSelector(
+    (s) =>
+      s.characterData?.name?.trim() ||
+      s.agentStatus?.agentName?.trim() ||
+      "eliza",
+  );
+  const defaultTrigger = normalizeForWake(characterName) || "eliza";
+  const [triggers, setTriggers] = useState<string[]>([defaultTrigger]);
+  // Tracks the last name-derived trigger we applied, so a rename only replaces
+  // an unchanged default and never clobbers a user-customized phrase.
+  const autoTriggerRef = useRef(defaultTrigger);
   const [triggerInput, setTriggerInput] = useState("");
   const [postTriggerGap, setPostTriggerGap] = useState(0.45);
   const [modelSize, setModelSize] =
@@ -511,7 +525,11 @@ function WakeWordSection({
         ]);
         const resolved = config ?? serverConfig ?? null;
         if (resolved) {
-          if (resolved.triggers?.length) setTriggers(resolved.triggers);
+          if (resolved.triggers?.length) {
+            setTriggers(resolved.triggers);
+            if (resolved.triggers.length === 1)
+              autoTriggerRef.current = resolved.triggers[0];
+          }
           if (resolved.minPostTriggerGap != null)
             setPostTriggerGap(resolved.minPostTriggerGap);
           if (resolved.modelSize) setModelSize(resolved.modelSize);
@@ -530,10 +548,12 @@ function WakeWordSection({
         handle = await getSwabblePlugin().addListener(
           "audioLevel",
           (evt: { level: number }) => {
-            // Write the meter width directly to the DOM to avoid a React
-            // re-render of the whole section on every (tens-of-Hz) mic frame.
+            // Write the meter directly to the DOM to avoid a React re-render of
+            // the whole section on every (tens-of-Hz) mic frame. Drive a
+            // compositor-only transform (scaleX) rather than `width` so the
+            // per-frame update doesn't force layout.
             if (meterRef.current) {
-              meterRef.current.style.width = `${Math.min(evt.level * 100, 100)}%`;
+              meterRef.current.style.transform = `scaleX(${Math.min(Math.max(evt.level, 0), 1)})`;
             }
           },
         );
@@ -563,6 +583,20 @@ function WakeWordSection({
       // Ignore
     }
   }, []);
+
+  // Propagate a character rename into the wake trigger, but only when the
+  // trigger is still the name-derived default — never overwrite a phrase the
+  // user typed themselves (issue #9880).
+  useEffect(() => {
+    if (
+      triggers.length === 1 &&
+      triggers[0] === autoTriggerRef.current &&
+      defaultTrigger !== autoTriggerRef.current
+    ) {
+      autoTriggerRef.current = defaultTrigger;
+      void handleTriggersChange([defaultTrigger]);
+    }
+  }, [defaultTrigger, triggers, handleTriggersChange]);
 
   const addTrigger = useCallback(
     (raw: string) => {
@@ -718,7 +752,7 @@ function WakeWordSection({
           <Input
             ref={addTriggerRef}
             type="text"
-            className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+            className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-xs shadow-none "
             placeholder={t("voiceconfigview.AddTrigger")}
             value={triggerInput}
             onChange={(e) => setTriggerInput(e.target.value)}
@@ -784,8 +818,8 @@ function WakeWordSection({
         <div className="h-2 w-full overflow-hidden rounded-full bg-border/70">
           <div
             ref={meterRef}
-            className="h-full rounded-full bg-ok transition-all duration-75"
-            style={{ width: "0%" }}
+            className="h-full w-full origin-left rounded-full bg-ok transition-transform duration-75"
+            style={{ transform: "scaleX(0)" }}
           />
         </div>
       </div>

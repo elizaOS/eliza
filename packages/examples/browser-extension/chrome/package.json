@@ -7,7 +7,7 @@
     "build": "node -e \"console.log('[example-browser-extension-chrome] build skipped — tsup config bundles Node-only modules into the browser target.')\"",
     "build:tsup": "bunx tsup",
     "dev": "bunx tsup --watch",
-    "clean": "rm -rf dist",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
     "package": "bun run build && cd .. && zip -r chrome/chrome-extension.zip chrome -x 'chrome/node_modules/*' -x 'chrome/src/*' -x 'chrome/*.ts' -x 'chrome/tsconfig.json' -x 'chrome/tsup.config.ts'",
     "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

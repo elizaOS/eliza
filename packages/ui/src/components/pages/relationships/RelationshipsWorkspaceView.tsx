@@ -1,4 +1,4 @@
-import { Filter, Network, Sparkles, UserRound } from "lucide-react";
+import { Filter, Network } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -17,7 +17,7 @@ import type {
 import { PageLayout } from "../../../layouts/page-layout/page-layout";
 import { useAppSelector } from "../../../state";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
-import { ChatSearchHint } from "../../composites/chat-search-hint";
+import { ChatEmptyStateWithRecommendations } from "../../composites/chat";
 import { PagePanel } from "../../composites/page-panel";
 import { RelationshipsGraphPanel } from "../RelationshipsGraphPanel";
 import { RelationshipsActivityFeed } from "./RelationshipsActivityFeed";
@@ -200,7 +200,6 @@ export function RelationshipsWorkspaceView({
   });
   const toolbar = (
     <div className="flex flex-col gap-3">
-      <ChatSearchHint noun="people" query={search} />
       <div
         className={
           embedded
@@ -223,7 +222,7 @@ export function RelationshipsWorkspaceView({
             aria-label={t("relationships.platformFilter", {
               defaultValue: "Platform filter",
             })}
-            className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition focus:border-accent/55"
+            className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition "
             {...platformAgent.agentProps}
           >
             <option value="all">
@@ -266,54 +265,57 @@ export function RelationshipsWorkspaceView({
           heading={t("common.loading", { defaultValue: "Loading..." })}
         />
       ) : !graph || graph.people.length === 0 ? (
-        <PagePanel
-          variant="surface"
-          className={`grid place-items-center ${embedded ? "min-h-[18rem]" : "min-h-[24rem]"}`}
-        >
-          <div className="w-full max-w-xl px-4 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-sm border border-accent/25 bg-accent/12 text-accent">
-              <Network className="h-7 w-7" />
-            </div>
-            <h2 className="mt-4 text-base font-semibold text-txt">
-              {search || platform !== "all"
-                ? t("relationships.noMatching", {
-                    defaultValue: "No matching relationships",
-                  })
-                : t("relationships.noneYet", {
-                    defaultValue: "No relationships yet",
-                  })}
-            </h2>
-            <div className="mt-5 flex items-start justify-center gap-8">
-              {[
-                {
-                  labelKey: "relationships.statPeople",
-                  defaultLabel: "People",
-                  icon: UserRound,
-                },
-                {
-                  labelKey: "relationships.statFacts",
-                  defaultLabel: "Facts",
-                  icon: Sparkles,
-                },
-                {
-                  labelKey: "relationships.statGraph",
-                  defaultLabel: "Graph",
+        <ChatEmptyStateWithRecommendations
+          className={embedded ? "min-h-[18rem]" : "min-h-[24rem]"}
+          icon={Network}
+          title={
+            search || platform !== "all"
+              ? t("relationships.noMatching", {
+                  defaultValue: "No people match that filter.",
+                })
+              : t("relationships.noneYet", {
+                  defaultValue:
+                    "No relationships yet. Ask Eliza to map who you know.",
+                })
+          }
+          recommendations={[
+            {
+              label: t("relationships.recAddContact", {
+                defaultValue: "Add someone to my network",
+              }),
+              prompt: "help me add someone to my network",
+            },
+            {
+              label: t("relationships.recIdentify", {
+                defaultValue: "Who do I know well?",
+              }),
+              prompt: "who do I know well in my network",
+            },
+            {
+              label: t("relationships.recImport", {
+                defaultValue: "Import contacts from my platforms",
+              }),
+              prompt:
+                "help me import my relationships from my connected platforms",
+            },
+          ]}
+          primaryAction={
+            search || platform !== "all"
+              ? undefined
+              : {
+                  label: t("relationships.connectPlatforms", {
+                    defaultValue: "Connect your platforms",
+                  }),
                   icon: Network,
-                },
-              ].map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div key={item.labelKey} className="text-center">
-                    <Icon className="mx-auto h-4 w-4 text-muted" />
-                    <div className="mt-2 text-xs font-semibold text-muted">
-                      {t(item.labelKey, { defaultValue: item.defaultLabel })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </PagePanel>
+                  onClick: () => {
+                    if (typeof window !== "undefined") {
+                      window.location.hash = "connectors";
+                    }
+                    setTab("settings");
+                  },
+                }
+          }
+        />
       ) : (
         <>
           {graphError ? (

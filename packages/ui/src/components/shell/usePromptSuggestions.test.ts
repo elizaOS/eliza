@@ -161,13 +161,13 @@ describe("usePromptSuggestions (model-backed)", () => {
   it("sends the active page scope so the server can tailor per view (#8225)", async () => {
     fetchMock.mockResolvedValue({ suggestions: ["A", "B", "C"] });
     renderHook(() =>
-      usePromptSuggestions([], { enabled: true, scope: "page-lifeops" }),
+      usePromptSuggestions([], { enabled: true, scope: "page-wallet" }),
     );
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const body = JSON.parse(
       (fetchMock.mock.calls[0][1] as { body: string }).body,
     );
-    expect(body.scope).toBe("page-lifeops");
+    expect(body.scope).toBe("page-wallet");
   });
 
   it("does not surface or remember heuristic-tier responses (retries on a later reveal)", async () => {
@@ -272,13 +272,13 @@ describe("daypartForHour", () => {
 
 describe("pageScopeFromLocation", () => {
   it("derives the scope from a path segment", () => {
-    expect(pageScopeFromLocation("/lifeops", "")).toBe("page-lifeops");
+    expect(pageScopeFromLocation("/browser", "")).toBe("page-browser");
     expect(pageScopeFromLocation("/wallet/send", "")).toBe("page-wallet");
   });
 
   it("prefers the hash segment when present (hash navigation)", () => {
     expect(pageScopeFromLocation("/", "#/settings?x=1")).toBe("page-settings");
-    expect(pageScopeFromLocation("/lifeops", "#/apps")).toBe("page-apps");
+    expect(pageScopeFromLocation("/browser", "#/apps")).toBe("page-apps");
   });
 
   it("returns undefined for unscoped or empty views", () => {

@@ -7,7 +7,7 @@
     "incremental": false,
     "noEmit": true,
     "rootDir": ".",
-    "strict": false,
+    "strict": true,
     "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
@@ -15,10 +15,16 @@
       "@elizaos/shared/*": ["../../../packages/shared/dist/*"],
       "@elizaos/ui": ["../../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../../../packages/ui/dist/*"],
+      "@elizaos/plugin-facewear/*": ["../../../plugins/plugin-facewear/dist/*"],
+      // Extensionless on purpose. The .test.ts files import facewearPlugin as a
+      // VALUE (bun:test follows these paths at runtime → needs dist/index.JS),
+      // while package-smoke.ts imports facewear types (tsc → needs dist/index.D.TS).
+      // dist/index lets each tool append its own extension: tsc resolves .d.ts
+      // (strict-clean), bun resolves .js (no "facewearPlugin is not defined").
+      // Do NOT pin to .d.ts (breaks the test) or .js (tsc 6.0.3 → 58 implicit-any).
       "@elizaos/plugin-facewear": [
-        "../../../plugins/plugin-facewear/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-facewear/*": ["../../../plugins/plugin-facewear/dist/*"]
+        "../../../plugins/plugin-facewear/dist/index"
+      ]
     }
   },
   "include": [

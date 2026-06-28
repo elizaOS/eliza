@@ -1,5 +1,9 @@
 # scambench
 
+> **What this measures:** a generic provider/model safety eval — the
+> scam-resistance of the underlying model — **not** anything specific to the
+> Eliza agent. It does not exercise the AgentRuntime, plugins, or agent loop.
+
 Adversarial scam-detection benchmark. Reads
 `training/data/normalized/scambench.jsonl` (with optional augmentation from
 `training/data/synthesized/scambench/scambench.jsonl`) and sends each

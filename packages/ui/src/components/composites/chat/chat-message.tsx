@@ -45,6 +45,14 @@ export interface ChatMessageProps {
   onDelete?: (messageId: string) => void;
   onEdit?: (messageId: string, text: string) => Promise<boolean> | boolean;
   onSpeak?: (messageId: string, text: string) => void;
+  /**
+   * Dismiss a proactive suggestion (#8792). Distinct from `onDelete` so the
+   * suggestion's one-tap dismiss works without enabling delete on every
+   * ordinary message. Only rendered on suggestion bubbles.
+   */
+  onDismissSuggestion?: (messageId: string) => void;
+  /** Accept ("Do it") a proactive suggestion (#8792) — sends the implied action. */
+  onAcceptSuggestion?: (message: ChatMessageData) => void;
   replyTarget?: ChatMessageData | null;
   renderContent?: (message: ChatMessageData) => React.ReactNode;
   userMessagesOnRight?: boolean;
@@ -239,6 +247,8 @@ function arePropsEqual(
       prev.labels === next.labels &&
       prev.onCopy === next.onCopy &&
       prev.onDelete === next.onDelete &&
+      prev.onDismissSuggestion === next.onDismissSuggestion &&
+      prev.onAcceptSuggestion === next.onAcceptSuggestion &&
       prev.onEdit === next.onEdit &&
       prev.onSpeak === next.onSpeak &&
       prev.replyTarget?.id === next.replyTarget?.id &&
@@ -294,6 +304,8 @@ export const ChatMessage = memo(function ChatMessage({
   onSpeak,
   onEdit,
   onDelete,
+  onDismissSuggestion,
+  onAcceptSuggestion,
   replyTarget = null,
   renderContent,
   userMessagesOnRight = true,
@@ -587,18 +599,32 @@ export const ChatMessage = memo(function ChatMessage({
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                 {labels.suggestion ?? "Suggestion"}
               </span>
-              {onDelete ? (
-                <Button
-                  variant="surface"
-                  size="icon"
-                  onClick={() => onDelete?.(message.id)}
-                  className="h-6 w-6 rounded-sm text-muted"
-                  title={labels.dismiss ?? "Dismiss suggestion"}
-                  aria-label={labels.dismiss ?? "Dismiss suggestion"}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              ) : null}
+              <div className="flex items-center gap-1">
+                {onAcceptSuggestion ? (
+                  <Button
+                    variant="surface"
+                    size="sm"
+                    onClick={() => onAcceptSuggestion(message)}
+                    className="h-6 rounded-sm px-2 text-xs-tight text-accent"
+                    title={labels.acceptSuggestion ?? "Do it"}
+                    aria-label={labels.acceptSuggestion ?? "Do it"}
+                  >
+                    {labels.acceptSuggestion ?? "Do it"}
+                  </Button>
+                ) : null}
+                {onDismissSuggestion ? (
+                  <Button
+                    variant="surface"
+                    size="icon"
+                    onClick={() => onDismissSuggestion(message.id)}
+                    className="h-6 w-6 rounded-sm text-muted"
+                    title={labels.dismiss ?? "Dismiss suggestion"}
+                    aria-label={labels.dismiss ?? "Dismiss suggestion"}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
+              </div>
             </div>
           ) : null}
           {showReplyReference ? (
@@ -617,7 +643,7 @@ export const ChatMessage = memo(function ChatMessage({
                 value={draftText}
                 onChange={(event) => setDraftText(event.target.value)}
                 onKeyDown={handleEditKeyDown}
-                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none   "
                 style={{ fontFamily: "var(--font-chat)" }}
                 aria-label={labels.edit ?? "Edit message"}
                 disabled={savingEdit}

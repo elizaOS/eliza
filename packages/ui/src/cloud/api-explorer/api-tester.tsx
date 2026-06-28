@@ -978,8 +978,8 @@ export function ApiTester({
                         className={cn(
                           "rounded-sm px-2.5 py-1 text-xs font-medium",
                           response.success
-                            ? "bg-green-500/10 text-green-600 ring-1 ring-inset ring-green-500/30 dark:text-green-300"
-                            : "bg-red-500/10 text-red-600 ring-1 ring-inset ring-red-500/30 dark:text-red-300",
+                            ? "bg-green-500/10 text-green-600    dark:text-green-300"
+                            : "bg-red-500/10 text-red-600    dark:text-red-300",
                         )}
                       >
                         {response.status} {response.statusText}

@@ -24,6 +24,10 @@ import {
 	resolveStateDir,
 	type VoiceEntityBoundPayload,
 } from "@elizaos/core";
+import {
+	AGENT_SELF_VOICE_THRESHOLD,
+	ECHO_WINDOW_MS,
+} from "@elizaos/shared/voice/respond-gate";
 import type {
 	VoiceNextSpeaker,
 	VoiceTurnSignal,
@@ -137,6 +141,16 @@ export interface HandleLiveVoiceAttributionOptions {
 	 * (which has both ASR + diarization) passes the real transcript.
 	 */
 	transcript?: string;
+	/**
+	 * Cosine similarity (0..1) between this turn's live WeSpeaker embedding and
+	 * the agent's own TTS-voice centroid. High means the open mic is hearing the
+	 * agent's playback, not a human user.
+	 */
+	selfVoiceSimilarity?: number | null;
+	/** True while the agent is currently playing TTS. */
+	agentSpeaking?: boolean;
+	/** Age of the most recent agent-spoken reply in ms. */
+	replyAgeMs?: number;
 }
 
 /**
@@ -197,6 +211,15 @@ function foldSpeakerIntoSignal(
 	// Wake word overrides bystander doubt — the user deliberately summoned us.
 	if (opts.wakeWordActive === true) agentShouldSpeak = true;
 
+	const replyRecent =
+		opts.agentSpeaking === true ||
+		(opts.replyAgeMs ?? Number.POSITIVE_INFINITY) <= ECHO_WINDOW_MS;
+	const isSelfVoice =
+		typeof opts.selfVoiceSimilarity === "number" &&
+		opts.selfVoiceSimilarity >= AGENT_SELF_VOICE_THRESHOLD &&
+		replyRecent;
+	if (isSelfVoice) agentShouldSpeak = false;
+
 	const eot = base.endOfTurnProbability;
 	const nextSpeaker: VoiceNextSpeaker = !agentShouldSpeak
 		? "user"
@@ -204,9 +227,11 @@ function foldSpeakerIntoSignal(
 			? "user"
 			: "agent";
 
-	const source = opts.wakeWordActive
-		? "voice-bridge+wakeword"
-		: "voice-bridge+diarization";
+	const source = isSelfVoice
+		? "voice-bridge+self-voice"
+		: opts.wakeWordActive
+			? "voice-bridge+wakeword"
+			: "voice-bridge+diarization";
 
 	return {
 		endOfTurnProbability: eot,
@@ -218,8 +243,15 @@ function foldSpeakerIntoSignal(
 		...(base.latencyMs !== undefined ? { latencyMs: base.latencyMs } : {}),
 		// Stash the human-readable provenance so traces show the fold source even
 		// though the typed `source` enum stays "custom".
-		metadata: { provenance: source },
-	} as VoiceTurnSignal & { metadata: { provenance: string } };
+		metadata: {
+			provenance: source,
+			...(typeof opts.selfVoiceSimilarity === "number"
+				? { selfVoiceSimilarity: opts.selfVoiceSimilarity }
+				: {}),
+		},
+	} as VoiceTurnSignal & {
+		metadata: { provenance: string; selfVoiceSimilarity?: number };
+	};
 }
 
 /**

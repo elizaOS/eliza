@@ -1,6 +1,20 @@
 import os from "node:os";
 import path from "node:path";
 
+export {
+  createGlobalPauseStore,
+  GLOBAL_PAUSE_SERVICE,
+  GlobalPauseService,
+  resolveGlobalPauseService,
+} from "../../../../packages/agent/src/services/global-pause/index.ts";
+export {
+  createHandoffStore,
+  describeResumeCondition,
+  evaluateResume,
+  HANDOFF_SERVICE,
+  HandoffService,
+  resolveHandoffService,
+} from "../../../../packages/agent/src/services/handoff/index.ts";
 // The runtime knowledge graph (entity/relationship stores + service + schema)
 // is owned by @elizaos/agent. Re-export the real implementations here: they
 // are self-contained (only @elizaos/core, @elizaos/shared, drizzle-orm) and do
@@ -14,6 +28,16 @@ export {
   RelationshipStore,
   resolveKnowledgeGraphService,
 } from "../../../../packages/agent/src/services/knowledge-graph/index.ts";
+// Cache-backed runtime stores promoted from LifeOps (Slice 3). Like the
+// knowledge graph above, they are self-contained (only @elizaos/core) and the
+// personal-assistant store shims import them from `@elizaos/agent`, so re-export
+// the genuine implementations here for the test lane.
+export {
+  createPendingPromptsStore,
+  PENDING_PROMPTS_SERVICE,
+  PendingPromptsService,
+  resolvePendingPromptsService,
+} from "../../../../packages/agent/src/services/pending-prompts/index.ts";
 
 export class DatabaseSync {}
 

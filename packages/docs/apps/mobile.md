@@ -63,7 +63,7 @@ Focused proof gates for this boundary:
 bun run --cwd packages/app-core test src/platform/ios-runtime-backends.test.ts --reporter verbose
 bun run --cwd plugins/plugin-coding-tools test src/lib/run-shell.test.ts src/lib/terminal-capabilities.test.ts --reporter verbose
 bun run --cwd packages/agent test src/services/e2b-capability-router.test.ts src/services/e2b-capability-router.coding-remote-runner.test.ts --reporter verbose
-bun run --cwd packages/cloud-services/coding-remote-runner test
+bun run --cwd packages/cloud/services/coding-remote-runner test
 ```
 
 Those tests prove the iOS local runtime policy is TypeScript-owned and
@@ -275,7 +275,7 @@ Connects the mobile app to a Eliza agent running elsewhere on the network.
 Voice wake-word detection for hands-free activation.
 
 - **Wake words:** Configurable trigger words (e.g., `["eliza"]`) with post-trigger gap detection and minimum command length.
-- **Continuous listening:** Only available on native platforms (iOS/Android). Uses the native Speech framework on iOS, SpeechRecognizer on Android, and Whisper.cpp on desktop.
+- **Continuous listening:** Available on native mobile platforms and desktop app surfaces. Uses the native Speech framework on iOS and `SpeechRecognizer` on Android; desktop and web surfaces use Web Speech or explicitly configured local-inference ASR.
 - **Audio levels:** Streams real-time audio level events for visualization.
 - **Transcript events:** Provides speech segments with timing information and confidence scores.
 - On web, falls back to the Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`) if available.
@@ -284,7 +284,7 @@ Voice wake-word detection for hands-free activation.
 
 Full speech pipeline: speech-to-text, chat with agent, text-to-speech response.
 
-- **STT engines:** Native speech recognition or Whisper (configurable model sizes: tiny, base, small, medium, large).
+- **STT engines:** Native speech recognition on mobile, Web Speech on web/desktop, or local-inference ASR when a verified Gemma bundle is configured.
 - **ElevenLabs TTS:** Available on all platforms with configurable voice ID, model, speed, stability, similarity boost, style exaggeration, language, and latency tier.
 - **System TTS:** Native speech synthesis on iOS/Android; Web Speech Synthesis API on web. Used as automatic fallback if ElevenLabs is unavailable.
 - **Interrupt on speech:** Stops TTS playback when the user starts speaking.

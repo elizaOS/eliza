@@ -1,7 +1,7 @@
 {
   "name": "H100 GPU (80GB)",
   "description": "NVIDIA H100 SXM - High-performance single GPU training",
-  "model": "Qwen/Qwen2.5-14B-Instruct",
+  "model": "google/gemma-4-12B",
   "vllm_gpu_memory": 0.50,
   "batch_size": 16,
   "max_token_length": 8192,
@@ -12,6 +12,5 @@
   "learning_rate": 1e-5,
   "warmup_steps": 100,
   "use_flash_attention": true,
-  "notes": "H100 SXM 80GB. Can handle 14B model comfortably. For 30B+ models, use h100-4gpu profile."
+  "notes": "H100 SXM 80GB. Can handle Gemma 4 12B comfortably. For 31B models, use h100-4gpu profile."
 }
-

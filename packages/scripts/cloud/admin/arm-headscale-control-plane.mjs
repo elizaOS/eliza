@@ -40,7 +40,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../../../..");
 const aclPath = resolve(
   repoRoot,
-  "packages/cloud-services/headscale/acl.hujson",
+  "packages/cloud/services/headscale/acl.hujson",
 );
 
 // Only these flags take no value. Every other flag consumes the next token as

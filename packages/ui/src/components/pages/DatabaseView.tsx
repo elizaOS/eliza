@@ -4,7 +4,6 @@ import {
   Database as DatabaseIcon,
   ServerOff,
   Table2,
-  TerminalSquare,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,7 +21,7 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useTranslation } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import { ChatSearchHint } from "../composites/chat-search-hint";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
@@ -40,12 +39,6 @@ import {
   type SortDir,
 } from "./database-utils";
 import { SqlEditorPanel } from "./SqlEditorPanel";
-
-const DATABASE_UNAVAILABLE_FEATURES = [
-  { id: "tables", label: "Tables", icon: Table2, tone: "text-info" },
-  { id: "sql", label: "SQL", icon: TerminalSquare, tone: "text-accent" },
-  { id: "runtime", label: "Runtime", icon: DatabaseIcon, tone: "text-warning" },
-] as const;
 
 // The editor-mode SegmentedControl renders its own internal buttons and does
 // not forward refs to them, so each mode registers with the agent surface
@@ -402,6 +395,73 @@ export function DatabaseView({
     onCellClick: (v: string) => setCellInspect(v),
   };
 
+  // Shared empty/setup surfaces. The floating composer is this view's table
+  // filter (see chatBinding), so recommendation chips seed that filter; mode
+  // switches go through primaryAction.
+  const disconnectedState = (
+    <ChatEmptyStateWithRecommendations
+      icon={ServerOff}
+      title={
+        statusLoadError ||
+        t("databaseview.StartAgentToUseDatabase", {
+          defaultValue: "Start the agent to use the database.",
+        })
+      }
+      primaryAction={{
+        label: t("databaseview.OpenSettings", {
+          defaultValue: "Open settings",
+        }),
+        onClick: () => {
+          window.location.hash = "#/settings";
+        },
+      }}
+    />
+  );
+
+  const noTableSelectedState = (
+    <ChatEmptyStateWithRecommendations
+      icon={Table2}
+      title={t("databaseview.SelectATable")}
+      primaryAction={{
+        label: t("databaseview.OpenSqlEditor", {
+          defaultValue: "Open SQL editor",
+        }),
+        onClick: () => setView("query"),
+      }}
+      recommendations={[
+        {
+          label: t("databaseview.SearchMemoriesRec", {
+            defaultValue: 'Search "memories"',
+          }),
+          prompt: "memories",
+        },
+      ]}
+    />
+  );
+
+  const emptyTableState = (
+    <ChatEmptyStateWithRecommendations
+      icon={DatabaseIcon}
+      title={t("databaseview.NoDataInsertViaSql", {
+        defaultValue: "No data yet. Insert rows via the SQL editor.",
+      })}
+      primaryAction={{
+        label: t("databaseview.OpenSqlEditor", {
+          defaultValue: "Open SQL editor",
+        }),
+        onClick: () => setView("query"),
+      }}
+    />
+  );
+
+  const filteredCountLabel = sidebarSearch
+    ? t("databaseview.FilteredCount", {
+        shown: filteredTables.length,
+        total: tables.length,
+        defaultValue: "Filtered: {{shown}}/{{total}}",
+      })
+    : null;
+
   if (showExternalSidebar) {
     const dbSidebar = (
       <AppPageSidebar
@@ -427,17 +487,15 @@ export function DatabaseView({
             {sidebarSummary}
           </div>
 
-          <div className="mt-4 h-px bg-border/30" />
-
           {view === "tables" ? (
             <>
-              <div className="space-y-3 pt-4">
-                <div className="px-1 text-xs-tight font-medium text-muted">
-                  {t("databaseview.Tables")} · {filteredTables.length}
+              {filteredCountLabel ? (
+                <div className="mt-5 px-1 text-xs-tight font-medium text-muted">
+                  {filteredCountLabel}
                 </div>
-              </div>
+              ) : null}
 
-              <SidebarScrollRegion className="mt-3 space-y-1.5">
+              <SidebarScrollRegion className="mt-4 space-y-1.5">
                 {loading && tables.length === 0 ? (
                   <PagePanel
                     variant="inset"
@@ -476,39 +534,23 @@ export function DatabaseView({
                 )}
               </SidebarScrollRegion>
             </>
-          ) : (
-            <>
-              <div className="space-y-3 pt-4">
-                <PagePanel
-                  variant="inset"
-                  className="rounded-sm px-3 py-3 text-xs-tight text-muted"
-                >
-                  {t("databaseview.QueryWorkspaceInfo", {
-                    defaultValue:
-                      "Write ad-hoc queries and inspect results without leaving the database workspace.",
-                  })}
-                </PagePanel>
+          ) : queryHistory.length > 0 ? (
+            <SidebarScrollRegion className="mt-5 space-y-1.5">
+              <div className="px-1 text-xs-tight font-medium text-muted">
+                {t("databaseview.RecentQueries")}
               </div>
-
-              {queryHistory.length > 0 ? (
-                <SidebarScrollRegion className="mt-3 space-y-1.5">
-                  <div className="px-1 text-xs-tight font-medium text-muted">
-                    {t("databaseview.RecentQueries")}
-                  </div>
-                  {queryHistory.slice(0, 8).map((q) => (
-                    <Button
-                      variant="ghost"
-                      key={q}
-                      className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
-                      onClick={() => setQueryText(q)}
-                    >
-                      <span className="truncate">{q}</span>
-                    </Button>
-                  ))}
-                </SidebarScrollRegion>
-              ) : null}
-            </>
-          )}
+              {queryHistory.slice(0, 8).map((q) => (
+                <Button
+                  variant="ghost"
+                  key={q}
+                  className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono text-muted-strong hover:text-txt"
+                  onClick={() => setQueryText(q)}
+                >
+                  <span className="truncate">{q}</span>
+                </Button>
+              ))}
+            </SidebarScrollRegion>
+          ) : null}
         </SidebarPanel>
       </AppPageSidebar>
     );
@@ -528,51 +570,11 @@ export function DatabaseView({
           ) : null}
 
           {dbStatus && !dbStatus.connected ? (
-            <div className="w-full">
-              <PagePanel
-                variant="surface"
-                as="section"
-                className="px-5 py-5 sm:px-6"
-              >
-                <h1 className="text-2xl font-semibold text-txt-strong">
-                  {t("databaseview.TableBrowser")}
-                </h1>
-              </PagePanel>
-
-              <PagePanel.FeatureEmpty
-                className="mt-4 rounded-sm"
-                features={DATABASE_UNAVAILABLE_FEATURES}
-                icon={ServerOff}
-                iconTone="border-danger/25 bg-danger/10 text-danger"
-                title={t("databaseview.DatabaseNotAvailab")}
-              />
-            </div>
+            disconnectedState
           ) : view === "tables" ? (
-            <div className="w-full">
+            <div className="flex min-h-0 flex-1 flex-col w-full">
               {!selectedTable ? (
-                <>
-                  <PagePanel
-                    variant="surface"
-                    as="section"
-                    className="px-5 py-5 sm:px-6"
-                  >
-                    <h1 className="text-2xl font-semibold text-txt-strong">
-                      {t("databaseview.TableBrowser")}
-                    </h1>
-                    <ChatSearchHint
-                      noun="tables"
-                      query={sidebarSearch}
-                      className="mt-2"
-                    />
-                  </PagePanel>
-
-                  <PagePanel.Empty
-                    variant="surface"
-                    className="mt-4 min-h-[18rem] rounded-sm px-5 py-10"
-                    title={t("databaseview.SelectATable")}
-                    description={t("databaseview.ChooseATableFrom")}
-                  />
-                </>
+                noTableSelectedState
               ) : loading && !tableData ? (
                 <PagePanel
                   variant="surface"
@@ -592,11 +594,6 @@ export function DatabaseView({
                         <h1 className="text-2xl font-semibold text-txt-strong">
                           {selectedTable}
                         </h1>
-                        <ChatSearchHint
-                          noun="tables"
-                          query={sidebarSearch}
-                          className="mt-2"
-                        />
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {columnMeta.size > 0 && (
@@ -618,11 +615,7 @@ export function DatabaseView({
                   >
                     <div className="flex-1 min-h-0">
                       {tableData.rows.length === 0 ? (
-                        <PagePanel.Empty
-                          className="min-h-[14rem]"
-                          title={t("databaseview.TableIsEmpty")}
-                          description={t("databaseview.EmptyTableDescription")}
-                        />
+                        emptyTableState
                       ) : (
                         <ResultsGrid
                           columns={tableData.columns}
@@ -686,19 +679,10 @@ export function DatabaseView({
         </div>
       )}
 
-      {dbStatus && !dbStatus.connected && (
-        <div className="p-4 border border-border/40 bg-card/60 backdrop-blur-md rounded-sm text-muted text-sm ">
-          <p className="m-0 mb-2 font-medium text-txt tracking-wide">
-            {t("databaseview.DatabaseNotAvailab")}
-          </p>
-          <p className="m-0 text-xs">
-            {statusLoadError || t("databaseview.TheDatabaseViewer")}
-          </p>
-        </div>
-      )}
+      {dbStatus && !dbStatus.connected && disconnectedState}
 
       {errorMessage && (
-        <div className="p-3 border border-danger/50 bg-danger/10 text-danger text-sm rounded-sm mb-2 flex items-center justify-between backdrop-blur-md">
+        <div className="p-3 border border-danger/50 bg-danger/20 text-danger text-sm rounded-sm mb-2 flex items-center justify-between">
           <span className="font-medium tracking-wide">{errorMessage}</span>
           <Button
             variant="ghost"
@@ -716,7 +700,7 @@ export function DatabaseView({
         <div className="flex flex-1 min-h-0 gap-4">
           {(showExternalSidebar || !sidebarCollapsed) && (
             <aside
-              className={`overflow-hidden rounded-sm border flex min-h-0 w-full shrink-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md ${
+              className={`flex min-h-0 w-full shrink-0 flex-col overflow-hidden ${
                 showExternalSidebar
                   ? "w-[21rem] max-w-[352px] shrink-0"
                   : "w-[220px] flex-shrink-0"
@@ -736,13 +720,14 @@ export function DatabaseView({
                       {viewToggle}
                       {leftNav}
                     </div>
-                    <div className="h-px bg-border/30" />
                   </>
                 )}
 
-                <div className="px-1 text-xs-tight font-medium text-muted">
-                  {t("databaseview.Tables")} · {filteredTables.length}
-                </div>
+                {filteredCountLabel ? (
+                  <div className="px-1 text-xs-tight font-medium text-muted">
+                    {filteredCountLabel}
+                  </div>
+                ) : null}
                 {loading && tables.length === 0 ? (
                   <div className="text-xs text-muted px-2 py-4 italic text-center opacity-70">
                     {t("appsview.Loading")}
@@ -811,29 +796,7 @@ export function DatabaseView({
           {/* Main grid area */}
           <div className="flex min-w-0 flex-1 w-full flex-col bg-bg/10">
             {!selectedTable ? (
-              <div className="w-full">
-                <PagePanel
-                  variant="surface"
-                  as="section"
-                  className="px-5 py-5 sm:px-6"
-                >
-                  <div className="text-2xl font-semibold text-txt-strong">
-                    {t("databaseview.TableBrowser")}
-                  </div>
-                  <ChatSearchHint
-                    noun="tables"
-                    query={sidebarSearch}
-                    className="mt-2"
-                  />
-                </PagePanel>
-
-                <PagePanel.Empty
-                  variant="surface"
-                  className="mt-4 min-h-[18rem] rounded-sm px-5 py-10"
-                  title={t("databaseview.SelectATable")}
-                  description={t("databaseview.ChooseATableFrom")}
-                />
-              </div>
+              noTableSelectedState
             ) : loading && !tableData ? (
               <PagePanel
                 variant="surface"
@@ -853,11 +816,6 @@ export function DatabaseView({
                       <div className="text-2xl font-semibold text-txt-strong">
                         {selectedTable}
                       </div>
-                      <ChatSearchHint
-                        noun="tables"
-                        query={sidebarSearch}
-                        className="mt-2"
-                      />
                     </div>
                     {columnMeta.size > 0 && (
                       <div className="flex flex-wrap gap-2">
@@ -881,14 +839,7 @@ export function DatabaseView({
                 >
                   <div className="flex-1 min-h-0">
                     {tableData.rows.length === 0 ? (
-                      <PagePanel.Empty
-                        className="min-h-[14rem]"
-                        title={t("databaseview.TableIsEmpty")}
-                        description={t("databaseview.EmptyTableDescription", {
-                          defaultValue:
-                            "This table is connected and available, but it does not have any rows yet.",
-                        })}
-                      />
+                      emptyTableState
                     ) : (
                       <ResultsGrid
                         columns={tableData.columns}
@@ -918,25 +869,15 @@ export function DatabaseView({
         /* ── SQL Editor ────────────────────────────────────────── */
         <div className="flex flex-1 min-h-0 gap-4">
           {showExternalSidebar && (
-            <aside className="w-[21rem] max-w-[352px] shrink-0 overflow-hidden rounded-sm border border-border/34 flex min-h-0 w-full flex-col bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md ">
+            <aside className="w-[21rem] max-w-[352px] shrink-0 overflow-hidden flex min-h-0 w-full flex-col">
               <div className="flex min-h-0 flex-1 flex-col px-3 pb-4 pt-3">
                 {sidebarSummary}
                 <div className="space-y-3 pt-4">
                   {viewToggle}
                   {leftNav}
                 </div>
-                <div className="h-px bg-border/30" />
-                <PagePanel
-                  variant="inset"
-                  className="rounded-sm px-3 py-3 text-xs-tight text-muted"
-                >
-                  {t("databaseview.QueryWorkspaceInfo", {
-                    defaultValue:
-                      "Write ad-hoc queries and inspect results without leaving the database workspace.",
-                  })}
-                </PagePanel>
                 {queryHistory.length > 0 ? (
-                  <SidebarScrollRegion className="space-y-1.5">
+                  <SidebarScrollRegion className="mt-5 space-y-1.5">
                     <div className="px-1 text-xs-tight font-medium text-muted">
                       {t("databaseview.RecentQueries")}
                     </div>
@@ -944,7 +885,7 @@ export function DatabaseView({
                       <Button
                         variant="ghost"
                         key={q}
-                        className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
+                        className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono text-muted-strong hover:text-txt"
                         onClick={() => setQueryText(q)}
                       >
                         <span className="truncate">{q}</span>

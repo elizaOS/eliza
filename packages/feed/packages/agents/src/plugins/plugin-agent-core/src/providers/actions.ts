@@ -35,7 +35,7 @@ function formatActionsWithParams(actions: Action[]): string {
       // Check if action has parameters defined
       if (action.parameters !== undefined) {
         const paramEntries = Object.entries(
-          action.parameters as unknown as Record<string, ActionParameter>,
+          action.parameters as Record<string, ActionParameter>,
         );
 
         if (paramEntries.length === 0) {

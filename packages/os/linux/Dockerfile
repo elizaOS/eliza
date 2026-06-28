@@ -183,8 +183,9 @@ RUN rm -f /etc/apt-cacher-ng/zz_debconf.conf
 # ── Entry point ──────────────────────────────────────────────────────
 # build-iso.sh runs Tails' own auto/config && auto/build inside the
 # mounted source tree and copies the resulting ISO to /out.
+COPY scripts/submodule-checkout.sh /usr/local/lib/elizaos-live/submodule-checkout.sh
 COPY build-iso.sh /usr/local/bin/build-iso.sh
-RUN chmod +x /usr/local/bin/build-iso.sh
+RUN chmod +x /usr/local/bin/build-iso.sh /usr/local/lib/elizaos-live/submodule-checkout.sh
 
 # /build = the Tails source tree (mounted at runtime, rw — lb writes
 #          chroot/, binary/, cache/ into it)

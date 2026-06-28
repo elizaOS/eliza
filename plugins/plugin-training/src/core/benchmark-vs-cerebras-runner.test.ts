@@ -19,7 +19,7 @@ describe("benchmark_vs_cerebras runner", () => {
     expect(args.slice(0, 7)).toEqual([
       join(trainingRoot, "scripts", "benchmark_vs_cerebras.py"),
       "--tiers",
-      "qwen3.5-2b,qwen3.5-4b,qwen3.5-9b,qwen3.6-27b",
+      "gemma4-e2b,gemma4-e4b,gemma4-12b,gemma4-31b",
       "--benchmark",
       "eliza_harness_action_selection",
       "--variants",
@@ -51,7 +51,7 @@ describe("benchmark_vs_cerebras runner", () => {
     expect(args).toEqual([
       join(trainingRoot, "scripts", "benchmark_vs_cerebras.py"),
       "--tiers",
-      "qwen3.5-2b",
+      "gemma4-e2b",
       "--benchmark",
       "eliza_harness_action_selection",
       "--variants",
@@ -78,9 +78,17 @@ describe("benchmark_vs_cerebras runner", () => {
 
   it("maps Eliza tier aliases to training registry keys", () => {
     expect(benchmarkVsCerebrasTierList("2b,4b,9b,27b")).toBe(
-      "qwen3.5-2b,qwen3.5-4b,qwen3.5-9b,qwen3.6-27b",
+      "gemma4-e2b,gemma4-e4b,gemma4-12b,gemma4-31b",
     );
     expect(benchmarkVsCerebrasTierList("all")).toBe("all");
-    expect(benchmarkVsCerebrasTierList("qwen3.5-2b")).toBe("qwen3.5-2b");
+    expect(benchmarkVsCerebrasTierList("google/gemma-4-E2B")).toBe(
+      "gemma4-e2b",
+    );
+  });
+
+  it("rejects retired Qwen tier aliases instead of remapping them", () => {
+    expect(() => benchmarkVsCerebrasTierList("qwen3.5-2b")).toThrow(
+      /Qwen tier aliases are retired/,
+    );
   });
 });

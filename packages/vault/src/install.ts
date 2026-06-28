@@ -162,7 +162,13 @@ export function resetInstallerCache(): void {
 
 async function isCommandRunnable(cmd: string): Promise<boolean> {
   try {
-    await exec(cmd, ["--version"], { timeout: 5000 });
+    await exec(cmd, ["--version"], {
+      timeout: 5000,
+      // npm is a `.cmd` shim on Windows; execFile can't launch it without a
+      // shell, so detection would wrongly report npm absent (and hide the only
+      // Windows Bitwarden install method). Args are static — no injection.
+      shell: process.platform === "win32",
+    });
     return true;
   } catch {
     return false;

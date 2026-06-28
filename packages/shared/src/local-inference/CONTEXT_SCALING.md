@@ -23,8 +23,9 @@ positional range is huge, KV-cache memory is what
 gates you, and that is where the stock q8_0 cache and (past 64k) KV spill
 do the heavy lifting. The catalog's job is to ship the largest *native* window
 per tier and then have the runtime pick a context within it that fits the
-device. That second half — a memory-aware context selector — is the gap; see
-"Wins" below.
+device. That second half — a memory-aware context selector — now lives in
+`context-fit.ts` (`computeRuntimeContextFit`), wired through `active-model.ts`;
+see "Wins" below.
 
 ---
 
@@ -147,14 +148,19 @@ Takeaways:
 
 Ranked by confidence × impact.
 
-### HIGH — ship a memory-aware *context* selector (the real gap)
+### RESOLVED — live memory-aware *context* selector
 
-Today `recommendation.ts` picks a *model* per device, and `pickFittingContextVariant`
-picks among *pre-baked context variants of the same model line* when such
-variants exist.
-There is no path that says "the device has 14 GB of unused VRAM
-after loading the 2B at its default 32k — bump `contextSize` toward the
-model's native ceiling". The numbers above show every device has slack:
+`recommendation.ts` picks a *model* per device, and
+`pickFittingContextVariant` picks among *pre-baked context variants of the same
+model line* when such variants exist. The live load path now also sizes the
+runtime `contextSize` for the chosen tier in
+`plugins/plugin-local-inference/src/services/context-fit.ts`, wired through
+`active-model.ts`. It computes the largest 4k-stepped q8_0 KV window that fits
+the current host budget after the text GGUF footprint and a runtime working set,
+then clamps to the bundle/catalog native ceiling. Explicit per-load overrides
+still win, and the mobile ceiling still applies after the dynamic choice.
+
+The numbers above show why this matters:
 
 - 2B / 4B: the binding limit is the base model's `max_position_embeddings`
   (262144). The catalog's `131072` is a deliberate release floor below that. A
@@ -169,13 +175,11 @@ model's native ceiling". The numbers above show every device has slack:
   longer contexts, but those must remain runtime stretch experiments until a
   separately verified long-context 27B artifact passes latency and spill tests.
 
-**Implementation sketch:** after the model is chosen, compute
-`maxFittingContext = floor((memBytes − weightBytes − workingSet) / kvBytesPerToken)`
+Implementation now matches the sketch: after admission, compute
+`maxFittingContext = floor((usableMb − weightMb − workingSetMb) / kvBytesPerToken)`
 using the same `estimateQuantizedKvBytesPerToken` figure `kv-spill.ts` uses,
 clamp to `min(model.contextLength, baseModelNativeContext)`, and pass that as
-`mtp.contextSize` instead of the static `contextLength`. This is the
-"largest model+context combo that fits the available RAM/VRAM with a safety
-margin, preferring stock q8_0 KV" the task asks for.
+runtime `contextSize` instead of blindly using the static `contextLength`.
 
 ### HIGH — default to stock q8_0 KV (already done, keep it)
 
@@ -232,14 +236,11 @@ How the catalog/harness handles low-RAM hosts today:
   because the compressed RAM budget rarely forces it below the device's fit at
   the catalog's static 32k.
 
-**What's missing on mobile:** the same memory-aware context selector. A 4 GB
-phone running the 2B at the catalog's static 32k is fine, but a 4 GB phone
-running the 2B *could* run a larger window for the same KV cost it already
-budgets — there's no reason to leave headroom on the table. And an 8 GB phone
-could run the 4B (if catalogued) instead of the 2B. The selector should:
-enumerate tiers fitting the device → pick the largest → pick
-`contextSize = min(tier.contextLength, baseNativeContext,
-maxFittingContextAtQ8Cache − safetyMargin)`.
+**Mobile status:** the same memory-aware selector feeds live load args and then
+the mobile ceiling clamps the result to the currently safe handset window. A 4
+GB phone can therefore get a downscaled 2B window instead of a static 128k load,
+while an 8 GB-class phone can still take the larger fitting tier through the
+device-tier selector.
 
 ---
 
@@ -303,10 +304,15 @@ error) stays — a slow voice session is worse than a clear "this device can't d
   every tier — Gemma 4's dual head dims (512/256) rule out a head_dim=128 sketch
   kernel. There is no obviously-too-conservative number to bump without
   verification evidence behind it.
-- **Recommended:** (1) a memory-aware *context*
-  selector in `recommendation.ts` that raises runtime `mtp.contextSize`
-  toward `min(tier.contextLength, baseNativeContext, maxFittingContext)` using
-  the `estimateQuantizedKvBytesPerToken` figures; (2) an opt-in
-  `preferAccurateKvWhenHeadroom` branch that picks f16 KV on hosts with
-  abundant VRAM relative to the chosen model+context; (3) only add a
-  named long-context 27B tier after the artifact and spill-latency gate pass.
+- **Resolved:** the memory-aware runtime context selector now raises or lowers
+  runtime `contextSize` toward
+  `min(tier.contextLength, baseNativeContext, maxFittingContext)` using
+  `estimateQuantizedKvBytesPerToken`.
+- **Resolved (opt-in):** `preferAccurateKvWhenHeadroom` picks f16 KV when the
+  host has the headroom to run it at (at least) the q8_0-selected window — it
+  only ever upgrades precision, never trades away context. Gated behind
+  `ELIZA_PREFER_ACCURATE_KV_WHEN_HEADROOM`; stock q8_0 remains the default and
+  only shipped Gemma KV path. Implemented in `context-fit.ts` +
+  `active-model.ts` (`resolveRuntimeContextFit`).
+- **Still gated:** only add a named long-context 27B tier after the artifact and
+  spill-latency gate pass.

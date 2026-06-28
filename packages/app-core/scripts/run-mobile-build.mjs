@@ -64,17 +64,38 @@ import {
   resolveAppConfigPath,
 } from "./aosp/lib/load-variant-config.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { artifactStaleness } from "./lib/artifact-staleness.mjs";
 import {
   isCapacitorPlatformReady as isCapacitorPlatformReadyImpl,
   resolvePlatformTemplateRoot as resolvePlatformTemplateRootImpl,
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
 import { ensurePlistUrlScheme } from "./lib/ios-plist-url-scheme.mjs";
+import {
+  androidUsesAppDirFor,
+  MTP_FORK_SRC_CANDIDATES,
+  mtpForceRebuildRequested,
+  mtpSliceReuse,
+} from "./lib/mobile-build-decisions.mjs";
+import {
+  assertStagedRendererMatchesBuild,
+  overlayFreshRendererIntoPublic,
+  readRendererBuildManifest,
+} from "./lib/renderer-build-manifest.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   RUNTIME_PROVENANCE_FILENAME,
   stageAndroidAgentRuntime,
 } from "./lib/stage-android-agent.mjs";
+import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
+
+export {
+  androidUsesAppDirFor,
+  MTP_FORK_SRC_CANDIDATES,
+  mtpBuilderRepoRoot,
+  mtpForceRebuildRequested,
+  mtpSliceReuse,
+} from "./lib/mobile-build-decisions.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -105,9 +126,7 @@ const iosDir = path.join(appDir, "ios", "App");
 // overlayAndroid/patchAndroidGradle/syncAndroidAppActionsResources. That keeps
 // the two brands' Android builds fully separate.
 const androidBuildAppId = readAppIdentity().appId;
-const androidUsesAppDir =
-  process.env.ELIZA_ANDROID_USE_APP_DIR === "1" ||
-  androidBuildAppId !== "ai.elizaos.app";
+const androidUsesAppDir = androidUsesAppDirFor(androidBuildAppId, process.env);
 const androidDir = androidUsesAppDir
   ? path.join(appDir, "android")
   : path.join(appCoreRoot, "platforms", "android");
@@ -179,6 +198,11 @@ const iosBunRuntimePackageRoot = path.join(
   packagesRoot,
   "native",
   "bun-runtime",
+);
+const RM_PATH_RECURSIVE_SCRIPT = path.join(
+  packagesRoot,
+  "scripts",
+  "rm-path-recursive.mjs",
 );
 const defaultIosBunEngineXcframework = path.join(
   iosBunRuntimePackageRoot,
@@ -295,8 +319,23 @@ function withMobileBuildNodeOptions(env = process.env) {
 }
 
 function run(command, args, { cwd, env = process.env } = {}) {
+  // Windows: gradlew is gradlew.bat, and Node cannot spawn `./gradlew` (ENOENT)
+  // nor a .bat/.cmd directly (EINVAL since CVE-2024-27980). Translate
+  // ./gradlew -> the sibling gradlew.bat (resolved against cwd) and run any
+  // .bat/.cmd through cmd.exe with args as separate argv (no shell:true).
+  let spawnCmd = command;
+  let spawnArgs = args;
+  if (process.platform === "win32") {
+    if (command === "./gradlew" || command === "gradlew") {
+      spawnCmd = path.join(cwd || process.cwd(), "gradlew.bat");
+    }
+    if (/.(?:bat|cmd)$/i.test(spawnCmd)) {
+      spawnArgs = ["/d", "/s", "/c", spawnCmd, ...args];
+      spawnCmd = process.env.ComSpec || "cmd.exe";
+    }
+  }
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env, stdio: "inherit" });
+    const child = spawn(spawnCmd, spawnArgs, { cwd, env, stdio: "inherit" });
     child.on("exit", (code, signal) => {
       if (signal) return reject(new Error(`${command} killed by ${signal}`));
       if ((code ?? 1) !== 0)
@@ -379,6 +418,28 @@ function runCaptureSync(command, args, { cwd = repoRoot, maxBuffer } = {}) {
   });
 }
 
+function rmRecursive(pathToRemove) {
+  const result = spawnSync(
+    process.execPath,
+    [RM_PATH_RECURSIVE_SCRIPT, path.resolve(pathToRemove)],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.status !== 0) {
+    const reason =
+      result.stderr?.trim() ||
+      result.stdout?.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    throw new Error(
+      `[mobile-build] failed to recursively remove ${pathToRemove}: ${reason}`,
+    );
+  }
+}
+
 function resolveBunExecutable() {
   if (process.versions.bun) return process.execPath;
   return resolveExecutable("bun");
@@ -390,6 +451,11 @@ function resolveAndroidSdkRoot() {
     process.env.ANDROID_HOME,
     path.join(os.homedir(), "Library", "Android", "sdk"),
     path.join(os.homedir(), "Android", "Sdk"),
+    path.join(
+      process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+      "Android",
+      "Sdk",
+    ),
   ]);
 }
 
@@ -450,6 +516,17 @@ function resolveJavaHome() {
     for (const name of fs.readdirSync(jvmRoot)) {
       const full = path.join(jvmRoot, name);
       if ((javaMajorVersion(full) ?? 0) >= 21) return full;
+    }
+  }
+  if (process.platform === "win32") {
+    const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+    for (const vendor of ["Eclipse Adoptium", "Microsoft", "Java", "Zulu"]) {
+      const vendorRoot = path.join(programFiles, vendor);
+      if (!fs.existsSync(vendorRoot)) continue;
+      for (const name of fs.readdirSync(vendorRoot)) {
+        const full = path.join(vendorRoot, name);
+        if ((javaMajorVersion(full) ?? 0) >= 21) return full;
+      }
     }
   }
   // Nothing >= 21 found — return the first path that exists so the caller's
@@ -929,15 +1006,104 @@ export function resolveMobileBuildPolicy(platform) {
 }
 
 async function buildWeb(platform) {
+  // Auto-skip the full Vite renderer build when it is NOT explicitly forced and
+  // the existing dist is already up-to-date for this variant/target (#9626).
+  // This reuses the same manifest + staleness checks as the explicit-skip path
+  // below, so the loud-fail-on-stale guarantee is preserved: a stale or
+  // mismatched dist simply does not match here and falls through to a rebuild.
+  // Explicit ELIZA_MOBILE_SKIP_WEB_BUILD=1 keeps its force-reuse semantics below.
+  if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1") {
+    const autoDistDir = path.join(appDir, "dist");
+    if (fs.existsSync(path.join(autoDistDir, "index.html"))) {
+      const autoPolicy = resolveMobileBuildPolicy(platform);
+      const autoVariant =
+        process.env.ELIZA_BUILD_VARIANT || autoPolicy.buildVariant;
+      const autoManifest = readRendererBuildManifest(autoDistDir);
+      const variantOk =
+        autoManifest != null &&
+        (autoManifest.variant == null || autoManifest.variant === autoVariant);
+      const targetOk =
+        autoManifest != null &&
+        (autoManifest.capacitorTarget == null ||
+          autoManifest.capacitorTarget === autoPolicy.capacitorTarget);
+      if (
+        autoManifest != null &&
+        variantOk &&
+        targetOk &&
+        !viteRendererBuildNeeded(appDir, repoRoot)
+      ) {
+        console.log(
+          "[mobile-build] Auto-skipping web build: existing dist is up-to-date " +
+            `(buildId=${autoManifest.buildId.slice(0, 12)})`,
+        );
+        return;
+      }
+    }
+  }
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
-    const indexPath = path.join(appDir, "dist", "index.html");
+    const distDir = path.join(appDir, "dist");
+    const indexPath = path.join(distDir, "index.html");
     if (!fs.existsSync(indexPath)) {
       throw new Error(
         `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 but ${indexPath} is missing.`,
       );
     }
+    // Never SILENTLY reuse a stale renderer (issue #9309). The skip flag is an
+    // explicit "reuse the existing dist" request, but it must still fail loudly
+    // when that dist is stale relative to sources or was built for a different
+    // variant/target than this build needs. A deliberate stale reuse can be
+    // forced with ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1.
+    const allowStale =
+      process.env.ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE === "1";
+    const policy = resolveMobileBuildPolicy(platform);
+    const expectedVariant =
+      process.env.ELIZA_BUILD_VARIANT || policy.buildVariant;
+    const expectedTarget = policy.capacitorTarget;
+    const manifest = readRendererBuildManifest(distDir);
+    const problems = [];
+    if (!manifest) {
+      problems.push(
+        `no ${path.join("dist", "eliza-renderer-build.json")} (renderer not built with the build-manifest plugin)`,
+      );
+    } else {
+      if (
+        expectedVariant &&
+        manifest.variant != null &&
+        manifest.variant !== expectedVariant
+      ) {
+        problems.push(
+          `dist built for variant '${manifest.variant}' but this build targets '${expectedVariant}'`,
+        );
+      }
+      if (
+        expectedTarget &&
+        manifest.capacitorTarget != null &&
+        manifest.capacitorTarget !== expectedTarget
+      ) {
+        problems.push(
+          `dist built for capacitor target '${manifest.capacitorTarget}' but this build targets '${expectedTarget}'`,
+        );
+      }
+    }
+    if (viteRendererBuildNeeded(appDir, repoRoot)) {
+      problems.push("dist is older than renderer sources (stale)");
+    }
+    if (problems.length > 0) {
+      const detail = problems.map((p) => `  - ${p}`).join("\n");
+      if (!allowStale) {
+        throw new Error(
+          `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD=1 refused — the existing web build is stale or mismatched:\n${detail}\n` +
+            `Drop ELIZA_MOBILE_SKIP_WEB_BUILD to rebuild, or set ` +
+            `ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1 to ship this dist anyway (NOT recommended).`,
+        );
+      }
+      console.warn(
+        `[mobile-build] ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE=1 — shipping a renderer flagged as stale/mismatched:\n${detail}`,
+      );
+    }
     console.log(
-      `[mobile-build] Reusing existing web build: ${path.relative(repoRoot, path.dirname(indexPath))}`,
+      `[mobile-build] Reusing existing web build: ${path.relative(repoRoot, distDir)}` +
+        (manifest ? ` (buildId=${manifest.buildId.slice(0, 12)})` : ""),
     );
     return;
   }
@@ -1116,8 +1282,25 @@ function stageIosAgentRuntime({
     }
   }
 
+  // The agent bundle must be the freshly built one — never a stale leftover that
+  // forces a manual hot-swap to get latest (issue #9309). buildIos rebuilds it
+  // before staging, so this is a hard guarantee; fail loudly if it regressed.
+  if (process.env.ELIZA_MOBILE_ALLOW_STALE_AGENT_BUNDLE !== "1") {
+    const bundleStale = artifactStaleness(
+      path.join(sourceDir, "agent-bundle.js"),
+      { sourceDirs: [path.join(packagesRoot, "agent", "src")] },
+    );
+    if (bundleStale.stale) {
+      throw new Error(
+        `[mobile-build] iOS agent bundle is stale (${bundleStale.reason}). ` +
+          `Run \`bun run --cwd packages/agent build:ios-bun\` to rebuild, or set ` +
+          `ELIZA_MOBILE_ALLOW_STALE_AGENT_BUNDLE=1 to stage it anyway (NOT recommended).`,
+      );
+    }
+  }
+
   const targetDir = path.join(iosDir, "App", "public", "agent");
-  fs.rmSync(targetDir, { recursive: true, force: true });
+  rmRecursive(targetDir);
   fs.mkdirSync(targetDir, { recursive: true });
   const filesToStage = assetPlan.agentAssets ?? fs.readdirSync(sourceDir);
   for (const file of filesToStage) {
@@ -1135,6 +1318,19 @@ function stageIosAgentRuntime({
   for (const file of assetPlan.rootAssets) {
     fs.copyFileSync(path.join(sourceDir, file), path.join(publicDir, file));
   }
+  // Verify the staged bundle is a faithful copy (catch a torn/partial copy that
+  // would ship a corrupt agent runtime).
+  if (assetPlan.agentAssets?.includes("agent-bundle.js")) {
+    const sha = (p) =>
+      crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
+    const srcSha = sha(path.join(sourceDir, "agent-bundle.js"));
+    const dstSha = sha(path.join(targetDir, "agent-bundle.js"));
+    if (srcSha !== dstSha) {
+      throw new Error(
+        `[mobile-build] staged iOS agent-bundle.js hash ${dstSha} != source ${srcSha} — partial/corrupt copy.`,
+      );
+    }
+  }
   const stagedModelCount = stageIosBundledLocalModels(targetDir);
   console.log(
     `[mobile-build] Staged iOS Bun agent payload${appStoreBuild ? " (App Store allowlist)" : ""}: ${path.relative(repoRoot, targetDir)}${stagedModelCount > 0 ? ` with ${stagedModelCount} local model file(s)` : ""}`,
@@ -1151,7 +1347,7 @@ function removeIosLocalExecutionAssets() {
   let removed = 0;
   for (const target of targets) {
     if (!fs.existsSync(target)) continue;
-    fs.rmSync(target, { recursive: true, force: true });
+    rmRecursive(target);
     removed += 1;
   }
   if (removed > 0) {
@@ -1273,7 +1469,7 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     fs.realpathSync(syncedAssets) === fs.realpathSync(targetAssets);
   if (hasSyncedPublic && !sameTree) {
     fs.mkdirSync(targetAssets, { recursive: true });
-    fs.rmSync(targetPublic, { recursive: true, force: true });
+    rmRecursive(targetPublic);
     fs.cpSync(syncedPublic, targetPublic, { recursive: true });
     for (const cfg of ["capacitor.config.json", "capacitor.plugins.json"]) {
       const src = path.join(syncedAssets, cfg);
@@ -1312,16 +1508,91 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
     fs.existsSync(targetAssets)
   ) {
     fs.mkdirSync(targetPublic, { recursive: true });
-    fs.rmSync(path.join(targetPublic, "assets"), {
-      recursive: true,
-      force: true,
-    });
+    rmRecursive(path.join(targetPublic, "assets"));
     fs.cpSync(freshWeb, targetPublic, { recursive: true });
     console.log(
       `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
     );
   }
+  dropRetiredLlamaCppFromAndroidGradle();
   reconcilePluginManifestWithGradle(targetAssets);
+  // Verify the staged Android renderer is exactly the freshly built one. The
+  // overlay above makes it so; this turns "should be fresh" into a hard,
+  // build-failing guarantee (issue #9309).
+  if (fs.existsSync(path.join(freshWeb, "index.html"))) {
+    assertStagedRendererMatchesBuild(freshWeb, targetPublic, {
+      label: "android",
+    });
+  }
+}
+
+/**
+ * iOS stale-web guard — the iOS counterpart to
+ * mirrorCapacitorWebPayloadIntoAndroidDir. `cap sync ios` (and a skipped sync)
+ * have both been observed to leave a STALE `ios/App/App/public` — an old entry
+ * hash shipping an ancient UI despite a fresh `dist`. The freshly vite-built
+ * bundle is the source of truth, so overlay it unconditionally: clear the hashed
+ * assets/ then copy dist over public. The on-device agent payload
+ * (`public/agent`) and PGlite root extension assets staged by
+ * stageIosAgentRuntime live OUTSIDE dist and survive — we only clear
+ * `public/assets` and cpSync never deletes existing non-dist files. After the
+ * overlay we assert the staged renderer matches the build so a stale/missing UI
+ * FAILS THE BUILD instead of shipping (issue #9309).
+ */
+function mirrorCapacitorWebPayloadIntoIosDir() {
+  const freshWeb = path.join(appDir, "dist");
+  const targetPublic = path.join(iosDir, "App", "public");
+  overlayFreshRendererIntoPublic(freshWeb, targetPublic, { label: "ios" });
+  console.log(
+    `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
+  );
+}
+
+/**
+ * Remove the RETIRED llama-cpp-capacitor Android module from the gradle build
+ * entirely — the `include ':llama-cpp-capacitor'` + project line in
+ * capacitor.settings.gradle and the `implementation project(':llama-cpp-capacitor')`
+ * in app/capacitor.build.gradle. `cap sync` re-adds these on every sync because
+ * the package ships an android/ dir, but agent inference runs solely through the
+ * fused libelizainference.so and nothing on Android loads this plugin's separate
+ * libllama-cpp-arm64.so. Leaving the gradle project in only made gradle configure
+ * its CMake — which built a no-op stub and used to require the
+ * ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB opt-out. Dropping the project removes the
+ * stub build outright (no flag needed). iOS is untouched: ios-local-agent-kernel
+ * loads the package via a dynamic import, so the npm dependency stays.
+ *
+ * Opt back into the full second library (not the stub) with
+ * ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1. Idempotent.
+ */
+function dropRetiredLlamaCppFromAndroidGradle() {
+  if (
+    process.env.ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR === "1" ||
+    process.env.elizaIncludeLlamaCppCapacitor === "true"
+  ) {
+    return;
+  }
+  const targets = [
+    path.join(androidDir, "capacitor.settings.gradle"),
+    path.join(androidDir, "app", "capacitor.build.gradle"),
+  ];
+  let dropped = false;
+  for (const target of targets) {
+    if (!fs.existsSync(target)) continue;
+    const before = fs.readFileSync(target, "utf8");
+    const after = before
+      .split("\n")
+      .filter((line) => !line.includes("llama-cpp-capacitor"))
+      .join("\n");
+    if (after !== before) {
+      fs.writeFileSync(target, after, "utf8");
+      dropped = true;
+    }
+  }
+  if (dropped) {
+    console.log(
+      "[mobile-build] Dropped retired llama-cpp-capacitor from the Android gradle build (no stub CMake; libelizainference is the sole in-process inference lib).",
+    );
+  }
 }
 
 /**
@@ -1360,28 +1631,16 @@ function reconcilePluginManifestWithGradle(targetAssets) {
     String(pkg ?? "")
       .replace(/@/g, "")
       .replace(/\//g, "-");
-  // When ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 the llama-cpp-capacitor CMake builds
-  // a no-op stub (`ELIZA_SKIP_MTP_ANDROID_LIB`). The stub registers and
-  // System.loadLibrary()s fine, but its JNI methods have no implementation, so a
-  // native call (LlamaCpp.toggleNativeLog during WebView device-bridge init)
-  // raises java.lang.UnsatisfiedLinkError. The call site is now defended — the
-  // patches/llama-cpp-capacitor@0.1.5.patch hardening makes LlamaCpp.toggleNativeLog
-  // catch Throwable and reject the Capacitor call instead of letting the Error
-  // escape to crash MainActivity — so registering the stub no longer kills the
-  // app. We still drop it from the manifest here because a stub Capacitor plugin
-  // is pure dead weight: agent-side local inference (ELIZA_LOCAL_LLAMA, libllama
-  // via bun:ffi) does NOT use this Capacitor plugin, so the device-bridge import
-  // failing as a catchable "LlamaCpp plugin not implemented" JS error costs
-  // nothing and keeps the JS↔native surface honest.
-  // The llama-cpp-capacitor plugin is RETIRED: agent inference runs entirely
-  // through the single fused libelizainference.so, and nothing loads this
-  // plugin's separate libllama-cpp-arm64.so (its JS adapter is retired). Drop it
-  // from the manifest BY DEFAULT so the LlamaCpp class never registers / its
-  // static System.loadLibrary never runs — libelizainference is the only
-  // inference library loaded in-process. Opt back in (full second lib) only with
-  // ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1. (The old
-  // ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB flag also stubbed it; that is now the
-  // default and the flag is no longer required for this.)
+  // The llama-cpp-capacitor plugin is RETIRED on Android: agent inference runs
+  // entirely through the single fused libelizainference.so, and nothing loads
+  // this plugin's separate libllama-cpp-arm64.so (its JS adapter is retired).
+  // dropRetiredLlamaCppFromAndroidGradle() (called above) removes its gradle
+  // project outright, so its CMake never runs — there is no stub to register
+  // and no ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB opt-out to set. We also drop it from
+  // the plugins manifest here so the LlamaCpp class never auto-registers. The
+  // device-bridge's optional LlamaCpp import resolves to a catchable "plugin not
+  // implemented" JS error, which costs nothing. Opt the full second library back
+  // in (gradle project + manifest) only with ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1.
   const stubLlamaCpp =
     process.env.ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR !== "1" &&
     process.env.elizaIncludeLlamaCppCapacitor !== "true";
@@ -1698,33 +1957,19 @@ export function injectNativeLibLegacyPackaging(content) {
  * Fails local builds when no path is configured or the dir doesn't exist. The
  * Android Capacitor JNI wrapper links against these MTP libraries and cannot
  * honestly support Eliza-1/Gemma 4 without them. Cloud builds skip the task.
- * CI smoke builds that intentionally install no native deps can opt out with
- * -PelizaSkipForkLlamaLib=true or ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1.
+ * A build with no fresh source dir falls back to the already-staged fused lib
+ * set (the common dev case); only a genuinely missing arm64 lib is a hard error.
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
 function ensureCopyForkLlamaLibGuards(content) {
   if (!/\[copyForkLlamaLib\]/.test(content)) return content;
-  const hasCloudGuard = /skipped for cloud build/.test(content);
-  const hasExplicitSkipGuard =
-    /elizaSkipForkLlamaLib/.test(content) ||
-    /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/.test(content);
-  if (hasCloudGuard && hasExplicitSkipGuard) return content;
-  let guards = "";
-  if (!hasCloudGuard) {
-    guards +=
-      `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
-      `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
-      `            return\n` +
-      `        }\n`;
-  }
-  if (!hasExplicitSkipGuard) {
-    guards +=
-      `        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
-      `            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"\n` +
-      `            return\n` +
-      `        }\n`;
-  }
+  if (/skipped for cloud build/.test(content)) return content;
+  const guards =
+    `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
+    `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
+    `            return\n` +
+    `        }\n`;
   return content.replace(
     /(task copyForkLlamaLib\s*\{\s*\n\s*doLast\s*\{\s*\n)/,
     `$1${guards}`,
@@ -1819,10 +2064,6 @@ export function injectCopyForkLlamaLibTask(content) {
     `    doLast {\n` +
     `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
     `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
-    `            return\n` +
-    `        }\n` +
-    `        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
-    `            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"\n` +
     `            return\n` +
     `        }\n` +
     `        boolean stagedArm64 = false\n` +
@@ -2292,7 +2533,7 @@ function removeStaleAndroidJavaSourceRoots(
       shouldRemoveAndroidJavaSourceRoot(candidate, dstJava, protectedRoots) &&
       fs.existsSync(candidate)
     ) {
-      fs.rmSync(candidate, { recursive: true, force: true });
+      rmRecursive(candidate);
     }
   }
 }
@@ -2814,7 +3055,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
           protectedJavaRoots,
         )
       ) {
-        fs.rmSync(staleJava, { recursive: true, force: true });
+        rmRecursive(staleJava);
       }
     }
     fs.mkdirSync(dstJava, { recursive: true });
@@ -2891,7 +3132,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       path.resolve(srcJava) !== path.resolve(templateJava) &&
       path.resolve(srcJava) !== path.resolve(dstJava)
     ) {
-      fs.rmSync(srcJava, { recursive: true, force: true });
+      rmRecursive(srcJava);
     }
     console.log("[mobile-build] Overlaid Android Java sources.");
   }
@@ -4809,17 +5050,55 @@ function mtpTargetOutDir(target) {
   );
 }
 
+function resolveMtpForkSrc() {
+  for (const candidate of MTP_FORK_SRC_CANDIDATES) {
+    if (fs.existsSync(path.join(candidate, "CMakeLists.txt"))) return candidate;
+  }
+  return null;
+}
+
+/** `git describe --always --dirty` of the fork, or null when git/desc fails. */
+function currentMtpForkRevision(forkSrc) {
+  if (!forkSrc) return null;
+  const result = spawnSync(
+    "git",
+    ["-C", forkSrc, "describe", "--always", "--dirty"],
+    { encoding: "utf8" },
+  );
+  if (result.status !== 0) return null;
+  return result.stdout?.trim() || null;
+}
+
 async function ensureMtpIosTarget(target) {
   const outDir = mtpTargetOutDir(target);
   const capabilities = path.join(outDir, "CAPABILITIES.json");
-  if (fs.existsSync(capabilities)) {
+  const forkSrc = resolveMtpForkSrc();
+  const reuse = mtpSliceReuse(
+    capabilities,
+    forkSrc,
+    currentMtpForkRevision(forkSrc),
+  );
+  const forceRebuild = mtpForceRebuildRequested(reuse, process.env);
+  if (!forceRebuild) {
     console.log(
-      `[mobile-build] Reusing existing mtp artifact for ${target} at ${outDir}`,
+      `[mobile-build] Reusing fresh mtp artifact for ${target} at ${outDir}`,
     );
     return outDir;
   }
-  console.log(`[mobile-build] Building mtp artifact for ${target}`);
-  await run("node", [MTP_BUILD_SCRIPT, "--target", target]);
+  if (fs.existsSync(capabilities)) {
+    console.log(
+      `[mobile-build] Rebuilding mtp artifact for ${target} — ${process.env.ELIZA_IOS_REBUILD_MTP === "1" ? "ELIZA_IOS_REBUILD_MTP=1" : reuse.reason}`,
+    );
+  } else {
+    console.log(`[mobile-build] Building mtp artifact for ${target}`);
+  }
+  // The child builder (build-llama-cpp-mtp.mjs) has its OWN presence-only reuse
+  // gate keyed on ELIZA_MTP_FORCE_REBUILD. Without propagating it, the child
+  // would see the stale CAPABILITIES.json and reuse it — turning this staleness
+  // gate into a no-op. Force the child to actually rebuild (#9309).
+  await run("node", [MTP_BUILD_SCRIPT, "--target", target], {
+    env: { ...process.env, ELIZA_MTP_FORCE_REBUILD: "1" },
+  });
   if (!fs.existsSync(capabilities)) {
     throw new Error(
       `[mobile-build] mtp build for ${target} did not produce CAPABILITIES.json at ${capabilities}. ` +
@@ -4884,7 +5163,7 @@ async function ensureIosLlamaCppVendoredFramework({
   await ensureMtpIosTarget(simulatorTarget);
 
   fs.mkdirSync(xcframeworksDir, { recursive: true });
-  fs.rmSync(xcframeworkDir, { recursive: true, force: true });
+  rmRecursive(xcframeworkDir);
   await run("node", [
     IOS_XCFRAMEWORK_BUILD_SCRIPT,
     "--output",
@@ -4915,7 +5194,7 @@ async function ensureIosLlamaCppVendoredFramework({
       "ios",
       `.${path.basename(stale, ".framework")}-stock-archive`,
     );
-    fs.rmSync(archived, { recursive: true, force: true });
+    rmRecursive(archived);
     fs.renameSync(stale, archived);
     console.log(
       `[mobile-build] Archived stock npm framework: ${stale} -> ${archived} ` +
@@ -5250,7 +5529,7 @@ function stageIosFullBunEngineForPodspec(framework) {
   console.log(
     `[mobile-build] staging external iOS full Bun engine for CocoaPods: ${resolved} -> ${defaultIosBunEngineXcframework}`,
   );
-  fs.rmSync(defaultIosBunEngineXcframework, { recursive: true, force: true });
+  rmRecursive(defaultIosBunEngineXcframework);
   fs.mkdirSync(path.dirname(defaultIosBunEngineXcframework), {
     recursive: true,
   });
@@ -5835,7 +6114,7 @@ export function removeInactiveAndroidJavaSourceRoots(javaRoots, activeRoot) {
     if (resolved === active || seen.has(resolved)) continue;
     seen.add(resolved);
     if (!fs.existsSync(root)) continue;
-    fs.rmSync(root, { recursive: true, force: true });
+    rmRecursive(root);
     removed += 1;
   }
   return removed;
@@ -5845,7 +6124,7 @@ function removeCloudNativeArtifacts() {
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
   const stagedAgentAssets = path.join(assetsRoot, "agent");
   if (fs.existsSync(stagedAgentAssets)) {
-    fs.rmSync(stagedAgentAssets, { recursive: true, force: true });
+    rmRecursive(stagedAgentAssets);
     console.log(
       "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
     );
@@ -7196,7 +7475,7 @@ function writeAndroidSystemProvenance(apkPath) {
       );
     }
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    rmRecursive(tmpDir);
   }
 }
 
@@ -7411,6 +7690,11 @@ async function buildIos({ local = false } = {}) {
   } else {
     await runCapacitor(["sync", "ios"]);
   }
+  // Overlay the freshly built renderer onto ios/App/App/public and assert it
+  // matches the build — never ship a stale UI whether sync ran, was skipped, or
+  // left old hashed assets behind (issue #9309). Runs before the post-sync agent
+  // re-stage so the agent payload remains the final authority on public/agent.
+  mirrorCapacitorWebPayloadIntoIosDir();
   if (includesLocalAgentPayload) {
     stageIosAgentRuntime({
       appStoreBuild: isIosAppStoreBuild() && !local,

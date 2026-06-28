@@ -100,13 +100,13 @@ export interface InstalledModel {
   runtimeRole?: "chat" | "mtp-drafter";
   companionFor?: string;
   /**
-   * Which desktop text runtime serves this model. `"fused-eliza1"` for an
-   * Eliza-1 bundle (full pipeline: same-file MTP, fork KV kernels, fused
-   * voice/vision); `"generic-gguf"` for a single downloaded/scanned GGUF
-   * served from an explicit `path` with stock f16 KV and reduced
-   * optimizations. Backfilled at the registry-read boundary for legacy rows
-   * via `classifyInstalledModelRuntimeClass`; consumers read the field rather
-   * than re-deriving it from the id.
+   * Which desktop text runtime serves this model. Always `"fused-eliza1"` — an
+   * Eliza-1 bundle served by the full pipeline (Gemma separate-drafter MTP when
+   * staged, fork KV kernels, fused voice/vision). The local stack is Eliza-1 only
+   * (#8808). Backfilled at
+   * the registry-read boundary for legacy rows via
+   * `classifyInstalledModelRuntimeClass`; consumers read the field rather than
+   * re-deriving it from the id.
    */
   runtimeClass?: import("./runtime-class.js").RuntimeClass;
 }
@@ -272,8 +272,8 @@ export interface LocalRuntimeAcceleration {
     /**
      * Bundle-relative path to a separate MTP drafter GGUF. Gemma 4 ships an
      * official standalone drafter, loaded via `-md <drafterFile>
-     * --spec-type draft-mtp`. (Omitting it selects same-file MTP, where a
-     * NextN head is embedded in the text GGUF — the retired Qwen3.5 path.)
+     * --spec-type draft-mtp`. Shipped Gemma text tiers must not fall back to the
+     * retired same-file NextN path when this file is absent.
      */
     drafterFile?: string;
     /** Default draft range passed to the native MTP runner. */
@@ -301,7 +301,6 @@ export type TokenizerFamily =
   | "gemma4"
   | "eliza1"
   | "sentencepiece"
-  | "qwen35"
   | (string & {});
 
 export type CatalogHub = "huggingface" | "modelscope";
@@ -312,7 +311,13 @@ export type CatalogQuantizationId =
   | "q4_k_m"
   | "q5_k_m"
   | "q6_k"
-  | "q8_0";
+  | "q8_0"
+  // LiteRT-LM mobile quant. Not a GGUF weight format — it is the
+  // wNa8o8 (4-bit weight / 8-bit activation) schema baked into Google's
+  // LiteRT `.litertlm` bundle and executed by the LiteRT-LM runtime
+  // (NPU/GPU delegate), not llama.cpp. The catalog advertises it on a
+  // `runtimeClass: "litert"` artifact; GGUF quant handling is unchanged.
+  | "wna8o8";
 
 export interface CatalogQuantizationVariant {
   id: CatalogQuantizationId;
@@ -321,6 +326,19 @@ export interface CatalogQuantizationVariant {
   sizeGb: number;
   minRamGb: number;
   status: "published" | "planned";
+  /**
+   * Quant artifact format. Defaults to GGUF (llama.cpp / fused-eliza1) when
+   * omitted, preserving every existing catalog entry. `"litertlm"` marks a
+   * LiteRT-LM bundle whose `ggufFile` is actually a `.litertlm` artifact.
+   */
+  artifactFormat?: "gguf" | "litertlm";
+  /**
+   * Set on the quant the on-device (mobile) path should prefer for a tier.
+   * Google's Gemma-4 QAT Q4_0 is the mobile sweet spot (NPU-friendly,
+   * ~2x faster, 40-50% less memory) — and the LiteRT wNa8o8 bundle where a
+   * tier ships one. Desktop selection still defaults to `defaultVariantId`.
+   */
+  mobilePreferred?: boolean;
 }
 
 export interface CatalogQuantization {
@@ -428,7 +446,17 @@ export interface CatalogModel {
     finetuned: false;
     components: Partial<
       Record<
-        "text" | "voice" | "asr" | "vad" | "embedding" | "vision" | "mtp",
+        | "text"
+        | "voice"
+        | "asr"
+        | "vad"
+        | "embedding"
+        | "vision"
+        // LiteRT-LM single-file bundle (text + vision + audio + MTP, QAT
+        // weights). Parallel to `text` (the GGUF) — present only on tiers
+        // that ship a `.litertlm` for the on-device LiteRT runtime.
+        | "litert"
+        | "mtp",
         { repo: string; file?: string }
       >
     >;
@@ -436,11 +464,10 @@ export interface CatalogModel {
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
   /**
-   * Which desktop text runtime serves this catalog model. `"fused-eliza1"`
-   * for the curated Eliza-1 tiers (full pipeline); `"generic-gguf"` for
-   * synthetic Hugging Face / ModelScope search results (reduced
-   * optimizations). Populated by the catalog factory and the hub-search
-   * synthesizers; consumers read the field rather than matching the id prefix.
+   * Which desktop text runtime serves this catalog model. Always
+   * `"fused-eliza1"` — the curated Eliza-1 tiers, served by the full pipeline.
+   * The local stack is Eliza-1 only (#8808). Populated by the catalog factory;
+   * consumers read the field rather than matching the id prefix.
    */
   runtimeClass?: import("./runtime-class.js").RuntimeClass;
   /**

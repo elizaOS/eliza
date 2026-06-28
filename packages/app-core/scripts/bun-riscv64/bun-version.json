@@ -127,7 +127,7 @@
       "0005-tinycc-disable-on-riscv64.patch": "ee3e9b0c64a5ccdb78397309ce2115381c353a3dfce313aba88dd951264dc7d3",
       "0006-build-add-riscv64-cli-validation.patch": "d621bff9ae125af7674bb4ee44dad62848c1ab6e333e61d4b1f6311eb139764c",
       "0007-deps-per-dep-riscv64-checks.patch": "0d1516c4655601174f5ee91a877ad1a0fcb287ed8df42f7e96297b47b03ea5e4",
-      "0008-source-stabilize-riscv64-musl-build.patch": "21a8ca86c77dd49140e29c0fd0a3d47a490b4d19d7617342db83567fa473b108",
+      "0008-source-stabilize-riscv64-musl-build.patch": "58abdc9deff750305be9176da68b7190cdcbbd1a484256100b36f7239de63824",
       "0009-disable-wasm-streaming-hooks-for-c-loop.patch": "c8658536cc46505cec35ab65f9d51daeba8cc5abac741f55496c65712c556731",
       "0010-disable-inspector-profiler-for-riscv64-c-loop.patch": "4433d1077b59c325b19194fecefa4e33b5a586099fec0f4f999c82d053826128",
       "0011-process-arch-add-riscv64.patch": "1a3e4ab498e83603a34016aab7f02d78fc21a0c7f61daa18cd282e8287d1ef1e",

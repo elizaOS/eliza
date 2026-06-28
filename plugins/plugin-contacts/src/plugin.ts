@@ -19,41 +19,20 @@ export const appContactsPlugin: Plugin = {
     "Contacts overlay: read-only Android address-book context via the @elizaos/capacitor-contacts native plugin. The Android runtime adapter gates the provider to the active Contacts app session.",
   providers: [contactsProvider],
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single ContactsView
+    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build.
     {
       id: "contacts",
       label: "Contacts",
       description: "Android address book — read-only contact lookup",
       icon: "Users",
       path: "/contacts",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "ContactsAppView",
+      componentExport: "ContactsView",
       tags: ["contacts", "android", "address-book"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "contacts",
-      label: "Contacts XR",
-      description: "Android address book — read-only contact lookup",
-      icon: "Users",
-      path: "/contacts",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ContactsAppView",
-      tags: ["contacts", "android", "address-book"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "contacts",
-      label: "Contacts TUI",
-      description: "Terminal address-book lookup surface",
-      icon: "Users",
-      path: "/contacts/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ContactsTuiView",
-      tags: ["contacts", "android", "address-book", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

@@ -59,12 +59,35 @@ test("bundle asset inspection accepts the canonical Silero GGUF VAD artifact", (
 		);
 		const result = inspectBundleAssets({
 			bundleRoot: dir,
-			tier: "0_8b",
+			tier: "2b",
 			runtimePath: join(dir, "lib", "libelizainference.dylib"),
 		});
 		const vad = result.requirements.find((req) => req.key === "sileroVad");
 		assert.equal(vad?.status, "present");
 		assert.deepEqual(vad?.found, ["vad/silero-vad-v5.gguf"]);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("bundle asset inspection blocks placeholder presets without requiring runtime regeneration inputs", () => {
+	const dir = mkdtempSync(join(tmpdir(), "voice-profile-status-"));
+	try {
+		mkdirSync(join(dir, "cache"), { recursive: true });
+		writePlaceholderPreset(join(dir, "cache", "voice-preset-default.bin"));
+		writeFileSync(join(dir, "eliza-1.manifest.json"), `${JSON.stringify({ files: {} })}\n`);
+		const result = inspectBundleAssets({
+			bundleRoot: dir,
+			tier: "2b",
+			runtimePath: join(dir, "lib", "libelizainference.dylib"),
+		});
+		const preset = result.requirements.find((req) => req.key === "defaultVoicePreset");
+		assert.equal(preset?.status, "placeholder");
+		assert.match(preset?.blocker ?? "", /publish stages a real precomputed preset/);
+		assert.equal(
+			result.requirements.some((req) => req.key === "samanthaReferenceWav"),
+			false,
+		);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

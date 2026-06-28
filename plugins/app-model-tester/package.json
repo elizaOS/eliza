@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-model-tester",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -34,15 +34,18 @@
     "app": {
       "displayName": "Model Tester",
       "category": "system"
-    }
+    },
+    "appRegister": "ui"
   },
   "publishConfig": {
     "access": "public"
   },
   "types": "./dist/index.d.ts",
   "scripts": {
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
@@ -50,6 +53,7 @@
     "test:e2e": "node scripts/model-tester-e2e.mjs"
   },
   "files": [
+    "registry-entry.json",
     "assets",
     "dist"
   ],

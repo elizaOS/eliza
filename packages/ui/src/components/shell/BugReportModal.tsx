@@ -62,10 +62,10 @@ const modalContentClassName =
   "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0 ";
 
 const modalInputClassName =
-  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted/70 focus-visible:ring-accent/30";
+  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted/70 ";
 
 const modalTextareaClassName =
-  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted/70 focus-visible:ring-accent/30";
+  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted/70 ";
 
 const subtleMonoDescriptionClassName = "font-mono text-xs-tight text-muted";
 
@@ -392,7 +392,7 @@ export function BugReportModal() {
                 successHeadingRef.current = node;
               }}
               tabIndex={-1}
-              className="text-sm font-bold text-txt focus:outline-none"
+              className="text-sm font-bold text-txt "
             >
               {t("bugreportmodal.BugReportSubmitted")}
             </DialogTitle>

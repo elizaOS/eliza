@@ -268,3 +268,163 @@ describe("AccountPool provider-scoped account resolution", () => {
     ).resolves.toMatchObject({ id: "least-used" });
   });
 });
+
+// Eligibility gating (`filterEligible`, account-pool.ts:189-215) is the guard
+// every strategy runs behind: provider scoping, the caller's exclude set, the
+// `enabled` flag, an explicit `accountIds` allow-list, and the rate-limit
+// re-admission rule (a rate-limited account rejoins the pool ONLY once its
+// `healthDetail.until` reset has elapsed; `invalid`/`needs-reauth`/`unknown`
+// never rejoin). It is private, so these drive it through `select()` — null
+// means "filtered out", a returned account means "passed the gate".
+describe("AccountPool.filterEligible eligibility gating", () => {
+  const poolOf = (accounts: Record<string, LinkedAccountConfig>) =>
+    new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+
+  it("fails over past an excluded account, and returns null when all are excluded", async () => {
+    const accounts = {
+      "openai-codex:a": account("openai-codex", { id: "a", priority: 0 }),
+      "openai-codex:b": account("openai-codex", { id: "b", priority: 1 }),
+    };
+    const pool = poolOf(accounts);
+
+    // priority would pick "a" (lower number) — excluding it fails over to "b".
+    await expect(
+      pool.select({ providerId: "openai-codex", exclude: ["a"] }),
+    ).resolves.toMatchObject({ id: "b" });
+    // excluding every account leaves the pool empty.
+    await expect(
+      pool.select({ providerId: "openai-codex", exclude: ["a", "b"] }),
+    ).resolves.toBeNull();
+  });
+
+  it("never selects a disabled account even when it sorts first", async () => {
+    const accounts = {
+      "openai-codex:on": account("openai-codex", { id: "on", priority: 5 }),
+      // higher priority (0) but disabled → must be skipped.
+      "openai-codex:off": account("openai-codex", {
+        id: "off",
+        priority: 0,
+        enabled: false,
+      }),
+    };
+    await expect(
+      poolOf(accounts).select({ providerId: "openai-codex" }),
+    ).resolves.toMatchObject({ id: "on" });
+
+    // a pool whose only account is disabled resolves to null.
+    await expect(
+      poolOf({
+        "openai-codex:off": account("openai-codex", {
+          id: "off",
+          enabled: false,
+        }),
+      }).select({ providerId: "openai-codex" }),
+    ).resolves.toBeNull();
+  });
+
+  it("restricts to an explicit accountIds allow-list (and treats [] as unrestricted)", async () => {
+    const accounts = {
+      "openai-codex:a": account("openai-codex", { id: "a", priority: 0 }),
+      "openai-codex:b": account("openai-codex", { id: "b", priority: 1 }),
+      "openai-codex:c": account("openai-codex", { id: "c", priority: 2 }),
+    };
+    const pool = poolOf(accounts);
+
+    // allow-list {b,c} → priority picks "b" even though "a" outranks it.
+    await expect(
+      pool.select({ providerId: "openai-codex", accountIds: ["b", "c"] }),
+    ).resolves.toMatchObject({ id: "b" });
+    // an allow-list that matches nothing in the pool → null.
+    await expect(
+      pool.select({
+        providerId: "openai-codex",
+        accountIds: ["does-not-exist"],
+      }),
+    ).resolves.toBeNull();
+    // an EMPTY allow-list is treated as "no restriction" (explicit === null).
+    await expect(
+      pool.select({ providerId: "openai-codex", accountIds: [] }),
+    ).resolves.toMatchObject({ id: "a" });
+  });
+
+  it("readmits a rate-limited account only after its reset elapses, and never readmits invalid/needs-reauth", async () => {
+    const past = 1; // epoch ms ≈ 1970 → well before now
+    const future = Date.now() + 3_600_000;
+
+    // rate-limited with an elapsed reset → back in the pool.
+    await expect(
+      poolOf({
+        "openai-codex:rl": account("openai-codex", {
+          id: "rl",
+          health: "rate-limited",
+          healthDetail: { until: past },
+        }),
+      }).select({ providerId: "openai-codex" }),
+    ).resolves.toMatchObject({ id: "rl" });
+
+    // rate-limited with a reset still in the future → excluded.
+    await expect(
+      poolOf({
+        "openai-codex:rl": account("openai-codex", {
+          id: "rl",
+          health: "rate-limited",
+          healthDetail: { until: future },
+        }),
+      }).select({ providerId: "openai-codex" }),
+    ).resolves.toBeNull();
+
+    // rate-limited with no `until` at all → excluded (no reset to clear).
+    await expect(
+      poolOf({
+        "openai-codex:rl": account("openai-codex", {
+          id: "rl",
+          health: "rate-limited",
+        }),
+      }).select({ providerId: "openai-codex" }),
+    ).resolves.toBeNull();
+
+    // invalid is never readmitted, even with an elapsed `until`.
+    await expect(
+      poolOf({
+        "openai-codex:bad": account("openai-codex", {
+          id: "bad",
+          health: "invalid",
+          healthDetail: { until: past },
+        }),
+      }).select({ providerId: "openai-codex" }),
+    ).resolves.toBeNull();
+
+    // needs-reauth is likewise never readmitted.
+    await expect(
+      poolOf({
+        "openai-codex:reauth": account("openai-codex", {
+          id: "reauth",
+          health: "needs-reauth",
+        }),
+      }).select({ providerId: "openai-codex" }),
+    ).resolves.toBeNull();
+  });
+
+  it("fails over from a still-throttled account to a healthy one for the same provider", async () => {
+    const future = Date.now() + 3_600_000;
+    const accounts = {
+      // higher priority but throttled until the future → must be skipped.
+      "openai-codex:throttled": account("openai-codex", {
+        id: "throttled",
+        priority: 0,
+        health: "rate-limited",
+        healthDetail: { until: future },
+      }),
+      "openai-codex:healthy": account("openai-codex", {
+        id: "healthy",
+        priority: 5,
+      }),
+    };
+    await expect(
+      poolOf(accounts).select({ providerId: "openai-codex" }),
+    ).resolves.toMatchObject({ id: "healthy" });
+  });
+});

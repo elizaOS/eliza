@@ -13,7 +13,6 @@ const LEGACY_PAGE_CHAT_TITLES = new Set([
   "automations",
   "apps",
   "phone",
-  "lifeops",
   "settings",
   "wallet",
 ]);

@@ -30,6 +30,14 @@ const appCoreNativeLibraryPolicy = path.join(
   "platform",
   "native-library-policy.ts",
 );
+const appCoreTaskHostCapabilities = path.join(
+  elizaRoot,
+  "packages",
+  "app-core",
+  "src",
+  "services",
+  "task-host-capabilities.ts",
+);
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
@@ -38,10 +46,27 @@ const escapedAgentSourceRoot = agentSourceRoot.replace(
   /[.*+?^${}()|[\]\\]/g,
   "\\$&",
 );
+const optionalCorePluginStubPrefix = "\0lifeops-optional-core-plugin-stub:";
+const optionalCorePluginStubPackages = new Set([
+  "@elizaos/plugin-agent-orchestrator",
+  "@elizaos/plugin-task-coordinator",
+  "@elizaos/plugin-app-control",
+  "@elizaos/plugin-shell",
+  "@elizaos/plugin-coding-tools",
+  "@elizaos/plugin-commands",
+  "@elizaos/plugin-video",
+  "@elizaos/plugin-background-runner",
+  "@elizaos/plugin-ollama",
+  "@elizaos/plugin-anthropic",
+  "@elizaos/plugin-openai",
+]);
 const agentSourceJsToTsPlugin = {
   name: "lifeops-agent-source-js-to-ts",
   enforce: "pre" as const,
   resolveId(source: string, importer?: string) {
+    if (optionalCorePluginStubPackages.has(source)) {
+      return `${optionalCorePluginStubPrefix}${source}`;
+    }
     if (source === "@elizaos/agent") {
       return path.join(lifeopsTestStubsRoot, "agent.ts");
     }
@@ -68,6 +93,23 @@ const agentSourceJsToTsPlugin = {
     }
 
     return null;
+  },
+  load(id: string) {
+    if (!id.startsWith(optionalCorePluginStubPrefix)) return null;
+    const packageName = id.slice(optionalCorePluginStubPrefix.length);
+    const name = `${packageName.slice("@elizaos/".length)}-test-stub`;
+    return [
+      `const plugin = ${JSON.stringify({
+        name,
+        description: `Test stub for ${packageName}`,
+        actions: [],
+        providers: [],
+        evaluators: [],
+        services: [],
+      })};`,
+      "export { plugin };",
+      "export default plugin;",
+    ].join("\n");
   },
 };
 function resolveNodePackageRoot(packageName: string): string {
@@ -193,6 +235,10 @@ export default defineConfig({
         replacement: appCoreNativeLibraryPolicy,
       },
       {
+        find: /^@elizaos\/app-core\/services\/task-host-capabilities$/,
+        replacement: appCoreTaskHostCapabilities,
+      },
+      {
         find: /^@elizaos\/core\/node$/,
         replacement: path.join(
           elizaRoot,
@@ -200,6 +246,20 @@ export default defineConfig({
           "core",
           "src",
           "index.node.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: path.join(elizaRoot, "packages", "tui", "src", "index.ts"),
+      },
+      {
+        find: /^@elizaos\/vault$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "vault",
+          "src",
+          "index.ts",
         ),
       },
       // These packages are imported by @elizaos/core while this suite inlines
@@ -255,6 +315,23 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/actions\/grounded-action-reply$/,
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/security\/access$/,
+        replacement: path.join(agentSourceRoot, "security", "access.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/services\/knowledge-graph\/service$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "services",
+          "knowledge-graph",
+          "service.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/agent\/config\/config$/,
+        replacement: path.join(agentSourceRoot, "config", "config.ts"),
       },
       {
         find: "@elizaos/agent",
@@ -316,8 +393,21 @@ export default defineConfig({
           "index.ts",
         ),
       },
-      // Further lifeops carves p-a imports as bare barrels (data-layer plugins not
-      // in build:core, no eliza-source condition) — anchor each to source too.
+      // Further lifeops carves p-a imports as bare barrels AND deep subpaths
+      // (data-layer plugins not in build:core, no eliza-source condition) — the
+      // package `exports` map only sends subpaths to ./src under the eliza-source
+      // condition, so without dist they resolve to missing ./dist/*.js. Anchor
+      // both the barrel and every subpath to source, same as plugin-blocker.
+      {
+        find: /^@elizaos\/plugin-finances\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-finances",
+          "src",
+          "$1.ts",
+        ),
+      },
       {
         find: /^@elizaos\/plugin-finances$/,
         replacement: path.join(
@@ -326,6 +416,16 @@ export default defineConfig({
           "plugin-finances",
           "src",
           "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-goals\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-goals",
+          "src",
+          "$1.ts",
         ),
       },
       {
@@ -475,6 +575,15 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-elizacloud$/,
         replacement: path.join(lifeopsTestStubsRoot, "plugin-elizacloud.ts"),
+      },
+      {
+        // service-mixin-discord imports the browser-scraper helpers from the
+        // `/user-account-scraper` subpath; discord isn't in build:core so there
+        // is no dist, and the bare alias below only catches the barrel. Point the
+        // subpath at the same stub (it exports probeDiscordTab et al.) so the
+        // suite never pulls the real browser-automation module.
+        find: /^@elizaos\/plugin-discord\/user-account-scraper$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-discord.ts"),
       },
       {
         find: /^@elizaos\/plugin-discord$/,

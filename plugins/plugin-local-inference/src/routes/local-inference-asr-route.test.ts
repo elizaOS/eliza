@@ -1,16 +1,29 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { ModelType } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-helpers";
 import { handleLocalInferenceAsrRoute } from "./local-inference-asr-route";
 import { transcribeWavWithWords } from "./local-inference-asr-transcribe";
+
+const engineMock = vi.hoisted(() => ({
+	canTranscribeLocally: vi.fn(async () => true),
+}));
+
+vi.mock("../services/engine", () => ({
+	localInferenceEngine: engineMock,
+}));
 
 vi.mock("./local-inference-asr-transcribe", () => ({
 	transcribeWavWithWords: vi.fn(),
 }));
 
 const transcribeWavWithWordsMock = vi.mocked(transcribeWavWithWords);
+
+beforeEach(() => {
+	vi.clearAllMocks();
+	engineMock.canTranscribeLocally.mockResolvedValue(true);
+});
 
 function wavBytes(): Uint8Array {
 	const pcm = new Int16Array([0, 900, -900, 0]);
@@ -92,7 +105,8 @@ function fakeRes(): {
 }
 
 describe("local inference ASR route", () => {
-	it("reports readiness off the registered fused TRANSCRIPTION handler", async () => {
+	it("reports readiness from the registered handler and eligible ASR bundle", async () => {
+		engineMock.canTranscribeLocally.mockResolvedValue(true);
 		const getModel = vi.fn(() => () => "transcript");
 		const useModel = vi.fn();
 		const state: CompatRuntimeState = {
@@ -119,7 +133,33 @@ describe("local inference ASR route", () => {
 			provider: "local-inference",
 		});
 		expect(getModel).toHaveBeenCalledWith(ModelType.TRANSCRIPTION);
+		expect(engineMock.canTranscribeLocally).toHaveBeenCalledTimes(1);
 		expect(useModel).not.toHaveBeenCalled();
+	});
+
+	it("reports not-ready when the handler is registered but no ASR bundle is eligible", async () => {
+		engineMock.canTranscribeLocally.mockResolvedValue(false);
+		const getModel = vi.fn(() => () => "transcript");
+		const state: CompatRuntimeState = {
+			current: {
+				getModel,
+			} as unknown as CompatRuntimeState["current"],
+		};
+		const out = fakeRes();
+
+		const handled = await handleLocalInferenceAsrRoute(
+			fakeReq(undefined, {
+				method: "GET",
+				url: "/api/asr/local-inference/status",
+			}),
+			out.res,
+			state,
+		);
+
+		expect(handled).toBe(true);
+		expect(out.status()).toBe(200);
+		expect(out.bodyJson()).toEqual({ ready: false, provider: null });
+		expect(engineMock.canTranscribeLocally).toHaveBeenCalledTimes(1);
 	});
 
 	it("reports not-ready when no TRANSCRIPTION handler is registered", async () => {
@@ -143,6 +183,7 @@ describe("local inference ASR route", () => {
 		expect(handled).toBe(true);
 		expect(out.status()).toBe(200);
 		expect(out.bodyJson()).toEqual({ ready: false, provider: null });
+		expect(engineMock.canTranscribeLocally).not.toHaveBeenCalled();
 	});
 
 	it("transcribes raw WAV audio and returns text + per-word timings", async () => {

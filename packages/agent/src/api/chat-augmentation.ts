@@ -15,12 +15,14 @@
 import crypto from "node:crypto";
 
 import type {
+  AccessContext,
   AgentRuntime,
   Content,
   createMessageMemory,
+  Memory,
   UUID,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { buildAccessContext, parseJSONObjectFromText } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import {
@@ -83,6 +85,13 @@ const DEFAULT_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS = 5_000;
 const MAX_CHAT_DOCUMENTS_LOOKUP_TIMEOUT_MS = 30_000;
 const MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS = 30_000;
 const CHAT_DOCUMENTS_RECOVERY_MODEL = "TEXT_LARGE";
+
+// Sentinel requester id for an unresolved/unauthenticated chat turn. It is the
+// nil UUID — guaranteed to be neither the agent nor any real owner — so the
+// scope-read filter resolves it to a least-privileged USER and strips every
+// non-global fragment rather than failing open.
+const UNRESOLVED_REQUESTER_ENTITY_ID =
+  "00000000-0000-0000-0000-000000000000" as UUID;
 
 export interface ChatDocumentAugmentationOptions {
   signal?: AbortSignal;
@@ -206,6 +215,55 @@ export async function maybeAugmentChatMessageWithDocuments(
   }
 
   const agentId = runtime.agentId as UUID;
+
+  // Build the requester's AccessContext from the ORIGINAL message — who is
+  // asking and with what role (resolved against the message's world) — BEFORE
+  // the searchMessage below coerces an empty entityId to the agentId. The
+  // worldId is carried only to resolve that role; the scope-read filter gates
+  // on metadata.scope, NOT worldId, so cross-tenant isolation still comes from
+  // filterScope / Postgres RLS, not from this gate. We ALWAYS thread a context into
+  // searchDocuments so filterByAccessContext is the enforcement layer on this
+  // path, not a redundant second copy of the service's per-document gate: the
+  // service short-circuits its own gate to allow-all whenever the search runs
+  // as the agent (which the empty-entityId coercion below forces), and the
+  // scope-read filter is what keeps owner/agent/user-private fragments out of
+  // that allow-all result. A failure to resolve a world leaves role/worldId
+  // undefined, which the filter treats as least-privileged USER, not
+  // unrestricted.
+  let accessContext: AccessContext | undefined;
+  const trimmedEntityId =
+    typeof message.entityId === "string" ? message.entityId.trim() : "";
+  if (trimmedEntityId.length > 0 && trimmedEntityId !== agentId) {
+    // A real, non-agent requester: resolve their role within the message's
+    // world so the filter can let an OWNER through and hold a USER back.
+    const requesterEntityId = trimmedEntityId as UUID;
+    try {
+      accessContext = await buildAccessContext(runtime, message as Memory);
+    } catch (error) {
+      // Fail closed: when the requester can't be resolved we still pass a
+      // minimal context pinned to their entity so the read runs as the
+      // least-privileged USER rather than dropping the gate entirely.
+      runtime.logger.warn(
+        {
+          src: "api:chat-augmentation",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Access-context resolution failed; falling back to requester-only scope",
+      );
+      accessContext = { requesterEntityId };
+    }
+  } else if (trimmedEntityId.length === 0) {
+    // No requester at all (missing/blank entityId). The searchMessage below
+    // coerces this to a self-read, which disables the service's per-document
+    // gate (it allow-alls every agent self-read). Pin the context to the nil
+    // UUID — never the agent — so actorFromAccessContext resolves to USER and
+    // the scope-read filter still strips every non-global fragment. The gate
+    // fails CLOSED here instead of surfacing private fragments to an
+    // unauthenticated turn. A genuine agent self-read (entityId === agentId)
+    // is left with no context, preserving the prior unfiltered self-read.
+    accessContext = { requesterEntityId: UNRESOLVED_REQUESTER_ENTITY_ID };
+  }
+
   const roomId =
     typeof message.roomId === "string" && message.roomId.trim().length > 0
       ? (message.roomId as UUID)
@@ -247,6 +305,8 @@ export async function maybeAugmentChatMessageWithDocuments(
             },
           },
           { roomId: scopeRoomId },
+          undefined,
+          accessContext,
         )) ?? [],
     );
     return { matches: result.value, timedOut: result.timedOut };

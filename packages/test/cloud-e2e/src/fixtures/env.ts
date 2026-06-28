@@ -1,5 +1,5 @@
 /**
- * Build the env block passed to cloud-api / cloud-frontend subprocesses.
+ * Build the env block passed to cloud-api / packages/app (apex) subprocesses.
  *
  * Centralizes test flags (PLAYWRIGHT_TEST_AUTH, MOCK_REDIS, mock URLs, etc.)
  * so the rest of the fixture code stays focused on lifecycle.
@@ -37,12 +37,21 @@ function stripBunAncestryEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return cleaned;
 }
 
+function withBunSourceCondition(value: string | undefined): string {
+  const condition = "--conditions=eliza-source";
+  if (!value?.trim()) return condition;
+  return value.includes(condition) ? value : `${value} ${condition}`;
+}
+
 export function buildSharedEnv(
   urls: StackUrls,
   extra: Record<string, string> = {},
 ): NodeJS.ProcessEnv {
   return {
     ...stripBunAncestryEnv(process.env),
+    // Source-mode workspace packages (notably plugin-sql's peer dependency on
+    // core) need this when cloud-e2e spawns fresh Bun subprocesses.
+    BUN_OPTIONS: withBunSourceCondition(process.env.BUN_OPTIONS),
     NODE_ENV: "test",
     CLOUD_E2E: "1",
     // Mocks
@@ -56,6 +65,11 @@ export function buildSharedEnv(
     CONTAINER_CONTROL_PLANE_TOKEN: "test-token",
     CRON_SECRET: "test-cron-secret",
     INTERNAL_SECRET: "test-internal-secret",
+    // Apps Product 2 deploy path: enable the route and give the mock apps
+    // worker a prebuilt image to attach to container rows.
+    APPS_DEPLOY_ENABLED: "1",
+    APP_DEFAULT_IMAGE:
+      process.env.APP_DEFAULT_IMAGE ?? "ghcr.io/elizaos/eliza:e2e-app",
     // Playwright test auth bypass — secret read by cloud-shared auth helpers
     PLAYWRIGHT_TEST_AUTH: "true",
     PLAYWRIGHT_TEST_AUTH_SECRET: PLAYWRIGHT_TEST_AUTH_SECRET,

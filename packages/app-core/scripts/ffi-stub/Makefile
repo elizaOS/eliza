@@ -31,6 +31,9 @@ VERIFY_TARGET  := linux-x64-cpu-fused
 NM             := nm -D --defined-only
 endif
 
+REPO_ROOT := $(abspath ../../../..)
+RM_PATH_RECURSIVE := node $(REPO_ROOT)/packages/scripts/rm-path-recursive.mjs
+
 .PHONY: all clean verify verify-stub-rejected
 all: $(DEFAULT_TARGET)
 
@@ -51,14 +54,14 @@ verify-stub-rejected: $(DEFAULT_TARGET)
 	if node ../build-helpers/verify-fused-symbols.mjs --out-dir $$tmp --target $(VERIFY_TARGET) --json >$$tmp/stdout 2>$$tmp/stderr; then \
 		echo "[verify] FAILED: real verifier accepted the stub as $(REAL_LIB_NAME)"; \
 		cat $$tmp/stdout; \
-		rm -rf $$tmp; \
+		$(RM_PATH_RECURSIVE) $$tmp; \
 		exit 1; \
 	fi; \
 	test -s $$tmp/OMNIVOICE_FUSE_VERIFY.json; \
 	grep -q '"ok": false' $$tmp/OMNIVOICE_FUSE_VERIFY.json; \
 	grep -q 'stub' $$tmp/OMNIVOICE_FUSE_VERIFY.json; \
 	echo "[verify] PASS: real verifier rejects stub-only libelizainference"; \
-	rm -rf $$tmp
+	$(RM_PATH_RECURSIVE) $$tmp
 
 clean:
 	rm -f libelizainference_stub.dylib libelizainference_stub.so

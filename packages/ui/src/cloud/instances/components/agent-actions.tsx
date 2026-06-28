@@ -18,7 +18,6 @@ import {
   Camera,
   ExternalLink,
   Loader2,
-  MessageCircle,
   Moon,
   Pause,
   Play,
@@ -94,7 +93,6 @@ export function ElizaAgentActions({
   const isSleeping = effectiveStatus === "sleeping";
   const isDedicated = executionTier !== "shared";
   const hasStandaloneWebUi = isRunning && isDedicated && Boolean(webUiUrl);
-  const hasDashboardChat = isRunning;
   // Sleep (deep cold suspend) only applies to dedicated agents with their own
   // compute slot — shared-runtime agents have nothing to free.
   const canSleep = isRunning && isDedicated;
@@ -243,7 +241,7 @@ export function ElizaAgentActions({
   }
 
   return (
-    <BrandCard className="relative shadow-lg shadow-black/50" cornerSize="md">
+    <BrandCard className="relative" cornerSize="md">
       <div className="relative z-10 space-y-4">
         <div className="flex items-center gap-2 pb-4 border-b border-white/10">
           <span className="inline-block w-2 h-2 rounded-full bg-[#FF5800]" />
@@ -268,19 +266,6 @@ export function ElizaAgentActions({
                 <ExternalLink className="h-4 w-4" />
                 {t("cloud.containers.agentActions.openWebUi", {
                   defaultValue: "Open Web UI",
-                })}
-              </BrandButton>
-            )}
-
-            {hasDashboardChat && (
-              <BrandButton
-                variant="primary"
-                size="sm"
-                onClick={() => navigate(`/dashboard/agents/${agentId}/chat`)}
-              >
-                <MessageCircle className="h-4 w-4" />
-                {t("cloud.containers.agentActions.chat", {
-                  defaultValue: "Chat",
                 })}
               </BrandButton>
             )}

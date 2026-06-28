@@ -277,7 +277,7 @@ export function wrapActionWithLogging(
       } else {
         successHandler();
       }
-    }) as unknown as Action["handler"],
+    }),
   };
 }
 

@@ -1,5 +1,18 @@
 # Runbook — split the apex (console) from the agent app (subdomain)
 
+> **⚠️ SUPERSEDED 2026-06-23 by DECISIONS.md D6.** The D5 split below has been
+> **reversed**: the apex (`eliza-cloud` Pages project / `elizacloud.ai`) now
+> builds **`packages/app`** (not `packages/cloud-frontend`, which is deleted).
+> Both the apex and the `app.elizacloud.ai` subdomain build the **same**
+> `packages/app` target via `build:web` (mounting the cloud UI through
+> `@elizaos/ui/cloud`); they differ only in the canonical-origin env baked into
+> each bundle. The `deploy-console` job in `cloud-cf-deploy.yml` was repointed
+> accordingly, keeping `--project-name=eliza-cloud` so the apex domain is
+> unchanged. **No Cloudflare-side action is needed for this re-point** — same
+> project, same domain, only the build source changed. The `eliza-app` project
+> setup in §2–4 below remains valid for the `app.*` subdomain. The rest of this
+> runbook (the D5 split) is historical.
+
 **Topology: D5 (supersedes Topology A / D1).** Two Cloudflare Pages projects,
 two domains, two builds from one repo:
 
@@ -33,7 +46,7 @@ DECISIONS.md D5.
 
 - `CLOUDFLARE_API_TOKEN` with **Pages: Edit** + **DNS: Edit** on the elizaOS
   account (same token the GH Actions deploy uses).
-- `CLOUDFLARE_ACCOUNT_ID` (matches `packages/cloud-api/wrangler.toml`).
+- `CLOUDFLARE_ACCOUNT_ID` (matches `packages/cloud/api/wrangler.toml`).
 - The `elizacloud.ai` zone id (fetched in §3).
 
 ```bash
@@ -194,6 +207,6 @@ additive and harmless if `app.*` is taken down.
 - `packages/cloud-frontend/wrangler.toml` (`name = "eliza-cloud"`), its `functions/*`
 - `packages/cloud-frontend/src/lib/eliza-app-url.ts` + the console "Talk to your
   agent" CTA in `src/dashboard/Page.tsx`
-- Origin allowlists in `packages/cloud-shared/src/lib/{cors,utils,security}/`
+- Origin allowlists in `packages/cloud/shared/src/lib/{cors,utils,security}/`
 - `packages/app/scripts/smoke-deeplinks.mjs`
 - `docs/cloud-into-eliza/DECISIONS.md` D5

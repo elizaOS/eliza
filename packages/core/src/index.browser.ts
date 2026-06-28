@@ -6,7 +6,10 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
+export * from "./access-context";
+export * from "./access-control/filter";
 export * from "./actions";
+export * from "./activity-plaintext";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
 // Export core modules (all browser-compatible after refactoring)
@@ -92,6 +95,7 @@ export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-d
 export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";
+export * from "./runtime/shortcut-registry";
 export {
 	looksLikeNonRefusalStage1HonestyViolation,
 	looksLikeStage1HonestyViolation,
@@ -136,6 +140,7 @@ export {
 	ConnectorAuthMethod,
 } from "./types";
 export * from "./types/message-service";
+export { PENDING_USER_ACTION_WEIGHT } from "./types/pending-user-action";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 export type {
 	EnabledViewKinds,

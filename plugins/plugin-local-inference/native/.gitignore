@@ -6,6 +6,9 @@ verify/metal_verify
 verify/cpu_simd_bench
 verify/*.spv
 vulkan/*.spv
+# Per-target smoke binaries (qjl_mt_check.<triple>, cpu_qjl_polar_attn_smoke.<triple>).
+verify/qjl_mt_check.*
+verify/cpu_qjl_polar_attn_smoke.*
 
 # Generated local reports and hardware/run evidence.
 reports/

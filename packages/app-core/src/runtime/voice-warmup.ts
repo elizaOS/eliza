@@ -11,10 +11,8 @@
  * instant — the embedding warmup's spirit, via the path voice already uses.
  * Nothing in the voice engine is touched.
  *
- * Warmup fires for both local and cloud setups; for cloud providers this means
- * two tiny billable API calls per desktop boot (a ~100 ms silent WAV for STT
- * and an empty-string TTS), non-blocking and non-fatal. Suppress it entirely
- * with ELIZA_SKIP_LOCAL_VOICE_WARMUP=1.
+ * Warmup is skipped for mobile, hot-reload respawns, explicit cloud-only
+ * desktop runtimes, and ELIZA_SKIP_LOCAL_VOICE_WARMUP=1.
  */
 
 /** Minimal runtime surface we need — avoids importing the heavy AgentRuntime. */
@@ -27,6 +25,8 @@ export interface VoiceWarmupGate {
   mobile: boolean;
   /** ELIZA_SKIP_LOCAL_VOICE_WARMUP is set. */
   skipEnv: boolean;
+  /** The runtime is explicitly cloud-only, so voice loads on first real use. */
+  cloudOnly?: boolean;
   /**
    * Dev hot-reload respawn (not a cold boot). Each hot-reload spawns a fresh
    * API child that re-runs the whole boot tail; warming voice every bounce
@@ -42,6 +42,7 @@ export interface VoiceWarmupGate {
 export function shouldWarmupVoice(gate: VoiceWarmupGate): boolean {
   if (gate.mobile) return false;
   if (gate.skipEnv) return false;
+  if (gate.cloudOnly) return false;
   if (gate.hotReload) return false;
   return true;
 }
@@ -85,6 +86,11 @@ type LogSink = {
 };
 
 const noopLog: LogSink = { info: () => {}, warn: () => {} };
+
+function isMissingModelHandlerError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("No handler found for delegate type");
+}
 
 /**
  * Retry a warmup call up to `maxRetries` times when the error message
@@ -132,8 +138,9 @@ export async function warmVoiceModels(
     );
     log.info("[eliza] Voice TTS model: ready");
   } catch (err) {
-    log.warn(
-      `[eliza] Voice TTS warmup failed (will load on first use): ${
+    const logMethod = isMissingModelHandlerError(err) ? log.info : log.warn;
+    logMethod(
+      `[eliza] Voice TTS warmup skipped (will load on first use): ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -149,8 +156,9 @@ export async function warmVoiceModels(
     );
     log.info("[eliza] Voice STT model: ready");
   } catch (err) {
-    log.warn(
-      `[eliza] Voice STT warmup failed (will load on first use): ${
+    const logMethod = isMissingModelHandlerError(err) ? log.info : log.warn;
+    logMethod(
+      `[eliza] Voice STT warmup skipped (will load on first use): ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

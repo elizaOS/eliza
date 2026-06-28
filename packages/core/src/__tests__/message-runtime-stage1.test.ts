@@ -1,5 +1,4 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
@@ -356,66 +355,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("regenerates low-quality Stage 1 direct reply text outside the JSON envelope", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "RPPY",
-			}),
-			"Four.",
-		]);
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ text: "What is 2+2?" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe("Four.");
-		}
-		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.TEXT_SMALL);
-		expect(calls[1]?.[1]).toMatchObject({
-			providerOptions: { eliza: { thinking: "off" } },
-		});
-	});
-
-	it("regenerates numeric-only Stage 1 reply fragments outside the JSON envelope", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "2",
-			}),
-			"2+2 equals 4.",
-		]);
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({ text: "What is 2+2?" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe("2+2 equals 4.");
-		}
-	});
-
-	it("keeps the original numeric Stage 1 reply when regeneration returns empty", async () => {
-		// Regeneration is an enhancement (terse fragment -> fuller reply), not a
-		// gate. A correct-but-terse numeric answer ("4") trips the regenerate
-		// heuristic, but if the second pass yields nothing usable we must keep the
-		// original reply rather than drop the user to a blank message.
+	it("keeps a valid-but-terse numeric Stage 1 reply without a second model call", async () => {
+		// A correct-but-terse numeric answer ("4") trips the low-quality heuristic
+		// but is worth keeping. The direct-reply regeneration path is gone, so the
+		// uncapped Stage-1 reply is the single source of truth: it is kept verbatim
+		// with no second TEXT_SMALL call.
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
 				replyText: "4",
 			}),
-			"   ",
 		]);
 
 		const result = await runV5MessageRuntimeStage1({
@@ -429,9 +378,58 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("4");
 		}
-		// Regeneration was actually attempted (this is the fallback path, not a skip).
-		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.TEXT_SMALL);
+		// Exactly one model call: the Stage-1 reply itself. No regeneration.
+		expect(useModelCalls(runtime).length).toBe(1);
+	});
+
+	it("keeps requested all-caps exact-word Stage 1 replies without a second model call", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "BTC",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Reply with exactly one word: BTC." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("BTC");
+		}
+		expect(useModelCalls(runtime).length).toBe(1);
+	});
+
+	it("keeps an all-caps reply the user explicitly asked the agent to say", async () => {
+		// "Say PONG" -> "PONG" used to dead-end into the fallback because
+		// isUnusableStage1Reply flags any non-allowlisted 2-8 char all-caps word.
+		// When the user explicitly requested that token, the reply is intentional.
+		for (const [ask, want] of [
+			["Say PONG", "PONG"],
+			["say HELLO", "HELLO"],
+			["please respond with the word PING", "PING"],
+			// mention-prefixed (Discord/Telegram render the mention into the text)
+			["remilio (@1490833425802854491) Say PONG", "PONG"],
+			["<@1490833425802854491> say HELLO", "HELLO"],
+		] as const) {
+			const runtime = makeRuntime([
+				stage1Response({ contexts: ["simple"], replyText: want }),
+			]);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: ask }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+			});
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(want);
+			}
+		}
 	});
 
 	it("does not keep known-junk Stage 1 fragments when regeneration returns empty", async () => {
@@ -676,126 +674,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent).toContain("role>=ADMIN");
 		expect(systemContent).not.toContain(longDescription);
 		expect(systemContent.length).toBeLessThan(3_500);
-	});
-
-	it("uses the fast direct reply path for simple private chat", async () => {
-		const runtime = makeRuntime(["Hi, I am here."]);
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				channelType: ChannelType.DM,
-				text: "hi, can you say hi back?",
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("direct_reply");
-		const firstCall = useModelCalls(runtime)[0];
-		expect(firstCall?.[0]).toBe(ModelType.TEXT_SMALL);
-		const params = firstCall?.[1] as {
-			prompt?: string;
-			maxTokens?: number;
-			grammar?: string;
-			responseSkeleton?: unknown;
-		};
-		expect(params.prompt).toContain("task: Write one direct reply");
-		expect(params.prompt).toContain("hi, can you say hi back?");
-		expect(params.maxTokens).toBe(96);
-		expect(params.grammar).toBeUndefined();
-		expect(params.responseSkeleton).toBeUndefined();
-	});
-
-	it("honors exact-word direct replies even when the small model emits thinking", async () => {
-		const runtime = makeRuntime([
-			`routing_thought: Direct private chat fast path.
-
-<think>
-I should follow the exact instruction.
-</think>
-android smoke model works`,
-		]);
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				channelType: ChannelType.DM,
-				text: "Reply with exactly these four words: android smoke model works.",
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"android smoke model works",
-			);
-		}
-	});
-
-	it("uses provider response text for the fast direct reply path", async () => {
-		const runtime = makeRuntime([
-			{ text: "", response: "Check speaker output before enabling voice." },
-		]);
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				channelType: ChannelType.DM,
-				text: "what should we check before voice?",
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("direct_reply");
-		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.TEXT_SMALL);
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"Check speaker output before enabling voice.",
-			);
-		}
-	});
-
-	it("records provider response text in fast direct reply trajectories", async () => {
-		const previousDir = process.env.ELIZA_TRAJECTORY_DIR;
-		const tempDir = await mkdtemp(join(tmpdir(), "eliza-stage1-trajectory-"));
-		process.env.ELIZA_TRAJECTORY_DIR = tempDir;
-		try {
-			const runtime = makeRuntime([
-				{ text: "", response: "Trajectory response text." },
-			]);
-
-			await runV5MessageRuntimeStage1({
-				runtime,
-				message: makeMessage({
-					channelType: ChannelType.DM,
-					text: "write a trajectory response",
-				}),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-			});
-
-			const agentDir = join(tempDir, String(runtime.agentId));
-			const files = (await readdir(agentDir)).filter((file) =>
-				file.endsWith(".json"),
-			);
-			expect(files.length).toBe(1);
-			const recorded = JSON.parse(
-				await readFile(join(agentDir, files[0] as string), "utf8"),
-			) as {
-				stages?: Array<{ model?: { response?: string } }>;
-			};
-			expect(recorded.stages?.[0]?.model?.response).toBe(
-				"Trajectory response text.",
-			);
-		} finally {
-			if (previousDir === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
-			else process.env.ELIZA_TRAJECTORY_DIR = previousDir;
-			await rm(tempDir, { recursive: true, force: true });
-		}
 	});
 
 	it("keeps tool-like direct messages on the structured routing path", async () => {
@@ -1136,43 +1014,6 @@ android smoke model works`,
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
 				"Recovered through planner fallback.",
-			);
-		}
-	});
-
-	it("uses a direct reply fallback when an explicitly addressed simple Stage 1 turn stays empty", async () => {
-		const runtime = makeRuntime([
-			"",
-			"",
-			"",
-			"elizaOS is an open-source agent runtime for building agents with memory, tools, plugins, and chat integrations.",
-		]);
-		const message = makeMessage({
-			text: "Test Agent (@000000000000000000) BASH_EXECUTE FETCH_URL TASKS_SPAWN_AGENT Can you tell me what elizaOS is?",
-			currentMessageText: "Can you tell me what elizaOS is?",
-		} as Partial<Memory["content"]>);
-
-		message.content.mentionContext = { isMention: true } as never;
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("direct_reply");
-		expect(runtime.useModel).toHaveBeenCalledTimes(4);
-		expect(runtime.useModel).toHaveBeenLastCalledWith(
-			ModelType.TEXT_SMALL,
-			expect.objectContaining({
-				prompt: expect.stringContaining("Can you tell me what elizaOS is?"),
-				maxTokens: 96,
-			}),
-		);
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toContain(
-				"open-source agent runtime",
 			);
 		}
 	});

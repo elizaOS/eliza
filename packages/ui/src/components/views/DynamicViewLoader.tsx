@@ -116,6 +116,9 @@ const DEFAULT_BUNDLE_CACHE_MAX_ENTRIES = 6;
 const LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES = 2;
 
 let bundleCacheLifecycleInstalled = false;
+let pruneBundleCacheOnPressure: (() => void) | null = null;
+let pruneBundleCacheOnVisibilityHidden: (() => void) | null = null;
+let pruneBundleCacheOnAppPause: (() => void) | null = null;
 
 function bundleCacheStats(): {
   activeCount: number;
@@ -256,24 +259,58 @@ function pruneBundleModuleCache(
 function installBundleCacheLifecycle(): void {
   if (bundleCacheLifecycleInstalled || typeof window === "undefined") return;
   bundleCacheLifecycleInstalled = true;
-  const pruneOnPressure = () => {
+  pruneBundleCacheOnPressure = () => {
     scheduleIdleWork(() =>
       pruneBundleModuleCache({ force: true, reason: "memorypressure" }),
     );
   };
-  window.addEventListener("memorypressure", pruneOnPressure);
-  document.addEventListener("visibilitychange", () => {
+  pruneBundleCacheOnVisibilityHidden = () => {
     if (document.visibilityState === "hidden") {
       scheduleIdleWork(() =>
         pruneBundleModuleCache({ reason: "visibility-hidden" }),
       );
     }
-  });
-  document.addEventListener(APP_PAUSE_EVENT, () => {
+  };
+  pruneBundleCacheOnAppPause = () => {
     scheduleIdleWork(() =>
       pruneBundleModuleCache({ force: true, reason: "app-pause" }),
     );
-  });
+  };
+  window.addEventListener("memorypressure", pruneBundleCacheOnPressure);
+  document.addEventListener(
+    "visibilitychange",
+    pruneBundleCacheOnVisibilityHidden,
+  );
+  document.addEventListener(APP_PAUSE_EVENT, pruneBundleCacheOnAppPause);
+}
+
+export function __resetDynamicViewLoaderCacheForTests(): void {
+  for (const entry of bundleModuleCache.values()) {
+    if (entry.retentionTimer) {
+      clearTimeout(entry.retentionTimer);
+      entry.retentionTimer = null;
+    }
+    const cleanup = entry.module?.cleanup;
+    entry.module = null;
+    runBundleCleanup(cleanup);
+  }
+  bundleModuleCache.clear();
+  if (typeof window !== "undefined" && pruneBundleCacheOnPressure) {
+    window.removeEventListener("memorypressure", pruneBundleCacheOnPressure);
+  }
+  if (typeof document !== "undefined" && pruneBundleCacheOnVisibilityHidden) {
+    document.removeEventListener(
+      "visibilitychange",
+      pruneBundleCacheOnVisibilityHidden,
+    );
+  }
+  if (typeof document !== "undefined" && pruneBundleCacheOnAppPause) {
+    document.removeEventListener(APP_PAUSE_EVENT, pruneBundleCacheOnAppPause);
+  }
+  pruneBundleCacheOnPressure = null;
+  pruneBundleCacheOnVisibilityHidden = null;
+  pruneBundleCacheOnAppPause = null;
+  bundleCacheLifecycleInstalled = false;
 }
 
 function isReactComponentExport(
@@ -461,6 +498,27 @@ if (typeof window !== "undefined" && !window.__ELIZA_DYNAMIC_VIEW_IMPORT__) {
 /** Dev-mode polling interval in ms. Not used in production builds. */
 const DEV_POLL_INTERVAL_MS = 2000;
 
+/**
+ * A view bundle is executed as an ES module in the host realm (it receives the
+ * host React singleton, the API client, and the native bridges via the
+ * host-external map), so it runs with full app privilege. Only ever import a
+ * bundle served by THIS origin: a cross-origin `bundleUrl` (which an untrusted
+ * remote-plugin descriptor can announce) would be arbitrary attacker code
+ * executing against the user's authenticated session. Every shipped view is
+ * same-origin (`/api/views/<id>/bundle.js`); a future remote/CDN bundle must add
+ * Subresource-Integrity before this gate can be relaxed.
+ */
+export function isSameOriginBundleUrl(bundleUrl: string): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return (
+      new URL(bundleUrl, window.location.href).origin === window.location.origin
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function importViewBundle(
   bundleUrl: string,
 ): Promise<Record<string, unknown>> {
@@ -469,6 +527,12 @@ async function importViewBundle(
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__
   ) {
     return window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__(bundleUrl);
+  }
+
+  if (!isSameOriginBundleUrl(bundleUrl)) {
+    throw new Error(
+      `DynamicViewLoader: refusing to import a cross-origin view bundle (${bundleUrl}). View bundles must be served same-origin from /api/views/.`,
+    );
   }
 
   const hostExternalUrl = buildHostExternalBundleUrl(bundleUrl);
@@ -979,7 +1043,7 @@ function ViewStatusFrame({
   return (
     <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6">
       <div
-        className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 shadow-sm ${toneClass}`}
+        className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 ${toneClass}`}
       >
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-background/70">

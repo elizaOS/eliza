@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/macosreminders",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "macOS Apple Reminders native bridge policy helpers for Eliza runtimes.",
   "type": "module",
   "main": "./dist/index.js",
@@ -38,8 +38,9 @@
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.json",
     "test": "vitest run",
-    "clean": "rm -rf dist",
-    "prepublishOnly": "bun run build"
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

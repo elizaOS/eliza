@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Stub the live data sources so the home renders deterministically.
+// Stub the live activity stream so the home renders deterministically.
 vi.mock("../../hooks/useActivityEvents", () => ({
   useActivityEvents: () => ({
     events: [
@@ -13,60 +13,26 @@ vi.mock("../../hooks/useActivityEvents", () => ({
         eventType: "task_complete",
         summary: "Finished the build",
       },
-      {
-        id: "e2",
-        timestamp: Date.now() - 60000,
-        eventType: "tool_running",
-        summary: "Running tests",
-      },
     ],
     clearEvents: vi.fn(),
   }),
 }));
-vi.mock("../../api", () => ({
-  client: {
-    getInboxChats: vi.fn().mockResolvedValue({
-      chats: [
-        {
-          id: "c1",
-          source: "imessage",
-          worldLabel: "iMessage",
-          title: "Alex",
-          lastMessageText: "see you at 5",
-          lastMessageAt: Date.now() - 120000,
-          messageCount: 3,
-        },
-      ],
-      count: 1,
-    }),
-  },
-}));
-// The registered-view set drives which view-kind tiles render. Mutable so a
-// test can simulate a build where a view isn't registered.
-let mockViews: { id: string; path: string }[] = [
-  { id: "orchestrator", path: "/orchestrator" },
-  { id: "automations", path: "/automations" },
-  { id: "inbox", path: "/inbox" },
-];
-vi.mock("../../hooks/useAvailableViews", () => ({
-  useAvailableViews: () => ({ views: mockViews, loading: false }),
-}));
-// Don't run real intervals (clock tick / inbox poll) in tests.
-vi.mock("../../hooks/useDocumentVisibility", () => ({
-  useIntervalWhenDocumentVisible: vi.fn(),
-  useDocumentVisibility: () => true,
+
+// HomeScreen now mounts the unified home-slot WidgetHost (#9143) — its ranking +
+// per-widget behavior is covered by the widgets suites. Here we stub it to a
+// marker so HomeScreen's own responsibility (mount the host for slot "home" +
+// the AOSP tiles) is what's asserted, without pulling the whole registry/app
+// store into this unit test.
+vi.mock("../../widgets/WidgetHost", () => ({
+  WidgetHost: (props: { slot: string }) => (
+    <div data-testid="home-widget-host" data-slot={props.slot} />
+  ),
 }));
 
 import { HomeScreen } from "./HomeScreen";
 
 afterEach(() => {
   cleanup();
-  localStorage.clear();
-  mockViews = [
-    { id: "orchestrator", path: "/orchestrator" },
-    { id: "automations", path: "/automations" },
-    { id: "inbox", path: "/inbox" },
-  ];
 });
 
 const NATIVE_OS_TILES = ["messages", "phone", "contacts", "camera"];
@@ -78,17 +44,15 @@ function tileIds(container: HTMLElement): string[] {
 }
 
 describe("HomeScreen", () => {
-  it("is minimal: no clock, activity + messages when present, NO pinned tiles off-AOSP", async () => {
+  it("mounts the unified home WidgetHost (slot=home) and no clock, NO pinned tiles off-AOSP", () => {
     const { container } = render(<HomeScreen onOpenTile={vi.fn()} />);
     // The clock/date was removed — the home stays simple.
     expect(screen.queryByTestId("home-clock")).toBeNull();
-    // Activity card shows because the mock has events.
-    expect(screen.getByTestId("home-widget-activity")).toBeTruthy();
-    expect(screen.getByText("Finished the build")).toBeTruthy();
-    // Messages card appears once the (async) inbox fetch resolves with a chat.
-    expect(await screen.findByTestId("home-widget-messages")).toBeTruthy();
-    // Off-AOSP: zero tiles — Home/Views/Settings live in the chat nav now, and
-    // the tile grid is omitted entirely (not an empty section).
+    // The prioritized home widgets render through the unified WidgetHost.
+    const host = screen.getByTestId("home-widget-host");
+    expect(host.getAttribute("data-slot")).toBe("home");
+    // Off-AOSP: zero tiles — Springboard is the adjacent launcher now, and the
+    // tile grid is omitted entirely (not an empty section).
     expect(tileIds(container)).toEqual([]);
     expect(screen.queryByTestId("home-tiles")).toBeNull();
   });

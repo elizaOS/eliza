@@ -6,7 +6,7 @@ import {
   type NativeLibraryCandidate,
   resolveNativeLibraryCandidate,
 } from "@elizaos/app-core/platform/native-library-policy";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
@@ -275,10 +275,22 @@ function getRegistryFromRuntime(
   if (!runtime) return null;
   const service = runtime.getService(PERMISSIONS_REGISTRY_SERVICE);
   if (!service) return null;
-  // Single-step cast: IPermissionsRegistry is a plain interface (no Service
-  // base), so getService<T> generic isn't usable, but the types are
-  // non-conflicting and a single cast from Service to interface suffices.
-  return service as IPermissionsRegistry;
+  // IPermissionsRegistry is a plain capability interface (no Service base), so
+  // validate the registry surface at this runtime boundary and narrow, rather
+  // than asserting across non-overlapping types.
+  const candidate = service as {
+    get?: unknown;
+    check?: unknown;
+    request?: unknown;
+  };
+  if (
+    typeof candidate.get === "function" &&
+    typeof candidate.check === "function" &&
+    typeof candidate.request === "function"
+  ) {
+    return service as Service & IPermissionsRegistry;
+  }
+  return null;
 }
 
 function buildPermissionFailure(

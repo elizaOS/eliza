@@ -139,7 +139,6 @@ function getRunnableTypes(): SubAgentType[] {
     "eliza",
     "elizaos-native",
     "opencode",
-    "sweagent",
     "codex",
     "claude-code",
   ];

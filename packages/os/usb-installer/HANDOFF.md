@@ -151,20 +151,20 @@ behind the backend contract and future signed/elevated helpers.
     with `scsi_debug` cleanup verified;
   - `git diff --check` passed.
 - Final local validation on 2026-05-20 after the mock-stack E2E harness fix:
-  - `bun run --cwd packages/cloud-shared typecheck` passed;
-  - `bun run --cwd packages/cloud-api typecheck` passed;
-  - `bun run --cwd packages/cloud-api lint` passed;
-  - `bun test packages/cloud-api/webhooks/bluebubbles/route.test.ts` passed:
+  - `bun run --cwd packages/cloud/shared typecheck` passed;
+  - `bun run --cwd packages/cloud/api typecheck` passed;
+  - `bun run --cwd packages/cloud/api lint` passed;
+  - `bun test packages/cloud/api/webhooks/bluebubbles/route.test.ts` passed:
     10 tests;
-  - `bun run --cwd packages/cloud-services/container-control-plane typecheck`
+  - `bun run --cwd packages/cloud/services/container-control-plane typecheck`
     passed;
   - `bun run --cwd packages/test/cloud-e2e typecheck` passed;
-  - `bun run --cwd packages/cloud-shared lint` passed;
+  - `bun run --cwd packages/cloud/shared lint` passed;
   - `bun run cloud:e2e` passed: 4 Playwright tests covering onboarding,
     provision, deprovision, and stuck cleanup against PGlite, cloud-api,
     cloud-frontend, the real control-plane sidecar, and the guarded memory
     sandbox provider;
-  - `bun run --cwd packages/cloud-api test -- --runInBand` passed: 44 tests;
+  - `bun run --cwd packages/cloud/api test -- --runInBand` passed: 44 tests;
   - `bun run --cwd packages/os/usb-installer typecheck` passed;
   - `bun run --cwd packages/os/usb-installer test` passed: 9 files, 80 tests,
     with the opt-in virtual block-device test skipped by default;
@@ -177,9 +177,9 @@ behind the backend contract and future signed/elevated helpers.
   - `git diff --check` passed.
 - Follow-up local validation on 2026-05-20 after integrating the teardown-gap
   fix and rebasing PR #7825 onto `origin/develop@f6f16699fc`:
-  - `bun run --cwd packages/cloud-shared typecheck` passed;
-  - `bun run --cwd packages/cloud-shared lint` passed;
-  - `bun run --cwd packages/cloud-api typecheck` passed;
+  - `bun run --cwd packages/cloud/shared typecheck` passed;
+  - `bun run --cwd packages/cloud/shared lint` passed;
+  - `bun run --cwd packages/cloud/api typecheck` passed;
   - `bun run --cwd packages/test/cloud-e2e typecheck` passed;
   - `bun run cloud:e2e` passed: 4 Playwright tests covering onboarding,
     provision, deprovision, and stuck cleanup against PGlite, cloud-api,
@@ -211,9 +211,9 @@ behind the backend contract and future signed/elevated helpers.
 - Follow-up local cloud validation on 2026-05-20 after rebasing onto
   `origin/develop@5119665621`:
   - `bun install --frozen-lockfile` passed;
-  - `bun run --cwd packages/cloud-shared typecheck` passed;
-  - `bun run --cwd packages/cloud-shared lint` passed;
-  - `bun run --cwd packages/cloud-api typecheck` passed;
+  - `bun run --cwd packages/cloud/shared typecheck` passed;
+  - `bun run --cwd packages/cloud/shared lint` passed;
+  - `bun run --cwd packages/cloud/api typecheck` passed;
   - `bun run --cwd packages/test/cloud-e2e typecheck` passed;
   - `bun run test:cloud` passed: 279 tests across 30 files;
   - `bun run cloud:e2e` passed: 4 Playwright tests covering onboarding,

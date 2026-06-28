@@ -42,7 +42,6 @@ export interface DevRouteEntry {
   requiresAuth: boolean;
   platformGate: DevRoutePlatformGate;
 }
-
 export interface DevRouteSettingsSection {
   id: string;
   label: string;

@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { ModelType } from "@elizaos/core";
+import { localInferenceEngine } from "../services/engine";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
@@ -91,15 +92,17 @@ export async function handleLocalInferenceAsrRoute(
 	if (method === "GET" && url.pathname === "/api/asr/local-inference/status") {
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		// Transcription runs through the registered TRANSCRIPTION model handler,
-		// which is backed by the fused libelizainference ASR runtime. Report ready
-		// when a TRANSCRIPTION handler is registered.
+		// backed by the fused Gemma ASR runtime. A handler alone is not enough:
+		// the active or assigned Eliza-1 bundle must stage an eligible ASR model.
 		const getModel = state.current?.getModel;
 		const runtimeAsr =
 			typeof getModel === "function" &&
 			Boolean(getModel.call(state.current, ModelType.TRANSCRIPTION));
+		const ready =
+			runtimeAsr && (await localInferenceEngine.canTranscribeLocally());
 		sendJson(res, 200, {
-			ready: runtimeAsr,
-			provider: runtimeAsr ? "local-inference" : null,
+			ready,
+			provider: ready ? "local-inference" : null,
 		});
 		return true;
 	}

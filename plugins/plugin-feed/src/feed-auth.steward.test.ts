@@ -47,9 +47,7 @@ describe("proxyFeedRequest — Steward-first auto-login", () => {
       ),
     ).toBe(false);
     // Dead cookie removed.
-    expect(
-      (init?.headers as Record<string, string>).Cookie,
-    ).toBeUndefined();
+    expect((init?.headers as Record<string, string>).Cookie).toBeUndefined();
   });
 
   it("falls back to the agent-session path when the Steward JWT is rejected (401)", async () => {
@@ -59,7 +57,10 @@ describe("proxyFeedRequest — Steward-first auto-login", () => {
         const u = String(url);
         if (u.includes("/api/agents/auth")) {
           return new Response(
-            JSON.stringify({ sessionToken: "agent-session-token", expiresIn: 600 }),
+            JSON.stringify({
+              sessionToken: "agent-session-token",
+              expiresIn: 600,
+            }),
             { status: 200 },
           );
         }

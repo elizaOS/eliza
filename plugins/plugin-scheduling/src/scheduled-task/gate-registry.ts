@@ -1,7 +1,8 @@
 /**
  * TaskGateRegistry. Built-in kinds: `weekend_skip`, `weekend_only`,
  * `weekday_only`, `late_evening_skip`, `quiet_hours`, `during_travel`,
- * `circadian_state_in`, `no_recent_user_message_in`.
+ * `circadian_state_in`, `no_recent_user_message_in`,
+ * `personal_baseline_sufficient`.
  *
  * The runner uses these gates in `shouldFire.gates`; composition is
  * the responsibility of the runner (`compose: "all" | "any" | "first_deny"`).
@@ -268,6 +269,36 @@ const noRecentUserMessageInGate = makeWarnOnceFallthroughGate(
   "Register a message-activity-aware contribution via TaskGateRegistry.register, or remove this gate from default packs.",
 );
 
+interface PersonalBaselineSufficientParams {
+  minSamples?: number;
+}
+
+const personalBaselineSufficientGate: TaskGateContribution = {
+  kind: "personal_baseline_sufficient",
+  evaluate(_task, context): GateDecision {
+    const params = (context.task.shouldFire?.gates.find(
+      (g) => g.kind === "personal_baseline_sufficient",
+    )?.params ?? {}) as PersonalBaselineSufficientParams;
+    const minSamples = intInRange(params.minSamples ?? 1, 1, 10_000)
+      ? (params.minSamples ?? 1)
+      : 1;
+    const sampleCount = context.ownerFacts.personalBaseline?.sampleCount;
+    if (typeof sampleCount !== "number" || !Number.isFinite(sampleCount)) {
+      return {
+        kind: "deny",
+        reason: "personal_baseline_sufficient: sample count unavailable",
+      };
+    }
+    if (sampleCount >= minSamples) {
+      return { kind: "allow" };
+    }
+    return {
+      kind: "deny",
+      reason: `personal_baseline_sufficient: sample count ${sampleCount} < ${minSamples}`,
+    };
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -313,4 +344,5 @@ export function registerBuiltInGates(reg: TaskGateRegistry): void {
   reg.register(duringTravelGate);
   reg.register(circadianStateInGate);
   reg.register(noRecentUserMessageInGate);
+  reg.register(personalBaselineSufficientGate);
 }

@@ -51,7 +51,7 @@ export async function scheduleOnceTriggerTask(
       enabled: true,
       createdBy: creator,
       scheduledAtIso: args.scheduledAtIso,
-      kind: "text",
+      kind: "workflow",
       maxRuns: 1,
     },
     fallback: {

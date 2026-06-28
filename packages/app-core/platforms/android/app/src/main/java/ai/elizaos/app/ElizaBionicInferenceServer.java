@@ -61,6 +61,7 @@ final class ElizaBionicInferenceServer {
     private long residentCtx = 0L;
     private long residentStream = 0L;
     private String residentBundle = null;
+    private String residentDrafterPath = "";
     /** The previous turn's prompt tokens — used to find the longest common prefix
      *  with the next turn's prompt so its KV can be reused (only the delta is
      *  re-prefilled). null when the stream has no reusable KV (first turn / after
@@ -93,25 +94,26 @@ final class ElizaBionicInferenceServer {
     private static void applyBionicInferenceMemoryDefaults() {
         setEnvIfAbsent("ELIZA_LLM_N_BATCH", "128");
         setEnvIfAbsent("ELIZA_LLM_N_CTX", "8192");
-        // The JNI bridge defaults the KV cache to the fused QJL/TBQ quant
-        // (cache_type_k="qjl1_256"). QJL1_256 is a head_dim=128 sketch, but the
-        // active eliza-1 tiers are qwen3.5 with head_dim=256, so llama can't
-        // build that KV cache and llm_stream_open returns "failed to init llama
-        // context" (elizaOS/eliza#8848). Fall back to the f16 KV cache, which is
-        // only ~0.4 GB at 8k ctx for the 2B. Re-enable per device once a
-        // head_dim=256 QJL/TBQ path is verified.
+        // The JNI bridge can default the KV cache to a fused QJL/TBQ quant
+        // (cache_type_k="qjl1_256"), but that path is a head_dim=128 sketch and
+        // is RETIRED for the shipped tiers (elizaOS/eliza#8848 / #9033 Gemma-4
+        // cutover): eliza-1 now ships Gemma-4-arch GGUFs whose KV is already
+        // minimal (MQA + windowed SWA + shared-KV; dual head dims 512 global /
+        // 256 SWA) and which run on stock f16/q8_0 KV. The head_dim=128 QJL/TBQ
+        // kernels are dimensionally inapplicable to Gemma, so keep KV quant OFF
+        // (stock f16, only ~0.4 GB at 8k ctx for the 2B). This is the intended
+        // Gemma KV path, not a fallback.
         setEnvIfAbsent("ELIZA_BIONIC_KV_QUANT", "0");
-        // Arm same-file MTP (NextN speculative head embedded in the 2B/4B text
-        // GGUF — no separate drafter). MTP accelerates DECODE ~1.5x and is the
-        // best per-turn win available on the shipped qwen3.5 tiers: prefix-KV
-        // reuse (resetAndPrefillResident → nativeLlmStreamResetKeep) needs the KV
-        // cache to support partial sequence removal, but the qwen3.5 non-MTP F16
-        // cache returns false from llama_memory_seq_rm (only the MTP/RS context
-        // supports bounded partial removal), so prefix-reuse is a no-op fallback
-        // on this model and disabling MTP for it would be strictly worse. The
-        // resident path therefore stays MTP + full reset; reset_keep remains
-        // wired for models/caches that DO support partial removal. (Tracked:
-        // MTP-side prefix reuse via reset_engine_keep on the RS context.)
+        // Allow MTP speculative decode when a Gemma-4 SEPARATE drafter
+        // (mtp/drafter-<tier>.gguf, loaded via "-md … --spec-type draft-mtp") —
+        // NOT a same-file NextN head embedded in the text GGUF; the JNI threads
+        // cfg.mtp_drafter_path when the TS bridge has staged one. MTP stays
+        // dormant when no drafter path is supplied; the retired same-file path
+        // is intentionally not used for Gemma bundles. The resident path uses
+        // MTP + full reset;
+        // prefix-KV reuse via reset_keep (resetAndPrefillResident →
+        // nativeLlmStreamResetKeep) stays wired for caches that support bounded
+        // partial removal (llama_memory_seq_rm).
         setEnvIfAbsent("ELIZA_BIONIC_MTP", "1");
     }
 
@@ -241,13 +243,23 @@ final class ElizaBionicInferenceServer {
                 return tts(bundleDir, req.optString("text", ""),
                     (float) req.optDouble("speed", 1.0));
             }
+            if ("asr".equals(op)) {
+                return asr(bundleDir, req.optString("pcmBase64", ""),
+                    req.optInt("sampleRate", 16000));
+            }
+            if ("image".equals(op)) {
+                return describeImage(bundleDir, req.optString("imageBase64", ""),
+                    req.optString("mmprojPath", ""), req.optString("prompt", ""));
+            }
             if (!"generate".equals(op)) {
                 return errorJson("unsupported op: " + op);
             }
             String prompt = req.optString("prompt", "");
+            String drafterPath = req.optString("drafterPath", "");
             int maxTokens = req.optInt("maxTokens", 256);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
-                + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
+                + " maxTokens=" + maxTokens + ", bundle=" + bundleDir
+                + ", drafter=" + (drafterPath.isEmpty() ? "(none)" : drafterPath));
             // RESIDENT path (default): the model + context stay loaded across turns;
             // only the KV cache + sampler are reset and the prompt re-prefilled per
             // turn, so we skip the ~7-8s model RELOAD that nativeLlmSelfTest paid every
@@ -259,7 +271,7 @@ final class ElizaBionicInferenceServer {
             // ELIZA_BIONIC_RESIDENT=0 to force the old path).
             if (!"0".equals(System.getenv("ELIZA_BIONIC_RESIDENT"))) {
                 try {
-                    String r = generateResident(bundleDir, prompt, maxTokens);
+                    String r = generateResident(bundleDir, drafterPath, prompt, maxTokens);
                     Log.i(TAG, "GENERATE result (resident): "
                         + (r.length() > 200 ? r.substring(0, 200) + "…" : r));
                     return r;
@@ -283,12 +295,12 @@ final class ElizaBionicInferenceServer {
      * we skip the ~7-8s model reload. Greedy decode (temp=0, top_k=1), all-GPU.
      * Returns the same {ok,tokens,ms,tokS,text} JSON as nativeLlmSelfTest.
      */
-    private String generateResident(String bundleDir, String prompt, int maxTokens)
+    private String generateResident(String bundleDir, String drafterPath, String prompt, int maxTokens)
             throws org.json.JSONException {
         synchronized (residentLock) {
             ensureResidentCtx(bundleDir);
             final long t0 = android.os.SystemClock.elapsedRealtime();
-            resetAndPrefillResident(prompt);
+            resetAndPrefillResident(prompt, drafterPath);
             final StringBuilder sb = new StringBuilder();
             int produced = 0;
             final int cap = maxTokens > 0 ? maxTokens : 32;
@@ -327,6 +339,7 @@ final class ElizaBionicInferenceServer {
     private void generateStreamRequest(String requestJson, DataOutputStream out)
             throws IOException {
         String bundleDir = defaultBundleDir;
+        String drafterPath = "";
         String prompt = "";
         int maxTokens = 256;
         try {
@@ -335,13 +348,14 @@ final class ElizaBionicInferenceServer {
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
+            drafterPath = req.optString("drafterPath", "");
             prompt = req.optString("prompt", "");
             maxTokens = req.optInt("maxTokens", 256);
         } catch (org.json.JSONException e) {
             writeFrame(out, errorJson(e.getMessage() == null ? e.toString() : e.getMessage()));
             return;
         }
-        generateStream(bundleDir, prompt, maxTokens, out);
+        generateStream(bundleDir, drafterPath, prompt, maxTokens, out);
     }
 
     /**
@@ -353,16 +367,17 @@ final class ElizaBionicInferenceServer {
      * whole reply) and unblocks phrase-chunked LLM→TTS. The buffered op="generate"
      * is unchanged for non-streaming callers (embed/tts/self-test).
      */
-    private void generateStream(String bundleDir, String prompt, int maxTokens,
+    private void generateStream(String bundleDir, String drafterPath, String prompt, int maxTokens,
                                 DataOutputStream out) throws IOException {
         Log.i(TAG, "GENERATE_STREAM from agent: " + prompt.length() + " prompt chars,"
-            + " maxTokens=" + maxTokens + ", bundle=" + bundleDir);
+            + " maxTokens=" + maxTokens + ", bundle=" + bundleDir
+            + ", drafter=" + (drafterPath.isEmpty() ? "(none)" : drafterPath));
         final StringBuilder sb = new StringBuilder();
         try {
             synchronized (residentLock) {
                 ensureResidentCtx(bundleDir);
                 final long t0 = android.os.SystemClock.elapsedRealtime();
-                resetAndPrefillResident(prompt);
+                resetAndPrefillResident(prompt, drafterPath);
                 int produced = 0;
                 final int cap = maxTokens > 0 ? maxTokens : 32;
                 while (produced < cap) {
@@ -435,6 +450,7 @@ final class ElizaBionicInferenceServer {
                 residentCtx = 0L;
             }
             residentBundle = null;
+            residentDrafterPath = "";
             residentPrevTokens = null;
         }
     }
@@ -449,13 +465,21 @@ final class ElizaBionicInferenceServer {
      * prefix or the stream can't be trimmed (e.g. an MTP stream). Caller holds
      * residentLock.
      */
-    private void resetAndPrefillResident(String prompt) {
+    private void resetAndPrefillResident(String prompt, String drafterPath) {
+        final String effectiveDrafterPath = drafterPath == null ? "" : drafterPath;
+        if (residentStream != 0L && !effectiveDrafterPath.equals(residentDrafterPath)) {
+            ElizaVoiceNative.nativeLlmStreamClose(residentStream);
+            residentStream = 0L;
+            residentPrevTokens = null;
+        }
         if (residentStream == 0L) {
             residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+                residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1,
+                effectiveDrafterPath);
             if (residentStream == 0L) {
                 throw new IllegalStateException("resident streamOpen failed");
             }
+            residentDrafterPath = effectiveDrafterPath;
             residentPrevTokens = null;
         }
         final int[] toks = ElizaVoiceNative.nativeTokenize(residentCtx, prompt, true, true);
@@ -481,10 +505,12 @@ final class ElizaBionicInferenceServer {
             if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 1) {
                 ElizaVoiceNative.nativeLlmStreamClose(residentStream);
                 residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1, "");
+                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1,
+                    effectiveDrafterPath);
                 if (residentStream == 0L) {
                     throw new IllegalStateException("resident streamReopen failed");
                 }
+                residentDrafterPath = effectiveDrafterPath;
             }
             applied = 0;
         }
@@ -579,6 +605,91 @@ final class ElizaBionicInferenceServer {
             } catch (Throwable t) {
                 // A failed synth may leave the shared ctx in an unknown state;
                 // drop it so the next generate/embed/tts rebuilds cleanly.
+                resetResident();
+                throw t;
+            }
+        }
+    }
+
+    /**
+     * On-device STT: decode the base64 little-endian fp32 PCM, run the fused
+     * local ASR batch transcribe on the resident context (it mmap-acquires the
+     * {@code asr/} weights on first use), and return {ok, text}. The agent's
+     * TRANSCRIPTION delegate routes here over UDS (op="asr"); the musl agent
+     * can't reach the fused lib itself. Reuses the ONE resident context like
+     * embed/tts so the model is not reloaded per call.
+     */
+    private String asr(String bundleDir, String pcmBase64, int sampleRate)
+            throws org.json.JSONException {
+        if (pcmBase64.isEmpty()) {
+            return errorJson("asr: empty pcmBase64");
+        }
+        byte[] raw = Base64.decode(pcmBase64, Base64.DEFAULT);
+        final int n = raw.length / 4;
+        if (n <= 0) {
+            return errorJson("asr: pcmBase64 decoded to " + raw.length + " bytes (need fp32 PCM)");
+        }
+        float[] pcm = new float[n];
+        ByteBuffer bb = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN);
+        for (int i = 0; i < n; i++) {
+            pcm[i] = bb.getFloat();
+        }
+        final int sr = sampleRate > 0 ? sampleRate : 16000;
+        synchronized (residentLock) {
+            final long ctx = ensureResidentCtx(bundleDir);
+            try {
+                String text = ElizaVoiceNative.nativeAsrTranscribe(ctx, pcm, sr);
+                Log.i(TAG, "ASR from agent: " + n + " samples @ " + sr + " Hz -> \""
+                    + (text.length() > 200 ? text.substring(0, 200) + "…" : text) + "\"");
+                return new JSONObject()
+                    .put("ok", true)
+                    .put("text", text)
+                    .toString();
+            } catch (Throwable t) {
+                // A failed transcribe may leave the shared ctx in an unknown state;
+                // drop it so the next generate/embed/tts/asr rebuilds cleanly.
+                resetResident();
+                throw t;
+            }
+        }
+    }
+
+    /**
+     * On-device vision / screen-recognition: decode the base64 image bytes and
+     * run the fused mmproj describe-image on the resident TEXT model. When the
+     * caller doesn't pass an explicit {@code mmprojPath}, resolve the projector
+     * GGUF from the bundle's {@code vision/} dir. Returns {ok, text}. The agent's
+     * IMAGE_DESCRIPTION delegate routes here over UDS (op="image").
+     */
+    private String describeImage(String bundleDir, String imageBase64,
+            String mmprojPath, String prompt) throws org.json.JSONException {
+        if (imageBase64.isEmpty()) {
+            return errorJson("image: empty imageBase64");
+        }
+        byte[] img = Base64.decode(imageBase64, Base64.DEFAULT);
+        if (img.length == 0) {
+            return errorJson("image: imageBase64 decoded to 0 bytes");
+        }
+        String mmproj = mmprojPath;
+        if (mmproj == null || mmproj.isEmpty()) {
+            File visionDir = new File(bundleDir, "vision");
+            mmproj = firstMatch(visionDir, ".gguf");
+            if (mmproj == null) {
+                return errorJson("image: mmproj GGUF not found under " + visionDir
+                    + " (stage a vision projector or pass mmprojPath)");
+            }
+        }
+        synchronized (residentLock) {
+            final long ctx = ensureResidentCtx(bundleDir);
+            try {
+                String desc = ElizaVoiceNative.nativeDescribeImage(ctx, img, mmproj, prompt);
+                Log.i(TAG, "IMAGE from agent: " + img.length + " bytes (mmproj " + mmproj + ") -> \""
+                    + (desc.length() > 200 ? desc.substring(0, 200) + "…" : desc) + "\"");
+                return new JSONObject()
+                    .put("ok", true)
+                    .put("text", desc)
+                    .toString();
+            } catch (Throwable t) {
                 resetResident();
                 throw t;
             }

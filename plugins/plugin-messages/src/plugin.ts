@@ -5,41 +5,20 @@ export const appMessagesPlugin: Plugin = {
   description:
     "Android Messages overlay: read SMS conversations and compose text messages through the native SMS bridge.",
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single MessagesView
+    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build.
     {
       id: "messages",
       label: "Messages",
       description: "SMS conversations via the Android Messages bridge",
       icon: "MessageSquare",
       path: "/messages",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "MessagesPluginView",
+      componentExport: "MessagesView",
       tags: ["messaging", "sms", "android"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "messages",
-      label: "Messages XR",
-      description: "SMS conversations via the Android Messages bridge",
-      icon: "MessageSquare",
-      path: "/messages",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "MessagesPluginView",
-      tags: ["messaging", "sms", "android"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "messages",
-      label: "Messages TUI",
-      description: "Terminal SMS conversation surface and bridge status",
-      icon: "MessageSquare",
-      path: "/messages/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "MessagesTuiView",
-      tags: ["messaging", "sms", "android", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

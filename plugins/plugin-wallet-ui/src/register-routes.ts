@@ -9,8 +9,10 @@
 import { registerAppRoutePluginLoader } from "@elizaos/core";
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { registerBuiltinWidgets } from "@elizaos/ui/widgets";
-// Keep route/widget metadata eager, but load the full inventory dashboard only
-// when the user opens /inventory.
+// Keep route/widget metadata eager, but load the unified wallet view only when
+// the user opens /inventory. The view is the single `InventoryView` wrapper; in
+// GUI/XR its `Escape` hatch renders the full inventory dashboard, in TUI the
+// spatial fallback.
 import { walletAppPlugin } from "./plugin.ts";
 import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status.helpers.ts";
 
@@ -23,6 +25,7 @@ registerAppShellPage({
   id: "wallet.inventory",
   pluginId: "app-wallet",
   label: "Wallet",
+  viewKind: "system",
   icon: "Wallet",
   path: "/inventory",
   order: 50,

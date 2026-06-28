@@ -1,4 +1,7 @@
-import { GoalsService, scoreGoalSimilarity } from "@elizaos/plugin-goals";
+import {
+  GoalsService,
+  scoreGoalSimilarity,
+} from "@elizaos/plugin-goals/goals-service";
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsActivitySignal,

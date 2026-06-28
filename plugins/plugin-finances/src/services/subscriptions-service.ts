@@ -22,7 +22,13 @@
  */
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import type { BrowserBridgeAction } from "@elizaos/plugin-browser";
+import {
+  BROWSER_SERVICE_TYPE,
+  type BrowserBridgeAction,
+  type BrowserService,
+  type BrowserWorkspaceCommand,
+  type BrowserWorkspaceCommandResult,
+} from "@elizaos/plugin-browser";
 import type { CreateLifeOpsBrowserSessionRequest } from "@elizaos/plugin-browser/lifeops-session-contracts";
 import type { LifeOpsGmailMessageSummary } from "@elizaos/shared";
 import {
@@ -102,6 +108,14 @@ type ComputerUseBrowserService = {
   ): Promise<BrowserActionResult>;
 };
 
+type BrowserActionExecutor = {
+  executeBrowserAction(
+    params: BrowserActionParams,
+  ): Promise<BrowserActionResult>;
+};
+
+const DEFAULT_SUBSCRIPTION_BROWSER_WAIT_MS = 5_000;
+
 function isComputerUseBrowserService(
   service: unknown,
 ): service is ComputerUseBrowserService {
@@ -111,6 +125,185 @@ function isComputerUseBrowserService(
     typeof (service as { executeBrowserAction?: unknown })
       .executeBrowserAction === "function"
   );
+}
+
+function isBrowserService(service: unknown): service is BrowserService {
+  return (
+    Boolean(service) &&
+    typeof service === "object" &&
+    typeof (service as { execute?: unknown }).execute === "function"
+  );
+}
+
+function resultRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function resultStringField(
+  value: unknown,
+  field: "title" | "url",
+): string | null {
+  const record = resultRecord(value);
+  const candidate = record?.[field];
+  return typeof candidate === "string" && candidate.trim() ? candidate : null;
+}
+
+function workspaceResultContent(
+  result: BrowserWorkspaceCommandResult,
+): string | null {
+  if (typeof result.value === "string") {
+    return result.value;
+  }
+  if (result.snapshot?.data) {
+    return result.snapshot.data;
+  }
+  if (result.value !== undefined) {
+    return JSON.stringify(result.value);
+  }
+  if (result.elements) {
+    return JSON.stringify(result.elements);
+  }
+  if (result.tab) {
+    return `${result.tab.title} ${result.tab.url}`.trim();
+  }
+  return null;
+}
+
+function workspaceResultToBrowserActionResult(
+  result: BrowserWorkspaceCommandResult,
+): BrowserActionResult {
+  const content = workspaceResultContent(result);
+  return {
+    success: true,
+    message: `browser workspace ${result.subaction} completed`,
+    content,
+    url: result.tab?.url ?? resultStringField(result.value, "url"),
+    title: result.tab?.title ?? resultStringField(result.value, "title"),
+    data: {
+      mode: result.mode,
+      subaction: result.subaction,
+      value: result.value,
+      tab: result.tab,
+      elements: result.elements,
+    },
+    screenshot: result.snapshot?.data ?? null,
+  };
+}
+
+class BrowserServiceActionExecutor implements BrowserActionExecutor {
+  private currentTabId: string | null = null;
+
+  constructor(private readonly browser: BrowserService) {}
+
+  async executeBrowserAction(
+    params: BrowserActionParams,
+  ): Promise<BrowserActionResult> {
+    try {
+      const command = await this.toWorkspaceCommand(params);
+      const result = await this.browser.execute(command, "workspace");
+      if (result.tab?.id) {
+        this.currentTabId = result.tab.id;
+      }
+      return workspaceResultToBrowserActionResult(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        message,
+        error: message,
+      };
+    }
+  }
+
+  private async toWorkspaceCommand(
+    params: BrowserActionParams,
+  ): Promise<BrowserWorkspaceCommand> {
+    const id = this.currentTabId ?? undefined;
+    switch (params.action) {
+      case "open": {
+        const reusableId = await this.findReusableBlankWorkspaceTabId();
+        if (reusableId) {
+          return { id: reusableId, subaction: "navigate", url: params.url };
+        }
+        return { show: true, subaction: "open", url: params.url };
+      }
+      case "navigate":
+        return id
+          ? { id, subaction: "navigate", url: params.url }
+          : { show: true, subaction: "open", url: params.url };
+      case "wait":
+        return {
+          ...(id ? { id } : {}),
+          ...(params.selector ? { selector: params.selector } : {}),
+          ...(params.text ? { text: params.text } : {}),
+          subaction: "wait",
+          timeoutMs: params.timeout ?? DEFAULT_SUBSCRIPTION_BROWSER_WAIT_MS,
+        };
+      case "click":
+        return {
+          ...(id ? { id } : {}),
+          ...(params.selector
+            ? { selector: params.selector }
+            : { findBy: "text", text: params.text }),
+          subaction: "click",
+        };
+      case "get_dom":
+        return {
+          ...(id ? { id } : {}),
+          getMode: "html",
+          selector: "body",
+          subaction: "get",
+        };
+      case "screenshot":
+        return {
+          ...(id ? { id } : {}),
+          fullPage: true,
+          subaction: "screenshot",
+        };
+    }
+  }
+
+  private async findReusableBlankWorkspaceTabId(): Promise<string | null> {
+    try {
+      const result = await this.browser.execute(
+        { subaction: "list" },
+        "workspace",
+      );
+      const tabs = result.tabs ?? [];
+      const current = this.currentTabId
+        ? tabs.find(
+            (candidate) =>
+              candidate.id === this.currentTabId &&
+              candidate.visible &&
+              candidate.url.trim() === "about:blank",
+          )
+        : null;
+      const tab =
+        current ??
+        tabs.find(
+          (candidate) =>
+            candidate.visible && candidate.url.trim() === "about:blank",
+        );
+      return tab?.id ?? null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function resolveAgentBrowserExecutor(
+  runtime: IAgentRuntime,
+): BrowserActionExecutor | null {
+  const computerUseService = runtime.getService("computeruse");
+  if (isComputerUseBrowserService(computerUseService)) {
+    return computerUseService;
+  }
+  const browserService = runtime.getService(BROWSER_SERVICE_TYPE);
+  return isBrowserService(browserService)
+    ? new BrowserServiceActionExecutor(browserService)
+    : null;
 }
 
 type BrowserSignalProbe = {
@@ -420,10 +613,10 @@ function extractEvidenceMessages(
 }
 
 async function probeBrowserSignals(
-  computerUse: ComputerUseBrowserService,
+  browser: BrowserActionExecutor,
   playbook: LifeOpsSubscriptionPlaybook,
 ): Promise<BrowserSignalProbe> {
-  const dom = await computerUse.executeBrowserAction({ action: "get_dom" });
+  const dom = await browser.executeBrowserAction({ action: "get_dom" });
   const blob = browserResultText(dom);
   for (const marker of playbook.cancellationMarkers) {
     if (blob.includes(marker.toLowerCase())) {
@@ -453,8 +646,23 @@ async function probeBrowserSignals(
   return { status: "clear", detail: null };
 }
 
+function selectorForBrowserClickTextStep(
+  playbook: LifeOpsSubscriptionPlaybook,
+  step: Extract<SubscriptionAutomationStep, { kind: "click_text" }>,
+): string | undefined {
+  const clickText = step.text.trim().toLowerCase();
+  if (clickText === "cancel subscription") {
+    return playbook.companionSelectors?.cancel;
+  }
+  if (clickText === "confirm cancellation") {
+    return playbook.companionSelectors?.confirm;
+  }
+  return undefined;
+}
+
 async function executeBrowserStep(
-  computerUse: ComputerUseBrowserService,
+  browser: BrowserActionExecutor,
+  playbook: LifeOpsSubscriptionPlaybook,
   step: SubscriptionAutomationStep,
 ): Promise<BrowserActionResult> {
   const params: BrowserActionParams = ((): BrowserActionParams => {
@@ -471,8 +679,10 @@ async function executeBrowserStep(
           selector: step.selector,
           timeout: step.timeoutMs,
         };
-      case "click_text":
-        return { action: "click", text: step.text };
+      case "click_text": {
+        const selector = selectorForBrowserClickTextStep(playbook, step);
+        return { action: "click", selector, text: step.text };
+      }
       case "click_selector":
         return { action: "click", selector: step.selector };
       case "assert_text":
@@ -481,7 +691,7 @@ async function executeBrowserStep(
         return { action: "screenshot" };
     }
   })();
-  return computerUse.executeBrowserAction(params);
+  return browser.executeBrowserAction(params);
 }
 
 function findServiceInText(
@@ -951,15 +1161,12 @@ export class SubscriptionsService {
       return { cancellation, candidate };
     }
 
-    const computerUseService = this.runtime.getService("computeruse");
-    const computerUse = isComputerUseBrowserService(computerUseService)
-      ? computerUseService
-      : null;
-    if (!computerUse) {
+    const browser = resolveAgentBrowserExecutor(this.runtime);
+    if (!browser) {
       cancellation = {
         ...cancellation,
         status: "failed",
-        error: "Computer-use service is not available.",
+        error: "Agent browser service is not available.",
         updatedAt: new Date().toISOString(),
         finishedAt: new Date().toISOString(),
       };
@@ -1001,7 +1208,7 @@ export class SubscriptionsService {
         return { cancellation, candidate };
       }
 
-      const result = await executeBrowserStep(computerUse, step);
+      const result = await executeBrowserStep(browser, playbook, step);
       if (!result.success) {
         cancellation = {
           ...cancellation,
@@ -1029,7 +1236,7 @@ export class SubscriptionsService {
         });
       }
 
-      const probe = await probeBrowserSignals(computerUse, playbook);
+      const probe = await probeBrowserSignals(browser, playbook);
       if (probe.status === "needs_login") {
         cancellation = {
           ...cancellation,
@@ -1083,7 +1290,7 @@ export class SubscriptionsService {
       }
     }
 
-    const finalProbe = await probeBrowserSignals(computerUse, playbook);
+    const finalProbe = await probeBrowserSignals(browser, playbook);
     cancellation = {
       ...cancellation,
       status: finalProbe.status === "completed" ? "completed" : "blocked",

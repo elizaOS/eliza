@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { parentPort, workerData } from "node:worker_threads";
-import sharp from "sharp";
+import { getSharp } from "../image/sharp-compat";
 import { logger } from "./worker-logger";
 
 const execAsync = promisify(exec);
@@ -147,7 +147,7 @@ class ScreenCaptureWorker {
           "wmic path Win32_DesktopMonitor get DeviceID,ScreenWidth,ScreenHeight /format:csv",
         );
         const displays: DisplayInfo[] = [];
-        const lines = stdout.trim().split("\n").slice(2); // Skip headers
+        const lines = stdout.trim().split(/\r?\n/u).slice(2); // Skip headers
 
         lines.forEach((line, index) => {
           const parts = line.split(",");
@@ -267,6 +267,7 @@ class ScreenCaptureWorker {
 
       // Load and process the image
       const imageBuffer = await fs.readFile(tempFile);
+      const sharp = await getSharp();
       const image = sharp(imageBuffer);
       const metadata = await image.metadata();
 

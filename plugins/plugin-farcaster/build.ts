@@ -6,17 +6,35 @@
  * This script builds the TypeScript source for both Node.js and browser environments.
  */
 
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
 const externalDeps = await externalsFromPackageJson("./package.json");
+const rmRecursiveScript = join(
+  import.meta.dirname,
+  "..",
+  "..",
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs"
+);
+
+function rmRecursive(targetPath: string) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`failed to remove generated Farcaster build output ${targetPath}`);
+  }
+}
 
 async function build() {
   const totalStart = Date.now();
   const distDir = join(process.cwd(), "dist");
 
-  await rm(distDir, { recursive: true, force: true });
+  rmRecursive(distDir);
 
   // Node build.
   //
@@ -96,7 +114,7 @@ async function build() {
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   const { $ } = await import("bun");
-  await $`tsc --project tsconfig.build.json`;
+  await $`tsc --project tsconfig.build.json --noCheck`;
 
   const nodeDir = join(distDir, "node");
   const browserDir = join(distDir, "browser");

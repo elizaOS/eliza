@@ -80,7 +80,7 @@ function ProgressChart({
             cx={point.x}
             cy={point.y + 15}
             r={point.contentOk ? 4 : 2}
-            fill={point.contentOk ? "#3b82f6" : "#6b7280"}
+            fill={point.contentOk ? "#f97316" : "#6b7280"}
           />
         </g>
       ))}

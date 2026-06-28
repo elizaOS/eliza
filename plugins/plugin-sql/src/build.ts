@@ -1,12 +1,31 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
 import { build } from "bun";
 
 const ROOT = resolve(dirname(import.meta.path));
 const DIST = join(ROOT, "dist");
+const RM_RECURSIVE_SCRIPT = join(
+  ROOT,
+  "..",
+  "..",
+  "..",
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs"
+);
+
+function rmRecursive(targetPath: string) {
+  const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`failed to remove generated plugin-sql build output ${targetPath}`);
+  }
+}
 
 function listDeclarationFiles(dir: string): string[] {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -58,7 +77,7 @@ async function normalizeDeclarationSpecifiers(filePath: string): Promise<void> {
 }
 
 if (existsSync(DIST)) {
-  rmSync(DIST, { recursive: true, force: true });
+  rmRecursive(DIST);
 }
 mkdirSync(DIST, { recursive: true });
 mkdirSync(join(DIST, "node"), { recursive: true });
@@ -174,6 +193,13 @@ await writeFile(
 // resolve to a runtime JS file. Emit a small shim that re-exports the
 // schema from the bundled root so the consumer doesn't need to know the
 // internal layout.
+//
+// `dist/schema/` is otherwise only created as a side effect of the `tsc`
+// declaration emit above. Create it explicitly so this write never depends on
+// that incidental ordering — under parallel turbo builds a partial or contended
+// tsc emit could leave the directory absent and crash this step with
+// `ENOENT ... src/dist/schema/index.js`.
+mkdirSync(join(DIST, "schema"), { recursive: true });
 await writeFile(join(DIST, "schema", "index.js"), `export * from '../node/index.node.js';\n`);
 await appendFile(
   join(DIST, "index.node.d.ts"),

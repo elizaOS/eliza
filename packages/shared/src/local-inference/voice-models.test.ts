@@ -6,7 +6,39 @@ import {
   VOICE_MODEL_VERSIONS,
   type VoiceModelId,
   versionsFor,
+  voiceModelAssetUrl,
 } from "./voice-models.js";
+
+describe("eliza-1 wake-word GGUF packaging (#9880)", () => {
+  const wake = latestVoiceModelVersion("wakeword");
+
+  it("publishes the three hey-eliza GGUFs with verifiable sha256 + size", () => {
+    expect(wake?.version).toBe("0.3.0");
+    expect(wake?.hfRepo).toBe("elizaos/eliza-1");
+    const kinds = wake?.ggufAssets?.map((a) => a.filename).sort();
+    expect(kinds).toEqual([
+      "voice/wakeword/hey-eliza.classifier.gguf",
+      "voice/wakeword/hey-eliza.embedding.gguf",
+      "voice/wakeword/hey-eliza.melspec.gguf",
+    ]);
+    for (const a of wake?.ggufAssets ?? []) {
+      expect(a.sha256).toMatch(/^[0-9a-f]{64}$/); // pinned, verifiable
+      expect(a.sizeBytes).toBeGreaterThan(0);
+      expect(a.quant).toBe("fp16");
+    }
+  });
+
+  it("builds the pinned HuggingFace resolve URL for each asset", () => {
+    if (!wake) throw new Error("wakeword version missing");
+    expect(
+      voiceModelAssetUrl(wake, {
+        filename: "voice/wakeword/hey-eliza.classifier.gguf",
+      }),
+    ).toBe(
+      "https://huggingface.co/elizaos/eliza-1/resolve/c544bb4c78a601a0da8372b9399dfe668fbadb1e/voice/wakeword/hey-eliza.classifier.gguf",
+    );
+  });
+});
 
 describe("compareVoiceModelSemver", () => {
   it("orders major.minor.patch", () => {
@@ -102,10 +134,17 @@ describe("VOICE_MODEL_VERSIONS bookkeeping", () => {
   it("records the native Silero VAD GGUF with a verified checksum", () => {
     const vad = latestVoiceModelVersion("vad");
     expect(vad?.preferredBackend).toBe("ffi");
+    expect(vad?.hfRevision).toBe("1dc9cf5467a6539a8d8289afefac63f28ce53f9c");
     expect(vad?.ggufAssets).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          filename: "voice/vad/silero-vad-v5.gguf",
+          filename: "voice/vad/silero-vad-v5.1.2.ggml.bin",
+          sha256:
+            "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+          sizeBytes: 885_098,
+        }),
+        expect.objectContaining({
+          filename: "bundles/2b/vad/silero-vad-v5.gguf",
           sha256:
             "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
           sizeBytes: 620_736,

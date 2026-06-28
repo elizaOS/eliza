@@ -32,7 +32,7 @@ document.body.innerHTML = `
     :root { color-scheme: dark; font-family: "Poppins", "Poppins", Arial, system-ui, sans-serif; background:#08090b; color:#f5f7fb; }
     body { margin:0; min-height:100vh; background:#08090b; }
     .shell { min-height:100vh; display:flex; flex-direction:column; }
-    header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 18px; border-bottom:1px solid #242833; background:rgba(8,9,11,.92); backdrop-filter:blur(12px); }
+    header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 18px; border-bottom:1px solid #242833; background:#08090b; }
     h1 { margin:0; font-size:17px; line-height:1.2; }
     .sub { margin-top:4px; color:#9ba3b4; font-size:12px; }
     button { border:1px solid #3a4050; background:#161a22; color:#f5f7fb; border-radius:8px; padding:8px 11px; font-weight:650; cursor:pointer; }
@@ -143,15 +143,20 @@ function renderOutput(id: string, value: unknown): void {
     durationMs?: number;
   };
   const output = data.ok ? data.output : data.error;
+  // escapeHtml the provider-supplied contentType / base64 / image URL before they
+  // enter innerHTML: an unescaped value could break out of the src attribute and
+  // inject an active element (XSS). Mirrors plugins/app-model-tester/src/routes.ts.
   const audio =
     data.ok && id === "text-to-speech" && output && typeof output === "object"
-      ? `<audio controls src="data:${(output as { contentType?: string }).contentType ?? "audio/wav"};base64,${(output as { base64?: string }).base64 ?? ""}"></audio>`
+      ? `<audio controls src="data:${escapeHtml((output as { contentType?: string }).contentType ?? "audio/wav")};base64,${escapeHtml((output as { base64?: string }).base64 ?? "")}"></audio>`
       : "";
   const images =
     data.ok && id === "image" && output && typeof output === "object"
       ? ((output as { images?: Array<{ url?: string }> }).images ?? [])
           .map((img) =>
-            img.url ? `<img class="preview" src="${img.url}" alt="">` : "",
+            img.url
+              ? `<img class="preview" src="${escapeHtml(img.url)}" alt="">`
+              : "",
           )
           .join("")
       : "";

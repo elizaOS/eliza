@@ -174,6 +174,8 @@ interface WorkbenchReport {
   turns: Array<{
     index: number;
     speaker: string;
+    expectedSpeakerLabel: string;
+    predictedSpeakerLabel: string | null;
     status: string;
     responded: boolean;
     expectRespond: boolean;
@@ -182,6 +184,17 @@ interface WorkbenchReport {
     error?: string;
     detail?: Record<string, unknown>;
   }>;
+  diarization: {
+    status: string;
+    total: number;
+    der: number;
+    confusions: number;
+    unattributed: number;
+    maxDer: number;
+    evaluated: boolean;
+    passed: boolean;
+    reason?: string;
+  };
 }
 
 /**
@@ -223,25 +236,61 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
       scenario,
     );
 
-    // Mocked backends are present, so the scenario must resolve cleanly.
-    // A skipped case in this lane is a missing mock/fixture, not coverage.
+    const expectsRealDiarization = scenario.classes.includes("diarization");
+
+    // Mocked ASR / agent / TTS backends are present, so non-diarization turns
+    // must resolve cleanly. The mock lane has no real speaker-attribution model,
+    // so a scenario whose load-bearing class is diarization must report skipped
+    // rather than a fake pass.
     expect(
       report.overall,
       `turns: ${JSON.stringify(report.turns, null, 2)}`,
-    ).toBe("pass");
+    ).toBe(expectsRealDiarization ? "skipped" : "pass");
     expect(report.scenarioId).toBe(scenario.id);
     expect(report.turns).toHaveLength(scenario.turns.length);
+    expect(report.diarization.status, "mock-lane diarization status").toBe(
+      "skipped",
+    );
+    expect(
+      report.diarization.passed,
+      "mock lane must not fabricate a passing DER",
+    ).toBe(false);
+    expect(report.diarization.total, "diarization scored turns").toBe(0);
+    expect(report.diarization.evaluated, "diarization evaluated").toBe(false);
+    expect(report.diarization.unattributed, "unattributed turns").toBe(
+      scenario.turns.length,
+    );
+    expect(report.diarization.reason ?? "").toContain(
+      "speaker attribution is not available",
+    );
 
     // Every turn's respond decision must match ground truth and no turn failed.
+    // Speaker labels are still carried into the report, but the mock lane has
+    // no attribution model, so predicted labels stay null and cannot satisfy a
+    // diarization proof.
     for (let i = 0; i < scenario.turns.length; i += 1) {
       const turn = report.turns[i];
       const expected = scenario.turns[i];
+      const expectedSpeakerLabel =
+        expected.expectedSpeakerLabel ?? expected.speaker;
       expect(turn.status, `turn ${i} (${turn.error ?? "no error"})`).toBe(
         "pass",
       );
       expect(turn.responded, `turn ${i} respond decision`).toBe(
         expected.expectRespond,
       );
+      expect(
+        turn.expectedSpeakerLabel,
+        `turn ${i} expected speaker label`,
+      ).toBe(expectedSpeakerLabel);
+      expect(
+        turn.predictedSpeakerLabel,
+        `turn ${i} predicted speaker label is unavailable in the mock lane`,
+      ).toBeNull();
+      expect(
+        turn.detail?.speakerAttributionRan,
+        `turn ${i} speaker attribution ran`,
+      ).toBe(false);
     }
 
     // DOM mirror: per-turn elements carry the verdict for a non-JS scraper.
@@ -250,12 +299,25 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
       await expect(turnEl).toBeVisible();
       const status = await turnEl.getAttribute("data-status");
       expect(status, `turn ${i} DOM status`).toBe("pass");
+      await expect(turnEl).toHaveAttribute(
+        "data-expected-speaker-label",
+        scenario.turns[i].expectedSpeakerLabel ?? scenario.turns[i].speaker,
+      );
+      await expect(turnEl).toHaveAttribute("data-predicted-speaker-label", "");
     }
 
     // Overall DOM verdict reflects the report.
     await expect(page.getByTestId("voice-workbench-overall")).toHaveAttribute(
       "data-overall",
       report.overall,
+    );
+    await expect(page.getByTestId("voice-workbench-overall")).toHaveAttribute(
+      "data-der",
+      String(report.diarization.der),
+    );
+    await expect(page.getByTestId("voice-workbench-overall")).toHaveAttribute(
+      "data-diarization-status",
+      "skipped",
     );
   });
 }

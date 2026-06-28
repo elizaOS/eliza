@@ -38,7 +38,7 @@ export const createCommentAction: Action = {
       description: "The content of your comment (required)",
       required: true,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

@@ -16,13 +16,33 @@
  */
 
 import {
+  dedupeModalities,
   type EnabledViewKinds,
   isViewVisible,
   type ViewKind,
 } from "@elizaos/core";
+import { generateViewHeroSvgFor } from "@elizaos/shared";
 import type { RegistryAppInfo } from "../api";
 import type { ViewModality } from "../platform/platform-guards";
 import type { ViewRegistryEntry } from "./useAvailableViews";
+
+/**
+ * A deterministic, branded view hero generated CLIENT-SIDE as an inline data
+ * URI. This is the SAME no-blue art the agent serves at `/api/views/:id/hero`,
+ * but rendered with no network round-trip — so every launcher tile shows a real
+ * image even offline / on cloud builds where that endpoint isn't reachable
+ * (the "tiles show glyphs, not images" report). Real plugin heroes
+ * (`heroImageUrl`) still win; this is the universal fallback.
+ */
+function generatedViewHeroDataUri(source: {
+  id: string;
+  label: string;
+  icon?: string;
+}): string {
+  return `data:image/svg+xml,${encodeURIComponent(
+    generateViewHeroSvgFor(source),
+  )}`;
+}
 
 export type { ViewModality } from "../platform/platform-guards";
 
@@ -40,10 +60,25 @@ export interface ViewEntry {
   icon?: string;
   /** Real preview image URL, or undefined when only a generated fallback exists. */
   heroUrl?: string;
+  /**
+   * Always-available preview image URL. Real plugin art wins only when the
+   * registry says that asset exists; otherwise this is a deterministic branded
+   * SVG data URI, not a backend hero endpoint probe.
+   */
+  imageUrl?: string;
+  /** Deterministic branded image used when a real preview image fails to load. */
+  fallbackImageUrl?: string;
   hasHero: boolean;
   category?: string;
   /** Presentation modality (`gui` for catalog apps until loaded). */
   modality: ViewModality;
+  /**
+   * Every surface this logical view renders on. A single-declaration entry has
+   * `[modality]`; after {@link collapseViewEntries} it carries the union of all
+   * same-id declarations (e.g. `["gui", "xr", "tui"]`) so the view lists once
+   * with modality badges instead of one duplicate row per surface.
+   */
+  modalities?: ViewModality[];
   state: ViewEntryState;
   kind: ViewEntryKind;
   /** Catalog/plugin package name — used to launch and to dedupe vs loaded. */
@@ -58,6 +93,8 @@ export interface ViewEntry {
   developerOnly?: boolean;
   /** Four-tier visibility category resolved from the source declaration. */
   viewKind?: ViewKind;
+  /** Sort priority for launcher/nav surfaces (lower = earlier). */
+  order?: number;
   /** Source records (one is set depending on `kind`). */
   view?: ViewRegistryEntry;
   app?: RegistryAppInfo;
@@ -68,8 +105,13 @@ export interface InstalledAppLike {
   name: string;
 }
 
-function viewToEntry(view: ViewRegistryEntry): ViewEntry {
+export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
   const hasHero = Boolean(view.hasHeroImage && view.heroImageUrl);
+  const generatedHero = generatedViewHeroDataUri({
+    id: view.id,
+    label: view.label,
+    icon: view.icon,
+  });
   return {
     key: `view:${view.id}`,
     id: view.id,
@@ -77,8 +119,14 @@ function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     description: view.description,
     icon: view.icon,
     heroUrl: hasHero ? view.heroImageUrl : undefined,
+    // Use a registry hero only when it is declared as real. Otherwise generate
+    // the branded fallback client-side so static/mobile shells avoid backend
+    // `/api/views/:id/hero` probes for icon-only views.
+    imageUrl: hasHero ? view.heroImageUrl : generatedHero,
+    fallbackImageUrl: generatedHero,
     hasHero,
     modality: view.viewType ?? "gui",
+    modalities: [view.viewType ?? "gui"],
     state: "loaded",
     kind: "view",
     pluginName: view.pluginName,
@@ -86,19 +134,28 @@ function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     builtin: view.builtin,
     developerOnly: view.developerOnly,
     viewKind: view.viewKind,
+    order: view.order,
     view,
   };
 }
 
 function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
   const hasHero = Boolean(app.heroImage);
+  const label = app.displayName || app.name;
+  const generatedHero = generatedViewHeroDataUri({
+    id: app.name,
+    label,
+    icon: app.icon ?? undefined,
+  });
   return {
     key: `app:${app.name}`,
     id: app.name,
-    label: app.displayName || app.name,
+    label,
     description: app.description,
     icon: app.icon ?? undefined,
     heroUrl: app.heroImage ?? undefined,
+    imageUrl: app.heroImage ?? generatedHero,
+    fallbackImageUrl: generatedHero,
     hasHero,
     category: app.category,
     // Catalog cards are a GUI install surface; the loaded view carries the real
@@ -164,4 +221,40 @@ export function mergeViewCatalog(input: {
   }
 
   return [...viewEntries, ...catalogEntries];
+}
+
+/**
+ * Collapse entries that share an `id` into one logical entry carrying the union
+ * of every surface they render on. The GUI entry is preferred as the base (its
+ * label has no "XR"/"TUI" suffix); its `modalities` becomes the deduped union of
+ * all same-id entries. First-seen order is preserved. App entries (`kind:"app"`)
+ * have unique package-name ids, so they collapse to themselves.
+ *
+ * This is what makes a view appear ONCE with modality badges instead of one
+ * duplicate row per surface ("Phone" / "Phone XR" / "Phone TUI").
+ */
+export function collapseViewEntries(entries: ViewEntry[]): ViewEntry[] {
+  const order: string[] = [];
+  const byId = new Map<string, ViewEntry>();
+  for (const entry of entries) {
+    const mods = entry.modalities ?? [entry.modality];
+    const existing = byId.get(entry.id);
+    if (!existing) {
+      order.push(entry.id);
+      byId.set(entry.id, { ...entry, modalities: dedupeModalities(mods) });
+      continue;
+    }
+    const merged = dedupeModalities([
+      ...(existing.modalities ?? [existing.modality]),
+      ...mods,
+    ]);
+    // Prefer the gui entry as the canonical base (clean label, no surface
+    // suffix); otherwise keep the first-seen entry.
+    const base =
+      entry.modality === "gui" && existing.modality !== "gui"
+        ? entry
+        : existing;
+    byId.set(entry.id, { ...base, modalities: merged });
+  }
+  return order.map((id) => byId.get(id) as ViewEntry);
 }

@@ -5,11 +5,29 @@
  * Uses Bun's native bundler — no monorepo build-utils dependency.
  */
 
-import { execSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { execSync, spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-rmSync("dist", { force: true, recursive: true });
+const rmRecursiveScript = join(
+  import.meta.dirname,
+  "..",
+  "..",
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs"
+);
+
+function rmRecursive(targetPath: string) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`failed to remove generated WhatsApp build output ${targetPath}`);
+  }
+}
+
+rmRecursive("dist");
 
 const external = await externalsFromPackageJson("./package.json", {
   // Preserve bare-string node builtins, transitive workspace packages, and

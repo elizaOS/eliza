@@ -20,7 +20,6 @@ import {
 } from "../../../packages/test/helpers/test-utils";
 import { InboxTriageRepository } from "../src/inbox/repository.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
-import { LifeOpsService } from "../src/lifeops/service.js";
 import {
   getLifeOpsLiveSetupWarnings,
   getSelectedLiveProviderEnv,
@@ -41,6 +40,34 @@ const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
+
+/**
+ * Overdue follow-ups are surfaced through the canonical
+ * `followup_overdue_digest` memory (written by the follow-up tracker over the
+ * runtime knowledge graph), not a separate LifeOps follow-up table.
+ */
+async function overdueFollowupReasons(
+  runtime: AgentRuntime,
+  roomId: UUID,
+): Promise<string[]> {
+  const memories = await runtime.getMemories({
+    roomId,
+    tableName: "messages",
+    count: 50,
+  });
+  const reasons: string[] = [];
+  for (const memory of memories) {
+    const content = memory.content as {
+      type?: string;
+      data?: { overdue?: Array<{ reason?: string }> };
+    };
+    if (content?.type !== "followup_overdue_digest") continue;
+    for (const entry of content.data?.overdue ?? []) {
+      if (typeof entry.reason === "string") reasons.push(entry.reason);
+    }
+  }
+  return reasons;
+}
 
 async function handleMessageAndCollectText(
   runtime: AgentRuntime,
@@ -253,7 +280,6 @@ describeIf(LIVE_SUITE_ENABLED)(
     }, 30_000);
 
     it("builds a strict morning brief with actions, schedule, unread channels, pending drafts, overdue followups, and document blockers", async () => {
-      const service = new LifeOpsService(runtime);
       const triageRepo = new InboxTriageRepository(runtime);
       const approvalQueue = createApprovalQueue(runtime, {
         agentId: runtime.agentId,
@@ -271,14 +297,8 @@ describeIf(LIVE_SUITE_ENABLED)(
         ),
       ).toBe(true);
 
-      const followupsBefore = await service.getDailyFollowUpQueue({
-        limit: 10,
-      });
-      expect(
-        followupsBefore.some(
-          (followup) => followup.reason === seeded.followupReason,
-        ),
-      ).toBe(true);
+      const followupsBefore = await overdueFollowupReasons(runtime, dmRoomId);
+      expect(followupsBefore).toContain(seeded.followupReason);
 
       const triageBefore = await triageRepo.getRecentForDigest(
         new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
@@ -355,16 +375,10 @@ describeIf(LIVE_SUITE_ENABLED)(
         ),
       ).toBe(true);
 
-      // The seeded follow-up must remain on the daily queue (the agent should
-      // not have closed it without the user marking it done).
-      const followupsAfter = await service.getDailyFollowUpQueue({
-        limit: 10,
-      });
-      expect(
-        followupsAfter.some(
-          (followup) => followup.reason === seeded.followupReason,
-        ),
-      ).toBe(true);
+      // The seeded follow-up must remain surfaced (the agent should not have
+      // closed it without the user marking it done).
+      const followupsAfter = await overdueFollowupReasons(runtime, dmRoomId);
+      expect(followupsAfter).toContain(seeded.followupReason);
     }, 180_000);
   },
 );

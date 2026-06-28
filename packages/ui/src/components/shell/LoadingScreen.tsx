@@ -44,18 +44,19 @@ export function LoadingScreen({
   useEffect(() => {
     if (!vrmUrl) return;
     const controller = new AbortController();
-    let mounted = true;
-    let settled = false;
+    let isMounted = true;
+    let isSettled = false;
 
     (async () => {
       try {
         const response = await fetch(vrmUrl, { signal: controller.signal });
-        if (!mounted) return;
+        if (!isMounted) return;
         const contentLength = Number(
           response.headers.get("content-length") || 0,
         );
 
         if (!contentLength || !response.body) {
+          if (!isMounted || controller.signal.aborted) return;
           setVrmCached(true);
           return;
         }
@@ -65,26 +66,30 @@ export function LoadingScreen({
 
         for (;;) {
           const { done, value } = await reader.read();
-          if (!mounted) return;
+          if (!isMounted) return;
           if (done) break;
           received += value.byteLength;
+          if (!isMounted || controller.signal.aborted) return;
           setFetchProgress(Math.min(received / contentLength, 1));
         }
 
+        if (!isMounted || controller.signal.aborted) return;
         setVrmCached(true);
       } catch {
+        if (controller.signal.aborted) return;
         // Non-blocking — VRM will load normally later.
       } finally {
-        settled = true;
+        isSettled = true;
       }
     })();
 
     return () => {
-      mounted = false;
-      if (!settled && !controller.signal.aborted) {
-        controller.abort(
-          new DOMException("LoadingScreen unmounted", "AbortError"),
-        );
+      isMounted = false;
+      if (isSettled || controller.signal.aborted) return;
+      try {
+        controller.abort();
+      } catch {
+        // Node's undici can throw synchronously while aborting fetch in jsdom.
       }
     };
   }, [vrmUrl]);
@@ -114,10 +119,10 @@ export function LoadingScreen({
         <div className="flex items-center gap-4 w-full">
           <div className="flex-1 h-1 bg-bg-accent overflow-hidden relative">
             <div
-              className="h-full bg-accent relative "
+              className="h-full w-full origin-left bg-accent relative"
               style={{
-                width: `${progress}%`,
-                transition: "width 1.5s ease-out",
+                transform: `scaleX(${Math.min(100, Math.max(0, progress)) / 100})`,
+                transition: "transform 1.5s ease-out",
               }}
             />
           </div>

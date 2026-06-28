@@ -1,4 +1,4 @@
-# Qwen3-ASR fine-tune on the `same` voice from lalalune/ai_voices.
+# Synthetic ASR fine-tune shape check on the `same` voice from lalalune/ai_voices.
 #
 # The same corpus (58 clips, ~3.5 min, 44.1 kHz) is small for ASR
 # fine-tuning; it is primarily useful for voice-adapted language model
@@ -9,10 +9,9 @@
 # the scaffold + eval + manifest must land. Run with --synthetic-smoke in CI.
 # Run with --real-train on an RTX 5080 / H200 for actual training.
 #
-# Expected outcome: WER on same val set should beat the baseline
-# (Qwen3-ASR-0.6B zero-shot) by 5–15% relative on in-domain prompts.
-# Out-of-domain WER is expected to be unchanged (the model is pretrained on
-# large-scale diverse speech).
+# Expected outcome for future real runs: WER on same val set should beat the
+# selected Gemma-compatible ASR baseline on in-domain prompts without regressing
+# out-of-domain WER.
 
 extends: base.yaml
 

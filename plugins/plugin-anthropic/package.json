@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-anthropic",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -38,6 +38,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "auto-enable.ts"
   ],
@@ -67,7 +68,7 @@
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

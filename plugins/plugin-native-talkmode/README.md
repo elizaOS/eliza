@@ -112,8 +112,8 @@ All config is passed to `start()` or `updateConfig()` — no process env vars ar
 | `tts.outputFormat` | No | e.g. `"pcm_24000"`, `"mp3_44100"` |
 | `tts.interruptOnSpeech` | No | Cut TTS when mic detects speech |
 | `tts.voiceAliases` | No | Name → voiceId mapping |
-| `stt.engine` | No | `"whisper"` or `"web"` |
-| `stt.modelSize` | No | Whisper model size |
+| `stt.engine` | No | `"native"` or `"web"` |
+| `stt.modelSize` | No | Legacy compatibility field; ignored by current recognizers |
 | `stt.language` | No | BCP-47 language code |
 | `stt.sampleRate` | No | Hz, default 16000 |
 | `silenceWindowMs` | No | Silence gap before finalising transcript |

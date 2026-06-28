@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-github",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "GitHub integration plugin for elizaOS agents — PRs, issues, notifications via the GitHub REST API",
   "type": "module",
   "main": "dist/index.js",
@@ -29,13 +29,14 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "scripts": {
     "build": "tsup src/index.ts src/register-routes.ts --format esm --dts --clean",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit",
-    "clean": "rm -rf dist .turbo"
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

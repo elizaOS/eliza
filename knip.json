@@ -37,12 +37,12 @@
   "ignoreUnresolved": ["bun-types", "node:sqlite"],
   "ignoreWorkspaces": ["."],
   "workspaces": {
-    "packages/cloud-routing": {
+    "packages/cloud/routing": {
       "entry": ["src/index.ts", "src/**/*.test.ts"],
       "project": ["src/**/*.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/cloud-sdk": {
+    "packages/cloud/sdk": {
       "entry": [
         "src/index.ts",
         "src/**/*.test.ts",
@@ -59,7 +59,7 @@
       ],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/cloud-api": {
+    "packages/cloud/api": {
       "entry": [
         "src/index.ts",
         "src/_generate-router.mjs",
@@ -72,76 +72,31 @@
       "ignore": [".wrangler/**", "dist/**", ".turbo/**"],
       "ignoreDependencies": ["wrangler"]
     },
-    "packages/cloud-services/agent-server": {
+    "packages/cloud/services/agent-server": {
       "entry": ["src/index.ts", "src/**/*.ts", "__tests__/**/*.ts"],
       "project": ["src/**/*.ts", "__tests__/**/*.ts"],
       "ignore": ["dist/**", ".turbo/**"],
       "ignoreDependencies": ["bun-types"]
     },
-    "packages/cloud-services/gateway-discord": {
+    "packages/cloud/services/gateway-discord": {
       "entry": ["src/index.ts", "src/**/*.ts", "tests/**/*.ts"],
       "project": ["src/**/*.ts", "tests/**/*.ts"],
       "ignore": ["dist/**", ".turbo/**"],
       "ignoreDependencies": ["bun-types"]
     },
-    "packages/cloud-services/gateway-webhook": {
+    "packages/cloud/services/gateway-webhook": {
       "entry": ["src/index.ts", "src/**/*.ts", "__tests__/**/*.ts"],
       "project": ["src/**/*.ts", "__tests__/**/*.ts"],
       "ignore": ["dist/**", ".turbo/**"],
       "ignoreDependencies": ["bun-types"]
     },
-    "packages/cloud-services/operator": {
+    "packages/cloud/services/operator": {
       "entry": ["pepr.ts"],
       "project": ["pepr.ts", "capabilities/**/*.ts"],
       "ignore": ["dist/**", ".turbo/**"],
       "ignoreDependencies": ["@types/bun", "esbuild", "prettier", "uuid"]
     },
-    "packages/cloud-frontend": {
-      "entry": [
-        "index.html",
-        "src/main.tsx",
-        "src/entry-server.tsx",
-        "src/**/*.test.{ts,tsx}",
-        "tests/**/*.spec.ts",
-        "functions/**/*.ts",
-        "scripts/**/*.mjs",
-        "content/**/*.{mdx,ts}",
-        "src/shims/*.{ts,cjs}",
-        "vite.config.ts",
-        "vitest.config.ts",
-        "vitest.setup.ts",
-        "playwright.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx,d.ts}",
-        "tests/**/*.ts",
-        "functions/**/*.ts",
-        "scripts/**/*.mjs",
-        "content/**/*.{mdx,ts}",
-        "src/shims/*.{ts,cjs}",
-        "vite.config.ts",
-        "vitest.config.ts",
-        "vitest.setup.ts",
-        "playwright.config.ts"
-      ],
-      "ignore": ["dist/**", "dist-ssr/**", ".turbo/**"],
-      "ignoreDependencies": [
-        "@fontsource-variable/inter",
-        "@fontsource-variable/open-sans",
-        "@fontsource/dm-mono",
-        "@tailwindcss/typography",
-        "@types/mdx",
-        "buffer",
-        "browserify-sign",
-        "create-hash",
-        "create-hmac",
-        "hash-base",
-        "secp256k1",
-        "tailwind-scrollbar",
-        "tw-animate-css"
-      ]
-    },
-    "packages/cloud-shared": {
+    "packages/cloud/shared": {
       "entry": [
         "src/index.ts",
         "src/billing/index.ts",
@@ -166,7 +121,7 @@
       "project": ["src/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/os-homepage": {
+    "packages/os/homepage": {
       "entry": [
         "index.html",
         "src/main.tsx",
@@ -353,7 +308,6 @@
         "@capacitor/haptics",
         "@capacitor/ios",
         "@capacitor/push-notifications",
-        "@clawville/app-clawville",
         "@elizaos/app-.*",
         "@elizaos/capacitor-.*",
         "@elizaos/plugin-.*",
@@ -399,8 +353,7 @@
         "@capacitor/keyboard",
         "@capacitor/push-notifications",
         "@elizaos/plugin-personal-assistant",
-        "@elizaos/plugin-shopify-ui",
-        "@elizaos/plugin-vincent",
+        "@elizaos/plugin-shopify",
         "@elizaos/plugin-browser",
         "@elizaos/plugin-discord",
         "@elizaos/plugin-local-inference",
@@ -527,7 +480,7 @@
       ],
       "ignore": ["dist/**"]
     },
-    "packages/browser-bridge-extension": {
+    "packages/browser-extension": {
       "entry": [
         "entrypoints/**/*.ts",
         "src/**/*.ts",

@@ -355,6 +355,15 @@ function collectPackageJsonPaths() {
   // negated dir is NOT a workspace member even if an earlier glob matched it
   // (e.g. `packages/*` + `!packages/feed` keeps the nested feed monorepo root
   // out — it has its own install/CI and its `test` runs the full feed suite).
+  //
+  // The exclusion covers the WHOLE excluded subtree, not just the literal dir:
+  // the root workspace also lists `packages/feed/packages/*` (so feed's
+  // sub-packages build alongside the rest), but those tests require feed's own
+  // install/environment (its postinstall pulls python + agent-framework deps,
+  // and shared deps like drizzle-orm live in the excluded `@feed/root`). They
+  // can't resolve under a plain root install, so honoring `!packages/feed` for
+  // the nested children keeps the full root `bun run test` from running tests
+  // that structurally belong to feed's own CI lane.
   const patterns = rootPackageJson.workspaces ?? [];
   const excludedDirs = new Set();
   for (const pattern of patterns) {
@@ -365,13 +374,21 @@ function collectPackageJsonPaths() {
       excludedDirs.add(packageDir);
     }
   }
+  const isExcluded = (packageDir) => {
+    for (const excluded of excludedDirs) {
+      if (packageDir === excluded || packageDir.startsWith(`${excluded}/`)) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   for (const pattern of patterns) {
     if (pattern.startsWith("!")) {
       continue;
     }
     for (const packageDir of expandWorkspacePattern(pattern)) {
-      if (excludedDirs.has(packageDir)) {
+      if (isExcluded(packageDir)) {
         continue;
       }
       const packageJsonPath = path.join(packageDir, "package.json");

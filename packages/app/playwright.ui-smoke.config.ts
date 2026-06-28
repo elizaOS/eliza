@@ -112,7 +112,7 @@ export default defineConfig({
       // personal-assistant domain views, so each lifeops view is exercised at
       // the same WebView viewport that ships on Capacitor iOS/Android.
       testMatch:
-        /(backgrounds|apps-personal-assistant-decomposed-interactions)\.spec\.ts/,
+        /(backgrounds|apps-personal-assistant-decomposed-interactions|chat-clear-swipe)\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
     {
@@ -131,7 +131,7 @@ export default defineConfig({
   webServer: {
     command: `node ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
     cwd: repoRoot,
-    port: uiSmokePort,
+    url: `http://127.0.0.1:${uiSmokePort}`,
     reuseExistingServer,
     // A cold renderer build transforms ~3000 modules (~12 min) before the smoke
     // harness can bind the port; the live stack caps the build at 18 min, so the

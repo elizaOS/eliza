@@ -93,6 +93,15 @@ function runProbe(env: Record<string, string | undefined>): ProbeResult {
 	return JSON.parse(firstLine) as ProbeResult;
 }
 
+// Tests that write a fake POSIX shell-script `sd` binary and have the probe
+// SPAWN it are inherently POSIX-only: Windows does not honor a `#!/usr/bin/env
+// bash` shebang and `spawn` cannot exec an extensionless script (→ ENOENT), so
+// the probe reports `binary_missing` instead of the scripted result. The probe
+// LOGIC is covered on POSIX CI; the missing/bogus-binary path (no fake spawned)
+// still runs on every platform below. On Windows the real path uses a packaged
+// `sd.exe`, which these unit fakes cannot stand in for.
+const itPosix = it.skipIf(process.platform === "win32");
+
 describe("WS3 sd-cpp probe — first-run script", () => {
 	it("reports unavailable when SD_CPP_BIN points at a missing path", () => {
 		const probe = runProbe({
@@ -107,7 +116,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 		expect(probe.supportedModels).toBeUndefined();
 	});
 
-	it("reports CPU-only when the binary returns version but no CUDA proof", () => {
+	itPosix("reports CPU-only when the binary returns version but no CUDA proof", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd");
 		writeFileSync(
@@ -129,7 +138,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 		expect(probe.accelerators).toContain("cpu");
 	});
 
-	it("does not treat generic --rng cuda help text as CUDA build proof", () => {
+	itPosix("does not treat generic --rng cuda help text as CUDA build proof", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-metal");
 		writeFileSync(
@@ -149,7 +158,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 		expect(probe.accelerators).not.toContain("cuda");
 	});
 
-	it("reports CUDA when help/version proves a CUDA-capable binary", () => {
+	itPosix("reports CUDA when help/version proves a CUDA-capable binary", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-cuda");
 		writeFileSync(
@@ -169,7 +178,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 		expect(probe.evidence).toContain("help_or_version");
 	});
 
-	it("fails closed when ELIZA_IMAGEGEN_ACCELERATOR is not supported", () => {
+	itPosix("fails closed when ELIZA_IMAGEGEN_ACCELERATOR is not supported", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd");
 		writeFileSync(
@@ -190,7 +199,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 		expect(probe.hint).toMatch(/vulkan support/i);
 	});
 
-	it("passes when ELIZA_IMAGEGEN_ACCELERATOR is supported", () => {
+	itPosix("passes when ELIZA_IMAGEGEN_ACCELERATOR is supported", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-vulkan");
 		writeFileSync(
@@ -218,7 +227,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 		expect(probe.reason).toBeUndefined();
 	});
 
-	it("reports binary_version_mismatch when the binary exits non-zero on --version", () => {
+	itPosix("reports binary_version_mismatch when the binary exits non-zero on --version", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-broken");
 		writeFileSync(fakeBin, "#!/usr/bin/env bash\nexit 7\n");
@@ -266,7 +275,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		}
 	});
 
-	it("rejects CUDA load when the sd-cpp binary is CPU-only", async () => {
+	itPosix("rejects CUDA load when the sd-cpp binary is CPU-only", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-cpu");
 		writeFileSync(
@@ -292,7 +301,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		}
 	});
 
-	it("rejects Vulkan load when the sd-cpp binary is CPU-only", async () => {
+	itPosix("rejects Vulkan load when the sd-cpp binary is CPU-only", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-cpu");
 		writeFileSync(
@@ -318,7 +327,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		}
 	});
 
-	it("rejects Metal load when the sd-cpp binary is CPU-only", async () => {
+	itPosix("rejects Metal load when the sd-cpp binary is CPU-only", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-cpu");
 		writeFileSync(
@@ -344,7 +353,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		}
 	});
 
-	it("accepts CUDA load when sidecar manifest proves CUDA support", async () => {
+	itPosix("accepts CUDA load when sidecar manifest proves CUDA support", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-cuda");
 		const fakeModel = join(dir, "model.gguf");
@@ -373,7 +382,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		await backend.dispose();
 	});
 
-	it("accepts Vulkan load when sidecar manifest proves Vulkan support", async () => {
+	itPosix("accepts Vulkan load when sidecar manifest proves Vulkan support", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-vulkan");
 		const fakeModel = join(dir, "model.gguf");
@@ -469,7 +478,7 @@ describe("WS3 sd-cpp backend — CLI argument contract", () => {
 			modelPath: "/models/imagegen/z-image-turbo-Q4_K_M.gguf",
 			splitDiffusionModel: true,
 			vae: "/models/imagegen/vae/ae.safetensors",
-			llm: "/models/imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+			llm: "/models/imagegen/text-encoders/split-llm-text-encoder-Q4_K_M.gguf",
 		});
 		expect(args.slice(0, 2)).toEqual([
 			"--diffusion-model",
@@ -479,7 +488,7 @@ describe("WS3 sd-cpp backend — CLI argument contract", () => {
 		expect(args).toContain("/models/imagegen/vae/ae.safetensors");
 		expect(args).toContain("--llm");
 		expect(args).toContain(
-			"/models/imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+			"/models/imagegen/text-encoders/split-llm-text-encoder-Q4_K_M.gguf",
 		);
 		expect(args).not.toContain("--model");
 	});

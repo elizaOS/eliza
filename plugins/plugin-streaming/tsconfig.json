@@ -16,14 +16,13 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
-    "noImplicitAny": false,
     "allowJs": true,
     "checkJs": false,
     "noEmitOnError": false,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
     "paths": {
-      "@elizaos/cloud-routing": ["../../packages/cloud-routing/dist/index.d.ts"]
+      "@elizaos/cloud-routing": ["../../packages/cloud/routing/dist/index.d.ts"]
     },
     "noUnusedLocals": true,
     "noUnusedParameters": true,

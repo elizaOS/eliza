@@ -71,7 +71,6 @@ const responseId = "00000000-0000-0000-0000-0000000000e1" as UUID;
 
 afterEach(() => {
 	delete process.env.ELIZA_SHORTCUTS_DISABLED;
-	delete process.env.ELIZA_SHORTCUTS_NL;
 });
 
 describe("runShortcutGate (#8791 pre-LLM gate)", () => {
@@ -172,7 +171,44 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(useModel).not.toHaveBeenCalled();
 	});
 
-	it("fires a natural-language shortcut only when ELIZA_SHORTCUTS_NL=1 (voice/typed parity)", async () => {
+	it("falls through and logs when an explicit shortcut action validate() throws (#9153)", async () => {
+		const boom = new Error("validate exploded");
+		const validate = vi.fn(async () => {
+			throw boom;
+		});
+		const warn = vi.fn();
+		const { runtime, useModel } = makeRuntime({
+			actions: [echoAction({ validate })],
+		});
+		runtime.logger.warn = warn;
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo hi"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+		// A crashing validate() must still fall through to the pipeline (return null)
+		// without invoking the model — but the crash must be observable, not swallowed.
+		expect(result).toBeNull();
+		expect(validate).toHaveBeenCalledTimes(1);
+		expect(useModel).not.toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledTimes(1);
+		const [context, message] = warn.mock.calls[0] as [
+			Record<string, unknown>,
+			string,
+		];
+		expect(context).toMatchObject({
+			src: "shortcut-gate",
+			shortcut: "cmd:echo",
+			action: "ECHO_COMMAND",
+			err: boom,
+		});
+		expect(message).toContain("validate");
+	});
+
+	it("fires a confident natural-language shortcut without an env gate (voice/typed parity)", async () => {
 		const seenOptions: Array<Record<string, unknown> | undefined> = [];
 		const { runtime, useModel, emitEvent } = makeRuntime({
 			actions: [
@@ -181,7 +217,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 				}),
 			],
 		});
-		// A natural shortcut targeting ECHO_COMMAND, eligible only when NL is on.
+		// A narrow natural shortcut targeting ECHO_COMMAND.
 		(runtime.shortcutRegistry as ShortcutRegistry).register({
 			id: "nl:echo",
 			kind: "natural",
@@ -189,8 +225,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			target: { kind: "action", name: "ECHO_COMMAND" },
 		});
 
-		// Default: NL disabled → no match (the turn would proceed to the LLM).
-		const off = await runShortcutGate({
+		const result = await runShortcutGate({
 			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
 			runtime: runtime as any,
 			message: msg("echo hello there"),
@@ -198,19 +233,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			responseId,
 			senderRole: "OWNER",
 		});
-		expect(off).toBeNull();
-
-		// Enabled (mirrors a typed message and an ASR transcript): fires the action.
-		process.env.ELIZA_SHORTCUTS_NL = "1";
-		const on = await runShortcutGate({
-			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
-			runtime: runtime as any,
-			message: msg("echo hello there"),
-			state: {} as State,
-			responseId,
-			senderRole: "OWNER",
-		});
-		expect(on?.kind).toBe("direct_reply");
+		expect(result?.kind).toBe("direct_reply");
 		expect(seenOptions[0]).toEqual({ what: "hello there", mode: "simple" });
 		expect(useModel).not.toHaveBeenCalled();
 		const shortcutEvents = emitEvent.mock.calls.filter(

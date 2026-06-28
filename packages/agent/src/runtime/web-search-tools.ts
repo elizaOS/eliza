@@ -18,7 +18,8 @@
  * OpenAI, which is what makes the `openai.responses` branch fire.
  *
  * Controlled by:
- *   ELIZA_WEB_SEARCH=0|false|off  — disable (default: enabled)
+ *   ELIZA_WEB_SEARCH=0|false|off         — disable every web-search surface
+ *   ELIZA_SERVER_WEB_SEARCH=1|true|on    — enable provider-native injection
  */
 
 import { createRequire } from "node:module";
@@ -26,10 +27,22 @@ import { logger } from "@elizaos/core";
 
 const require = createRequire(import.meta.url);
 
-const ENABLED = (() => {
-  const raw = process.env.ELIZA_WEB_SEARCH?.toLowerCase();
-  return !(raw === "0" || raw === "false" || raw === "off");
-})();
+function readBooleanEnv(name: string): boolean | undefined {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (raw === undefined || raw.length === 0) return undefined;
+  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") {
+    return false;
+  }
+  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") {
+    return true;
+  }
+  return undefined;
+}
+
+export function isServerSideWebSearchEnabled(): boolean {
+  if (readBooleanEnv("ELIZA_WEB_SEARCH") === false) return false;
+  return readBooleanEnv("ELIZA_SERVER_WEB_SEARCH") === true;
+}
 
 // ---------------------------------------------------------------------------
 // Provider registry
@@ -126,6 +139,37 @@ function shouldSkip(params: Record<string, unknown>): boolean {
   return false;
 }
 
+export function __shouldSkipServerSideWebSearchForTests(
+  params: Record<string, unknown>,
+): boolean {
+  return shouldSkip(params);
+}
+
+function copyStaticFunctionProperties(
+  original: (...a: unknown[]) => unknown,
+  wrapped: (...a: unknown[]) => unknown,
+): void {
+  for (const key of Object.getOwnPropertyNames(original)) {
+    if (key === "length" || key === "name" || key === "prototype") {
+      continue;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(original, key);
+    if (!descriptor) continue;
+    try {
+      Object.defineProperty(wrapped, key, descriptor);
+    } catch {
+      /* non-configurable */
+    }
+  }
+}
+
+export function __copyStaticFunctionPropertiesForTests(
+  original: (...a: unknown[]) => unknown,
+  wrapped: (...a: unknown[]) => unknown,
+): void {
+  copyStaticFunctionProperties(original, wrapped);
+}
+
 function wrapFn(
   original: (...a: unknown[]) => unknown,
   name: string,
@@ -152,17 +196,7 @@ function wrapFn(
     return original.apply(this, args);
   };
   // Preserve static properties on the original SDK function.
-  for (const key of Object.getOwnPropertyNames(original)) {
-    if (key !== "length" && key !== "name" && key !== "prototype") {
-      try {
-        (wrapped as unknown as Record<string, unknown>)[key] = (
-          original as unknown as Record<string, unknown>
-        )[key];
-      } catch {
-        /* read-only */
-      }
-    }
-  }
+  copyStaticFunctionProperties(original, wrapped);
   return wrapped;
 }
 
@@ -177,16 +211,29 @@ function patchAiSdk(): void {
     return;
   }
 
-  patched = true;
-
+  let patchedAny = false;
   for (const name of ["generateText", "streamText"] as const) {
     if (typeof aiModule[name] === "function") {
-      aiModule[name] = wrapFn(
-        aiModule[name] as (...a: unknown[]) => unknown,
-        name,
-      );
+      try {
+        aiModule[name] = wrapFn(
+          aiModule[name] as (...a: unknown[]) => unknown,
+          name,
+        );
+        patchedAny = true;
+      } catch (err) {
+        logger.warn(
+          `[web-search] Could not patch ai.${name}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   }
+
+  if (!patchedAny) {
+    logger.warn("[web-search] No AI SDK text functions were patched");
+    return;
+  }
+
+  patched = true;
 
   logger.info(
     "[web-search] Patched ai.generateText/streamText for server-side web search auto-injection",
@@ -205,8 +252,10 @@ function patchAiSdk(): void {
  * and every provider on the runtime. Call after plugins are registered.
  */
 export function installServerSideWebSearch(): void {
-  if (!ENABLED) {
-    logger.info("[web-search] Disabled via ELIZA_WEB_SEARCH env var");
+  if (!isServerSideWebSearchEnabled()) {
+    logger.info(
+      "[web-search] Provider-native server search disabled; set ELIZA_SERVER_WEB_SEARCH=1 to enable",
+    );
     return;
   }
   patchAiSdk();

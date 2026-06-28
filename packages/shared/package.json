@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "sideEffects": false,
@@ -27,7 +27,7 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "build": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs --target ts",
@@ -37,7 +37,7 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared",
+    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/shared && node ../scripts/copy-package-assets.mjs packages/shared src/brand/brand.css src/brand-classic/brand.css",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "sync": "node scripts/sync-to-public.mjs"
   },
@@ -245,6 +245,7 @@
   "dependencies": {
     "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/registry": "workspace:*",
     "chalk": "^5.3.0",
     "drizzle-orm": "0.45.2",
     "phonemizer": "^1.2.1",

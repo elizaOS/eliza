@@ -21,9 +21,12 @@
  * dim_768 pgvector ::text embeddings so the populated graph/stat/badge paths
  * (never reachable in the packages/app smoke fixture) are covered here.
  *
- * TUI / XR contract test: N/A. plugin-vector-browser declares a single `gui`
- * view (src/plugin.ts) and exposes no interact() capability, so there is no
- * terminal/XR surface to drive.
+ * This renders the adaptive `VectorBrowserView` (the single componentExport): a
+ * `SpatialSurface` + `Escape` wrapper that, on the GUI/DOM surface, mounts the
+ * rich `VectorBrowserRichView` as the escape child — so these assertions cover
+ * the wrapper and the rich surface together. The TUI surface renders the
+ * separate `VectorBrowserSpatialView` summary (covered by the packages/ui
+ * registered-view parity gate, not here).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,6 +44,10 @@ function translate(key: string, vars?: TVars): string {
   }
   return key;
 }
+
+type MockAppState = {
+  t: typeof translate;
+};
 
 // ── Query backend driven by SQL pattern ─────────────────────────────────────
 type QueryResult = {
@@ -163,9 +170,14 @@ vi.mock("@elizaos/ui/api", () => ({
   client: { getDatabaseTables, executeDatabaseQuery },
 }));
 
-vi.mock("@elizaos/ui/state", () => ({
-  useApp: () => ({ t: translate }),
-}));
+vi.mock("@elizaos/ui/state", () => {
+  const state: MockAppState = { t: translate };
+  return {
+    useApp: () => state,
+    useAppSelector: <T,>(selector: (state: MockAppState) => T) =>
+      selector(state),
+  };
+});
 
 vi.mock("@elizaos/ui/hooks", () => ({
   useRenderGuard: () => {},
@@ -406,9 +418,7 @@ describe("VectorBrowserView — populated list", () => {
     backend.total = 0;
     backend.memoryRows = () => [];
     render(<VectorBrowserView />);
-    expect(
-      await screen.findByText("No memory records detected in the database."),
-    ).toBeTruthy();
+    expect(await screen.findByText("None")).toBeTruthy();
   });
 
   it("falls back content to (empty) when content is blank", async () => {
@@ -522,7 +532,7 @@ describe("VectorBrowserView — search control", () => {
     fireEvent.click(screen.getByRole("button", { name: "common.search" }));
 
     expect(
-      await screen.findByText("No records match your search query."),
+      await screen.findByText("None"),
     ).toBeTruthy();
   });
 });

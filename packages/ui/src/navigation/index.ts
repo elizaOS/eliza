@@ -6,7 +6,7 @@ import { Capacitor } from "@capacitor/core";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
-  Gamepad2,
+  LayoutGrid,
   MessageSquare,
   Monitor,
   Phone,
@@ -227,11 +227,11 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "ElizaOS dialer, SMS, and contact book",
   },
   {
-    label: "Views",
+    label: "Springboard",
     tabs: ["views", "apps", ...APPS_TOOL_TABS],
-    icon: Gamepad2,
+    icon: LayoutGrid,
     description:
-      "Agent-provided views, games, LifeOps, integrations, and app tools",
+      "The Springboard launcher — agent views, games, integrations, and app tools",
   },
   {
     label: "Character",
@@ -426,9 +426,17 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "chat";
   }
 
-  // /views — the views tab (ViewCatalog)
+  // /views — legacy launcher alias; renders the combined Home/Springboard.
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
+  }
+
+  // /character/<sub> — resolve nested character paths
+  if (normalized.startsWith("/character/")) {
+    const sub = normalized.slice("/character/".length);
+    if (sub === "documents") return "documents";
+    if (sub === "select") return "character-select";
+    return "character";
   }
 
   const appShellAlias = APP_SHELL_PATH_TAB_ALIASES[normalized];
@@ -446,15 +454,8 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // /apps/<sub> — known tool tabs resolve to their tab; everything else is an app slug
   if (normalized.startsWith("/apps/")) {
     const sub = normalized.slice("/apps/".length);
+    if (sub.includes("/")) return "views";
     return APPS_SUB_TABS[sub] ?? "apps";
-  }
-
-  // /character/<sub> — resolve nested character paths
-  if (normalized.startsWith("/character/")) {
-    const sub = normalized.slice("/character/".length);
-    if (sub === "documents") return "documents";
-    if (sub === "select") return "character-select";
-    return "character";
   }
 
   // /settings/<sub> — resolve nested settings paths
@@ -529,9 +530,9 @@ export function titleForTab(tab: Tab): string {
     case "companion":
       return "Companion";
     case "apps":
-      return "Views";
+      return "Springboard";
     case "views":
-      return "Views";
+      return "Springboard";
     case "character":
       return "Character";
     case "character-select":

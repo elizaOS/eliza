@@ -10,6 +10,7 @@ import {
   type IAgentRuntime,
   ModelType,
   parseJsonModelRecord,
+  resolveOptimizedPromptForRuntime,
   runWithTrajectoryContext,
   ServiceType,
 } from "@elizaos/core";
@@ -17,7 +18,7 @@ import {
   getSelfControlStatus,
   startSelfControlBlock,
   stopSelfControlBlock,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/engine";
 import type {
   SyncLifeOpsScheduleObservationInput,
   SyncLifeOpsScheduleObservationsRequest,
@@ -98,6 +99,7 @@ import {
   windowPolicyMatchesDefaults,
 } from "./defaults.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
+import { REMINDER_DISPATCH_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 import {
   createLifeOpsActivitySignal,
@@ -209,6 +211,8 @@ import {
   runTelemetryRetention,
 } from "./telemetry-retention.js";
 import { addMinutes, getZonedDateParts } from "./time.js";
+
+export { REMINDER_DISPATCH_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 
 const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
   "iphone",
@@ -789,6 +793,46 @@ function formatNearbyReminderTitlesForPrompt(titles: string[]): string {
   return titles.map((title) => `- ${title}`).join("\n");
 }
 
+export function buildReminderDispatchPrompt(args: {
+  runtime: IAgentRuntime;
+  title: string;
+  reminderAt: string;
+  channel: LifeOpsReminderStep["channel"];
+  lifecycle: ReminderAttemptLifecycle;
+  urgency: LifeOpsReminderUrgency;
+  recentConversation: readonly string[];
+  nearbyReminderTitles?: string[];
+}): string {
+  const instructions = resolveOptimizedPromptForRuntime(
+    args.runtime,
+    "reminder_dispatch",
+    REMINDER_DISPATCH_INSTRUCTIONS,
+  );
+  return [
+    instructions,
+    "",
+    "Character voice:",
+    buildReminderVoiceContext(args.runtime) || "No extra character context.",
+    "",
+    "Current reminder:",
+    `- title: ${args.title}`,
+    `- due: ${new Date(args.reminderAt).toLocaleString()}`,
+    `- channel: ${args.channel}`,
+    `- urgency: ${args.urgency}`,
+    `- lifecycle: ${args.lifecycle}`,
+    "",
+    "Recent conversation:",
+    args.recentConversation.length > 0
+      ? args.recentConversation.join("\n")
+      : "No recent conversation available.",
+    "",
+    "Other reminders around this time:",
+    formatNearbyReminderTitlesForPrompt(args.nearbyReminderTitles ?? []),
+    "",
+    "Reminder text:",
+  ].join("\n");
+}
+
 function normalizeScreenContextFocus(
   value: unknown,
 ): ReminderActivityProfileSnapshot["screenContextFocus"] {
@@ -983,7 +1027,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       scheduledFor: string;
       dueAt: string | null;
     }): void {
-      this.emitAssistantEvent(args.text, "lifeops-reminder", {
+      this.emitAssistantEvent(args.text, "reminder", {
         ownerType: args.ownerType,
         ownerId: args.ownerId,
         subjectType: args.subjectType,
@@ -1207,7 +1251,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             return { createdAt, roomId, text };
           })
           .filter(
-            (response) =>
+            (response): response is typeof response & { createdAt: number } =>
               response.createdAt !== null &&
               response.createdAt > attemptedMs &&
               response.createdAt <= nowMs &&
@@ -1333,45 +1377,20 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         limit: 6,
       });
       const reminderAt = args.dueAt ?? args.scheduledFor;
-      const prompt = [
-        `Write a short reminder nudge in the voice of ${this.runtime.character.name ?? "the assistant"}.`,
-        "This is a real follow-up or reminder delivery, not a system log.",
-        "",
-        "Character voice:",
-        buildReminderVoiceContext(this.runtime) ||
-          "No extra character context.",
-        "",
-        "Current reminder:",
-        `- title: ${args.title}`,
-        `- due: ${new Date(reminderAt).toLocaleString()}`,
-        `- channel: ${args.channel}`,
-        `- urgency: ${args.urgency}`,
-        `- lifecycle: ${args.lifecycle}`,
-        "",
-        "Recent conversation:",
-        recentConversation.length > 0
-          ? recentConversation.join("\n")
-          : "No recent conversation available.",
-        "",
-        "Other reminders around this time:",
-        formatNearbyReminderTitlesForPrompt(args.nearbyReminderTitles ?? []),
-        "",
-        "Rules:",
-        "- Return only the reminder text.",
-        "- Sound natural and in character.",
-        "- Do not start with 'Reminder' or 'Follow-up reminder'.",
-        "- Do not use ISO timestamps.",
-        "- Keep it concise: one or two short sentences.",
-        "- You may mention nearby reminders briefly if it helps.",
-        "- For escalation, sound a little firmer but still human.",
-        "- No markdown, bullets, quotes, labels, or emoji.",
-        "",
-        "Reminder text:",
-      ].join("\n");
+      const prompt = buildReminderDispatchPrompt({
+        runtime: this.runtime,
+        title: args.title,
+        reminderAt,
+        channel: args.channel,
+        lifecycle: args.lifecycle,
+        urgency: args.urgency,
+        recentConversation,
+        nearbyReminderTitles: args.nearbyReminderTitles,
+      });
 
       try {
         const response = await runWithTrajectoryContext(
-          { purpose: "lifeops-reminders-render-body" },
+          { purpose: "reminder_dispatch" },
           () =>
             this.runtime.useModel(ModelType.TEXT_SMALL, {
               prompt,
@@ -1468,7 +1487,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         urgency: run.status === "success" ? "medium" : "high",
         now: new Date(),
       });
-      this.emitAssistantEvent(message, "lifeops-workflow", {
+      this.emitAssistantEvent(message, "workflow", {
         workflowId: workflow.id,
         workflowTitle: workflow.title,
         workflowRunId: run.id,
@@ -2993,6 +3012,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         ? `Owner replied: ${args.responseText}`
         : args.reason;
       if (args.resolution === "snoozed") {
+        if (!args.snoozeRequest) {
+          // Unreachable: the resolution-validation block above early-returns
+          // when a snoozed resolution lacks a snoozeRequest. Re-assert so the
+          // type system narrows it to non-null for snoozeOccurrence.
+          throw new Error(
+            "snoozeRequest is required to snooze a reminder occurrence",
+          );
+        }
         await this.snoozeOccurrence(
           args.ownerId,
           args.snoozeRequest,

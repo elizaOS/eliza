@@ -41,5 +41,46 @@ export default scenario({
       status: "success",
       minCount: 1,
     },
+    {
+      type: "custom",
+      name: "tax-forms-priority-raised",
+      predicate: async (ctx) => {
+        const lifeResults = ctx.actionsCalled
+          .filter((action) => action.actionName === "LIFE")
+          .map((action) =>
+            action.result?.data && typeof action.result.data === "object"
+              ? (action.result.data as Record<string, unknown>)
+              : null,
+          )
+          .filter((data): data is Record<string, unknown> => data !== null);
+        const updated = lifeResults.find((data) => {
+          const definition =
+            data.definition && typeof data.definition === "object"
+              ? (data.definition as Record<string, unknown>)
+              : null;
+          return definition?.title === "Finish tax forms";
+        });
+        if (!updated) {
+          const seen =
+            lifeResults
+              .map((data) => {
+                const definition =
+                  data.definition && typeof data.definition === "object"
+                    ? (data.definition as Record<string, unknown>)
+                    : null;
+                return typeof definition?.title === "string"
+                  ? definition.title
+                  : "(untitled)";
+              })
+              .join(", ") || "(none)";
+          return `expected updated todo definition "Finish tax forms"; saw ${seen}`;
+        }
+        const definition = updated.definition as Record<string, unknown>;
+        const priority = definition.priority;
+        if (typeof priority !== "number" || priority >= 3) {
+          return `expected "Finish tax forms" priority to be raised to high priority (2 or lower); got ${String(priority ?? "(missing)")}`;
+        }
+      },
+    },
   ],
 });

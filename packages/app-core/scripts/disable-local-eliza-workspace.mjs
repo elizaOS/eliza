@@ -43,6 +43,7 @@
  * untouched.
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,6 +64,11 @@ export const CI_LOCKFILES = ["bun.lock", "bun.lockb"];
 
 const ELIZAOS_CORE_NAME = "@elizaos/core";
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
+const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
+const RECURSIVE_CLEANUP_SCRIPT = path.resolve(
+  SCRIPT_DIR,
+  "../../scripts/rm-path-recursive.mjs",
+);
 const DEFAULT_REPO_ROOT = process.cwd();
 
 function isExactRegistryVersion(specifier) {
@@ -121,6 +127,22 @@ export function writePackageJson(filePath, originalRaw, pkg) {
   }
   fs.writeFileSync(filePath, serialized);
   return true;
+}
+
+function removeDirectoryRecursive(targetPath) {
+  try {
+    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+      cwd: DEFAULT_REPO_ROOT,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(
+      `Failed to remove directory ${targetPath}${detail ? `: ${detail}` : ""}`,
+      { cause: error },
+    );
+  }
 }
 
 export function expandGlob(glob, { rootDir = DEFAULT_REPO_ROOT } = {}) {
@@ -244,7 +266,7 @@ export function disableLocalElizaWorkspace(
   const removedLockfiles = [];
 
   if (fs.existsSync(elizaRoot)) {
-    fs.rmSync(disabledElizaRoot, { recursive: true, force: true });
+    removeDirectoryRecursive(disabledElizaRoot);
     fs.renameSync(elizaRoot, disabledElizaRoot);
     log(
       `[disable-local-eliza-workspace] Disabled repo-local eliza workspace at ${elizaRoot}`,

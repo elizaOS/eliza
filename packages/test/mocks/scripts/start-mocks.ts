@@ -28,8 +28,11 @@ import type { GoogleCalendarRequestLedgerMetadata } from "./google-calendar-stat
 import {
   createGoogleMockState,
   type GmailRequestLedgerMetadata,
+  type GoogleGmailFaultInjection,
+  type GoogleGmailFaultMode,
   type GoogleMockState,
   googleDynamicFixture,
+  setGoogleGmailFaultInjection,
 } from "./google-gmail-state.ts";
 import { MockHttpError } from "./mock-http-error.ts";
 
@@ -3923,6 +3926,80 @@ function createDynamicProviderState(
   return null;
 }
 
+function readGoogleGmailFaultMode(value: unknown): GoogleGmailFaultMode | null {
+  if (
+    value === "auth_expired" ||
+    value === "rate_limit" ||
+    value === "server_error" ||
+    value === "partial_failure"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeGoogleGmailFaultPath(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const pathValue = value.trim();
+  return pathValue.startsWith("/") ? pathValue : `/${pathValue}`;
+}
+
+function readGoogleGmailFaultInjection(
+  requestBody: RequestBody,
+): GoogleGmailFaultInjection {
+  const mode = readGoogleGmailFaultMode(requestBody.mode);
+  if (!mode) {
+    throw new MockHttpError(
+      400,
+      "mode must be auth_expired, rate_limit, server_error, or partial_failure",
+    );
+  }
+  const method =
+    typeof requestBody.method === "string" && requestBody.method.trim()
+      ? requestBody.method.trim().toUpperCase()
+      : undefined;
+  const pathValue = normalizeGoogleGmailFaultPath(requestBody.path);
+  const remaining =
+    typeof requestBody.remaining === "number" &&
+    Number.isFinite(requestBody.remaining)
+      ? Math.max(0, Math.floor(requestBody.remaining))
+      : undefined;
+
+  return {
+    mode,
+    ...(method ? { method } : {}),
+    ...(pathValue ? { path: pathValue } : {}),
+    ...(remaining !== undefined ? { remaining } : {}),
+  };
+}
+
+function handleGoogleGmailFaultControl(
+  provider: DynamicProviderState,
+  method: string,
+  pathname: string,
+  requestBody: RequestBody,
+): DynamicFixtureResponse | null {
+  if (
+    provider?.kind !== "google" ||
+    pathname !== "/__mock/google/gmail/fault"
+  ) {
+    return null;
+  }
+
+  if (method === "DELETE") {
+    setGoogleGmailFaultInjection(provider.state, null);
+    return { statusCode: 200, body: { ok: true } };
+  }
+
+  if (method === "POST") {
+    const fault = readGoogleGmailFaultInjection(requestBody);
+    setGoogleGmailFaultInjection(provider.state, fault);
+    return { statusCode: 200, body: { ok: true, fault } };
+  }
+
+  throw new MockHttpError(405, "Unsupported Gmail fault control method");
+}
+
 async function dynamicProviderFixture(args: {
   provider: DynamicProviderState;
   method: string;
@@ -4072,6 +4149,71 @@ async function dynamicProviderFixture(args: {
   }
 }
 
+const FALLBACK_MOCK_PORT_BASE = 19_000;
+const FALLBACK_MOCK_PORT_ATTEMPTS = 2_000;
+let nextFallbackMockPort =
+  Number.parseInt(process.env.ELIZA_MOCK_PORT_BASE ?? "", 10) ||
+  FALLBACK_MOCK_PORT_BASE + (process.pid % 1_000);
+
+function listenErrorCode(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && "code" in err
+    ? String((err as { code?: unknown }).code)
+    : undefined;
+}
+
+function canRetryListenError(err: unknown): boolean {
+  const code = listenErrorCode(err);
+  if (code === "EADDRINUSE" || code === "EACCES") return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /port \d+ in use|address already in use|EADDRINUSE/i.test(message);
+}
+
+async function listenOnLoopback(
+  server: http.Server,
+  port: number,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: Error) => {
+      server.off("error", onError);
+      reject(err);
+    };
+    server.once("error", onError);
+    try {
+      server.listen(port, "127.0.0.1", () => {
+        server.off("error", onError);
+        resolve();
+      });
+    } catch (err) {
+      server.off("error", onError);
+      reject(err);
+    }
+  });
+}
+
+async function listenFixtureServer(server: http.Server): Promise<void> {
+  try {
+    await listenOnLoopback(server, 0);
+    return;
+  } catch (err) {
+    if (!process.versions.bun || !canRetryListenError(err)) throw err;
+  }
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < FALLBACK_MOCK_PORT_ATTEMPTS; attempt += 1) {
+    const port = nextFallbackMockPort++;
+    try {
+      await listenOnLoopback(server, port);
+      return;
+    } catch (err) {
+      if (!canRetryListenError(err)) throw err;
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to bind mock fixture server to a fallback port");
+}
+
 async function startFixtureServer(
   dataPath: string,
   opts?: MockFixtureOptions,
@@ -4115,6 +4257,20 @@ async function startFixtureServer(
         requests.splice(0, requests.length);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      const googleGmailFaultControl = handleGoogleGmailFaultControl(
+        dynamicProvider,
+        method,
+        requestUrl.pathname,
+        requestBody,
+      );
+      if (googleGmailFaultControl) {
+        res.writeHead(googleGmailFaultControl.statusCode, {
+          "Content-Type": "application/json",
+          ...(googleGmailFaultControl.headers ?? {}),
+        });
+        res.end(JSON.stringify(googleGmailFaultControl.body));
         return;
       }
       const ledgerEntry: MockRequestLedgerEntry = {
@@ -4382,10 +4538,7 @@ async function startFixtureServer(
     }
   });
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
-  });
+  await listenFixtureServer(server);
 
   server.unref();
 

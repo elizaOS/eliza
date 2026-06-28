@@ -39,7 +39,25 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
 export const MOBILE_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",
   "@elizaos/plugin-background-runner",
-  "@elizaos/plugin-device-filesystem",
+  "@elizaos/plugin-native-filesystem",
+  // Screen understanding on mobile (EPIC #9105): the GET_SCREEN op + the
+  // renderer-pulled screen-capture bridge + the IMAGE_DESCRIPTION describe
+  // path. plugin-vision is now mobile-safe — `sharp` is lazy-loaded with a
+  // pure-JS fallback and the native YOLO/face detectors are dynamic-imported,
+  // so module-eval no longer pulls a native addon. VisionService degrades
+  // gracefully on a phone (camera mode finds no capture tool → warns, never
+  // starts a processing loop), and its computeruse OCR/set-of-marks bridges
+  // are best-effort dynamic imports that no-op without plugin-computeruse.
+  "@elizaos/plugin-vision",
+  // Scheduling spine: the always-loaded ScheduledTask runtime primitive
+  // (runner host + REST surface + default-pack seed registry). Mobile-safe —
+  // its deps are core/shared/drizzle + the peer plugin-sql (already first in
+  // this list); it imports no app-core/agent/personal-assistant and probes
+  // host capabilities via ELIZA_PLATFORM. Personal-assistant enriches it
+  // (production deps + domain packs) when present; on a stock mobile boot the
+  // built-in defaults serve /api/lifeops/scheduled-tasks so the home Tasks
+  // widget resolves.
+  "@elizaos/plugin-scheduling",
 ];
 
 /**
@@ -111,12 +129,13 @@ export const CORE_PLUGINS: readonly string[] = [
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
-  "@elizaos/plugin-device-filesystem", // mobile-safe FILE target=device via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
+  "@elizaos/plugin-native-filesystem", // mobile-safe FILE target=device via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
   "@elizaos/plugin-shell", // shell service, approvals, and history provider
   "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools (desktop-only
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
+  "@elizaos/plugin-scheduling", // always-loaded ScheduledTask runtime primitive (runner host + REST surface + seed registry); personal-assistant enriches it when present
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, todos, personality: advanced capabilities (advancedCapabilities: true)
   // - form: standalone @elizaos/plugin-form
@@ -143,7 +162,7 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
   "@elizaos/plugin-companion", // VRM companion emotes for the app chat surface
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
-  "@elizaos/plugin-device-filesystem", // mobile-safe FILE target
+  "@elizaos/plugin-native-filesystem", // mobile-safe FILE target
   "@elizaos/plugin-agent-skills", // skill execution + enabled-skills provider
   "@elizaos/plugin-commands", // slash commands
 ];
@@ -265,6 +284,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-gitpathologist", // forensic git-history analysis (opt-in via ELIZA_GITPATHOLOGIST, auto-on when .git/ exists)
   // "@elizaos/plugin-directives", // directive processing remains opt-in
   // "@elizaos/plugin-mcp", // MCP protocol support remains opt-in
-  // "@elizaos/plugin-scheduling", // scheduling remains opt-in
+  // @elizaos/plugin-scheduling is now an always-loaded CORE + MOBILE plugin.
   // todos: now built-in as advanced capability (advancedCapabilities: true)
 ];

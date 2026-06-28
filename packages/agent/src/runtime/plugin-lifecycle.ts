@@ -583,6 +583,52 @@ function trackRoutesAndPluginRef(
   }
 }
 
+async function migratePluginSchemasIfReady(
+  runtime: AgentRuntime,
+  plugin: Plugin,
+): Promise<void> {
+  if (!plugin.schema || typeof runtime.runPluginMigrations !== "function") {
+    return;
+  }
+
+  const adapter = runtime.adapter;
+  if (!adapter || typeof adapter.runPluginMigrations !== "function") {
+    return;
+  }
+
+  if (typeof adapter.isReady === "function") {
+    let ready = false;
+    try {
+      ready = await adapter.isReady();
+    } catch (error) {
+      runtime.logger.debug(
+        {
+          src: "plugin-lifecycle",
+          agentId: runtime.agentId,
+          plugin: plugin.name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Skipping plugin schema migration because database readiness check failed",
+      );
+      return;
+    }
+
+    if (!ready) {
+      runtime.logger.debug(
+        {
+          src: "plugin-lifecycle",
+          agentId: runtime.agentId,
+          plugin: plugin.name,
+        },
+        "Skipping plugin schema migration until database adapter is ready",
+      );
+      return;
+    }
+  }
+
+  await runtime.runPluginMigrations();
+}
+
 /**
  * Lazily-built tool-call cache for this runtime. Built once per runtime on
  * first action registration so we can read the latest config and avoid
@@ -633,12 +679,21 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
   runtime.__elizaPluginViewSyncInstalled = true;
 
   const baseRegisterPlugin = runtime.registerPlugin.bind(runtime);
+  const baseUnloadPlugin = runtime.unloadPlugin?.bind(runtime);
   runtime.registerPlugin = (async (plugin: Plugin) => {
     await baseRegisterPlugin(plugin);
-    await registerPluginViews(plugin);
+    try {
+      await migratePluginSchemasIfReady(runtime, plugin);
+      await registerPluginViews(plugin);
+    } catch (error) {
+      unregisterPluginViews(plugin.name);
+      if (baseUnloadPlugin) {
+        await baseUnloadPlugin(plugin.name);
+      }
+      throw error;
+    }
   }) as typeof runtime.registerPlugin;
 
-  const baseUnloadPlugin = runtime.unloadPlugin?.bind(runtime);
   if (baseUnloadPlugin) {
     runtime.unloadPlugin = async (pluginName: string) => {
       const ownership = await baseUnloadPlugin(pluginName);
@@ -882,6 +937,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
         pluginsBefore,
         routesBefore,
       );
+      await migratePluginSchemasIfReady(runtime, plugin);
       if (
         capture.ownership.registeredPlugin ||
         capture.ownership.actions.length > 0 ||

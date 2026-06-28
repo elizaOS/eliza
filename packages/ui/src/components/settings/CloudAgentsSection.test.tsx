@@ -9,13 +9,11 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
-import type { CloudHandoffPhaseDetail } from "../../events";
 
 const appMock = vi.hoisted(() => ({
   value: {} as {
     elizaCloudConnected: boolean;
     setActionNotice: ReturnType<typeof vi.fn>;
-    cloudHandoffPhase?: CloudHandoffPhaseDetail | null;
   },
 }));
 
@@ -782,74 +780,8 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
   });
 });
 
-describe("CloudAgentsSection handoff-aware waking badge", () => {
-  beforeEach(() => {
-    appMock.value = {
-      elizaCloudConnected: true,
-      setActionNotice: vi.fn(),
-      cloudHandoffPhase: null,
-    };
-    clientMock.getCloudCompatAgents.mockReset();
-    persistenceMock.loadPersistedActiveServer.mockReset();
-    persistenceMock.loadPersistedActiveServer.mockReturnValue({
-      kind: "cloud",
-      id: "cloud:other",
-      label: "Other",
-      accessToken: "tok",
-    });
-  });
-
-  afterEach(() => cleanup());
-
-  it("shows the Waking badge for an agent with a migrating handoff in flight", async () => {
-    appMock.value.cloudHandoffPhase = {
-      agentId: "agent-1",
-      phase: "migrating",
-    };
-    await renderWithAgents([
-      agent({
-        agent_id: "agent-1",
-        agent_name: "Mine",
-        status: "provisioning",
-      }),
-    ]);
-    expect(
-      screen.getByTestId("cloud-agent-status-agent-1").textContent,
-    ).toMatch(/Waking/);
-  });
-
-  it("does NOT show Waking once the handoff has switched (terminal phase)", async () => {
-    appMock.value.cloudHandoffPhase = {
-      agentId: "agent-1",
-      phase: "switched",
-      imported: 2,
-    };
-    await renderWithAgents([
-      agent({ agent_id: "agent-1", agent_name: "Mine", status: "running" }),
-    ]);
-    expect(
-      screen.getByTestId("cloud-agent-status-agent-1").textContent,
-    ).not.toMatch(/Waking/);
-  });
-
-  it("only wakes the agent the handoff targets, not its siblings", async () => {
-    appMock.value.cloudHandoffPhase = {
-      agentId: "agent-1",
-      phase: "migrating",
-    };
-    await renderWithAgents([
-      agent({
-        agent_id: "agent-1",
-        agent_name: "Mine",
-        status: "provisioning",
-      }),
-      agent({ agent_id: "agent-2", agent_name: "Other", status: "running" }),
-    ]);
-    expect(
-      screen.getByTestId("cloud-agent-status-agent-1").textContent,
-    ).toMatch(/Waking/);
-    expect(
-      screen.getByTestId("cloud-agent-status-agent-2").textContent,
-    ).not.toMatch(/Waking/);
-  });
-});
+// The shared→dedicated handoff no longer drives this Settings row's "Waking…"
+// badge: PR3 re-points the live client SILENTLY (no row-level waking state), and
+// the in-flight progress is shown by the chat-shell handoff toast
+// (CloudHandoffBanner). The row's only "Waking…" state is now the local
+// suspended→resume flow, covered by "CloudAgentsSection waking on switch" above.

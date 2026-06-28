@@ -165,7 +165,7 @@ export function registerDiscordDmSensitiveRequestAdapter(
 	const tryRegister = (): boolean => {
 		const registry = runtime.getService?.(
 			SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE_NAME,
-		) as unknown as DispatchRegistryLike | null | undefined;
+		) as DispatchRegistryLike | null | undefined;
 		if (!registry || typeof registry.register !== "function") return false;
 		try {
 			registry.register(discordDmSensitiveRequestAdapter);

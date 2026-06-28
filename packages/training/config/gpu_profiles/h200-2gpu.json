@@ -1,7 +1,7 @@
 {
   "name": "2x H200 GPUs (282GB total)",
-  "description": "Dual H200 profile with dedicated inference and training GPUs for the fastest 7B-9B runs",
-  "model": "Qwen/Qwen3.5-9B",
+  "description": "Dual H200 profile with dedicated inference and training GPUs for the fastest Gemma 4 12B runs",
+  "model": "google/gemma-4-12B",
   "vllm_gpu_memory": 0.75,
   "vllm_gpu": "0",
   "training_gpu": "1",
@@ -16,5 +16,5 @@
   "warmup_steps": 150,
   "kl_coefficient": 0.05,
   "use_flash_attention": true,
-  "notes": "Fastest single-node profile for 7B-9B RL runs: dedicated vLLM on GPU 0 and dedicated trainer on GPU 1."
+  "notes": "Fastest single-node profile for Gemma 4 12B RL runs: dedicated vLLM on GPU 0 and dedicated trainer on GPU 1."
 }

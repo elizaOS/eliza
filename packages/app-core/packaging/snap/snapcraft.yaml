@@ -111,6 +111,7 @@ parts:
       APP_CORE_DIR="packages/app-core"
       PACKAGES_DIR="packages"
       APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
+      RM_PATH_RECURSIVE="packages/scripts/rm-path-recursive.mjs"
 
       # Skip building local upstreams and native Capacitor plugins in the snap build.
       export ELIZAOS_APP_SKIP_LOCAL_UPSTREAMS=1
@@ -312,7 +313,9 @@ parts:
       # a surviving manifest declares them. Link the local workspace explicitly
       # so app-core's declaration build can resolve those compatibility imports.
       mkdir -p node_modules/@elizaos "$APP_CORE_DIR/node_modules/@elizaos"
-      rm -rf node_modules/@elizaos/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
+      node "$RM_PATH_RECURSIVE" \
+        node_modules/@elizaos/plugin-wallet \
+        "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
       ln -s ../../plugins/plugin-wallet node_modules/@elizaos/plugin-wallet
       ln -s ../../../../plugins/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
 
@@ -344,16 +347,17 @@ parts:
       # source tree during the snap production build.
       mkdir -p "$APP_CORE_DIR/node_modules"
       if [ ! -d "$APP_CORE_DIR/node_modules/tailwindcss" ]; then
+        TW_EXTRACT_DIR="/tmp/tw_extract"
         TAILWIND_URL=$(npm view tailwindcss dist.tarball 2>/dev/null || true)
         if [ -z "$TAILWIND_URL" ]; then
           echo "Failed to resolve tailwindcss tarball URL" >&2
           exit 1
         fi
-        rm -rf /tmp/tw_extract
-        mkdir -p /tmp/tw_extract
-        curl -fsSL "$TAILWIND_URL" | tar xz -C /tmp/tw_extract
-        rm -rf "$APP_CORE_DIR/node_modules/tailwindcss"
-        mv /tmp/tw_extract/package "$APP_CORE_DIR/node_modules/tailwindcss"
+        node "$RM_PATH_RECURSIVE" "$TW_EXTRACT_DIR"
+        mkdir -p "$TW_EXTRACT_DIR"
+        curl -fsSL "$TAILWIND_URL" | tar xz -C "$TW_EXTRACT_DIR"
+        node "$RM_PATH_RECURSIVE" "$APP_CORE_DIR/node_modules/tailwindcss"
+        mv "$TW_EXTRACT_DIR/package" "$APP_CORE_DIR/node_modules/tailwindcss"
       fi
 
       # Fresh snap builds also need generated i18n keyword data; the
@@ -369,7 +373,7 @@ parts:
         react react-dom jsdom pg qrcode three ws
         stats.js tough-cookie webxr
       "
-      rm -rf "$SNAP_BUILD_TYPES_DIR"
+      node "$RM_PATH_RECURSIVE" "$SNAP_BUILD_TYPES_DIR"
       mkdir -p "$SNAP_BUILD_TYPES_DIR/@types"
       for type_pkg in $(printf '%s\n' "$SNAP_BUILD_TYPE_PACKAGES"); do
         type_target=""
@@ -402,12 +406,12 @@ parts:
           echo "Failed to restore @types/$type_pkg after patch-deps" >&2
           exit 1
         fi
-        rm -rf "node_modules/@types/$type_pkg"
+        node "$RM_PATH_RECURSIVE" "node_modules/@types/$type_pkg"
         cp -aL "$type_target" "node_modules/@types/$type_pkg"
       done
       mkdir -p "$APP_CORE_DIR/node_modules/@types"
       for type_pkg in react react-dom three ws; do
-        rm -rf "$APP_CORE_DIR/node_modules/@types/$type_pkg"
+        node "$RM_PATH_RECURSIVE" "$APP_CORE_DIR/node_modules/@types/$type_pkg"
         cp -aL "$SNAP_BUILD_TYPES_DIR/@types/$type_pkg" "$APP_CORE_DIR/node_modules/@types/$type_pkg"
       done
 
@@ -472,8 +476,8 @@ parts:
       # `bun run build` also builds examples and release helpers, which are not
       # part of the snap payload and depend on workspaces intentionally removed
       # above.
-      # @elizaos/cloud-routing was migrated to packages/cloud-shared/src/routing
-      # in a62685d708 — the orphan packages/cloud-routing/ workspace stub
+      # @elizaos/cloud-routing was migrated to packages/cloud/shared/src/routing
+      # in a62685d708 — the orphan packages/cloud/routing/ workspace stub
       # (package.json only, no src, dist gitignored) can't build cleanly in
       # fresh CI checkouts, and nothing currently imports it. Omit it from
       # the snap closure until the source-of-truth migration is finished.
@@ -506,8 +510,8 @@ parts:
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
         --filter=@elizaos/scenario-runner
-      rm -rf node_modules/@types
-      rm -rf "$SNAP_BUILD_TYPES_DIR"
+      node "$RM_PATH_RECURSIVE" node_modules/@types
+      node "$RM_PATH_RECURSIVE" "$SNAP_BUILD_TYPES_DIR"
 
       # Install into snap
       mkdir -p "$CRAFT_PART_INSTALL/lib/elizaos-app"

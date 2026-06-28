@@ -974,27 +974,11 @@ export const lifeopsFeaturesTable = appLifeopsPgSchema.table(
   },
 );
 
-export const lifeRelationships = appLifeopsPgSchema.table(
-  "life_relationships",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    name: text("name").notNull(),
-    primaryChannel: text("primary_channel").notNull(),
-    primaryHandle: text("primary_handle").notNull(),
-    email: text("email"),
-    phone: text("phone"),
-    notes: text("notes").notNull().default(""),
-    tagsJson: text("tags_json").notNull().default("[]"),
-    relationshipType: text("relationship_type").notNull(),
-    lastContactedAt: text("last_contacted_at"),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [unique().on(t.agentId, t.primaryChannel, t.primaryHandle)],
-);
-
+// Contacts (people) live in the runtime knowledge graph
+// (`@elizaos/agent` KnowledgeGraphService: life_entities / life_entity_* /
+// life_relationships_v2) — there is no flat `life_relationships` table.
+// `life_relationship_interactions` below remains as the per-edge interaction
+// audit log, keyed by the graph entityId.
 export const lifeRelationshipInteractions = appLifeopsPgSchema.table(
   "life_relationship_interactions",
   {
@@ -1009,21 +993,6 @@ export const lifeRelationshipInteractions = appLifeopsPgSchema.table(
     createdAt: text("created_at").notNull(),
   },
 );
-
-export const lifeFollowUps = appLifeopsPgSchema.table("life_follow_ups", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  relationshipId: text("relationship_id").notNull(),
-  dueAt: text("due_at").notNull(),
-  reason: text("reason").notNull(),
-  status: text("status").notNull(),
-  priority: integer("priority").notNull().default(3),
-  draftJson: text("draft_json"),
-  completedAt: text("completed_at"),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
 
 // Knowledge graph tables (life_entities, life_entity_identities,
 // life_entity_attributes, life_relationships_v2,
@@ -1607,9 +1576,7 @@ export const lifeOpsSchema = {
   lifeEscalationStates,
   lifeIntents,
   lifeCheckinReports,
-  lifeRelationships,
   lifeRelationshipInteractions,
-  lifeFollowUps,
   // life_entities / life_entity_* / life_relationships_v2 /
   // life_relationship_audit_events are now owned by the runtime
   // (`@elizaos/agent` KnowledgeGraphService schema) — registered there,
@@ -1639,272 +1606,14 @@ export const lifeOpsSchema = {
   lifeopsFeaturesTable,
 } as const;
 
-// Zod schemas for `ScheduledTask`. Runtime validators used at the REST
-// boundary (`src/routes/scheduled-tasks.ts`). Runtime types live in
-// `./scheduled-task/types.ts`; Zod is the validator at the
-// untyped-input edge.
-import { z } from "zod";
-
-const isoString = z
-  .string()
-  .min(1)
-  .refine(
-    (v) => !Number.isNaN(new Date(v).getTime()),
-    "must be an ISO timestamp",
-  );
-
-const terminalStateSchema = z.enum([
-  "completed",
-  "skipped",
-  "expired",
-  "failed",
-  "dismissed",
-]);
-
-const scheduledTaskKindSchema = z.enum([
-  "reminder",
-  "checkin",
-  "followup",
-  "approval",
-  "recap",
-  "watcher",
-  "output",
-  "custom",
-]);
-
-const scheduledTaskPrioritySchema = z.enum(["low", "medium", "high"]);
-
-const scheduledTaskSourceSchema = z.enum([
-  "default_pack",
-  "user_chat",
-  "first_run",
-  "plugin",
-]);
-
-const scheduledTaskSubjectSchema = z.object({
-  kind: z.enum([
-    "entity",
-    "relationship",
-    "thread",
-    "document",
-    "calendar_event",
-    "self",
-  ]),
-  id: z.string().min(1),
-});
-
-const scheduledTaskTriggerSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("once"), atIso: isoString }),
-  z.object({
-    kind: z.literal("cron"),
-    expression: z.string().min(1),
-    tz: z.string().min(1),
-  }),
-  z.object({
-    kind: z.literal("interval"),
-    everyMinutes: z.number().int().positive(),
-    from: isoString.optional(),
-    until: isoString.optional(),
-  }),
-  z.object({
-    kind: z.literal("relative_to_anchor"),
-    anchorKey: z.string().min(1),
-    offsetMinutes: z.number().int(),
-  }),
-  z.object({
-    kind: z.literal("during_window"),
-    windowKey: z.string().min(1),
-  }),
-  z.object({
-    kind: z.literal("event"),
-    eventKind: z.string().min(1),
-    filter: z.unknown().optional(),
-  }),
-  z.object({ kind: z.literal("manual") }),
-  z.object({
-    kind: z.literal("after_task"),
-    taskId: z.string().min(1),
-    outcome: terminalStateSchema,
-  }),
-]);
-
-const scheduledTaskShouldFireSchema = z.object({
-  compose: z.enum(["all", "any", "first_deny"]).optional(),
-  gates: z
-    .array(
-      z.object({
-        kind: z.string().min(1),
-        params: z.unknown().optional(),
-      }),
-    )
-    .min(1),
-});
-
-const scheduledTaskCompletionCheckSchema = z.object({
-  kind: z.string().min(1),
-  params: z.unknown().optional(),
-  followupAfterMinutes: z.number().int().positive().optional(),
-});
-
-const escalationStepSchema = z.object({
-  delayMinutes: z.number().int().min(0),
-  channelKey: z.string().min(1),
-  intensity: z.enum(["soft", "normal", "urgent"]).optional(),
-});
-
-const scheduledTaskEscalationSchema = z.object({
-  ladderKey: z.string().min(1).optional(),
-  steps: z.array(escalationStepSchema).optional(),
-});
-
-const scheduledTaskOutputSchema = z.object({
-  destination: z.enum([
-    "in_app_card",
-    "channel",
-    "apple_notes",
-    "gmail_draft",
-    "memory",
-  ]),
-  target: z.string().min(1).optional(),
-  persistAs: z.enum(["task_metadata", "external_only"]).optional(),
-});
-
-const scheduledTaskRefSchema: z.ZodType<unknown> = z.lazy(() =>
-  z.union([z.string().min(1), scheduledTaskInputBaseSchema]),
-);
-
-const scheduledTaskPipelineSchema = z.object({
-  onComplete: z.array(scheduledTaskRefSchema).optional(),
-  onSkip: z.array(scheduledTaskRefSchema).optional(),
-  onFail: z.array(scheduledTaskRefSchema).optional(),
-});
-
-const scheduledTaskContextRequestSchema = z.object({
-  includeOwnerFacts: z
-    .array(
-      z.enum([
-        "preferredName",
-        "timezone",
-        "morningWindow",
-        "eveningWindow",
-        "locale",
-      ]),
-    )
-    .optional(),
-  includeEntities: z
-    .object({
-      entityIds: z.array(z.string().min(1)),
-      fields: z
-        .array(
-          z.enum([
-            "preferredName",
-            "type",
-            "identities",
-            "state.lastInteractionPlatform",
-          ]),
-        )
-        .optional(),
-    })
-    .optional(),
-  includeRelationships: z
-    .object({
-      relationshipIds: z.array(z.string().min(1)).optional(),
-      forEntityIds: z.array(z.string().min(1)).optional(),
-      types: z.array(z.string().min(1)).optional(),
-    })
-    .optional(),
-  includeRecentTaskStates: z
-    .object({
-      kind: scheduledTaskKindSchema.optional(),
-      lookbackHours: z.number().int().positive().optional(),
-    })
-    .optional(),
-  includeEventPayload: z.boolean().optional(),
-});
-
-/**
- * The "input shape" for `runner.schedule()` — omits server-managed
- * `taskId` and `state` so callers cannot fabricate a state. The route
- * layer accepts this shape; the runner generates the rest.
- */
-const scheduledTaskInputBaseSchema = z.object({
-  kind: scheduledTaskKindSchema,
-  promptInstructions: z.string().min(1),
-  contextRequest: scheduledTaskContextRequestSchema.optional(),
-  trigger: scheduledTaskTriggerSchema,
-  priority: scheduledTaskPrioritySchema,
-  shouldFire: scheduledTaskShouldFireSchema.optional(),
-  completionCheck: scheduledTaskCompletionCheckSchema.optional(),
-  escalation: scheduledTaskEscalationSchema.optional(),
-  output: scheduledTaskOutputSchema.optional(),
-  pipeline: scheduledTaskPipelineSchema.optional(),
-  subject: scheduledTaskSubjectSchema.optional(),
-  idempotencyKey: z.string().min(1).optional(),
-  respectsGlobalPause: z.boolean(),
-  source: scheduledTaskSourceSchema,
-  createdBy: z.string().min(1),
-  ownerVisible: z.boolean(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
-
-export const scheduledTaskInputSchema = scheduledTaskInputBaseSchema;
-
-export const scheduledTaskStateSchema = z.object({
-  status: z.enum([
-    "completed",
-    "skipped",
-    "expired",
-    "failed",
-    "dismissed",
-    "scheduled",
-    "fired",
-    "acknowledged",
-  ]),
-  firedAt: isoString.optional(),
-  acknowledgedAt: isoString.optional(),
-  completedAt: isoString.optional(),
-  followupCount: z.number().int().min(0),
-  lastFollowupAt: isoString.optional(),
-  pipelineParentId: z.string().min(1).optional(),
-  lastDecisionLog: z.string().optional(),
-});
-
-export const scheduledTaskSchema = scheduledTaskInputBaseSchema.extend({
-  taskId: z.string().min(1),
-  state: scheduledTaskStateSchema,
-});
-
-export const scheduledTaskVerbSchema = z.enum([
-  "snooze",
-  "skip",
-  "complete",
-  "dismiss",
-  "escalate",
-  "acknowledge",
-  "edit",
-  "reopen",
-]);
-
-export const scheduledTaskSnoozePayloadSchema = z
-  .object({
-    minutes: z.number().int().positive().optional(),
-    untilIso: isoString.optional(),
-  })
-  .refine(
-    (v) => typeof v.minutes === "number" || typeof v.untilIso === "string",
-    "snooze: provide minutes or untilIso",
-  );
-
-export const scheduledTaskFilterSchema = z.object({
-  kind: scheduledTaskKindSchema.optional(),
-  status: z
-    .union([
-      scheduledTaskStateSchema.shape.status,
-      z.array(scheduledTaskStateSchema.shape.status),
-    ])
-    .optional(),
-  subject: scheduledTaskSubjectSchema.optional(),
-  source: scheduledTaskSourceSchema.optional(),
-  firedSince: isoString.optional(),
-  ownerVisibleOnly: z.boolean().optional(),
-});
+// Zod validators for `ScheduledTask` now live in `@elizaos/plugin-scheduling`
+// (the always-loaded scheduling spine), which owns the generic ScheduledTask
+// REST boundary. Re-exported here so existing PA importers keep their path.
+export {
+  scheduledTaskFilterSchema,
+  scheduledTaskInputSchema,
+  scheduledTaskSchema,
+  scheduledTaskSnoozePayloadSchema,
+  scheduledTaskStateSchema,
+  scheduledTaskVerbSchema,
+} from "@elizaos/plugin-scheduling";

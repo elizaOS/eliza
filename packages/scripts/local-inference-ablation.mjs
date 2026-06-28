@@ -44,17 +44,17 @@ const DEFAULT_VARIANTS = [
   },
   {
     name: "mtp_only",
-    label: "MTP, f16 KV",
+    label: "draft-MTP, f16 KV",
     needsDrafter: true,
-    args: ["--spec-type", "mtp"],
+    args: ["--spec-type", "draft-mtp"],
   },
   {
     name: "mtp_turbo4_polar",
-    label: "MTP + Turbo/Polar KV turbo4",
+    label: "draft-MTP + Turbo/Polar KV turbo4",
     needsDrafter: true,
     args: [
       "--spec-type",
-      "mtp",
+      "draft-mtp",
       "--cache-type-k",
       "tbq4_0",
       "--cache-type-v",
@@ -67,11 +67,11 @@ const DEFAULT_VARIANTS = [
   },
   {
     name: "all_mtp_qjl_tcq",
-    label: "MTP + forced QJL/TCQ turbo3_tcq",
+    label: "draft-MTP + forced QJL/TCQ turbo3_tcq",
     needsDrafter: true,
     args: [
       "--spec-type",
-      "mtp",
+      "draft-mtp",
       "--cache-type-k",
       "tbq3_tcq",
       "--cache-type-v",
@@ -123,6 +123,10 @@ function defaultModelPath(name) {
   return path.join(stateDir(), "local-inference", "models", name);
 }
 
+function defaultBundlePath(tierSlug, ...parts) {
+  return defaultModelPath(path.join(`eliza-1-${tierSlug}.bundle`, ...parts));
+}
+
 function parseArgs(argv) {
   const backend = detectBackend();
   let gpuLayersExplicit = false;
@@ -130,8 +134,8 @@ function parseArgs(argv) {
   const args = {
     backend,
     binary: defaultBinary(backend),
-    model: defaultModelPath("qwen3.5-4b-mtp.gguf"),
-    drafter: defaultModelPath("qwen3.5-4b-mtp-drafter-q4.repaired.gguf"),
+    model: defaultBundlePath("2b", "text", "eliza-1-2b-128k.gguf"),
+    drafter: defaultBundlePath("2b", "mtp", "drafter-2b.gguf"),
     runs: 3,
     warmupTokens: 32,
     maxTokens: 256,
@@ -291,7 +295,12 @@ function missingVariantKernels(variant, capabilities) {
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i];
     const value = args[i + 1];
-    if (flag === "--spec-type" && value === "mtp") required.add("mtp");
+    if (
+      flag === "--spec-type" &&
+      (value === "mtp" || value === "draft-mtp")
+    ) {
+      required.add("mtp");
+    }
     if (
       flag === "--cache-type-k" ||
       flag === "--cache-type-v" ||

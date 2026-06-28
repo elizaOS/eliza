@@ -6,16 +6,14 @@ import {
   type NativeLibraryCandidate,
   resolveNativeLibraryCandidate,
 } from "@elizaos/app-core/platform/native-library-policy";
-import {
-  APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME,
-  appleCalendarMacosBridgeCandidates,
-} from "@elizaos/capacitor-calendar";
+import * as appleCalendarBridgePolicyImport from "@elizaos/capacitor-calendar/macos-bridge-policy";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
+  FeatureResult,
+  IPermissionsRegistry,
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventAttendee,
   LifeOpsCalendarFeed,
@@ -121,6 +119,29 @@ const MODULE_DIR =
   typeof import.meta.dir === "string"
     ? import.meta.dir
     : dirname(fileURLToPath(import.meta.url));
+
+type AppleCalendarModule = typeof import("@elizaos/capacitor-calendar");
+type AppleCalendarBridgePolicyModule =
+  typeof import("@elizaos/capacitor-calendar/macos-bridge-policy");
+
+function unwrapInteropDefault<TModule extends object>(
+  module: TModule | { default?: TModule },
+  namedExport: keyof TModule,
+): TModule {
+  if (namedExport in module) return module as TModule;
+  return (module as { default?: TModule }).default ?? (module as TModule);
+}
+
+const appleCalendarBridgePolicy =
+  unwrapInteropDefault<AppleCalendarBridgePolicyModule>(
+    appleCalendarBridgePolicyImport,
+    "APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME",
+  );
+
+const {
+  APPLE_CALENDAR_MACOS_BRIDGE_DYLIB_BASENAME,
+  appleCalendarMacosBridgeCandidates,
+} = appleCalendarBridgePolicy;
 
 function nativeDylibCandidates(): NativeLibraryCandidate[] {
   return appleCalendarMacosBridgeCandidates({
@@ -290,7 +311,10 @@ async function loadIosCalendarBridge(): Promise<NativeCalendarBridge | null> {
   ).Capacitor;
   if (capacitor?.getPlatform?.() !== "ios") return null;
   try {
-    const { AppleCalendar } = await import("@elizaos/capacitor-calendar");
+    const { AppleCalendar } = unwrapInteropDefault<AppleCalendarModule>(
+      await import("@elizaos/capacitor-calendar"),
+      "AppleCalendar",
+    );
     return {
       platform: "ios",
       async listCalendars() {

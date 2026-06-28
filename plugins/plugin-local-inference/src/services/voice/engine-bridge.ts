@@ -78,6 +78,7 @@ import {
 } from "./pipeline-impls";
 import type { VoiceProfileStore } from "./profile-store";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
+import { AgentSelfVoiceImprint } from "./self-voice-imprint";
 import {
 	type MmapRegionHandle,
 	SharedResourceRegistry,
@@ -606,7 +607,7 @@ export interface EngineVoiceBridgeOptions {
 	/**
 	 * Override only the TTS backend while keeping the fused bundle lifecycle
 	 * and ASR FFI loaded. Used when a bundle falls back from OmniVoice speech
-	 * to Kokoro speech but still needs bundled Qwen3-ASR for mic input.
+	 * to Kokoro speech but still needs bundled Gemma ASR for mic input.
 	 */
 	ttsBackendOverride?: OmniVoiceBackend;
 	/** Optional speaker preset paired with `ttsBackendOverride`. */
@@ -960,6 +961,7 @@ export class EngineVoiceBridge {
 		asrAvailable: boolean,
 		phraseCache: PhraseCache,
 		attributionPipeline: VoiceAttributionPipeline | null = null,
+		private readonly selfVoiceImprint: AgentSelfVoiceImprint | null = null,
 		cancellationCoordinator: VoiceCancellationCoordinator | null = null,
 		optimisticGenerationPolicy: OptimisticGenerationPolicy | null = null,
 		eventRuntime: IAgentRuntime | null = null,
@@ -1147,12 +1149,30 @@ export class EngineVoiceBridge {
 		};
 
 		const sinkOverride = opts.sink;
+		let selfVoiceImprint: AgentSelfVoiceImprint | null = null;
+		const schedulerEvents: SchedulerEvents = {
+			...(opts.events ?? {}),
+			onAudio(chunk) {
+				opts.events?.onAudio?.(chunk);
+				if (!selfVoiceImprint) return;
+				void selfVoiceImprint
+					.observeAudio(chunk.pcm, chunk.sampleRate)
+					.catch((err: unknown) => {
+						logger.warn(
+							{
+								error: err instanceof Error ? err.message : String(err),
+							},
+							"[voice-bridge] agent self-voice imprint update failed",
+						);
+					});
+			},
+		};
 		const scheduler = new VoiceScheduler(
 			config,
 			sinkOverride
 				? { backend, sink: sinkOverride, phraseCache }
 				: { backend, phraseCache },
-			opts.events ?? {},
+			schedulerEvents,
 		);
 
 		// Wire the voice lifecycle. The lifecycle starts in `voice-off` —
@@ -1164,7 +1184,9 @@ export class EngineVoiceBridge {
 		const registry = opts.sharedResources ?? new SharedResourceRegistry();
 		const loaders =
 			opts.lifecycleLoaders ??
-			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef);
+			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef, {
+				skipTtsRegion: Boolean(opts.ttsBackendOverride),
+			});
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
 		// Wire speaker-attribution when a profile store is provided. The
@@ -1222,6 +1244,9 @@ export class EngineVoiceBridge {
 					await resolvedEncoder?.dispose();
 				},
 			};
+			selfVoiceImprint = new AgentSelfVoiceImprint({
+				encoder: lazyEncoder,
+			});
 			// Fused diarizer (optional). When the build does not advertise the
 			// diarizer ABI, attribution runs without it — a single-speaker turn
 			// collapses to one segment (the attribution-pipeline localSpeakerId=0
@@ -1279,6 +1304,7 @@ export class EngineVoiceBridge {
 			asrAvailable,
 			phraseCache,
 			attributionPipeline,
+			selfVoiceImprint,
 			wiring?.coordinator ?? null,
 			wiring?.policy ?? null,
 			isEventRuntime(opts.runtime) ? opts.runtime : null,
@@ -1373,6 +1399,7 @@ export class EngineVoiceBridge {
 			false, // ASR is not served from this path
 			phraseCache,
 			null, // no profile store on Kokoro-only
+			null, // no self-voice imprint without live attribution
 			wiring?.coordinator ?? null,
 			wiring?.policy ?? null,
 		);
@@ -1757,12 +1784,61 @@ export class EngineVoiceBridge {
 	async transcribePcm(
 		args: TranscriptionAudio,
 		signal?: AbortSignal,
+		onPartial?: (delta: string) => void,
 	): Promise<string> {
 		this.assertVoiceOn("transcribe audio");
 		if (signal?.aborted) {
 			throw signal.reason instanceof Error
 				? signal.reason
 				: new DOMException("Aborted", "AbortError");
+		}
+		// Streaming path: when the caller wants partial transcripts (the
+		// TRANSCRIPTION model handler forwards the runtime's onStreamChunk here),
+		// drive the fused streaming-ASR session and emit each running partial as a
+		// delta — the same per-token pipe as chat text. Feed in ~1s windows so the
+		// decode surfaces partials progressively. Degrades gracefully: when the
+		// fused build's streaming-ASR decoder is a stub, createStreamingTranscriber
+		// resolves the fused batch adapter and the final transcript is emitted once.
+		if (onPartial) {
+			const transcriber = this.createStreamingTranscriber();
+			let shown = 0;
+			const emit = (full: string): void => {
+				if (typeof full === "string" && full.length > shown) {
+					const delta = full.slice(shown);
+					shown = full.length;
+					onPartial(delta);
+				}
+			};
+			const unsub = transcriber.on((ev) => {
+				if (ev.kind === "partial" || ev.kind === "final") {
+					emit(ev.update.partial);
+				}
+			});
+			const abort = () => transcriber.dispose();
+			try {
+				signal?.addEventListener("abort", abort, { once: true });
+				const win = Math.max(1600, Math.round(args.sampleRate));
+				for (let off = 0; off < args.pcm.length; off += win) {
+					if (signal?.aborted) break;
+					transcriber.feed({
+						pcm: args.pcm.subarray(off, Math.min(off + win, args.pcm.length)),
+						sampleRate: args.sampleRate,
+						timestampMs: Math.round((off / args.sampleRate) * 1000),
+					});
+				}
+				const final = await transcriber.flush();
+				emit(final.partial);
+				if (signal?.aborted) {
+					throw signal.reason instanceof Error
+						? signal.reason
+						: new DOMException("Aborted", "AbortError");
+				}
+				return final.partial;
+			} finally {
+				unsub();
+				signal?.removeEventListener("abort", abort);
+				transcriber.dispose();
+			}
 		}
 		const backendBatch = this.backend as OmniVoiceBackend & {
 			transcribe?: (args: TranscriptionAudio) => Promise<string>;
@@ -1897,11 +1973,19 @@ export class EngineVoiceBridge {
 						const { handleLiveVoiceAttribution } = await import(
 							"../../runtime/voice-entity-binding.js"
 						);
-						await handleLiveVoiceAttribution(
-							eventRuntime,
-							output,
-							resolveLiveAttributionOptions(liveAttribution, transcript),
-						);
+						const selfVoiceSimilarity =
+							output.observation?.embedding && this.selfVoiceImprint
+								? await this.selfVoiceImprint.similarity(
+										output.observation.embedding,
+									)
+								: null;
+						await handleLiveVoiceAttribution(eventRuntime, output, {
+							...resolveLiveAttributionOptions(liveAttribution, transcript),
+							agentSpeaking: this.scheduler.bargeIn.isAgentSpeaking,
+							...(typeof selfVoiceSimilarity === "number"
+								? { selfVoiceSimilarity }
+								: {}),
+						});
 					}
 					onAttribution?.(output);
 				})
@@ -2041,8 +2125,8 @@ function ensureContext(
  * `createStreamingTranscriber` directly (the fused-only chain in
  * `transcriber.ts`: fused streaming → fused batch → AsrUnavailableError).
  */
-function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
-	const noopMmap = (id: string): MmapRegionHandle => ({
+function noopMmapRegion(id: string): MmapRegionHandle {
+	return {
 		id,
 		path: "",
 		sizeBytes: 0,
@@ -2052,10 +2136,13 @@ function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 		async release() {
 			// No mmap region to release.
 		},
-	});
+	};
+}
+
+function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 	return {
-		loadTtsRegion: async () => noopMmap("kokoro:tts"),
-		loadAsrRegion: async () => noopMmap("kokoro:asr"),
+		loadTtsRegion: async () => noopMmapRegion("kokoro:tts"),
+		loadAsrRegion: async () => noopMmapRegion("kokoro:asr"),
 		loadVoiceCaches: async () => ({
 			id: "kokoro:voice-caches",
 			async release() {},
@@ -2071,10 +2158,13 @@ function defaultLifecycleLoaders(
 	bundleRoot: string,
 	ffi: ElizaInferenceFfi | null,
 	ctx: ElizaInferenceContextHandle | FfiContextRef | null,
+	options: { skipTtsRegion?: boolean } = {},
 ): VoiceLifecycleLoaders {
 	return {
 		loadTtsRegion: async () =>
-			bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
+			options.skipTtsRegion === true
+				? noopMmapRegion(`tts-override:${bundleRoot}`)
+				: bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
 		loadAsrRegion: async () =>
 			bundleMmapRegion(path.join(bundleRoot, "asr"), "asr", ffi, ctx),
 		loadVoiceCaches: async () => ({
@@ -2195,28 +2285,6 @@ function locateBundleLibrary(bundleRoot: string): string {
 	return path.join(
 		dirs[0] ?? path.join(bundleRoot, "lib"),
 		libraryFilenames()[0] ?? "libelizainference.so",
-	);
-}
-
-function bundleHasOmniVoiceWeights(bundleRoot: string): boolean {
-	const ttsDir = path.join(bundleRoot, "tts");
-	if (!existsSync(ttsDir)) return false;
-	try {
-		return readdirSync(ttsDir, { withFileTypes: true }).some(
-			(entry) => entry.isFile() && /^omnivoice-.+\.gguf$/i.test(entry.name),
-		);
-	} catch {
-		return false;
-	}
-}
-
-export function isOmniVoiceBundleAvailable(bundleRoot: string): boolean {
-	if (!bundleRoot || !existsSync(bundleRoot)) return false;
-	const presetPath = path.join(bundleRoot, DEFAULT_VOICE_PRESET_REL_PATH);
-	return (
-		existsSync(presetPath) &&
-		bundleHasOmniVoiceWeights(bundleRoot) &&
-		existsSync(locateBundleLibrary(bundleRoot))
 	);
 }
 

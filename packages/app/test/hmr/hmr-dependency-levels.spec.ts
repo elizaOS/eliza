@@ -71,11 +71,11 @@ const LEVELS = [
   },
   {
     name: "plugin view hyperliquid",
-    file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
+    file: "plugins/plugin-hyperliquid/src/HyperliquidView.tsx",
   },
   {
     name: "plugin view messages",
-    file: "plugins/plugin-messages/src/components/MessagesAppView.tsx",
+    file: "plugins/plugin-messages/src/components/MessagesView.tsx",
   },
   {
     name: "plugin view model tester",
@@ -83,31 +83,15 @@ const LEVELS = [
   },
   {
     name: "plugin view phone",
-    file: "plugins/plugin-phone/src/components/PhoneAppView.tsx",
+    file: "plugins/plugin-phone/src/components/PhoneView.tsx",
   },
   {
     name: "plugin view polymarket",
-    file: "plugins/plugin-polymarket-app/src/PolymarketAppView.tsx",
+    file: "plugins/plugin-polymarket/src/PolymarketView.tsx",
   },
   {
     name: "plugin view shopify",
-    file: "plugins/plugin-shopify-ui/src/ShopifyAppView.tsx",
-  },
-  {
-    name: "plugin view steward",
-    file: "plugins/plugin-steward-app/src/StewardView.tsx",
-  },
-  {
-    name: "plugin view vincent",
-    file: "plugins/plugin-vincent/src/VincentAppView.tsx",
-  },
-  {
-    name: "plugin view waifu-imagegen",
-    file: "plugins/plugin-waifu-imagegen-app/src/ImageGenAppView.tsx",
-  },
-  {
-    name: "plugin view waifu-swap",
-    file: "plugins/plugin-waifu-swap-app/src/SwapAppView.tsx",
+    file: "plugins/plugin-shopify/src/ShopifyView.tsx",
   },
   {
     name: "plugin view wallet",
@@ -119,27 +103,19 @@ const LEVELS = [
   },
   {
     name: "plugin view feed",
-    file: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
+    file: "plugins/plugin-feed/src/components/FeedView.tsx",
   },
   {
     name: "plugin view manager",
     file: "plugins/plugin-app-control/src/views/ViewManagerView.tsx",
   },
   {
-    name: "plugin view clawville",
-    file: "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
-  },
-  {
-    name: "plugin view defense",
-    file: "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
-  },
-  {
     name: "plugin view screenshare",
-    file: "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
+    file: "plugins/plugin-screenshare/src/components/ScreenshareView.tsx",
   },
   {
     name: "plugin view social alpha",
-    file: "plugins/plugin-social-alpha/src/frontend/LeaderboardView.tsx",
+    file: "plugins/plugin-social-alpha/src/frontend/SocialAlphaView.tsx",
   },
   {
     name: "plugin view task coordinator",
@@ -159,7 +135,7 @@ const LEVELS = [
   },
   {
     name: "plugin view facewear",
-    file: "plugins/plugin-facewear/src/ui/FacewearView.tsx",
+    file: "plugins/plugin-facewear/src/components/FacewearView.tsx",
   },
   {
     name: "plugin view smartglasses",

@@ -20,6 +20,16 @@
       "types": "./src/training/index.ts",
       "import": "./src/training/index.ts",
       "require": "./src/training/index.ts"
+    },
+    "./rubrics": {
+      "types": "./src/rubrics/index.ts",
+      "import": "./src/rubrics/index.ts",
+      "require": "./src/rubrics/index.ts"
+    },
+    "./rubrics/index": {
+      "types": "./src/rubrics/index.ts",
+      "import": "./src/rubrics/index.ts",
+      "require": "./src/rubrics/index.ts"
     }
   },
   "scripts": {

@@ -175,10 +175,6 @@ declare module "@elizaos/app-steward" {
   export const StewardView: ComponentType<Record<string, unknown>>;
 }
 
-declare module "@elizaos/plugin-steward-app" {
-  export * from "@elizaos/app-steward";
-}
-
 declare module "@elizaos/app-task-coordinator" {
   export const CodingAgentControlChip: EmptyComponent;
   export const CodingAgentSettingsSection: EmptyComponent;
@@ -199,23 +195,7 @@ declare module "@elizaos/plugin-training" {
   export * from "@elizaos/app-training";
 }
 
-declare module "@elizaos/app-vincent" {
-  export const VincentAppView: ComponentType<Record<string, unknown>>;
-}
-
-declare module "@elizaos/plugin-vincent" {
-  export * from "@elizaos/app-vincent";
-}
-
 declare module "@elizaos/app-feed" {
-  export {};
-}
-
-declare module "@elizaos/app-defense-of-the-agents" {
-  export {};
-}
-
-declare module "@elizaos/app-clawville" {
   export {};
 }
 

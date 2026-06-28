@@ -47,7 +47,7 @@ export const socialAlphaPlugin: Plugin = {
 	services: [CommunityInvestorService],
 	providers: [socialAlphaProvider],
 	routes: communityInvestorRoutes,
-	events: events as unknown as Plugin["events"],
+	events: events as Plugin["events"],
 	views: [
 		{
 			id: "social-alpha",
@@ -56,6 +56,7 @@ export const socialAlphaPlugin: Plugin = {
 				"Trust leaderboard for token calls. Requires an agent wallet.",
 			icon: "UsersRound",
 			path: "/social-alpha",
+			modalities: ["gui", "xr", "tui"],
 			bundlePath: "dist/views/bundle.js",
 			componentExport: "SocialAlphaView",
 			tags: ["finance", "crypto", "social", "trust", "leaderboard"],
@@ -74,3 +75,25 @@ export const socialAlphaPlugin: Plugin = {
 };
 
 export default socialAlphaPlugin;
+
+// The GUI/XR data wrapper (`SocialAlphaView`) reaches the view bundle through
+// `social-alpha-view-bundle.ts`; it is intentionally NOT re-exported here, since
+// it imports the `@elizaos/ui` client barrel (browser-only) and the plugin's
+// runtime export surface stays free of it. The presentational spatial component
+// and its snapshot types are browser-safe and exported for terminal hosts.
+export {
+	EMPTY_SOCIAL_ALPHA_SNAPSHOT,
+	type LeaderRow,
+	type SocialAlphaSnapshot,
+	SocialAlphaSpatialView,
+	type SocialAlphaViewState,
+} from "./frontend/SocialAlphaSpatialView";
+export {
+	registerSocialAlphaTerminalView,
+	setSocialAlphaTerminalSnapshot,
+} from "./register-terminal-view";
+
+// Side-effect: in a terminal host (Node agent, no DOM) this registers the
+// Social Alpha terminal view. DOM-guarded so the terminal engine stays out of
+// browser bundles.
+import "./register.js";

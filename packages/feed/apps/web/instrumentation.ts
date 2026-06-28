@@ -63,6 +63,12 @@ export async function register() {
     // Individual NPC failures are handled internally by npcBootstrapService
     void npcBootstrapService.bootstrapAllNpcs();
 
+    // Start the in-process game loop when running as a single always-on service
+    // (e.g. Railway) — no external cron needed. No-op unless
+    // ENABLE_INTERNAL_CRON_SCHEDULER === "true".
+    const { startInternalCronLoop } = await import("./src/lib/cron-scheduler");
+    startInternalCronLoop();
+
     // Initialize shared moderation services with web app implementations
     setReputationService({
       awardReputation: async (userId, amount, reason, metadata) => {

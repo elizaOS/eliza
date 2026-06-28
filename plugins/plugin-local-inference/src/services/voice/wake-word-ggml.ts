@@ -111,11 +111,11 @@ interface BoundLibrary {
 
 /** Minimal shape of the bun:ffi module we use here. */
 interface BunFfiModule {
-	dlopen(
+	dlopen<TSymbols>(
 		path: string,
 		def: Record<string, { args: number[]; returns: number }>,
 	): {
-		symbols: Record<string, (...args: unknown[]) => unknown>;
+		symbols: TSymbols;
 		close(): void;
 	};
 	ptr(value: ArrayBufferView): unknown;
@@ -168,7 +168,7 @@ function loadLibrary(libraryPath: string): BoundLibrary {
 	}
 	const bunFfi = loadBunFfiModule();
 	const T = bunFfi.FFIType;
-	const lib = bunFfi.dlopen(libraryPath, {
+	const lib = bunFfi.dlopen<WakeWordBindings>(libraryPath, {
 		wakeword_open: {
 			args: [T.ptr, T.ptr, T.ptr, T.ptr],
 			returns: T.i32,
@@ -191,7 +191,7 @@ function loadLibrary(libraryPath: string): BoundLibrary {
 		},
 	});
 	return {
-		bindings: lib.symbols as unknown as WakeWordBindings,
+		bindings: lib.symbols,
 		close: () => lib.close(),
 		libraryPath,
 		ptr: (v: ArrayBufferView) => bunFfi.ptr(v),

@@ -17,8 +17,14 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { commandExists, currentPlatform } from "./helpers.js";
+import { psHostAvailable, runPsHost } from "./ps-host.js";
 
-const CLIPBOARD_TIMEOUT_MS = 5_000;
+// 15s to match the capture/screenshot spawn budgets. On Defender-heavy Windows
+// hosts a cold `powershell.exe` 5.1 spawn (Set-Clipboard/Get-Clipboard) can take
+// >5s under real-time AV scanning (measured ~11s on a build box), which made the
+// previous 5s budget false-fail the clipboard round-trip while the capability
+// itself was fine. See #9581 (Windows on-device CUA verification).
+const CLIPBOARD_TIMEOUT_MS = 15_000;
 const CLIPBOARD_MAX_BYTES = 10 * 1024 * 1024; // 10 MiB cap
 
 export class ClipboardUnavailableError extends Error {
@@ -63,8 +69,14 @@ function pickPlan(): ClipboardPlan {
         args: ["-NoProfile", "-Command", "Get-Clipboard -Raw"],
       },
       write: {
+        // `$input | Set-Clipboard` does NOT reliably consume piped stdin under
+        // -Command (it hangs → ETIMEDOUT). Read stdin to EOF explicitly.
         command: "powershell",
-        args: ["-NoProfile", "-Command", "$input | Set-Clipboard"],
+        args: [
+          "-NoProfile",
+          "-Command",
+          "Set-Clipboard -Value ([Console]::In.ReadToEnd())",
+        ],
       },
     };
   }
@@ -94,6 +106,15 @@ function pickPlan(): ClipboardPlan {
 }
 
 export async function readClipboard(): Promise<string> {
+  // Windows: prefer the warm PowerShell host (a cold spawn is ~10-16s under
+  // Defender). Same `Get-Clipboard -Raw` command; falls back to one-shot spawn.
+  if (psHostAvailable()) {
+    try {
+      return await runPsHost("Get-Clipboard -Raw", CLIPBOARD_TIMEOUT_MS);
+    } catch {
+      /* warm host unavailable/errored — fall back to one-shot spawn */
+    }
+  }
   const plan = pickPlan();
   // encoding: "utf-8" forces the typed return to string.
   const out = execFileSync(plan.read.command, [...plan.read.args], {
@@ -113,6 +134,26 @@ export async function writeClipboard(text: string): Promise<void> {
     throw new RangeError(
       `writeClipboard: payload exceeds ${CLIPBOARD_MAX_BYTES} bytes`,
     );
+  }
+  // Windows: prefer the warm PowerShell host. The value is base64-encoded into
+  // the command (no stdin pipe needed), then decoded host-side, so it round-trips
+  // any UTF-8 text safely. Falls back to the one-shot stdin-piped spawn.
+  //
+  // Empty string is routed to the fallback path deliberately: `Set-Clipboard
+  // -Value ''` rejects an empty value, and base64('') would otherwise let the
+  // host "succeed" where the one-shot spawn fails — a non-transparent
+  // divergence. Routing both through the same path keeps the behavior identical.
+  if (psHostAvailable() && text.length > 0) {
+    try {
+      const b64 = Buffer.from(text, "utf-8").toString("base64");
+      await runPsHost(
+        `Set-Clipboard -Value ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64}')))`,
+        CLIPBOARD_TIMEOUT_MS,
+      );
+      return;
+    } catch {
+      /* warm host unavailable/errored — fall back to one-shot spawn */
+    }
   }
   const plan = pickPlan();
   const result = spawnSync(plan.write.command, [...plan.write.args], {

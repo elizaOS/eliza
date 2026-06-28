@@ -62,10 +62,10 @@ describe("normalizeAppRoutePluginId", () => {
   });
 
   it("strips -app / -ui / -routes suffixes", () => {
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-steward-app")).toBe(
-      "steward",
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet-ui")).toBe(
+      "wallet",
     );
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-shopify-ui")).toBe(
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-shopify")).toBe(
       "shopify",
     );
     expect(normalizeAppRoutePluginId("@elizaos/plugin-documents-routes")).toBe(
@@ -86,9 +86,9 @@ describe("normalizeAppRoutePluginId", () => {
   });
 
   it("is idempotent on an already-short alias (so short tokens match full ids)", () => {
-    expect(normalizeAppRoutePluginId("steward")).toBe("steward");
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-steward-app")).toBe(
-      normalizeAppRoutePluginId("steward"),
+    expect(normalizeAppRoutePluginId("wallet")).toBe("wallet");
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet-ui")).toBe(
+      normalizeAppRoutePluginId("wallet"),
     );
   });
 });
@@ -135,5 +135,20 @@ describe("__loadAppRoutePluginFromSpecifierForTest", () => {
         "routePlugin",
       ),
     ).rejects.toThrow(/definitely-missing-transitive-route-test/);
+  });
+
+  it("loads the agent-orchestrator rawPath route plugin by explicit specifier", async () => {
+    const plugin = await __loadAppRoutePluginFromSpecifierForTest(
+      "@elizaos/plugin-agent-orchestrator/setup-routes",
+      "codingAgentRoutePlugin",
+    );
+
+    expect(plugin.name).toBe("@elizaos/plugin-agent-orchestrator-routes");
+    expect(
+      plugin.routes?.some((route) => route.path === "/api/coding-agents"),
+    ).toBe(true);
+    expect(
+      plugin.routes?.some((route) => route.path === "/api/orchestrator/status"),
+    ).toBe(true);
   });
 });

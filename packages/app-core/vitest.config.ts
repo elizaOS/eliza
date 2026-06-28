@@ -11,8 +11,8 @@ const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
-const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
-const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud-sdk/src");
+const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud/routing/src");
+const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud/sdk/src");
 const appLifeopsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-personal-assistant/src",
@@ -157,6 +157,8 @@ export default defineConfig({
       "scripts/stage-android-agent.test.mjs",
       // Uses bun:test, not vitest.
       "scripts/aosp/stage-default-models.test.mjs",
+      // Uses bun:test, not vitest.
+      "scripts/aosp/compile-libllama-zig-pin.test.mjs",
       ...(process.platform === "win32"
         ? [
             "scripts/lib/apple-entitlement-audit.test.mjs",

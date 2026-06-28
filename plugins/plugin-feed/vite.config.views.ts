@@ -5,6 +5,5 @@ export default createViewBundleConfig({
   viewId: "feed",
   entry: "./src/ui/feed-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "FeedOperatorSurface",
-  additionalExternals: ["@elizaos/app-core", "@elizaos/ui"],
+  componentExport: "FeedView",
 });

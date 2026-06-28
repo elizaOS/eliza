@@ -42,6 +42,7 @@ import {
   type ResolvedPlugin as RuntimeResolvedPlugin,
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types.ts";
+import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
 
 export {
   CHANNEL_PLUGIN_MAP,
@@ -826,7 +827,10 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
       try {
         const runtime = current?.getRuntime();
         if (runtime) {
-          await shutdownRuntime(runtime, "signal shutdown");
+          // SIGINT/SIGTERM is an interactive/dev teardown — use the capped fast
+          // path so the process exits promptly instead of waiting on in-flight
+          // deferred service starts or an embedding-queue flush (#9605).
+          await shutdownRuntime(runtime, "signal shutdown", { fast: true });
         }
       } catch (err) {
         logger.warn(`[eliza] Error during shutdown: ${formatError(err)}`);
@@ -1221,7 +1225,7 @@ export function ensureProvisionedCloudContainerConfig(
   }
 
   if (changed) {
-    logger.warn(
+    logger.info(
       "[eliza] Provisioned cloud container missing managed runtime topology; forcing Eliza Cloud routing in memory",
     );
   }
@@ -1441,6 +1445,7 @@ type RuntimeAdapterWithClose = {
 export async function shutdownRuntime(
   runtime: AgentRuntime | null | undefined,
   context: string,
+  options: { fast?: boolean } = {},
 ): Promise<void> {
   if (!runtime) return;
 
@@ -1448,7 +1453,9 @@ export async function shutdownRuntime(
   let firstError: unknown = null;
 
   try {
-    await runtime.stop();
+    // Interactive/signal teardown asks for the capped fast path so Ctrl-C does
+    // not block on a slow deferred service start or a long embedding drain.
+    await runtime.stop(options.fast ? { fast: true } : undefined);
   } catch (err) {
     firstError = err;
     logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
@@ -4346,6 +4353,7 @@ export async function startEliza(
       `[eliza] Roles capability pre-registration failed: ${formatError(err)}`,
     );
   }
+  bootTimer.lap("svc:roles-register");
 
   const warmAgentSkillsService = async (): Promise<void> => {
     // Let runtime startup complete first; this warm-up runs asynchronously
@@ -4441,6 +4449,7 @@ export async function startEliza(
 
   const registerRemoteCodingRunner = async (): Promise<void> => {
     if (isBundledMobileRuntime()) return;
+    if (!shouldLoadRemoteCodingRunnerForBoot(runtime)) return;
     try {
       const { registerE2BRemoteCapabilityRouterIfEnabled } =
         await loadE2BCapabilityRouterModule();
@@ -4677,6 +4686,26 @@ export async function startEliza(
     }
   };
 
+  const registerWebSearchActionIfEnabled = async (): Promise<void> => {
+    try {
+      const { webSearch, isWebSearchEnabled } = await import(
+        "./actions/web-search.ts"
+      );
+      if (!isWebSearchEnabled()) {
+        logger.info(
+          "[eliza] WEB_SEARCH action disabled; set ELIZA_INLINE_WEB_SEARCH=1 to force inline search, or unset ELIZA_SERVER_WEB_SEARCH when using the default inline surface",
+        );
+        return;
+      }
+      runtime.registerAction(webSearch);
+      logger.info("[eliza] Registered keyless WEB_SEARCH action");
+    } catch (err) {
+      logger.debug(
+        `[eliza] WEB_SEARCH action registration skipped: ${formatError(err)}`,
+      );
+    }
+  };
+
   const isAutonomyEnabled = (): boolean =>
     ["true", "1"].includes((process.env.ENABLE_AUTONOMY ?? "").toLowerCase());
 
@@ -4869,7 +4898,9 @@ export async function startEliza(
   // requested). The runtime is reported ready as soon as this resolves.
   const initializeRuntimeServices = async (): Promise<void> => {
     await runStewardEvmPreBoot();
+    bootTimer.lap("svc:steward-evm");
     await registerConnectorSetupService();
+    bootTimer.lap("svc:connector-setup");
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");
 
@@ -5045,26 +5076,19 @@ export async function startEliza(
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
     await registerConversationProximityProvider();
-    await seedBundledDocumentsIfEnabled();
-    await runStewardEvmPostBoot();
-    await installServerSideWebSearchIfAvailable();
-    await registerWebFetchActionIfEnabled();
-    bootTimer.lap("deferred:post-init");
-
-    const autonomyLoopEnabled = isAutonomyEnabled();
-    await startAutonomyServiceIfEnabled(true);
-    await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
-    startAgentSkillsWarmup();
-    startEmbeddingWarmup();
-    // Re-probe the embedding dimension now that the deferred plugin waves have
-    // registered the cloud TEXT_EMBEDDING handler (plugin-elizacloud). The probe
-    // in runtime.initialize() runs ~38s earlier — before that deferred handler
-    // exists — so on a cloud agent it finds no TEXT_EMBEDDING model and the SQL
-    // adapter keeps its hardcoded dim384 default; every 1536-dim cloud vector is
-    // then dropped on a "dimension mismatch with configured column (dim384)".
+    // Probe the embedding dimension BEFORE seeding bundled documents (#8769).
+    // The deferred plugin waves above register the cloud TEXT_EMBEDDING handler
+    // (plugin-elizacloud, 1536-dim); the probe in runtime.initialize() ran ~38s
+    // earlier, before that handler existed, so the SQL adapter kept its
+    // hardcoded dim384 default. seedBundledDocumentsIfEnabled() embeds its docs
+    // at 1536 via the cloud handler, so if the column is still dim384 every
+    // bundled-doc vector is dropped on a "dimension mismatch with configured
+    // column (dim384)" and the agent boots with no recall memory. Snapping the
+    // column to dim1536 here — after the handler is registered, before the seed
+    // writes — lets those embeddings (and all later memory) persist.
     // ensureEmbeddingDimension() is public, idempotent, and self-guarding (it
-    // no-ops when no handler is registered, e.g. cloud-proxied agents), so this
-    // safely snaps the column to dim1536 and lets memory embeddings persist.
+    // no-ops when no TEXT_EMBEDDING handler is registered, e.g. cloud-proxied
+    // agents), so this is safe on every boot path.
     try {
       await runtime.ensureEmbeddingDimension();
     } catch (err) {
@@ -5074,6 +5098,18 @@ export async function startEliza(
         }`,
       );
     }
+    await seedBundledDocumentsIfEnabled();
+    await runStewardEvmPostBoot();
+    await installServerSideWebSearchIfAvailable();
+    await registerWebFetchActionIfEnabled();
+    await registerWebSearchActionIfEnabled();
+    bootTimer.lap("deferred:post-init");
+
+    const autonomyLoopEnabled = isAutonomyEnabled();
+    await startAutonomyServiceIfEnabled(true);
+    await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
+    startAgentSkillsWarmup();
+    startEmbeddingWarmup();
     // Trigger the lazy wallet singleton fire-and-forget. This is a safety net
     // — if no wallet route or signing flow triggers it earlier, wallets are
     // still generated here. The singleton keeps this harmless if already
@@ -5111,6 +5147,12 @@ export async function startEliza(
   };
 
   try {
+    // Time from the register-sql lap up to entering service init (roles
+    // capability registration + any blocking pre-init work). Split out so a
+    // device boot can attribute the dominant cost instead of lumping it into
+    // svc:pre-init (issue #9565): on a bundled mobile runtime the three hooks
+    // below are each fast/no-op, yet svc:pre-init was ~15s of a 16s cold boot.
+    bootTimer.lap("svc:boot-prep");
     await initializeRuntimeServices();
   } catch (err) {
     const pgliteDataDir = resolveActivePgliteDataDir(config);
@@ -5438,7 +5480,10 @@ export async function startEliza(
           } catch {
             // non-fatal
           }
-          if (!isBundledMobileRuntime()) {
+          if (
+            !isBundledMobileRuntime() &&
+            shouldLoadRemoteCodingRunnerForBoot(newRuntime)
+          ) {
             try {
               const { registerE2BRemoteCapabilityRouterIfEnabled } =
                 await loadE2BCapabilityRouterModule();

@@ -58,9 +58,8 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   companion: "plugin-companion",
   orchestrator: "plugin-task-coordinator",
   facewear: "plugin-facewear",
-  polymarket: "plugin-polymarket-app",
-  hyperliquid: "plugin-hyperliquid-app",
-  steward: "plugin-steward-app",
+  polymarket: "plugin-polymarket",
+  hyperliquid: "plugin-hyperliquid",
 };
 
 /** Recursively collect every production `.tsx` under a dir (no tests/stories). */

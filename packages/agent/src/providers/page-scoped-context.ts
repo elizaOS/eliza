@@ -8,9 +8,6 @@ import type {
 import { logger, stringToUuid } from "@elizaos/core";
 import type {
   AppRunSummary,
-  LifeOpsCapabilitiesStatus,
-  LifeOpsInbox,
-  LifeOpsOverview,
   RegistryAppInfo,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -49,8 +46,6 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
     "The user is in the Android Phone view. They can place calls through Android Telecom, open the dialer, send SMS through Android SMS, review recent calls, browse contacts, import vCards, and save call transcripts or summaries. Action vocabulary may include MESSAGE with operation=send/read_channel/search, VOICE_CALL, ADD_CONTACT, UPDATE_CONTACT, GET_CONTACT, and SEARCH_CONTACTS when the relevant plugins are enabled. Confirm the target number/contact and message content before calls or SMS. Ground discussion in visible phone state when present and never invent call logs, contacts, message bodies, transcripts, or delivery results.",
   "page-plugins":
     "The user is in the Plugins view. They can inspect installed plugins, registry plugins, configuration readiness, plugin health, and runtime capability gaps. Action vocabulary: PLUGIN with modes install, eject, sync, reinject, list, search, core_status, or create. When the user asks what to do, recommend the smallest plugin setup or troubleshooting action that fits the visible state. Never invent installed plugins, credentials, or enabled capabilities.",
-  "page-lifeops":
-    "The user is in the LifeOps view. They can inspect the overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. The LifeOps app provider and actions are the authoritative execution path for creating or changing personal workflows, reminders, goals, schedules, inbox drafts, connector setup, and executive-assistant follow-through. When the user asks what to do, recommend capability readiness and overview review first, then suggest the smallest concrete LifeOps action. Reference only live LifeOps state below; never invent reminders, messages, calendar events, goals, or connector status.",
   "page-settings":
     "The user is in the Settings view. They can tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. Action vocabulary: UPDATE_IDENTITY, UPDATE_AI_PROVIDER, TOGGLE_CAPABILITY, and TOGGLE_AUTO_TRAINING. When the user asks what to do, recommend the smallest concrete settings change that fits the visible section. Ask before changes that affect security, spending, or external accounts. Never invent provider status, account state, or permission grants.",
   "page-wallet":
@@ -336,107 +331,6 @@ async function renderAppsLiveState(): Promise<string | null> {
   return lines.join("\n");
 }
 
-function formatLifeOpsOverviewSection(
-  label: string,
-  overview: LifeOpsOverview["owner"],
-): string {
-  return `${label}: ${overview.summary.activeOccurrenceCount} active item${overview.summary.activeOccurrenceCount === 1 ? "" : "s"}, ${overview.summary.activeReminderCount} reminder${overview.summary.activeReminderCount === 1 ? "" : "s"}, ${overview.summary.activeGoalCount} goal${overview.summary.activeGoalCount === 1 ? "" : "s"}.`;
-}
-
-async function renderLifeOpsLiveState(): Promise<string | null> {
-  const [overview, capabilities, inbox] = await Promise.all([
-    fetchLocalJson<LifeOpsOverview>("/api/lifeops/overview"),
-    fetchLocalJson<LifeOpsCapabilitiesStatus>("/api/lifeops/capabilities"),
-    fetchLocalJson<LifeOpsInbox>("/api/lifeops/inbox?limit=8"),
-  ]);
-
-  if (!overview && !capabilities && !inbox) {
-    return "Live LifeOps state: unavailable from the LifeOps API.";
-  }
-
-  const lines: string[] = ["Live LifeOps state:"];
-
-  if (capabilities) {
-    lines.push(`- App enabled: ${capabilities.appEnabled ? "yes" : "no"}.`);
-    lines.push(
-      `- Capabilities: ${capabilities.summary.workingCount} working, ${capabilities.summary.degradedCount} degraded, ${capabilities.summary.blockedCount} blocked, ${capabilities.summary.notConfiguredCount} not configured.`,
-    );
-    const attention = capabilities.capabilities.filter(
-      (capability) =>
-        capability.state === "blocked" ||
-        capability.state === "degraded" ||
-        capability.state === "not_configured",
-    );
-    for (const capability of attention.slice(0, 5)) {
-      lines.push(
-        `  - ${capability.label}: ${capability.state} — ${capability.summary}`,
-      );
-    }
-  }
-
-  if (overview) {
-    lines.push(
-      `- Overview: ${overview.summary.activeOccurrenceCount} active item${overview.summary.activeOccurrenceCount === 1 ? "" : "s"}, ${overview.summary.overdueOccurrenceCount} overdue, ${overview.summary.activeReminderCount} active reminder${overview.summary.activeReminderCount === 1 ? "" : "s"}, ${overview.summary.activeGoalCount} active goal${overview.summary.activeGoalCount === 1 ? "" : "s"}.`,
-    );
-    lines.push(`- ${formatLifeOpsOverviewSection("Owner", overview.owner)}`);
-    lines.push(
-      `- ${formatLifeOpsOverviewSection("Agent ops", overview.agentOps)}`,
-    );
-    if (overview.schedule) {
-      const relative = overview.schedule.relativeTime;
-      const wake =
-        relative.minutesSinceWake !== null
-          ? `${Math.round(relative.minutesSinceWake)}m since wake`
-          : "wake time unknown";
-      const bedtime =
-        relative.minutesUntilBedtimeTarget !== null
-          ? `${Math.round(relative.minutesUntilBedtimeTarget)}m until bedtime target`
-          : "bedtime target unknown";
-      lines.push(
-        `- Schedule: ${overview.schedule.circadianState} (${Math.round(overview.schedule.stateConfidence * 100)}% confidence), ${overview.schedule.sleepStatus}; ${wake}; ${bedtime}.`,
-      );
-    }
-    const activeReminders = [
-      ...overview.owner.reminders,
-      ...overview.agentOps.reminders,
-    ];
-    if (activeReminders.length > 0) {
-      lines.push("Active reminders:");
-      for (const reminder of activeReminders.slice(0, 5)) {
-        lines.push(
-          `- ${reminder.title} (${reminder.channel}, ${reminder.state}) scheduled ${reminder.scheduledFor}`,
-        );
-      }
-    }
-    const activeGoals = [...overview.owner.goals, ...overview.agentOps.goals];
-    if (activeGoals.length > 0) {
-      lines.push("Active goals:");
-      for (const goal of activeGoals.slice(0, 5)) {
-        lines.push(`- ${goal.title} (${goal.status})`);
-      }
-    }
-  }
-
-  if (inbox) {
-    const unreadCount = Object.values(inbox.channelCounts).reduce(
-      (sum, count) => sum + count.unread,
-      0,
-    );
-    lines.push(
-      `- Inbox: ${inbox.messages.length} recent message${inbox.messages.length === 1 ? "" : "s"}, ${unreadCount} unread.`,
-    );
-    for (const message of inbox.messages.slice(0, 5)) {
-      const subject = message.subject ? `${message.subject}: ` : "";
-      const unread = message.unread ? " unread" : "";
-      lines.push(
-        `  - ${message.channel}${unread} from ${message.sender.displayName}: ${subject}${message.snippet.slice(0, 120)}`,
-      );
-    }
-  }
-
-  return lines.join("\n");
-}
-
 function shortAddress(address: string | null | undefined): string {
   if (!address) return "(not configured)";
   if (address.length <= 14) return address;
@@ -667,8 +561,6 @@ async function renderLiveStateForScope(
       return renderAutomationsLiveState(runtime);
     case "page-apps":
       return renderAppsLiveState();
-    case "page-lifeops":
-      return renderLifeOpsLiveState();
     case "page-connectors":
     case "page-plugins":
     case "page-settings":
@@ -691,7 +583,7 @@ function formatSourceTail(entries: SourceTailEntry[]): string {
 export const pageScopedContextProvider: Provider = {
   name: "page-scoped-context",
   description:
-    "Operational context for the current page-scoped chat (Browser, Character, Apps, Connectors, Plugins, Settings, LifeOps, Automations, Wallet).",
+    "Operational context for the current page-scoped chat (Browser, Character, Apps, Connectors, Plugins, Settings, Automations, Wallet).",
   dynamic: false,
   position: 5,
   contexts: [

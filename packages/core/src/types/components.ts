@@ -118,6 +118,11 @@ export interface ActionExample {
 
 export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
 
+export interface MessageHandlerDeterministicToolCall {
+	name: string;
+	params?: Record<string, JsonValue>;
+}
+
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
@@ -131,7 +136,8 @@ export interface MessageHandlerPlan {
 	contextSlices?: string[];
 	candidateActions?: string[];
 	parentActionHints?: string[];
-	[key: string]: JsonValue | undefined;
+	deterministicToolCall?: MessageHandlerDeterministicToolCall;
+	[key: string]: JsonValue | MessageHandlerDeterministicToolCall | undefined;
 }
 
 export interface MessageHandlerExtractedRelationship {

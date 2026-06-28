@@ -22,6 +22,7 @@ from eliza_lifeops_bench.scorer import (
     _is_read_with_side_effects_action,
     _kwargs_match,
     compare_actions,
+    compile_benchmark_result,
     output_substring_match,
     score_scenario,
 )
@@ -1754,3 +1755,164 @@ def test_p2_9_health_today_still_pure_read() -> None:
 def test_p2_9_life_review_not_read_only() -> None:
     """LIFE/review is no longer classified as pure read-only."""
     assert not _is_read_only_action(Action(name="LIFE", kwargs={"subaction": "review"}))
+
+
+# ---------------------------------------------------------------------------
+# #8795: LIVE scoring must respect expected mutation semantics
+#
+# LIVE scenarios carry no ground-truth actions, so `_replay_ground_truth`
+# replays an empty action list and returns the UNCHANGED seed hash. That makes
+# `state_hash_match` True exactly when the agent left the world untouched, so
+# crediting it rewarded a do-nothing run (1.0) over a correct world-mutating
+# run (0.3). Write scenarios should require mutation, but read-only and
+# approval-withheld scenarios must still be able to pass with an unchanged world.
+# ---------------------------------------------------------------------------
+
+
+def _live_scenario(
+    *,
+    expected_world_mutation: str = "auto",
+    world_assertions: list[str] | None = None,
+) -> Scenario:
+    """A LIVE scenario: no ground truth, judged by the simulated user."""
+    return Scenario(
+        id="live.calendar.find_focus_block_tomorrow",
+        name="t",
+        domain=Domain.CALENDAR,
+        mode=ScenarioMode.LIVE,
+        persona=_PERSONA,
+        instruction="put a 1-hour focus block on my work calendar tomorrow",
+        ground_truth_actions=[],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=0,
+        max_turns=8,
+        world_assertions=world_assertions
+        or ["a new focus-block event exists on the work calendar tomorrow"],
+        expected_world_mutation=expected_world_mutation,  # type: ignore[arg-type]
+    )
+
+
+def test_live_correct_mutation_scores_above_do_nothing() -> None:
+    """#8795: a correct world-mutating run must beat a do-nothing run.
+
+    Both runs are judged "satisfied" to isolate the scorer: the only
+    difference is whether the agent changed the world. A do-nothing agent
+    leaves the world equal to the seed (state_hash_match True); a correct
+    write agent changes it (state_hash_match False). The correct run must
+    score strictly higher.
+    """
+    scenario = _live_scenario()
+    do_nothing = _result(
+        state_hash_match=True,  # world unchanged == seed == replay of empty GT
+        agent_actions=[],
+        terminated_reason="satisfied",
+    )
+    correct = _result(
+        state_hash_match=False,  # world mutated, no longer equal to the seed
+        agent_actions=[],
+        terminated_reason="satisfied",
+    )
+    do_nothing_score = score_scenario(do_nothing, scenario)
+    correct_score = score_scenario(correct, scenario)
+
+    assert correct_score == pytest.approx(1.0)
+    assert do_nothing_score == pytest.approx(0.3)
+    assert correct_score > do_nothing_score
+
+
+def test_live_read_only_unchanged_world_scores_full_and_counts_as_pass() -> None:
+    scenario = _live_scenario(
+        world_assertions=[
+            "No write to chat_message store (this is a read-only summarization task).",
+        ],
+    )
+    unchanged = _result(
+        state_hash_match=True,
+        agent_actions=[],
+        terminated_reason="satisfied",
+    )
+
+    assert score_scenario(unchanged, scenario) == pytest.approx(1.0)
+    benchmark = compile_benchmark_result(
+        [unchanged],
+        {unchanged.scenario_id: scenario},
+        seeds=1,
+        model_name="m",
+        judge_model_name="j",
+        timestamp="2026-05-10T00:00:00Z",
+    )
+    assert benchmark.pass_at_1 == pytest.approx(1.0)
+    assert benchmark.pass_at_k == pytest.approx(1.0)
+
+
+def test_live_read_only_mutation_loses_state_bonus() -> None:
+    scenario = _live_scenario(expected_world_mutation="unchanged")
+    mutated = _result(
+        state_hash_match=False,
+        agent_actions=[],
+        terminated_reason="satisfied",
+    )
+    assert score_scenario(mutated, scenario) == pytest.approx(0.3)
+
+
+def test_live_optional_mutation_allows_unchanged_or_changed_world() -> None:
+    scenario = _live_scenario(
+        world_assertions=[
+            "Either: at least one email moved to archive after approval; OR: no mutation if persona declined all recommendations.",
+        ],
+    )
+    unchanged = _result(
+        state_hash_match=True,
+        agent_actions=[],
+        terminated_reason="satisfied",
+    )
+    changed = _result(
+        state_hash_match=False,
+        agent_actions=[],
+        terminated_reason="satisfied",
+    )
+    assert score_scenario(unchanged, scenario) == pytest.approx(1.0)
+    assert score_scenario(changed, scenario) == pytest.approx(1.0)
+
+
+def test_live_unsatisfied_run_scores_zero() -> None:
+    """#8795: the judge `satisfied` gate is still authoritative for LIVE.
+
+    A run the judge did not mark satisfied scores 0 regardless of the world
+    state, so the expected-mutation term never resurrects a failed run.
+    """
+    scenario = _live_scenario()
+    unsatisfied_unchanged = _result(
+        state_hash_match=True,
+        agent_actions=[],
+        terminated_reason="respond",
+    )
+    unsatisfied_changed = _result(
+        state_hash_match=False,
+        agent_actions=[],
+        terminated_reason="respond",
+    )
+    assert score_scenario(unsatisfied_unchanged, scenario) == 0.0
+    assert score_scenario(unsatisfied_changed, scenario) == 0.0
+
+
+def test_static_scoring_unchanged_by_live_fix() -> None:
+    """Regression guard: STATIC scoring is untouched by the LIVE #8795 fix.
+
+    A STATIC write scenario with a matching action and matching final state
+    still scores 1.0 (0.5 state + 0.4 action + 0.1 substring), and crucially
+    its state_hash_match=True still pays the full state bonus — the inversion
+    is LIVE-only.
+    """
+    action = Action(name="CALENDAR", kwargs={"subaction": "create_event", "title": "x"})
+    scenario = _scenario(ground_truth_actions=[action])  # mode=STATIC
+    assert scenario.mode is ScenarioMode.STATIC
+    matched = _result(state_hash_match=True, agent_actions=[action])
+    assert score_scenario(matched, scenario) == pytest.approx(1.0)
+
+    # And a STATIC write where the world did NOT reach the target state loses
+    # the state bonus (0.4 action + 0.1 substring = 0.5), proving the STATIC
+    # path still credits an unchanged-vs-target world the opposite way from LIVE.
+    unmatched = _result(state_hash_match=False, agent_actions=[action])
+    assert score_scenario(unmatched, scenario) == pytest.approx(0.5)

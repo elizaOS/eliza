@@ -6,9 +6,9 @@ from typing import Literal
 LocalTrainingBackend = Literal["mlx", "cuda", "cpu"]
 
 DEFAULT_LOCAL_MODELS: dict[LocalTrainingBackend, str] = {
-    "mlx": "mlx-community/Qwen3.5-4B-MLX-4bit",
-    "cuda": "Qwen/Qwen3.5-4B",
-    "cpu": "Qwen/Qwen3.5-4B",
+    "mlx": "mlx-community/gemma-4-e4b-it-4bit-MAD",
+    "cuda": "google/gemma-4-E2B",
+    "cpu": "google/gemma-4-E2B",
 }
 
 DEFAULT_LOCAL_MODEL_ENV_VARS: dict[LocalTrainingBackend, str] = {

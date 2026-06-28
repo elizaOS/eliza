@@ -521,7 +521,7 @@ export function normalizeNativeTools(tools: unknown): unknown[] | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function normalizeNativeToolChoice(toolChoice: unknown): unknown {
+export function normalizeNativeToolChoice(toolChoice: unknown): unknown {
   if (!toolChoice) {
     return undefined;
   }
@@ -535,7 +535,17 @@ function normalizeNativeToolChoice(toolChoice: unknown): unknown {
 
   const choice = asRecord(toolChoice);
   if (choice.type === "function") {
-    return toolChoice;
+    const functionChoice = recordAt(choice, "function");
+    const toolName = firstString(functionChoice.name, choice.name, choice.toolName);
+    return toolName
+      ? {
+          type: "function",
+          function: {
+            ...functionChoice,
+            name: toolName,
+          },
+        }
+      : undefined;
   }
   if (choice.type === "tool") {
     const toolName = firstString(choice.toolName, choice.name);
@@ -685,6 +695,19 @@ function buildNativeRequestBody(
 
   if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
+  }
+  // cerebras gpt-oss runs a hidden-reasoning pass before answering even when the
+  // caller wants none — measured ~4s/call vs ~0.7s with reasoning suppressed. The
+  // runtime signals "don't reason" via providerOptions.eliza.thinking="off" (e.g.
+  // the Stage-1 RESPONSE_HANDLER formatting call), but resolveNativeProviderOptions
+  // drops the eliza block, so it never reached the wire. Honor it as cerebras's
+  // reasoning_effort:"low". Cerebras-gated (the plugin's isReasoningModel does NOT
+  // match gpt-oss); other providers ignore the field.
+  if (
+    isCerebrasServedModel(modelName) &&
+    recordAt(asRecord(params.providerOptions), "eliza").thinking === "off"
+  ) {
+    requestBody.reasoning_effort = "low";
   }
   if (tools) {
     requestBody.tools = tools;
@@ -1222,6 +1245,31 @@ interface StreamingToolCallAcc {
   args: string;
 }
 
+/**
+ * True when `value` is one complete, self-contained JSON object (it parses and
+ * is a plain object — not an array or scalar). Used to recognise Cerebras's
+ * final aggregated tool-call frame, which re-sends the whole arguments object
+ * rather than the next incremental fragment.
+ *
+ * Parsing (not brace-counting) is load-bearing: a proper prefix of a single
+ * JSON object never itself parses as complete — the outer `{` stays open even
+ * when an inner `}` arrives mid-stream (e.g. `{"a":{"b":1}`) — so this only
+ * becomes true once the WHOLE object has arrived, which is exactly the resend
+ * boundary. A brace counter would be fooled by that inner close.
+ */
+function isCompleteJsonObject(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) return false;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return (
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Fold one SSE `delta.tool_calls[]` array into the per-index accumulator. */
 export function accumulateToolCallDeltas(
   acc: Map<number, StreamingToolCallAcc>,
@@ -1237,7 +1285,22 @@ export function accumulateToolCallDeltas(
     const fn = recordAt(d, "function");
     const name = firstString(fn.name);
     if (name) cur.name = name;
-    if (typeof fn.arguments === "string") cur.args += fn.arguments;
+    if (typeof fn.arguments === "string") {
+      // Cerebras streams the tool-call arguments incrementally, then emits a
+      // FINAL aggregated frame that re-sends the COMPLETE arguments object
+      // (re-carrying id + name). Blindly appending that re-send doubles the
+      // JSON (`{…}{…}`); downstream parsing can only recover when both copies
+      // are byte-identical, and the cloud character ("lowercase naturally")
+      // makes the copies diverge on casing — dead-ending terse replies. When
+      // the accumulated args AND the incoming fragment are each a complete,
+      // self-contained object the incoming is the authoritative full copy:
+      // replace rather than concatenate.
+      if (isCompleteJsonObject(cur.args) && isCompleteJsonObject(fn.arguments)) {
+        cur.args = fn.arguments;
+      } else {
+        cur.args += fn.arguments;
+      }
+    }
     acc.set(index, cur);
   }
 }

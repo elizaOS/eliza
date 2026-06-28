@@ -1,7 +1,7 @@
 """CPU-friendly smoke tests for the APOLLO optimizer factories.
 
 The full GPU-bound integration test lives in `test_apollo.py` (loads a real
-Qwen on CUDA). This file pins the small invariants we can verify without
+Gemma base on CUDA). This file pins the small invariants we can verify without
 a GPU: param-group classification, optimizer-state shrinkage on a tiny
 synthetic model, and `optimizer_state_bytes` correctness.
 

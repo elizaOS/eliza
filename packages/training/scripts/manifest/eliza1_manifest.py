@@ -40,7 +40,7 @@ ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
 # Tokenizer identity for the Gemma 4 Eliza-1 line. Mirrors schema.ts
 # (ELIZA_1_TOKENIZER_FAMILY / ELIZA_1_TOKENIZER_VOCAB_SIZE). Stamped into the
 # emitted manifest by build_manifest() so the bundle records its tokenizer.
-ELIZA_1_TOKENIZER_FAMILY: Final[str] = "gemma"
+ELIZA_1_TOKENIZER_FAMILY: Final[str] = "gemma4"
 ELIZA_1_TOKENIZER_VOCAB_SIZE: Final[int] = 262_144
 
 # Gemma 4 KV-cache policy (MQA + windowed-SWA + shared-KV → stock q8_0; no
@@ -121,18 +121,18 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
     "vision",
     "drafter",
 )
-QWEN3_ASR_GGUF_REPOS: Final[tuple[str, ...]] = (
+RETIRED_QWEN3_ASR_GGUF_REPOS: Final[tuple[str, ...]] = (
     "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "ggml-org/Qwen3-ASR-1.7B-GGUF",
 )
-QWEN3_EMBEDDING_GGUF_REPOS: Final[tuple[str, ...]] = (
+RETIRED_QWEN3_EMBEDDING_GGUF_REPOS: Final[tuple[str, ...]] = (
     "Qwen/Qwen3-Embedding-0.6B-GGUF",
     "Qwen/Qwen3-Embedding-4B-GGUF",
     "Qwen/Qwen3-Embedding-8B-GGUF",
 )
-QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
-    "asr": QWEN3_ASR_GGUF_REPOS,
-    "embedding": QWEN3_EMBEDDING_GGUF_REPOS,
+RETIRED_QWEN3_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
+    "asr": RETIRED_QWEN3_ASR_GGUF_REPOS,
+    "embedding": RETIRED_QWEN3_EMBEDDING_GGUF_REPOS,
 }
 CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "2b": (
@@ -1191,7 +1191,7 @@ def validate_manifest(
                             f"provenance.sourceModels.{slot}.repo: required non-empty string"
                         )
                     elif rs == "base-v1":
-                        repo_error = canonical_qwen_source_repo_error(
+                        repo_error = canonical_source_repo_error(
                             slot, repo, tier=manifest.get("tier")
                         )
                         if repo_error is not None:
@@ -1437,24 +1437,38 @@ def validate_manifest(
     return tuple(errors)
 
 
-def canonical_qwen_source_repo_error(
+def canonical_source_repo_error(
     slot: str,
     repo: str,
     *,
     tier: str | None = None,
 ) -> str | None:
-    """Return an error for known Qwen ASR/embedding provenance misspellings.
+    """Return an error for non-canonical base-v1 source repositories.
 
-    All text tiers (2b/4b/9b/27b) are Gemma 4. ASR and embedding are separate
-    Qwen3 components with their own published GGUF repos. The release pipeline
-    must not invent matching Gemma 4 ASR/embedding names.
+    All text tiers (2b/4b/9b/27b) are Gemma 4. ASR and dedicated embedding
+    release sources are deliberately fail-closed until verified
+    Gemma-compatible GGUF artifacts are configured.
     """
 
     if slot == "text" and isinstance(tier, str):
         allowed = CANONICAL_TEXT_SOURCE_REPOS_BY_TIER.get(tier)
     else:
-        allowed = QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT.get(slot)
+        allowed = None
     if allowed is None or repo in allowed:
+        if slot in RETIRED_QWEN3_SOURCE_REPOS_BY_SLOT:
+            retired = RETIRED_QWEN3_SOURCE_REPOS_BY_SLOT[slot]
+            if repo in retired or "qwen" in repo.lower():
+                retired_list = ", ".join(retired)
+                return (
+                    f"uses retired Qwen {slot} provenance [{retired_list}], "
+                    f"got {repo!r}; active Gemma base-v1 releases require a "
+                    "verified Gemma-compatible source"
+                )
+            return (
+                f"has no canonical Gemma-compatible {slot} source configured "
+                f"yet, got {repo!r}; keep this bundle as base-v1-candidate "
+                "until release-shaped artifacts are hosted and verified"
+            )
         return None
     allowed_list = ", ".join(allowed)
     return (

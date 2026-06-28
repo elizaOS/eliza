@@ -7,7 +7,7 @@ export default {
     viewId: "contacts",
     entry: "./src/components/contacts-view-bundle.ts",
     outDir: "dist/views",
-    componentExport: "ContactsAppView",
+    componentExport: "ContactsView",
   }),
   resolve: {
     alias: {

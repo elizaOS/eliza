@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { RegistryAppInfo } from "../api";
 import type { ViewRegistryEntry } from "./useAvailableViews";
-import { mergeViewCatalog, type ViewModality } from "./view-catalog";
+import {
+  collapseViewEntries,
+  mergeViewCatalog,
+  type ViewEntry,
+  type ViewModality,
+  viewToEntry,
+} from "./view-catalog";
 
 function makeView(
   id: string,
@@ -38,39 +44,154 @@ function merge(
   });
 }
 
+describe("viewToEntry", () => {
+  it("uses generated local art for icon-only loaded views", () => {
+    const entry = viewToEntry(
+      makeView("notes", {
+        icon: "StickyNote",
+        hasHeroImage: false,
+      }),
+    );
+    expect(entry.hasHero).toBe(false);
+    expect(entry.imageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(entry.fallbackImageUrl).toBe(entry.imageUrl);
+    expect(entry.icon).toBe("StickyNote");
+  });
+
+  it("does not render backend hero URLs without a declared real hero asset", () => {
+    const entry = viewToEntry(
+      makeView("notes", {
+        icon: "StickyNote",
+        heroImageUrl: "/api/views/notes/hero",
+        hasHeroImage: false,
+      }),
+    );
+    expect(entry.hasHero).toBe(false);
+    expect(entry.heroUrl).toBeUndefined();
+    expect(entry.imageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(entry.imageUrl).not.toBe("/api/views/notes/hero");
+    expect(entry.fallbackImageUrl).toBe(entry.imageUrl);
+    expect(entry.icon).toBe("StickyNote");
+  });
+
+  it("uses concrete registry hero URLs when a loaded view provides one", () => {
+    const entry = viewToEntry(
+      makeView("notes", {
+        heroImageUrl: "/api/views/notes/hero",
+        hasHeroImage: true,
+      }),
+    );
+    expect(entry.hasHero).toBe(true);
+    expect(entry.heroUrl).toBe("/api/views/notes/hero");
+    expect(entry.imageUrl).toBe("/api/views/notes/hero");
+  });
+});
+
 describe("mergeViewCatalog", () => {
   it("marks loaded views as Open (loaded) and not-loaded catalog apps as Get (available)", () => {
     const entries = merge({
       views: [makeView("chat", { pluginName: "@elizaos/builtin" })],
       catalog: [
         makeApp({
-          name: "@elizaos/plugin-clawville",
-          displayName: "ClawVille",
+          name: "@elizaos/plugin-arcade",
+          displayName: "Arcade",
           category: "game",
-          heroImage: "/api/apps/hero/clawville",
+          // A root-relative `/api/...` hero 404s on native, so it is NOT a
+          // reachable hero — the entry uses the branded client SVG instead.
+          heroImage: "/api/apps/hero/arcade",
         }),
       ],
     });
     const chat = entries.find((e) => e.id === "chat");
-    const claw = entries.find((e) => e.appName === "@elizaos/plugin-clawville");
+    const claw = entries.find((e) => e.appName === "@elizaos/plugin-arcade");
     expect(chat?.state).toBe("loaded");
     expect(chat?.kind).toBe("view");
     expect(claw?.state).toBe("available");
     expect(claw?.kind).toBe("app");
-    expect(claw?.label).toBe("ClawVille");
-    expect(claw?.heroUrl).toBe("/api/apps/hero/clawville");
+    expect(claw?.label).toBe("Arcade");
+    // A root-relative API hero is not shell-reachable → use the bundled icon
+    // (a preloaded PNG data URI) so the tile never 404s on native.
+    expect(claw?.heroUrl).toBeUndefined();
     expect(claw?.hasHero).toBe(true);
+    expect(claw?.imageUrl).toMatch(/^data:image\/png/);
+    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/png/);
+  });
+
+  it("uses an absolute (shell-reachable) app hero as the real tile image", () => {
+    const entries = merge({
+      catalog: [
+        makeApp({
+          name: "@elizaos/plugin-arcade",
+          displayName: "Arcade",
+          heroImage: "https://cdn.example.com/arcade.png",
+        }),
+      ],
+    });
+    const claw = entries.find((e) => e.appName === "@elizaos/plugin-arcade");
+    // An absolute URL loads in any shell, so it is the real hero + primary image.
+    expect(claw?.hasHero).toBe(true);
+    expect(claw?.heroUrl).toBe("https://cdn.example.com/arcade.png");
+    expect(claw?.imageUrl).toBe("https://cdn.example.com/arcade.png");
+    // The fallback is still the branded SVG for an onError recovery.
+    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/png/);
+  });
+
+  it("generates branded image fallbacks for entries without real hero art", () => {
+    const entries = merge({
+      views: [makeView("calendar", { label: "Calendar" })],
+      catalog: [
+        makeApp({ name: "@elizaos/plugin-notes", displayName: "Notes" }),
+      ],
+    });
+
+    const calendar = entries.find((e) => e.id === "calendar");
+    const notes = entries.find((e) => e.id === "@elizaos/plugin-notes");
+    expect(calendar?.heroUrl).toBeUndefined();
+    expect(calendar?.imageUrl).toMatch(/^data:image\/png/);
+    expect(calendar?.fallbackImageUrl).toMatch(/^data:image\/png/);
+    expect(notes?.heroUrl).toBeUndefined();
+    expect(notes?.imageUrl).toMatch(/^data:image\/png/);
+    expect(notes?.fallbackImageUrl).toMatch(/^data:image\/png/);
+  });
+});
+
+describe("viewToEntry uses bundled icons (native 404 fix)", () => {
+  it("uses the bundled preloaded icon, never the /api hero, when no real hero exists", () => {
+    const entry = viewToEntry(
+      makeView("calendar", {
+        label: "Calendar",
+        hasHeroImage: false,
+        heroImageUrl: "/api/views/calendar/hero",
+      }),
+    );
+    expect(entry.hasHero).toBe(true);
+    expect(entry.heroUrl).toBeUndefined();
+    expect(entry.imageUrl).toMatch(/^data:image\/png/);
+    expect(entry.imageUrl).not.toBe("/api/views/calendar/hero");
+  });
+
+  it("ALWAYS uses the bundled icon for a view, even when the agent reports a real hero (the /api path 404s on native)", () => {
+    const entry = viewToEntry(
+      makeView("notes", {
+        label: "Notes",
+        hasHeroImage: true,
+        heroImageUrl: "/api/views/notes/hero",
+      }),
+    );
+    expect(entry.hasHero).toBe(true);
+    expect(entry.heroUrl).toBeUndefined();
+    expect(entry.imageUrl).toMatch(/^data:image\/png/);
+    expect(entry.imageUrl).not.toBe("/api/views/notes/hero");
+    expect(entry.fallbackImageUrl).toMatch(/^data:image\/png/);
   });
 
   it("dedupes: a catalog app whose plugin is already a loaded view is not shown twice", () => {
     const entries = merge({
-      views: [
-        makeView("clawville", { pluginName: "@elizaos/plugin-clawville" }),
-      ],
+      views: [makeView("arcade", { pluginName: "@elizaos/plugin-arcade" })],
       catalog: [
         makeApp({
-          name: "@elizaos/plugin-clawville",
-          displayName: "ClawVille",
+          name: "@elizaos/plugin-arcade",
+          displayName: "Arcade",
         }),
       ],
     });
@@ -150,7 +271,7 @@ describe("mergeViewCatalog", () => {
         makeView("spatial", { viewType: "xr" }),
         makeView("chat", { viewType: "gui" }),
       ],
-      catalog: [makeApp({ name: "@elizaos/plugin-clawville" })],
+      catalog: [makeApp({ name: "@elizaos/plugin-arcade" })],
     });
     expect(entries.map((e) => e.id)).toEqual(["spatial"]);
   });
@@ -164,5 +285,52 @@ describe("mergeViewCatalog", () => {
       ],
     });
     expect(entries.map((e) => e.id)).toEqual(["a"]);
+  });
+});
+
+function viewEntry(id: string, patch: Partial<ViewEntry> = {}): ViewEntry {
+  return {
+    key: `view:${id}`,
+    id,
+    label: id,
+    hasHero: false,
+    modality: "gui",
+    state: "loaded",
+    kind: "view",
+    ...patch,
+  };
+}
+
+describe("collapseViewEntries", () => {
+  it("collapses same-id gui/xr/tui entries into one with the surface union", () => {
+    const collapsed = collapseViewEntries([
+      viewEntry("phone", { label: "Phone", modality: "gui" }),
+      viewEntry("phone", { label: "Phone XR", modality: "xr" }),
+      viewEntry("phone", { label: "Phone TUI", modality: "tui" }),
+    ]);
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0].label).toBe("Phone");
+    expect(collapsed[0].modalities).toEqual(["gui", "xr", "tui"]);
+  });
+
+  it("prefers the gui entry as the base even when it arrives last", () => {
+    const collapsed = collapseViewEntries([
+      viewEntry("phone", { label: "Phone TUI", modality: "tui" }),
+      viewEntry("phone", { label: "Phone", modality: "gui" }),
+    ]);
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0].label).toBe("Phone");
+    expect(collapsed[0].modalities).toEqual(["gui", "tui"]);
+  });
+
+  it("preserves first-seen order and leaves app entries (unique ids) untouched", () => {
+    const collapsed = collapseViewEntries([
+      viewEntry("wallet", { modality: "gui" }),
+      { ...viewEntry("@x/app"), kind: "app", appName: "@x/app" },
+      viewEntry("wallet", { modality: "tui" }),
+    ]);
+    expect(collapsed.map((e) => e.id)).toEqual(["wallet", "@x/app"]);
+    expect(collapsed[0].modalities).toEqual(["gui", "tui"]);
+    expect(collapsed[1].modalities).toEqual(["gui"]);
   });
 });

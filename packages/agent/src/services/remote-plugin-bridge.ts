@@ -665,12 +665,11 @@ export class RemotePluginBridge {
         for (const method of descriptor.rpcMethods) {
           const id = methodIdMap.get(method);
           if (!id) continue;
-          (this as unknown as Record<string, unknown>)[method] = async (
-            ...callArgs: unknown[]
-          ) =>
+          Reflect.set(this, method, async (...callArgs: unknown[]) =>
             bridge.workerRpc("service", id, {
               args: callArgs.map((a) => bridge.normalize(a)),
-            });
+            }),
+          );
         }
       }
       async stop(): Promise<void> {
@@ -836,7 +835,7 @@ export class RemotePluginBridge {
         const memory = await this.runtime.getMemoryById(
           memoryId as Parameters<IAgentRuntime["getMemoryById"]>[0],
         );
-        return (memory ?? null) as unknown as JsonValue;
+        return JSON.parse(JSON.stringify(memory ?? null)) as JsonValue;
       }
       case "createMemory": {
         const memory = args.memory as JsonValue;
@@ -882,7 +881,7 @@ export class RemotePluginBridge {
       case "composeState": {
         const memory = args.message as unknown as Memory;
         const result = await this.runtime.composeState(memory);
-        return (result ?? null) as unknown as JsonValue;
+        return JSON.parse(JSON.stringify(result ?? null)) as JsonValue;
       }
       default:
         throw new Error(

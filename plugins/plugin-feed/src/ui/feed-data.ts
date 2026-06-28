@@ -3,7 +3,7 @@ import type {
   FeedAgentStatus,
   FeedChatMessage,
   FeedTeamAgent,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/ui-compat";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -88,9 +88,7 @@ function booleanField(record: Record<string, unknown>, key: string): boolean {
   return record[key] === true;
 }
 
-function extractAgentStatus(
-  value: unknown,
-): FeedAgentSummaryEnvelope["agent"] {
+function extractAgentStatus(value: unknown): FeedAgentSummaryEnvelope["agent"] {
   const record = asRecord(value);
   if (!record) return undefined;
   return {
@@ -161,9 +159,7 @@ export function summarizeFeedActivity(item: FeedActivityItem): string {
 export function extractTeamDashboard(value: unknown): FeedTeamDashboard {
   const data = asRecord(value);
   return {
-    agents: Array.isArray(data?.agents)
-      ? (data.agents as FeedTeamAgent[])
-      : [],
+    agents: Array.isArray(data?.agents) ? (data.agents as FeedTeamAgent[]) : [],
     summary: asRecord(data?.summary) as FeedTeamSummary | null,
   };
 }
@@ -181,9 +177,7 @@ export function extractTeamConversations(
   };
 }
 
-export function extractAgentSummary(
-  value: unknown,
-): FeedAgentSummaryEnvelope {
+export function extractAgentSummary(value: unknown): FeedAgentSummaryEnvelope {
   const data = asRecord(value);
   return {
     agent: extractAgentStatus(data?.agent),

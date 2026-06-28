@@ -37,7 +37,7 @@ export {
   MONEY_PARAMETERS,
   MONEY_TAGS,
   OWNER_FINANCE_SIMILES,
-} from "@elizaos/plugin-finances";
+} from "@elizaos/plugin-finances/actions/finances";
 
 function readPlannerParams(
   options: HandlerOptions | undefined,

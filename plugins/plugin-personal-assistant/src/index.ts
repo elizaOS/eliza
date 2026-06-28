@@ -1,7 +1,7 @@
+export { getAppBlockerStatus } from "@elizaos/plugin-blocker/services/app-blocker/index";
 export {
   buildSelfControlBlockPolicy,
   formatWebsiteList,
-  getAppBlockerStatus,
   getCachedSelfControlStatus,
   getSelfControlPluginConfig,
   isWebsiteBlockedByPolicy,
@@ -13,7 +13,7 @@ export {
   type SelfControlBlockMatchMode,
   type SelfControlBlockMetadata,
   type SelfControlBlockPolicy,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
 export {
   handleTravelProviderRelayRoute,
   type TravelProviderRelayRouteState,
@@ -54,6 +54,12 @@ export {
 } from "./lifeops/approval-queue.js";
 export * from "./lifeops/index.js";
 export * from "./lifeops/messaging/index.js";
+export {
+  BRIEF_NARRATIVE_INSTRUCTIONS,
+  MEETING_PREP_INSTRUCTIONS,
+  REMINDER_DISPATCH_INSTRUCTIONS,
+  SCHEDULE_PLAN_INSTRUCTIONS,
+} from "./lifeops/optimized-prompt-instructions.js";
 export { LifeOpsRepository } from "./lifeops/repository.js";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 export * from "./platform/index.js";
@@ -124,14 +130,3 @@ export {
   WebsiteBlockerService,
   websiteBlockerProvider,
 } from "./website-blocker/public.js";
-
-// In a terminal host (the Node agent, no DOM), register the LifeOps view so it
-// renders inline in the terminal. Lazy + DOM-guarded so the terminal engine
-// stays out of browser/mobile bundles.
-if (typeof window === "undefined") {
-  void import("./register-terminal-view.js")
-    .then((m) => m.registerLifeOpsTerminalView())
-    .catch(() => {
-      // Terminal rendering is best-effort; never block plugin load.
-    });
-}

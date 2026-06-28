@@ -21,6 +21,7 @@ import {
   resolveTwitterAccountConfig,
 } from "../client/accounts.js";
 import { SearchMode } from "../client/index.js";
+import { materializeEnvAccountIfMissing } from "../connector-account-provider.js";
 import { TwitterDiscoveryClient } from "../discovery";
 import { validateTwitterConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
@@ -303,6 +304,13 @@ export class XService extends Service {
     service.runtime = runtime;
 
     try {
+      const authMode = (
+        getSetting(runtime, "TWITTER_AUTH_MODE") || "env"
+      ).toLowerCase();
+      if (authMode === "env") {
+        await materializeEnvAccountIfMissing(runtime);
+      }
+
       const defaultState = await resolveTwitterAccountConfig(runtime);
       await validateTwitterConfig(runtime, defaultState);
       service.defaultAccountId = resolveDefaultXAccountId(

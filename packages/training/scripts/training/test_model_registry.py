@@ -116,6 +116,8 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("google/gemma-4-31B").short_name == "gemma4-31b"
     assert get("eliza-1-27b").short_name == "gemma4-31b"
     assert get("27b").short_name == "gemma4-31b"
+    assert get("27b-256k").short_name == "gemma4-31b"
+    assert get("eliza-1-27b-256k").short_name == "gemma4-31b"
 
 
 def test_no_qwen3_6_fallback_aliases() -> None:
@@ -135,14 +137,13 @@ def test_no_qwen3_6_fallback_aliases() -> None:
 
 
 def test_mtp_drafter_base_is_gemma4_separate_drafter() -> None:
-    # Gemma 4 ships OFFICIAL SEPARATE drafter models (a distinct GGUF per
-    # target tier), not a same-file NextN head. Each eliza tier drafts from
-    # its own Gemma 4 drafter. Mirrors DEFAULT_STUDENT_BASE in
-    # scripts/distill_mtp_drafter.py.
-    assert MTP_DRAFTER_BASE["eliza-1-2b"] == "google/gemma-4-E2B-mtp"
-    assert MTP_DRAFTER_BASE["eliza-1-4b"] == "google/gemma-4-E4B-mtp"
-    assert MTP_DRAFTER_BASE["eliza-1-9b"] == "google/gemma-4-12B-mtp"
-    assert MTP_DRAFTER_BASE["eliza-1-27b"] == "google/gemma-4-31B-mtp"
+    # Gemma 4 ships OFFICIAL SEPARATE assistant/MTP drafter models (a distinct
+    # GGUF per target tier), not a same-file NextN head. Each eliza tier drafts
+    # from its own Gemma 4 `*-it-assistant` checkpoint.
+    assert MTP_DRAFTER_BASE["eliza-1-2b"] == "google/gemma-4-E2B-it-assistant"
+    assert MTP_DRAFTER_BASE["eliza-1-4b"] == "google/gemma-4-E4B-it-assistant"
+    assert MTP_DRAFTER_BASE["eliza-1-9b"] == "google/gemma-4-12B-it-assistant"
+    assert MTP_DRAFTER_BASE["eliza-1-27b"] == "google/gemma-4-31B-it-assistant"
     for base in MTP_DRAFTER_BASE.values():
         assert base.startswith("google/gemma-4-")
     # Retired tiers have no drafter entries.

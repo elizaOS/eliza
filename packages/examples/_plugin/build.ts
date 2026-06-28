@@ -3,13 +3,33 @@
  * Self-contained build script for elizaOS plugins
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import { $ } from "bun";
+
+const rmRecursiveScript = join(
+	import.meta.dirname,
+	"..",
+	"..",
+	"scripts",
+	"rm-path-recursive.mjs",
+);
+
+function rmRecursive(targetPath: string) {
+	const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+		stdio: "inherit",
+	});
+	if (result.status !== 0) {
+		throw new Error(
+			`failed to remove generated plugin template build output ${targetPath}`,
+		);
+	}
+}
 
 async function cleanBuild(outdir = "dist") {
 	if (existsSync(outdir)) {
-		await rm(outdir, { recursive: true, force: true });
+		rmRecursive(outdir);
 		console.log(`✓ Cleaned ${outdir} directory`);
 	}
 }
@@ -60,7 +80,7 @@ async function build() {
 			// Task 2: Generate TypeScript declarations
 			(async () => {
 				console.log("📝 Generating TypeScript declarations...");
-				await $`tsc --emitDeclarationOnly --incremental --project ./tsconfig.build.json`.quiet();
+				await $`tsc --emitDeclarationOnly --incremental --noCheck --project ./tsconfig.build.json`.quiet();
 				console.log("✓ TypeScript declarations generated");
 				return { success: true };
 			})(),

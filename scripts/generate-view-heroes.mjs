@@ -8,8 +8,8 @@
  * The art itself (frame, palette, icon glyphs) is the shared, single source of
  * truth in `@elizaos/shared` (`view-hero-art.ts`) — the same generator the
  * agent uses for its runtime hero fallback and that view scaffolding uses to
- * seed a new plugin's icon. This script only owns the per-view config (which
- * plugin, hue, and glyph) and writes the committed asset files.
+ * seed a new plugin's icon. This script owns curated fallback config and checks
+ * the full manifest-derived app catalog so hero omissions cannot silently ship.
  *
  * Output is deterministic: re-running produces byte-identical files. Run with
  * `node scripts/generate-view-heroes.mjs` (requires `@elizaos/shared` built).
@@ -57,9 +57,9 @@ function pluginHasHeroAsset(pluginDir) {
 }
 
 /**
- * Per-view config. Hues are hand-spread across warm/jewel tones (orange, amber,
- * rose, magenta, violet, teal, green) so the catalog reads as a varied spectrum
- * while staying cohesive. None lands on pure blue (~210–250) as the dominant.
+ * Curated fallback config. The manifest coverage check below is the source of
+ * truth for completeness; this list controls generated art for app plugins that
+ * need a committed fallback hero.
  */
 const views = [
   {
@@ -89,6 +89,13 @@ const views = [
     label: "Calendar",
     hue: 12,
     icon: VIEW_HERO_ICONS.calendar,
+  },
+  {
+    out: "plugins/plugin-native-settings/assets/hero.svg",
+    id: "device-settings",
+    label: "Device Settings",
+    hue: 96,
+    icon: VIEW_HERO_ICONS.views,
   },
   {
     out: "plugins/plugin-facewear/assets/hero-facewear.svg",
@@ -204,13 +211,14 @@ async function main() {
     `\nManifest scan: ${appPlugins.length} app plugins, ${appPlugins.length - missing.length} with a hero asset.`,
   );
   if (missing.length > 0) {
-    console.warn(
+    console.error(
       `\n⚠️  ${missing.length} app plugin(s) declare a surface but ship no hero asset:\n${missing
         .map((d) => `  - plugins/${d}`)
         .join(
           "\n",
         )}\nAdd a curated entry above or commit plugins/<name>/assets/hero.svg.`,
     );
+    process.exitCode = 1;
   }
 }
 

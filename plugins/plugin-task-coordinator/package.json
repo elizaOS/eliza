@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-task-coordinator",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-commands": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
@@ -49,7 +50,8 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "rm -rf dist",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",

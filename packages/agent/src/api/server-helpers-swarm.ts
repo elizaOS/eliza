@@ -78,8 +78,8 @@ interface TaskCompletionSummary {
 // ---------------------------------------------------------------------------
 
 const CHAT_SUPPRESSED_AUTONOMY_SOURCES = new Set([
-  "lifeops-reminder",
-  "lifeops-workflow",
+  "reminder",
+  "workflow",
   "proactive-gm",
   "proactive-gn",
   "proactive-nudge",
@@ -600,7 +600,8 @@ function removeLocalPathReferences(
   let cleaned = replaceAttachedArtifactMarkdownLinks(text, attachments);
   const titles: string[] = [];
   for (const attachment of attachments) {
-    if (!attachment.url.startsWith("/")) continue;
+    // Absolute local path (POSIX "/…" or Windows "C:\…") — skip remote URLs.
+    if (!path.isAbsolute(attachment.url)) continue;
     const title = attachment.title || path.basename(attachment.url);
     titles.push(title);
     const escapedPath = escapeRegExp(attachment.url);
@@ -661,10 +662,19 @@ function replaceAttachedArtifactMarkdownLinks(
 
 function extractLocalArtifactPaths(text: string): string[] {
   const paths = new Set<string>();
-  for (const match of text.matchAll(/`(\/[^`\n]+)`/gu)) {
+  // Match absolute on-disk paths. On Windows also accept drive-rooted paths
+  // (C:\foo, C:/foo); POSIX keeps the original "/"-rooted behavior byte-for-byte.
+  // Without the Windows arm, artifacts produced on a Windows host (backslash,
+  // drive-letter paths) are never detected, so nothing is ever attached.
+  const win = process.platform === "win32";
+  const quoted = win ? /`((?:\/|[A-Za-z]:[\\/])[^`\n]+)`/gu : /`(\/[^`\n]+)`/gu;
+  const bare = win
+    ? /(?:^|\s)((?:\/|[A-Za-z]:[\\/])[^\s"'`<>|]+)/gmu
+    : /(?:^|\s)(\/[^\s"'`<>|]+)/gmu;
+  for (const match of text.matchAll(quoted)) {
     paths.add(match[1]);
   }
-  for (const match of text.matchAll(/(?:^|\s)(\/[^\s"'`<>|]+)/gmu)) {
+  for (const match of text.matchAll(bare)) {
     paths.add(match[1].replace(/[),.;:!?]+$/u, ""));
   }
   return [...paths];

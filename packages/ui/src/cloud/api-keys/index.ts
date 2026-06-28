@@ -28,7 +28,7 @@ import {
 export { ApiKeysSurface, default as ApiKeysRoute } from "./ApiKeysRoute";
 export { ApiKeysSection } from "./ApiKeysSection";
 export { ApiKeysView } from "./ApiKeysView";
-export { copyApiKeyPrefix, copyApiKeyToClipboard } from "./copy-api-key";
+export { copyApiKeyToClipboard } from "./copy-api-key";
 export {
   API_KEYS_QUERY_KEY,
   type ApiKeyRecord,

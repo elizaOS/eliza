@@ -206,11 +206,7 @@ Git:
 
 ## Run
 
-Build:
-
-```sh
-bun run --cwd elizalaunch/remotes/runtime build
-```
+Remotes run from source (the runtime loads `src/bun/worker.ts` / `src/web/index.html` directly); there is no build step.
 
 Phase 1 smoke:
 

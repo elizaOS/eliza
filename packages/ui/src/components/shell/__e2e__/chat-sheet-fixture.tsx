@@ -219,7 +219,7 @@ function Harness(): React.JSX.Element {
   // either fills the composer draft (dictate) or sends a VOICE_DM (converse),
   // routed by the active capture intent — exactly the two real directions.
   React.useEffect(() => {
-    const w = window as unknown as {
+    const w = window as {
       __emitDictation?: (t: string) => void;
       __emitVoiceFinal?: (t: string) => void;
     };
@@ -340,9 +340,9 @@ function Harness(): React.JSX.Element {
 }
 
 const root = document.getElementById("root");
-// Assistant turns render via MessageContent (through AssistantMessageBody), which
-// reads the app store + chat composer — wrap the headless harness in the mock app
-// provider so the rich segment pipeline resolves without the real shell.
+// Assistant turns render inline widgets and adjacent rich blocks that read the
+// app store + chat composer — wrap the headless harness in the mock app provider
+// so the segment pipeline resolves without the real shell.
 if (root)
   createRoot(root).render(
     <MockAppProvider>

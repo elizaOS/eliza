@@ -11,7 +11,7 @@ import benchmark_vs_cerebras as bench
 
 
 class _RegistryEntry:
-    eliza_short_name = "eliza-1-0_8b"
+    eliza_short_name = "eliza-1-2b"
     hf_id = "google/gemma-4-E2B-Base"
 
 
@@ -35,8 +35,8 @@ def _sample_results() -> list[dict]:
     return [
         {
             "tier": "gemma4-e2b",
-            "eliza_short_name": "eliza-1-0_8b",
-            "checkpoint": "/models/eliza-1-0_8b/final",
+            "eliza_short_name": "eliza-1-2b",
+            "checkpoint": "/models/eliza-1-2b/final",
             "benchmarks": {
                 "hermes": {
                     "tool_call_accuracy": 0.42,
@@ -57,9 +57,9 @@ def _sample_base_and_trained_results() -> list[dict]:
     return [
         {
             "tier": "gemma4-e2b",
-            "eliza_short_name": "eliza-1-0_8b",
+            "eliza_short_name": "eliza-1-2b",
             "base_model_id": "google/gemma-4-E2B-Base",
-            "checkpoint": "/models/eliza-1-0_8b/final",
+            "checkpoint": "/models/eliza-1-2b/final",
             "benchmarks": {
                 "hermes": {
                     "tool_call_accuracy": 0.52,
@@ -71,7 +71,7 @@ def _sample_base_and_trained_results() -> list[dict]:
                     "variant": "base",
                     "model_id": "google/gemma-4-E2B-Base",
                     "model_path": "google/gemma-4-E2B-Base",
-                    "tier": "0_8b",
+                    "tier": "2b",
                     "benchmarks": {
                         "hermes": {
                             "tool_call_accuracy": 0.41,
@@ -81,9 +81,9 @@ def _sample_base_and_trained_results() -> list[dict]:
                 },
                 {
                     "variant": "trained",
-                    "model_id": "eliza-1-0_8b",
-                    "model_path": "/models/eliza-1-0_8b/final",
-                    "tier": "0_8b",
+                    "model_id": "eliza-1-2b",
+                    "model_path": "/models/eliza-1-2b/final",
+                    "tier": "2b",
                     "benchmarks": {
                         "hermes": {
                             "tool_call_accuracy": 0.52,
@@ -118,7 +118,7 @@ def test_record_results_to_store_writes_trained_and_reference_rows(tmp_path: Pat
     store = ResultsStore(db_path=db_path)
     try:
         trained = store.get_history(
-            model_id="eliza-1-0_8b",
+            model_id="eliza-1-2b",
             benchmark="hermes",
             limit=1,
         )[0]
@@ -133,7 +133,7 @@ def test_record_results_to_store_writes_trained_and_reference_rows(tmp_path: Pat
     assert trained.score == 0.42
     assert trained.dataset_version == "eliza-native-v1"
     assert trained.raw()["variant"] == "trained"
-    assert trained.raw()["tier"] == "0_8b"
+    assert trained.raw()["tier"] == "2b"
     assert reference.score == 0.88
     assert reference.raw()["variant"] == "reference"
     assert reference.raw()["provider"] == "cerebras"
@@ -150,7 +150,7 @@ def test_write_matrix_artifact_from_run_results(tmp_path: Path) -> None:
     assert artifact["schema"] == "eliza_benchmark_matrix_artifact"
     assert artifact["counts"]["rows"] == 2
     assert artifact["referenceModelId"] == "cerebras/gpt-oss-120b"
-    assert artifact["comparisons"][0]["tier"] == "0_8b"
+    assert artifact["comparisons"][0]["tier"] == "2b"
     assert artifact["comparisons"][0]["trainedScore"] == 0.42
     assert artifact["comparisons"][0]["referenceScore"] == 0.88
 
@@ -165,15 +165,15 @@ def test_matrix_rows_include_base_and_trained_variants() -> None:
         {
             "modelId": "google/gemma-4-E2B-Base",
             "variant": "base",
-            "tier": "0_8b",
+            "tier": "2b",
             "benchmark": "hermes",
             "score": 0.41,
             "raw": {"tool_call_accuracy": 0.41, "raw_summary": {"buckets": {}}},
         },
         {
-            "modelId": "eliza-1-0_8b",
+            "modelId": "eliza-1-2b",
             "variant": "trained",
-            "tier": "0_8b",
+            "tier": "2b",
             "benchmark": "hermes",
             "score": 0.52,
             "raw": {"tool_call_accuracy": 0.52, "raw_summary": {"buckets": {}}},
@@ -186,7 +186,7 @@ def test_matrix_rows_preserve_dry_run_attempts() -> None:
         [
             {
                 "tier": "gemma4-e2b",
-                "eliza_short_name": "eliza-1-0_8b",
+                "eliza_short_name": "eliza-1-2b",
                 "base_model_id": "google/gemma-4-E2B-Base",
                 "checkpoint": None,
                 "variant_results": [
@@ -194,7 +194,7 @@ def test_matrix_rows_preserve_dry_run_attempts() -> None:
                         "variant": "base",
                         "model_id": "google/gemma-4-E2B-Base",
                         "model_path": "google/gemma-4-E2B-Base",
-                        "tier": "0_8b",
+                        "tier": "2b",
                         "benchmarks": {
                             "eliza_harness_action_selection": {
                                 "tool_call_accuracy": None,
@@ -214,7 +214,7 @@ def test_matrix_rows_preserve_dry_run_attempts() -> None:
         {
             "modelId": "google/gemma-4-E2B-Base",
             "variant": "base",
-            "tier": "0_8b",
+            "tier": "2b",
             "benchmark": "eliza_harness_action_selection",
             "score": 0.0,
             "metrics": {"dryRun": True},
@@ -228,7 +228,7 @@ def test_matrix_rows_preserve_dry_run_attempts() -> None:
             "modelId": "cerebras/gpt-oss-120b",
             "variant": "reference",
             "provider": "cerebras",
-            "tier": "0_8b",
+            "tier": "2b",
             "benchmark": "eliza_harness_action_selection",
             "score": 0.0,
             "metrics": {"dryRun": True},
@@ -265,14 +265,14 @@ def test_benchmark_tier_dry_run_preserves_trained_variant_without_checkpoint(
         variants="both",
     )
 
-    assert calls == ["google/gemma-4-E2B-Base", "eliza-1-0_8b"]
+    assert calls == ["google/gemma-4-E2B-Base", "eliza-1-2b"]
     assert result["error"] == "no checkpoint found"
     assert [row["variant"] for row in result["variant_results"]] == [
         "base",
         "trained",
     ]
-    assert result["variant_results"][1]["model_id"] == "eliza-1-0_8b"
-    assert result["variant_results"][1]["model_path"] == "eliza-1-0_8b"
+    assert result["variant_results"][1]["model_id"] == "eliza-1-2b"
+    assert result["variant_results"][1]["model_path"] == "eliza-1-2b"
 
 
 def test_matrix_artifact_preserves_live_reference_without_local_variant(
@@ -282,7 +282,7 @@ def test_matrix_artifact_preserves_live_reference_without_local_variant(
         [
             {
                 "tier": "gemma4-e2b",
-                "eliza_short_name": "eliza-1-0_8b",
+                "eliza_short_name": "eliza-1-2b",
                 "checkpoint": None,
                 "requested_benchmarks": ["eliza_harness_action_selection"],
                 "variant_results": [],
@@ -302,7 +302,7 @@ def test_matrix_artifact_preserves_live_reference_without_local_variant(
     artifact = json.loads(path.read_text())
     assert artifact["counts"]["rows"] == 1
     assert artifact["counts"]["comparisons"] == 1
-    assert artifact["comparisons"][0]["tier"] == "0_8b"
+    assert artifact["comparisons"][0]["tier"] == "2b"
     assert artifact["comparisons"][0]["baseScore"] is None
     assert artifact["comparisons"][0]["trainedScore"] is None
     assert artifact["comparisons"][0]["referenceScore"] == 1.0

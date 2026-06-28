@@ -47,7 +47,10 @@ function cannedResponse(): Response {
   );
 }
 
-async function captureResponseFormat(modelName: string): Promise<unknown> {
+async function captureBody(
+  modelName: string,
+  params: Record<string, unknown> = { responseSchema: RESPONSE_SCHEMA }
+): Promise<Record<string, unknown> | null> {
   let captured: Record<string, unknown> | null = null;
   vi.spyOn(globalThis, "fetch").mockImplementation(
     async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -61,11 +64,11 @@ async function captureResponseFormat(modelName: string): Promise<unknown> {
   await generateNativeChatCompletion(
     runtime(),
     "TEXT_SMALL",
-    { prompt: "hi", responseSchema: RESPONSE_SCHEMA } as never,
+    { prompt: "hi", ...params } as never,
     { modelName, prompt: "hi" }
   );
 
-  return (captured as Record<string, unknown> | null)?.response_format;
+  return captured;
 }
 
 describe("native /chat/completions response_format gate", () => {
@@ -78,15 +81,51 @@ describe("native /chat/completions response_format gate", () => {
   });
 
   it("emits json_object for cerebras-served gpt-oss models", async () => {
-    const responseFormat = await captureResponseFormat("gpt-oss-120b");
-    expect(responseFormat).toEqual({ type: "json_object" });
+    const body = await captureBody("gpt-oss-120b");
+    expect(body?.response_format).toEqual({ type: "json_object" });
   });
 
   it("keeps json_schema for non-cerebras models", async () => {
-    const responseFormat = await captureResponseFormat("zai-glm-4.7");
-    expect(responseFormat).toMatchObject({
+    const body = await captureBody("zai-glm-4.7");
+    expect(body?.response_format).toMatchObject({
       type: "json_schema",
       json_schema: { name: "reply_envelope" },
     });
+  });
+});
+
+/**
+ * gpt-oss runs a hidden reasoning pass before answering even when the caller
+ * wants none (~4s/call vs ~0.7s suppressed). The runtime asks for none via
+ * `providerOptions.eliza.thinking="off"`; the native request must translate that
+ * into cerebras's `reasoning_effort:"low"`. The knob is cerebras-only — other
+ * providers (e.g. zai-glm-4.7) ignore it, so it must not leak onto their wire.
+ */
+describe("native /chat/completions reasoning_effort gate", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("maps eliza.thinking=off to reasoning_effort:low for cerebras gpt-oss", async () => {
+    const body = await captureBody("gpt-oss-120b", {
+      providerOptions: { eliza: { thinking: "off" } },
+    });
+    expect(body?.reasoning_effort).toBe("low");
+  });
+
+  it("omits reasoning_effort when thinking is not suppressed", async () => {
+    const body = await captureBody("gpt-oss-120b", { providerOptions: {} });
+    expect(body?.reasoning_effort).toBeUndefined();
+  });
+
+  it("never sets reasoning_effort for non-cerebras models", async () => {
+    const body = await captureBody("zai-glm-4.7", {
+      providerOptions: { eliza: { thinking: "off" } },
+    });
+    expect(body?.reasoning_effort).toBeUndefined();
   });
 });

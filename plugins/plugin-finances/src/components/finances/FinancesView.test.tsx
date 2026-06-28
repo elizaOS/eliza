@@ -1,22 +1,32 @@
 // @vitest-environment jsdom
 
+/**
+ * Drives the unified FinancesView (the single GUI/XR data wrapper) through the
+ * rendered DOM: the same component the bundle exports for both the "gui" and
+ * "xr" modalities. It reads the four read-only money endpoints PA serves:
+ *   GET {base}/api/lifeops/money/dashboard | sources | transactions | recurring
+ *
+ * The default fetchers build URLs via `client.getBaseUrl()`; every test injects
+ * the `fetchers` seam so the suite stays offline. We assert the rendered spatial
+ * DOM across the four states (loading / error / empty / populated), the
+ * USD-float -> minor-units -> formatted-string boundary, the proactive line, the
+ * connect affordance routed through `client.sendChatMessage`, and the quiet
+ * background poll.
+ */
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `@elizaos/ui` is the giant renderer barrel; FinancesView only touches
 // `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
-// `client.sendChatMessage()` (connect affordance). `@elizaos/ui/agent-surface`
-// is mocked to an inert hook so the instrumented buttons render outside a
-// provider.
+// `client.sendChatMessage()` (connect + drill-down affordances). The spatial
+// primitives come from the separate `@elizaos/ui/spatial` subpath, not mocked.
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
 vi.mock("@elizaos/ui", () => ({
   client: {
     getBaseUrl: () => "http://test.local",
     sendChatMessage,
   },
-}));
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 
 import { type FinancesFetchers, FinancesView } from "./FinancesView.js";
@@ -100,28 +110,37 @@ function makeFetchers(
   };
 }
 
+function agent(agentId: string): HTMLElement {
+  const el = document.querySelector(`[data-agent-id="${agentId}"]`);
+  if (!el) throw new Error(`no element with data-agent-id="${agentId}"`);
+  return el as HTMLElement;
+}
+
 afterEach(() => {
   cleanup();
   sendChatMessage.mockClear();
 });
 
-describe("FinancesView", () => {
+describe("FinancesView — states", () => {
   it("shows the loading state while the first fetch is in flight", () => {
     const never = new Promise<never>(() => {});
     render(
       <FinancesView fetchers={makeFetchers({ fetchDashboard: () => never })} />,
     );
-    expect(screen.getByTestId("finances-loading")).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
   it("renders the populated dashboard with balance, transactions and recurring charges", async () => {
     render(<FinancesView fetchers={makeFetchers()} />);
-    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
-    expect(screen.getByTestId("finances-balance")).toBeTruthy();
-    expect(screen.getByTestId("finances-transactions")).toBeTruthy();
-    expect(screen.getByTestId("finances-recurring")).toBeTruthy();
-    expect(screen.getByText(/Coffee Bar|Latte/)).toBeTruthy();
-    expect(screen.getByText(/Netflix/)).toBeTruthy();
+    await screen.findByText("Latte");
+    // Pre-formatted strings (computed in the wrapper, not the spatial view).
+    expect(screen.getByText("$2,765.50")).toBeTruthy();
+    expect(screen.getByText("-$42.50")).toBeTruthy();
+    expect(screen.getByText("Netflix")).toBeTruthy();
+    expect(screen.getByText("$15.99")).toBeTruthy();
+    // Clickable rows are instrumented for the agent surface.
+    expect(agent("txn-tx-1")).toBeTruthy();
+    expect(agent("bill-netflix")).toBeTruthy();
   });
 
   it("tops the populated view with a quiet proactive note for a bill due this week", async () => {
@@ -144,10 +163,8 @@ describe("FinancesView", () => {
         })}
       />,
     );
-    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
-    expect(screen.getByTestId("finances-proactive-note").textContent).toMatch(
-      /1 bill due this week/,
-    );
+    await screen.findByText("Netflix");
+    expect(screen.getByText("1 bill due this week.")).toBeTruthy();
   });
 
   it("flags a negative balance over a due-soon bill (urgency precedence)", async () => {
@@ -182,10 +199,8 @@ describe("FinancesView", () => {
         })}
       />,
     );
-    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
-    expect(screen.getByTestId("finances-proactive-note").textContent).toMatch(
-      /Balance is negative/,
-    );
+    await screen.findByText("Netflix");
+    expect(screen.getByText(/Balance is negative/)).toBeTruthy();
   });
 
   it("renders no proactive note when nothing is due soon and the balance is healthy", async () => {
@@ -208,8 +223,9 @@ describe("FinancesView", () => {
         })}
       />,
     );
-    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
-    expect(screen.queryByTestId("finances-proactive-note")).toBeNull();
+    await screen.findByText("Netflix");
+    expect(screen.queryByText(/due this week/)).toBeNull();
+    expect(screen.queryByText(/Balance is negative/)).toBeNull();
   });
 
   it("shows the connect-a-source empty state when no source is connected (no fabricated balances)", async () => {
@@ -220,9 +236,10 @@ describe("FinancesView", () => {
         })}
       />,
     );
-    expect(await screen.findByTestId("finances-empty")).toBeTruthy();
-    expect(screen.getByText(/No money sources connected/i)).toBeTruthy();
-    expect(screen.queryByTestId("finances-balance")).toBeNull();
+    await screen.findByText("None");
+    expect(agent("connect")).toBeTruthy();
+    // No fabricated balance surfaces in the disconnected state.
+    expect(screen.queryByText("$2,765.50")).toBeNull();
   });
 
   it("routes the connect affordance through the assistant chat", async () => {
@@ -233,8 +250,8 @@ describe("FinancesView", () => {
         })}
       />,
     );
-    await screen.findByTestId("finances-empty");
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    await screen.findByText("None");
+    fireEvent.click(agent("connect"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -246,9 +263,9 @@ describe("FinancesView", () => {
       return dashboard();
     };
     render(<FinancesView fetchers={makeFetchers({ fetchDashboard })} />);
-    expect(await screen.findByTestId("finances-error")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    expect(await screen.findByTestId("finances-populated")).toBeTruthy();
+    await screen.findByText("boom");
+    fireEvent.click(agent("retry"));
+    await screen.findByText("Latte");
   });
 
   it("polls quietly to refetch and stay fresh without a manual control", async () => {
@@ -260,12 +277,16 @@ describe("FinancesView", () => {
         return dashboard();
       };
       render(<FinancesView fetchers={makeFetchers({ fetchDashboard })} />);
-      await vi.waitFor(() =>
-        expect(screen.getByTestId("finances-populated")).toBeTruthy(),
-      );
+      // Flush the initial mount fetch.
+      await vi.advanceTimersByTimeAsync(0);
       expect(calls).toBe(1);
+
+      // The quiet poll fires on its interval (30s) and refetches.
       await vi.advanceTimersByTimeAsync(30_000);
-      await vi.waitFor(() => expect(calls).toBe(2));
+      expect(calls).toBe(2);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(calls).toBe(3);
     } finally {
       vi.useRealTimers();
     }

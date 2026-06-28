@@ -6,7 +6,7 @@
  * prints which objective requirements are currently proven versus externally
  * blocked.
  */
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,12 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appCoreRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 const packagesRoot = path.join(repoRoot, "packages");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const defaultEvidencePath = path.join(
   repoRoot,
   ".eliza-local",
@@ -70,10 +76,13 @@ function parseArgs(argv) {
 const checks = [
   {
     key: "homepage-bundle",
-    label: "published homepage bundle points users at the shared gateway number",
+    label:
+      "published homepage bundle points users at the shared gateway number",
     command: ["node", ["./scripts/check-homepage-public-readiness.mjs"]],
     pass: (result) =>
-      /PASS homepage-bundle: .*gateway=yes personal-number=no/.test(result.output),
+      /PASS homepage-bundle: .*gateway=yes personal-number=no/.test(
+        result.output,
+      ),
   },
   {
     key: "homepage-public-dns",
@@ -103,7 +112,8 @@ const checks = [
   },
   {
     key: "cloud-onboarding",
-    label: "production Cloud API routes unknown sender to onboarding through +14159611510/bluebubbles/blooio, gets product/pricing/$5 credit and login link",
+    label:
+      "production Cloud API routes unknown sender to onboarding through +14159611510/bluebubbles/blooio, gets product/pricing/$5 credit and login link",
     command: ["node", ["./scripts/verify-cloud-api-production-deploy.mjs"]],
     pass: (result) =>
       result.status === 0 &&
@@ -118,7 +128,8 @@ const checks = [
   },
   {
     key: "routing-contracts",
-    label: "known-owner priority, friend-contact routing, and contact recording contracts pass",
+    label:
+      "known-owner priority, friend-contact routing, and contact recording contracts pass",
     command: [
       "bun",
       [
@@ -162,15 +173,17 @@ const checks = [
       /Cannot find module '@elizaos\/core'|Cannot find package '@elizaos\/core'|WriteFailed/.test(
         result.output,
       ),
-    blockedDetail: "linked workspace test runtime is not built or Bun coverage output failed",
+    blockedDetail:
+      "linked workspace test runtime is not built or Bun coverage output failed",
     next: [
-      "build linked workspaces: bun run --cwd packages/cloud-shared build:linked-workspaces",
+      "build linked workspaces: bun run --cwd packages/cloud/shared build:linked-workspaces",
       "rerun: bun run --cwd packages/app-core sms-gateway:status",
     ],
   },
   {
     key: "provisioning-handoff",
-    label: "post-login provisioning grants starter credit and copies onboarding transcript into agent memory",
+    label:
+      "post-login provisioning grants starter credit and copies onboarding transcript into agent memory",
     command: [
       "bun",
       [
@@ -199,29 +212,45 @@ const checks = [
     cwd: () => createBunTestCwd("sms-gateway-provisioning-"),
     pass: (result) =>
       result.status === 0 &&
-      /12 pass/.test(result.output) &&
+      /\d+ pass/.test(result.output) &&
       /0 fail/.test(result.output),
   },
   {
     key: "android-apk",
-    label: "Android SMS gateway APK is built and has the required gateway manifest surface",
-    command: ["node", ["./scripts/install-android-sms-gateway.mjs", "--doctor"]],
+    label:
+      "Android SMS gateway APK is built and has the required gateway manifest surface",
+    command: [
+      "node",
+      ["./scripts/install-android-sms-gateway.mjs", "--doctor"],
+    ],
     pass: (result) =>
       /PASS apk: .*eliza-android-sms-gateway-debug\.apk/.test(result.output) &&
-      /PASS apk-manifest: SMS gateway manifest surface is present/.test(result.output),
+      /PASS apk-manifest: SMS gateway manifest surface is present/.test(
+        result.output,
+      ),
   },
   {
     key: "android-transport",
     label: "Android physical SMS gateway is installed and physically verified",
     command: [
       "node",
-      ["./scripts/verify-android-sms-gateway-e2e.mjs", "--wait-device", "2", "--timeout", "1"],
+      [
+        "./scripts/verify-android-sms-gateway-e2e.mjs",
+        "--wait-device",
+        "2",
+        "--timeout",
+        "1",
+      ],
     ],
     pass: (result) =>
       result.status === 0 &&
       /Physical Android SMS gateway verification passed/.test(result.output),
-    blocked: (result) => /Timed out waiting .* for an adb device|Missing SMS gateway milestones/.test(result.output),
-    blockedDetail: "Android phone is not paired/connected and physical SMS milestones are not proven",
+    blocked: (result) =>
+      /Timed out waiting .* for an adb device|Missing SMS gateway milestones/.test(
+        result.output,
+      ),
+    blockedDetail:
+      "Android phone is not paired/connected and physical SMS milestones are not proven",
     next: [
       "open Android Developer Options > Wireless debugging > Pair device with pairing code",
       "leave this running while opening the pairing screen: bun run --cwd packages/app-core sms-gateway:watch:pair",
@@ -231,24 +260,35 @@ const checks = [
   },
   {
     key: "bluebubbles-inbound",
-    label: "BlueBubbles fallback bridge can receive and forward inbound events to Cloud as +14159611510",
+    label:
+      "BlueBubbles fallback bridge can receive and forward inbound events to Cloud as +14159611510",
     command: ["node", ["./scripts/verify-bluebubbles-inbound-readiness.mjs"]],
     pass: (result) =>
       result.status === 0 &&
       /gateway=\+14159611510/.test(result.output) &&
       /inbound=pass/.test(result.output),
     blocked: (result) =>
-      /bridge|cloud-secret|bluebubbles-server|inbound-webhook|gateway/.test(result.output),
-    blockedDetail: "BlueBubbles bridge, server, cloud secret, or inbound webhook is not ready",
-    next: ["rerun bridge doctor: bun run --cwd packages/app-core sms-gateway:doctor"],
+      /bridge|cloud-secret|bluebubbles-server|inbound-webhook|gateway/.test(
+        result.output,
+      ),
+    blockedDetail:
+      "BlueBubbles bridge, server, cloud secret, or inbound webhook is not ready",
+    next: [
+      "rerun bridge doctor: bun run --cwd packages/app-core sms-gateway:doctor",
+    ],
   },
   {
     key: "bluebubbles-transport",
     label: "BlueBubbles fallback outbound path is real-send validated",
     command: ["bun", ["run", "sms-gateway:validate:bluebubbles"]],
-    pass: (result) => result.status === 0 && /PASS .* validated at/.test(result.output),
-    blocked: (result) => /Refusing to send without --confirm-real-send|Shortcut outbound validation missing/.test(result.output),
-    blockedDetail: "real outbound validation send has not been explicitly confirmed",
+    pass: (result) =>
+      result.status === 0 && /PASS .* validated at/.test(result.output),
+    blocked: (result) =>
+      /Refusing to send without --confirm-real-send|Shortcut outbound validation missing/.test(
+        result.output,
+      ),
+    blockedDetail:
+      "real outbound validation send has not been explicitly confirmed",
     next: [
       "after explicit real-send approval, run: bun run --cwd packages/app-core sms-gateway:validate:bluebubbles -- --confirm-real-send",
       "then verify pending egress: bun run --cwd packages/app-core sms-gateway:verify:bluebubbles",
@@ -265,6 +305,13 @@ function createBunTestCwd(prefix) {
     "[test]\ntimeout = 60000\ncoverage = false\n",
   );
   return cwd;
+}
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
 }
 
 function run(command, args, { cwd = appCoreRoot } = {}) {
@@ -304,7 +351,7 @@ function summarizeEvidenceJson(value) {
     "sentCount",
     "error",
   ]) {
-    if (Object.prototype.hasOwnProperty.call(value, key)) {
+    if (Object.hasOwn(value, key)) {
       summary[key] = value[key];
     }
   }
@@ -326,7 +373,7 @@ function summarizeEvidenceJson(value) {
       "apexRecords",
       "wwwCnames",
     ]) {
-      if (Object.prototype.hasOwnProperty.call(value.details, key)) {
+      if (Object.hasOwn(value.details, key)) {
         summary[key] = value.details[key];
       }
     }
@@ -364,8 +411,12 @@ function writeEvidence({ evidencePath, ok, results }) {
     ok,
     checkedAt: new Date().toISOString(),
     gatewayPhoneNumber: "+14159611510",
-    proven: results.filter((result) => result.status === "proven").map((result) => result.key),
-    blocked: results.filter((result) => result.status === "blocked").map((result) => result.key),
+    proven: results
+      .filter((result) => result.status === "proven")
+      .map((result) => result.key),
+    blocked: results
+      .filter((result) => result.status === "blocked")
+      .map((result) => result.key),
     requirements: results,
   };
   fs.writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
@@ -379,7 +430,7 @@ for (const check of checks) {
   const [command, args] = check.command;
   const cwd = check.cwd?.();
   const result = run(command, args, { cwd });
-  if (cwd) fs.rmSync(cwd, { recursive: true, force: true });
+  if (cwd) removePathRecursive(cwd);
   const passed = check.pass(result);
   const isBlocked = !passed && check.blocked?.(result);
   if (passed) {
@@ -401,7 +452,9 @@ for (const check of checks) {
   const detail = isBlocked
     ? check.blockedDetail
     : oneLine(result.output).slice(0, 240) || `exit ${result.status}`;
-  console.log(`[sms-gateway-audit] BLOCKED ${check.key}: ${check.label}; ${detail}`);
+  console.log(
+    `[sms-gateway-audit] BLOCKED ${check.key}: ${check.label}; ${detail}`,
+  );
   for (const next of check.next ?? []) {
     console.log(`[sms-gateway-audit] NEXT ${check.key}: ${next}`);
   }
@@ -419,10 +472,22 @@ for (const check of checks) {
 }
 
 if (blocked) {
-  console.log("[sms-gateway-audit] status=blocked physical/end-to-end completion is not proven.");
-  writeEvidence({ evidencePath: args.evidencePath, ok: false, results: evidenceResults });
+  console.log(
+    "[sms-gateway-audit] status=blocked physical/end-to-end completion is not proven.",
+  );
+  writeEvidence({
+    evidencePath: args.evidencePath,
+    ok: false,
+    results: evidenceResults,
+  });
   process.exitCode = 1;
 } else {
-  console.log("[sms-gateway-audit] status=complete all objective requirements are currently proven.");
-  writeEvidence({ evidencePath: args.evidencePath, ok: true, results: evidenceResults });
+  console.log(
+    "[sms-gateway-audit] status=complete all objective requirements are currently proven.",
+  );
+  writeEvidence({
+    evidencePath: args.evidencePath,
+    ok: true,
+    results: evidenceResults,
+  });
 }

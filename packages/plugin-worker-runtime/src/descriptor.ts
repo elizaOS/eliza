@@ -199,11 +199,7 @@ export function buildAnnounceDescriptor(
     descriptor.actions = plugin.actions.map((action) => {
       const entry: Record<string, JsonValue> = {
         name: action.name,
-        handler: refOf(
-          action.handler,
-          "action",
-          action.name,
-        ) as unknown as JsonValue,
+        handler: refOf(action.handler, "action", action.name) as JsonValue,
       };
       if (action.similes) entry.similes = action.similes;
       if (action.description) entry.description = action.description;
@@ -213,7 +209,7 @@ export function buildAnnounceDescriptor(
           action.validate,
           "action",
           `${action.name}.validate`,
-        ) as unknown as JsonValue;
+        ) as JsonValue;
       }
       return entry;
     });
@@ -223,11 +219,7 @@ export function buildAnnounceDescriptor(
     descriptor.providers = plugin.providers.map((provider) => {
       const entry: Record<string, JsonValue> = {
         name: provider.name,
-        get: refOf(
-          provider.get,
-          "provider",
-          provider.name,
-        ) as unknown as JsonValue,
+        get: refOf(provider.get, "provider", provider.name) as JsonValue,
       };
       if (provider.description) entry.description = provider.description;
       if (provider.dynamic !== undefined) entry.dynamic = provider.dynamic;
@@ -240,11 +232,7 @@ export function buildAnnounceDescriptor(
   if (plugin.models) {
     const modelDescriptor: Record<string, JsonValue> = {};
     for (const [modelType, fn] of Object.entries(plugin.models)) {
-      modelDescriptor[modelType] = refOf(
-        fn,
-        "model",
-        modelType,
-      ) as unknown as JsonValue;
+      modelDescriptor[modelType] = refOf(fn, "model", modelType) as JsonValue;
     }
     descriptor.models = modelDescriptor;
   }
@@ -254,11 +242,7 @@ export function buildAnnounceDescriptor(
     for (const [eventName, handlers] of Object.entries(plugin.events)) {
       eventDescriptor[eventName] = handlers.map(
         (handler, index) =>
-          refOf(
-            handler,
-            "event",
-            `${eventName}#${index}`,
-          ) as unknown as JsonValue,
+          refOf(handler, "event", `${eventName}#${index}`) as JsonValue,
       );
     }
     descriptor.events = eventDescriptor;
@@ -285,7 +269,7 @@ export function buildAnnounceDescriptor(
           serviceMethodTrampoline(service, method, args);
         const id = allocId("service", target);
         registry.set(id, { id, surface: "service", target, handler });
-        entry[`rpc:${method}`] = { rpc: true, id } as unknown as JsonValue;
+        entry[`rpc:${method}`] = { rpc: true, id } as JsonValue;
       }
       return entry;
     });
@@ -299,7 +283,7 @@ export function buildAnnounceDescriptor(
           evaluator.handler,
           "evaluator",
           evaluator.name,
-        ) as unknown as JsonValue,
+        ) as JsonValue,
       };
       if (evaluator.description) entry.description = evaluator.description;
       if (evaluator.validate) {
@@ -307,7 +291,7 @@ export function buildAnnounceDescriptor(
           evaluator.validate,
           "evaluator",
           `${evaluator.name}.validate`,
-        ) as unknown as JsonValue;
+        ) as JsonValue;
       }
       return entry;
     });
@@ -328,7 +312,7 @@ export function buildAnnounceDescriptor(
           route.routeHandler,
           "route",
           `${route.type ?? "GET"} ${route.path}`,
-        ) as unknown as JsonValue;
+        ) as JsonValue;
       }
       return entry;
     });

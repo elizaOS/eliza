@@ -52,7 +52,7 @@ function resolveNodeColor(type: string): {
     t.includes("noop") ||
     t.includes("start")
   ) {
-    return { bg: "#1e293b", border: "#64748b", badge: "#64748b" }; // slate — flow-control
+    return { bg: "#292524", border: "#78716c", badge: "#78716c" }; // stone — flow-control
   }
   if (
     t.includes("gmail") ||
@@ -65,10 +65,10 @@ function resolveNodeColor(type: string): {
     t.includes("openai") ||
     t.includes("anthropic")
   ) {
-    return { bg: "#2e1065", border: "#8b5cf6", badge: "#8b5cf6" }; // violet — integration
+    return { bg: "#4c0519", border: "#e11d48", badge: "#e11d48" }; // rose — integration
   }
-  // Default: action (blue)
-  return { bg: "#0c1a2e", border: "#3b82f6", badge: "#3b82f6" };
+  // Default: action.
+  return { bg: "#431407", border: "#f97316", badge: "#f97316" };
 }
 
 // ── Auto layout ──────────────────────────────────────────────────────────────
@@ -140,7 +140,6 @@ function workflowToReactFlow(workflow: WorkflowDefinition | null): {
         minHeight: NODE_HEIGHT,
         color: "#e2e8f0",
         fontSize: "12px",
-        boxShadow: `0 0 0 1px ${colors.border}22`,
       },
     };
   });
@@ -185,7 +184,7 @@ function generatingEdges(edges: Edge[]): Edge[] {
     animated: true,
     style: {
       ...e.style,
-      stroke: "#3b82f6",
+      stroke: "#f97316",
       strokeDasharray: "6 3",
     },
   }));
@@ -194,30 +193,30 @@ function generatingEdges(edges: Edge[]): Edge[] {
 function graphChrome(uiTheme: "light" | "dark") {
   if (uiTheme === "light") {
     return {
-      canvasBg: "#f8fafc",
-      dots: "#cbd5e1",
-      minimapMask: "rgba(226, 232, 240, 0.72)",
+      canvasBg: "#fafaf9",
+      dots: "#d6d3d1",
+      minimapMask: "rgba(231, 229, 228, 0.72)",
       minimapBg: "#ffffff",
-      minimapBorder: "#cbd5e1",
-      emptyTitleClass: "text-slate-700",
-      emptyHelpClass: "text-slate-500",
-      overlayBg: "rgba(248, 250, 252, 0.72)",
+      minimapBorder: "#d6d3d1",
+      emptyTitleClass: "text-stone-700",
+      emptyHelpClass: "text-stone-500",
+      overlayBg: "rgba(250, 250, 249, 0.72)",
       overlayChipBg: "rgba(255, 255, 255, 0.94)",
-      overlayChipText: "#1d4ed8",
+      overlayChipText: "#c2410c",
     };
   }
 
   return {
-    canvasBg: "#020817",
-    dots: "#334155",
-    minimapMask: "rgba(2, 8, 23, 0.7)",
-    minimapBg: "#0f172a",
-    minimapBorder: "#334155",
-    emptyTitleClass: "text-slate-300",
-    emptyHelpClass: "text-slate-500",
-    overlayBg: "rgba(2, 8, 23, 0.6)",
-    overlayChipBg: "rgba(2, 8, 23, 0.82)",
-    overlayChipText: "#60a5fa",
+    canvasBg: "#0c0a09",
+    dots: "#57534e",
+    minimapMask: "rgba(12, 10, 9, 0.7)",
+    minimapBg: "#1c1917",
+    minimapBorder: "#57534e",
+    emptyTitleClass: "text-stone-300",
+    emptyHelpClass: "text-stone-500",
+    overlayBg: "rgba(12, 10, 9, 0.6)",
+    overlayChipBg: "rgba(12, 10, 9, 0.82)",
+    overlayChipText: "#fb923c",
   };
 }
 
@@ -423,11 +422,11 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
   const hasParams = node?.parameters && Object.keys(node.parameters).length > 0;
 
   // Map color families to StatusBadge variants (success | warning | danger | muted)
-  // amber=trigger→warning, slate=flow-control→muted, violet=integration→danger, blue=action→muted
+  // amber=trigger→warning, stone=flow-control→muted, rose=integration→danger, orange=action→muted
   const badgeVariant: "warning" | "muted" | "danger" =
     colors.badge === "#f59e0b"
       ? "warning"
-      : colors.badge === "#8b5cf6"
+      : colors.badge === "#e11d48"
         ? "danger"
         : "muted";
 
@@ -439,7 +438,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
       aria-hidden={!isOpen}
       className={[
         "absolute inset-y-0 right-0 z-30 flex w-72 flex-col",
-        "border-l border-border/40 bg-bg backdrop-blur-[2px]",
+        "border-l border-border/40 bg-bg",
         "transition-transform duration-200 ease-out",
         isOpen ? "translate-x-0" : "translate-x-full",
       ].join(" ")}
@@ -463,7 +462,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
           type="button"
           aria-label={t("workflowGraph.closeDrawer")}
           tabIndex={isOpen ? 0 : -1}
-          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors   "
           onClick={onClose}
         >
           <X className="h-3.5 w-3.5" />
@@ -694,9 +693,7 @@ export function WorkflowGraphViewer({
 
   const hasNodes = nodes.length > 0;
 
-  const borderClass = isGenerating
-    ? "animate-pulse ring-2 ring-blue-500/50"
-    : "ring-1 ring-border/30";
+  const borderClass = isGenerating ? "animate-pulse  " : " ";
   const chrome = graphChrome(uiTheme);
 
   return (
@@ -744,7 +741,7 @@ export function WorkflowGraphViewer({
         {/* Generating overlay on top of graph */}
         {isGenerating && (
           <div
-            className="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px]"
+            className="absolute inset-0 z-10 flex items-center justify-center"
             style={{ background: chrome.overlayBg }}
           >
             <WorkflowGenerationProgress chrome={chrome} t={t} />

@@ -16,7 +16,7 @@ What this provides:
    CUDA version, and a snapshot of nvidia-smi at run start.
 
 The point: numbers come from torch's own counters and a JSONL trace anyone
-can re-read. No claims of "trained Qwen on 16GB" without proof.
+can re-read. No claims of "trained Gemma on 16GB" without proof.
 """
 
 from __future__ import annotations

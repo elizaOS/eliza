@@ -126,13 +126,13 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
 
         <div className="flex flex-1 min-h-0 items-center justify-center">
           {initialLoading && streamAvailable && !statusError ? (
-            <div className="w-full max-w-md rounded-sm border border-border/60 bg-card/94 p-6 backdrop-blur-xl">
+            <div className="w-full max-w-md rounded-sm border border-border/60 bg-card/94 p-6">
               <DetailSkeleton />
             </div>
           ) : statusError && streamAvailable ? (
             <div
               role="alert"
-              className="max-w-lg rounded-sm border border-danger/45 bg-danger/8 p-6 text-center backdrop-blur-xl"
+              className="max-w-lg rounded-sm border border-danger/45 bg-danger/20 p-6 text-center"
             >
               <p className="text-xs-tight uppercase tracking-[0.24em] text-danger">
                 {t("streamview.StatusError", {
@@ -144,7 +144,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
               </p>
             </div>
           ) : !streamAvailable ? (
-            <div className="max-w-lg rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
+            <div className="max-w-lg rounded-sm border border-border/60 bg-card/94 p-6 text-center">
               <p className="text-xs-tight uppercase tracking-[0.24em] text-muted">
                 {t("streamview.StreamingUnavailabl")}
               </p>
@@ -163,12 +163,10 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
               </p>
             </div>
           ) : (
-            <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
+            <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center">
               <div
                 className={`mx-auto mb-4 h-3 w-3 rounded-full ${
-                  streamLive
-                    ? "bg-danger ring-4 ring-danger/20 animate-pulse"
-                    : "bg-muted"
+                  streamLive ? "bg-danger   animate-pulse" : "bg-muted"
                 }`}
               />
               <h2 className="text-lg font-semibold text-txt">

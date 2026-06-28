@@ -117,11 +117,15 @@ export function registerDashboardCommand(program: Command) {
         return;
       }
 
-      const { spawn } = await import("node:child_process");
+      const { spawn, spawnSync } = await import("node:child_process");
       const child = spawn("npx", ["vite"], {
         cwd: appDir,
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env },
+        // npx is `npx.cmd` on Windows; Node cannot spawn a .cmd without a
+        // shell (ENOENT), so the dev dashboard never started there. The args
+        // are constant, so enabling the shell on Windows is injection-safe.
+        shell: process.platform === "win32",
       });
 
       let opened = false;
@@ -156,6 +160,12 @@ export function registerDashboardCommand(program: Command) {
       setTimeout(tryOpen, 10_000);
 
       const cleanup = () => {
+        if (process.platform === "win32" && child.pid) {
+          // shell:true ran npx inside cmd.exe; a SIGTERM to the shell would
+          // orphan the vite grandchild, so kill the whole tree by PID.
+          spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
+          return;
+        }
         child.kill("SIGTERM");
       };
       process.on("SIGINT", cleanup);

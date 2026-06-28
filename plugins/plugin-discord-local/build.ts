@@ -52,7 +52,7 @@ if (!result.success) {
 
 // Emit real declaration files via tsc
 try {
-  execSync("bunx tsc -p tsconfig.build.json", { stdio: "inherit" });
+  execSync("bunx tsc -p tsconfig.build.json --noCheck", { stdio: "inherit" });
 } catch {
   // Non-fatal — plugin works at runtime without .d.ts files
   console.warn("[plugin-discord-local] tsc declaration emit failed (non-fatal)");

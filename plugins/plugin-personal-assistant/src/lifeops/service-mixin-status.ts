@@ -14,6 +14,7 @@ import type {
   LifeOpsCapabilityState,
   LifeOpsCapabilityStatus,
   LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
   LifeOpsXConnectorStatus,
 } from "@elizaos/shared";
 import { loadLifeOpsAppState } from "./app-state.js";
@@ -49,6 +50,8 @@ export type StatusMixinDependencies = LifeOpsServiceBase & {
   listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]>;
   getXConnectorStatus(
     mode?: LifeOpsConnectorMode,
+    side?: LifeOpsConnectorSide,
+    accountId?: string | null,
   ): Promise<LifeOpsXConnectorStatus>;
   getHealthConnectorStatus(): Promise<HealthConnectorStatus>;
 };

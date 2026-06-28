@@ -7,7 +7,10 @@ sweeps any servers older than 60 minutes every half hour as a safety
 net.
 
 The workflow gracefully skips when secrets are unset, so it can land
-on `develop` and be activated later by adding secrets.
+on `develop` and be activated later by adding secrets. Once secrets
+are present, the Cloud API auth preflight is a real gate: a 401/403
+from `CLOUD_E2E_API_KEY` fails the run instead of reporting a skip,
+because an invalid key would otherwise hide provisioning regressions.
 
 ## One-time setup
 

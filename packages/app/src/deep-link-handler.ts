@@ -18,7 +18,7 @@ export interface DeepLinkHandlerContext {
   logPrefix: string;
   trustPolicy: UrlTrustPolicy;
   dispatchShareTarget: (payload: ShareTargetPayload) => void;
-  dispatchLifeOpsCallback: (url: string) => void;
+  dispatchDeepLinkCallback: (url: string) => void;
 }
 
 export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
@@ -70,13 +70,9 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
       case "browser":
         setHashRoute("browser", parsed.searchParams);
         break;
-      case "lifeops":
-        window.location.hash = "#lifeops";
-        ctx.dispatchLifeOpsCallback(url);
-        break;
       case "settings":
         window.location.hash = "#settings";
-        ctx.dispatchLifeOpsCallback(url);
+        ctx.dispatchDeepLinkCallback(url);
         break;
       case "connect":
         handleConnect(parsed);
@@ -117,14 +113,17 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
       );
       return;
     }
-    const token =
-      parsed.searchParams.get("token") ??
-      parsed.searchParams.get("accessToken") ??
-      null;
+    // SECURITY: never accept a bearer token from an OS-delivered deep link. A
+    // crafted `<scheme>://connect?url=…&token=…` would otherwise authenticate the
+    // session with an ATTACKER-supplied token against an attacker gateway (full
+    // MITM of subsequent agent traffic). No legitimate flow passes a token this
+    // way — remote auth goes through the cloudLaunchSession exchange
+    // (applyLaunchConnectionFromUrl already refuses raw `token` params). The
+    // host repoint is preserved for the legitimate local-agent connect feature.
     const connection = applyLaunchConnection({
       kind: "remote",
       apiBase: validatedUrl.href,
-      token,
+      token: null,
       allowPublicHttps: true,
     });
     dispatchAppEvent(CONNECT_EVENT, {

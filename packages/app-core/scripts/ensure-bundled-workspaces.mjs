@@ -13,22 +13,11 @@ const DEFAULT_REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 export const BUNDLED_WORKSPACE_BUILDS = [
   {
     label: "@elizaos/plugin-agent-skills",
-    cwd: path.join("plugins", "plugin-agent-skills", "typescript"),
-    manifest: path.join(
-      "plugins",
-      "plugin-agent-skills",
-      "typescript",
-      "package.json",
-    ),
-    artifact: path.join(
-      "plugins",
-      "plugin-agent-skills",
-      "typescript",
-      "dist",
-      "index.js",
-    ),
+    cwd: path.join("plugins", "plugin-agent-skills"),
+    manifest: path.join("plugins", "plugin-agent-skills", "package.json"),
+    artifact: path.join("plugins", "plugin-agent-skills", "dist", "index.js"),
     args: [
-      "../../../packages/app-core/scripts/build-bundled-agent-skills-artifact.mjs",
+      "../../packages/app-core/scripts/build-bundled-agent-skills-artifact.mjs",
     ],
   },
   // Only build workspaces that downstream packaging consumes directly. Building

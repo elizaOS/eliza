@@ -105,7 +105,7 @@ describe("CLI Train Pipeline", () => {
         "--local-backend",
         "mlx",
         "--local-model",
-        "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+        "google/gemma-4-E2B-it",
         "--local-steps",
         "50",
         "--lookback-hours",
@@ -122,9 +122,7 @@ describe("CLI Train Pipeline", () => {
 
     const output = result.stdout.toString();
     expect(output).toContain("--local-backend mlx");
-    expect(output).toContain(
-      "--local-model mlx-community/Qwen2.5-0.5B-Instruct-4bit",
-    );
+    expect(output).toContain("--local-model google/gemma-4-E2B-it");
     expect(output).toContain("--local-steps 50");
     expect(output).toContain("--lookback-hours 168");
     expect(output).toContain("--max-trajectories 200");

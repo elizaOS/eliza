@@ -12756,11 +12756,30 @@
   });
 
   // packages/ui/src/components/pages/__e2e__/background-fixture.tsx
-  var import_react2 = __toESM(require_react(), 1);
+  var import_react3 = __toESM(require_react(), 1);
   var import_client = __toESM(require_client(), 1);
 
   // packages/ui/src/state/ui-preferences.ts
   var DEFAULT_BACKGROUND_COLOR = "#ef5a1f";
+  var DEFAULT_BACKGROUND_CONFIG = {
+    mode: "shader",
+    color: DEFAULT_BACKGROUND_COLOR
+  };
+  var BACKGROUND_PRESETS = [
+    { id: "orange", label: "Orange", color: DEFAULT_BACKGROUND_COLOR },
+    { id: "amber", label: "Amber", color: "#f59e0b" },
+    { id: "rose", label: "Rose", color: "#e11d48" },
+    { id: "violet", label: "Violet", color: "#7c3aed" },
+    { id: "blue", label: "Blue", color: "#2563eb" },
+    { id: "teal", label: "Teal", color: "#0891b2" },
+    { id: "green", label: "Green", color: "#059669" },
+    { id: "slate", label: "Slate", color: "#334155" },
+    { id: "black", label: "Black", color: "#0a0a0a" },
+    { id: "light", label: "Light", color: "#f4f4f5" }
+  ];
+  function backgroundConfigsEqual(a, b) {
+    return a.mode === b.mode && a.color === b.color && (a.imageUrl ?? "") === (b.imageUrl ?? "");
+  }
 
   // packages/ui/src/state/app-store.ts
   var import_react = __toESM(require_react(), 1);
@@ -12841,7 +12860,14 @@
   function useBackgroundConfig() {
     const backgroundConfig = useAppSelectorShallow((s) => s.backgroundConfig);
     const setBackgroundConfig = useAppSelector((s) => s.setBackgroundConfig);
-    return { backgroundConfig, setBackgroundConfig };
+    const undoBackgroundConfig = useAppSelector((s) => s.undoBackgroundConfig);
+    const canUndoBackground = useAppSelector((s) => s.canUndoBackground);
+    return {
+      backgroundConfig,
+      setBackgroundConfig,
+      undoBackgroundConfig,
+      canUndoBackground
+    };
   }
 
   // packages/ui/src/backgrounds/ImageBackground.tsx
@@ -12913,10 +12939,109 @@
     );
   }
 
+  // packages/ui/src/hooks/useViewEvent.ts
+  var import_react2 = __toESM(require_react(), 1);
+
+  // packages/ui/src/views/view-event-bus.ts
+  var CHANNEL_NAME = "elizaos-views";
+  var WINDOW_EVENT_NAME = "elizaos-view-event";
+  var _channel = null;
+  function getChannel() {
+    if (_channel) return _channel;
+    if (typeof BroadcastChannel === "undefined") return null;
+    try {
+      _channel = new BroadcastChannel(CHANNEL_NAME);
+    } catch {
+      return null;
+    }
+    return _channel;
+  }
+  function emitViewEvent(type, payload = {}, sourceViewId) {
+    const event = {
+      type,
+      payload,
+      sourceViewId,
+      timestamp: Date.now()
+    };
+    getChannel()?.postMessage(event);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(WINDOW_EVENT_NAME, { detail: event }));
+    }
+  }
+  function onViewEvent(type, handler) {
+    return onAnyViewEvent((event) => {
+      if (event.type === type) handler(event);
+    });
+  }
+  function onAnyViewEvent(handler) {
+    const channel = getChannel();
+    const bcListener = (msg) => {
+      handler(msg.data);
+    };
+    channel?.addEventListener("message", bcListener);
+    const windowListener = (e) => {
+      handler(e.detail);
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener(WINDOW_EVENT_NAME, windowListener);
+    }
+    return () => {
+      channel?.removeEventListener("message", bcListener);
+      if (typeof window !== "undefined") {
+        window.removeEventListener(WINDOW_EVENT_NAME, windowListener);
+      }
+    };
+  }
+
+  // packages/ui/src/hooks/useViewEvent.ts
+  function useViewEvent(type, handler, deps = []) {
+    const handlerRef = (0, import_react2.useRef)(handler);
+    handlerRef.current = handler;
+    (0, import_react2.useEffect)(() => {
+      return onViewEvent(type, (event) => {
+        handlerRef.current(event);
+      });
+    }, [type, ...deps]);
+  }
+
+  // packages/ui/src/backgrounds/useBackgroundApplyChannel.ts
+  var BACKGROUND_APPLY_EVENT = "background:apply";
+  function useBackgroundApplyChannel() {
+    const { backgroundConfig, setBackgroundConfig, undoBackgroundConfig } = useBackgroundConfig();
+    useViewEvent(BACKGROUND_APPLY_EVENT, (event) => {
+      const payload = event.payload;
+      const op = typeof payload.op === "string" ? payload.op : "set";
+      if (op === "undo") {
+        undoBackgroundConfig();
+        return;
+      }
+      if (op === "reset") {
+        setBackgroundConfig(DEFAULT_BACKGROUND_CONFIG);
+        return;
+      }
+      const imageUrl = typeof payload.imageUrl === "string" && payload.imageUrl.length > 0 ? payload.imageUrl : void 0;
+      const color = typeof payload.color === "string" ? payload.color : void 0;
+      const wantsImage = payload.mode === "image" || !payload.mode && imageUrl;
+      if (wantsImage && imageUrl) {
+        setBackgroundConfig({
+          mode: "image",
+          color: color ?? backgroundConfig.color ?? DEFAULT_BACKGROUND_COLOR,
+          imageUrl
+        });
+      } else if (color) {
+        setBackgroundConfig({ mode: "shader", color });
+      }
+    });
+  }
+
   // packages/ui/src/backgrounds/AppBackground.tsx
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
-  function AppBackground() {
+  function AppBackground({
+    visible = true
+  } = {}) {
     const { backgroundConfig } = useBackgroundConfig();
+    useBackgroundApplyChannel();
+    if (!visible) return null;
     const config = backgroundConfig && typeof backgroundConfig === "object" ? backgroundConfig : null;
     if (config?.mode === "image" && config.imageUrl) {
       return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ImageBackground, { imageUrl: config.imageUrl });
@@ -12924,28 +13049,112 @@
     return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ShaderBackground, { color: config?.color ?? DEFAULT_BACKGROUND_COLOR });
   }
 
-  // packages/ui/src/components/pages/__e2e__/background-fixture.tsx
-  var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-  function seed(config) {
-    __setAppValueForTests({
-      backgroundConfig: config,
-      setBackgroundConfig: () => {
-      }
+  // packages/ui/src/components/pages/background-image.ts
+  var MAX_DIMENSION = 2048;
+  var JPEG_QUALITY = 0.82;
+  var MAX_DATA_URL_BYTES = 4 * 1024 * 1024;
+  var BackgroundImageError = class extends Error {
+  };
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error ?? new Error("Could not read the image."));
+      reader.readAsDataURL(file);
     });
   }
-  seed({ mode: "shader", color: "#ef5a1f" });
-  function Harness() {
-    const [config, setConfig] = (0, import_react2.useState)({
-      mode: "shader",
-      color: "#ef5a1f"
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Could not decode the image."));
+      img.src = src;
     });
-    (0, import_react2.useLayoutEffect)(() => {
-      seed(config);
-    }, [config]);
-    (0, import_react2.useLayoutEffect)(() => {
-      window.__setBg = (next) => setConfig(next);
+  }
+  async function downscaleToDataUrl(dataUrl) {
+    const img = await loadImage(dataUrl);
+    const longest = Math.max(img.width, img.height);
+    const scale = longest > 0 ? Math.min(1, MAX_DIMENSION / longest) : 1;
+    if (scale >= 1) return dataUrl;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+  }
+  async function fileToBackgroundDataUrl(file) {
+    if (!file.type.startsWith("image/")) {
+      throw new BackgroundImageError("Please choose an image file.");
+    }
+    const raw = await readFileAsDataUrl(file);
+    let result = raw;
+    try {
+      result = await downscaleToDataUrl(raw);
+    } catch {
+      result = raw;
+    }
+    if (result.length > MAX_DATA_URL_BYTES) {
+      throw new BackgroundImageError(
+        "That image is too large \u2014 try a smaller one."
+      );
+    }
+    return result;
+  }
+
+  // packages/ui/src/components/pages/__e2e__/background-fixture.tsx
+  var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+  var MAX_HISTORY = 10;
+  function seed(config, history, set, undo) {
+    __setAppValueForTests({
+      backgroundConfig: config,
+      canUndoBackground: history.length > 0,
+      setBackgroundConfig: set,
+      undoBackgroundConfig: undo,
+      elizaCloudConnected: false,
+      elizaCloudAuthRejected: false
+    });
+  }
+  seed(DEFAULT_BACKGROUND_CONFIG, [], () => {
+  }, () => {
+  });
+  function Harness() {
+    const [config, setConfig] = (0, import_react3.useState)(
+      DEFAULT_BACKGROUND_CONFIG
+    );
+    const [history, setHistory] = (0, import_react3.useState)([]);
+    const setBackgroundConfig = (0, import_react3.useCallback)((next) => {
+      setConfig((prev) => {
+        if (backgroundConfigsEqual(prev, next)) return prev;
+        setHistory((h) => [...h, prev].slice(-MAX_HISTORY));
+        return next;
+      });
     }, []);
-    return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+    const undoBackgroundConfig = (0, import_react3.useCallback)(() => {
+      setHistory((h) => {
+        if (h.length === 0) return h;
+        setConfig(h[h.length - 1]);
+        return h.slice(0, -1);
+      });
+    }, []);
+    (0, import_react3.useLayoutEffect)(() => {
+      seed(config, history, setBackgroundConfig, undoBackgroundConfig);
+    }, [config, history, setBackgroundConfig, undoBackgroundConfig]);
+    (0, import_react3.useLayoutEffect)(() => {
+      window.__emitBgApply = (payload) => emitViewEvent("background:apply", payload, "agent");
+    }, []);
+    const onFile = (0, import_react3.useCallback)(
+      async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        const imageUrl = await fileToBackgroundDataUrl(file);
+        setBackgroundConfig({ mode: "image", color: config.color, imageUrl });
+      },
+      [config.color, setBackgroundConfig]
+    );
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
       "div",
       {
         "data-testid": "bg-fixture-root",
@@ -12955,7 +13164,64 @@
           height: "100vh",
           overflow: "hidden"
         },
-        children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(AppBackground, {})
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(AppBackground, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+            "div",
+            {
+              style: {
+                position: "relative",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 10,
+                padding: 24,
+                maxWidth: 420,
+                margin: "24px auto",
+                borderRadius: 24,
+                background: "rgba(255,255,255,0.55)",
+                backdropFilter: "blur(16px)"
+              },
+              children: [
+                BACKGROUND_PRESETS.map((preset) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": `Set background to ${preset.label}`,
+                    onClick: () => setBackgroundConfig({ mode: "shader", color: preset.color }),
+                    style: {
+                      width: 36,
+                      height: 36,
+                      borderRadius: "9999px",
+                      background: preset.color,
+                      border: "1px solid rgba(0,0,0,0.15)"
+                    }
+                  },
+                  preset.id
+                )),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "input",
+                  {
+                    type: "file",
+                    accept: "image/*",
+                    "aria-label": "Background image file",
+                    onChange: onFile,
+                    style: { position: "absolute", width: 1, height: 1, opacity: 0 }
+                  }
+                ),
+                history.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": "Undo background change",
+                    onClick: () => undoBackgroundConfig(),
+                    style: { height: 36, padding: "0 14px", borderRadius: 12 },
+                    children: "Undo"
+                  }
+                ) : null
+              ]
+            }
+          )
+        ]
       }
     );
   }

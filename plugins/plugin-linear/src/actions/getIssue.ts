@@ -13,6 +13,7 @@ import type { Issue, IssueLabel } from "@linear/sdk";
 import { getIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import { getRecordValue, getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
@@ -125,7 +126,7 @@ export const getIssueAction: Action = {
         const errorMessage = "Please specify which issue you want to see.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -225,7 +226,7 @@ export const getIssueAction: Action = {
             const noResultsMessage = "No issues found matching your criteria.";
             await callback?.({
               text: noResultsMessage,
-              source: message.content.source,
+              source: getMessageSource(message),
             });
             return {
               text: noResultsMessage,
@@ -257,7 +258,7 @@ export const getIssueAction: Action = {
           const clarifyMessage = `Found ${issues.length} issues matching your criteria:\n${issueList.join("\n")}\n\nPlease specify which one you want to see by its ID.`;
           await callback?.({
             text: clarifyMessage,
-            source: message.content.source,
+            source: getMessageSource(message),
           });
 
           return {
@@ -274,7 +275,10 @@ export const getIssueAction: Action = {
           };
         }
       } catch (parseError) {
-        logger.warn("Failed to parse LLM response, falling back to regex:", parseError);
+        logger.warn(
+          "Failed to parse LLM response, falling back to regex:",
+          formatUnknownError(parseError)
+        );
         const issueMatch = content.match(/(\w+-\d+)/);
         if (issueMatch) {
           const issue = await linearService.getIssue(issueMatch[1], accountId);
@@ -286,18 +290,18 @@ export const getIssueAction: Action = {
         "Could not understand which issue you want to see. Please provide an issue ID (e.g., ENG-123) or describe it more specifically.";
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,
         success: false,
       };
     } catch (error) {
-      logger.error("Failed to get issue:", error);
+      logger.error("Failed to get issue:", formatUnknownError(error));
       const errorMessage = `❌ Failed to get issue: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,
@@ -390,7 +394,7 @@ View in Linear: ${issue.url}`;
 
   await callback?.({
     text: issueMessage,
-    source: message.content.source,
+    source: getMessageSource(message),
   });
 
   const serializedIssue = {

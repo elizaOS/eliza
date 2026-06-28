@@ -59,7 +59,7 @@
 #                                pass it through the env. ``vastai set
 #                                api-key`` also works (writes to
 #                                ~/.config/vastai/vast_api_key).
-#   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access
+#   HUGGING_FACE_HUB_TOKEN     # for gated Gemma access
 #
 # Optional env:
 #   REGISTRY_KEY               # default: gemma4-31b
@@ -132,7 +132,7 @@
 # Pipeline-specific examples (--pipeline / PIPELINE env defaults to sft):
 #   bash scripts/train_vast.sh --pipeline grpo provision-and-train \
 #       --registry-key gemma4-e2b --dry-run
-#   PIPELINE=grpo DPO_CHECKPOINT=checkpoints/qwen3-5-9b-dpo/final \
+#   PIPELINE=grpo DPO_CHECKPOINT=checkpoints/gemma4-12b-dpo/final \
 #       bash scripts/train_vast.sh provision-and-train --registry-key gemma4-12b
 #
 # Or `bash scripts/train_vast.sh full` for the whole flow.
@@ -623,7 +623,7 @@ sync_tree() {
   # don't ship every old run to the remote. If RESUME_FROM_CHECKPOINT is set,
   # ship ONLY that one checkpoint dir on top so HF Trainer can pick it up via
   # --resume-from-checkpoint. The path is interpreted RELATIVE to packages/training/
-  # (e.g. checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/checkpoint-1000).
+  # (e.g. checkpoints/eliza-1-2b-apollo-fullcorpus-h200-1778619044/checkpoint-1000).
   if [ -n "${RESUME_FROM_CHECKPOINT:-}" ]; then
     local _resume_local="$ROOT/$RESUME_FROM_CHECKPOINT"
     if [ ! -d "$_resume_local" ]; then

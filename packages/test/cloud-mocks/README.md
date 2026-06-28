@@ -5,7 +5,7 @@ Stateful, in-process mocks of third-party cloud APIs used by Eliza Cloud. Design
 ## Hetzner Cloud mock
 
 Implements the subset of the Hetzner Cloud API that the autoscaler client in
-`packages/cloud-shared/src/lib/services/containers/hetzner-cloud-api.ts` exercises:
+`packages/cloud/shared/src/lib/services/containers/hetzner-cloud-api.ts` exercises:
 
 - `POST /v1/servers`, `GET /v1/servers`, `GET /v1/servers/{id}`, `DELETE /v1/servers/{id}`
 - `POST /v1/servers/{id}/actions/poweroff|poweron`
@@ -39,7 +39,7 @@ await mock.stop();
 
 ### Env knobs
 
-- `HCLOUD_API_BASE_URL` — consumed by the real client (`packages/cloud-shared`) to redirect to the mock.
+- `HCLOUD_API_BASE_URL` — consumed by the real client (`packages/cloud/shared`) to redirect to the mock.
 - `MOCK_HETZNER_LATENCY=0` — disable simulated latency entirely.
 - `MOCK_HETZNER_ACTION_MS=<n>` — override the action lifecycle duration (default 2000ms; tests use 50ms).
 

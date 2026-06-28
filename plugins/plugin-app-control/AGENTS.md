@@ -1,10 +1,10 @@
 # @elizaos/plugin-app-control
 
-Gives an Eliza agent the ability to launch, close, list, scaffold, and verify Eliza apps, manage UI views, and customize the homescreen canvas.
+Gives an Eliza agent the ability to launch, close, list, scaffold, and verify Eliza apps, manage UI views, and change the app background.
 
 ## Purpose / role
 
-This plugin registers three actions, two evaluators, one provider, and four services. It exposes those capabilities to any Eliza agent that loads it; it is opt-in (not default-enabled). All runtime communication with the Eliza dashboard happens over loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered via `resolveServerOnlyPort`.
+This plugin registers three actions, one natural-language shortcut set, two evaluators, one provider, and four services. It exposes those capabilities to any Eliza agent that loads it; it is opt-in (not default-enabled). All runtime communication with the Eliza dashboard happens over loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered via `resolveServerOnlyPort`.
 
 ## Plugin surface
 
@@ -14,7 +14,7 @@ This plugin registers three actions, two evaluators, one provider, and four serv
 |---|---|---|
 | `APP` | `src/actions/app.ts` | Unified app control. Sub-modes: `launch`, `relaunch`, `load_from_directory`, `list`, `create`. `create` runs a multi-turn scaffold+coding-agent flow. Owner-gated. |
 | `VIEWS` | `src/actions/views.ts` | Manage UI views contributed by plugins. Sub-modes: `list`, `current`, `show`/`open`, `search`, `manager`, `broadcast`, `interact`, `pin`, `window`, `create`, `edit`, `icon`, `rollback`, `delete`/`remove`. Create/edit/icon/rollback/delete are owner-gated; read modes are open. `rollback` resets a created/edited view-or-plugin workdir to the pre-edit git snapshot taken before the coding agent ran (#8915) and re-registers it via `load-from-directory`. |
-| `HOMESCREEN` | `src/actions/homescreen.ts` | Customize the live homescreen canvas. Sub-modes: `edit`, `create` (model-generated scene document), `undo`, `redo`, `reset`, `duplicate`, `delete`, `save`. Broadcasts via `POST /api/views/events/broadcast`. |
+| `BACKGROUND` | `src/actions/background.ts` | Change the unified app background from chat. Ops: `set` (color name/hex, an uploaded image attachment, or a generated image from a prompt), `undo`, `reset`. Broadcasts a `background:apply` view event via `POST /api/views/events/broadcast`; the renderer's `useBackgroundApplyChannel` (`@elizaos/ui`) applies it to the shared `BackgroundConfig` store. Drives the SAME background as the `/background` view — there is no separate homescreen-scene surface. |
 
 ### Evaluators
 
@@ -22,6 +22,12 @@ This plugin registers three actions, two evaluators, one provider, and four serv
 |---|---|---|
 | `viewNavigationRoutingEvaluator` | `src/evaluators/view-navigation-routing.ts` | `responseHandlerEvaluator` that inspects agent responses and automatically routes to the appropriate view via the VIEWS action. |
 | `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | `responseHandlerEvaluator` that detects follow-up intent (create/delete/update) from agent output and dispatches the VIEWS action accordingly. |
+
+### Shortcuts
+
+| Name | File | Description |
+|---|---|---|
+| `viewNavigationShortcuts` | `src/shortcuts.ts` | Natural-language pre-LLM shortcuts for explicit view navigation phrases such as "open settings"; target the existing `VIEWS` action with `action=show` and are gated by `ELIZA_SHORTCUTS_NL=1`. |
 
 ### Provider
 
@@ -54,6 +60,7 @@ View source lives in `src/views/ViewManagerView.tsx` (exports both `ViewManagerV
 src/
   index.ts                        Plugin entry; exports appControlPlugin
   types.ts                        API response shapes (InstalledAppInfo, AppRunSummary, AppLaunchResult, AppStopResult)
+  shortcuts.ts                    Pre-LLM natural-language shortcuts for explicit view navigation
   params.ts                       Option normalisation + verb/noun extraction helpers
   resolve.ts                      App/run name resolution (exact + substring match)
   protected-apps.ts               List of built-in apps that cannot be deleted
@@ -67,8 +74,7 @@ src/
     app-list.ts                   list sub-handler
     app-load-from-directory.ts    load_from_directory sub-handler
     app-create.ts                 create sub-handler (multi-turn scaffold + coding agent)
-    homescreen.ts                 HOMESCREEN action
-    homescreen-prompt.ts          Prompt builder + scene-JSON extractor for HOMESCREEN
+    background.ts                 BACKGROUND action (set color/image/generate, undo, reset)
     views.ts                      VIEWS action dispatcher
     views-client.ts               ViewsClient — loopback HTTP to /api/views/*
     views-list.ts                 list sub-handler

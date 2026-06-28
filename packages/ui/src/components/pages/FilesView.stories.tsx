@@ -80,7 +80,7 @@ function withStubbedFiles(
 ): NonNullable<Story["decorators"]> {
   return [
     (Story) => {
-      const stubbed = client as unknown as {
+      const stubbed = client as {
         listFiles: () => Promise<{ files: StoredFile[] }>;
         deleteFile: () => Promise<{ deleted: boolean }>;
       };

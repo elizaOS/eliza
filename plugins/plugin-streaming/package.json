@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-streaming",
   "description": "RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -53,7 +53,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe src",
     "lint:check": "bunx @biomejs/biome check src",
     "typecheck": "tsgo --noEmit",
-    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },

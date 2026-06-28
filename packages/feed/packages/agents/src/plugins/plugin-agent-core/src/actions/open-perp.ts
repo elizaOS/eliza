@@ -50,7 +50,7 @@ export const openPerpAction: Action = {
       description: "Leverage multiplier (1-10x). Default: 1",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
   examples: [
     [
       {

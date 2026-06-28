@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createMockRuntime } from "../../testing/mock-runtime";
 import type { Room, UUID } from "../../types/index";
 import type { IAgentRuntime } from "../../types/runtime";
 import {
@@ -26,7 +27,7 @@ function makeRuntime(seed?: Partial<Record<UUID, Room>>): MockRuntime {
 	const updateRoom = vi.fn(async (room: Room) => {
 		rooms.set(room.id, room);
 	});
-	const runtime = { getRoom, updateRoom } as unknown as IAgentRuntime;
+	const runtime = createMockRuntime({ getRoom, updateRoom });
 	return { runtime, rooms, getRoom, updateRoom };
 }
 

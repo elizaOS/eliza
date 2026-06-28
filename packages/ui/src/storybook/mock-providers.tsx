@@ -19,6 +19,12 @@ const noopAsync = async () => {};
 
 const baseMockApp: Partial<AppContextValue> = {
   activeGameViewerUrl: "",
+  // Branch discriminators must be explicit null, NOT left to the Proxy's
+  // `noop` fallback (a truthy function) — otherwise ChatView takes its
+  // terminal/inbox early-return branch ("Starting terminal…") instead of
+  // rendering the composer + transcript.
+  activeInboxChat: null,
+  activeTerminalSessionId: null,
   agentStatus: {
     state: "stopped",
     agentName: "elizaOS Storybook",
@@ -41,6 +47,15 @@ const baseMockApp: Partial<AppContextValue> = {
       queueMicrotask(fn);
     },
   },
+  // Array-typed slices must default to real arrays, NOT the Proxy's `noop`
+  // fallback (a function) — consumers iterate them (`plugins.find`,
+  // `appRuns.filter`) and a function would throw "x is not a function".
+  appRuns: [],
+  plugins: [],
+  pluginSaving: new Set<string>(),
+  pluginSaveSuccess: new Set<string>(),
+  favoriteApps: [],
+  recentApps: [],
   pendingRestart: false,
   pendingRestartReasons: [],
   restartBannerDismissed: false,

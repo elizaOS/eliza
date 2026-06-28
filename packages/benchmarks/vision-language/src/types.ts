@@ -58,6 +58,8 @@ export interface Prediction {
   text?: string;
   /** Predicted click point (ScreenSpot). */
   click?: Point;
+  /** Optional predicted region (ScreenSpot); scorers validate before use. */
+  bbox?: unknown;
   /** Predicted action sequence (OSWorld). */
   actions?: PredictedAction[];
   /** Wall time spent producing this prediction in milliseconds. */

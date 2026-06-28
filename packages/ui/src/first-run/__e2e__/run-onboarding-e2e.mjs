@@ -8,6 +8,7 @@
  * Run: bun run --cwd packages/ui test:onboarding-e2e
  */
 import { mkdir, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -32,6 +33,52 @@ const stubController = {
     }));
   },
 };
+
+// CompactOnboarding → boot-config-store re-exports `syncBrandEnvToEliza` /
+// `syncElizaEnvToBrand` from `@elizaos/core`, whose Node entry pulls fs-extra and
+// the rest of the server graph (dead in the browser). Production Vite resolves
+// core's `browser` export condition; this raw-esbuild bundle does not, so satisfy
+// every named import with a no-op Proxy (mirrors run-home-screen-e2e).
+const stubElizaCore = {
+  name: "stub-eliza-core",
+  setup(b) {
+    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
+      path: args.path,
+      namespace: "eliza-core-stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
+      contents:
+        "const noop=new Proxy(()=>noop,{get:()=>noop});module.exports=new Proxy({},{get:()=>noop});",
+      loader: "js",
+    }));
+  },
+};
+
+const nodeBuiltins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]);
+const stubNodeBuiltins = {
+  name: "stub-node-builtins",
+  setup(b) {
+    b.onResolve({ filter: /.*/ }, (args) => {
+      const bare = args.path.replace(/^node:/, "").split("/")[0];
+      if (
+        args.path.startsWith("node:") ||
+        nodeBuiltins.has(args.path) ||
+        builtinModules.includes(bare)
+      ) {
+        return { path: args.path, namespace: "node-stub" };
+      }
+      return null;
+    });
+    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
+      contents:
+        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+      loader: "js",
+    }));
+  },
+};
 const result = await build({
   entryPoints: [join(here, "onboarding-fixture.tsx")],
   bundle: true,
@@ -40,7 +87,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubController],
+  plugins: [stubController, stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;

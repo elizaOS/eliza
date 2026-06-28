@@ -40,12 +40,21 @@ function makeFrame(samples: number): TalkModeAudioFrameEvent {
   };
 }
 
+function encodePcm(values: readonly number[]): string {
+  const pcm = new Float32Array(values);
+  const bytes = new Uint8Array(pcm.buffer);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
 interface FakeVoiceState {
   ctxCreated: number;
   pipelineOpened: number;
   pipelineClosed: number;
   ctxDestroyed: number;
   processed: string[];
+  includePcmRequests: boolean[];
   nextTurns: ElizaVoiceTurn[][];
 }
 
@@ -70,13 +79,17 @@ function fakeVoice(state: FakeVoiceState): ElizaVoicePluginLike {
       state.pipelineOpened += 1;
       return { handle: "pl1" };
     }),
-    pipelineProcess: vi.fn(async ({ pcm16 }) => {
+    pipelineProcess: vi.fn(async ({ pcm16, includePcm }) => {
       state.processed.push(pcm16);
+      state.includePcmRequests.push(Boolean(includePcm));
       return { turns: state.nextTurns.shift() ?? [] };
     }),
-    pipelineFlush: vi.fn(async () => ({
-      turns: state.nextTurns.shift() ?? [],
-    })),
+    pipelineFlush: vi.fn(async (options?: { includePcm?: boolean }) => {
+      state.includePcmRequests.push(Boolean(options?.includePcm));
+      return {
+        turns: state.nextTurns.shift() ?? [],
+      };
+    }),
     pipelineReset: vi.fn(async () => {}),
     pipelineClose: vi.fn(async () => {
       state.pipelineClosed += 1;
@@ -116,6 +129,7 @@ describe("JniVoicePipeline", () => {
       pipelineClosed: 0,
       ctxDestroyed: 0,
       processed: [],
+      includePcmRequests: [],
       nextTurns: [],
     };
   });
@@ -254,6 +268,84 @@ describe("JniVoicePipeline", () => {
     // A confident bystander (not owner, not enrolled, no wake word) is suppressed.
     expect(turns[0].signal.agentShouldSpeak).toBe(false);
     expect(turns[0].signal.nextSpeaker).toBe("user");
+    await p.stop();
+  });
+
+  it("feeds selfVoiceSimilarity into the ambient gate", async () => {
+    const voice = fakeVoice(state);
+    const { b64 } = encodeEmbedding();
+    const turn: ElizaVoiceTurn = {
+      turnId: "jni_self_voice",
+      samples: 32000,
+      durationMs: 2000,
+      hasEmbedding: true,
+      embNorm: 1,
+      diarizFrames: 293,
+      diarizDistinctClasses: 1,
+      embedding: b64,
+      embeddingDim: 256,
+      labels: "",
+      labelCount: 0,
+    };
+    state.nextTurns = [[turn]];
+    const resolveSelfVoiceSimilarity = vi.fn(async () => 0.92);
+    const tm = fakeTalkmode((cb) => {
+      emit = cb;
+    });
+    const p = new JniVoicePipeline(tm, voice, {
+      resolveSelfVoiceSimilarity,
+      selfVoiceContext: { agentSpeaking: true },
+    });
+    const turns: JniAttributedTurn[] = [];
+    p.onTurn((t) => turns.push(t));
+    await p.start();
+    for (let i = 0; i < 49; i += 1) emit(makeFrame(320));
+    await new Promise((r) => setTimeout(r, 0));
+    await (p as unknown as { feeding: Promise<void> }).feeding;
+
+    expect(resolveSelfVoiceSimilarity).toHaveBeenCalledOnce();
+    expect(turns[0].signal.agentShouldSpeak).toBe(false);
+    expect(turns[0].signal.nextSpeaker).toBe("user");
+    expect(turns[0].signal.source).toBe("client-ambient+self-voice");
+    await p.stop();
+  });
+
+  it("requests completed turn PCM only when the handoff listener is configured", async () => {
+    const voice = fakeVoice(state);
+    const pcm = [0.125, -0.25, 0.5, -0.75];
+    const turn: ElizaVoiceTurn = {
+      turnId: "jni_pcm_0",
+      samples: pcm.length,
+      durationMs: 0.25,
+      hasEmbedding: false,
+      embNorm: 0,
+      diarizFrames: 0,
+      diarizDistinctClasses: 0,
+      embedding: "",
+      embeddingDim: 0,
+      labels: "",
+      labelCount: 0,
+      pcm: encodePcm(pcm),
+      pcmSampleRate: 16_000,
+    };
+    state.nextTurns = [[turn]];
+    const tm = fakeTalkmode((cb) => {
+      emit = cb;
+    });
+    const onCompletedPcmTurn = vi.fn();
+    const p = new JniVoicePipeline(tm, voice, { onCompletedPcmTurn });
+    await p.start();
+    for (let i = 0; i < 49; i += 1) emit(makeFrame(320));
+    await new Promise((r) => setTimeout(r, 0));
+    await (p as unknown as { feeding: Promise<void> }).feeding;
+
+    expect(state.includePcmRequests[0]).toBe(true);
+    expect(onCompletedPcmTurn).toHaveBeenCalledOnce();
+    const forwarded = onCompletedPcmTurn.mock.calls[0][0];
+    expect(forwarded.turnId).toBe("jni_pcm_0");
+    expect(forwarded.audio.sampleRate).toBe(16_000);
+    expect(Array.from(forwarded.audio.pcm)).toEqual(pcm);
+    expect(forwarded.signal).toBeDefined();
     await p.stop();
   });
 });

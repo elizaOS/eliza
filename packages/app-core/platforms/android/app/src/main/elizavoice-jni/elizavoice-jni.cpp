@@ -226,6 +226,7 @@ struct PipelineSession {
     // read them without re-parsing big JSON.
     std::vector<std::vector<float>> turnEmbeddings;
     std::vector<std::vector<int8_t>> turnLabels;
+    std::vector<std::vector<float>> turnPcms;
 };
 
 // Append `n` samples to a bounded pre-roll ring, dropping oldest beyond cap.
@@ -321,6 +322,7 @@ bool finalize_turn(PipelineSession* s, char** outError) {
                                               : std::vector<float>{});
     s->turnLabels.push_back(haveLabels ? std::move(labels)
                                        : std::vector<int8_t>{});
+    s->turnPcms.push_back(std::move(s->turnPcm));
     s->turnPcm.clear();
     return true;
 }
@@ -405,19 +407,6 @@ bool bionic_bool_env_or_default(const char* name, bool fallback) {
     return fallback;
 }
 
-bool bionic_bundle_allows_same_file_mtp(const char* bundle_dir) {
-    if (!bundle_dir || bundle_dir[0] == '\0') return false;
-    const std::string path(bundle_dir);
-    return path.find("eliza-1-2b") != std::string::npos ||
-           path.find("eliza-1-4b") != std::string::npos ||
-           path.find("eliza-1-9b") != std::string::npos ||
-           path.find("eliza-1-27b") != std::string::npos ||
-           path.find("/2b") != std::string::npos ||
-           path.find("/4b") != std::string::npos ||
-           path.find("/9b") != std::string::npos ||
-           path.find("/27b") != std::string::npos;
-}
-
 int bionic_int_env_or_default(const char* name, int fallback) {
     const char* v = std::getenv(name);
     if (!v || v[0] == '\0') return fallback;
@@ -428,16 +417,18 @@ int bionic_int_env_or_default(const char* name, int fallback) {
 // Arm the eliza-1 text-model bionic config for runtime optimizations that are
 // correct for the shipped model.
 //
-// KV-quant stays OFF by default. The current shipped qwen35 Eliza-1 tiers use
-// head_dim=256, while QJL1_256/fused QJL-TBQ kernels are head_dim=128. Enabling
-// cache_type_k=qjl1_256/cache_type_v=tbq3_0 on these tiers regresses or crashes;
-// F16 KV is the correct path until a head_dim=256 QJL type or head_dim=128 model
-// variant ships. ELIZA_BIONIC_KV_QUANT=1 is left as an explicit lab override
-// for compatible test bundles only.
+// KV-quant stays OFF by default. The shipped Eliza-1 tiers are Gemma 4, whose
+// KV is already minimal by construction (MQA + windowed-SWA + shared-KV, dual
+// head dims 512 global / 256 SWA) and runs on stock f16/q8_0 KV. The legacy
+// QJL1_256 / fused QJL-TBQ kernels are head_dim=128 and dimensionally
+// inapplicable to Gemma, so cache_type_k=qjl1_256/cache_type_v=tbq3_0 is not a
+// shipping path; F16 KV is correct. ELIZA_BIONIC_KV_QUANT=1 is left as an
+// explicit lab override for head_dim=128 test bundles only.
 //
-// MTP is enabled by default for same-file NextN tiers (2B+) when a bundle path is
-// known, and remains off for 0.8B. ELIZA_BIONIC_MTP can force on/off for native
-// experiments.
+// MTP is enabled only when the caller supplies a Gemma separate-drafter GGUF.
+// Omitting cfg.mtp_drafter_path would select the retired same-file NextN path,
+// so shipped Gemma bundles without a staged drafter run plain decode even if
+// ELIZA_BIONIC_MTP is set in the app process.
 //
 // The two static names below outlive the cfg they're attached to (cfg is a
 // stack struct consumed synchronously by eliza_inference_llm_stream_open).
@@ -451,19 +442,25 @@ void arm_bionic_text_cfg(eliza_llm_stream_config_t& cfg,
         LOGI("bionic text cfg: KV-quant ON by explicit override (k=%s v=%s)",
              kKvTypeK, kKvTypeV);
     } else {
-        LOGI("bionic text cfg: KV-quant OFF (F16 KV; shipped qwen35 head_dim=256)");
+        LOGI("bionic text cfg: KV-quant OFF (stock f16/q8_0 KV; Gemma 4 KV is "
+             "already minimal)");
     }
 
-    const bool default_mtp = bionic_bundle_allows_same_file_mtp(bundle_dir);
-    if (bionic_bool_env_or_default("ELIZA_BIONIC_MTP", default_mtp)) {
+    (void)bundle_dir;
+    const bool has_drafter =
+        cfg.mtp_drafter_path && cfg.mtp_drafter_path[0] != '\0';
+    if (has_drafter && bionic_bool_env_or_default("ELIZA_BIONIC_MTP", true)) {
         int draft_min = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MIN", 1);
-        int draft_max = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MAX", 2);
+        int draft_max = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MAX", 1);
         if (draft_min < 1) draft_min = 1;
         if (draft_max < draft_min) draft_max = draft_min;
         cfg.draft_min = draft_min;
         cfg.draft_max = draft_max;
-        LOGI("bionic text cfg: MTP ON (draft_min=%d draft_max=%d, same-file)",
-             draft_min, draft_max);
+        LOGI("bionic text cfg: MTP ON (draft_min=%d draft_max=%d, drafter=%s)",
+             draft_min, draft_max, cfg.mtp_drafter_path);
+    } else {
+        LOGI("bionic text cfg: MTP OFF (%s)",
+             has_drafter ? "disabled by ELIZA_BIONIC_MTP" : "no drafter");
     }
 }
 
@@ -813,6 +810,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineProcess(JNIEnv* env, jclass,
     s->turns.clear();
     s->turnEmbeddings.clear();
     s->turnLabels.clear();
+    s->turnPcms.clear();
 
     const std::vector<float> pcm = read_float_array(env, jPcm);
     s->pending.insert(s->pending.end(), pcm.begin(), pcm.end());
@@ -841,6 +839,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineFlush(JNIEnv* env, jclass,
     s->turns.clear();
     s->turnEmbeddings.clear();
     s->turnLabels.clear();
+    s->turnPcms.clear();
     if (s->seg.forceEnd()) {
         s->capturing = false;
         char* outError = nullptr;
@@ -896,6 +895,26 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnLabels(JNIEnv* env,
     return out;
 }
 
+// Read the segmented turn PCM for the i-th turn. Empty array when unavailable.
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnPcm(JNIEnv* env,
+                                                           jclass,
+                                                           jlong handle,
+                                                           jint index) {
+    auto* s = reinterpret_cast<PipelineSession*>(handle);
+    if (!s || index < 0 ||
+        static_cast<size_t>(index) >= s->turnPcms.size()) {
+        return env->NewFloatArray(0);
+    }
+    const auto& pcm = s->turnPcms[static_cast<size_t>(index)];
+    jfloatArray out = env->NewFloatArray(static_cast<jsize>(pcm.size()));
+    if (out && !pcm.empty()) {
+        env->SetFloatArrayRegion(out, 0, static_cast<jsize>(pcm.size()),
+                                 pcm.data());
+    }
+    return out;
+}
+
 JNIEXPORT void JNICALL
 Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineReset(JNIEnv*, jclass,
                                                          jlong handle) {
@@ -904,6 +923,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineReset(JNIEnv*, jclass,
     s->seg.reset();
     s->pending.clear();
     s->turnPcm.clear();
+    s->turnPcms.clear();
     s->preRoll.clear();
     s->capturing = false;
     char* outError = nullptr;
@@ -1238,17 +1258,14 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamOpen(
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = nGpuLayers;
     cfg.mtp_drafter_path = drafter.empty() ? nullptr : drafter.c_str();
-    // Arm safe runtime optimizations (F16 KV for shipped qwen35; MTP when a
-    // caller/env supplies a draft window).
-    // A caller-supplied drafter path is separate-drafter MTP and needs its own
-    // draft window — only arm the same-file MTP env override when no drafter
-    // was passed.
+    // Arm safe runtime optimizations: stock f16/q8_0 KV for the shipped Gemma 4
+    // tiers, and separate-drafter MTP only when the caller passes a drafter.
     arm_bionic_text_cfg(cfg);
     if (!drafter.empty() && cfg.draft_min <= 0) {
         // Separate drafter supplied but env left the window 0; give it the
         // single-head default so the drafter actually drives speculation.
         cfg.draft_min = 1;
-        cfg.draft_max = 2;
+        cfg.draft_max = 1;
     }
     char* outError = nullptr;
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
@@ -1387,8 +1404,8 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     cfg.top_p = 1.0f;
     cfg.repeat_penalty = 1.0f;
     cfg.n_gpu_layers = -1;   // all-GPU when the vulkan lib is staged
-    // Arm safe runtime optimizations (F16 KV for shipped qwen35; same-file MTP
-    // on 2B+ bundles, or env override for lab runs).
+    // Arm safe runtime optimizations (stock f16/q8_0 KV for shipped Gemma 4
+    // tiers; no MTP here because nativeLlmSelfTest has no drafter argument).
     arm_bionic_text_cfg(cfg, bundleDir.c_str());
     EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
     if (!s) {
@@ -1509,6 +1526,104 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
     env->SetFloatArrayRegion(out, 0, n, pcm.data());
     LOGI("nativeKokoroSynthesize: %zu chars -> %d samples", text.size(), n);
     return out;
+}
+
+// ── Batch ASR (synchronous, VAD-free) ────────────────────────────────────
+//
+// The streaming pipeline (nativePipelineProcess) is VAD-gated and needs the
+// VAD/diariz/speaker GGUFs staged; this is the DIRECT audio-in/text-out
+// transcribe the fused lib exposes (eliza_inference_asr_transcribe), which
+// only mmap-acquires the `asr/` weights on the resident context. The bionic
+// host's op="asr" calls this so the agent's TRANSCRIPTION delegate gets a
+// real on-device transcript without the full attribution pipeline.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeAsrTranscribe(JNIEnv* env, jclass,
+                                                         jlong ctxHandle,
+                                                         jfloatArray jPcm,
+                                                         jint sampleRate) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "asrTranscribe: null context", nullptr);
+        return nullptr;
+    }
+    const jsize n = env->GetArrayLength(jPcm);
+    jfloat* pcm = env->GetFloatArrayElements(jPcm, nullptr);
+    if (!pcm) {
+        throw_runtime(env, "asrTranscribe: null PCM", nullptr);
+        return nullptr;
+    }
+    // The ASR weights are a voice-only mmap region that must be armed before
+    // transcribe (VoiceLifecycle normally does this on voice-on). The agent's
+    // one-shot transcribe path has no lifecycle, so arm it here (idempotent if
+    // already acquired).
+    char* acqErr = nullptr;
+    if (eliza_inference_mmap_acquire(ctx, "asr", &acqErr) != 0) {
+        env->ReleaseFloatArrayElements(jPcm, pcm, JNI_ABORT);
+        throw_runtime(env, "asr mmap_acquire", acqErr);
+        return nullptr;
+    }
+    // 64 KiB transcript cap — far longer than any single utterance.
+    std::vector<char> out(65536, 0);
+    char* err = nullptr;
+    const int rc = eliza_inference_asr_transcribe(
+        ctx, reinterpret_cast<const float*>(pcm), static_cast<size_t>(n),
+        sampleRate > 0 ? sampleRate : kSampleRate, out.data(), out.size(),
+        &err);
+    env->ReleaseFloatArrayElements(jPcm, pcm, JNI_ABORT);
+    if (rc < 0) {
+        throw_runtime(env, "asr_transcribe", err);
+        return nullptr;
+    }
+    LOGI("nativeAsrTranscribe: %d samples @ %d Hz -> %d transcript bytes",
+         (int)n, (int)sampleRate, rc);
+    return to_jstring(env, std::string(out.data()));
+}
+
+// ── mmproj vision (ABI v9) ───────────────────────────────────────────────
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeVisionSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_vision_supported());
+}
+
+// Describe a raw PNG/JPEG/WebP image with the resident TEXT model + an mmproj
+// projector (eliza_inference_describe_image). The bionic host's op="image"
+// calls this so the agent's IMAGE_DESCRIPTION delegate runs screen/vision
+// recognition fully on-device.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeDescribeImage(JNIEnv* env, jclass,
+                                                         jlong ctxHandle,
+                                                         jbyteArray jImage,
+                                                         jstring jMmproj,
+                                                         jstring jPrompt) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "describeImage: null context", nullptr);
+        return nullptr;
+    }
+    const std::string mmproj = from_jstring(env, jMmproj);
+    const std::string prompt = from_jstring(env, jPrompt);
+    const jsize n = env->GetArrayLength(jImage);
+    jbyte* img = env->GetByteArrayElements(jImage, nullptr);
+    if (!img) {
+        throw_runtime(env, "describeImage: null image bytes", nullptr);
+        return nullptr;
+    }
+    std::vector<char> out(16384, 0);
+    char* err = nullptr;
+    const int rc = eliza_inference_describe_image(
+        ctx, reinterpret_cast<const unsigned char*>(img),
+        static_cast<size_t>(n),
+        mmproj.empty() ? nullptr : mmproj.c_str(),
+        prompt.empty() ? nullptr : prompt.c_str(), out.data(), out.size(),
+        &err);
+    env->ReleaseByteArrayElements(jImage, img, JNI_ABORT);
+    if (rc < 0) {
+        throw_runtime(env, "describe_image", err);
+        return nullptr;
+    }
+    LOGI("nativeDescribeImage: %d image bytes -> %d description bytes", (int)n,
+         rc);
+    return to_jstring(env, std::string(out.data()));
 }
 
 }  // extern "C"

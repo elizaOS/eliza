@@ -4,7 +4,7 @@
     "composite": false,
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun"],

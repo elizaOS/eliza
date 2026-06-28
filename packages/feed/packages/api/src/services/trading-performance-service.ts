@@ -146,7 +146,7 @@ export class TradingPerformanceService {
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    return result as unknown as WalletTradingPerformanceRow[];
+    return result as WalletTradingPerformanceRow[];
   }
 
   static async getWalletEntry(
@@ -184,7 +184,7 @@ export class TradingPerformanceService {
       LIMIT 1
     `);
 
-    const rows = result as unknown as WalletTradingPerformanceRow[];
+    const rows = result as WalletTradingPerformanceRow[];
     return rows[0] ?? null;
   }
 
@@ -227,7 +227,7 @@ export class TradingPerformanceService {
         )
     `);
 
-    const rows = result as unknown as Array<{ count: number }>;
+    const rows = result as Array<{ count: number }>;
     return rows[0]?.count ?? 0;
   }
 
@@ -275,7 +275,7 @@ export class TradingPerformanceService {
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    return result as unknown as TeamTradingPerformanceRow[];
+    return result as TeamTradingPerformanceRow[];
   }
 
   static async getTeamEntry(
@@ -320,7 +320,7 @@ export class TradingPerformanceService {
       LIMIT 1
     `);
 
-    const rows = result as unknown as TeamTradingPerformanceRow[];
+    const rows = result as TeamTradingPerformanceRow[];
     return rows[0] ?? null;
   }
 
@@ -367,7 +367,7 @@ export class TradingPerformanceService {
         )
     `);
 
-    const rows = result as unknown as Array<{ count: number }>;
+    const rows = result as Array<{ count: number }>;
     return rows[0]?.count ?? 0;
   }
 }

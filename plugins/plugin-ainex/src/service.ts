@@ -87,7 +87,7 @@ export class AinexService extends Service {
   private safety: SafetySnapshot | null = null;
   private connectedAt: number | null = null;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
   }
 

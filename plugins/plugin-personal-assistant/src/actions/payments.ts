@@ -7,4 +7,4 @@
  * from here. The handler constructs a `FinancesService` internally.
  */
 
-export { runPaymentsHandler } from "@elizaos/plugin-finances";
+export { runPaymentsHandler } from "@elizaos/plugin-finances/actions/finances";

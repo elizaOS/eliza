@@ -40,7 +40,6 @@ export const ConversationScopeSchema = z.enum([
   "page-connectors",
   "page-phone",
   "page-plugins",
-  "page-lifeops",
   "page-settings",
   "page-wallet",
   "page-browser",

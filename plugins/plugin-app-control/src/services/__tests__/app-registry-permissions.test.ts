@@ -521,4 +521,24 @@ describe("AppRegistryService permissions surface", () => {
 			expect(view?.grantedNamespaces).toEqual(["fs"]);
 		});
 	});
+
+	describe("slug validation (path-traversal hardening)", () => {
+		it("rejects a slug that could escape the app-state directory", async () => {
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			for (const slug of ["../../etc", "a/b", "..", "x/../y", "", "a b"]) {
+				await expect(
+					service.register(makeEntry({ slug }), { trust: "external" }),
+				).rejects.toThrow(/unsafe slug/);
+			}
+		});
+
+		it("accepts a normal identifier slug", async () => {
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			await expect(
+				service.register(makeEntry({ slug: "my_app-1" }), {
+					trust: "external",
+				}),
+			).resolves.toBeUndefined();
+		});
+	});
 });

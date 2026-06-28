@@ -7,6 +7,7 @@ export {
 	composePromptFromState,
 	parseKeyValueXml, // audit:allowlist - retained for cloud/ XML evaluators; new prompts must use JSON
 } from "../utils";
+export * from "./access-context";
 export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";
@@ -26,6 +27,15 @@ export * from "./model";
 export * from "./notification";
 export * from "./pairing";
 export * from "./payment";
+export {
+	PENDING_USER_ACTION_WEIGHT,
+	type PendingUserAction,
+	type PendingUserActionKind,
+	type PendingUserActionOption,
+	type PendingUserActionResolution,
+	type PendingUserActionResolutionTarget,
+	type RequiresUserResponse,
+} from "./pending-user-action";
 export * from "./pipeline-hooks";
 export * from "./plugin";
 export * from "./plugin-store";

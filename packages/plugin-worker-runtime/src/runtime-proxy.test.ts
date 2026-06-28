@@ -219,7 +219,7 @@ describe("buildRuntimeProxyApi", () => {
     );
 
     await expect(runtime.registerEvent("event", () => {})).rejects.toThrow(
-      "runtime.registerEvent inside a remote-mode plugin is not yet supported",
+      "runtime.registerEvent inside a remote-mode plugin cannot serialize callbacks; declare events via Plugin.events instead.",
     );
     expect(channel.sent).toEqual([]);
   });

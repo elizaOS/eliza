@@ -6,7 +6,10 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
+export * from "./access-context";
+export * from "./access-control/filter";
 export * from "./actions";
+export * from "./activity-plaintext";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
 // Export all core modules

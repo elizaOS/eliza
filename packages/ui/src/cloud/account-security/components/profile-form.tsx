@@ -353,7 +353,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 placeholder="your@email.com"
                 disabled={isUpdatingEmail}
                 required
-                className="rounded-sm border-white/20 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                className="rounded-sm border-white/20 bg-black/40 text-white placeholder:text-white/40   "
               />
               <BrandButton
                 type="submit"
@@ -421,7 +421,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
             <div className="relative group">
               {previewUrl ? (
                 <div className="relative">
-                  <div className="h-24 w-24 rounded-full overflow-hidden ring-2 ring-[var(--brand-orange)] ring-offset-2 ring-offset-black/50">
+                  <div className="h-24 w-24 rounded-full overflow-hidden    ">
                     <Image
                       src={previewUrl}
                       alt="Preview"
@@ -436,7 +436,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   </div>
                 </div>
               ) : (
-                <Avatar className="h-24 w-24 ring-2 ring-[var(--brand-orange)] ring-offset-2 ring-offset-black/50">
+                <Avatar className="h-24 w-24    ">
                   <AvatarImage
                     src={user.avatar || undefined}
                     alt={
@@ -572,7 +572,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 required
                 maxLength={100}
                 disabled={isPending}
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[var(--brand-orange)] focus:border-[var(--brand-orange)]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40   "
               />
             </div>
 
@@ -614,7 +614,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 defaultValue={user.avatar || ""}
                 placeholder="https://example.com/avatar.jpg"
                 disabled={isPending}
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[var(--brand-orange)] focus:border-[var(--brand-orange)]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40   "
               />
               <p className="text-xs text-white/74">
                 Or use the upload button above to add a profile picture.

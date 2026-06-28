@@ -598,7 +598,7 @@ export default function StewardLoginSection() {
             if (e.key === "Enter") handleVerifyOtpAndRegister();
           }}
           disabled={loading !== null}
-          className="w-full border border-white/20 bg-black px-4 py-3 text-center text-lg tracking-[0.5em] text-white placeholder:tracking-normal placeholder:text-white/40 outline-none transition focus:border-white focus:ring-2 focus:ring-[#FF5800]/40 disabled:opacity-50"
+          className="w-full border border-white/20 bg-black px-4 py-3 text-center text-lg tracking-[0.5em] text-white placeholder:tracking-normal placeholder:text-white/40 outline-none transition    disabled:opacity-50"
         />
 
         <button
@@ -682,7 +682,7 @@ export default function StewardLoginSection() {
           if (e.key === "Enter") handlePasskey();
         }}
         disabled={isLoading}
-        className="w-full border border-white/20 bg-black px-4 py-3 text-white placeholder:text-white/40 outline-none transition focus:border-white focus:ring-2 focus:ring-[#FF5800]/40 disabled:opacity-50"
+        className="w-full border border-white/20 bg-black px-4 py-3 text-white placeholder:text-white/40 outline-none transition    disabled:opacity-50"
         autoComplete="email webauthn"
       />
 

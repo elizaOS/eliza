@@ -71,7 +71,6 @@ import type {
   WhitelistStatus,
   WorkbenchOverview,
 } from "../api/client";
-import type { CloudHandoffPhaseDetail } from "../events";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
@@ -166,9 +165,9 @@ export const FIRST_RUN_PERMISSION_LABELS: Record<SystemPermissionId, string> = {
 };
 
 import type { ActionBanner } from "./action-banner";
-import type { ActionNotice } from "./action-notice";
+import type { ActionNotice, ActionTone } from "./action-notice";
 
-export type { ActionBanner, ActionNotice };
+export type { ActionBanner, ActionNotice, ActionTone };
 
 export type LifecycleAction = "start" | "stop" | "restart" | "reset";
 
@@ -240,22 +239,6 @@ export function deriveAgentReady(agentStatus: AgentStatus | null): boolean {
     agentStatus.canRespond ??
     (agentStatus.state === "running" && Boolean(agentStatus.model))
   );
-}
-
-/**
- * True while a shared→dedicated cloud-agent handoff is in flight (`migrating`):
- * the user is chatting on the shared adapter while the dedicated container boots.
- * One signal both the chat shell and the Settings cloud-agents row read, so the
- * transient "shared-now / dedicated-pending" state isn't opaque to either. It is
- * an AWARENESS signal only — it never gates the composer, since the shared
- * adapter is fully responsive during the handoff.
- */
-export function isCloudAgentWaking(
-  phase: CloudHandoffPhaseDetail | null,
-  agentId?: string,
-): boolean {
-  if (phase?.phase !== "migrating") return false;
-  return agentId === undefined || phase.agentId === agentId;
 }
 
 /**
@@ -367,6 +350,8 @@ export interface AppState {
   uiThemeMode: UiThemeMode;
   /** The unified home/app background, shared across the home and every view. */
   backgroundConfig: BackgroundConfig;
+  /** True when there is a previous background config to undo to. */
+  canUndoBackground: boolean;
   ownerName: string | null;
   /** VRM quality vs GPU use: always full quality, battery-aware (default), or always efficient. */
   companionVrmPowerMode: CompanionVrmPowerMode;
@@ -379,13 +364,6 @@ export interface AppState {
   companionHalfFramerateMode: CompanionHalfFramerateMode;
   connected: boolean;
   agentStatus: AgentStatus | null;
-  /**
-   * Latest shared→dedicated cloud-agent handoff phase, or null. Single source of
-   * truth fed by `CLOUD_HANDOFF_PHASE_EVENT`, so the chat shell and the Settings
-   * cloud-agents row both reflect the shared-now/dedicated-pending state instead
-   * of each running an independent wake loop. {@link isCloudAgentWaking}.
-   */
-  cloudHandoffPhase: CloudHandoffPhaseDetail | null;
   firstRunComplete: boolean;
   /** Incremented on agent reset so first-run UI shows immediately (not stuck behind VRM reveal). */
   firstRunUiRevealNonce: number;
@@ -821,6 +799,8 @@ export interface AppActions {
   setUiTheme: (theme: UiTheme) => void;
   setUiThemeMode: (mode: UiThemeMode) => void;
   setBackgroundConfig: (config: BackgroundConfig) => void;
+  /** Restore the most recent previous background config (no-op when empty). */
+  undoBackgroundConfig: () => void;
   setCompanionVrmPowerMode: (mode: CompanionVrmPowerMode) => void;
   setCompanionAnimateWhenHidden: (enabled: boolean) => void;
   setCompanionHalfFramerateMode: (mode: CompanionHalfFramerateMode) => void;
@@ -1058,7 +1038,7 @@ export interface AppActions {
   // Action notice
   setActionNotice: (
     text: string,
-    tone?: "info" | "success" | "error",
+    tone?: ActionTone,
     ttlMs?: number,
     once?: boolean,
     busy?: boolean,

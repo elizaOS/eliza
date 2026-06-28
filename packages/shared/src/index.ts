@@ -207,10 +207,20 @@ export {
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
 // surface through `./themes`, which already re-exports the same identifiers.
 export * from "./contracts/index.js";
+export { PutCuratedSkillSourceRequestSchema } from "./contracts/plugin-routes.js";
 export {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "./contracts/service-routing.js";
+export {
+  PostMarketplaceInstallRequestSchema,
+  PostMarketplaceUninstallRequestSchema,
+  PostSkillAcknowledgeRequestSchema,
+  PostSkillCatalogInstallRequestSchema,
+  PostSkillCatalogUninstallRequestSchema,
+  PostSkillCreateRequestSchema,
+  PutSkillSourceRequestSchema,
+} from "./contracts/skills-routes.js";
 // themes/ runtime (presets + apply engine) moved to @elizaos/ui/themes in
 // Phase 5B (shared shrink). The theme TYPE contract stays here because
 // `contracts/content-pack` references `ThemeDefinition`. Consumers should
@@ -288,6 +298,7 @@ export * from "./utils/log-prefix.js";
 export * from "./utils/name-tokens.js";
 export * from "./utils/namespace-defaults.js";
 export * from "./utils/number-parsing.js";
+export { parseClampedInteger } from "./utils/number-parsing.js";
 export * from "./utils/owner-name.js";
 export * from "./utils/permission-deep-links.js";
 export * from "./utils/rate-limiter.js";

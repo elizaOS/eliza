@@ -4,6 +4,9 @@ import "@elizaos/ui/styles";
 // they load from the view catalog on iOS/Android (where DynamicViewLoader is
 // disabled). No-op off-device.
 import "./mobile-plugin-views";
+// Surfaces the renderer build stamp on window.__ELIZA_RENDERER_BUILD__ so the
+// running build's identity is observable in-app and assertable on-device (#9309).
+import "./renderer-build-stamp";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { BackgroundRunner } from "@capacitor/background-runner";
@@ -112,6 +115,12 @@ import {
   loadUiThemeMode,
   resolveUiTheme,
 } from "@elizaos/ui/state/persistence";
+import { initScreenCaptureBridge } from "@elizaos/ui/state/screen-capture-bridge";
+import {
+  initStartupTrace,
+  markStartup,
+  measureStartup,
+} from "@elizaos/ui/state/startup-telemetry";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
@@ -132,7 +141,10 @@ import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
-import { SIDE_EFFECT_APP_MODULE_LOADERS } from "./plugin-registrations";
+import {
+  SIDE_EFFECT_APP_MODULE_LOADERS,
+  type SideEffectAppModuleLoader,
+} from "./plugin-registrations";
 import { registerViewServiceWorker } from "./sw-registration";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
@@ -152,6 +164,15 @@ declare global {
 
 const appModuleCache = new Map<string, Promise<unknown>>();
 const { createRoot } = ReactDomClient;
+let deferredAppModuleLoadsScheduled = false;
+
+// Renderer cold-start telemetry (#9565). The trace adopts a native-host-injected
+// id when present (Electrobun/Capacitor) so one device launch shares a single
+// id across the native host trace + this renderer trace + backend boot
+// telemetry; otherwise it derives a renderer-local id. `module-eval` is the
+// earliest renderer-JS checkpoint after the import graph evaluates.
+initStartupTrace();
+markStartup("module-eval", { platform: Capacitor.getPlatform() });
 
 function cachedDynamicImport<T>(
   key: string,
@@ -199,7 +220,7 @@ function importCompanionInferenceNotice() {
   );
 }
 
-function importAppLifeOps() {
+function importPersonalAssistant() {
   return cachedDynamicImport(
     "@elizaos/plugin-personal-assistant",
     () => import("@elizaos/plugin-personal-assistant"),
@@ -213,13 +234,6 @@ function importAppPhone() {
   );
 }
 
-function importAppSteward() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-steward-app",
-    () => import("@elizaos/plugin-steward-app"),
-  );
-}
-
 function importAppTaskCoordinator() {
   return cachedDynamicImport(
     "@elizaos/plugin-task-coordinator",
@@ -227,17 +241,17 @@ function importAppTaskCoordinator() {
   );
 }
 
+function importAppTaskCoordinatorRegister() {
+  return cachedDynamicImport(
+    "@elizaos/plugin-task-coordinator/register",
+    () => import("@elizaos/plugin-task-coordinator/register"),
+  );
+}
+
 function importAppTraining() {
   return cachedDynamicImport(
     "@elizaos/plugin-training",
     () => import("@elizaos/plugin-training"),
-  );
-}
-
-function importAppVincent() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-vincent",
-    () => import("@elizaos/plugin-vincent"),
   );
 }
 
@@ -291,11 +305,11 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
-  async () => (await importAppLifeOps()).AppBlockerSettingsCard,
+  async () => (await importPersonalAssistant()).AppBlockerSettingsCard,
 );
 const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
-    async () => (await importAppLifeOps()).WebsiteBlockerSettingsCard,
+    async () => (await importPersonalAssistant()).WebsiteBlockerSettingsCard,
   );
 const StewardLogo = lazyNamedComponent<StewardLogoProps>(
   async () => (await importAppSteward()).StewardLogo,
@@ -401,8 +415,11 @@ const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
 const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
+const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
+const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
+const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "In one short sentence, confirm the iOS full Bun local backend is running.";
 const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
@@ -416,6 +433,7 @@ let keyboardListenersRegistered = false;
 let lifecycleListenersRegistered = false;
 let networkStatusListenerRegistered = false;
 let iosFullBunSmokeStarted = false;
+let iosOnboardingSmokeStarted = false;
 
 function isDesktopPlatform(): boolean {
   return isElectrobunRuntime();
@@ -529,16 +547,35 @@ function scheduleAppModuleIdleWork(work: () => void): void {
   window.setTimeout(work, 50);
 }
 
-function scheduleSideEffectAppModuleLoads(): void {
+function scheduleAfterReactPaint(work: () => void): void {
+  if (typeof window === "undefined") {
+    work();
+    return;
+  }
+
+  if (typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(work);
+    });
+    return;
+  }
+
+  window.setTimeout(work, 0);
+}
+
+function scheduleAppModuleIdleLoads(
+  loaders: readonly SideEffectAppModuleLoader[],
+): void {
+  if (loaders.length === 0) return;
   let nextIndex = 0;
   let activeCount = 0;
 
   const pump = () => {
     while (
       activeCount < SIDE_EFFECT_APP_MODULE_LOAD_CONCURRENCY &&
-      nextIndex < SIDE_EFFECT_APP_MODULE_LOADERS.length
+      nextIndex < loaders.length
     ) {
-      const registration = SIDE_EFFECT_APP_MODULE_LOADERS[nextIndex];
+      const registration = loaders[nextIndex];
       if (!registration) break;
       const { key, load } = registration;
       nextIndex += 1;
@@ -549,7 +586,7 @@ function scheduleSideEffectAppModuleLoads(): void {
         })
         .finally(() => {
           activeCount -= 1;
-          if (nextIndex < SIDE_EFFECT_APP_MODULE_LOADERS.length) {
+          if (nextIndex < loaders.length) {
             scheduleAppModuleIdleWork(pump);
           }
         });
@@ -557,6 +594,20 @@ function scheduleSideEffectAppModuleLoads(): void {
   };
 
   scheduleAppModuleIdleWork(pump);
+}
+
+function scheduleDeferredAppModuleLoadsAfterPaint(): void {
+  if (deferredAppModuleLoadsScheduled) return;
+  deferredAppModuleLoadsScheduled = true;
+
+  scheduleAfterReactPaint(() => {
+    // These modules register routes, tabs, overlay apps, and feature surfaces,
+    // but no component from them is needed to paint the startup shell. Schedule
+    // them only after React has had a paint opportunity so idle imports cannot
+    // compete with the first visible boot surface.
+    scheduleAppModuleIdleLoads(BOOT_CONFIG_DEFERRED_MODULE_LOADERS);
+    scheduleAppModuleIdleLoads(SIDE_EFFECT_APP_MODULE_LOADERS);
+  });
 }
 
 function buildAppBootConfig({
@@ -604,10 +655,38 @@ function buildAppBootConfig({
   };
 }
 
+// App plugins imported for their self-registration side effects (PA HTTP client
+// + Blocker cards, task-coordinator surfaces, phone, steward, training) and to
+// pre-warm their React.lazy chunks. The boot config
+// only references these as React.lazy handles (see buildAppBootConfig), so NONE
+// is read synchronously while assembling the config — they must not gate the
+// first visible shell (#9565). Deferred onto the idle path like
+// SIDE_EFFECT_APP_MODULE_LOADERS; on-demand render still triggers the cached
+// import if idle work has not run yet, so no surface can be missed.
+const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
+  [
+    {
+      key: "@elizaos/plugin-personal-assistant",
+      load: importPersonalAssistant,
+    },
+    { key: "@elizaos/plugin-task-coordinator", load: importAppTaskCoordinator },
+    {
+      key: "@elizaos/plugin-task-coordinator/register",
+      load: importAppTaskCoordinatorRegister,
+    },
+    { key: "@elizaos/plugin-phone", load: importAppPhone },
+    { key: "@elizaos/plugin-training", load: importAppTraining },
+  ];
+
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
     await importAppCore();
 
+    // Block first paint ONLY on the modules whose exports buildAppBootConfig
+    // reads synchronously: companion app registration, the scene-status hook,
+    // and the inference-notice resolver. Everything else exposed through the
+    // boot config is a React.lazy handle that loads on render, so its import is
+    // deferred below instead of gating the first visible shell (#9565).
     const [
       companionRegistrationModule,
       companionSceneStatusModule,
@@ -616,14 +695,6 @@ function initializeAppModules(): Promise<void> {
       importCompanionAppRegistration(),
       importCompanionSceneStatusContext(),
       importCompanionInferenceNotice(),
-      // Side-effect import for the PA HTTP client + Blocker settings cards.
-      importAppLifeOps(),
-      // Imported for its self-registration side effect (Vincent overlay app).
-      importAppVincent(),
-      importAppTaskCoordinator(),
-      importAppPhone(),
-      importAppSteward(),
-      importAppTraining(),
     ]);
 
     companionRegistrationModule.registerCompanionApp();
@@ -636,13 +707,6 @@ function initializeAppModules(): Promise<void> {
           companionInferenceNoticeModule.resolveCompanionInferenceNotice,
       }),
     );
-
-    // The side-effect plugins (games, wallet-ui, trajectory-logger, feature
-    // registrations) export no components used at first paint and the boot
-    // config doesn't depend on them — load them OFF the first-paint critical
-    // path so the initial render isn't blocked on ~20 extra module loads. Their
-    // nav tabs / overlay apps register a tick later; React.lazy covers the gap.
-    scheduleSideEffectAppModuleLoads();
   })();
 
   return appModulesInitialized;
@@ -682,22 +746,31 @@ function logNativePluginUnavailable(pluginName: string, error: unknown): void {
 async function writeIosFullBunSmokeResult(
   result: Record<string, unknown>,
 ): Promise<void> {
+  await writeIosPreferenceSmokeResult(IOS_FULL_BUN_SMOKE_RESULT_KEY, result);
+}
+
+async function writeIosOnboardingSmokeResult(
+  result: Record<string, unknown>,
+): Promise<void> {
+  await writeIosPreferenceSmokeResult(IOS_ONBOARDING_SMOKE_RESULT_KEY, result);
+}
+
+async function writeIosPreferenceSmokeResult(
+  key: string,
+  result: Record<string, unknown>,
+): Promise<void> {
   const value = JSON.stringify({
     ...result,
     updatedAt: new Date().toISOString(),
   });
   try {
-    Storage.prototype.setItem.call(
-      window.localStorage,
-      IOS_FULL_BUN_SMOKE_RESULT_KEY,
-      value,
-    );
+    Storage.prototype.setItem.call(window.localStorage, key, value);
   } catch {
     // Ignore localStorage failures; Preferences is the simulator harness source of truth.
   }
   await boundedPreferenceWrite(() =>
     Preferences.set({
-      key: IOS_FULL_BUN_SMOKE_RESULT_KEY,
+      key,
       value,
     }),
   );
@@ -744,6 +817,160 @@ function renderIosFullBunSmokeStatus(message: string): void {
   } catch {
     // Smoke diagnostics are best-effort.
   }
+}
+
+function parseIosOnboardingSmokeRequest(raw: string | null): {
+  apiBase: string;
+} {
+  const fallback = { apiBase: "http://127.0.0.1:31337" };
+  if (!raw || raw === "1") return fallback;
+  try {
+    const parsed = JSON.parse(raw) as { apiBase?: unknown };
+    return {
+      apiBase:
+        typeof parsed.apiBase === "string" && parsed.apiBase.trim()
+          ? parsed.apiBase.trim()
+          : fallback.apiBase,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+async function waitForIosOnboardingElement<T extends Element>(
+  selector: string,
+  options?: { timeoutMs?: number; visible?: boolean },
+): Promise<T> {
+  const timeoutMs = options?.timeoutMs ?? IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  let lastElement: Element | null = null;
+  while (Date.now() < deadline) {
+    lastElement = document.querySelector(selector);
+    if (lastElement) {
+      const visible =
+        !options?.visible ||
+        (lastElement instanceof HTMLElement &&
+          lastElement.offsetParent !== null);
+      if (visible) return lastElement as T;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Timed out waiting for iOS onboarding selector ${selector}${lastElement ? " to become visible" : ""}`,
+  );
+}
+
+function setIosOnboardingInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function readIosOnboardingSmokeStorageSnapshot(): Record<
+  string,
+  string | null
+> {
+  const keys = [
+    "eliza:first-run-complete",
+    "eliza:setup:step",
+    "eliza:mobile-runtime-mode",
+    "elizaos:active-server",
+  ];
+  return Object.fromEntries(
+    keys.map((key) => {
+      try {
+        return [key, window.localStorage.getItem(key)];
+      } catch {
+        return [key, null];
+      }
+    }),
+  );
+}
+
+async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
+  if (!isIOS || iosOnboardingSmokeStarted) return iosOnboardingSmokeStarted;
+  let rawRequest: string | null = null;
+  try {
+    rawRequest = window.localStorage.getItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
+  } catch {
+    rawRequest = null;
+  }
+  if (!rawRequest) {
+    rawRequest = await boundedPreferenceGet(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
+  }
+  if (!rawRequest) return false;
+
+  iosOnboardingSmokeStarted = true;
+  const request = parseIosOnboardingSmokeRequest(rawRequest);
+  await writeIosOnboardingSmokeResult({
+    ok: false,
+    phase: "running",
+    startedAt: new Date().toISOString(),
+    apiBase: request.apiBase,
+  });
+
+  try {
+    const remoteOption = await waitForIosOnboardingElement<HTMLButtonElement>(
+      '[data-testid="onboarding-option-remote"]',
+      { visible: true },
+    );
+    remoteOption.click();
+
+    const remoteAddress = await waitForIosOnboardingElement<HTMLInputElement>(
+      "#onboarding-remote-address",
+      { visible: true },
+    );
+    remoteAddress.focus();
+    setIosOnboardingInputValue(remoteAddress, request.apiBase);
+
+    const remoteConnect = await waitForIosOnboardingElement<HTMLButtonElement>(
+      '[data-testid="onboarding-remote-connect"]',
+      { visible: true },
+    );
+    remoteConnect.click();
+
+    const home = await waitForIosOnboardingElement<HTMLElement>(
+      '[data-testid="home-springboard-surface"][data-page="home"]',
+      { visible: true },
+    );
+    const composer = await waitForIosOnboardingElement<HTMLElement>(
+      '[data-testid="chat-composer-textarea"]',
+      { visible: true },
+    );
+
+    await writeIosOnboardingSmokeResult({
+      ok: true,
+      phase: "complete",
+      finishedAt: new Date().toISOString(),
+      apiBase: request.apiBase,
+      homeVisible: Boolean(home),
+      composerVisible: Boolean(composer),
+      storage: readIosOnboardingSmokeStorageSnapshot(),
+    });
+  } catch (error) {
+    await writeIosOnboardingSmokeResult({
+      ok: false,
+      phase: "failed",
+      finishedAt: new Date().toISOString(),
+      apiBase: request.apiBase,
+      error: error instanceof Error ? error.message : String(error),
+      storage: readIosOnboardingSmokeStorageSnapshot(),
+    });
+  } finally {
+    try {
+      window.localStorage.removeItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
+    } catch {
+      // Preferences removal below is authoritative for the simulator harness.
+    }
+    await boundedPreferenceWrite(() =>
+      Preferences.remove({ key: IOS_ONBOARDING_SMOKE_REQUEST_KEY }),
+    );
+  }
+  return true;
 }
 
 async function fetchIosFullBunSmokeJson<T>(
@@ -1126,7 +1353,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
 
     if (hubInstalled.length === 0) {
       throw new Error(
-        "local-inference hub had no installed Qwen3.5 GGUF model; full-Bun smoke requires a staged local model",
+        "local-inference hub had no installed Eliza-1 GGUF model; full-Bun smoke requires a staged local model",
       );
     }
 
@@ -1341,6 +1568,7 @@ async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
   void runIosFullBunSmokeIfRequested();
+  void runIosOnboardingSmokeIfRequested();
 
   if (isIOS || isAndroid) {
     await initializeStatusBar();
@@ -1575,9 +1803,6 @@ function handleDeepLink(url: string): void {
     case "browser":
       setHashRoute("browser", parsed.searchParams);
       break;
-    case "lifeops":
-      window.location.hash = "#lifeops";
-      break;
     case "settings":
       window.location.hash = "#settings";
       break;
@@ -1603,14 +1828,17 @@ function handleDeepLink(url: string): void {
             );
             break;
           }
-          const token =
-            parsed.searchParams.get("token") ??
-            parsed.searchParams.get("accessToken") ??
-            null;
+          // SECURITY: never accept a bearer token from an OS-delivered deep
+          // link. A crafted `<scheme>://connect?url=…&token=…` would otherwise
+          // authenticate the session with an ATTACKER-supplied token against an
+          // attacker gateway (full MITM of subsequent agent traffic). No
+          // legitimate flow passes a token this way — remote auth goes through
+          // the cloudLaunchSession exchange. The host repoint is preserved for
+          // the legitimate local-agent connect feature.
           const connection = applyLaunchConnection({
             kind: "remote",
             apiBase: validatedUrl.href,
-            token,
+            token: null,
             allowPublicHttps: true,
           });
           dispatchAppEvent(CONNECT_EVENT, {
@@ -1875,6 +2103,7 @@ function mountReactApp(): void {
       </AppProvider>
     );
 
+  markStartup("react-mount:start");
   createRoot(rootEl).render(
     <ErrorBoundary>
       <StrictMode>
@@ -1886,6 +2115,8 @@ function mountReactApp(): void {
       </StrictMode>
     </ErrorBoundary>,
   );
+  markStartup("react-mount:end");
+  measureStartup("react-mount", "react-mount:start", "react-mount:end");
 }
 
 function isPopoutWindow(): boolean {
@@ -2463,6 +2694,7 @@ function applyStoredDetachedShellTheme(): void {
 }
 
 async function main(): Promise<void> {
+  markStartup("main-start");
   registerViewServiceWorker();
 
   const appWindowSlug = window.location.pathname.startsWith("/apps/")
@@ -2485,7 +2717,10 @@ async function main(): Promise<void> {
     );
   }
 
+  markStartup("app-modules:start");
   await initializeAppModules();
+  markStartup("app-modules:end");
+  measureStartup("app-modules", "app-modules:start", "app-modules:end");
   setupPlatformStyles();
   applyBuildTimeIosConnection();
 
@@ -2520,6 +2755,7 @@ async function main(): Promise<void> {
   if (isPopoutWindow()) {
     injectPopoutApiBase();
     mountReactApp();
+    scheduleDeferredAppModuleLoadsAfterPaint();
     return;
   }
 
@@ -2532,17 +2768,29 @@ async function main(): Promise<void> {
     await initializeStorageBridge();
     initializeCapacitorBridge();
     mountReactApp();
+    scheduleDeferredAppModuleLoadsAfterPaint();
     return;
   }
 
+  markStartup("bridges:start", { platform });
   await initializeStorageBridge();
   if (isIOS) {
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();
     installIosLocalAgentFetchBridge();
+    // Renderer-pulled screen-capture bridge (#9105): poll the agent for
+    // capture requests and serve frames via the Capacitor ScreenCapture
+    // plugin. Idempotent + native-gated; runs only after the local-agent
+    // fetch bridge is installed so `/api/...` routes resolve to the agent.
+    initScreenCaptureBridge();
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();
+    // Renderer-pulled screen-capture bridge (#9105): poll the agent for
+    // capture requests and serve frames via the Capacitor ScreenCapture
+    // plugin. Idempotent + native-gated; runs only after the Android fetch
+    // bridge is installed so `/api/...` routes resolve to the agent.
+    initScreenCaptureBridge();
     // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
     // window.__jniVoice (the in-process JNI voice pipeline — the four fused
     // voice classifiers running IN the bionic app process via the ElizaVoice
@@ -2553,7 +2801,10 @@ async function main(): Promise<void> {
     installDiarizationPumpHarness();
     installJniVoiceHarness();
   }
+  markStartup("bridges:end", { platform });
+  measureStartup("bridges", "bridges:start", "bridges:end");
   mountReactApp();
+  scheduleDeferredAppModuleLoadsAfterPaint();
   await initializePlatform();
 }
 

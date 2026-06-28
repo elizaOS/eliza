@@ -1,6 +1,7 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildScreenTimeRecapRules,
   createOwnerScreenTimeAction,
   createScreenTimeActionRunner,
   SCREEN_TIME_PARAMETERS,
@@ -142,5 +143,212 @@ describe("screen-time action runner", () => {
       identifier: undefined,
       limit: 10,
     });
+  });
+
+  it("denies access → PERMISSION_DENIED before resolving args (#8795)", async () => {
+    const resolveActionArgs = vi.fn();
+    const runner = createScreenTimeActionRunner({
+      hasAccess: async () => false,
+      createService: () => makeService(),
+      messageText: (input) =>
+        typeof input.content.text === "string" ? input.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      resolveActionArgs,
+      isDarwin: () => false,
+      getActivityReport: vi.fn(),
+      getTimeOnApp: vi.fn(),
+      getBrowserDomainActivity: vi.fn(),
+      getBrowserActivitySnapshot: vi.fn(),
+    });
+
+    const result = await runner(
+      runtime,
+      message,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toEqual({ error: "PERMISSION_DENIED" });
+    expect(result.text).toContain(
+      "Screen time data is restricted to the owner",
+    );
+    // Access denial short-circuits before argument resolution.
+    expect(resolveActionArgs).not.toHaveBeenCalled();
+  });
+
+  it("resolveActionArgs ok:false → INVALID_SUBACTION (#8795)", async () => {
+    const runner = createScreenTimeActionRunner({
+      hasAccess: async () => true,
+      createService: () => makeService(),
+      messageText: (input) =>
+        typeof input.content.text === "string" ? input.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      resolveActionArgs: async () => ({
+        ok: false as const,
+        missing: ["appNameOrBundleId"],
+        clarification: "Which app should I check?",
+      }),
+      isDarwin: () => false,
+      getActivityReport: vi.fn(),
+      getTimeOnApp: vi.fn(),
+      getBrowserDomainActivity: vi.fn(),
+      getBrowserActivitySnapshot: vi.fn(),
+    });
+
+    const result = await runner(
+      runtime,
+      message,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toBe("Which app should I check?");
+    expect(result.data).toEqual({
+      error: "INVALID_SUBACTION",
+      missing: ["appNameOrBundleId"],
+    });
+  });
+
+  it("time_on_app with empty app id → MISSING_APP (#8795)", async () => {
+    const getTimeOnApp = vi.fn();
+    const runner = createScreenTimeActionRunner({
+      hasAccess: async () => true,
+      createService: () => makeService(),
+      messageText: (input) =>
+        typeof input.content.text === "string" ? input.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      resolveActionArgs: async <TSubaction extends string, TParams>() => ({
+        ok: true as const,
+        subaction: "time_on_app" as TSubaction,
+        // Blank app id reaches the (params.appNameOrBundleId ?? "").trim() guard.
+        params: { appNameOrBundleId: "   " } as unknown as TParams,
+      }),
+      isDarwin: () => true,
+      getActivityReport: vi.fn(),
+      getTimeOnApp,
+      getBrowserDomainActivity: vi.fn(),
+      getBrowserActivitySnapshot: vi.fn(),
+    });
+
+    const result = await runner(
+      runtime,
+      message,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toEqual({ error: "MISSING_APP" });
+    expect(result.text).toContain("Specify an app name or bundle id");
+    // Empty target short-circuits before querying activity data.
+    expect(getTimeOnApp).not.toHaveBeenCalled();
+  });
+
+  it("time_on_site with un-parseable domain → MISSING_DOMAIN (#8795)", async () => {
+    const getBrowserDomainActivity = vi.fn();
+    const runner = createScreenTimeActionRunner({
+      hasAccess: async () => true,
+      createService: () => makeService(),
+      messageText: (input) =>
+        typeof input.content.text === "string" ? input.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      resolveActionArgs: async <TSubaction extends string, TParams>() => ({
+        ok: true as const,
+        subaction: "time_on_site" as TSubaction,
+        // A URL with no host normalizes to "" → MISSING_DOMAIN.
+        params: { domain: "https://" } as unknown as TParams,
+      }),
+      isDarwin: () => false,
+      getActivityReport: vi.fn(),
+      getTimeOnApp: vi.fn(),
+      getBrowserDomainActivity,
+      getBrowserActivitySnapshot: vi.fn(),
+    });
+
+    const result = await runner(
+      runtime,
+      message,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toEqual({ error: "MISSING_DOMAIN" });
+    expect(result.text).toContain("Specify a site domain");
+    expect(getBrowserDomainActivity).not.toHaveBeenCalled();
+  });
+
+  it("browser_activity with empty snapshot → browser_activity_empty (#8795)", async () => {
+    const getBrowserActivitySnapshot = vi.fn(async () => ({
+      deviceId: null,
+      windowEnd: "2026-05-30T12:00:00.000Z",
+      domains: [],
+    }));
+    const runner = createScreenTimeActionRunner({
+      hasAccess: async () => true,
+      createService: () => makeService(),
+      messageText: (input) =>
+        typeof input.content.text === "string" ? input.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      resolveActionArgs: async <TSubaction extends string, TParams>() => ({
+        ok: true as const,
+        subaction: "browser_activity" as TSubaction,
+        params: {} as unknown as TParams,
+      }),
+      isDarwin: () => false,
+      getActivityReport: vi.fn(),
+      getTimeOnApp: vi.fn(),
+      getBrowserDomainActivity: vi.fn(),
+      getBrowserActivitySnapshot,
+    });
+
+    const result = await runner(
+      runtime,
+      message,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(getBrowserActivitySnapshot).toHaveBeenCalledTimes(1);
+    // Empty-domain snapshot succeeds with the empty-state scenario text.
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("No browser activity has been reported yet");
+    expect(result.data).toMatchObject({
+      snapshot: { domains: [], deviceId: null },
+    });
+  });
+
+  it("swaps in optimized screentime_recap instructions for reply rendering", () => {
+    const optimizedRuntime = {
+      getService: (name: string) =>
+        name === "optimized_prompt"
+          ? {
+              getPrompt: (task: string) =>
+                task === "screentime_recap"
+                  ? {
+                      prompt:
+                        "OPTIMIZED: lead with largest app delta and one focus adjustment.",
+                      optimizerSource: "gepa",
+                    }
+                  : null,
+            }
+          : null,
+    } as unknown as IAgentRuntime;
+
+    const rules = buildScreenTimeRecapRules(optimizedRuntime);
+
+    expect(rules.join("\n")).toContain(
+      "OPTIMIZED: lead with largest app delta and one focus adjustment.",
+    );
+    expect(rules.join("\n")).not.toContain(
+      "Summarize the owner's screen-time and propose one focus adjustment.",
+    );
   });
 });

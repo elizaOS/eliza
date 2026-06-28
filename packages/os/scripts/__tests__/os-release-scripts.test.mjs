@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   defaultManifestPath,
@@ -20,7 +21,9 @@ import {
 } from "../tee-evidence-bridge.mjs";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = path.resolve(new URL("../../../..", import.meta.url).pathname);
+const repoRoot = path.resolve(
+  fileURLToPath(new URL("../../../..", import.meta.url)),
+);
 const confidentialManifestPath = path.join(
   repoRoot,
   "packages/os/release/confidential-2026-05-21/manifest.json",
@@ -187,7 +190,7 @@ releaseFixtureTest(
     const tmp = await mkdtemp(path.join(os.tmpdir(), "elizaos-release-"));
     const manifestPath = path.join(tmp, "manifest.json");
     const artifactRoot = path.join(tmp, "artifacts");
-    await execFileAsync("mkdir", ["-p", artifactRoot]);
+    await mkdir(artifactRoot, { recursive: true });
 
     const fixtureArtifacts = [
       sourceManifest.artifacts.find(

@@ -37,7 +37,7 @@
  * `@elizaos/plugin-training` and adding the dependency would invert the layering.
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import {
 	readFile,
@@ -60,6 +60,7 @@ export const OPTIMIZED_PROMPT_PREVIOUS2_LINK = "previous2";
 export const OPTIMIZED_PROMPT_RETAIN_VERSIONS = 5;
 
 const VERSION_FILE_PATTERN = /^v(\d+)\.json$/;
+const VERSION_CLAIM_PATTERN = /^\.v(\d+)\.json\.claim$/;
 
 export const OPTIMIZED_PROMPT_SERVICE = "optimized_prompt";
 
@@ -70,7 +71,20 @@ export type OptimizedPromptTask =
 	| "media_description"
 	| "action_descriptions"
 	| "autonomy"
-	| "view_context";
+	| "view_context"
+	// LifeOps (personal-assistant / health) per-capability optimization tasks.
+	// Each names a concrete LifeOps LLM call site (extraction or chat-shaped)
+	// whose inline prompt template is a GEPA optimization target. The call site
+	// consults OptimizedPromptService.getPrompt(task) with its inline template as
+	// the fallback baseline, so an absent artifact is a no-op (never a failure).
+	| "calendar_extract"
+	| "schedule_plan"
+	| "reminder_dispatch"
+	| "inbox_triage"
+	| "meeting_prep"
+	| "morning_brief"
+	| "health_checkin"
+	| "screentime_recap";
 
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
@@ -82,6 +96,32 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	// Contextual view-switching evaluator (plugin-app-control viewContextEvaluator):
 	// the situation→view judgment prompt is a GEPA optimization target.
 	"view_context",
+	// LifeOps per-capability tasks (see OptimizedPromptTask union above).
+	"calendar_extract",
+	"schedule_plan",
+	"reminder_dispatch",
+	"inbox_triage",
+	"meeting_prep",
+	"morning_brief",
+	"health_checkin",
+	"screentime_recap",
+] as const;
+
+/**
+ * The LifeOps subset of {@link OPTIMIZED_PROMPT_TASKS}. Exposed so LifeOps
+ * plugins and the training optimizer can iterate the per-capability tasks
+ * without re-declaring the list — keeps `@elizaos/core` the single source of
+ * truth for the LifeOps optimization taxonomy.
+ */
+export const LIFEOPS_OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
+	"calendar_extract",
+	"schedule_plan",
+	"reminder_dispatch",
+	"inbox_triage",
+	"meeting_prep",
+	"morning_brief",
+	"health_checkin",
+	"screentime_recap",
 ] as const;
 
 export type OptimizerName =
@@ -145,6 +185,37 @@ export interface OptimizedPromptMetadata {
 
 function defaultStoreRoot(): string {
 	return join(resolveStateDir(), "optimized-prompts");
+}
+
+/** Collision-proof temp filename suffix for write-then-rename scratch files. */
+function uniqueTempSuffix(): string {
+	return `${process.pid}-${Date.now()}-${randomBytes(6).toString("hex")}`;
+}
+
+/**
+ * Per-key serialization. setPrompt for a given task dir mutates shared
+ * symlinks + the retention window; overlapping in-process writes for the same
+ * dir would race the repoint/prune. Each key (the task dir) gets a tail
+ * promise; callers chain onto it so writes for one dir run one-at-a-time,
+ * while different dirs stay fully parallel. The map self-cleans when a key's
+ * chain drains.
+ */
+const dirWriteChains = new Map<string, Promise<unknown>>();
+
+async function runExclusive<T>(
+	key: string,
+	work: () => Promise<T>,
+): Promise<T> {
+	const prior = dirWriteChains.get(key) ?? Promise.resolve();
+	// Swallow the prior result/rejection for chaining purposes only — the
+	// originating caller still observes its own outcome.
+	const run = prior.then(work, work);
+	dirWriteChains.set(key, run);
+	try {
+		return await run;
+	} finally {
+		if (dirWriteChains.get(key) === run) dirWriteChains.delete(key);
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -342,11 +413,13 @@ interface CachedEntry {
 
 /**
  * Parse the `OPTIMIZED_PROMPT_DISABLE` env var into a strongly-typed set of
- * disabled tasks. Unknown task names are silently dropped — an operator
- * disabling a misspelled task should not crash the runtime, but the
- * misspelling should also not accidentally disable some other task.
+ * disabled tasks. Unknown task names are dropped — an operator disabling a
+ * misspelled task should not crash the runtime, and the misspelling must not
+ * accidentally disable some other task — but each dropped token is logged so a
+ * typo doesn't silently disable nothing.
  *
- * Format: comma-separated list of task names. Whitespace is trimmed.
+ * Format: comma-separated list of task names. Whitespace is trimmed; empty
+ * tokens are ignored without a warning.
  * Example: `OPTIMIZED_PROMPT_DISABLE=should_respond,response`.
  */
 export function parseDisabledTasksEnv(
@@ -356,8 +429,14 @@ export function parseDisabledTasksEnv(
 	const tasks = new Set<OptimizedPromptTask>();
 	for (const part of raw.split(",")) {
 		const trimmed = part.trim();
+		if (trimmed === "") continue;
 		if (isTask(trimmed)) {
 			tasks.add(trimmed);
+		} else {
+			logger.warn(
+				{ src: "service:optimized_prompt", entry: trimmed },
+				`[OptimizedPromptService] OPTIMIZED_PROMPT_DISABLE entry "${trimmed}" is not a known task — ignored`,
+			);
 		}
 	}
 	return tasks;
@@ -460,6 +539,14 @@ export class OptimizedPromptService extends Service {
 	 * repoints `current` / `previous` / `previous2` symlinks, prunes the
 	 * directory to the last `OPTIMIZED_PROMPT_RETAIN_VERSIONS` artifacts, and
 	 * refreshes the cache for the task.
+	 *
+	 * The same taxonomy is registered by both core basicServices and
+	 * plugin-training register-runtime, and trigger/CLI train also call this —
+	 * so two setPrompt calls for one task can overlap in-process. The version
+	 * claim is made cross-process-safe with O_EXCL; the symlink-repoint and
+	 * prune steps mutate shared `current`/`previous` links and the retention
+	 * window, so the whole write is serialized per task dir via an in-process
+	 * lock to keep those mutations consistent.
 	 */
 	async setPrompt(
 		task: OptimizedPromptTask,
@@ -471,33 +558,66 @@ export class OptimizedPromptService extends Service {
 			);
 		}
 		const dir = join(this.storeRoot, task);
+		return runExclusive(dir, () => this.writeArtifact(task, dir, artifact));
+	}
+
+	private async writeArtifact(
+		task: OptimizedPromptTask,
+		dir: string,
+		artifact: OptimizedPromptArtifact,
+	): Promise<string> {
 		mkdirSync(dir, { recursive: true });
 
-		const existingVersions = listVersionNumbers(dir);
-		const nextVersion = (existingVersions.at(-1) ?? 0) + 1;
-		const finalName = `v${nextVersion}.json`;
-		const finalPath = join(dir, finalName);
-		const tempPath = `${finalPath}.tmp-${process.pid}-${Date.now()}`;
 		const payload = `${JSON.stringify(artifact, null, 2)}\n`;
-		await writeFile(tempPath, payload, "utf-8");
-		await rename(tempPath, finalPath);
-
-		// SOC2 CC6.8: persist HMAC sidecar so getPrompt() can detect
-		// tampering. The MAC covers the on-disk payload bytes verbatim.
 		const macHex = computeArtifactMac(payload);
+
+		// Atomically claim the next `vN.json` slot. Two concurrent setPrompt
+		// calls for the same task (e.g. basicServices + plugin-training, or a
+		// CLI/trigger train) read the same version list and would otherwise
+		// both target the same vN — clobbering one artifact and/or leaving a
+		// vN.json without a matching .mac. Claiming a hidden lock filename with
+		// O_EXCL ('wx') serializes the race without exposing a final-looking
+		// artifact before the payload and MAC are both durable.
+		const { nextVersion, finalPath, claimPath } =
+			await claimNextVersionPath(dir);
+
 		const macPath = macPathFor(finalPath);
-		const macTemp = `${macPath}.tmp-${process.pid}-${Date.now()}`;
-		await writeFile(macTemp, `${macHex}\n`, "utf-8");
-		await rename(macTemp, macPath);
+		const tempPath = `${finalPath}.tmp-${uniqueTempSuffix()}`;
+		const macTemp = `${macPath}.tmp-${uniqueTempSuffix()}`;
+		try {
+			await writeFile(tempPath, payload, "utf-8");
 
-		// Repoint symlinks: current → vN, previous → vN-1, previous2 → vN-2.
-		const allVersions = [...existingVersions, nextVersion];
-		await repointVersionLinks(dir, allVersions);
+			// SOC2 CC6.8: persist HMAC sidecar so getPrompt() can detect
+			// tampering. The MAC covers the on-disk payload bytes verbatim.
+			await writeFile(macTemp, `${macHex}\n`, "utf-8");
+			await rename(macTemp, macPath);
 
-		// Prune older artifacts beyond the retention window. Done after the
-		// symlinks are repointed so we never delete a file the symlinks
-		// still reference.
-		await pruneOldVersions(dir, allVersions);
+			// Publish the payload only after its matching MAC is already in place.
+			// A crash before this point leaves at most hidden/temp files; a crash
+			// after this point leaves a complete MAC-valid artifact.
+			await rename(tempPath, finalPath);
+
+			// Repoint symlinks: current → vN, previous → vN-1, previous2 → vN-2.
+			// Re-scan the directory and include only complete MAC-valid artifacts:
+			// concurrent claims and stale crashed writes must never become live.
+			const allVersions = await listCompleteVersionNumbers(dir);
+			await repointVersionLinks(dir, allVersions);
+
+			// Prune older artifacts beyond the retention window. Done after the
+			// symlinks are repointed so we never delete a file the symlinks
+			// still reference.
+			await pruneOldVersions(dir, allVersions);
+		} catch (err) {
+			await Promise.all([
+				removeFileBestEffort(tempPath),
+				removeFileBestEffort(macTemp),
+				removeFileBestEffort(finalPath),
+				removeFileBestEffort(macPath),
+			]);
+			throw err;
+		} finally {
+			await removeFileBestEffort(claimPath);
+		}
 
 		this.cache[task] = { artifact, loadedAt: Date.now() };
 		logger.info(
@@ -578,59 +698,158 @@ export class OptimizedPromptService extends Service {
 	async refresh(): Promise<void> {
 		const next: Partial<Record<OptimizedPromptTask, CachedEntry>> = {};
 		for (const task of OPTIMIZED_PROMPT_TASKS) {
-			const dir = join(this.storeRoot, task);
-			if (!existsSync(dir)) continue;
-
-			// Preferred path: read via the `current` symlink. This is the
-			// declared live version after a `setPrompt` or `rollback` call.
-			const currentLink = join(dir, OPTIMIZED_PROMPT_CURRENT_LINK);
-			const fromCurrent = await loadArtifactFromPath(currentLink, task);
-			if (fromCurrent) {
-				next[task] = { artifact: fromCurrent, loadedAt: Date.now() };
-				continue;
-			}
-
-			// Fallback: directory may pre-date the symlink layout (legacy
-			// timestamp-named files), or `current` may have been deleted.
-			// Walk the directory and pick the artifact with the most recent
-			// `generatedAt`.
-			const entries = readdirSync(dir);
-			let bestArtifact: OptimizedPromptArtifact | null = null;
-			let bestStamp = -Infinity;
-			for (const name of entries) {
-				if (!name.endsWith(".json")) continue;
-				const path = join(dir, name);
-				const artifact = await loadArtifactFromPath(path, task);
-				if (!artifact) continue;
-				const stamp = Date.parse(artifact.generatedAt);
-				if (Number.isFinite(stamp) && stamp > bestStamp) {
-					bestStamp = stamp;
-					bestArtifact = artifact;
-				}
-			}
-			if (bestArtifact) {
-				next[task] = { artifact: bestArtifact, loadedAt: Date.now() };
+			// A corrupt / looping / permission-denied artifact for ONE task
+			// (ELOOP, EACCES, EISDIR, etc.) must not poison the other tasks or
+			// fail service start: an absent or unreadable artifact is a no-op,
+			// the task simply falls back to its baseline prompt. Isolate each
+			// task's disk reads so one bad directory leaves the rest cached.
+			try {
+				const entry = await this.loadTaskEntry(task);
+				if (entry) next[task] = entry;
+			} catch (err) {
+				const code = (err as NodeJS.ErrnoException).code;
+				logger.warn(
+					{
+						src: "service:optimized_prompt",
+						task,
+						code,
+						err,
+					},
+					"[OptimizedPromptService] Skipping task: artifact store unreadable — falling back to baseline",
+				);
 			}
 		}
 		this.cache = next;
+	}
+
+	/**
+	 * Load the live cache entry for a single task by reading its on-disk store.
+	 * Returns null when the task has no usable artifact. Throws only on
+	 * unexpected filesystem errors (e.g. ELOOP/EACCES/EISDIR), which
+	 * {@link refresh} isolates per task.
+	 */
+	private async loadTaskEntry(
+		task: OptimizedPromptTask,
+	): Promise<CachedEntry | null> {
+		const dir = join(this.storeRoot, task);
+		if (!existsSync(dir)) return null;
+
+		// Preferred path: read via the `current` symlink. This is the
+		// declared live version after a `setPrompt` or `rollback` call.
+		const currentLink = join(dir, OPTIMIZED_PROMPT_CURRENT_LINK);
+		const fromCurrent = await loadArtifactFromPath(currentLink, task);
+		if (fromCurrent) {
+			return { artifact: fromCurrent, loadedAt: Date.now() };
+		}
+
+		// Fallback: directory may pre-date the symlink layout (legacy
+		// timestamp-named files), or `current` may have been deleted.
+		// Walk the directory and pick the artifact with the most recent
+		// `generatedAt`.
+		const entries = readdirSync(dir);
+		let bestArtifact: OptimizedPromptArtifact | null = null;
+		let bestStamp = -Infinity;
+		for (const name of entries) {
+			if (!name.endsWith(".json")) continue;
+			const path = join(dir, name);
+			const artifact = await loadArtifactFromPath(path, task);
+			if (!artifact) continue;
+			const stamp = Date.parse(artifact.generatedAt);
+			if (Number.isFinite(stamp) && stamp > bestStamp) {
+				bestStamp = stamp;
+				bestArtifact = artifact;
+			}
+		}
+		if (bestArtifact) {
+			return { artifact: bestArtifact, loadedAt: Date.now() };
+		}
+		return null;
 	}
 }
 
 /**
  * Return the sorted ascending list of version numbers (`v1`, `v2`, ...)
- * present in `dir`. Files that don't match the `vN.json` pattern are ignored.
+ * that are complete and MAC-valid. Files that don't match the `vN.json`
+ * pattern, hidden claim files, temp files, missing MACs, and corrupt MACs are
+ * ignored.
  */
-function listVersionNumbers(dir: string): number[] {
+async function listCompleteVersionNumbers(dir: string): Promise<number[]> {
 	if (!existsSync(dir)) return [];
 	const versions: number[] = [];
 	for (const name of readdirSync(dir)) {
 		const match = VERSION_FILE_PATTERN.exec(name);
 		if (!match) continue;
 		const n = Number.parseInt(match[1] ?? "", 10);
-		if (Number.isFinite(n)) versions.push(n);
+		if (!Number.isFinite(n)) continue;
+		const path = join(dir, name);
+		try {
+			const payload = await readFile(path, "utf-8");
+			const macHex = (await readFile(macPathFor(path), "utf-8")).trim();
+			if (verifyArtifactMac(payload, macHex)) versions.push(n);
+		} catch {}
 	}
 	versions.sort((a, b) => a - b);
 	return versions;
+}
+
+/**
+ * Return all version numbers that are already claimed, whether by a complete
+ * artifact (`vN.json`), an incomplete legacy artifact, or a hidden in-flight
+ * claim (`.vN.json.claim`). This is deliberately broader than
+ * {@link listCompleteVersionNumbers}; its job is only to choose a never-used
+ * slot for the next write.
+ */
+function listClaimedVersionNumbers(dir: string): number[] {
+	if (!existsSync(dir)) return [];
+	const versions = new Set<number>();
+	for (const name of readdirSync(dir)) {
+		const match =
+			VERSION_FILE_PATTERN.exec(name) ?? VERSION_CLAIM_PATTERN.exec(name);
+		if (!match) continue;
+		const n = Number.parseInt(match[1] ?? "", 10);
+		if (Number.isFinite(n)) versions.add(n);
+	}
+	return [...versions].sort((a, b) => a - b);
+}
+
+/**
+ * Maximum O_EXCL retries when claiming a version slot. Each attempt is one
+ * concurrent setPrompt losing the race; the number of contenders for a single
+ * task dir is tiny (basicServices + plugin-training + at most one CLI/trigger
+ * train), so this is comfortably above any real-world contention. Exhausting
+ * it means the directory is genuinely wedged — surface that as an error rather
+ * than spinning forever.
+ */
+const VERSION_CLAIM_MAX_ATTEMPTS = 64;
+
+/**
+ * Atomically reserve the next free `vN.json` slot in `dir`. Reads every claimed
+ * version, then tries to create a hidden `.vN.json.claim` file with `O_EXCL`
+ * ('wx') so exactly one concurrent caller can own a given version. On `EEXIST`
+ * (another setPrompt claimed it first) re-read the directory and bump. Returns
+ * the claimed version number, final artifact path, and claim path.
+ */
+async function claimNextVersionPath(
+	dir: string,
+): Promise<{ nextVersion: number; finalPath: string; claimPath: string }> {
+	let candidate = (listClaimedVersionNumbers(dir).at(-1) ?? 0) + 1;
+	for (let attempt = 0; attempt < VERSION_CLAIM_MAX_ATTEMPTS; attempt += 1) {
+		const finalPath = join(dir, `v${candidate}.json`);
+		const claimPath = join(dir, `.v${candidate}.json.claim`);
+		try {
+			await writeFile(claimPath, "", { flag: "wx" });
+			return { nextVersion: candidate, finalPath, claimPath };
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+			// Lost the claim race: re-read the directory and target the next
+			// free version above whatever the winner(s) just wrote.
+			const highest = listClaimedVersionNumbers(dir).at(-1) ?? 0;
+			candidate = Math.max(candidate + 1, highest + 1);
+		}
+	}
+	throw new Error(
+		`[OptimizedPromptService] could not claim a version slot in ${dir} after ${VERSION_CLAIM_MAX_ATTEMPTS} attempts`,
+	);
 }
 
 /**
@@ -684,6 +903,7 @@ async function pruneOldVersions(
 	for (const version of obsolete) {
 		const path = join(dir, `v${version}.json`);
 		await rm(path, { force: true });
+		await rm(macPathFor(path), { force: true });
 	}
 }
 
@@ -693,13 +913,8 @@ async function pruneOldVersions(
  * absent during the swap.
  */
 async function replaceSymlink(linkPath: string, target: string): Promise<void> {
-	const tempPath = `${linkPath}.tmp-${process.pid}-${Date.now()}`;
+	const tempPath = `${linkPath}.tmp-${uniqueTempSuffix()}`;
 	mkdirSync(dirname(tempPath), { recursive: true });
-	try {
-		await unlink(tempPath);
-	} catch {
-		// nothing to clean up
-	}
 	await symlink(target, tempPath);
 	await rename(tempPath, linkPath);
 }
@@ -710,6 +925,14 @@ async function removeIfExists(path: string): Promise<void> {
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
 		throw err;
+	}
+}
+
+async function removeFileBestEffort(path: string): Promise<void> {
+	try {
+		await rm(path, { force: true });
+	} catch {
+		// Cleanup must not mask the original write failure.
 	}
 }
 

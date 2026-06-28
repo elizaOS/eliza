@@ -48,6 +48,12 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const forkSrc = path.join(
   repoRoot,
   "plugins/plugin-local-inference/native/llama.cpp",
@@ -65,6 +71,25 @@ function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, { stdio: "inherit", ...opts });
   if (res.status !== 0) {
     die(`${cmd} exited ${res.status ?? res.signal}`);
+  }
+}
+function removePathRecursive(targetPath) {
+  const res = spawnSync(
+    "node",
+    [cleanupHelperScript, path.relative(repoRoot, targetPath)],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (res.error) throw res.error;
+  if (res.status !== 0) {
+    die(
+      [`failed to remove ${targetPath}`, res.stdout.trim(), res.stderr.trim()]
+        .filter(Boolean)
+        .join("\n"),
+    );
   }
 }
 function have(cmd, args = ["--version"]) {
@@ -236,9 +261,12 @@ function backendCmakeFlags(backend) {
   }
 }
 
-const { variant, outDir: outOverride, jobs: jobsArg, force } = parseArgs(
-  process.argv.slice(2),
-);
+const {
+  variant,
+  outDir: outOverride,
+  jobs: jobsArg,
+  force,
+} = parseArgs(process.argv.slice(2));
 
 if (!existsSync(path.join(forkSrc, "CMakeLists.txt"))) {
   die(
@@ -249,15 +277,16 @@ if (!have("cmake")) die("cmake not found on PATH");
 
 const backend = variant === "auto" ? detectBackend() : variant;
 log(`host: ${process.platform}/${process.arch}`);
-log(`backend: ${backend}${variant === "auto" ? " (autodetected)" : ""} (GGML_CPU always on for fallback)`);
+log(
+  `backend: ${backend}${variant === "auto" ? " (autodetected)" : ""} (GGML_CPU always on for fallback)`,
+);
 
 const buildDir = path.join(forkSrc, `build-desktop-${backend}`);
 const outDir =
-  outOverride ||
-  path.join(resolveStateDir(), "local-inference", "lib");
+  outOverride || path.join(resolveStateDir(), "local-inference", "lib");
 
 if (force && existsSync(buildDir)) {
-  rmSync(buildDir, { recursive: true, force: true });
+  removePathRecursive(buildDir);
 }
 mkdirSync(buildDir, { recursive: true });
 mkdirSync(outDir, { recursive: true });
@@ -276,7 +305,7 @@ const jobs =
 // (so the GPU backend can load the system driver at runtime) and matches the
 // dlopen()-able sibling set the runtime resolves. LLAMA_BUILD_OMNIVOICE +
 // LLAMA_BUILD_MTMD + LLAMA_BUILD_KOKORO are required for the fused
-// `elizainference` SHARED target (TTS + Qwen3-ASR + Kokoro). GGML_NATIVE=ON tunes
+// `elizainference` SHARED target (TTS + local ASR + Kokoro). GGML_NATIVE=ON tunes
 // the CPU backend to the build host — correct for a local/dev build; a
 // redistributable build should pin explicit CPU features instead.
 run("cmake", [
@@ -392,7 +421,10 @@ function definedSymbols(libPath) {
     process.platform === "darwin"
       ? { cmd: "nm", args: ["-gU", libPath] }
       : process.platform === "win32"
-        ? { cmd: "objdump", args: ["-T", libPath] }
+        ? // PE exports live in the export-address table shown by `objdump -p`
+          // ("[Ordinal/Name Pointer] Table"); `-T` is the ELF dynamic-symbol
+          // flag and lists nothing for a .dll, so it would false-fail the verify.
+          { cmd: "objdump", args: ["-p", libPath] }
         : { cmd: "nm", args: ["-D", "--defined-only", libPath] };
   try {
     return execFileSync(tool.cmd, tool.args, {
@@ -435,7 +467,9 @@ function verifyFusedSymbols(stagedDir) {
   if (!llamaHere) {
     die(`llama_* symbols not found in the staged lib set — incomplete build.`);
   }
-  log("symbol verify OK: eliza_inference_* + ov_* in fused lib, llama_* in set");
+  log(
+    "symbol verify OK: eliza_inference_* + ov_* in fused lib, llama_* in set",
+  );
 }
 
 log("");

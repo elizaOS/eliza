@@ -66,6 +66,11 @@ function eliza1Manifest(overrides: {
 			vision: { base: "eliza-1-vision", license: "test" },
 		},
 		defaultEligible: true,
+		// Downloader-mechanics fixture: MTP mode is incidental here, so this
+		// bundle is the legacy embedded-draft-head shape (no separate drafter
+		// GGUF to serve). The Gemma-4 separate-drafter contract is exercised in
+		// manifest.test.ts.
+		mtp: "embedded-draft-head",
 		files: {
 			text: [
 				{
@@ -299,6 +304,7 @@ describe("local inference downloader status", () => {
 				vision: { base: "eliza-1-vision", license: "test" },
 			},
 			defaultEligible: true,
+			mtp: "embedded-draft-head",
 			files: {
 				text: [
 					{
@@ -790,11 +796,14 @@ describe("local inference downloader status", () => {
 		expect(fs.existsSync(finalPath)).toBe(false);
 	});
 
-	it("forwards the HuggingFace bearer token on a single-file download", async () => {
+	it("forwards the Eliza Cloud bearer on a single-file download when cloud-linked", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		const savedToken = process.env.HF_TOKEN;
-		process.env.HF_TOKEN = "secret-token";
+		// The product never holds a local HF token. When cloud-linked, all HF
+		// resolve traffic is routed through the cloud HF proxy and authenticated
+		// with the Eliza Cloud API key (the proxy attaches the cloud-side HF_TOKEN).
+		const savedKey = process.env.ELIZAOS_CLOUD_API_KEY;
+		process.env.ELIZAOS_CLOUD_API_KEY = "secret-token";
 
 		const base = findCatalogModel("eliza-1-2b");
 		if (!base) throw new Error("missing test catalog model");
@@ -840,8 +849,8 @@ describe("local inference downloader status", () => {
 			await completed;
 			expect(capturedAuth).toBe("Bearer secret-token");
 		} finally {
-			if (savedToken === undefined) delete process.env.HF_TOKEN;
-			else process.env.HF_TOKEN = savedToken;
+			if (savedKey === undefined) delete process.env.ELIZAOS_CLOUD_API_KEY;
+			else process.env.ELIZAOS_CLOUD_API_KEY = savedKey;
 		}
 	});
 

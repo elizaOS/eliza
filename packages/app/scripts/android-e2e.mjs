@@ -204,7 +204,6 @@ async function main() {
       ELIZA_MOBILE_REPO_ROOT: elizaRoot,
       ELIZA_WEBVIEW_DEBUG: "1",
       ELIZA_BUN_RISCV64_OPTIONAL: "1",
-      ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1",
     });
   }
   if (!isInstalled(adb, serial)) {

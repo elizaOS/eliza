@@ -1,5 +1,6 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
+import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import { resolveBrowserWorkspaceElementRef } from "./browser-workspace-state.js";
 import type {
   BrowserWorkspaceCommand,
@@ -53,11 +54,17 @@ export function assertBrowserWorkspaceUrl(rawUrl: string): string {
   try {
     parsed = new URL(trimmed);
   } catch {
-    throw new Error(`browser workspace rejected invalid URL: ${rawUrl}`);
+    throw createBrowserWorkspaceError(
+      "invalid_url",
+      "url_validation",
+      `browser workspace rejected invalid URL: ${rawUrl}`,
+    );
   }
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(
+    throw createBrowserWorkspaceError(
+      "invalid_url",
+      "url_validation",
       `browser workspace only supports http/https URLs, got ${parsed.protocol}`,
     );
   }
@@ -158,7 +165,9 @@ export function assertBrowserWorkspaceConnectorSecretsNotExported(
   if (!isConnectorBrowserWorkspacePartition(partition)) {
     return;
   }
-  throw new Error(
+  throw createBrowserWorkspaceError(
+    "connector_secret_export_forbidden",
+    operation,
     `Connector browser sessions do not allow raw cookie, token, storage, or state export (${operation}). Use the returned partition/profile/session handle instead.`,
   );
 }
@@ -170,7 +179,9 @@ export function createBrowserWorkspaceDesktopOnlyMessage(
 }
 
 export function createBrowserWorkspaceNotFoundError(tabId: string): Error {
-  return new Error(
+  return createBrowserWorkspaceError(
+    "tab_not_found",
+    "tab_lookup",
     `Browser workspace request failed (404): Tab ${tabId} was not found.`,
   );
 }
@@ -178,7 +189,9 @@ export function createBrowserWorkspaceNotFoundError(tabId: string): Error {
 export function createBrowserWorkspaceCommandTargetError(
   subaction: BrowserWorkspaceSubaction,
 ): Error {
-  return new Error(
+  return createBrowserWorkspaceError(
+    "target_missing",
+    subaction,
     `Eliza browser workspace ${subaction} requires a current tab. Open or show a tab first, or pass an explicit id.`,
   );
 }
@@ -249,7 +262,9 @@ export function resolveBrowserWorkspaceCommandElementRefs(
     match[1],
   );
   if (!resolvedSelector) {
-    throw new Error(
+    throw createBrowserWorkspaceError(
+      "unknown_element_ref",
+      "element_ref",
       `Unknown browser snapshot element ref ${match[1]}. Run snapshot or inspect again before reusing element refs.`,
     );
   }
@@ -297,7 +312,9 @@ export function assertBrowserWorkspaceUserScriptAllowed(
       context === "eval"
         ? "Eval subactions with a user `script` are disabled by default."
         : "Wait conditions with a user `script` are disabled by default.";
-    throw new Error(
+    throw createBrowserWorkspaceError(
+      "script_forbidden",
+      context,
       `${BROWSER_WORKSPACE_USER_SCRIPT_FORBIDDEN} ${suffix} Set ELIZA_BROWSER_WORKSPACE_ALLOW_USER_SCRIPT=1 only on trusted single-user hosts.`,
     );
   }
@@ -310,7 +327,11 @@ export function createBrowserWorkspaceJsdomScriptExecutionError(
     context === "eval"
       ? "Eval subactions are not supported on the web backend."
       : "Wait conditions with `script` are not supported on the web backend.";
-  return new Error(`${BROWSER_WORKSPACE_JSDOM_SCRIPT_FORBIDDEN} ${suffix}`);
+  return createBrowserWorkspaceError(
+    "script_forbidden",
+    context,
+    `${BROWSER_WORKSPACE_JSDOM_SCRIPT_FORBIDDEN} ${suffix}`,
+  );
 }
 
 export function assertBrowserWorkspaceJsdomScriptNotRequested(

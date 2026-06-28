@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolveApprovalService } from "@elizaos/agent";
 import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import {
   type ApprovalAction,
@@ -751,9 +752,27 @@ export class PgApprovalQueue implements ApprovalQueue {
   }
 }
 
+/**
+ * Resolve the approval queue for `options.agentId`.
+ *
+ * Promoted to the first-class `@elizaos/agent` runtime service `ApprovalService`
+ * (serviceType `eliza_approval`) in LifeOps Slice 4. This factory prefers the
+ * registered runtime service (first-wins dedup) and falls back to a
+ * directly-constructed `PgApprovalQueue` when the service is absent. Both read
+ * and write the same public-schema `approval_requests` table via identical raw
+ * SQL, so the fallback is behaviorally identical.
+ *
+ * The runtime service is structurally the same `PgApprovalQueue`; the single
+ * narrowing below re-asserts PA's travel/Duffel-precise payload contract over
+ * the runtime's structurally-identical (travel-agnostic) queue interface.
+ */
 export function createApprovalQueue(
   runtime: IAgentRuntime,
   options: ApprovalQueueOptions,
 ): ApprovalQueue {
+  const service = resolveApprovalService(runtime);
+  if (service) {
+    return service.getQueue(options.agentId) as unknown as ApprovalQueue;
+  }
   return new PgApprovalQueue(runtime, options);
 }

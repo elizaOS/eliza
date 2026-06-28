@@ -461,7 +461,7 @@ function expectGithubCreate(
     const failure = expectEqual(readPath(action.result, path), expected, path);
     if (failure) return failure;
   }
-  const responseText = `Created issue ${REPO}#17: ${ISSUE_URL}`;
+  const responseText = `Created issue ${REPO}#17`;
   if (execution.responseText !== responseText) {
     return `expected create response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;
   }
@@ -550,7 +550,7 @@ function expectGithubIssueComment(
     const failure = expectEqual(readPath(action.result, path), expected, path);
     if (failure) return failure;
   }
-  const responseText = `Commented on ${REPO}#17: ${COMMENT_URL}`;
+  const responseText = `Commented on ${REPO}#17`;
   return execution.responseText === responseText
     ? undefined
     : `expected comment response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;

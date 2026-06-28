@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-computeruse",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
   "type": "module",
   "main": "dist/index.js",
@@ -31,6 +31,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "README.md",
     "package.json"
@@ -40,7 +41,14 @@
     "build": "bun run build.ts",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsgo --noEmit",
-    "validate:ios-device-evidence": "node scripts/validate-ios-device-evidence.mjs"
+    "validate:ios-device-evidence": "node scripts/validate-ios-device-evidence.mjs",
+    "validate:platform-evidence": "node scripts/validate-platform-evidence.mjs",
+    "validate:android-device-evidence": "node scripts/validate-platform-evidence.mjs docs/android-device-validation.json",
+    "validate:android-aosp-evidence": "node scripts/validate-platform-evidence.mjs docs/android-aosp-validation.json",
+    "capture:macos-desktop-evidence": "bun scripts/capture-macos-desktop-evidence.mjs",
+    "validate:macos-desktop-evidence": "node scripts/validate-platform-evidence.mjs docs/macos-desktop-validation.json",
+    "validate:linux-desktop-evidence": "node scripts/validate-platform-evidence.mjs docs/linux-desktop-validation.json",
+    "validate:windows-desktop-evidence": "node scripts/validate-platform-evidence.mjs docs/windows-desktop-validation.json"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -55,6 +63,9 @@
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",
     "puppeteer-core": "^24.9.0"
+  },
+  "optionalDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "license": "Apache-2.0",
   "agentConfig": {

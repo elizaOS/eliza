@@ -14,17 +14,33 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   findMachOFiles,
   isMachO,
   parseEntitlementsPlist,
   walkBundleFiles,
 } from "./mas-smoke.mjs";
+
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 const SAMPLE_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -106,7 +122,7 @@ test("isMachO detects 64-bit Mach-O magic", () => {
     writeFileSync(machoPath, MACHO_HEADER_64);
     assert.equal(isMachO(machoPath), true);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 });
 
@@ -117,7 +133,7 @@ test("isMachO detects fat (universal) Mach-O magic", () => {
     writeFileSync(machoPath, MACHO_HEADER_FAT);
     assert.equal(isMachO(machoPath), true);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 });
 
@@ -128,7 +144,7 @@ test("isMachO returns false on non-Mach-O files", () => {
     writeFileSync(textPath, NOT_MACHO);
     assert.equal(isMachO(textPath), false);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 });
 
@@ -139,7 +155,7 @@ test("isMachO returns false on tiny files (too small for magic)", () => {
     writeFileSync(tinyPath, Buffer.from([0xfe, 0xed])); // only 2 bytes
     assert.equal(isMachO(tinyPath), false);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 });
 
@@ -164,7 +180,7 @@ test("walkBundleFiles enumerates files recursively, skipping directories", () =>
       ],
     );
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 });
 
@@ -189,7 +205,7 @@ test("findMachOFiles returns only files matching Mach-O magic", () => {
       .sort();
     assert.deepEqual(machos, ["Contents/MacOS/bun", "Contents/MacOS/launcher"]);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 });
 
@@ -215,6 +231,6 @@ test("findMachOFiles handles deeply nested binaries (e.g. Frameworks)", () => {
       "Contents/Frameworks/Foo.framework/Versions/A/Foo",
     ]);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 });

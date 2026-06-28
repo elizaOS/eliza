@@ -28,14 +28,14 @@ const VALIDATED: Readonly<
   Record<string, { contract: string; real: string; fixtures: string }>
 > = {
   polymarket: {
-    contract: "plugins/plugin-polymarket-app/src/routes.contract.test.ts",
-    real: "plugins/plugin-polymarket-app/src/routes.real.test.ts",
-    fixtures: "plugins/plugin-polymarket-app/src/__fixtures__",
+    contract: "plugins/plugin-polymarket/src/routes.contract.test.ts",
+    real: "plugins/plugin-polymarket/src/routes.real.test.ts",
+    fixtures: "plugins/plugin-polymarket/src/__fixtures__",
   },
   hyperliquid: {
-    contract: "plugins/plugin-hyperliquid-app/src/routes.contract.test.ts",
-    real: "plugins/plugin-hyperliquid-app/src/routes.real.test.ts",
-    fixtures: "plugins/plugin-hyperliquid-app/src/__fixtures__",
+    contract: "plugins/plugin-hyperliquid/src/routes.contract.test.ts",
+    real: "plugins/plugin-hyperliquid/src/routes.real.test.ts",
+    fixtures: "plugins/plugin-hyperliquid/src/__fixtures__",
   },
   coingecko: {
     contract:
@@ -65,12 +65,7 @@ const VALIDATED: Readonly<
  * specific contract test file. Promote to VALIDATED by adding a live-drift test.
  */
 const CONTRACT_TESTED: Readonly<Record<string, string>> = {
-  clawville: "plugins/plugin-clawville/src/routes.test.ts",
-  "defense-of-the-agents":
-    "plugins/plugin-defense-of-the-agents/src/routes.contract.test.ts",
-  shopify: "plugins/plugin-shopify-ui/src/routes.contract.test.ts",
-  steward: "plugins/plugin-steward-app/src/steward-bridge.contract.test.ts",
-  vincent: "plugins/plugin-vincent/src/vincent-oauth-parser.contract.test.ts",
+  shopify: "plugins/plugin-shopify/src/routes.contract.test.ts",
 };
 
 /**
@@ -81,7 +76,7 @@ const CONTRACT_TESTED: Readonly<Record<string, string>> = {
  */
 const DEBT: Readonly<Record<string, string>> = {
   "block-explorers":
-    "bscscan/etherscan/solscan reads in plugin-wallet/plugin-steward-app; public " +
+    "bscscan/etherscan/solscan reads in plugin-wallet; public " +
     "read endpoints — recorded contract test next.",
   "wallet-rpc":
     "EVM/Solana RPC + token-balance providers use inline DTO fixtures.",

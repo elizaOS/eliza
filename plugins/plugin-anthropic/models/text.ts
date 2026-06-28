@@ -444,7 +444,9 @@ function buildSegmentedUserContentFromSegments(
 function buildSegmentedUserContentForMessages(
   params: GenerateTextParamsWithProviderOptions
 ): UserContent | undefined {
-  const dynamicSegments = (params.promptSegments ?? []).filter((segment) => !segment.stable);
+  const dynamicSegments = (params.promptSegments ?? []).filter(
+    (segment: PromptSegment) => !segment.stable
+  );
   if (dynamicSegments.length === 0 && (params.attachments?.length ?? 0) === 0) {
     return undefined;
   }
@@ -503,7 +505,7 @@ function buildSegmentCacheControls(
   // longer matching prefix that a later breakpoint creates — we lose
   // granularity on partial-prefix hits but not coverage.
   const stableIndices: number[] = [];
-  (params.promptSegments ?? []).forEach((segment, index) => {
+  (params.promptSegments ?? []).forEach((segment: PromptSegment, index: number) => {
     if (segment.stable) stableIndices.push(index);
   });
   for (const index of stableIndices.slice(-maxSegmentBreakpoints)) {
@@ -972,15 +974,22 @@ async function generateTextWithModel(
 
   const operationName = `${modelType} request using ${modelName}`;
 
-  // Tool-using Anthropic requests need generateText: the AI SDK streaming
-  // companion promises can reject for tool-only responses with no text chunks,
-  // while generateText preserves toolCalls and finishReason.
+  // Route tool-using requests (and any request when ELIZA_ANTHROPIC_DISABLE_STREAM=1)
+  // to the non-streaming generateText path. The AI SDK streaming companion
+  // promises raise AI_NoOutputGeneratedError when a response contains only
+  // tool_use blocks and no text; generateText preserves response.toolCalls and
+  // text reliably. `readToolSet` has already normalized tools to a ToolSet
+  // record (or undefined), so a non-empty tool set means there are tool keys.
   const toolSet = paramsWithAttachments.tools;
   const hasToolSurface =
     (toolSet ? Object.keys(toolSet).length > 0 : false) ||
     Boolean(paramsWithAttachments.toolChoice);
   const streamDisabled = process.env.ELIZA_ANTHROPIC_DISABLE_STREAM === "1" || hasToolSurface;
 
+  // Structured-output calls must not stream: the parsed native object is only
+  // available on the non-stream `generateText` result (returned via
+  // `buildNativeTextResult` below). A streamed structured call would emit raw
+  // text chunks and discard the parsed object, so fall through to generateText.
   if (params.stream && !streamDisabled && !paramsWithAttachments.responseSchema) {
     try {
       const streamResult = streamText(generateParams);
@@ -1009,22 +1018,48 @@ async function generateTextWithModel(
           for await (const chunk of streamResult.textStream) {
             yield chunk;
           }
+          // The AI SDK's `textStream` terminates with zero chunks on a hard
+          // failure (auth/transport) instead of throwing — the real error
+          // (e.g. APICallError 401) only rejects the companion promises. Await
+          // `finishReason` here so an errored/empty stream re-throws the real
+          // cause (matching the non-stream generateText branch) rather than
+          // silently returning ''. The happy path resolves with a value.
+          await streamResult.finishReason;
           completed = true;
+        } catch (error) {
+          throw formatModelError(operationName, error);
         } finally {
           if (completed) {
             await usagePromise.catch(ignoreUsageError);
           }
         }
       }
+      // The streaming path primarily consumes `textStream`. The AI SDK's
+      // companion promises (text/toolCalls/finishReason/usage) reject on an
+      // empty stream ("No output generated") even when no caller awaits them,
+      // which otherwise surfaces as an unhandled rejection. Attach a no-op catch
+      // so each bare promise is always considered handled; real consumers still
+      // observe the value or error. Mirrors plugin-openai's `handledPromise`.
+      const handledPromise = <T>(value: T | PromiseLike<T>): Promise<T> => {
+        const promise = Promise.resolve(value);
+        promise.catch(() => {});
+        return promise;
+      };
       return {
         textStream: textStreamWithUsage(),
-        text: Promise.resolve(streamResult.text).then(async (text) => {
-          await usagePromise.catch(ignoreUsageError);
-          return text;
-        }),
-        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(streamResult.toolCalls) } : {}),
-        usage: usagePromise,
-        finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
+        text: handledPromise(
+          Promise.resolve(streamResult.text).then(async (text) => {
+            await usagePromise.catch(ignoreUsageError);
+            return text;
+          })
+        ),
+        ...(shouldReturnNativeResult
+          ? { toolCalls: handledPromise(Promise.resolve(streamResult.toolCalls)) }
+          : {}),
+        usage: handledPromise(usagePromise),
+        finishReason: handledPromise(
+          Promise.resolve(streamResult.finishReason) as Promise<string | undefined>
+        ),
       };
     } catch (error) {
       throw formatModelError(operationName, error);

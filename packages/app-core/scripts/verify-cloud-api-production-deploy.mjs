@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
-const cloudApiDir = path.join(repoRoot, "packages", "cloud-api");
+const cloudApiDir = path.join(repoRoot, "packages", "cloud", "api");
 const onboardingVerifier = path.join(scriptDir, "verify-cloud-sms-onboarding-flow.mjs");
 
 function run(command, args, options = {}) {

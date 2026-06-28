@@ -14,7 +14,7 @@
 // **No fallback.** If the native lib or GGUF is missing, init throws.
 
 import { logger } from "@elizaos/core";
-import sharp from "sharp";
+import { getSharp } from "./image/sharp-compat";
 import {
   defaultYoloWeightsPath,
   isYoloReady,
@@ -203,6 +203,7 @@ export class YOLODetector {
       throw new Error("[YOLO] native bindings unavailable at detect time");
     }
 
+    const sharp = await getSharp();
     const meta = await sharp(imageBuffer).metadata();
     const origW = meta.width ?? 0;
     const origH = meta.height ?? 0;

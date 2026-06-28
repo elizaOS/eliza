@@ -83,11 +83,11 @@ and id `req-pay` produces
 
 **Cloud app-charge e2e** — exercises the full charge create → public read →
 list round-trip against a running Cloud API
-(`packages/cloud-api/test/e2e/group-l-app-charges.test.ts`):
+(`packages/cloud/api/test/e2e/group-l-app-charges.test.ts`):
 
 ```bash
 # requires a reachable Cloud API and TEST_API_KEY; skips cleanly otherwise
-TEST_API_KEY="sk-elc_..." bun run --cwd packages/cloud-api test test/e2e/group-l-app-charges.test.ts
+TEST_API_KEY="sk-elc_..." bun run --cwd packages/cloud/api test test/e2e/group-l-app-charges.test.ts
 ```
 
 It asserts the charge response shape
@@ -230,11 +230,11 @@ takes over.
 - Adapter: [`packages/app-core/src/services/sensitive-requests/cloud-link-adapter.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/app-core/src/services/sensitive-requests/cloud-link-adapter.ts)
 - Adapter test: [`packages/app-core/src/services/sensitive-requests/cloud-link-adapter.test.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/app-core/src/services/sensitive-requests/cloud-link-adapter.test.ts)
 - Local sensitive-request route (secret/private_info only): [`packages/app-core/src/api/sensitive-request-routes.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/app-core/src/api/sensitive-request-routes.ts)
-- Cloud charge routes: [`packages/cloud-api/v1/apps/[id]/charges/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/apps/%5Bid%5D/charges/route.ts), [`charges/[chargeId]/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/apps/%5Bid%5D/charges/%5BchargeId%5D/route.ts), [`charges/[chargeId]/checkout/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/apps/%5Bid%5D/charges/%5BchargeId%5D/checkout/route.ts)
-- Credit transactions: [`packages/cloud-api/credits/transactions/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/credits/transactions/route.ts)
-- App earnings: [`packages/cloud-api/v1/apps/[id]/earnings/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/apps/%5Bid%5D/earnings/route.ts)
-- x402 facilitator + topups: [`packages/cloud-api/v1/x402/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/x402/route.ts), [`v1/topup/10/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/v1/topup/10/route.ts)
-- Charge e2e: [`packages/cloud-api/test/e2e/group-l-app-charges.test.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud-api/test/e2e/group-l-app-charges.test.ts)
+- Cloud charge routes: [`packages/cloud/api/v1/apps/[id]/charges/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/v1/apps/%5Bid%5D/charges/route.ts), [`charges/[chargeId]/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/v1/apps/%5Bid%5D/charges/%5BchargeId%5D/route.ts), [`charges/[chargeId]/checkout/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/v1/apps/%5Bid%5D/charges/%5BchargeId%5D/checkout/route.ts)
+- Credit transactions: [`packages/cloud/api/credits/transactions/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/credits/transactions/route.ts)
+- App earnings: [`packages/cloud/api/v1/apps/[id]/earnings/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/v1/apps/%5Bid%5D/earnings/route.ts)
+- x402 facilitator + topups: [`packages/cloud/api/v1/x402/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/v1/x402/route.ts), [`v1/topup/10/route.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/v1/topup/10/route.ts)
+- Charge e2e: [`packages/cloud/api/test/e2e/group-l-app-charges.test.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/cloud/api/test/e2e/group-l-app-charges.test.ts)
 - Monetization model: [Monetized Apps](./monetized-apps.mdx)
 
 Refs: elizaOS/eliza#8124

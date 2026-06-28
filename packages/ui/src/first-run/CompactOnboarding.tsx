@@ -19,7 +19,16 @@ import { useFirstRunController } from "./use-first-run-controller";
 
 export function CompactOnboarding(): React.ReactElement {
   const c = useFirstRunController();
-  const { busyText, cloudError, error, submitting, step, draft, cloudOnly } = c;
+  const {
+    busyText,
+    cloudError,
+    cloudLoginFallbackUrl,
+    error,
+    submitting,
+    step,
+    draft,
+    cloudOnly,
+  } = c;
   const busy = submitting;
   // Brand wordmark from the active branding (whitelabel seam) — falls back to
   // the elizaOS name when no host branding is configured.
@@ -117,9 +126,10 @@ export function CompactOnboarding(): React.ReactElement {
   // unavailable. Pull the URL out so we can render a real tappable button
   // instead of dumping the raw string at the user.
   const cloudLoginUrl = React.useMemo(() => {
+    if (cloudLoginFallbackUrl) return cloudLoginFallbackUrl;
     const match = (cloudError ?? "").match(/https?:\/\/\S+/);
     return match ? match[0] : null;
-  }, [cloudError]);
+  }, [cloudError, cloudLoginFallbackUrl]);
 
   // While an action is in flight, show its progress (busyText) — a stale
   // cloud error from a previous attempt must not shadow "Starting" etc. When
@@ -175,7 +185,7 @@ export function CompactOnboarding(): React.ReactElement {
                       c.updateDraft("remoteApiBase", e.target.value)
                     }
                     placeholder="https://agent.example.com"
-                    className="w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-white/70 focus:bg-white/[0.14]"
+                    className="w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40  "
                   />
                 </div>
                 <div className="flex flex-col gap-1.5 text-left">
@@ -196,7 +206,7 @@ export function CompactOnboarding(): React.ReactElement {
                       if (e.key === "Enter") void finishAndMaybeClose();
                     }}
                     placeholder="Leave blank to pair with a code"
-                    className="w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-white/70 focus:bg-white/[0.14]"
+                    className="w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40  "
                   />
                   <p className="text-[11px] leading-relaxed text-white/45">
                     The server's ELIZA_API_TOKEN. Leave blank to pair with a
@@ -218,7 +228,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-remote-connect"
                     disabled={busy || draft.remoteApiBase.trim().length === 0}
                     onClick={() => void finishAndMaybeClose()}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100"
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100"
                   >
                     {busy ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -284,7 +294,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-inference-cloud"
                     disabled={busy}
                     onClick={chooseCloudInference}
-                    className="group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-[transform,box-shadow,opacity] duration-200 ease-out hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
+                    className="group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left transition-[transform,opacity] duration-200 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10">
                       <Cloud className="h-5 w-5 text-[#FF5800]" />
@@ -311,7 +321,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-inference-local"
                     disabled={busy}
                     onClick={chooseLocalInference}
-                    className="group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100"
+                    className="group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-5 py-4 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100"
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]">
                       <Cpu className="h-5 w-5 text-white/90" />
@@ -357,7 +367,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-option-cloud"
                     disabled={busy}
                     onClick={chooseCloud}
-                    className="group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-[transform,box-shadow,opacity] duration-200 ease-out hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
+                    className="group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left transition-[transform,opacity] duration-200 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10">
                       <Cloud className="h-5 w-5 text-[#FF5800]" />
@@ -380,7 +390,7 @@ export function CompactOnboarding(): React.ReactElement {
                     data-testid="onboarding-option-local"
                     disabled={busy || cloudOnly}
                     onClick={chooseLocal}
-                    className={`group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100 ${cloudOnly ? "hidden" : ""}`}
+                    className={`group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-5 py-4 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100 ${cloudOnly ? "hidden" : ""}`}
                   >
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]">
                       <ShieldCheck className="h-5 w-5 text-white/90" />

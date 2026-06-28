@@ -71,7 +71,7 @@ const nextConfig: NextConfig = {
     // Run webpack in a worker to lower main process memory (can help with 14GB+ builds)
     webpackBuildWorker: true,
     // Cap parallelism to avoid dozens of jest-worker children and load average 200+
-    cpus: 4,
+    cpus: 1,
     // Disable parallel worker threads so we don't spawn 50+ jest-worker processes (slower build, sane load)
     workerThreads: false,
   },
@@ -149,6 +149,10 @@ const nextConfig: NextConfig = {
   },
   // Webpack configuration for backward compatibility
   webpack: (config, { isServer, webpack }) => {
+    // Disable source-map generation to cut peak webpack build memory on the
+    // RAM-limited Railway builder. Server source maps are stripped post-build by
+    // prune-next-server-sourcemaps anyway, so this is no net loss.
+    config.devtool = false;
     // Enable WebAssembly experiments for tiktoken
     config.experiments = {
       ...config.experiments,

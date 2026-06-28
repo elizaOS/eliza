@@ -257,6 +257,9 @@ export function createRemoteCapabilityPlugin(
       id: view.id,
       label: view.label,
       viewType: view.viewType === "tui" ? "tui" : "gui",
+      ...(view.backgroundPolicy === undefined
+        ? {}
+        : { backgroundPolicy: view.backgroundPolicy }),
       ...(view.bundleUrl === undefined ? {} : { bundleUrl: view.bundleUrl }),
       ...(view.bundleUrl !== undefined || view.bundlePath === undefined
         ? {}

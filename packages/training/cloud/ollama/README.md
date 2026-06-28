@@ -12,7 +12,7 @@ public consolidated `elizaos/eliza-1` bundle repo on HuggingFace.
 ## Build
 
 Each Modelfile ships with the canonical Eliza system prompt, the
-ChatML stop tokens used by Eliza-1, and per-size context /
+Gemma turn stop tokens used by Eliza-1, and per-size context /
 sampling defaults.
 
 ```bash

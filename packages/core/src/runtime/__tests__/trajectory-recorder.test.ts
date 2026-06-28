@@ -539,7 +539,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 			latencyMs: 100,
 			model: {
 				modelType: "ACTION_PLANNER",
-				modelName: "qwen-2.5-14b-q5_k_m",
+				modelName: "eliza-1-4b-q4_k_m",
 				provider: "ollama",
 				prompt: "p",
 				response: "r",

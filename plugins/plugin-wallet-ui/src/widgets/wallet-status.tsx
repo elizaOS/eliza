@@ -92,7 +92,7 @@ function ChainBadge({ chain }: { chain: ChainKey }) {
         title={label}
         width={16}
         height={16}
-        className="inline-flex h-4 w-4 shrink-0 rounded-full bg-bg/40 object-cover"
+        className="inline-flex h-4 w-4 shrink-0 object-contain"
         onError={() => setErrored(true)}
       />
     );
@@ -100,7 +100,7 @@ function ChainBadge({ chain }: { chain: ChainKey }) {
   // Tiny initials fallback when the logo URL fails or is missing.
   return (
     <span
-      className="inline-flex h-4 shrink-0 items-center rounded-full border border-border/35 bg-bg/40 px-1.5 font-mono text-[0.52rem] font-semibold leading-none text-muted"
+      className="inline-flex h-4 shrink-0 items-center px-0.5 font-mono text-[0.52rem] font-semibold leading-none text-muted"
       title={label}
       role="img"
       aria-label={label}
@@ -154,7 +154,7 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
       onClick={onClick}
       aria-label={copied ? `${label} copied` : `Copy ${label}`}
       title={copied ? "Copied" : "Copy"}
-      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-muted transition-colors hover:text-txt"
     >
       {copied ? (
         <Check className="h-3 w-3" aria-hidden />
@@ -305,7 +305,7 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
           ) : null}
 
           {hasAnyBalanceRow ? (
-            <div className="mt-1 flex flex-col gap-1 border-t border-border/20 pt-1.5">
+            <div className="mt-1 flex flex-col gap-1 pt-1">
               <div
                 className="flex items-center justify-between text-3xs"
                 data-testid="chat-widget-wallet-row-assets"
@@ -328,10 +328,7 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
           ) : null}
         </div>
       ) : (
-        <EmptyWidgetState
-          icon={<Wallet className="h-5 w-5" />}
-          title="No wallet addresses yet"
-        />
+        <EmptyWidgetState icon={<Wallet className="h-5 w-5" />} title="None" />
       )}
     </WidgetSection>
   );

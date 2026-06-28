@@ -302,13 +302,19 @@ function normalizeSlashCommandName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-// A simple utility to split command arguments, equivalent to chat-commands splitCommandArgs
+// Split command arguments into tokens. Each token is an optional `key=` prefix
+// followed by a value that is either a quoted string (quotes stripped, inner
+// spaces preserved) or a bare run of non-space chars. Keeping `key="multi word"`
+// and `key='multi word'` as a single `key=multi word` token lets a named arg
+// carry spaces — the previous regex split it at the quote, binding `key=""`.
 function splitCommandArgs(text: string): string[] {
   const parts: string[] = [];
-  const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
+  const regex = /([^\s"'=]+=)?(?:"([^"]*)"|'([^']*)'|([^\s"']+))/g;
   let match: RegExpExecArray | null = regex.exec(text);
   while (match !== null) {
-    parts.push(match[1] || match[2] || match[0]);
+    const prefix = match[1] ?? "";
+    const value = match[2] ?? match[3] ?? match[4] ?? "";
+    parts.push(prefix + value);
     match = regex.exec(text);
   }
   return parts;

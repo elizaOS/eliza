@@ -6,7 +6,7 @@ import agentSkillsPlugin from "@elizaos/plugin-agent-skills";
 import appControlPlugin from "@elizaos/plugin-app-control";
 import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
-import deviceFilesystemPlugin from "@elizaos/plugin-device-filesystem";
+import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
 import githubPlugin from "@elizaos/plugin-github";
 import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
@@ -74,15 +74,25 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
 
 /** Expected action names for each imported core plugin (verified against live imports). */
 const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
-  "@elizaos/plugin-app-control": ["APP", "HOMESCREEN", "VIEWS"],
+  "@elizaos/plugin-app-control": ["APP", "BACKGROUND", "VIEWS"],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
   "@elizaos/plugin-commands": [
     "COMMANDS_COMMAND",
+    "COMPACT_COMMAND",
     "CONTEXT_COMMAND",
+    "ELEVATED_COMMAND",
     "HELP_COMMAND",
     "MODELS_COMMAND",
+    "MODEL_COMMAND",
+    "NEW_COMMAND",
+    "QUEUE_COMMAND",
+    "REASONING_COMMAND",
+    "RESET_COMMAND",
     "STATUS_COMMAND",
+    "THINK_COMMAND",
+    "TTS_COMMAND",
     "USAGE_COMMAND",
+    "VERBOSE_COMMAND",
     "WHOAMI_COMMAND",
   ],
   "@elizaos/plugin-agent-skills": [
@@ -138,7 +148,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
 const ACTIONLESS_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-shell": shellPlugin,
   "@elizaos/plugin-video": videoPlugin,
-  "@elizaos/plugin-device-filesystem": deviceFilesystemPlugin,
+  "@elizaos/plugin-native-filesystem": deviceFilesystemPlugin,
 };
 
 /**
@@ -194,15 +204,26 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "STOP_TRANSCRIPTION",
   // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
   "EVAL_CODE",
-  // plugin-commands slash-command actions (/help, /status, /models, …) are
-  // dispatched through the command palette, not the keyless scenario pipeline,
-  // so they have no deterministic scenario yet.
+  // plugin-commands slash-command actions (/help, /status, /models, /reset,
+  // /compact, /think, /model, /tts, …) are dispatched through the command
+  // palette, not the keyless scenario pipeline, so they have no deterministic
+  // scenario yet.
   "COMMANDS_COMMAND",
+  "COMPACT_COMMAND",
   "CONTEXT_COMMAND",
+  "ELEVATED_COMMAND",
   "HELP_COMMAND",
   "MODELS_COMMAND",
+  "MODEL_COMMAND",
+  "NEW_COMMAND",
+  "QUEUE_COMMAND",
+  "REASONING_COMMAND",
+  "RESET_COMMAND",
   "STATUS_COMMAND",
+  "THINK_COMMAND",
+  "TTS_COMMAND",
   "USAGE_COMMAND",
+  "VERBOSE_COMMAND",
   "WHOAMI_COMMAND",
 ];
 
@@ -214,6 +235,7 @@ const KNOWN_UNCOVERED: readonly string[] = [
  */
 const COVERED_ACTIONS: readonly string[] = [
   "APP",
+  "BACKGROUND",
   "BROWSER_CLICK",
   "BROWSER_CLOSE",
   "BROWSER_GET",
@@ -235,7 +257,6 @@ const COVERED_ACTIONS: readonly string[] = [
   "GITHUB_NOTIFICATION_TRIAGE",
   "GITHUB_PR_LIST",
   "GITHUB_PR_REVIEW",
-  "HOMESCREEN",
   "MCP",
   "MCP_CALL_TOOL",
   "MCP_LIST_CONNECTIONS",
@@ -741,7 +762,7 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
  * Covered actions that are not yet strict natural-language routed. This
  * baseline may only shrink as actions move to STRICT_LLM_ROUTED_ACTIONS.
  */
-const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = ["HOMESCREEN"];
+const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = ["BACKGROUND"];
 
 function collectActionNames(plugin: Plugin): string[] {
   return sorted(

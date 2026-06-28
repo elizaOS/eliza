@@ -29,7 +29,7 @@ import {
   buildSelfControlBlockPolicy,
   isWebsiteBlockedByPolicy,
   startSelfControlBlock,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/engine";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import {
   type EnforcementWindow,

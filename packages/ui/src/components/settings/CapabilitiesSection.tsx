@@ -4,6 +4,7 @@ import {
   Globe,
   GraduationCap,
   Loader2,
+  MessageCircle,
   MonitorCog,
   PlugZap,
   Wallet,
@@ -18,10 +19,50 @@ import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import {
   SettingsActionButton,
   SettingsInputRow,
+  SettingsSegmentedRow,
   SettingsSelectRow,
   SettingsSwitchRow,
 } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+
+/**
+ * Env key the proactive-interaction decider reads (`#8792`). Persisted into
+ * `config.env` (propagated to `process.env` at boot) and resolved at decider
+ * registration via `runtime.getSetting(ELIZA_PROACTIVE_INTERACTIONS)`.
+ */
+const PROACTIVE_INTERACTIONS_ENV_KEY = "ELIZA_PROACTIVE_INTERACTIONS";
+
+/** Matches `ProactiveChattiness` in the agent's proactive-interaction gate. */
+type ProactiveChattiness = "off" | "subtle" | "chatty";
+
+const PROACTIVE_CHATTINESS_VALUES: readonly ProactiveChattiness[] = [
+  "off",
+  "subtle",
+  "chatty",
+];
+
+/** Default when no value is persisted (mirrors the gate's `subtle` default). */
+const DEFAULT_PROACTIVE_CHATTINESS: ProactiveChattiness = "subtle";
+
+function readProactiveChattinessFromEnv(
+  env: unknown,
+): ProactiveChattiness | null {
+  if (!env || typeof env !== "object" || Array.isArray(env)) return null;
+  const record = env as Record<string, unknown>;
+  const vars =
+    record.vars &&
+    typeof record.vars === "object" &&
+    !Array.isArray(record.vars)
+      ? (record.vars as Record<string, unknown>)
+      : undefined;
+  const raw =
+    record[PROACTIVE_INTERACTIONS_ENV_KEY] ??
+    vars?.[PROACTIVE_INTERACTIONS_ENV_KEY];
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return (PROACTIVE_CHATTINESS_VALUES as readonly string[]).includes(value)
+    ? (value as ProactiveChattiness)
+    : null;
+}
 
 interface AutoTrainingConfig {
   autoTrain: boolean;
@@ -71,6 +112,9 @@ export function CapabilitiesSection() {
       t: s.t,
     }));
   const advancedEnabled = useAdvancedSettingsEnabled();
+  const [proactiveChattiness, setProactiveChattiness] =
+    useState<ProactiveChattiness>(DEFAULT_PROACTIVE_CHATTINESS);
+  const [proactiveSaving, setProactiveSaving] = useState(false);
   const [autoTrainingConfig, setAutoTrainingConfig] =
     useState<AutoTrainingConfig | null>(null);
   const [autoTrainingAvailable, setAutoTrainingAvailable] = useState<
@@ -120,6 +164,45 @@ export function CapabilitiesSection() {
   useEffect(() => {
     void refreshAutoTraining();
   }, [refreshAutoTraining]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const config = await client.getConfig();
+        const resolved = readProactiveChattinessFromEnv(config.env);
+        if (!cancelled && resolved) setProactiveChattiness(resolved);
+      } catch {
+        // Leave the default when config is unavailable.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleProactiveChattinessChange = useCallback(
+    async (next: string) => {
+      if (!(PROACTIVE_CHATTINESS_VALUES as readonly string[]).includes(next)) {
+        return;
+      }
+      const value = next as ProactiveChattiness;
+      const previous = proactiveChattiness;
+      if (value === previous) return;
+      setProactiveChattiness(value);
+      setProactiveSaving(true);
+      try {
+        await client.updateConfig({
+          env: { [PROACTIVE_INTERACTIONS_ENV_KEY]: value },
+        });
+      } catch {
+        setProactiveChattiness(previous);
+      } finally {
+        setProactiveSaving(false);
+      }
+    },
+    [proactiveChattiness],
+  );
 
   const handleAutoTrainingChange = useCallback(
     async (checked: boolean | "indeterminate") => {
@@ -365,6 +448,45 @@ export function CapabilitiesSection() {
           disabled={autoTrainingDisabled}
           checked={autoTrainingConfig?.autoTrain ?? false}
           onCheckedChange={(checked) => handleAutoTrainingChange(checked)}
+        />
+        <SettingsSegmentedRow
+          agentId="capability-proactive-suggestions"
+          icon={MessageCircle}
+          label={t("settings.sections.capabilities.proactiveName", {
+            defaultValue: "Proactive suggestions",
+          })}
+          agentLabel={t("settings.sections.capabilities.proactiveLabel", {
+            defaultValue: "Proactive suggestions",
+          })}
+          description={t("settings.sections.capabilities.proactiveHint", {
+            defaultValue:
+              "How often the agent offers a helpful suggestion when you switch views or run a shortcut.",
+          })}
+          group="capabilities"
+          testId="capability-proactive-suggestions"
+          value={proactiveChattiness}
+          onValueChange={(value) => void handleProactiveChattinessChange(value)}
+          disabled={proactiveSaving}
+          options={[
+            {
+              value: "off",
+              label: t("settings.sections.capabilities.proactiveOff", {
+                defaultValue: "Off",
+              }),
+            },
+            {
+              value: "subtle",
+              label: t("settings.sections.capabilities.proactiveSubtle", {
+                defaultValue: "Subtle",
+              }),
+            },
+            {
+              value: "chatty",
+              label: t("settings.sections.capabilities.proactiveChatty", {
+                defaultValue: "Chatty",
+              }),
+            },
+          ]}
         />
       </SettingsGroup>
 

@@ -101,6 +101,13 @@ type PinnedFetchInput = {
 };
 
 type PinnedFetchImpl = (input: PinnedFetchInput) => Promise<Response>;
+type DnsLookupRecord = { address?: unknown } | string;
+type DnsLookupAllFn = (
+  hostname: string,
+  options: { all: true },
+) => Promise<DnsLookupRecord[] | DnsLookupRecord>;
+
+let dnsLookupImpl: DnsLookupAllFn = dnsLookup as DnsLookupAllFn;
 
 function getApiPort(): string {
   return String(resolveServerOnlyPort(process.env));
@@ -233,6 +240,18 @@ function isBlockedIp(ip: string): boolean {
   return isBlockedPrivateOrLinkLocalIp(ip);
 }
 
+function normalizeDnsAddress(record: unknown): string | null {
+  const raw =
+    typeof record === "string"
+      ? record
+      : record && typeof record === "object"
+        ? (record as { address?: unknown }).address
+        : undefined;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function toRequestHeaders(headers: Headers): Record<string, string> {
   const normalized: Record<string, string> = {};
   headers.forEach((value, key) => {
@@ -337,7 +356,21 @@ async function requestWithPinnedAddress(
       method,
       path: `${url.pathname}${url.search}`,
       headers: toRequestHeaders(headers),
-      lookup: (_hostname, _options, callback) => {
+      // Honor the `all` option: Node 20+ defaults autoSelectFamily=true and, for
+      // dual-stack hosts, calls lookup with `{ all: true }` expecting an ARRAY
+      // of `{ address, family }`. Returning the single-arg form there makes Node
+      // read the address string as an array (`addr[0].address` -> undefined) and
+      // throw "Invalid IP address: undefined", failing every pinned fetch to a
+      // dual-stack host (e.g. coingecko). Branch on the option to satisfy both.
+      lookup: (_hostname, options, callback) => {
+        const wantsAll =
+          typeof options === "object" &&
+          options !== null &&
+          options.all === true;
+        if (wantsAll) {
+          callback(null, [{ address: target.pinnedAddress, family }]);
+          return;
+        }
         callback(null, target.pinnedAddress, family);
       },
       ...(url.protocol === "https:"
@@ -380,6 +413,10 @@ export function __setPinnedFetchImplForTests(
   impl: PinnedFetchImpl | null,
 ): void {
   pinnedFetchImpl = impl ?? requestWithPinnedAddress;
+}
+
+export function __setDnsLookupImplForTests(impl: DnsLookupAllFn | null): void {
+  dnsLookupImpl = impl ?? (dnsLookup as DnsLookupAllFn);
 }
 
 async function resolveUrlSafety(url: string): Promise<{
@@ -425,10 +462,15 @@ async function resolveUrlSafety(url: string): Promise<{
       };
     }
 
-    const records = await dnsLookup(hostname, { all: true });
-    const addresses = Array.isArray(records) ? records : [records];
-    for (const entry of addresses) {
-      if (isBlockedIp(entry.address)) {
+    const records = await dnsLookupImpl(hostname, { all: true });
+    const addresses = (Array.isArray(records) ? records : [records])
+      .map(normalizeDnsAddress)
+      .filter((address): address is string => Boolean(address));
+    if (addresses.length === 0) {
+      return { blocked: true, target: null };
+    }
+    for (const address of addresses) {
+      if (isBlockedIp(address)) {
         return { blocked: true, target: null };
       }
     }
@@ -438,7 +480,7 @@ async function resolveUrlSafety(url: string): Promise<{
       target: {
         parsed,
         hostname,
-        pinnedAddress: addresses[0]?.address ?? "",
+        pinnedAddress: addresses[0] ?? "",
       },
     };
   } catch {
@@ -489,7 +531,7 @@ async function fetchWithPinnedTarget(
   init: RequestInit,
   timeoutMs: number,
 ): Promise<Response> {
-  if (!target.pinnedAddress) {
+  if (!target.pinnedAddress || net.isIP(target.pinnedAddress) === 0) {
     throw new Error(
       "Blocked: cannot make requests to internal network addresses",
     );
@@ -558,15 +600,6 @@ export interface GuardedHttpGetResult {
   blocked: boolean;
 }
 
-/**
- * SSRF-guarded, https-only, GET-only HTTP fetch shared by custom actions and
- * the built-in WEB_FETCH action.
- *
- * Reuses {@link resolveUrlSafety} (DNS-pinned private/link-local IP blocking via
- * the security network policy) and {@link fetchWithPinnedTarget}. Enforces an
- * https scheme, rejects redirects, and caps both the timeout and the number of
- * body bytes read.
- */
 // Default User-Agent for guarded GETs. Many public REST/JSON APIs (crypto
 // price, weather, news endpoints) reject undici's default `node` User-Agent - or
 // a missing one - with HTTP 403, which silently broke every WEB_FETCH live-info
@@ -581,9 +614,28 @@ const GUARDED_GET_DEFAULT_USER_AGENT =
     "Chrome/124.0.0.0 Safari/537.36",
   ].join(" ");
 
-export async function performGuardedHttpGet(
+export interface GuardedHttpPostOptions extends GuardedHttpGetOptions {
+  /** Request body. Sent as `application/json` unless `Content-Type` is set. */
+  body: string;
+}
+
+interface GuardedHttpRequestOptions extends GuardedHttpGetOptions {
+  method: "GET" | "POST";
+  /** Optional body (POST). Defaults Content-Type to `application/json`. */
+  body?: string;
+}
+
+/**
+ * Single SSRF-guarded, https-only HTTP request used by both the GET and POST
+ * wrappers below — keeping the guard (DNS-pinned private/link-local blocking via
+ * {@link resolveUrlSafety} + {@link fetchWithPinnedTarget}, https-only scheme,
+ * redirect rejection, timeout + body cap) in ONE place so a future safety fix
+ * never has to be made twice. Public callers use {@link performGuardedHttpGet} /
+ * {@link performGuardedHttpPost}.
+ */
+async function performGuardedHttpRequest(
   url: string,
-  opts: GuardedHttpGetOptions = {},
+  opts: GuardedHttpRequestOptions,
 ): Promise<GuardedHttpGetResult> {
   const timeoutMs = opts.timeoutMs ?? CUSTOM_ACTION_FETCH_TIMEOUT_MS;
   const maxChars = opts.maxChars ?? GUARDED_GET_MAX_BYTES;
@@ -603,9 +655,10 @@ export async function performGuardedHttpGet(
     return { ok: false, status: 0, text: "", blocked: true };
   }
 
-  // Build headers via the Headers API so a caller-supplied User-Agent (in any
+  // Build headers via the Headers API so a caller-supplied header (in any
   // casing) cleanly overrides the default rather than being comma-joined onto it.
   const headers = new Headers({ "User-Agent": GUARDED_GET_DEFAULT_USER_AGENT });
+  if (opts.body !== undefined) headers.set("Content-Type", "application/json");
   if (opts.headers) {
     for (const [key, value] of Object.entries(opts.headers)) {
       headers.set(key, value);
@@ -613,9 +666,10 @@ export async function performGuardedHttpGet(
   }
 
   const fetchOpts: RequestInit = {
-    method: "GET",
+    method: opts.method,
     headers,
     redirect: "manual",
+    ...(opts.body !== undefined ? { body: opts.body } : {}),
   };
 
   const response = safety.target
@@ -627,12 +681,27 @@ export async function performGuardedHttpGet(
   }
 
   const text = await readBodyTextCapped(response, maxChars);
-  return {
-    ok: response.ok,
-    status: response.status,
-    text,
-    blocked: false,
-  };
+  return { ok: response.ok, status: response.status, text, blocked: false };
+}
+
+/** SSRF-guarded https-only GET (custom actions + the built-in WEB_FETCH action). */
+export async function performGuardedHttpGet(
+  url: string,
+  opts: GuardedHttpGetOptions = {},
+): Promise<GuardedHttpGetResult> {
+  return performGuardedHttpRequest(url, { ...opts, method: "GET" });
+}
+
+/**
+ * SSRF-guarded HTTPS POST with a body (default `application/json`) — used by
+ * inline actions that call a public JSON/MCP endpoint (e.g. the keyless
+ * web-search MCP). Same guard as {@link performGuardedHttpGet}.
+ */
+export async function performGuardedHttpPost(
+  url: string,
+  opts: GuardedHttpPostOptions,
+): Promise<GuardedHttpGetResult> {
+  return performGuardedHttpRequest(url, { ...opts, method: "POST" });
 }
 
 function buildHandler(

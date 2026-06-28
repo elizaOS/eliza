@@ -45,10 +45,8 @@ export const KOKORO_DEFAULT_SAMPLE_RATE = 24_000;
  * Order is preference-first: a fused-GGUF beats an ONNX of the same
  * quantization tier, and within ONNX the int8 export beats fp32.
  *
- * The Q4_K_M GGUF is what the elizaOS/llama.cpp fork's
- * `tools/kokoro/convert_kokoro_pth_to_gguf.py` produces for shipping
- * tiers; `kokoro-82m-v1_0.gguf` is the unquantized canonical filename
- * the runtime documents at `kokoro-runtime.ts:KOKORO_GGUF_REL_PATH`.
+ * Prefer the quantized GGUF when both files are staged, but the published
+ * Eliza-1 bundle currently uses the canonical `kokoro-82m-v1_0.gguf` name.
  */
 const CANDIDATE_MODEL_FILES: ReadonlyArray<string> = [
 	"kokoro-82m-v1_0-Q4_K_M.gguf",
@@ -151,7 +149,7 @@ function resolveDefaultVoiceId(voicesDir: string): string | null {
 		// the runtime must surface the fallback to the operator console; the
 		// structured logger is unavailable at discovery time.
 		console.warn(
-			`[kokoro] default voice ${KOKORO_DEFAULT_VOICE_ID} preset not staged at ${path.join(voicesDir, defaultPack?.file ?? `${KOKORO_DEFAULT_VOICE_ID}.bin`)} — falling back to ${KOKORO_FALLBACK_VOICE_ID}. Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md to produce a real Samantha preset, or regenerate via plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs.`,
+			`[kokoro] default voice ${KOKORO_DEFAULT_VOICE_ID} preset not staged at ${path.join(voicesDir, defaultPack?.file ?? `${KOKORO_DEFAULT_VOICE_ID}.bin`)} — falling back to ${KOKORO_FALLBACK_VOICE_ID}. Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md to produce a real Samantha preset.`,
 		);
 		return fallbackPack.id;
 	}

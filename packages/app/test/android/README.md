@@ -7,6 +7,8 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 | Layer | What it proves | Driver |
 |---|---|---|
 | `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
+| `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
+| `ios-onboarding-smoke.mjs` | Fresh iOS Capacitor first-run onboarding selects the same real remote host agent, completes first-run, and lands on the home/chat surface with screenshot + video artifacts | `xcrun simctl` + in-WebView smoke request/result via Capacitor Preferences |
 | `playwright.android.config.ts` (`test/android/*.android.spec.ts`) | Every route/feature renders on the real WebView against the live backend | Playwright Android driver (`_android`) over the WebView CDP socket |
 
 The Playwright Android suite reuses the canonical route enumerations
@@ -35,7 +37,6 @@ start, model won't download/run, a route won't render, cloud won't provision
   ELIZA_MOBILE_REPO_ROOT=/home/example/eliza \
   ELIZA_WEBVIEW_DEBUG=1 \
   ELIZA_BUN_RISCV64_OPTIONAL=1 \
-  ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 \
   bun run --cwd packages/app build:android
   # → packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
   ```
@@ -44,9 +45,6 @@ start, model won't download/run, a route won't render, cloud won't provision
     (else it walks up to the parent and builds the wrong app).
   - `ELIZA_WEBVIEW_DEBUG=1` flips `webContentsDebuggingEnabled` on so Playwright
     can attach to the WebView. Off for production/store builds.
-  - `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1` skips the arm64 MTP/vulkan llama lib
-    (a real-device optimization irrelevant to an x86_64 emulator; the standard
-    `libllama-cpp-x86_64.so` runs there).
   - `ELIZA_BUN_RISCV64_OPTIONAL=1` skips the (nonexistent) riscv64 Bun release.
 
 ## Hard-won environment facts
@@ -85,6 +83,25 @@ start, model won't download/run, a route won't render, cloud won't provision
 | `ELIZA_ANDROID_REQUIRE_AGENT=0` | Don't gate route coverage on local agent health (cloud/remote mode) |
 | `ELIZA_EMULATOR_MEMORY_MB` / `ELIZA_EMULATOR_CORES` | Override emulator sizing |
 
+## CI onboarding lane
+
+`android-device-e2e.yml` now runs a load-bearing first-run lane before the
+best-effort route sweep:
+
+1. Start `packages/app-core/scripts/serve-real-local-agent.ts` on host
+   `127.0.0.1:31337` with pairing disabled and deterministic model handlers.
+2. Boot/install the WebView-debuggable APK on the Android emulator.
+3. Run `test/android/onboarding-to-home.android.spec.ts` with
+   `ELIZA_ANDROID_BACKEND=host`, so global setup wires `adb reverse
+   tcp:31337 -> host:31337`.
+4. The spec navigates the installed app to `/?reset`, taps through Remote
+   onboarding, posts first-run to the real host agent, and asserts
+   `home-springboard-surface[data-page="home"]` plus the chat composer.
+
+Artifacts are written under
+`packages/app/test-results/android-onboarding-to-home/`:
+`home-landing.png`, `onboarding-to-home.mp4`, and `host-agent.log`.
+
 ## On-device agent: where it runs
 
 The embedded agent (bun + llama) **runs on real arm64 hardware** (verified on a
@@ -113,3 +130,14 @@ iOS uses the same `mobile-local-chat-smoke.mjs` (simulator path via `xcrun
 simctl`) and `scripts/ios-e2e.mjs`; run on a Mac (`xcrun` is macOS-only). The
 WebKit WebView is not CDP-drivable like Android, so iOS route coverage is
 screenshot + deep-link + backend-probe based rather than Playwright-driven.
+
+`mobile-build-smoke.yml` also runs `scripts/ios-onboarding-smoke.mjs` after the
+iOS Simulator `.app` build/stamp checks. The workflow starts the deterministic
+host agent on `127.0.0.1:31337`, installs the freshly built simulator app, clears
+Capacitor first-run Preferences, writes `eliza:ios-onboarding-smoke:request`,
+and launches the app. The WebView then clicks the real Remote onboarding card,
+fills the host-agent URL, submits first-run, and writes
+`eliza:ios-onboarding-smoke:result` for the harness to poll. Artifacts land in
+`packages/app/test-results/ios-onboarding-to-home/`: `fresh-onboarding.png`,
+`home-landing.png`, `onboarding-to-home.mp4`, `result.json`, and
+`host-agent.log`.

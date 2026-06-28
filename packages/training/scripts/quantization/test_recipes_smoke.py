@@ -105,7 +105,7 @@ def test_fp8_apply_dry_run_emits_capability_json(capsys):
     assert "reason" in payload
 
 
-def test_qjl_apply_kv_bytes_per_token_analytic_qwen():
+def test_qjl_apply_kv_bytes_per_token_analytic_gemma():
     """Sanity-check the analytic KV-bytes formula on a real gemma-4-E2B config.
 
     No model download — just metadata via AutoConfig.

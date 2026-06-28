@@ -1,7 +1,7 @@
 /**
  * Seed helpers for the cloud E2E DB.
  *
- * Mirrors `packages/cloud-api/test/e2e/preload.ts` but is callable on demand
+ * Mirrors `packages/cloud/api/test/e2e/preload.ts` but is callable on demand
  * from a Playwright fixture instead of via bun's `--preload`. Reuses the
  * cloud-shared repositories so we don't reimplement schema knowledge.
  */

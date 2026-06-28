@@ -1,1 +1,1 @@
-export * from "../app-core/test/helpers/conditional-tests.ts";
+export * from "../../app-core/test/helpers/conditional-tests.ts";

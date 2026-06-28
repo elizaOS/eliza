@@ -531,7 +531,7 @@ export const POST = withErrorHandling(
         // Persist actionParams to stateCache so action handlers that compose
         // their own state still see the parsed parameters.
         const stateCache = (
-          runtime as unknown as {
+          runtime as {
             stateCache?: Map<
               string,
               {
@@ -648,7 +648,7 @@ export const POST = withErrorHandling(
 
           if (!actionResult) {
             const cachedState = (
-              runtime as unknown as { stateCache?: Map<string, unknown> }
+              runtime as { stateCache?: Map<string, unknown> }
             ).stateCache?.get(`${elizaMessage.id}_action_results`) as
               | {
                   values?: {

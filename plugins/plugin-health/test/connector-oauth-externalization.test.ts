@@ -22,6 +22,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setAcmeClientTestEnv } from "../../../packages/shared/src/test-env-config.ts";
 import {
   type ConnectorContribution,
   type ConnectorRegistry,
@@ -148,8 +149,7 @@ describe("health connector OAuth + base-URL externalisation (Audit C top-3)", ()
       capabilities: ["health.activity.read"],
     };
     setHealthProviderSpec(acmeSpec);
-    process.env.ELIZA_ACME_CLIENT_ID = "test-client-id";
-    process.env.ELIZA_ACME_CLIENT_SECRET = "test-client-secret";
+    setAcmeClientTestEnv(process.env);
 
     // The OAuth dispatcher's provider type is `LifeOpsHealthConnectorProvider`
     // (a closed union for the four built-in OAuth providers). Externalisation

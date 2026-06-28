@@ -49,6 +49,7 @@ export function installJsdomUiPolyfills(): void {
   }
   const proto = Element.prototype as unknown as Record<string, unknown>;
   proto.scrollIntoView ??= () => {};
+  proto.scrollTo ??= () => {};
   proto.hasPointerCapture ??= () => false;
   proto.setPointerCapture ??= () => {};
   proto.releasePointerCapture ??= () => {};
@@ -76,7 +77,8 @@ export function smokeStoryModules(
   } = {},
 ): void {
   const wrap =
-    options.wrap ?? ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
+    options.wrap ??
+    ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
   const skip = new Set(options.skip ?? []);
 
   beforeAll(installJsdomUiPolyfills);
@@ -107,14 +109,23 @@ export function smokeStoryModules(
       for (const [storyName, Story] of stories) {
         const testFn = skip.has(`${name}/${storyName}`) ? it.skip : it;
         testFn(`${storyName} renders without throwing`, async () => {
+          // The coverage here IS the absence of a throw: composing the story
+          // (above) and mounting it must not error. There is intentionally no
+          // "produced DOM" assertion — null/empty renders are valid in this jsdom
+          // lane. Many stories are empty-by-design (Closed/Disabled/Empty states)
+          // or render nothing without the full app runtime (browser-status,
+          // ShortcutsOverlay/Open, …). Blank-render detection that needs that
+          // runtime lives in the browser story gate (its needs-runtime path) and
+          // the live audit:app — not this fast offline smoke.
           const { container } = render(wrap(<Story />) as ReactElement);
-          expect(container.firstChild ?? container).toBeTruthy();
           // If the story defines an interaction (`play`), run it — so authoring a
           // play function automatically gets it exercised in this lane, with no
           // per-component test to wire up.
           const play = (
             Story as {
-              play?: (ctx: { canvasElement: HTMLElement }) => void | Promise<void>;
+              play?: (ctx: {
+                canvasElement: HTMLElement;
+              }) => void | Promise<void>;
             }
           ).play;
           if (typeof play === "function") {

@@ -5,5 +5,5 @@ export default createViewBundleConfig({
   viewId: "model-tester",
   entry: "./src/model-tester-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "ModelTesterAppView",
+  componentExport: "ModelTesterView",
 });

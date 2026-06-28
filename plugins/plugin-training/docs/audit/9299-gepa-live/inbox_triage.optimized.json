@@ -1,0 +1,55 @@
+{
+  "task": "inbox_triage",
+  "optimizer": "gepa",
+  "baseline": "Plan the Gmail/inbox triage action for this request.\nThe user may speak in any language.\nUse only Gmail/inbox actions. Do not plan calendar, reminder, or document work here.\nReturn line-based fields only:\nsubaction: triage | needs_response | search | read | draft_reply | send_reply\nshouldAct: true | false\nresponse: null or a short clarification\nqueries: up to 3 concise Gmail search queries separated by ||\n\nChoose triage for broad inbox cleanup or priority review.\nChoose needs_response when the owner asks what needs a reply.\nChoose search/read when the owner asks for specific messages.\nChoose draft_reply or send_reply only when the owner explicitly asks to respond.\nSet shouldAct=false when the request is too vague to choose safely.",
+  "prompt": "Plan the Gmail/inbox triage action for this request.\nThe user may speak in any language.\nUse only Gmail/inbox actions. Do not plan calendar, reminder, or document work here.\nReturn line-based fields only:\nsubaction: triage | needs_response | search | read | draft_reply | send_reply\nshouldAct: true | false\nresponse: null or a short clarification\nqueries: up to 3 concise Gmail search queries separated by ||\n\nOnly output **subaction** and **shouldAct** unless the request explicitly asks for a search or reply; omit **response** and **queries** otherwise.\n\nChoose triage for broad inbox cleanup or priority review.\nChoose needs_response when the owner asks what needs a reply.\nChoose search/read when the owner asks for specific messages.\nChoose draft_reply or send_reply only when the owner explicitly asks to respond.\nSet shouldAct=false when the request is too vague to choose safely.",
+  "score": 0.6666666666666666,
+  "baselineScore": 0.625,
+  "datasetId": "seed:inbox_triage",
+  "datasetSize": 8,
+  "generatedAt": "2026-06-25T00:43:58.727Z",
+  "lineage": [
+    {
+      "round": 0,
+      "variant": 0,
+      "score": 0.625,
+      "notes": "baseline"
+    },
+    {
+      "round": 0,
+      "variant": 1,
+      "score": 0.625,
+      "notes": "seed-feedback | The model is misclassifying “need a reply” requests as **search** instead of **needs_response** because the prompt’s ma…"
+    },
+    {
+      "round": 0,
+      "variant": 2,
+      "score": 0.16666666666666666,
+      "notes": "seed-compress | tokens=162"
+    },
+    {
+      "round": 0,
+      "variant": 3,
+      "score": 0.625,
+      "notes": "seed-feedback | The model omits the required queries field for a needs_response request, violating the specification that queries must …"
+    },
+    {
+      "round": 1,
+      "variant": 1,
+      "score": 0.6666666666666666,
+      "notes": "feedback-mut | The model is outputting extra fields (response/queries) even when they aren’t required, violating the “Only output suba…"
+    },
+    {
+      "round": 1,
+      "variant": 2,
+      "score": 0,
+      "notes": "compress-mut | tokens=20"
+    },
+    {
+      "round": 2,
+      "variant": 3,
+      "score": 0.6666666666666666,
+      "notes": "feedback-mut | The model is misclassifying “what still needs a reply” as a search action instead of the required needs_response subact…"
+    }
+  ]
+}

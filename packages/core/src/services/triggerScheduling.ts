@@ -69,7 +69,12 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
 			const single = parseInteger(rangeParts[0].trim());
 			if (single === null) return null;
 			if (single < range.min || single > range.max) return null;
-			output.add(single);
+			// `N/step` (e.g. `5/15`) means "from N to the range max, stepping by
+			// step" — standard cron. Without a step it is just the single value.
+			const upper = stepParts.length === 2 ? range.max : single;
+			for (let value = single; value <= upper; value += step) {
+				output.add(value);
+			}
 			continue;
 		}
 

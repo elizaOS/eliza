@@ -2,7 +2,7 @@
  * Command system types
  */
 
-import type { Memory } from "@elizaos/core";
+import type { HandlerCallback, Memory } from "@elizaos/core";
 
 export type CommandScope = "text" | "native" | "both";
 export type CommandCategory =
@@ -173,6 +173,8 @@ export interface CommandContext {
 	roomId: string;
 	accountId?: string;
 	config?: Record<string, unknown>;
+	message?: Memory;
+	callback?: HandlerCallback;
 }
 
 export interface CommandResult {

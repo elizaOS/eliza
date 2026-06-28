@@ -173,25 +173,7 @@ export function TaskEditor({
 
   return (
     <PagePanel variant="padded" className="space-y-5">
-      <div className="space-y-1.5">
-        <h2 className="text-lg font-semibold tracking-[-0.01em] text-txt">
-          {initial?.id
-            ? t("taskeditor.editTitle", { defaultValue: "Edit task" })
-            : t("taskeditor.newTitle", { defaultValue: "New task" })}
-        </h2>
-        <p className="text-sm text-muted-strong">
-          {t("taskeditor.description", {
-            defaultValue:
-              "A task is a single prompt the agent runs — once, on a schedule, or in response to an event.",
-          })}
-        </p>
-      </div>
-
-      {error && (
-        <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
-          {error}
-        </div>
-      )}
+      {error && <div className="p-2 text-sm text-danger">{error}</div>}
 
       <div className="space-y-2">
         <FieldLabel>
@@ -228,7 +210,7 @@ export function TaskEditor({
       </div>
 
       <fieldset className="space-y-3">
-        <legend className="text-sm font-medium text-txt">
+        <legend className="text-xs text-muted">
           {t("taskeditor.scheduleLegend", { defaultValue: "Schedule" })}
         </legend>
         <div className="flex flex-wrap gap-2">
@@ -307,7 +289,7 @@ export function TaskEditor({
         )}
       </fieldset>
 
-      <div className="flex items-center justify-end gap-2 border-t border-border/40 pt-4">
+      <div className="flex items-center justify-end gap-2 pt-2">
         {onCancel && (
           <Button
             ref={cancelButton.ref}

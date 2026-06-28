@@ -52,10 +52,16 @@ describe("runShell", () => {
     await fsp.rm(tmpDir, { recursive: true, force: true });
   });
 
+  // These host-exec tests verify ROUTING (host vs sandbox) + mode defaulting,
+  // not POSIX-shell semantics. `runShell` spawns command/args directly (no
+  // shell), so a hardcoded `/bin/sh` fails to spawn on Windows (exitCode -1,
+  // empty stdout). Use the running runtime binary (`process.execPath`, present
+  // on every platform) with `-e` to emit deterministic, separator-stable output
+  // (`console.log` writes LF, not CRLF, on Windows too).
   it("local-yolo runs commands on the host", async () => {
     const result = await runShell({
-      command: "/bin/sh",
-      args: ["-c", "printf hello"],
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('hello')"],
       toolName: "test:host",
       timeoutMs: 5_000,
     });
@@ -67,13 +73,41 @@ describe("runShell", () => {
 
   it("local-yolo defaults to local-yolo when no mode is set", async () => {
     const result = await runShell({
-      command: "/bin/sh",
-      args: ["-c", "echo hello"],
+      command: process.execPath,
+      args: ["-e", "console.log('hello')"],
       toolName: "test:default",
       timeoutMs: 5_000,
     });
     expect(result.sandbox).toBe("host");
     expect(result.stdout).toBe("hello\n");
+  });
+
+  it("strips dangerous spawn env vars from the host child, passes benign ones", async () => {
+    const result = await runShell({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.stdout.write(JSON.stringify({" +
+          "ld:process.env.LD_PRELOAD??null," +
+          "opt:process.env.NODE_OPTIONS??null," +
+          "npm:process.env.NPM_CONFIG_REGISTRY??null," +
+          "safe:process.env.SAFE_PASSTHROUGH??null}))",
+      ],
+      env: {
+        LD_PRELOAD: "/tmp/evil.so",
+        NODE_OPTIONS: "--max-old-space-size=128",
+        NPM_CONFIG_REGISTRY: "http://attacker.test",
+        SAFE_PASSTHROUGH: "ok",
+      },
+      toolName: "test:env-sanitize",
+      timeoutMs: 5_000,
+    });
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.ld).toBeNull(); // LD_PRELOAD stripped
+    expect(parsed.opt).toBeNull(); // NODE_OPTIONS stripped
+    expect(parsed.npm).toBeNull(); // NPM_CONFIG_* prefix stripped
+    expect(parsed.safe).toBe("ok"); // benign caller var passes through
   });
 
   it("cloud rejects local shell execution with the documented error", async () => {
@@ -346,9 +380,12 @@ describe("runShell", () => {
 
   it("honours timeoutMs by killing the child and reporting non-zero exit", async () => {
     const start = Date.now();
+    // A real long-running child the router must kill — `process.execPath` keeps
+    // the event loop alive for 5s on every platform (a `/bin/sh sleep` would be
+    // absent on Windows and exit fast, passing this test for the wrong reason).
     const result = await runShell({
-      command: "/bin/sh",
-      args: ["-c", "sleep 5"],
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => {}, 5000)"],
       toolName: "test:timeout",
       timeoutMs: 200,
     });

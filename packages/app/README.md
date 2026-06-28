@@ -62,6 +62,14 @@ App identity lives in `app.config.ts` (`envPrefix: "ELIZA"`); copy that file to
 white-label a new app. Runtime/build env vars use the `ELIZA_` prefix. See `AGENTS.md`
 for the full env var table; `.env.example` documents the build-time `VITE_*` flags.
 
+## Launch Surface
+
+Boot, splash, and first-paint fallback surfaces use the home background orange
+`#ef5a1f`, not the brand accent `#FF5800`. Keep `index.html`,
+`capacitor.config.ts`, Android launch resources, iOS `LaunchScreen.storyboard`,
+and the renderer root CSS aligned so native splash -> StartupShell -> home does
+not flash a different color.
+
 ## License
 
 MIT

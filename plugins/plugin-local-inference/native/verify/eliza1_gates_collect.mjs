@@ -24,7 +24,7 @@
  *
  * Usage:
  *   node packages/inference/verify/eliza1_gates_collect.mjs \
- *     [--tier 0_8b|2b|4b|9b|27b|27b-256k] [--bundle PATH] \
+ *     [--tier 2b|4b|9b|27b|27b-256k] [--bundle PATH] \
  *     [--sync-bundle-manifest-evals] [--gates PATH] [--report PATH] [--json]
  */
 
@@ -72,7 +72,6 @@ const DEFAULT_GATES = path.join(
   "eliza1_gates.yaml",
 );
 const ACTIVE_VISION_TIERS = new Set([
-  "0_8b",
   "2b",
   "4b",
   "9b",

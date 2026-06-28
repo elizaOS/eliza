@@ -92,7 +92,7 @@ def test_build_artifact_marks_dry_run_comparisons() -> None:
             {
                 "modelId": "google/gemma-4-E2B-Base",
                 "variant": "base",
-                "tier": "0_8b",
+                "tier": "2b",
                 "benchmark": "eliza_harness_action_selection",
                 "score": 0.0,
                 "metrics": {"dryRun": True},

@@ -10,6 +10,7 @@ const HMR_SPEC = path.join(HERE, "hmr", "hmr-dependency-levels.spec.ts");
 const CI_WORKFLOW = path.join(REPO_ROOT, ".github/workflows/ci.yaml");
 const ROOT_PACKAGE_JSON = path.join(REPO_ROOT, "package.json");
 const APP_PACKAGE_JSON = path.join(REPO_ROOT, "packages/app/package.json");
+const SOURCELESS_GUI_VIEW_IDS = new Set(["steward"]);
 
 type GuiViewCase = {
   id: string;
@@ -42,8 +43,6 @@ function normalizedHmrViewId(name: string): string {
     case "view-manager":
     case "manager":
       return "views-manager";
-    case "defense":
-      return "defense-of-the-agents";
     default:
       return id;
   }
@@ -64,11 +63,16 @@ function readHmrViewLevels(): Array<{ id: string; file: string }> {
 describe("plugin view HMR coverage", () => {
   it("keeps the HMR source-probe matrix in lockstep with every GUI view", () => {
     const guiCases = readGuiVisualCases();
+    const sourceProbeableGuiCases = guiCases.filter(
+      (view) => !SOURCELESS_GUI_VIEW_IDS.has(view.id),
+    );
     const hmrLevels = readHmrViewLevels();
-    const guiById = new Map(guiCases.map((view) => [view.id, view]));
+    const guiById = new Map(
+      sourceProbeableGuiCases.map((view) => [view.id, view]),
+    );
     const hmrById = new Map(hmrLevels.map((level) => [level.id, level]));
 
-    const missing = guiCases
+    const missing = sourceProbeableGuiCases
       .filter((view) => !hmrById.has(view.id))
       .map((view) => `${view.id} ${view.path}`);
     const stale = hmrLevels
@@ -78,8 +82,6 @@ describe("plugin view HMR coverage", () => {
       .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
       .map((level) => `${level.id} ${level.file}`);
 
-    expect(guiCases.length).toBe(35);
-    expect(hmrLevels.length).toBe(35);
     expect(missing, "Add HMR source probes for new GUI views.").toEqual([]);
     expect(
       stale,

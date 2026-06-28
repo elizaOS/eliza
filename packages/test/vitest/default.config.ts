@@ -59,11 +59,11 @@ const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const uiSourceRoot = getUiSourceRoot(repoRoot);
 const cloudRoutingSourceRoot = path.join(
   elizaWorkspaceRoot,
-  "packages/cloud-routing/src",
+  "packages/cloud/routing/src",
 );
 const cloudSdkSourceRoot = path.join(
   elizaWorkspaceRoot,
-  "packages/cloud-sdk/src",
+  "packages/cloud/sdk/src",
 );
 // @elizaos/logger was extracted from @elizaos/core (core's src re-exports it via
 // `export * from "@elizaos/logger"`). Since core is source-aliased for tests,
@@ -191,6 +191,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-phone",
   "plugin-signal",
   "plugin-streaming",
+  "plugin-task-coordinator",
   "plugin-whatsapp",
   "plugin-workflow",
   "plugin-x402",
@@ -385,6 +386,13 @@ const vitestResolveAlias: ModuleAlias[] = [
   ...(elizaCoreEntry
     ? [
         {
+          // Resolve the testing subpath to source before the broad
+          // `@elizaos/core` alias, which would otherwise treat the source
+          // entry file as a directory (`index.node.ts/testing` → ENOTDIR).
+          find: /^@elizaos\/core\/testing$/,
+          replacement: path.join(path.dirname(elizaCoreEntry), "testing/index.ts"),
+        },
+        {
           find: "@elizaos/core",
           replacement: elizaCoreEntry,
         },
@@ -407,9 +415,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     "app-companion",
     "app-task-coordinator",
     "plugin-training",
-    "app-vincent",
     "plugin-shopify",
-    "plugin-steward-app",
     "plugin-personal-assistant",
     "plugin-documents",
     "plugin-wallet",
@@ -473,9 +479,7 @@ export default defineConfig({
       "eliza/packages/app-core/src/**/*.test.tsx",
       "eliza/packages/agent/src/runtime/roles/test/**/*.test.ts",
       "eliza/plugins/plugin-personal-assistant/src/selfcontrol/**/*.test.ts",
-      "eliza/plugins/plugin-vincent/src/**/*.test.ts",
-      "eliza/plugins/plugin-shopify-ui/src/**/*.test.ts",
-      "eliza/plugins/plugin-steward-app/src/**/*.test.ts",
+      "eliza/plugins/plugin-shopify/src/**/*.test.ts",
       "eliza/plugins/plugin-wallet-ui/src/**/*.test.ts",
       "eliza/plugins/plugin-wallet-ui/src/**/*.test.tsx",
       "eliza/plugins/plugin-personal-assistant/src/**/*.test.ts",

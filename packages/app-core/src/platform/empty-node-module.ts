@@ -190,4 +190,3 @@ export const renderGroundedActionReply = noop;
 export const resolveOAuthDir = (): string => "";
 export const resolveOwnerEntityId = (): string => "";
 export const runCoordinatorPreflight = noop;
-export const setStewardEvmBridgeActive = noop;

@@ -259,6 +259,15 @@ export async function handleBatchTextEmbedding(
               `the current key is not authorized for the embedding endpoint.`
           );
         }
+        // A terminal 429 means the bounded retries were exhausted and the
+        // gateway is still rate-limiting us — surface that distinctly. Any
+        // other terminal status (incl. a 503/504 that followed an earlier 429)
+        // reports its own status, since that is the failure the caller hit.
+        if (response.status === 429) {
+          throw new Error(
+            `[BatchEmbeddings] Rate-limit retry exhausted: API error: ${response.status} ${response.statusText}`
+          );
+        }
         throw new Error(
           `[BatchEmbeddings] API error: ${response.status} ${response.statusText}`
         );

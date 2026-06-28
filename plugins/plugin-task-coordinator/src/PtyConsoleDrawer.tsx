@@ -90,7 +90,7 @@ export function PtyConsoleDrawer({
           />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-muted">
-            No terminal session selected
+            None
           </div>
         )}
       </div>

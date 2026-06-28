@@ -25,11 +25,15 @@ function createResponse(): MockResponse {
   const response = {
     statusCode: 200,
     headers: {},
-    setHeader(name: string, value: string | number | readonly string[]) {
+    setHeader(
+      this: MockResponse,
+      name: string,
+      value: string | number | readonly string[],
+    ) {
       this.headers[name.toLowerCase()] = value;
       return this;
     },
-    end(body?: string | Uint8Array) {
+    end(this: MockResponse, body?: string | Uint8Array) {
       this.body = body;
       return this;
     },

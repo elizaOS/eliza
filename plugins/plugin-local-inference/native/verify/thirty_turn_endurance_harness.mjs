@@ -20,8 +20,8 @@ const __dirname = path.dirname(__filename);
 const REPORTS_ROOT = path.join(__dirname, "..", "reports");
 const E2E_BENCH = path.join(__dirname, "e2e_loop_bench.mjs");
 const KOKORO_E2E_BENCH = path.join(__dirname, "kokoro_e2e_loop_bench.mjs");
-const KOKORO_TIERS = new Set(["0_8b", "2b", "4b"]);
-const NO_DRAFTER_TIERS = new Set(["0_8b"]);
+const KOKORO_TIERS = new Set(["2b", "4b"]);
+const NO_DRAFTER_TIERS = new Set([]);
 
 function timestamp() {
   return new Date()

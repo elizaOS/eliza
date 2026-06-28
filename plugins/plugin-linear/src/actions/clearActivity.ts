@@ -11,6 +11,7 @@ import {
 } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 const CLEAR_ACTIVITY_TIMEOUT_MS = 10_000;
@@ -98,7 +99,7 @@ export const clearActivityAction: Action = {
       }
       if (decision.status === "cancelled") {
         const cancelMessage = "Clear of Linear activity cancelled.";
-        await callback?.({ text: cancelMessage, source: message.content.source });
+        await callback?.({ text: cancelMessage, source: getMessageSource(message) });
         return {
           text: cancelMessage,
           success: true,
@@ -119,7 +120,7 @@ export const clearActivityAction: Action = {
       const successMessage = "✅ Linear activity log has been cleared.";
       await callback?.({
         text: successMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
 
       return {
@@ -127,11 +128,11 @@ export const clearActivityAction: Action = {
         success: true,
       };
     } catch (error) {
-      logger.error("Failed to clear Linear activity:", error);
+      logger.error("Failed to clear Linear activity:", formatUnknownError(error));
       const errorMessage = `❌ Failed to clear Linear activity: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,

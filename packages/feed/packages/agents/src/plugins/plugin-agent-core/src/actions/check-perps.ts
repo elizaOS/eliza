@@ -51,7 +51,7 @@ export const checkPerpsAction: Action = {
         'Sort by: "price", "change", "volume", "name" (default: "volume"). Only used when ticker is not provided.',
       required: false,
     },
-  } as unknown as Action["parameters"],
+  },
   examples: [
     [
       {

@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  defaultLayout,
   emptyLayout,
   moveIcon,
   placedIds,
   readSpringboardLayout,
   reconcileLayout,
   SPRINGBOARD_DOCK_LIMIT,
+  SPRINGBOARD_PAGE_SIZE,
   SPRINGBOARD_STORAGE_KEY,
+  type SpringboardLayout,
   toggleFavorite,
   writeSpringboardLayout,
 } from "./springboard-layout.js";
@@ -19,6 +22,27 @@ describe("springboard-layout reconcile", () => {
     expect(out.favorites).toEqual([]);
   });
 
+  it("uses a 4×6 = 24-tile default page size", () => {
+    expect(SPRINGBOARD_PAGE_SIZE).toBe(24);
+  });
+
+  it("splits views into pages of 24 by default (4 columns × 6 rows)", () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `v${i}`);
+    const out = reconcileLayout(emptyLayout(), ids);
+    // 50 ids → 24 + 24 + 2 across three pages.
+    expect(out.pages).toHaveLength(3);
+    expect(out.pages[0]).toHaveLength(24);
+    expect(out.pages[1]).toHaveLength(24);
+    expect(out.pages[2]).toHaveLength(2);
+  });
+
+  it("keeps a single page when views fit within 24", () => {
+    const ids = Array.from({ length: 24 }, (_, i) => `v${i}`);
+    const out = reconcileLayout(emptyLayout(), ids);
+    expect(out.pages).toHaveLength(1);
+    expect(out.pages[0]).toHaveLength(24);
+  });
+
   it("drops ids that are no longer available", () => {
     const layout = { favorites: ["x"], pages: [["a", "x", "b"]] };
     const out = reconcileLayout(layout, ["a", "b"], 4);
@@ -26,10 +50,16 @@ describe("springboard-layout reconcile", () => {
     expect(out.favorites).toEqual([]);
   });
 
-  it("preserves existing order and appends new ids at the end", () => {
-    const layout = { favorites: [], pages: [["b", "a"]] };
+  it("preserves a manual order and appends new ids at the end", () => {
+    const layout = { favorites: [], pages: [["b", "a"]], manual: true };
     const out = reconcileLayout(layout, ["a", "b", "c"], 4);
     expect(out.pages[0]).toEqual(["b", "a", "c"]);
+  });
+
+  it("follows the incoming catalog order until manually arranged", () => {
+    const layout = { favorites: [], pages: [["b", "a"]] };
+    const out = reconcileLayout(layout, ["a", "b", "c"], 4);
+    expect(out.pages[0]).toEqual(["a", "b", "c"]);
   });
 
   it("keeps favorites out of the page grid", () => {
@@ -84,6 +114,42 @@ describe("springboard-layout moveIcon", () => {
     expect(out.favorites).toEqual([]);
     expect(out.pages[0]).toEqual(["a", "b"]);
   });
+
+  it("marks the layout manual so the drag order is preserved", () => {
+    const layout: SpringboardLayout = {
+      favorites: [],
+      pages: [["a", "b", "c"]],
+    };
+    expect(layout.manual).toBeUndefined();
+    const out = moveIcon(layout, "c", 0, 0, 4);
+    expect(out.manual).toBe(true);
+    // And reconcile now keeps that manual order instead of catalog order.
+    const reconciled = reconcileLayout(out, ["a", "b", "c"], 4);
+    expect(reconciled.pages[0]).toEqual(["c", "a", "b"]);
+  });
+
+  it("moves an icon across pages, repacking the flattened order", () => {
+    // Two full pages of size 2; drag the last icon to the front of page 0.
+    const layout = {
+      favorites: [],
+      pages: [
+        ["a", "b"],
+        ["c", "d"],
+      ],
+    };
+    const out = moveIcon(layout, "d", 0, 0, 2);
+    expect(out.pages.flat()).toEqual(["d", "a", "b", "c"]);
+    expect(out.pages).toEqual([
+      ["d", "a"],
+      ["b", "c"],
+    ]);
+  });
+
+  it("clamps a target index beyond the page length to the end", () => {
+    const layout = { favorites: [], pages: [["a", "b"]] };
+    const out = moveIcon(layout, "a", 0, 99, 4);
+    expect(out.pages.flat()).toEqual(["b", "a"]);
+  });
 });
 
 describe("springboard-layout persistence", () => {
@@ -98,5 +164,37 @@ describe("springboard-layout persistence", () => {
   it("returns an empty layout on malformed storage", () => {
     window.localStorage.setItem(SPRINGBOARD_STORAGE_KEY, "{not json");
     expect(readSpringboardLayout()).toEqual(emptyLayout());
+  });
+});
+
+describe("springboard-layout default dock (#9144)", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("seeds an empty layout on first run — the favorites dock was removed", () => {
+    expect(readSpringboardLayout()).toEqual(defaultLayout());
+    expect(readSpringboardLayout().favorites).toEqual([]);
+    expect(readSpringboardLayout().pages).toEqual([]);
+  });
+
+  it("first-run default seeds no favorites", () => {
+    expect(defaultLayout().favorites).toEqual([]);
+  });
+
+  it("flows every available view onto pages (no favorites reserved by default)", () => {
+    // With no default favorites, every available id lands on a page tile — none
+    // are held back in a dock.
+    const out = reconcileLayout(defaultLayout(), [
+      "settings",
+      "activity",
+      "files",
+      "notes",
+    ]);
+    expect(out.favorites).toEqual([]);
+    expect(out.pages.flat()).toEqual([
+      "settings",
+      "activity",
+      "files",
+      "notes",
+    ]);
   });
 });

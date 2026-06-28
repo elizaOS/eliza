@@ -46,10 +46,6 @@ const allowedCallsites = new Map<string, string>([
 		"scenario action turns; rewrites action response text with TEXT_SMALL",
 	],
 	[
-		"plugins/plugin-steward-app/src/api/binance-skill-helpers.ts",
-		"steward Binance direct/fallback bypass; rewrites raw output with TEXT_SMALL",
-	],
-	[
 		"plugins/plugin-agent-skills/src/actions/skill.ts",
 		"skill router; attributes callbacks to routed child actions",
 	],
@@ -84,6 +80,10 @@ const allowedCallsites = new Map<string, string>([
 	[
 		"plugins/plugin-app-control/src/actions/views.ts",
 		"VIEWS close-alias dispatcher (CLOSE_VIEW / CLOSE_ALL_VIEWS); forwards to the underlying VIEWS handler",
+	],
+	[
+		"plugins/plugin-commands/src/actions/handlers.ts",
+		"slash-command dispatcher (/compact -> COMPACT_CONVERSATION via runCompactAction); forwards the original callback to the dispatched action and returns result.text as a CommandResult reply",
 	],
 	[
 		"packages/core/src/services/message.ts",

@@ -125,7 +125,7 @@ function googlePluginUnavailableStatus(
 export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsGoogleService> {
-  const GoogleBase = Base as unknown as Constructor<LifeOpsServiceBase>;
+  const GoogleBase = Base;
 
   class LifeOpsGoogleServiceMixin extends GoogleBase {
     private googleConnectorManager() {
@@ -455,7 +455,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         provider: "google",
         side: requestedSide,
         mode: "local",
-        requestedCapabilities,
+        requestedCapabilities: requestedCapabilities ?? [],
         redirectUri: flow.redirectUri ?? redirectUri,
         authUrl: flow.authUrl ?? "",
       };

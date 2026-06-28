@@ -31,6 +31,11 @@ const WINDOW_ACTIONS = [
   "maximize",
   "restore",
   "close",
+  "get_current_window_id",
+  "get_application_windows",
+  "set_bounds",
+  "get_window_size",
+  "get_window_position",
 ] as const satisfies readonly WindowActionType[];
 
 /**
@@ -124,15 +129,27 @@ export const windowAction: Action = {
     },
     {
       name: "x",
-      description: "Target X coordinate for window move.",
+      description: "Target X coordinate for window move / set_bounds.",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "y",
-      description: "Target Y coordinate for window move.",
+      description: "Target Y coordinate for window move / set_bounds.",
       required: false,
       schema: { type: "number" },
+    },
+    {
+      name: "width",
+      description: "Window width for set_bounds.",
+      required: false,
+      schema: { type: "number", minimum: 1 },
+    },
+    {
+      name: "height",
+      description: "Window height for set_bounds.",
+      required: false,
+      schema: { type: "number", minimum: 1 },
     },
   ],
   validate: async (

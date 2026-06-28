@@ -16,6 +16,7 @@ import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
   type ElizaCapabilityRouter,
+  type EventPayload,
   type IAgentRuntime,
   type Plugin,
   type PluginCallAppBridgeResult,
@@ -4949,7 +4950,10 @@ function makeLifecycleRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
   runtime.registerEvaluator = (evaluator) => {
     runtime.evaluators.push(evaluator);
   };
-  runtime.registerEvent = (event, handler) => {
+  runtime.registerEvent = (
+    event: string,
+    handler: (payload: EventPayload) => Promise<void>,
+  ) => {
     const handlers = runtime.events[event] ?? [];
     handlers.push(handler);
     runtime.events[event] = handlers;

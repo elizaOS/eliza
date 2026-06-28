@@ -68,8 +68,8 @@ train = [
   # on PyPI; do not add one.
   "pybind11>=2.12.0",
   # Liger kernel — fused chunked cross-entropy + RMSNorm/SwiGLU/RoPE
-  # kernels. Cuts the fp32-logits transient at training time (Qwen3.5/3.6
-  # vocab=248k makes this dominant) so we can push local training seq_len
+  # kernels. Cuts the fp32-logits transient at training time (Gemma 4
+  # vocab=262k makes this dominant) so we can push local training seq_len
   # from ~2k to ~8k on the same 16 GB budget.
   "liger-kernel>=0.5.0",
   # GGUF Q4_K_M quantization (scripts/quantization/gguf-q4_k_m_apply.py).
@@ -146,10 +146,10 @@ reward = [
 serve = [
   # vLLM 0.18+ ships EAGLE-3 speculative decoding (PR #38280 era), the
   # TurboQuant K/V quantization plugin, FP8 KV cache via FlashAttention 3
-  # on sm_90, and continuous-batching expert parallelism for the
-  # Qwen3_5MoeForConditionalGeneration class. Pin a minor floor that
-  # captures all of these. See scripts/inference/serve_vllm.py for the
-  # canonical flag set per model + GPU target.
+  # on sm_90, and continuous batching needed by the Gemma-era serve harness.
+  # Pin a minor floor that captures all of these. See
+  # scripts/inference/serve_vllm.py for the canonical flag set per model +
+  # GPU target.
   "vllm>=0.20.0",
   # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
   # constraint solver doesn't pull a stale wheel from a transitive dep.
@@ -157,7 +157,7 @@ serve = [
   # OpenAI client used by scripts/inference/test_apc_mtp_tool_calls.py to
   # speak vLLM's OpenAI-compatible chat completions endpoint. The harness
   # is the production gate that unlocks `ELIZA_APC_DRAFTER_VERIFIED=1` on
-  # any new vLLM build for the Qwen3.5/3.6 hybrid path (omlx#825).
+  # any new vLLM build for the Gemma 4 assistant-drafter MTP path.
   "openai>=1.50.0",
 ]
 

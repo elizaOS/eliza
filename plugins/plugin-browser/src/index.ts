@@ -44,6 +44,7 @@ export * from "./companion-auth.js";
 export * from "./contracts.js";
 export { BrowserBridgeAdapter } from "./message-adapter.js";
 export * from "./packaging.js";
+export * from "./parity/index.js";
 export * from "./password-manager-bridge.js";
 export { browserPlugin } from "./plugin.js";
 export * from "./routes/bridge.js";
@@ -77,6 +78,7 @@ import {
   BROWSER_SERVICE_TYPE as _bs_1_BROWSER_SERVICE_TYPE,
   BrowserService as _bs_2_BrowserService,
 } from "./browser-service.js";
+import { validateBrowserParityMatrix as _bs_16_validateBrowserParityMatrix } from "./parity/browser-matrix.js";
 import { browserPlugin as _bs_7_browserPlugin } from "./plugin.js";
 import {
   FRAME_FILE as _bs_8_FRAME_FILE,
@@ -86,7 +88,6 @@ import {
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ = [
   _bs_1_BROWSER_SERVICE_TYPE,
   _bs_2_BrowserService,
@@ -103,6 +104,7 @@ const __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__ = [
   _bs_13_resolveBrowserBridgeCompanionPairingTokenExpiresAt,
   _bs_14_buildWaitForUrlPredicate,
   _bs_15_waitForUrl,
+  _bs_16_validateBrowserParityMatrix,
 ];
 const bundleSafetyGlobal = globalThis as typeof globalThis & {
   __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_BROWSER_SRC_INDEX__;

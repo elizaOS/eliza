@@ -117,7 +117,7 @@ each training cycle — the catalog moves.
 
 ## Recommended composition
 
-For training a robust EOT LoRA on `eliza-1-{0_8b, 2b, 4b}`:
+For training a robust EOT LoRA on `eliza-1-{2b, 4b}`:
 
 | Source | Mix | Why |
 |---|---:|---|

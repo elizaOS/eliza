@@ -54,6 +54,7 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
+import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
 import { shouldWarmupVoice, warmVoiceModels } from "./voice-warmup";
 
 type EmbeddingProgressCallback = (
@@ -447,6 +448,8 @@ export const __loadAppRoutePluginFromSpecifierForTest =
 
 const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
 const WALLET_ROUTE_PLUGIN_ID = "@elizaos/plugin-wallet:routes";
+const AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID =
+  "@elizaos/plugin-agent-orchestrator:routes";
 
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
@@ -473,10 +476,10 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
  * exercise.
  *
  * A loader's id is its full package name (e.g. `@elizaos/plugin-personal-assistant`,
- * `@elizaos/plugin-steward-app`, `@elizaos/plugin-elizacloud:routes`). Tokens
+ * `@elizaos/plugin-elizacloud:routes`). Tokens
  * are matched against BOTH the full id and a normalized short alias
  * (see {@link normalizeAppRoutePluginId}), so the ergonomic short forms work
- * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,steward,training,shopify`.
+ * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,training,shopify`.
  */
 export function getSkippedAppRoutePluginIds(): Set<string> {
   return new Set(
@@ -510,7 +513,7 @@ export function getDeferAppRoutesEnabled(
  * Normalize an app-route-plugin id (or a user-supplied skip token) to a short
  * alias for forgiving matching: lowercase, drop the `@elizaos/plugin-` prefix
  * and the `:routes` / `-app` / `-ui` / `-routes` suffixes. So
- * `@elizaos/plugin-steward-app` and `steward` both normalize to `steward`.
+ * `@elizaos/plugin-wallet-ui` and `wallet` both normalize to `wallet`.
  */
 export function normalizeAppRoutePluginId(id: string): string {
   return id
@@ -560,6 +563,20 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
         ),
     });
   }
+  // plugin-agent-orchestrator has the same load-order hazard for its
+  // `/api/coding-agents/*` and `/api/orchestrator/*` rawPath routes. The main
+  // plugin can be present while its route-loader side effect has not populated
+  // the registry snapshot yet, leaving the desktop widgets with 404 probes.
+  if (!byId.has(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID)) {
+    byId.set(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID, {
+      id: AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID,
+      load: () =>
+        loadAppRoutePluginFromSpecifier(
+          "@elizaos/plugin-agent-orchestrator/setup-routes",
+          "codingAgentRoutePlugin",
+        ),
+    });
+  }
 
   const skip = getSkippedAppRoutePluginIds();
   if (skip.size === 0) {
@@ -567,7 +584,7 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   }
 
   // Match a loader against the skip tokens by full id OR normalized short alias
-  // (so both `@elizaos/plugin-steward-app` and `steward` skip the same loader).
+  // (so both `@elizaos/plugin-wallet-ui` and `wallet` skip the same loader).
   const skipNormalized = new Set(
     [...skip].map((token) => normalizeAppRoutePluginId(token)),
   );
@@ -706,6 +723,12 @@ async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
 ): Promise<AgentRuntime> {
   await ensureRuntimeSqlCompatibility(runtime);
+
+  // Make the app-bundled fused libelizainference (staged into the desktop
+  // package) discoverable before any local-inference handler probes
+  // `supported()`. No-op in dev / on mobile and when an explicit override is
+  // set. Must run before the ensureLocalInferenceHandler calls below.
+  ensureBundledFusedLibDir();
 
   // Invariant guard: the mobile voice backend selector pins phones to the
   // Kokoro-exclusive TTS path via `mobile: isMobilePlatform()`, which keys off
@@ -1185,6 +1208,17 @@ async function warmupEmbeddingModelImpl(
   }
 }
 
+function isExplicitDesktopCloudOnlyRuntime(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const runtimeMode = env.ELIZA_DESKTOP_RUNTIME_MODE?.trim().toLowerCase();
+  return (
+    runtimeMode === "cloud" ||
+    runtimeMode === "elizacloud" ||
+    isTruthyEnvValue(env.ELIZA_DESKTOP_CLOUD_ONLY)
+  );
+}
+
 /**
  * Warm local voice models (Whisper STT + Kokoro TTS) in the background AFTER
  * the runtime is ready, by firing one tiny useModel request at each. Voice
@@ -1198,6 +1232,7 @@ async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
     !shouldWarmupVoice({
       mobile: isMobilePlatform(),
       skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
+      cloudOnly: isExplicitDesktopCloudOnlyRuntime(),
       hotReload: isTruthyEnvValue(process.env.ELIZA_DEV_IS_HOT_RELOAD),
     })
   ) {
@@ -1205,7 +1240,7 @@ async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
   }
   logger.info("[eliza] Starting deferred voice warmup");
   await warmVoiceModels(
-    runtime as unknown as Parameters<typeof warmVoiceModels>[0],
+    runtime as Parameters<typeof warmVoiceModels>[0],
     {
       ttsType: ModelType.TEXT_TO_SPEECH,
       transcriptionType: ModelType.TRANSCRIPTION,

@@ -9,14 +9,20 @@ describe("appPhonePlugin manifest", () => {
     expect("voiceCallAction" in phoneExports).toBe(false);
   });
 
-  it("registers phone views and the read-only call-log provider", () => {
+  it("registers ONE phone view drawing all three modalities + the read-only call-log provider", () => {
     expect(appPhonePlugin.providers?.map((provider) => provider.name)).toEqual([
       "phoneCallLog",
     ]);
-    expect(appPhonePlugin.views?.map((view) => view.viewType ?? "gui")).toEqual([
-      "gui",
-      "xr",
-      "tui",
-    ]);
+
+    // Single source of truth: one declaration, modalities ["gui","xr","tui"],
+    // the unified PhoneView spatial component.
+    const views = appPhonePlugin.views ?? [];
+    expect(views).toHaveLength(1);
+    const [view] = views;
+    expect(view.id).toBe("phone");
+    expect(view.componentExport).toBe("PhoneView");
+    expect(view.modalities).toEqual(["gui", "xr", "tui"]);
+    // No per-viewType duplicate declarations remain.
+    expect(view.viewType).toBeUndefined();
   });
 });

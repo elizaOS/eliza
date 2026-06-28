@@ -108,7 +108,7 @@ describe("parseDisabledTasksEnv", () => {
 		expect(parsed.has("media_description")).toBe(false);
 	});
 
-	test("silently drops unknown task names", () => {
+	test("warns and drops unknown task names", () => {
 		const parsed = parseDisabledTasksEnv("response,not_a_real_task,planner");
 		expect(parsed.has("response")).toBe(true);
 		expect(parsed.size).toBe(1);
@@ -171,6 +171,14 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 		},
 		{ task: "autonomy", optimizedPrompt: "OPT_AUTONOMY" },
 		{ task: "view_context", optimizedPrompt: "OPT_VIEW_CONTEXT" },
+		{ task: "calendar_extract", optimizedPrompt: "OPT_CALENDAR_EXTRACT" },
+		{ task: "schedule_plan", optimizedPrompt: "OPT_SCHEDULE_PLAN" },
+		{ task: "reminder_dispatch", optimizedPrompt: "OPT_REMINDER_DISPATCH" },
+		{ task: "inbox_triage", optimizedPrompt: "OPT_INBOX_TRIAGE" },
+		{ task: "meeting_prep", optimizedPrompt: "OPT_MEETING_PREP" },
+		{ task: "morning_brief", optimizedPrompt: "OPT_MORNING_BRIEF" },
+		{ task: "health_checkin", optimizedPrompt: "OPT_HEALTH_CHECKIN" },
+		{ task: "screentime_recap", optimizedPrompt: "OPT_SCREENTIME_RECAP" },
 	];
 
 	test("covers every OPTIMIZED_PROMPT_TASKS entry", () => {

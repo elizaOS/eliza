@@ -4,15 +4,17 @@ import { defineConfig } from "vitest/config";
 const stub = (name: string) =>
   fileURLToPath(new URL(`./test/ui-stubs/${name}.ts`, import.meta.url));
 
+const uiSource = (path: string) =>
+  fileURLToPath(new URL(`../../packages/ui/src/${path}`, import.meta.url));
+
 // The view imports @elizaos/ui glue subpaths whose package `exports` map does
 // not resolve under vitest's resolver (directory-index subpaths such as
 // .../composites/page-panel, plus dist/source condition mismatches). Each is
 // replaced wholesale by a vi.mock() factory in the view test, so we alias every
 // such specifier to its OWN no-op stub file (distinct files are required —
 // vitest dedupes mocks by resolved path, so a shared stub would collapse all
-// factories into one). The parser module
-// (@elizaos/ui/components/pages/vector-browser-utils) is intentionally NOT
-// aliased — it resolves fine and is exercised for real.
+// factories into one). The parser module is aliased to the real source file so
+// contract tests exercise the actual parser/layout implementation.
 const UI_ALIASES: Array<{ find: string; replacement: string }> = [
   { find: "@elizaos/ui/agent-surface", replacement: stub("agent-surface") },
   { find: "@elizaos/ui/api", replacement: stub("api") },
@@ -24,6 +26,10 @@ const UI_ALIASES: Array<{ find: string; replacement: string }> = [
     find: "@elizaos/ui/components/pages/MemoryDetailPanel",
     replacement: stub("MemoryDetailPanel"),
   },
+  {
+    find: "@elizaos/ui/components/pages/vector-browser-utils",
+    replacement: uiSource("components/pages/vector-browser-utils.ts"),
+  },
   { find: "@elizaos/ui/components/ui/button", replacement: stub("button") },
   { find: "@elizaos/ui/components/ui/input", replacement: stub("input") },
   { find: "@elizaos/ui/components/ui/select", replacement: stub("select") },
@@ -34,6 +40,13 @@ const UI_ALIASES: Array<{ find: string; replacement: string }> = [
   { find: "@elizaos/ui/config", replacement: stub("config") },
   { find: "@elizaos/ui/hooks", replacement: stub("hooks") },
   { find: "@elizaos/ui/layouts", replacement: stub("layouts") },
+  // The adaptive wrapper + spatial fallback import the real spatial barrel;
+  // it is browser-safe (no @elizaos/tui), so alias it to source. The exports
+  // map does not resolve the bare subpath under vitest's resolver.
+  {
+    find: "@elizaos/ui/spatial",
+    replacement: uiSource("spatial/index.ts"),
+  },
   { find: "@elizaos/ui/state", replacement: stub("state") },
 ];
 

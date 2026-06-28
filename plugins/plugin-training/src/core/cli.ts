@@ -52,7 +52,10 @@ import {
   type TrainingCollectionRunOptions,
   type TrainingCollectionRunResult,
 } from "./training-collection-runner.js";
-import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
+import {
+  buildTaskRecord,
+  type TrajectoryTrainingTask,
+} from "./trajectory-task-datasets.js";
 import { discoverWorkspaceRoot } from "./workspace-runtime.js";
 
 const AGENT_DECISIONS = ["RESPOND", "IGNORE", "STOP"] as const;
@@ -497,14 +500,7 @@ async function cmdExportTrajectories(args: string[]) {
   console.log(`[export-trajectories] reading from ${inputDir}`);
   console.log(`[export-trajectories] writing to ${outputDir}`);
 
-  const buckets: Record<TrajectoryTrainingTask, Record<string, unknown>[]> = {
-    should_respond: [],
-    context_routing: [],
-    action_planner: [],
-    response: [],
-    media_description: [],
-    view_context: [],
-  };
+  const buckets = buildTaskRecord<Record<string, unknown>[]>(() => []);
 
   const agentDirs = readdirSync(inputDir).filter((name) => {
     const full = join(inputDir, name);

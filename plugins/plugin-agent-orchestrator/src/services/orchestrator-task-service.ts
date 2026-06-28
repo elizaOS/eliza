@@ -288,10 +288,11 @@ function readLastChangeSet(
   metadata: Record<string, unknown> | undefined,
 ): WorkspaceChangeSet | undefined {
   const raw = metadata?.lastChangeSet;
-  if (!isRecord(raw)) return undefined;
-  if (!Array.isArray(raw.changedFiles)) return undefined;
-  if (typeof raw.capturedAt !== "number") return undefined;
-  return raw as unknown as WorkspaceChangeSet;
+  if (!raw || typeof raw !== "object") return undefined;
+  const candidate = raw as Partial<WorkspaceChangeSet>;
+  if (!Array.isArray(candidate.changedFiles)) return undefined;
+  if (typeof candidate.capturedAt !== "number") return undefined;
+  return candidate as WorkspaceChangeSet;
 }
 
 /** Render an event's `data` payload to a bounded scannable string so the
@@ -1628,11 +1629,21 @@ export class OrchestratorTaskService extends Service {
       // human/manual caller, no surprise model spend.
       if (acceptanceCriteria.length === 0) return;
 
-      const verdict = await verifyGoalCompletion(this.runtime, {
-        goal: doc.task.goal,
-        acceptanceCriteria,
-        completionEvidence,
-      });
+      const verdict = await verifyGoalCompletion(
+        this.runtime,
+        {
+          goal: doc.task.goal,
+          acceptanceCriteria,
+          completionEvidence,
+        },
+        {
+          recordTrajectory: {
+            roomId: doc.task.roomId,
+            taskId,
+            sessionId,
+          },
+        },
+      );
 
       if (verdict.passed) {
         await this.validateTask(taskId, {

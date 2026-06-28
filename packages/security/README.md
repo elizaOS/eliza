@@ -102,7 +102,7 @@ POST   /v1/kms/keys/:keyId/verify                { data_b64, signature_b64, algo
 GET    /v1/kms/keys/:keyId/public                { algorithm? } -> { public_key_b64, algorithm }
 ```
 
-Auth: short-lived OIDC bearer (preferred) or mTLS. Reuses the credential-proxy auth pattern from `packages/cloud-api/src/steward/embedded.ts`.
+Auth: short-lived OIDC bearer (preferred) or mTLS. Reuses the credential-proxy auth pattern from `packages/cloud/api/src/steward/embedded.ts`.
 
 `HttpSink` can POST validated audit events to a Steward-fronted append-only audit endpoint once that endpoint is provisioned.
 

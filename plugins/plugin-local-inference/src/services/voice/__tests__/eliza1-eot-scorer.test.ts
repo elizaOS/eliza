@@ -19,11 +19,11 @@ import {
 	type Eliza1EotScorerOptions,
 } from "../eot-classifier";
 
-const IM_END_ID = 199;
+const END_OF_TURN_ID = 199;
 
 /**
  * Minimal fake llama model the scorer can drive. The `score()` parameter
- * is the probability we want the fake model to return for `<|im_end|>`
+ * is the probability we want the fake model to return for `<end_of_turn>`
  * on the next token. Token IDs are derived from char codes so two calls
  * with different prompts produce different token sequences.
  */
@@ -36,7 +36,7 @@ interface FakeModelHandle {
 }
 
 function buildFakeModel(opts: {
-	imEndProbability: () => number;
+	endOfTurnProbability: () => number;
 	disposeSpy?: () => void;
 }): FakeModelHandle {
 	const tokenizeCalls: string[] = [];
@@ -55,11 +55,11 @@ function buildFakeModel(opts: {
 					i === input.length - 1
 						? {
 								next: {
-									token: IM_END_ID,
-									confidence: opts.imEndProbability(),
+									token: END_OF_TURN_ID,
+									confidence: opts.endOfTurnProbability(),
 									probabilities: new Map<number, number>([
-										[IM_END_ID, opts.imEndProbability()],
-										[42, 1 - opts.imEndProbability()],
+										[END_OF_TURN_ID, opts.endOfTurnProbability()],
+										[42, 1 - opts.endOfTurnProbability()],
 									]),
 								},
 							}
@@ -79,8 +79,8 @@ function buildFakeModel(opts: {
 	const model: LlamaModelLike = {
 		tokenize(text: string, specialTokens?: boolean) {
 			tokenizeCalls.push(text);
-			if (text === "<|im_end|>")
-				return specialTokens ? [IM_END_ID] : [101, 102];
+			if (text === "<end_of_turn>")
+				return specialTokens ? [END_OF_TURN_ID] : [101, 102];
 			return Array.from(text).map((c) => c.charCodeAt(0));
 		},
 		async createContext(args) {
@@ -99,33 +99,33 @@ function buildFakeModel(opts: {
 }
 
 describe("formatEotPrompt", () => {
-	it("renders a single-user Qwen turn with the im_end stripped", () => {
+	it("renders a single-user Gemma turn with the end_of_turn stripped", () => {
 		const prompt = formatEotPrompt("hello world");
-		expect(prompt).toBe("<|im_start|>user\nhello world");
-		expect(prompt).not.toContain("<|im_end|>");
+		expect(prompt).toBe("<start_of_turn>user\nhello world");
+		expect(prompt).not.toContain("<end_of_turn>");
 	});
 
 	it("trims whitespace so leading/trailing space does not affect scoring", () => {
-		expect(formatEotPrompt("  hi  ")).toBe("<|im_start|>user\nhi");
+		expect(formatEotPrompt("  hi  ")).toBe("<start_of_turn>user\nhi");
 	});
 });
 
 describe("Eliza1EotScorer", () => {
-	it("returns P(<|im_end|>) reported by the model on the last token", async () => {
-		const fake = buildFakeModel({ imEndProbability: () => 0.83 });
+	it("returns P(<end_of_turn>) reported by the model on the last token", async () => {
+		const fake = buildFakeModel({ endOfTurnProbability: () => 0.83 });
 		const scorer = new Eliza1EotScorer({ model: fake.model });
 		const result = await scorer.score("hello world.");
 		expect(result.probability).toBeCloseTo(0.83, 5);
 		expect(result.promptTokens).toBeGreaterThan(0);
-		// `<|im_end|>` resolution happens once during initialization.
-		expect(fake.tokenizeCalls[0]).toBe("<|im_end|>");
+		// `<end_of_turn>` resolution happens once during initialization.
+		expect(fake.tokenizeCalls[0]).toBe("<end_of_turn>");
 	});
 
 	it("falls back to 0.5 when the probabilities map is missing", async () => {
 		const fake = {
 			model: {
 				tokenize(text: string) {
-					return text === "<|im_end|>" ? [IM_END_ID] : [1, 2, 3];
+					return text === "<end_of_turn>" ? [END_OF_TURN_ID] : [1, 2, 3];
 				},
 				async createContext() {
 					return {
@@ -148,14 +148,14 @@ describe("Eliza1EotScorer", () => {
 	});
 
 	it("uses the model score for empty transcript input", async () => {
-		const fake = buildFakeModel({ imEndProbability: () => 0.9 });
+		const fake = buildFakeModel({ endOfTurnProbability: () => 0.9 });
 		const scorer = new Eliza1EotScorer({ model: fake.model });
 		const result = await scorer.score("   ");
 		expect(result.probability).toBe(0.9);
 	});
 
 	it("attaches a LoRA adapter to the context when loraPath is set", async () => {
-		const fake = buildFakeModel({ imEndProbability: () => 0.5 });
+		const fake = buildFakeModel({ endOfTurnProbability: () => 0.5 });
 		const scorer = new Eliza1EotScorer({
 			model: fake.model,
 			loraPath: "/tmp/fake-eot.gguf",
@@ -173,7 +173,7 @@ describe("Eliza1EotScorer", () => {
 	});
 
 	it("truncates the prompt to maxHistoryTokens", async () => {
-		const fake = buildFakeModel({ imEndProbability: () => 0.5 });
+		const fake = buildFakeModel({ endOfTurnProbability: () => 0.5 });
 		const scorer = new Eliza1EotScorer({
 			model: fake.model,
 			maxHistoryTokens: 5,
@@ -184,12 +184,12 @@ describe("Eliza1EotScorer", () => {
 		expect(fake.controlledEvaluateCalls[0]).toHaveLength(5);
 	});
 
-	it("throws a descriptive error when the tokenizer does not resolve im_end to a single id", async () => {
+	it("throws a descriptive error when the tokenizer does not resolve end_of_turn to a single id", async () => {
 		const fake: LlamaModelLike = {
 			tokenize(text: string) {
-				// Simulate a non-Qwen model where <|im_end|> tokenizes to plain
+				// Simulate a non-Gemma model where <end_of_turn> tokenizes to plain
 				// text (multiple ids).
-				if (text === "<|im_end|>") return [10, 11, 12];
+				if (text === "<end_of_turn>") return [10, 11, 12];
 				return [1, 2, 3];
 			},
 			async createContext() {
@@ -197,13 +197,13 @@ describe("Eliza1EotScorer", () => {
 			},
 		};
 		const scorer = new Eliza1EotScorer({ model: fake });
-		await expect(scorer.score("x")).rejects.toThrow(/<\|im_end\|>/);
+		await expect(scorer.score("x")).rejects.toThrow(/<end_of_turn>/);
 	});
 
 	it("disposes the context on dispose()", async () => {
 		const disposeSpy = vi.fn();
 		const fake = buildFakeModel({
-			imEndProbability: () => 0.5,
+			endOfTurnProbability: () => 0.5,
 			disposeSpy,
 		});
 		const scorer = new Eliza1EotScorer({ model: fake.model });
@@ -217,7 +217,7 @@ describe("Eliza1EotScorer", () => {
 		let maxInflight = 0;
 		const fake: LlamaModelLike = {
 			tokenize(text: string) {
-				if (text === "<|im_end|>") return [IM_END_ID];
+				if (text === "<end_of_turn>") return [END_OF_TURN_ID];
 				return [1, 2, 3];
 			},
 			async createContext() {
@@ -234,7 +234,7 @@ describe("Eliza1EotScorer", () => {
 									? {
 											next: {
 												probabilities: new Map<number, number>([
-													[IM_END_ID, 0.6],
+													[END_OF_TURN_ID, 0.6],
 												]),
 											},
 										}
@@ -258,7 +258,7 @@ describe("Eliza1EotScorer", () => {
 
 describe("Eliza1EotClassifier", () => {
 	function buildOpts(probability: number): Eliza1EotScorerOptions {
-		const fake = buildFakeModel({ imEndProbability: () => probability });
+		const fake = buildFakeModel({ endOfTurnProbability: () => probability });
 		return { model: fake.model };
 	}
 

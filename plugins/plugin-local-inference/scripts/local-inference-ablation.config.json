@@ -22,17 +22,17 @@
     },
     {
       "name": "mtp_only",
-      "label": "MTP, f16 KV",
+      "label": "draft-MTP, f16 KV",
       "needsDrafter": true,
-      "args": ["--spec-type", "mtp"]
+      "args": ["--spec-type", "draft-mtp"]
     },
     {
       "name": "mtp_turbo4_polar",
-      "label": "MTP + Turbo/Polar KV turbo4",
+      "label": "draft-MTP + Turbo/Polar KV turbo4",
       "needsDrafter": true,
       "args": [
         "--spec-type",
-        "mtp",
+        "draft-mtp",
         "--cache-type-k",
         "tbq4_0",
         "--cache-type-v",
@@ -45,11 +45,11 @@
     },
     {
       "name": "all_mtp_qjl_tcq",
-      "label": "MTP + QJL K + TBQ3 V",
+      "label": "draft-MTP + QJL K + TBQ3 V",
       "needsDrafter": true,
       "args": [
         "--spec-type",
-        "mtp",
+        "draft-mtp",
         "--cache-type-k",
         "qjl1_256",
         "--cache-type-v",

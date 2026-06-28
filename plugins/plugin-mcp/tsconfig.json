@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -18,7 +18,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitReturns": false,
-    "noImplicitAny": false,
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],

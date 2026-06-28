@@ -91,6 +91,14 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 	}
 	if (hasMtp) {
 		manifest.evals.mtp = { acceptanceRate: 0.72, speedup: 1.8, passed: true };
+		// Gemma 4 separate-drafter MTP: every MTP tier bundles its drafter GGUF
+		// at `mtp/drafter-<tier>.gguf` with its own lineage and declares the mode.
+		manifest.files.mtp = [{ path: `mtp/drafter-${tier}.gguf`, sha256: SHA }];
+		manifest.lineage.drafter = {
+			base: "eliza-1-drafter",
+			license: "apache-2.0",
+		};
+		manifest.mtp = "separate-drafter";
 	}
 	return manifest;
 }
@@ -101,13 +109,18 @@ describe("Eliza-1 manifest schema constants", () => {
 	});
 
 	it("uses Eliza-1 size-tier ids and tokenizer family", () => {
-		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("gemma");
+		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("gemma4");
 		expect(ELIZA_1_TIERS).toEqual(["2b", "4b", "9b", "27b", "27b-256k"]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["2b", "4b"]),
 		);
+		// Gemma 4 cutover: the only REQUIRED kernel is the geometry-agnostic
+		// turboquant_q4 weight-quant. The KV-cache kernels (qjl/polarquant/
+		// turbo3_tcq) are head_dim=128-coupled and OPTIONAL for Gemma's stock
+		// q8_0 KV path.
 		for (const tier of ELIZA_1_TIERS) {
-			expect(REQUIRED_KERNELS_BY_TIER[tier]).toContain("turbo3_tcq");
+			expect(REQUIRED_KERNELS_BY_TIER[tier]).toEqual(["turboquant_q4"]);
+			expect(REQUIRED_KERNELS_BY_TIER[tier]).not.toContain("turbo3_tcq");
 		}
 	});
 });
@@ -170,7 +183,35 @@ describe("validateManifest — valid input", () => {
 		expect(result.ok).toBe(true);
 	});
 
-	it("accepts optional EAGLE3 kernel and eval metadata without requiring it by tier", () => {
+	it("accepts optional specDecode kernel and eval metadata without requiring it by tier", () => {
+		const m = baseManifest("2b");
+		m.kernels.specDecode = {
+			enabled: true,
+			capability: "spec-decode",
+			specType: "draft-mtp",
+			model: "mtp/drafter-2b.gguf",
+			maxDraftTokens: 15,
+		};
+		m.evals.specDecode = {
+			acceptanceRate: 0.64,
+			speedup: 1.35,
+			passed: true,
+		};
+
+		const result = validateManifest(m);
+		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).not.toContain(
+			"specDecode",
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.manifest.kernels.specDecode?.capability).toBe(
+				"spec-decode",
+			);
+			expect(result.manifest.evals.specDecode?.speedup).toBe(1.35);
+		}
+	});
+
+	it("accepts the back-compat eagle3 alias for specDecode metadata", () => {
 		const m = baseManifest("2b");
 		m.kernels.eagle3 = {
 			enabled: true,
@@ -186,9 +227,6 @@ describe("validateManifest — valid input", () => {
 		};
 
 		const result = validateManifest(m);
-		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).not.toContain(
-			"eagle3",
-		);
 		expect(result.ok).toBe(true);
 		if (result.ok) {
 			expect(result.manifest.kernels.eagle3?.capability).toBe("eagle3");
@@ -196,17 +234,17 @@ describe("validateManifest — valid input", () => {
 		}
 	});
 
-	it("accepts optional EAGLE3 failure metadata without affecting default eligibility", () => {
+	it("accepts optional specDecode failure metadata without affecting default eligibility", () => {
 		const m = baseManifest("9b");
-		m.kernels.eagle3 = {
+		m.kernels.specDecode = {
 			enabled: false,
 			failure: "not available in this build",
 		};
-		m.evals.eagle3 = {
+		m.evals.specDecode = {
 			acceptanceRate: null,
 			speedup: null,
 			passed: false,
-			failure: "not run on EAGLE3-capable runtime",
+			failure: "not run on a spec-decode-capable runtime",
 		};
 
 		const result = validateManifest(m);
@@ -256,9 +294,9 @@ describe("validateManifest — schema-level rejections", () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it("rejects out-of-range EAGLE3 eval metrics", () => {
+	it("rejects out-of-range specDecode eval metrics", () => {
 		const m = baseManifest() as unknown as Record<string, unknown>;
-		(m.evals as Record<string, unknown>).eagle3 = {
+		(m.evals as Record<string, unknown>).specDecode = {
 			acceptanceRate: 1.2,
 			speedup: 1.35,
 			passed: false,
@@ -267,19 +305,21 @@ describe("validateManifest — schema-level rejections", () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it("rejects a passing EAGLE3 eval without measured numbers", () => {
+	it("rejects a passing specDecode eval without measured numbers", () => {
 		const m = baseManifest();
-		m.evals.eagle3 = { speedup: null, passed: true };
+		m.evals.specDecode = { speedup: null, passed: true };
 		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
-			expect(result.errors.some((e) => e.includes("evals.eagle3"))).toBe(true);
+			expect(result.errors.some((e) => e.includes("evals.specDecode"))).toBe(
+				true,
+			);
 		}
 	});
 
-	it("rejects invalid known EAGLE3 kernel metadata fields", () => {
+	it("rejects invalid known specDecode kernel metadata fields", () => {
 		const m = baseManifest() as unknown as Record<string, unknown>;
-		(m.kernels as Record<string, unknown>).eagle3 = {
+		(m.kernels as Record<string, unknown>).specDecode = {
 			specType: "",
 			maxDraftTokens: 0,
 		};
@@ -323,11 +363,13 @@ describe("validateManifest — schema-level rejections", () => {
 describe("validateManifest — contract rejections", () => {
 	it("rejects a manifest missing a required kernel for its tier", () => {
 		const m = baseManifest("9b");
-		m.kernels.required = ["turboquant_q4", "qjl", "polarquant"];
+		// Gemma required set is turboquant_q4; drop it (leaving only optional
+		// KV kernels) to trip the missing-required-kernel check.
+		m.kernels.required = ["qjl", "polarquant"];
 		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
-			expect(result.errors.some((e) => e.includes("turbo3_tcq"))).toBe(true);
+			expect(result.errors.some((e) => e.includes("turboquant_q4"))).toBe(true);
 		}
 	});
 
@@ -382,20 +424,40 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("rejects separate drafter artifacts for embedded-draft-head MTP tiers", () => {
+	it("accepts a separate-drafter MTP bundle (drafter GGUF + lineage present)", () => {
 		const m = baseManifest("9b");
+		m.mtp = "separate-drafter";
 		m.lineage.drafter = {
 			base: "eliza-1-mtp-drafter",
 			license: "apache-2.0",
 		};
 		m.files.mtp = [{ path: "mtp/drafter-9b.gguf", sha256: SHA }];
 		const result = validateManifest(m);
+		expect(result.ok).toBe(true);
+	});
+
+	it("rejects a strict-release MTP tier that omits the bundled drafter", () => {
+		const m = baseManifest("9b");
+		m.files.mtp = [];
+		m.lineage.drafter = undefined;
+		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
-			expect(result.errors.some((e) => e.includes("files.mtp"))).toBe(true);
-			expect(result.errors.some((e) => e.includes("lineage.drafter"))).toBe(
-				true,
-			);
+			expect(
+				result.errors.some((e) => e.includes("MTP drafter not bundled")),
+			).toBe(true);
+		}
+	});
+
+	it("rejects an MTP drafter bundled at the legacy dflash/ path", () => {
+		const m = baseManifest("9b");
+		m.files.mtp = [{ path: "dflash/drafter-9b.gguf", sha256: SHA }];
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(
+				result.errors.some((e) => e.includes("must bundle the drafter at")),
+			).toBe(true);
 		}
 	});
 
@@ -424,6 +486,39 @@ describe("validateManifest — contract rejections", () => {
 		if (!result.ok) {
 			expect(result.errors.some((e) => e.includes("files.asr"))).toBe(true);
 			expect(result.errors.some((e) => e.includes("files.vad"))).toBe(true);
+		}
+	});
+
+	it("rejects strict/defaultEligible Qwen ASR provenance", () => {
+		const m = baseManifest();
+		m.lineage.asr = {
+			base: "ggml-org/Qwen3-ASR-0.6B",
+			license: "apache-2.0",
+		};
+		m.provenance = {
+			releaseState: "base-v1",
+			finetuned: false,
+			sourceModels: {
+				text: { repo: "google/gemma-4-12B-base" },
+				voice: { repo: "Serveurperso/OmniVoice-GGUF" },
+				drafter: { repo: "elizaos/eliza-1" },
+				asr: { repo: "ggml-org/Qwen3-ASR-GGUF" },
+				embedding: { repo: "google/gemma-4-12B-base" },
+				imagegen: { repo: "elizaos/eliza-1-imagegen" },
+				vad: { repo: "onnx-community/silero-vad" },
+				vision: { repo: "unsloth/gemma-4-12B-GGUF" },
+			},
+		};
+
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.errors).toEqual(
+				expect.arrayContaining([
+					expect.stringContaining("lineage.asr.base"),
+					expect.stringContaining("provenance.sourceModels.asr.repo"),
+				]),
+			);
 		}
 	});
 
@@ -492,16 +587,9 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("requires turbo3_tcq when text ctx > 64k", () => {
-		const m = baseManifest("9b");
-		m.files.text[0].ctx = 131072;
-		m.kernels.required = m.kernels.required.filter((k) => k !== "turbo3_tcq");
-		const result = validateManifest(m);
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.errors.some((e) => e.includes("turbo3_tcq"))).toBe(true);
-		}
-	});
+	// (Removed: "requires turbo3_tcq when text ctx > 64k" — Gemma 4 handles
+	// long context with native windowed-SWA + shared-KV at stock q8_0, so
+	// turbo3_tcq is no longer a required long-context kernel.)
 
 	it("rejects text GGUFs below the 128k floor", () => {
 		const m = baseManifest("2b");
@@ -515,16 +603,21 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("rejects turbo3_tcq as optional-only when ctx > 64k", () => {
+	it("accepts turbo3_tcq as optional-only when ctx > 64k", () => {
 		const m = baseManifest("9b");
 		m.files.text[0].ctx = 131072;
+		// Gemma 4: turbo3_tcq is an optional KV accelerator, not required for
+		// long context — a 128k bundle that lists it only under `optional`
+		// (stock q8_0 KV) is contract-valid.
 		m.kernels.required = m.kernels.required.filter((k) => k !== "turbo3_tcq");
 		m.kernels.optional = ["turbo3_tcq"];
 		const result = validateManifest(m);
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.errors ?? []).toEqual([]);
+		} else {
 			expect(result.errors.some((e) => e.includes("kernels.required"))).toBe(
-				true,
+				false,
 			);
 		}
 	});
@@ -610,7 +703,8 @@ describe("canSetAsDefault", () => {
 
 	it("returns false when the manifest fails contract checks even if defaultEligible=true", () => {
 		const m = baseManifest("9b");
-		m.kernels.required = ["turboquant_q4"];
+		// Drop the required Gemma weight-quant kernel to fail the contract.
+		m.kernels.required = ["qjl", "polarquant"];
 		expect(canSetAsDefault(m, device)).toBe(false);
 	});
 

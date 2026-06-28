@@ -179,6 +179,18 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     timeoutMs: 60_000,
   },
   {
+    name: "notes",
+    path: "/notes",
+    readyChecks: [{ selector: '[data-testid="simple-notes-view"]' }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "simple calendar",
+    path: "/simple-calendar",
+    readyChecks: [{ selector: '[data-testid="simple-calendar-view"]' }],
+    timeoutMs: 60_000,
+  },
+  {
     name: "stream",
     path: "/stream",
     readyChecks: [{ selector: "#root" }],
@@ -238,6 +250,12 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     name: "views catalog deep link",
     path: "/views",
     readyChecks: [{ text: "Views" }, { text: "No views available" }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "background view deep link",
+    path: "/background",
+    readyChecks: [{ selector: "#root" }, { text: "Background" }],
     timeoutMs: 60_000,
   },
   {

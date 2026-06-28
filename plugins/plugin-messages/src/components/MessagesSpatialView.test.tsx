@@ -89,7 +89,6 @@ describe("MessagesSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Messages");
       expect(flat).toContain("sms-default");
       expect(flat).toContain("+15550100");
       expect(flat).toContain("see you at noon");
@@ -110,6 +109,10 @@ describe("MessagesSpatialView one source, three modalities", () => {
       expect(html).toContain("+15550100");
       expect(html).toContain("sms-default");
       expect(html).toContain('data-agent-id="send"');
+      // Header stats: thread count + the ported total-unread aggregation
+      // (t1 has 2 unread inbound, t2 has 0 -> "2 unread").
+      expect(html).toContain("2 threads");
+      expect(html).toContain("2 unread");
     }
   });
 

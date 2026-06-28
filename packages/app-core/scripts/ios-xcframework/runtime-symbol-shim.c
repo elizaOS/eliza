@@ -8,108 +8,34 @@
  * expects the libelizainference ABI v1 exports.
  *
  * This file provides those ABI entry points for link/device-smoke validation.
- * It does not fake inference. Text entry points return "not loaded" until the
- * mobile bridge is wired to a real llama context, and voice entry points return
- * explicit unsupported / missing-model errors until real OmniVoice assets are
- * present in the bundle. Missing optimized kernels remain handled by the
- * generated CAPABILITIES.json gate.
+ * Text entry points run a real llama context for the mobile benchmark harness,
+ * and voice entry points return explicit unsupported / missing-model errors
+ * until real OmniVoice assets are present in the bundle. Missing optimized
+ * kernels remain handled by the generated CAPABILITIES.json gate.
  */
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "../ffi-stub/ffi.h"
+#include "llama.h"
 
 #define ELIZA_INFERENCE_ABI_VERSION_STRING "1"
-
-typedef int32_t llama_token;
-typedef int32_t llama_pos;
-typedef int32_t llama_seq_id;
-
-struct llama_model_tensor_buft_override {
-    const char * pattern;
-    void * buft;
-};
-
-struct llama_model_kv_override;
-
-struct llama_model_params {
-    void ** devices;
-    const struct llama_model_tensor_buft_override * tensor_buft_overrides;
-    int32_t n_gpu_layers;
-    int split_mode;
-    int32_t main_gpu;
-    const float * tensor_split;
-    void * progress_callback;
-    void * progress_callback_user_data;
-    const struct llama_model_kv_override * kv_overrides;
-    bool vocab_only;
-    bool use_mmap;
-    bool use_direct_io;
-    bool use_mlock;
-    bool check_tensors;
-    bool use_extra_bufts;
-    bool no_host;
-    bool no_alloc;
-};
-
-struct llama_sampler_seq_config {
-    llama_seq_id seq_id;
-    void * sampler;
-};
-
-struct llama_context_params {
-    uint32_t n_ctx;
-    uint32_t n_batch;
-    uint32_t n_ubatch;
-    uint32_t n_seq_max;
-    int32_t n_threads;
-    int32_t n_threads_batch;
-    int rope_scaling_type;
-    int pooling_type;
-    int attention_type;
-    int flash_attn_type;
-    float rope_freq_base;
-    float rope_freq_scale;
-    float yarn_ext_factor;
-    float yarn_attn_factor;
-    float yarn_beta_fast;
-    float yarn_beta_slow;
-    uint32_t yarn_orig_ctx;
-    float defrag_thold;
-    void * cb_eval;
-    void * cb_eval_user_data;
-    int type_k;
-    int type_v;
-    void * abort_callback;
-    void * abort_callback_data;
-    bool embeddings;
-    bool offload_kqv;
-    bool no_perf;
-    bool op_offload;
-    bool swa_full;
-    bool kv_unified;
-    struct llama_sampler_seq_config * samplers;
-    size_t n_samplers;
-};
-
-struct llama_batch {
-    int32_t n_tokens;
-    llama_token * token;
-    float * embd;
-    llama_pos * pos;
-    int32_t * n_seq_id;
-    llama_seq_id ** seq_id;
-    int8_t * logits;
-};
-
-extern void llama_log_set(void * log_callback, void * user_data);
-extern bool llama_supports_gpu_offload(void);
+#define ELIZA_IOS_MAX_TEXT_CONTEXTS 8
 
 struct EliInferenceContext {
     char * bundle_dir;
+};
+
+struct ElizaTextContext {
+    int64_t id;
+    struct llama_model * model;
+    struct llama_context * ctx;
+    const struct llama_vocab * vocab;
 };
 
 static char * eliza_dup_cstr(const char * s) {
@@ -134,6 +60,223 @@ static void set_out_error(char ** out_error, const char * msg) {
     }
 }
 
+static pthread_mutex_t g_text_context_lock = PTHREAD_MUTEX_INITIALIZER;
+static bool g_llama_backend_initialized = false;
+static bool g_llama_device_backends_loaded = false;
+static ggml_backend_dev_t g_cpu_only_devices[2] = {NULL, NULL};
+static int64_t g_next_text_context_id = 1;
+static struct ElizaTextContext * g_text_contexts[ELIZA_IOS_MAX_TEXT_CONTEXTS];
+
+static const char * find_json_key(const char * json, const char * key) {
+    if (json == NULL || key == NULL) return NULL;
+    char pattern[96];
+    const int written = snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    if (written <= 0 || (size_t) written >= sizeof(pattern)) return NULL;
+    const char * p = strstr(json, pattern);
+    if (p == NULL) return NULL;
+    p = strchr(p + written, ':');
+    return p != NULL ? p + 1 : NULL;
+}
+
+static int json_int_param(const char * json, const char * key, int fallback) {
+    const char * value = find_json_key(json, key);
+    if (value == NULL) return fallback;
+    char * end = NULL;
+    const long parsed = strtol(value, &end, 10);
+    return end != value ? (int) parsed : fallback;
+}
+
+static double json_double_param(
+    const char * json,
+    const char * key,
+    double fallback) {
+    const char * value = find_json_key(json, key);
+    if (value == NULL) return fallback;
+    char * end = NULL;
+    const double parsed = strtod(value, &end);
+    return end != value ? parsed : fallback;
+}
+
+static bool json_bool_param(
+    const char * json,
+    const char * key,
+    bool fallback) {
+    const char * value = find_json_key(json, key);
+    if (value == NULL) return fallback;
+    while (*value == ' ' || *value == '\t' || *value == '\n' || *value == '\r') {
+        value++;
+    }
+    if (strncmp(value, "true", 4) == 0) return true;
+    if (strncmp(value, "false", 5) == 0) return false;
+    return fallback;
+}
+
+static char * json_error(const char * stage, const char * message) {
+    const char * safe_stage = stage != NULL ? stage : "unknown";
+    const char * safe_message = message != NULL ? message : "unknown error";
+    const size_t len = strlen(safe_stage) + strlen(safe_message) + 48;
+    char * out = (char *) malloc(len);
+    if (out == NULL) return NULL;
+    snprintf(
+        out,
+        len,
+        "{\"error\":\"%s\",\"stage\":\"%s\"}",
+        safe_message,
+        safe_stage);
+    return out;
+}
+
+static bool append_bytes(
+    char ** buffer,
+    size_t * length,
+    size_t * capacity,
+    const char * bytes,
+    size_t n) {
+    if (n == 0) return true;
+    if (*length + n + 1 > *capacity) {
+        size_t next = *capacity > 0 ? *capacity : 128;
+        while (*length + n + 1 > next) next *= 2;
+        char * grown = (char *) realloc(*buffer, next);
+        if (grown == NULL) return false;
+        *buffer = grown;
+        *capacity = next;
+    }
+    memcpy(*buffer + *length, bytes, n);
+    *length += n;
+    (*buffer)[*length] = '\0';
+    return true;
+}
+
+static char * json_escape(const char * value) {
+    const char * text = value != NULL ? value : "";
+    size_t capacity = strlen(text) * 2 + 1;
+    char * out = (char *) malloc(capacity);
+    if (out == NULL) return NULL;
+    size_t length = 0;
+    out[0] = '\0';
+
+    for (const unsigned char * p = (const unsigned char *) text; *p != '\0'; p++) {
+        char escaped[7];
+        const char * chunk = NULL;
+        size_t chunk_len = 0;
+        switch (*p) {
+            case '\\':
+                chunk = "\\\\";
+                chunk_len = 2;
+                break;
+            case '"':
+                chunk = "\\\"";
+                chunk_len = 2;
+                break;
+            case '\n':
+                chunk = "\\n";
+                chunk_len = 2;
+                break;
+            case '\r':
+                chunk = "\\r";
+                chunk_len = 2;
+                break;
+            case '\t':
+                chunk = "\\t";
+                chunk_len = 2;
+                break;
+            default:
+                if (*p < 0x20) {
+                    snprintf(escaped, sizeof(escaped), "\\u%04x", *p);
+                    chunk = escaped;
+                    chunk_len = 6;
+                } else {
+                    escaped[0] = (char) *p;
+                    chunk = escaped;
+                    chunk_len = 1;
+                }
+                break;
+        }
+        if (!append_bytes(&out, &length, &capacity, chunk, chunk_len)) {
+            free(out);
+            return NULL;
+        }
+    }
+    return out;
+}
+
+static void ensure_llama_backend_initialized(bool load_device_backends) {
+    pthread_mutex_lock(&g_text_context_lock);
+    if (!g_llama_backend_initialized) {
+        llama_backend_init();
+        g_llama_backend_initialized = true;
+    }
+    if (load_device_backends && !g_llama_device_backends_loaded) {
+        ggml_backend_load_all();
+        g_llama_device_backends_loaded = true;
+    }
+    pthread_mutex_unlock(&g_text_context_lock);
+}
+
+static bool configure_cpu_only_devices(struct llama_model_params * model_params) {
+    pthread_mutex_lock(&g_text_context_lock);
+    ggml_backend_dev_t cpu_dev =
+        ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU);
+    if (cpu_dev != NULL) {
+        g_cpu_only_devices[0] = cpu_dev;
+        g_cpu_only_devices[1] = NULL;
+        model_params->devices = g_cpu_only_devices;
+    }
+    pthread_mutex_unlock(&g_text_context_lock);
+    return cpu_dev != NULL;
+}
+
+static int store_text_context(struct ElizaTextContext * text_context) {
+    int slot = -1;
+    pthread_mutex_lock(&g_text_context_lock);
+    for (int i = 0; i < ELIZA_IOS_MAX_TEXT_CONTEXTS; i++) {
+        if (g_text_contexts[i] == NULL) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot >= 0) {
+        text_context->id = g_next_text_context_id++;
+        g_text_contexts[slot] = text_context;
+    }
+    pthread_mutex_unlock(&g_text_context_lock);
+    return slot;
+}
+
+static struct ElizaTextContext * get_text_context(int64_t context_id) {
+    struct ElizaTextContext * found = NULL;
+    pthread_mutex_lock(&g_text_context_lock);
+    for (int i = 0; i < ELIZA_IOS_MAX_TEXT_CONTEXTS; i++) {
+        if (g_text_contexts[i] != NULL && g_text_contexts[i]->id == context_id) {
+            found = g_text_contexts[i];
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_text_context_lock);
+    return found;
+}
+
+static struct ElizaTextContext * take_text_context(int64_t context_id) {
+    struct ElizaTextContext * found = NULL;
+    pthread_mutex_lock(&g_text_context_lock);
+    for (int i = 0; i < ELIZA_IOS_MAX_TEXT_CONTEXTS; i++) {
+        if (g_text_contexts[i] != NULL && g_text_contexts[i]->id == context_id) {
+            found = g_text_contexts[i];
+            g_text_contexts[i] = NULL;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_text_context_lock);
+    return found;
+}
+
+static void free_text_context(struct ElizaTextContext * text_context) {
+    if (text_context == NULL) return;
+    if (text_context->ctx != NULL) llama_free(text_context->ctx);
+    if (text_context->model != NULL) llama_model_free(text_context->model);
+    free(text_context);
+}
+
 /* ---- llama-cpp-capacitor bridge exports --------------------------- */
 
 char * llama_get_last_error(void) {
@@ -146,26 +289,314 @@ void llama_free_string(char * value) {
 }
 
 int64_t llama_init_context(const char * model_path, const char * params_json) {
-    (void) params_json;
     if (model_path == NULL || model_path[0] == '\0') {
         set_last_error("llama_init_context requires a model path");
-    } else {
-        set_last_error(
-            "iOS static bridge is link-ready but real llama context wiring is not enabled in this slice");
+        return -1;
     }
-    return -1;
+
+    struct llama_model_params model_params = llama_model_default_params();
+    const bool no_gpu_devices =
+        json_bool_param(params_json, "no_gpu_devices", false);
+    ensure_llama_backend_initialized(!no_gpu_devices);
+
+    model_params.n_gpu_layers = no_gpu_devices
+        ? 0
+        : json_int_param(params_json, "n_gpu_layers", model_params.n_gpu_layers);
+    if (no_gpu_devices) {
+        if (!configure_cpu_only_devices(&model_params)) {
+            set_last_error("CPU backend device is unavailable");
+            return -1;
+        }
+        model_params.main_gpu = -1;
+        model_params.use_extra_bufts = false;
+    }
+    model_params.use_mmap = json_bool_param(
+        params_json,
+        "use_mmap",
+        model_params.use_mmap);
+
+    struct llama_model * model = llama_model_load_from_file(
+        model_path,
+        model_params);
+    if (model == NULL) {
+        set_last_error("llama_model_load_from_file failed");
+        return -1;
+    }
+
+    struct llama_context_params context_params = llama_context_default_params();
+    context_params.n_ctx = (uint32_t) json_int_param(
+        params_json,
+        "n_ctx",
+        (int) context_params.n_ctx);
+    context_params.n_batch = (uint32_t) json_int_param(
+        params_json,
+        "n_batch",
+        (int) context_params.n_batch);
+    context_params.n_ubatch = (uint32_t) json_int_param(
+        params_json,
+        "n_ubatch",
+        (int) context_params.n_ubatch);
+    context_params.n_seq_max = 1;
+    context_params.n_threads = json_int_param(
+        params_json,
+        "n_threads",
+        context_params.n_threads);
+    context_params.n_threads_batch = context_params.n_threads;
+    context_params.flash_attn_type = json_bool_param(
+        params_json,
+        "flash_attn",
+        false)
+        ? LLAMA_FLASH_ATTN_TYPE_ENABLED
+        : LLAMA_FLASH_ATTN_TYPE_DISABLED;
+    if (no_gpu_devices) {
+        context_params.offload_kqv = false;
+        context_params.op_offload = false;
+    }
+
+    struct llama_context * ctx = llama_init_from_model(model, context_params);
+    if (ctx == NULL) {
+        llama_model_free(model);
+        set_last_error("llama_init_from_model failed");
+        return -1;
+    }
+
+    struct ElizaTextContext * text_context =
+        (struct ElizaTextContext *) calloc(1, sizeof(*text_context));
+    if (text_context == NULL) {
+        llama_free(ctx);
+        llama_model_free(model);
+        set_last_error("out of memory creating iOS text context");
+        return -1;
+    }
+    text_context->model = model;
+    text_context->ctx = ctx;
+    text_context->vocab = llama_model_get_vocab(model);
+    if (text_context->vocab == NULL) {
+        free_text_context(text_context);
+        set_last_error("llama_model_get_vocab returned null");
+        return -1;
+    }
+
+    if (store_text_context(text_context) < 0) {
+        free_text_context(text_context);
+        set_last_error("too many active iOS text contexts");
+        return -1;
+    }
+
+    set_last_error("No detailed native error captured");
+    return text_context->id;
 }
 
 void llama_release_context(int64_t context_id) {
-    (void) context_id;
+    free_text_context(take_text_context(context_id));
 }
 
 char * llama_completion(int64_t context_id, const char * prompt, const char * params_json) {
-    (void) context_id;
-    (void) prompt;
-    (void) params_json;
-    set_last_error("Native context is not loaded");
-    return eliza_dup_cstr("{\"error\":\"Native context is not loaded\"}");
+    struct ElizaTextContext * text_context = get_text_context(context_id);
+    if (text_context == NULL) {
+        set_last_error("Native context is not loaded");
+        return json_error("llama_completion", "Native context is not loaded");
+    }
+    if (prompt == NULL) {
+        set_last_error("llama_completion requires a prompt");
+        return json_error("llama_completion", "llama_completion requires a prompt");
+    }
+
+    int32_t token_capacity = (int32_t) strlen(prompt) + 64;
+    if (token_capacity < 64) token_capacity = 64;
+    llama_token * prompt_tokens =
+        (llama_token *) calloc((size_t) token_capacity, sizeof(*prompt_tokens));
+    if (prompt_tokens == NULL) {
+        set_last_error("out of memory tokenizing prompt");
+        return json_error("llama_tokenize", "out of memory tokenizing prompt");
+    }
+
+    int32_t n_prompt = llama_tokenize(
+        text_context->vocab,
+        prompt,
+        (int32_t) strlen(prompt),
+        prompt_tokens,
+        token_capacity,
+        true,
+        true);
+    if (n_prompt < 0) {
+        token_capacity = -n_prompt;
+        llama_token * grown = (llama_token *) realloc(
+            prompt_tokens,
+            (size_t) token_capacity * sizeof(*prompt_tokens));
+        if (grown == NULL) {
+            free(prompt_tokens);
+            set_last_error("out of memory expanding prompt tokens");
+            return json_error(
+                "llama_tokenize",
+                "out of memory expanding prompt tokens");
+        }
+        prompt_tokens = grown;
+        n_prompt = llama_tokenize(
+            text_context->vocab,
+            prompt,
+            (int32_t) strlen(prompt),
+            prompt_tokens,
+            token_capacity,
+            true,
+            true);
+    }
+    if (n_prompt <= 0) {
+        free(prompt_tokens);
+        set_last_error("llama_tokenize failed");
+        return json_error("llama_tokenize", "llama_tokenize failed");
+    }
+
+    const int64_t prompt_started_us = llama_time_us();
+    struct llama_batch prompt_batch = llama_batch_get_one(
+        prompt_tokens,
+        n_prompt);
+    const int decode_prompt_status = llama_decode(
+        text_context->ctx,
+        prompt_batch);
+    const int64_t prompt_elapsed_us = llama_time_us() - prompt_started_us;
+    free(prompt_tokens);
+    if (decode_prompt_status != 0) {
+        set_last_error("llama_decode failed on prompt");
+        return json_error("llama_decode", "llama_decode failed on prompt");
+    }
+
+    struct llama_sampler * sampler = llama_sampler_chain_init(
+        llama_sampler_chain_default_params());
+    if (sampler == NULL) {
+        set_last_error("llama_sampler_chain_init failed");
+        return json_error(
+            "llama_sampler_chain_init",
+            "llama_sampler_chain_init failed");
+    }
+
+    const int top_k = json_int_param(params_json, "top_k", 1);
+    const double temperature = json_double_param(params_json, "temperature", 0);
+    const int seed = json_int_param(params_json, "seed", 42);
+    if (top_k > 0) {
+        llama_sampler_chain_add(sampler, llama_sampler_init_top_k(top_k));
+    }
+    if (temperature > 0) {
+        llama_sampler_chain_add(
+            sampler,
+            llama_sampler_init_temp((float) temperature));
+        llama_sampler_chain_add(sampler, llama_sampler_init_dist((uint32_t) seed));
+    } else {
+        llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
+    }
+
+    char * generated = NULL;
+    size_t generated_len = 0;
+    size_t generated_cap = 0;
+    const int n_predict = json_int_param(params_json, "n_predict", 32);
+    int n_predicted = 0;
+    int decode_status = 0;
+    const int64_t generation_started_us = llama_time_us();
+    for (int i = 0; i < n_predict; i++) {
+        const llama_token token = llama_sampler_sample(
+            sampler,
+            text_context->ctx,
+            -1);
+        if (llama_vocab_is_eog(text_context->vocab, token)) {
+            break;
+        }
+        llama_sampler_accept(sampler, token);
+
+        char piece[512];
+        int32_t piece_len = llama_token_to_piece(
+            text_context->vocab,
+            token,
+            piece,
+            (int32_t) sizeof(piece),
+            0,
+            false);
+        if (piece_len < 0) {
+            piece_len = 0;
+        }
+        if (!append_bytes(
+                &generated,
+                &generated_len,
+                &generated_cap,
+                piece,
+                (size_t) piece_len)) {
+            llama_sampler_free(sampler);
+            free(generated);
+            set_last_error("out of memory collecting generated text");
+            return json_error(
+                "llama_completion",
+                "out of memory collecting generated text");
+        }
+
+        struct llama_batch next_batch = llama_batch_get_one(
+            (llama_token *) &token,
+            1);
+        decode_status = llama_decode(text_context->ctx, next_batch);
+        if (decode_status != 0) {
+            break;
+        }
+        n_predicted++;
+    }
+    const int64_t generation_elapsed_us =
+        llama_time_us() - generation_started_us;
+    llama_sampler_free(sampler);
+
+    if (decode_status != 0) {
+        free(generated);
+        set_last_error("llama_decode failed during generation");
+        return json_error(
+            "llama_decode",
+            "llama_decode failed during generation");
+    }
+    if (n_predicted <= 0) {
+        free(generated);
+        set_last_error("llama_completion produced no tokens");
+        return json_error(
+            "llama_completion",
+            "llama_completion produced no tokens");
+    }
+
+    char * escaped = json_escape(generated != NULL ? generated : "");
+    free(generated);
+    if (escaped == NULL) {
+        set_last_error("out of memory escaping generated text");
+        return json_error(
+            "llama_completion",
+            "out of memory escaping generated text");
+    }
+
+    const double prompt_seconds =
+        prompt_elapsed_us > 0 ? (double) prompt_elapsed_us / 1000000.0 : 0.0;
+    const double generation_seconds = generation_elapsed_us > 0
+        ? (double) generation_elapsed_us / 1000000.0
+        : 0.0;
+    const double prompt_per_second =
+        prompt_seconds > 0 ? (double) n_prompt / prompt_seconds : 0.0;
+    const double predicted_per_second = generation_seconds > 0
+        ? (double) n_predicted / generation_seconds
+        : 0.0;
+    const size_t out_len = strlen(escaped) + 384;
+    char * out = (char *) malloc(out_len);
+    if (out == NULL) {
+        free(escaped);
+        set_last_error("out of memory formatting benchmark result");
+        return json_error(
+            "llama_completion",
+            "out of memory formatting benchmark result");
+    }
+    snprintf(
+        out,
+        out_len,
+        "{\"content\":\"%s\",\"tokens_evaluated\":%d,\"tokens_predicted\":%d,"
+        "\"timings\":{\"prompt_per_second\":%.6f,"
+        "\"predicted_per_second\":%.6f}}",
+        escaped,
+        n_prompt,
+        n_predicted,
+        prompt_per_second,
+        predicted_per_second);
+    free(escaped);
+    set_last_error("No detailed native error captured");
+    return out;
 }
 
 void llama_stop_completion(int64_t context_id) {
@@ -204,14 +635,38 @@ void llama_embedding_unregister_context(int64_t context_id) {
 }
 
 char * llama_get_model_info(int64_t context_id) {
-    (void) context_id;
-    return eliza_dup_cstr(
-        "{\"error\":\"Native context is not loaded\",\"isChatTemplateSupported\":false}");
+    struct ElizaTextContext * text_context = get_text_context(context_id);
+    if (text_context == NULL) {
+        return eliza_dup_cstr(
+            "{\"error\":\"Native context is not loaded\",\"isChatTemplateSupported\":false}");
+    }
+    char desc[256] = { 0 };
+    llama_model_desc(text_context->model, desc, sizeof(desc));
+    char * escaped = json_escape(desc);
+    if (escaped == NULL) {
+        return eliza_dup_cstr("{\"isChatTemplateSupported\":false}");
+    }
+    const size_t len = strlen(escaped) + 96;
+    char * out = (char *) malloc(len);
+    if (out == NULL) {
+        free(escaped);
+        return NULL;
+    }
+    snprintf(
+        out,
+        len,
+        "{\"description\":\"%s\",\"isChatTemplateSupported\":%s}",
+        escaped,
+        llama_model_chat_template(text_context->model, NULL) != NULL
+            ? "true"
+            : "false");
+    free(escaped);
+    return out;
 }
 
 void * llama_get_context_ptr(int64_t context_id) {
-    (void) context_id;
-    return NULL;
+    struct ElizaTextContext * text_context = get_text_context(context_id);
+    return text_context != NULL ? text_context->ctx : NULL;
 }
 
 /* ---- fail-closed libelizainference exports ------------------------- */

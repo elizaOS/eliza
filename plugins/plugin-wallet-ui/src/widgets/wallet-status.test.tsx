@@ -29,15 +29,12 @@ const appHooks = vi.hoisted(() => {
   // reads the widget now uses. Each `mockReturnValue` updates the ref; selectors
   // read from it synchronously.
   const ref: { current: Record<string, unknown> } = { current: {} };
-  const useApp = Object.assign(
-    () => ref.current,
-    {
-      mockReturnValue(state: Record<string, unknown>) {
-        ref.current = state;
-        return useApp;
-      },
+  const useApp = Object.assign(() => ref.current, {
+    mockReturnValue(state: Record<string, unknown>) {
+      ref.current = state;
+      return useApp;
     },
-  );
+  });
   return {
     useApp,
     useAppSelector: <T,>(selector: (s: Record<string, unknown>) => T): T =>
@@ -232,7 +229,7 @@ describe("WalletStatusSidebarWidget — empty / disabled / auto-load", () => {
       }),
     );
     render(React.createElement(WalletStatusSidebarWidget, {} as never));
-    expect(screen.getByText("No wallet addresses yet")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
     expect(
       screen.queryByTestId("chat-widget-wallet-row-evm-address"),
     ).toBeNull();

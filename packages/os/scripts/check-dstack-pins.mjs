@@ -23,6 +23,7 @@
 // Runner: plain `node` (no third-party deps).
 //   node packages/os/scripts/check-dstack-pins.mjs
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { validateAgainstSchema } from "./json-schema-lite.mjs";
 import { parseArgs, readJson, repoRoot } from "./os-release-lib.mjs";
 
@@ -108,7 +109,7 @@ export function checkDstackPins(pins, schema, manifest) {
     pin.confirmed === true && typeof pin.tag === "string" && pin.tag.length > 0;
   if (!trackLatestValid && !frozenTagValid) {
     errors.push(
-      "pinnedRelease is INVALID: provide either a track-latest pin (track=\"latest\", reverifyOnUpdate=true, minReleaseDate set) or a confirmed frozen tag (confirmed=true, tag set). FAIL-CLOSED (§2.3/§8.3).",
+      'pinnedRelease is INVALID: provide either a track-latest pin (track="latest", reverifyOnUpdate=true, minReleaseDate set) or a confirmed frozen tag (confirmed=true, tag set). FAIL-CLOSED (§2.3/§8.3).',
     );
   }
 
@@ -156,6 +157,6 @@ async function main() {
   console.log(`dstack-pins-check: PASS (${input})`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }

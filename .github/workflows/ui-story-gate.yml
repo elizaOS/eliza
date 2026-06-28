@@ -68,7 +68,7 @@ jobs:
         run: bun run --cwd packages/ui build-storybook --output-dir storybook-static --quiet
 
       - name: Run story gate
-        run: node packages/ui/test/story-gate/run-story-gate.mjs --static-dir storybook-static --concurrency 4
+        run: node packages/ui/test/story-gate/run-story-gate.mjs --static-dir packages/ui/storybook-static --concurrency 4
 
       - name: Upload story-gate artifacts
         if: always()

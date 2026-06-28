@@ -60,7 +60,7 @@ function DrawerContent({
       <DrawerPrimitive.Content
         data-slot="drawer-content"
         className={cn(
-          "group/drawer-content fixed z-50 flex h-auto flex-col bg-neutral-950/95 text-white backdrop-blur-xl",
+          "group/drawer-content fixed z-50 flex h-auto flex-col bg-neutral-950/95 text-white",
           "data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-24 data-[vaul-drawer-direction=top]:max-h-[80vh] data-[vaul-drawer-direction=top]:border-b data-[vaul-drawer-direction=top]:border-white/10",
           "data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-24 data-[vaul-drawer-direction=bottom]:max-h-[80vh] data-[vaul-drawer-direction=bottom]:border-t data-[vaul-drawer-direction=bottom]:border-white/10",
           "data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:w-3/4 data-[vaul-drawer-direction=right]:border-l data-[vaul-drawer-direction=right]:border-white/10 data-[vaul-drawer-direction=right]:sm:max-w-sm",
@@ -69,7 +69,18 @@ function DrawerContent({
         )}
         {...props}
       >
-        <div className="mx-auto mt-4 hidden h-1.5 w-[100px] shrink-0 bg-white/15 group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
+        <DrawerClose asChild>
+          <button
+            type="button"
+            aria-label="Close drawer"
+            className="group mx-auto mb-2 mt-2 hidden h-8 w-32 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/10 group-data-[vaul-drawer-direction=bottom]/drawer-content:flex"
+          >
+            <span
+              className="h-1.5 w-[100px] rounded-full bg-white/15 transition-all group-hover:w-[112px] group-hover:bg-white/35"
+              aria-hidden
+            />
+          </button>
+        </DrawerClose>
         {children}
       </DrawerPrimitive.Content>
     </DrawerPortal>

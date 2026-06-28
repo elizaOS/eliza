@@ -222,7 +222,7 @@ export class AgentHarness {
         return {
           success: true,
           action: decision.action,
-          data: trade as unknown as Record<string, unknown>,
+          data: JSON.parse(JSON.stringify(trade)) as Record<string, unknown>,
         };
       }
 
@@ -244,7 +244,7 @@ export class AgentHarness {
         return {
           success: true,
           action: decision.action,
-          data: trade as unknown as Record<string, unknown>,
+          data: JSON.parse(JSON.stringify(trade)) as Record<string, unknown>,
         };
       }
 
@@ -256,7 +256,7 @@ export class AgentHarness {
         return {
           success: true,
           action: decision.action,
-          data: post as unknown as Record<string, unknown>,
+          data: JSON.parse(JSON.stringify(post)) as Record<string, unknown>,
         };
       }
 
@@ -274,7 +274,7 @@ export class AgentHarness {
         return {
           success: true,
           action: decision.action,
-          data: result as unknown as Record<string, unknown>,
+          data: JSON.parse(JSON.stringify(result)) as Record<string, unknown>,
         };
       }
 
@@ -294,7 +294,7 @@ export class AgentHarness {
         return {
           success: true,
           action: decision.action,
-          data: result as unknown as Record<string, unknown>,
+          data: JSON.parse(JSON.stringify(result)) as Record<string, unknown>,
         };
       }
 

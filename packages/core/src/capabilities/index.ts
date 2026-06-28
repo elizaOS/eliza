@@ -217,10 +217,13 @@ export type RemotePluginRouteManifest = {
 	description?: string;
 };
 
+export type RemotePluginBackgroundPolicy = "opaque" | "shared";
+
 export type RemotePluginViewManifest = {
 	id: string;
 	label: string;
 	viewType?: "gui" | "tui" | "xr";
+	backgroundPolicy?: RemotePluginBackgroundPolicy;
 	bundlePath?: string;
 	bundleUrl?: string;
 	contentType?: string;
@@ -288,16 +291,7 @@ export type RemotePluginComponentTypeManifest = {
 export type RemotePluginWidgetManifest = {
 	id: string;
 	pluginId?: string;
-	slot:
-		| "chat-sidebar"
-		| "chat-inline"
-		| "wallet"
-		| "browser"
-		| "heartbeats"
-		| "character"
-		| "settings"
-		| "nav-page"
-		| "automations";
+	slot: "chat-sidebar" | "character" | "nav-page";
 	label: string;
 	icon?: string;
 	order?: number;
@@ -329,6 +323,7 @@ export type RemotePluginAppNavTabManifest = {
 	order?: number;
 	developerOnly?: boolean;
 	group?: string;
+	backgroundPolicy?: RemotePluginBackgroundPolicy;
 	componentExport?: string;
 };
 
@@ -2496,6 +2491,17 @@ function optionalBoolean(
 	throw decodeError(method, `${key} must be a boolean when present.`);
 }
 
+function optionalBackgroundPolicy(
+	object: JsonObject,
+	key: string,
+	method: string,
+): RemotePluginBackgroundPolicy | undefined {
+	const value = optionalString(object, key, method);
+	if (value === undefined) return undefined;
+	if (value === "opaque" || value === "shared") return value;
+	throw decodeError(method, `${key} must be "opaque" or "shared".`);
+}
+
 function requireResponseHandlerFieldEffect(
 	value: JsonValue,
 	method: string,
@@ -3028,17 +3034,7 @@ function requireRemotePluginWidget(
 ): RemotePluginWidgetManifest {
 	const object = requireObject(value, method);
 	const slot = requireString(object, "slot", method);
-	if (
-		slot !== "chat-sidebar" &&
-		slot !== "chat-inline" &&
-		slot !== "wallet" &&
-		slot !== "browser" &&
-		slot !== "heartbeats" &&
-		slot !== "character" &&
-		slot !== "settings" &&
-		slot !== "nav-page" &&
-		slot !== "automations"
-	) {
+	if (slot !== "chat-sidebar" && slot !== "character" && slot !== "nav-page") {
 		throw decodeError(method, "slot must be a valid plugin widget slot.");
 	}
 	const pluginId = optionalNonEmptyString(object, "pluginId", method);
@@ -3225,6 +3221,11 @@ function requireRemotePluginAppNavTab(
 	const order = optionalNumber(object, "order", method);
 	const developerOnly = optionalBoolean(object, "developerOnly", method);
 	const group = optionalString(object, "group", method);
+	const backgroundPolicy = optionalBackgroundPolicy(
+		object,
+		"backgroundPolicy",
+		method,
+	);
 	const componentExport = optionalString(object, "componentExport", method);
 	const path = requireNonEmptyString(object, "path", method);
 	validateRemotePluginPath(path, "path", method);
@@ -3236,6 +3237,7 @@ function requireRemotePluginAppNavTab(
 		...(order === undefined ? {} : { order }),
 		...(developerOnly === undefined ? {} : { developerOnly }),
 		...(group === undefined ? {} : { group }),
+		...(backgroundPolicy === undefined ? {} : { backgroundPolicy }),
 		...(componentExport === undefined ? {} : { componentExport }),
 	};
 }
@@ -3385,12 +3387,18 @@ function requireRemotePluginView(
 	if (bundleUrl !== undefined) {
 		validateRemotePluginBundleUrl(bundleUrl, "bundleUrl", method);
 	}
+	const backgroundPolicy = optionalBackgroundPolicy(
+		object,
+		"backgroundPolicy",
+		method,
+	);
 	const contentType = optionalString(object, "contentType", method);
 	const integrity = optionalString(object, "integrity", method);
 	return {
 		id: requireNonEmptyString(object, "id", method),
 		label: requireNonEmptyString(object, "label", method),
 		...(viewType === undefined ? {} : { viewType }),
+		...(backgroundPolicy === undefined ? {} : { backgroundPolicy }),
 		...(bundlePath === undefined ? {} : { bundlePath }),
 		...(bundleUrl === undefined ? {} : { bundleUrl }),
 		...(contentType === undefined ? {} : { contentType }),

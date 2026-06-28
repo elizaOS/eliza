@@ -27,6 +27,10 @@ import {
 } from "@feed/db";
 import { generateSnowflakeId } from "@feed/shared";
 
+type TopWaitlistUser = Awaited<
+  ReturnType<typeof WaitlistService.getTopWaitlistUsers>
+>[number];
+
 // Skip tests if DATABASE_URL is not set
 const shouldSkip = !process.env.DATABASE_URL;
 const describeWaitlist = shouldSkip ? describe.skip : describe;
@@ -606,13 +610,16 @@ describeWaitlist("WaitlistService", () => {
 
       // Find our test users and verify their relative ordering
       const testUser150 = topUsers.find(
-        (u) => u.invitePoints === 150 && testUserIds.includes(u.id),
+        (u: TopWaitlistUser) =>
+          u.invitePoints === 150 && testUserIds.includes(u.id),
       );
       const testUser100 = topUsers.find(
-        (u) => u.invitePoints === 100 && testUserIds.includes(u.id),
+        (u: TopWaitlistUser) =>
+          u.invitePoints === 100 && testUserIds.includes(u.id),
       );
       const testUser50 = topUsers.find(
-        (u) => u.invitePoints === 50 && testUserIds.includes(u.id),
+        (u: TopWaitlistUser) =>
+          u.invitePoints === 50 && testUserIds.includes(u.id),
       );
 
       if (testUser150 && testUser100) {

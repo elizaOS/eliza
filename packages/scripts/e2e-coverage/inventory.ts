@@ -163,9 +163,18 @@ export function discoverZeroTestPlugins(root = REPO_ROOT): string[] {
     if (!plugin.startsWith("plugin-") && !plugin.startsWith("app-")) continue;
     const dir = path.join(pluginsDir, plugin);
     if (!statSafe(dir)?.isDirectory()) continue;
+    if (!isPluginInventoryDir(dir)) continue;
     if (!hasAnyTestFile(dir)) zero.push(plugin);
   }
   return zero.sort();
+}
+
+function isPluginInventoryDir(dir: string): boolean {
+  return (
+    existsSync(path.join(dir, "package.json")) ||
+    existsSync(path.join(dir, "src")) ||
+    existsSync(path.join(dir, "bun.lock"))
+  );
 }
 
 function statSafe(p: string) {

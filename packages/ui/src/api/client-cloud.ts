@@ -987,6 +987,21 @@ declare module "./client-base" {
       agentName: string;
       agentConfig?: Record<string, unknown>;
       environmentVars?: Record<string, string>;
+      /**
+       * Phase-0 tier flip. When true, omit `alwaysOn` so the backend derives a
+       * SHARED (container-free, instant) agent instead of a DEDICATED always-on
+       * one. Default (undefined/false) keeps the dedicated request unchanged.
+       */
+      preferSharedTier?: boolean;
+      /**
+       * Bypass the backend's org-scoped reuse guard so a SEPARATE agent is
+       * minted even when the org already has a live one. The shared→dedicated
+       * handoff sets this for the dedicated migration target; without it the
+       * reuse guard hands back the shared bridge (dedicatedId === sharedId) and
+       * the handoff probe never resolves. Default (undefined/false) leaves the
+       * request byte-identical — every existing caller still reuses.
+       */
+      forceCreate?: boolean;
     }): Promise<{
       success: boolean;
       data: {
@@ -1230,6 +1245,12 @@ declare module "./client-base" {
       preferAgentId?: string | null;
       /** Skip reuse and always create a new agent (explicit "Create new"). */
       forceCreate?: boolean;
+      /**
+       * Phase-0 tier flip. When true, a freshly created agent is requested as
+       * SHARED (instant, container-free) instead of DEDICATED always-on. Only
+       * affects the create branch; reuse of an existing agent is unaffected.
+       */
+      preferSharedTier?: boolean;
       onProgress?: (status: string, detail?: string) => void;
     }): Promise<{
       agentId: string;
@@ -1251,6 +1272,13 @@ declare module "./client-base" {
       conversationId: string;
       cloudApiBase: string;
       authToken: string;
+      /**
+       * The SEPARATE dedicated agent to migrate onto. When set, the readiness
+       * probe polls THIS agent's record for its container base (the shared
+       * `agentId` is container-free and never exposes one). Omitted → the probe
+       * polls `agentId` itself, the pre-shared-tier behavior.
+       */
+      dedicatedAgentId?: string;
       onSwitch: (containerBase: string) => void | Promise<void>;
       intervalMs?: number;
       timeoutMs?: number;
@@ -1258,6 +1286,24 @@ declare module "./client-base" {
     }): Promise<
       import("../cloud/handoff/conversation-handoff").ConversationHandoffResult
     >;
+    /**
+     * Delete the transient SHARED bridge agent (+ its `shared_runtime_history`,
+     * cascaded server-side) once the user has been switched to their dedicated
+     * agent (PR4). MUST only be called after a confirmed-successful handoff —
+     * deleting the shared while the user is still served by it loses their
+     * conversation.
+     *
+     * Pins the request to the explicit `cloudApiBase` (NOT the client's mutable
+     * `baseUrl`): by the time the switch succeeds the client has already
+     * repointed onto the dedicated container, so the base-derived
+     * `deleteCloudCompatAgent` would no longer resolve the cloud API. Shared
+     * delete is synchronous server-side (no container teardown), so success
+     * means the row + history are gone.
+     */
+    deleteSharedBridgeAgent(
+      agentId: string,
+      options: { cloudApiBase: string; authToken: string },
+    ): Promise<{ success: boolean; error?: string }>;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
       platform?: string;
@@ -1582,6 +1628,12 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   this: ElizaClient,
   opts,
 ) {
+  // Phase-0 tier flip. The backend derives `execution_tier` from the request:
+  // `alwaysOn: true` → DEDICATED always-on container; omitting it (for a plain
+  // chat agent) → SHARED, container-free, instant. Default is dedicated — only
+  // the demo flag drops `alwaysOn` to request shared. `tierFields` is spread
+  // into both create bodies so the dedicated path stays byte-identical to before.
+  const tierFields = opts.preferSharedTier ? {} : { alwaysOn: true };
   const direct = await directCloudRequest<{
     success: boolean;
     data: unknown;
@@ -1594,7 +1646,12 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       // the full experience, and the paid tier. New users have the signup credit
       // grant so they get a real agent; out-of-credit users get the cloud's
       // 402 add-credits prompt (the monetization path) rather than a shared agent.
-      alwaysOn: true,
+      // (With the Phase-0 shared-tier flag on, `alwaysOn` is dropped so the
+      // backend derives a SHARED agent instead — see tierFields above.)
+      ...tierFields,
+      // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
+      // shared→dedicated handoff target). Omitted by default → reuse unchanged.
+      ...(opts.forceCreate ? { forceCreate: true } : {}),
       ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
       ...(opts.environmentVars
         ? { environmentVars: opts.environmentVars }
@@ -1640,7 +1697,11 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       body: JSON.stringify({
         agentName: opts.agentName,
         // Dedicated (own-container, always-on) agent — see the direct-path note.
-        alwaysOn: true,
+        // The Phase-0 shared-tier flag drops `alwaysOn` here too (tierFields).
+        ...tierFields,
+        // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
+        // shared→dedicated handoff target). Omitted by default → reuse unchanged.
+        ...(opts.forceCreate ? { forceCreate: true } : {}),
         ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
         ...(opts.environmentVars
           ? { environmentVars: opts.environmentVars }
@@ -2822,8 +2883,15 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   this: ElizaClient,
   options,
 ) {
-  const { cloudApiBase, authToken, name, bio, preferAgentId, forceCreate } =
-    options;
+  const {
+    cloudApiBase,
+    authToken,
+    name,
+    bio,
+    preferAgentId,
+    forceCreate,
+    preferSharedTier,
+  } = options;
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   // Ensure the direct-cloud requests below authenticate even on a cold boot,
@@ -2839,9 +2907,25 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // path only runs when the user has no agent yet.
   if (!forceCreate) {
     onProgress?.("creating", "Finding your agents...");
-    const list = await this.getCloudCompatAgents().catch(() => null);
-    const agents = list?.success ? list.data : [];
-    const chosen = pickPreferredCloudAgent(agents, preferAgentId);
+    // A failed agent-list lookup must NOT fall through to provisioning. A
+    // transient error (expired token, network blip, or a success:false body)
+    // previously collapsed to an empty list and minted a brand-new billed agent
+    // even though the user already had one — the root of the "it creates
+    // multiple agents" report. Only an authoritative success list may conclude
+    // the user has no agent to reuse; otherwise surface the error so the caller
+    // can retry rather than duplicate.
+    const list = await this.getCloudCompatAgents().catch((cause) => ({
+      success: false as const,
+      data: [] as CloudCompatAgent[],
+      error: cause instanceof Error ? cause.message : undefined,
+    }));
+    if (!list.success) {
+      throw new Error(
+        list.error ||
+          "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
+      );
+    }
+    const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
     if (chosen) {
       const apiBase = resolveCloudAgentApiBase({
         bridgeUrl: chosen.bridge_url,
@@ -2873,6 +2957,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const created = await this.createCloudCompatAgent({
     agentName: name,
     ...(bio?.length ? { agentConfig: { bio } } : {}),
+    ...(preferSharedTier ? { preferSharedTier: true } : {}),
   });
   if (!created.success || !created.data.agentId) {
     throw new Error(created.data.message || "Failed to create cloud agent");
@@ -2880,8 +2965,19 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const agentId = created.data.agentId;
   const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
   const detailAgent = detail?.success ? detail.data : null;
+  // A freshly-created dedicated agent's subdomain is populated immediately, but
+  // its container takes ~30-120s to boot — chatting against it during that window
+  // 202s "starting" and the first message times out (the reported first-run bug).
+  // So start on the shared REST adapter base (the always-on in-Worker shared
+  // runtime serves the user instantly); finishCloud's handoff supervisor switches
+  // to the dedicated subdomain once it reports `running`. Only use the subdomain
+  // up-front when the agent is ALREADY running (warm-pool claim) — no boot gap.
+  const isRunning = detailAgent?.status === "running";
+  const hasDedicatedUrl = Boolean(
+    detailAgent?.web_ui_url || detailAgent?.bridge_url,
+  );
   const apiBase =
-    detailAgent?.web_ui_url || detailAgent?.bridge_url
+    isRunning && hasDedicatedUrl
       ? resolveCloudAgentApiBase({
           bridgeUrl: detailAgent.bridge_url,
           webUiUrl: detailAgent.web_ui_url ?? detailAgent.webUiUrl,
@@ -2909,12 +3005,18 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
     conversationId,
     cloudApiBase,
     authToken,
+    dedicatedAgentId,
     onSwitch,
     intervalMs,
     timeoutMs,
     log,
   } = options;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
+  // Migration TARGET. With the shared tier, the user chats on `agentId` (a
+  // container-free shared agent that never gets a dedicated base), so the
+  // dedicated record we poll for readiness is a SEPARATE agent. Default to
+  // `agentId` so the pre-shared-tier single-agent flow is unchanged.
+  const readinessAgentId = dedicatedAgentId ?? agentId;
 
   // Authed JSON fetch against a specific agent base (shared adapter OR the
   // dedicated container subdomain). Both accept the cloud session token —
@@ -2941,7 +3043,9 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
 
   const readiness: AgentReadinessProbe = {
     resolveReadyBase: async () => {
-      const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
+      const detail = await this.getCloudCompatAgent(readinessAgentId).catch(
+        () => null,
+      );
       const agent = detail?.success ? detail.data : null;
       if (!agent) return null;
       // The container is "ready" only once the record exposes a dedicated base
@@ -2955,7 +3059,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
       const base = resolveCloudAgentApiBase({
         bridgeUrl: agent.bridge_url,
         webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
-        agentId,
+        agentId: readinessAgentId,
         cloudApiBase: resolvedCloudApiBase,
       });
       // Never "switch" onto the shared adapter (no migration target there).
@@ -2974,6 +3078,63 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
     ...(typeof timeoutMs === "number" ? { timeoutMs } : {}),
     ...(log ? { log } : {}),
   });
+};
+
+ElizaClient.prototype.deleteSharedBridgeAgent = async function (
+  this: ElizaClient,
+  agentId,
+  options,
+) {
+  // Pin to the explicit cloud API base, not the client's (now repointed-to-
+  // dedicated) baseUrl. The shared-tier DELETE on `/api/v1/eliza/agents/:id`
+  // synchronously removes the shared `agent_sandboxes` row AND its
+  // `shared_runtime_history` (cascaded in `deleteAgent`); no container teardown.
+  const apiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
+  const url = `${apiBase}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${options.authToken}`,
+  };
+  try {
+    // Route through Capacitor native HTTP on iOS/Android, exactly like every
+    // other direct-cloud helper in this file. A bare cross-origin `fetch()`
+    // from `capacitor://localhost` is blocked on native, so without this the
+    // fire-and-forget cleanup would silently no-op on mobile and leak the
+    // shared `agent_sandboxes` row — the very thing this delete exists to avoid.
+    const status = shouldUseNativeCloudHttp()
+      ? (
+          await withDirectCloudHttpTimeout(
+            CapacitorHttp.request({
+              url,
+              method: "DELETE",
+              headers,
+              responseType: "json",
+              connectTimeout: 10_000,
+              readTimeout: 10_000,
+            }),
+            { method: "DELETE", url },
+          )
+        ).status
+      : (
+          await fetch(url, {
+            method: "DELETE",
+            headers,
+            signal: AbortSignal.timeout(20_000),
+          })
+        ).status;
+    if (status < 200 || status >= 300) {
+      return {
+        success: false,
+        error: `shared bridge delete failed (HTTP ${status})`,
+      };
+    }
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 };
 
 ElizaClient.prototype.checkBugReportInfo = async function (this: ElizaClient) {

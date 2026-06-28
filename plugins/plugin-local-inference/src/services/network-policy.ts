@@ -212,7 +212,7 @@ interface CapacitorBridge {
 }
 
 function readGlobalCapacitor(): CapacitorBridge | null {
-	const g = globalThis as unknown as {
+	const g = globalThis as {
 		Capacitor?: { Plugins?: CapacitorBridge };
 	};
 	return g.Capacitor?.Plugins ?? null;
@@ -229,7 +229,7 @@ interface IosPathHintsShim {
 }
 
 async function readAndroidMeteredShim(): Promise<boolean | null> {
-	const g = globalThis as unknown as {
+	const g = globalThis as {
 		ElizaNetworkPolicy?: AndroidMeteredShim;
 	};
 	const fn = g.ElizaNetworkPolicy?.getMeteredHint;
@@ -246,7 +246,7 @@ async function readIosPathHintsShim(): Promise<{
 	isExpensive: boolean;
 	isConstrained: boolean;
 } | null> {
-	const g = globalThis as unknown as { ElizaNetworkPolicy?: IosPathHintsShim };
+	const g = globalThis as { ElizaNetworkPolicy?: IosPathHintsShim };
 	const fn = g.ElizaNetworkPolicy?.getPathHints;
 	if (typeof fn !== "function") return null;
 	try {
@@ -268,7 +268,7 @@ interface DesktopBridge {
 }
 
 function readGlobalDesktopBridge(): DesktopBridge | null {
-	const g = globalThis as unknown as {
+	const g = globalThis as {
 		electrobunNative?: DesktopBridge;
 		electronAPI?: DesktopBridge;
 	};
@@ -287,7 +287,7 @@ function readGlobalDesktopBridge(): DesktopBridge | null {
  */
 export function pickActiveProbe(): NetworkProbe {
 	if (isHeadlessRuntime()) return HEADLESS_PROBE;
-	const g = globalThis as unknown as {
+	const g = globalThis as {
 		Capacitor?: { getPlatform?: () => string };
 	};
 	const platform = g.Capacitor?.getPlatform?.();

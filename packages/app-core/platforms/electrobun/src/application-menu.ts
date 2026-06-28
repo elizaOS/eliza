@@ -23,13 +23,6 @@ export interface AppMenuEntry {
 
 const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
   {
-    slug: "lifeops",
-    name: "@elizaos/plugin-personal-assistant",
-    displayName: "LifeOps",
-    windowPath: "/apps/lifeops",
-    hasDetailsPage: true,
-  },
-  {
     slug: "plugin-viewer",
     name: "@elizaos/app-plugin-viewer",
     displayName: "Plugin Viewer",
@@ -70,13 +63,6 @@ const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
     displayName: "Memory Viewer",
     windowPath: "/apps/memories",
     hasDetailsPage: false,
-  },
-  {
-    slug: "steward",
-    name: "@elizaos/plugin-steward-app",
-    displayName: "Steward",
-    windowPath: "/apps/inventory",
-    hasDetailsPage: true,
   },
   {
     slug: "runtime-debugger",

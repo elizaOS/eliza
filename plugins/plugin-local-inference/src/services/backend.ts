@@ -1,21 +1,33 @@
 /**
  * Local-inference backend interface and dispatcher.
  *
- * One shipping implementation lives behind this interface:
+ * Both shipping backends are served by the SAME in-process FFI
+ * `libelizainference` library behind the SAME streaming symbols — the
+ * difference is which in-process runtime the FFI's `llm_backend_select` drives:
  *
- *   - `llama-cpp`       → the optimized in-process FFI llama.cpp path.
+ *   - `llama-cpp`  → the optimized in-process FFI llama.cpp path (the default).
  *     MTP, n-gram drafter, lookahead, `-ot` MoE offload, TurboQuant KV
- *     cache, mlock/no-mmap/mmproj, etc. all live here.
+ *     cache, mlock/no-mmap/mmproj, etc. all live here. Serves the `.gguf`.
+ *   - `litert-lm`  → the in-process LiteRT-LM backend (Android NPU / GPU
+ *     delegate, gated `-DELIZA_ENABLE_LITERT`). Serves a `.litertlm` text
+ *     artifact staged under `<bundleRoot>/text/`. The dispatcher passes
+ *     `ELIZA_LLM_BACKEND=litert-lm` through the load; the C-side
+ *     `llm_backend_select` reads it (and probes `text/*.litertlm`) and routes
+ *     to the LiteRT factory. See `tools/omnivoice/src/llm-backend.h`.
  *
  * The dispatcher decides which one to use per-load based on:
  *
- *   1. Catalog `runtime.optimizations.requiresKernel` — if any specialised
+ *   1. `ELIZA_INFERENCE_BACKEND` env override — `llama-cpp` / `litert-lm` /
+ *      `auto`. A `litert-lm` force is honoured only when the build/platform
+ *      supports LiteRT and the bundle ships a `.litertlm` (else hard error).
+ *   2. A `.litertlm` text artifact in the bundle AND LiteRT support on this
+ *      build/platform → `litert-lm`. GGUF stays the default whenever the
+ *      LiteRT artifact or the build support is absent.
+ *   3. Catalog `runtime.optimizations.requiresKernel` — if any specialised
  *      llama.cpp kernel is required (e.g. `turbo3`), the
- *      dispatcher MUST pick `llama-cpp`. Legacy bindings cannot
+ *      dispatcher picks `llama-cpp`. Legacy bindings cannot
  *      provide these kernels at all.
- *   2. Catalog `runtime.preferredBackend` — retained for metadata
- *      compatibility, but generation still routes through `llama-cpp`.
- *   3. Default: optimized llama.cpp FFI.
+ *   4. Default: optimized llama.cpp FFI.
  *
  * The dispatcher does NOT own backend internals. It owns selection only,
  * plus a small load-state
@@ -53,6 +65,13 @@ export interface BackendLoadOverrides {
 	bundleRoot?: string;
 	/** Manifest path for direct bundle loads not present in the registry. */
 	manifestPath?: string;
+	/**
+	 * Absolute path to a `.litertlm` LiteRT-LM text artifact staged under
+	 * `<bundleRoot>/text/`, when the bundle ships one. Presence (plus LiteRT
+	 * build/platform support) routes the load to the `litert-lm` backend; the
+	 * `.gguf` `modelPath` stays the GGUF default otherwise.
+	 */
+	litertModelPath?: string;
 }
 
 export interface BackendPlan {
@@ -113,6 +132,14 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	 */
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	/**
+	 * Max tokens the FFI backend decodes per `llmStreamNext` step — i.e. the
+	 * granularity of `onTextChunk` emission. Smaller ⇒ smoother token-by-token
+	 * streaming to the UI at the cost of more FFI round-trips per response.
+	 * Unset ⇒ the backend default (coarse, throughput-tuned). The text/chat
+	 * handler sets a small value for smooth streaming; voice leaves it unset.
+	 */
+	maxTokensPerStep?: number;
+	/**
 	 * Whether this generation is user-visible text and therefore eligible for
 	 * voice-mode TTS. Internal JSON / planner calls must not be spoken.
 	 */
@@ -143,6 +170,16 @@ export interface LocalGenerateWithUsageResult {
 	};
 }
 
+/**
+ * The in-process runtime the FFI streaming pipe drives for a given load.
+ * `llama-cpp` is the default GGUF path; `litert-lm` is the LiteRT-LM
+ * `.litertlm` path (same FFI symbols, selected via `ELIZA_LLM_BACKEND` +
+ * the C-side `llm_backend_select`). This is the dispatcher's *selection*,
+ * distinct from `LocalInferenceBackend.id` (the implementation surface, which
+ * stays the single fused FFI backend regardless of the runtime it drives).
+ */
+export type BackendId = "llama-cpp" | "litert-lm";
+
 export interface LocalRuntimeLoadConfig {
 	modelId: string | null;
 	modelPath: string | null;
@@ -152,7 +189,7 @@ export interface LocalRuntimeLoadConfig {
 	gpuLayers: number | null;
 	parallel: number;
 	binaryPath: string | null;
-	backend: "llama-cpp" | null;
+	backend: BackendId | null;
 	mtp: {
 		specType: "draft-mtp";
 		draftMin: number;
@@ -201,6 +238,12 @@ export interface LocalInferenceBackend {
 		maxTokens?: number;
 		temperature?: number;
 		signal?: AbortSignal;
+		/** Per-token callback for streaming vision describe (ABI v13). When set and
+		 * the backend supports streaming, the description is decoded token-by-token
+		 * through the same pipe as chat text; otherwise the backend returns the
+		 * full description and ignores it. */
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		maxTokensPerStep?: number;
 	}): Promise<{
 		text: string;
 		projectorMs?: number;
@@ -249,7 +292,15 @@ export interface LocalInferenceBackend {
 	currentRuntimeLoadConfig?(): LocalRuntimeLoadConfig | null;
 }
 
-export type BackendOverride = "auto" | "llama-cpp";
+export type BackendOverride = "auto" | "llama-cpp" | "litert-lm";
+
+/**
+ * The env name the C-side `llm_backend_select` reads to HARD-select an
+ * in-process runtime. The dispatcher sets it to `litert-lm` for a LiteRT load
+ * and clears it for a llama.cpp load so a prior LiteRT select never leaks into
+ * the next GGUF load. Mirrors `tools/omnivoice/src/llm-backend.h`.
+ */
+export const ELIZA_LLM_BACKEND_ENV = "ELIZA_LLM_BACKEND" as const;
 
 export function readBackendOverride(): BackendOverride {
 	const raw = process.env.ELIZA_INFERENCE_BACKEND?.trim().toLowerCase();
@@ -257,7 +308,40 @@ export function readBackendOverride(): BackendOverride {
 	if (raw === "llama-cpp") {
 		return "llama-cpp";
 	}
+	if (raw === "litert-lm" || raw === "litert" || raw === "litert_lm") {
+		return "litert-lm";
+	}
 	return "auto";
+}
+
+/**
+ * Whether the LiteRT-LM in-process backend is usable on THIS build/platform.
+ * The C-side `LlmBackendFactory::available()` is the runtime authority (it is
+ * compiled in only under `-DELIZA_ENABLE_LITERT` and reports false when the
+ * NPU/GPU delegate is absent), but the TS dispatcher must decide *before* the
+ * FFI load whether to route there at all, so we gate on the same signals the
+ * build/launcher exports:
+ *
+ *   - `ELIZA_ENABLE_LITERT=1` — the explicit opt-in the LiteRT-enabled build
+ *     sets (matches the `-DELIZA_ENABLE_LITERT` CMake gate).
+ *   - `ELIZA_PLATFORM=android` — the NPU/GPU-delegate target where a LiteRT
+ *     `.litertlm` bundle is the on-device path.
+ *
+ * A bundle that ships a `.litertlm` but runs on a build without LiteRT support
+ * loads the GGUF (`llama-cpp`) instead — the artifact is additive, never a
+ * requirement. Returns false unless one of the signals is present, so GGUF
+ * stays the default everywhere LiteRT is not wired.
+ */
+export function litertBackendSupported(
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	if (envFlagIn(env, "ELIZA_ENABLE_LITERT")) return true;
+	return env.ELIZA_PLATFORM?.trim().toLowerCase() === "android";
+}
+
+function envFlagIn(env: NodeJS.ProcessEnv, name: string): boolean {
+	const v = env[name]?.trim().toLowerCase();
+	return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
 function envFlag(name: string): boolean {
@@ -311,13 +395,28 @@ export function __resetReducedModeWarnedForTests(): void {
 
 export interface BackendDecision {
 	/**
-	 * Concrete backend slot the dispatcher routes to. The local stack is
-	 * Eliza-1 only, so this is always `"llama-cpp"` — the fused
-	 * `libelizainference` path that serves Eliza-1 bundles.
+	 * In-process runtime the dispatcher routes this load to. `llama-cpp` (the
+	 * GGUF path) is the default; `litert-lm` is selected only when the bundle
+	 * ships a `.litertlm` AND the build/platform supports LiteRT (or it was
+	 * forced via `ELIZA_INFERENCE_BACKEND=litert-lm`). Both run through the same
+	 * fused `libelizainference` FFI — the selection only changes the env the
+	 * C-side `llm_backend_select` reads.
 	 */
-	backend: "llama-cpp";
+	backend: BackendId;
 	/** Why this backend was chosen — for diagnostics and warnings. */
-	reason: "env-override" | "kernel-required" | "preferred-backend" | "default";
+	reason:
+		| "env-override"
+		| "kernel-required"
+		| "preferred-backend"
+		| "litert-artifact"
+		| "default";
+	/**
+	 * Absolute path to the selected `.litertlm` artifact when `backend ===
+	 * "litert-lm"`, else undefined. The dispatcher exports
+	 * `ELIZA_LLM_BACKEND=litert-lm` for this load so the FFI picks the LiteRT
+	 * factory; the path is surfaced for diagnostics.
+	 */
+	litertModelPath?: string;
 	/** Required kernels declared by the catalog, when any. */
 	kernels: LocalRuntimeKernel[];
 	/**
@@ -336,19 +435,30 @@ export interface BackendDecision {
  * Pure decision function. Easy to unit-test without spawning anything.
  *
  * Inputs are deliberately explicit — the caller resolves the catalog entry,
- * the binary availability, and the env override before calling us.
+ * the binary availability, the env override, and (for LiteRT) the staged
+ * `.litertlm` path + the build/platform support flag before calling us.
  *
  * `binaryKernels`, when present, is the parsed CAPABILITIES.json kernels
  * map from the installed llama.cpp FFI runtime. The dispatcher uses it to
  * compute `unsatisfiedKernels`; null means the binary is older / has no
  * capabilities probe, in which case we trust the model's declaration and
  * let the load attempt clarify.
+ *
+ * `litertModelPath` is the absolute path to a `.litertlm` text artifact when
+ * the bundle ships one (else undefined); `litertSupported` is whether this
+ * build/platform can run LiteRT ({@link litertBackendSupported}). LiteRT is
+ * selected only when BOTH hold, or when forced via
+ * `ELIZA_INFERENCE_BACKEND=litert-lm` (a forced LiteRT select with no
+ * `.litertlm` or no support throws — no silent downgrade to GGUF). GGUF stays
+ * the default in every other case.
  */
 export function decideBackend(input: {
 	override: BackendOverride;
 	catalog: CatalogModel | undefined;
 	llamaCppAvailable: boolean;
 	binaryKernels?: Partial<Record<LocalRuntimeKernel | string, boolean>> | null;
+	litertModelPath?: string | null;
+	litertSupported?: boolean;
 }): BackendDecision {
 	const { override, catalog } = input;
 	const optimizations = catalog?.runtime?.optimizations;
@@ -357,14 +467,55 @@ export function decideBackend(input: {
 		kernels,
 		input.binaryKernels ?? null,
 	);
+	const litertModelPath = input.litertModelPath ?? undefined;
+	const litertSupported = input.litertSupported ?? false;
 
-	// `ELIZA_INFERENCE_BACKEND=llama-cpp` forces the fused path explicitly. The
-	// local stack is Eliza-1 only, so every model routes to the fused runtime
-	// regardless.
+	// `ELIZA_INFERENCE_BACKEND=litert-lm` HARD-forces the LiteRT runtime. It is a
+	// real select, not a hint: a forced LiteRT load with no staged `.litertlm`
+	// or on a build without LiteRT support is an error, never a silent fall back
+	// to GGUF (Commandment 8 — don't paper over a broken pipeline).
+	if (override === "litert-lm") {
+		if (!litertSupported) {
+			throw new Error(
+				"[local-inference] ELIZA_INFERENCE_BACKEND=litert-lm forces the LiteRT-LM " +
+					"backend, but this build/platform does not support it (set ELIZA_ENABLE_LITERT=1 " +
+					"on a LiteRT-enabled build, or run on android). Use llama-cpp, or unset the override.",
+			);
+		}
+		if (!litertModelPath) {
+			throw new Error(
+				"[local-inference] ELIZA_INFERENCE_BACKEND=litert-lm forces the LiteRT-LM " +
+					"backend, but the bundle ships no .litertlm text artifact under text/. " +
+					"Stage a .litertlm into the bundle, or use llama-cpp.",
+			);
+		}
+		return {
+			backend: "litert-lm",
+			reason: "env-override",
+			litertModelPath,
+			kernels,
+			unsatisfiedKernels,
+		};
+	}
+
+	// `ELIZA_INFERENCE_BACKEND=llama-cpp` forces the fused GGUF path explicitly.
 	if (override === "llama-cpp") {
 		return {
 			backend: "llama-cpp",
 			reason: "env-override",
+			kernels,
+			unsatisfiedKernels,
+		};
+	}
+
+	// Auto: when the bundle ships a `.litertlm` AND this build/platform supports
+	// LiteRT, route there (it is the on-device NPU/GPU-delegate path). GGUF stays
+	// the default whenever the artifact or the support is absent.
+	if (litertSupported && litertModelPath) {
+		return {
+			backend: "litert-lm",
+			reason: "litert-artifact",
+			litertModelPath,
 			kernels,
 			unsatisfiedKernels,
 		};
@@ -465,14 +616,33 @@ export class BackendDispatcher implements LocalInferenceBackend {
 			catalog,
 			llamaCppAvailable: this.probeFfiAvailable(),
 			binaryKernels: this.probeBinaryKernels?.() ?? null,
+			litertModelPath: plan.overrides?.litertModelPath ?? null,
+			litertSupported: litertBackendSupported(),
 		});
 	}
 
 	async load(plan: BackendPlan): Promise<void> {
 		const decision = this.decide(plan);
 
+		// Tell the C-side `llm_backend_select` which in-process runtime to drive.
+		// `litert-lm` sets the HARD select; the GGUF path clears it so a prior
+		// LiteRT select never leaks into the next llama.cpp load. The FFI library
+		// is the same singleton either way (`this.ffiStreaming`); only the env
+		// (read at `_open`) changes which factory it picks.
+		if (decision.backend === "litert-lm") {
+			process.env[ELIZA_LLM_BACKEND_ENV] = "litert-lm";
+		} else {
+			delete process.env[ELIZA_LLM_BACKEND_ENV];
+		}
+
 		let effectivePlan = plan;
-		if (decision.unsatisfiedKernels && decision.unsatisfiedKernels.length > 0) {
+		// Kernel-mismatch enforcement is a llama.cpp-only contract — the LiteRT
+		// `.litertlm` path uses none of the fork's KV kernels, so skip it there.
+		if (
+			decision.backend === "llama-cpp" &&
+			decision.unsatisfiedKernels &&
+			decision.unsatisfiedKernels.length > 0
+		) {
 			const missing = decision.unsatisfiedKernels.join(", ");
 			if (localAllowStockKv()) {
 				// Reduced-optimization local mode: the build hasn't dispatched these

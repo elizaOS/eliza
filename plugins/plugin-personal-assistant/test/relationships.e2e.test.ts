@@ -8,7 +8,8 @@
  * lives on `SCHEDULED_TASK` and is covered by `scheduled-task-action.test.ts`.
  */
 
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
+import type { AgentRuntime, IAgentRuntime, Plugin } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
@@ -27,6 +28,18 @@ import {
 } from "./helpers/lifeops-identity-merge-fixtures.ts";
 
 const AGENT_ID = "lifeops-relationships-agent";
+
+/**
+ * Minimal stand-in for the production "eliza" plugin: registers the
+ * knowledge-graph schema + KnowledgeGraphService so contacts (which live in
+ * the runtime graph) resolve through `resolveKnowledgeGraphService`.
+ */
+const knowledgeGraphPlugin: Plugin = {
+  name: "eliza",
+  description: "Test-only knowledge-graph schema + service registration.",
+  schema: knowledgeGraphSchema,
+  services: [KnowledgeGraphService],
+};
 
 function makeMessage(runtime: IAgentRuntime, text: string) {
   return {
@@ -51,7 +64,10 @@ describe("relationships handler — real PGLite", () => {
   let testResult: RealTestRuntimeResult;
 
   beforeAll(async () => {
-    testResult = await createRealTestRuntime({ characterName: AGENT_ID });
+    testResult = await createRealTestRuntime({
+      characterName: AGENT_ID,
+      plugins: [knowledgeGraphPlugin],
+    });
     runtime = testResult.runtime;
     await LifeOpsRepository.bootstrapSchema(runtime);
     service = new LifeOpsService(runtime);
@@ -102,61 +118,6 @@ describe("relationships handler — real PGLite", () => {
     });
     const days = await service.getDaysSinceContact(rel.id);
     expect(days).toBe(0);
-  });
-
-  it("createFollowUp + getDailyFollowUpQueue surface a due follow-up", async () => {
-    const rel = await service.upsertRelationship({
-      name: "Carol",
-      primaryChannel: "email",
-      primaryHandle: "carol@example.com",
-      email: "carol@example.com",
-      phone: null,
-      notes: "",
-      tags: [],
-      relationshipType: "contact",
-      lastContactedAt: null,
-      metadata: {},
-    });
-    const yesterday = new Date(Date.now() - 86400_000).toISOString();
-    const fu = await service.createFollowUp({
-      relationshipId: rel.id,
-      dueAt: yesterday,
-      reason: "annual check-in",
-      priority: 2,
-      draft: null,
-      completedAt: null,
-      metadata: {},
-    });
-    const queue = await service.getDailyFollowUpQueue({});
-    expect(queue.find((f) => f.id === fu.id)).toBeTruthy();
-  });
-
-  it("completeFollowUp removes it from the queue", async () => {
-    const rel = await service.upsertRelationship({
-      name: "Dan",
-      primaryChannel: "email",
-      primaryHandle: "dan@example.com",
-      email: "dan@example.com",
-      phone: null,
-      notes: "",
-      tags: [],
-      relationshipType: "contact",
-      lastContactedAt: null,
-      metadata: {},
-    });
-    const yesterday = new Date(Date.now() - 86400_000).toISOString();
-    const fu = await service.createFollowUp({
-      relationshipId: rel.id,
-      dueAt: yesterday,
-      reason: "ping",
-      priority: 3,
-      draft: null,
-      completedAt: null,
-      metadata: {},
-    });
-    await service.completeFollowUp(fu.id);
-    const queue = await service.getDailyFollowUpQueue({});
-    expect(queue.find((f) => f.id === fu.id)).toBeFalsy();
   });
 
   it("entityAction list handler returns ActionResult", async () => {
@@ -212,13 +173,12 @@ describe("relationships handler — real PGLite", () => {
     );
   });
 
-  // Follow-up cadence (`add_follow_up`, `complete_follow_up`,
-  // `follow_up_list`, `days_since`, `list_overdue_followups`,
-  // `mark_followup_done`, `set_followup_threshold`) lives on the
-  // SCHEDULED_TASK umbrella; the underlying service primitives
-  // (`createFollowUp`, `completeFollowUp`, `getDaysSinceContact`,
-  // `getDailyFollowUpQueue`, etc.) are exercised by the service-level tests
-  // above and by `scheduled-task-action.test.ts`.
+  // Follow-up cadence (`days_since`, `list_overdue_followups`,
+  // `set_followup_threshold`) lives on the SCHEDULED_TASK umbrella. Overdue
+  // follow-ups are derived from contact cadence by `computeOverdueFollowups`
+  // (followup-tracker) over the runtime knowledge graph; there is no separate
+  // LifeOps follow-up table. These are exercised by the followup-tracker tests
+  // and `scheduled-task-action.test.ts`.
 
   it("relationships graph collapses a four-platform person into one canonical node after accepted merges", async () => {
     const fixture = await seedCanonicalIdentityFixture({

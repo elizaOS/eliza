@@ -128,8 +128,10 @@ const REMOTE_VIEW = {
 const PLUGIN_NAMES = [
   "views-integration-wallet",
   "views-integration-dev",
+  "views-integration-modalities",
   "views-integration-remote",
   "views-integration-local-bundle",
+  "todos",
 ];
 
 // ---------------------------------------------------------------------------
@@ -175,6 +177,30 @@ function rawResponse(ctx: ViewsRouteContext): {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/views", () => {
+  it("resolves short first-party plugin names to their workspace package roots", async () => {
+    await registerPluginViews(
+      {
+        name: "todos",
+        description: "short-name first-party plugin",
+        actions: [],
+        views: [
+          {
+            id: "short-name.todos",
+            label: "Short Name Todos",
+            path: "/short-name-todos",
+            bundlePath: "package.json",
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const entry = getView("short-name.todos");
+    expect(entry?.pluginName).toBe("todos");
+    expect(entry?.pluginDir).toContain("plugin-todos");
+    expect(entry?.available).toBe(true);
+  });
+
   it("returns registered views with views key in response body", async () => {
     await registerPluginViews(
       {
@@ -193,7 +219,7 @@ describe("GET /api/views", () => {
     expect(json).toHaveBeenCalledOnce();
     const [, payload] = json.mock.calls[0] as [unknown, { views: unknown[] }];
     expect(Array.isArray(payload.views)).toBe(true);
-    const ids = payload.views.map((v: { id: string }) => v.id);
+    const ids = (payload.views as { id: string }[]).map((v) => v.id);
     expect(ids).toContain("wallet.inventory");
   });
 
@@ -968,6 +994,38 @@ describe("registering and unregistering plugin views", () => {
     const entry = getView("wallet.inventory");
     expect(entry).toBeDefined();
     expect(entry?.pluginName).toBe("views-integration-wallet");
+  });
+
+  it("expands one modalities declaration into per-surface registry entries", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-modalities",
+        description: "multi-surface view",
+        actions: [],
+        views: [
+          {
+            ...WALLET_VIEW,
+            id: "multi.calendar",
+            label: "Calendar",
+            modalities: ["gui", "xr", "tui"],
+          },
+        ],
+      },
+      undefined,
+    );
+
+    expect(getView("multi.calendar", { viewType: "gui" })?.viewType).toBe(
+      "gui",
+    );
+    expect(getView("multi.calendar", { viewType: "xr" })?.viewType).toBe("xr");
+    expect(getView("multi.calendar", { viewType: "tui" })?.viewType).toBe(
+      "tui",
+    );
+    expect(
+      listViews({ developerMode: true, viewType: "tui" }).find(
+        (view) => view.id === "multi.calendar",
+      )?.viewType,
+    ).toBe("tui");
   });
 
   it("unregistering a plugin removes its views from the registry", async () => {

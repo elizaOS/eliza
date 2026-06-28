@@ -1,6 +1,6 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes";
 
@@ -51,7 +51,7 @@ describe("tryHandleRuntimePluginRoute", () => {
         {
           type: "GET",
           path: "/plugin/direct-json",
-          handler: async (_req, res) => {
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
             res.json({ ok: true });
           },
         },
@@ -72,7 +72,7 @@ describe("tryHandleRuntimePluginRoute", () => {
         {
           type: "POST",
           path: "/plugin/chained-json",
-          handler: async (_req, res) => {
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
             res.status(201).json({ created: true });
           },
         },
@@ -96,7 +96,7 @@ describe("tryHandleRuntimePluginRoute", () => {
         {
           type: "GET",
           path: "/plugin/direct-send",
-          handler: async (_req, res) => {
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
             res.send("plain response");
           },
         },
@@ -116,7 +116,7 @@ describe("tryHandleRuntimePluginRoute", () => {
         {
           type: "GET",
           path: "/plugin/chained-send",
-          handler: async (_req, res) => {
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
             res.status(202).send({ accepted: true });
           },
         },
@@ -137,7 +137,7 @@ describe("tryHandleRuntimePluginRoute", () => {
         {
           type: "GET",
           path: "/plugin/custom-json",
-          handler: async (_req, res) => {
+          handler: async (_req: RouteRequest, res: RouteResponse) => {
             res.json({ ok: true });
           },
         },

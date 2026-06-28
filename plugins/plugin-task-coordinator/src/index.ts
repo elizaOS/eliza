@@ -1,4 +1,8 @@
 import type { Plugin, ViewCapability } from "@elizaos/core";
+import {
+  orchestratorStatusCommandAction,
+  registerOrchestratorCommands,
+} from "./orchestrator-command";
 
 const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
   { id: "orchestrator-status", description: "Get orchestrator status" },
@@ -183,57 +187,29 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
 const taskCoordinatorPlugin: Plugin = {
   name: "@elizaos/plugin-task-coordinator",
   description: "Coding agent task coordinator and session control surface.",
+  // Contribute the orchestrator view's slash command into the universal command
+  // registry once the runtime is up. `@elizaos/plugin-commands` boots before app
+  // plugins, so its per-runtime store already exists here (#8790).
+  init: async (_config, runtime) => {
+    registerOrchestratorCommands(runtime.agentId);
+  },
+  // Deterministic handler for the registered slash command.
+  actions: [orchestratorStatusCommandAction],
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // TaskCoordinatorView spatial source. `modalities` is a plain literal here
+    // (index.ts is not in the view bundle), so no brand-new `@elizaos/core`
+    // runtime export reaches the bundle build.
     {
       id: "task-coordinator",
+      viewKind: "preview",
       label: "Task Coordinator",
       description: "Coding agent task threads, sessions, and controls",
       icon: "SquareTerminal",
       path: "/task-coordinator",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "CodingAgentTasksPanel",
-      tags: [
-        "developer",
-        "coding-agent",
-        "coding",
-        "build",
-        "feature",
-        "app builder",
-        "tasks",
-      ],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "task-coordinator",
-      label: "Task Coordinator XR",
-      description: "Coding agent task threads, sessions, and controls",
-      icon: "SquareTerminal",
-      path: "/task-coordinator",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "CodingAgentTasksPanel",
-      tags: [
-        "developer",
-        "coding-agent",
-        "coding",
-        "build",
-        "feature",
-        "app builder",
-        "tasks",
-      ],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "task-coordinator",
-      label: "Task Coordinator TUI",
-      description: "Terminal coding agent task coordinator",
-      icon: "SquareTerminal",
-      path: "/task-coordinator/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "TaskCoordinatorTuiView",
+      componentExport: "TaskCoordinatorView",
       capabilities: [
         {
           id: "list-sessions",
@@ -275,49 +251,25 @@ const taskCoordinatorPlugin: Plugin = {
         "feature",
         "app builder",
         "tasks",
-        "terminal",
       ],
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // OrchestratorView spatial source.
     {
       id: "orchestrator",
+      viewKind: "developer",
+      developerOnly: true,
       label: "Orchestrator",
       description: "Multi-agent task orchestration workbench",
       icon: "Layers",
       path: "/orchestrator",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "OrchestratorWorkbench",
+      componentExport: "OrchestratorView",
       capabilities: ORCHESTRATOR_CAPABILITIES,
       tags: ["developer", "coding-agent", "orchestrator"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "orchestrator",
-      label: "Orchestrator XR",
-      description: "Multi-agent task orchestration workbench",
-      icon: "Layers",
-      path: "/orchestrator",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "OrchestratorWorkbench",
-      capabilities: ORCHESTRATOR_CAPABILITIES,
-      tags: ["developer", "coding-agent", "orchestrator"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "orchestrator",
-      label: "Orchestrator TUI",
-      description: "Terminal multi-agent task orchestration workbench",
-      icon: "Terminal",
-      path: "/orchestrator/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "OrchestratorTuiView",
-      capabilities: ORCHESTRATOR_CAPABILITIES,
-      tags: ["developer", "coding-agent", "orchestrator", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },
@@ -325,3 +277,10 @@ const taskCoordinatorPlugin: Plugin = {
 };
 
 export default taskCoordinatorPlugin;
+export {
+  ORCHESTRATOR_STATUS_COMMAND_ACTION,
+  ORCHESTRATOR_STATUS_COMMAND_KEY,
+  ORCHESTRATOR_VIEW_ID,
+  orchestratorStatusCommandAction,
+  registerOrchestratorCommands,
+} from "./orchestrator-command";

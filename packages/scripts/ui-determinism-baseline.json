@@ -142,5 +142,8 @@
   ],
   "packages/ui/src/components/shell/usePromptSuggestions.ts": [
     "L279 new Date()"
+  ],
+  "packages/ui/src/widgets/__fixtures__/home-widget-mock-data.ts": [
+    "L69 Date.now()"
   ]
 }

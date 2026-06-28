@@ -7,8 +7,8 @@ Per device tier:
 
 | Tier              | Bundle revision      | Backbone                       | On-disk (Q8 ONNX) | Languages |
 | ----------------- | -------------------- | ------------------------------ | ----------------- | --------- |
-| `0_8b`, `2b`      | `v1.2.2-en`          | SmolLM2-135M distilled         | ~66 MB            | EN only   |
-| `4b`+             | `v0.4.1-intl`        | Pruned Qwen2.5-0.5B            | ~396 MB           | 14 langs  |
+| `2b`              | `v1.2.2-en`          | SmolLM2-135M distilled         | ~66 MB            | EN only   |
+| `4b` / `9b` / `27b` / `27b-256k` | `v0.4.1-intl` | Pruned Qwen2.5-0.5B | ~396 MB | 14 langs |
 | `--turn-license=apache` (override) | n/a | SmolLM2-135M binary head (`latishab/turnsense`) | ~176 MB | EN only |
 
 This directory hosts the **fine-tune + eval pipeline** for those models:
@@ -78,7 +78,7 @@ slot the runtime validator enforces.
 of the eliza-1 drafter (the small model MTP already keeps warm for
 speculative decoding) instead of a standalone ONNX. The runtime layers
 the adapter onto a dedicated EOT context at voice-session start and
-reads P(`<|im_end|>`) directly off the live model — see
+reads P(`<end_of_turn>`) directly off the live model — see
 [`plugins/plugin-local-inference/src/services/voice/eliza1-eot-scorer.ts`](../../../../plugins/plugin-local-inference/src/services/voice/eliza1-eot-scorer.ts).
 
 ```bash

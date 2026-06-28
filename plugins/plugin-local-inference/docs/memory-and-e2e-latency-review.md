@@ -31,7 +31,7 @@ Approx wall-clock for first audio (2B entry tier, from harness defaults + code):
 | Stage | Span | Typical | Blocking? |
 |---|---|---|---|
 | VAD endpoint | mic → asr start | ~32 ms hop | gates ASR |
-| **ASR** | `pipeline.ts:317-480` feed+flush | 100 ms (whisper) / ~300 ms (Qwen3-ASR) | **fully blocks** drafter |
+| **ASR** | `pipeline.ts:317-480` feed+flush | ~300 ms fused local ASR budget | **fully blocks** drafter |
 | drafter round-1 | `pipeline.ts:350-358` | ~50–100 ms | awaited |
 | verifier | `pipeline.ts:386` | ~50–100 ms | overlapped w/ next draft |
 | phrase boundary | `phrase-chunker.ts:39-46` | 0–**700 ms** (time-budget flush) | **gates first TTS** |

@@ -26,7 +26,8 @@ import type {
 	GeneratedVoiceCorpus,
 } from "./corpus-generator";
 import {
-	scoreDiarization,
+	type DiarizationTurnSample,
+	scoreDiarizationTimeline,
 	scoreEchoRejection,
 	scoreEntityExtraction,
 	scoreEotDecision,
@@ -67,6 +68,15 @@ export interface VoiceTurnObservation {
 }
 
 export interface VoiceWorkbenchServices {
+	/**
+	 * Optional one-shot hook before a scenario's turns are scored. Real services
+	 * use this to enroll speaker centroids from the generated corpus; mock
+	 * services can omit it.
+	 */
+	prepareScenario?(args: {
+		scenario: VoiceScenario;
+		corpus: GeneratedVoiceCorpus;
+	}): Promise<void> | void;
 	/**
 	 * Feed one turn's audio slice through the real services and report what was
 	 * observed. The `label` carries the turn's ground truth (so a mock can echo
@@ -158,6 +168,7 @@ export async function runVoiceScenarioHeadless(
 
 	const assertions = scenario.assertions ?? {};
 	const cases: VoiceE2eCaseResult[] = [];
+	await services.prepareScenario?.({ scenario, corpus });
 
 	// When a capture sink is active, write the full corpus once + each per-turn
 	// slice as `.wav` artifacts and record their (run-dir-relative) paths.
@@ -181,10 +192,7 @@ export async function runVoiceScenarioHeadless(
 		expected: boolean;
 		latencyMs?: number;
 	}> = [];
-	const diarSamples: Array<{
-		predictedLabel: string | null;
-		expectedLabel: string;
-	}> = [];
+	const diarTurns: DiarizationTurnSample[] = [];
 	const respondSamples: Array<{ responded: boolean; expectRespond: boolean }> =
 		[];
 	const voiceEntitySamples: Array<{
@@ -246,10 +254,17 @@ export async function runVoiceScenarioHeadless(
 				? { latencyMs: obs.eotLatencyMs }
 				: {}),
 		});
-		diarSamples.push({
-			predictedLabel: obs.predictedSpeakerLabel,
-			expectedLabel: label.speaker,
-		});
+		// Diarization scores REAL speaker turns only — an agent-echo turn is the
+		// agent's own voice bleeding back, not a speaker to attribute, so it is
+		// handled by the echo-rejection scorer instead.
+		if (!label.isAgentEcho) {
+			diarTurns.push({
+				predictedLabel: obs.predictedSpeakerLabel,
+				expectedLabel: label.speaker,
+				startMs: (label.speechStartSample / corpus.sampleRate) * 1000,
+				endMs: (label.speechEndSample / corpus.sampleRate) * 1000,
+			});
+		}
 		respondSamples.push({
 			responded: obs.responded,
 			expectRespond: label.expectRespond,
@@ -293,11 +308,15 @@ export async function runVoiceScenarioHeadless(
 				: {}),
 		}),
 	);
-	cases.push(
-		scoreDiarization(diarSamples, {
-			...(assertions.maxDer !== undefined ? { maxDer: assertions.maxDer } : {}),
-		}),
-	);
+	if (diarTurns.length > 0) {
+		cases.push(
+			scoreDiarizationTimeline(diarTurns, {
+				...(assertions.maxDer !== undefined
+					? { maxDer: assertions.maxDer }
+					: {}),
+			}),
+		);
+	}
 	cases.push(
 		scoreRespondDecision(respondSamples, {
 			...(assertions.minRespondAccuracy !== undefined

@@ -334,7 +334,7 @@ export function ApiExplorerSurface() {
                   placeholder="Search..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 w-full rounded-sm border border-white/10 bg-neutral-900 pl-7 pr-7 text-[11px] text-white placeholder:text-neutral-500 focus:border-[#FF5800]/50 focus:outline-none focus:ring-1 focus:ring-[#FF5800]/50 sm:h-9 sm:w-48 sm:rounded-sm sm:pl-9 sm:pr-8 sm:text-sm"
+                  className="h-7 w-full rounded-sm border border-white/10 bg-neutral-900 pl-7 pr-7 text-[11px] text-white placeholder:text-neutral-500     sm:h-9 sm:w-48 sm:rounded-sm sm:pl-9 sm:pr-8 sm:text-sm"
                 />
                 {searchQuery && (
                   <button

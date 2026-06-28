@@ -8,6 +8,9 @@ const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const repoRoot = path.resolve(new URL("../../..", import.meta.url).pathname);
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const DEMO_ORCHESTRATOR = process.env.ELIZA_UI_SMOKE_DEMO_ORCHESTRATOR === "1";
+const HUMAN_CHAT_FIXTURES = process.env.ELIZA_UI_SMOKE_HUMAN_CHAT === "1";
+const SMOKE_NOTIFICATIONS =
+  process.env.ELIZA_UI_SMOKE_NOTIFICATIONS === "1";
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
 let lifeOpsAppEnabled = true;
@@ -74,39 +77,37 @@ function readSmokeVrm() {
 
 const SMOKE_VRM = readSmokeVrm();
 
+// A collapsed plugin declares ONE view that draws gui + tui (+ xr) from the
+// same `<Name>View` componentExport and the same bundle on the same `/<id>`
+// route. In the stub a `modalities` 6th element expands that single declaration
+// into one gui object + one tui object (both at `/<id>`, both serving the same
+// componentExport), mirroring how the real /api/views collapses modalities.
+// Plugins that still declare a standalone tui route (training) keep a separate
+// `tui` row with its own `/<id>/tui` path below.
 const smokeViewDeclarations = [
-  ["companion", "Companion", "plugin-companion", "/companion", "CompanionView"],
   [
     "companion",
-    "Companion TUI",
+    "Companion",
     "plugin-companion",
-    "/companion/tui",
-    "CompanionTuiView",
-    "tui",
+    "/companion",
+    "CompanionView",
+    ["gui", "tui"],
   ],
-  ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsAppView"],
   [
     "contacts",
-    "Contacts TUI",
+    "Contacts",
     "plugin-contacts",
-    "/contacts/tui",
-    "ContactsTuiView",
-    "tui",
+    "/contacts",
+    "ContactsView",
+    ["gui", "tui"],
   ],
   [
     "hyperliquid",
     "Hyperliquid",
-    "plugin-hyperliquid-app",
+    "plugin-hyperliquid",
     "/hyperliquid",
-    "HyperliquidAppView",
-  ],
-  [
-    "hyperliquid",
-    "Hyperliquid TUI",
-    "plugin-hyperliquid-app",
-    "/hyperliquid/tui",
-    "HyperliquidTuiView",
-    "tui",
+    "HyperliquidView",
+    ["gui", "tui"],
   ],
   // NOTE: the LifeOps overview view was removed (PA no longer registers a
   // `lifeops` view). Its stub entries are deleted so the smoke launcher matches
@@ -118,6 +119,14 @@ const smokeViewDeclarations = [
   // `/documents` collides with the built-in "documents" tab (App.tsx findView
   // matches `/${tab}`), which would hijack the `/character/documents` route.
   ["calendar", "Calendar", "plugin-calendar", "/calendar", "CalendarView"],
+  ["notes", "Notes", "plugin-simple-views", "/notes", "NotesView"],
+  [
+    "simple-calendar",
+    "Simple Calendar",
+    "plugin-simple-views",
+    "/simple-calendar",
+    "SimpleCalendarView",
+  ],
   ["finances", "Finances", "plugin-finances", "/finances", "FinancesView"],
   ["focus", "Focus", "plugin-blocker", "/focus", "FocusView"],
   ["goals", "Goals", "plugin-goals", "/goals", "GoalsView"],
@@ -136,83 +145,58 @@ const smokeViewDeclarations = [
     "Messages",
     "plugin-messages",
     "/messages",
-    "MessagesPluginView",
-  ],
-  [
-    "messages",
-    "Messages TUI",
-    "plugin-messages",
-    "/messages/tui",
-    "MessagesTuiView",
-    "tui",
+    "MessagesView",
+    ["gui", "tui"],
   ],
   [
     "model-tester",
     "Model Tester",
     "app-model-tester",
     "/model-tester",
-    "ModelTesterAppView",
+    "ModelTesterView",
+    ["gui", "tui"],
   ],
-  [
-    "model-tester",
-    "Model Tester TUI",
-    "app-model-tester",
-    "/model-tester/tui",
-    "ModelTesterTuiView",
-    "tui",
-  ],
-  ["phone", "Phone", "plugin-phone", "/phone", "PhonePluginView"],
-  ["phone", "Phone TUI", "plugin-phone", "/phone/tui", "PhoneTuiView", "tui"],
+  // Phone collapsed to ONE source: gui + tui (+ xr) all mount the single
+  // PhoneView spatial component from the same bundle.
+  ["phone", "Phone", "plugin-phone", "/phone", "PhoneView", ["gui", "tui"]],
   [
     "polymarket",
     "Polymarket",
-    "plugin-polymarket-app",
+    "plugin-polymarket",
     "/polymarket",
-    "PolymarketAppView",
+    "PolymarketView",
+    ["gui", "tui"],
   ],
-  [
-    "polymarket",
-    "Polymarket TUI",
-    "plugin-polymarket-app",
-    "/polymarket/tui",
-    "PolymarketTuiView",
-    "tui",
-  ],
-  ["shopify", "Shopify", "plugin-shopify-ui", "/shopify", "ShopifyAppView"],
   [
     "shopify",
-    "Shopify TUI",
-    "plugin-shopify-ui",
-    "/shopify/tui",
-    "ShopifyTuiView",
-    "tui",
+    "Shopify",
+    "plugin-shopify",
+    "/shopify",
+    "ShopifyView",
+    ["gui", "tui"],
   ],
-  ["steward", "Steward", "plugin-steward-app", "/steward", "StewardView"],
   [
     "steward",
-    "Steward TUI",
-    "plugin-steward-app",
-    "/steward/tui",
-    "StewardTuiView",
-    "tui",
+    "Steward",
+    "/steward",
+    "StewardView",
+    ["gui", "tui"],
   ],
-  ["vincent", "Vincent", "plugin-vincent", "/vincent", "VincentAppView"],
   [
     "vincent",
-    "Vincent TUI",
+    "Vincent",
     "plugin-vincent",
-    "/vincent/tui",
-    "VincentTuiView",
-    "tui",
+    "/vincent",
+    "VincentView",
+    ["gui", "tui"],
   ],
-  ["wallet", "Wallet", "plugin-wallet-ui", "/wallet", "InventoryView"],
   [
     "wallet",
-    "Wallet TUI",
+    "Wallet",
     "plugin-wallet-ui",
-    "/wallet/tui",
-    "InventoryTuiView",
-    "tui",
+    "/wallet",
+    "InventoryView",
+    ["gui", "tui"],
   ],
   [
     "vector-browser",
@@ -221,61 +205,22 @@ const smokeViewDeclarations = [
     "/vector-browser",
     "VectorBrowserView",
   ],
-  ["feed", "Feed", "plugin-feed", "/feed", "FeedOperatorSurface"],
-  ["feed", "Feed TUI", "plugin-feed", "/feed/tui", "FeedTuiView", "tui"],
-  ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
+  ["feed", "Feed", "plugin-feed", "/feed", "FeedView", ["gui", "tui"]],
   [
     "views-manager",
-    "Views TUI",
+    "Views",
     "plugin-app-control",
-    "/views/tui",
-    "ViewManagerTuiView",
-    "tui",
-  ],
-  [
-    "clawville",
-    "Clawville",
-    "plugin-clawville",
-    "/clawville",
-    "ClawvilleOperatorSurface",
-  ],
-  [
-    "clawville",
-    "Clawville TUI",
-    "plugin-clawville",
-    "/clawville/tui",
-    "ClawvilleTuiView",
-    "tui",
-  ],
-  [
-    "defense-of-the-agents",
-    "Defense of the Agents",
-    "plugin-defense-of-the-agents",
-    "/defense-of-the-agents",
-    "DefenseAgentsOperatorSurface",
-  ],
-  [
-    "defense-of-the-agents",
-    "Defense of the Agents TUI",
-    "plugin-defense-of-the-agents",
-    "/defense-of-the-agents/tui",
-    "DefenseAgentsTuiView",
-    "tui",
+    "/views",
+    "ViewManagerView",
+    ["gui", "tui"],
   ],
   [
     "screenshare",
     "Screenshare",
     "plugin-screenshare",
     "/screenshare",
-    "ScreenshareOperatorSurface",
-  ],
-  [
-    "screenshare",
-    "Screenshare TUI",
-    "plugin-screenshare",
-    "/screenshare/tui",
-    "ScreenshareTuiView",
-    "tui",
+    "ScreenshareView",
+    ["gui", "tui"],
   ],
   [
     "social-alpha",
@@ -289,15 +234,16 @@ const smokeViewDeclarations = [
     "Task Coordinator",
     "plugin-task-coordinator",
     "/task-coordinator",
-    "CodingAgentTasksPanel",
+    "TaskCoordinatorView",
+    ["gui", "tui"],
   ],
   [
-    "task-coordinator",
-    "Task Coordinator TUI",
+    "orchestrator",
+    "Orchestrator",
     "plugin-task-coordinator",
-    "/task-coordinator/tui",
-    "TaskCoordinatorTuiView",
-    "tui",
+    "/orchestrator",
+    "OrchestratorView",
+    ["gui", "tui"],
   ],
   [
     "trajectory-logger",
@@ -305,15 +251,10 @@ const smokeViewDeclarations = [
     "plugin-trajectory-logger",
     "/trajectory-logger",
     "TrajectoryLoggerView",
+    ["gui", "tui"],
   ],
-  [
-    "trajectory-logger",
-    "Trajectory Logger TUI",
-    "plugin-trajectory-logger",
-    "/trajectory-logger/tui",
-    "TrajectoryLoggerTuiView",
-    "tui",
-  ],
+  // Training is NOT collapsed: it keeps a standalone gui route plus a separate
+  // tui declaration on its own `/training/tui` route.
   ["training", "Fine Tuning", "plugin-training", "/training", "FineTuningView"],
   [
     "training",
@@ -325,41 +266,74 @@ const smokeViewDeclarations = [
   ],
 ];
 
-const smokeViews = smokeViewDeclarations.map(
-  ([id, label, pluginDirName, viewPath, componentExport, viewType = "gui"]) => {
-    const encodedId = encodeURIComponent(id);
-    const query =
-      viewType === "tui" ? "?viewType=tui&v=ui-smoke" : "?v=ui-smoke";
-    const bundlePath = path.join(
-      repoRoot,
-      "plugins",
-      pluginDirName,
-      "dist",
-      "views",
-      "bundle.js",
+function smokeViewObject({
+  id,
+  label,
+  pluginDirName,
+  viewPath,
+  componentExport,
+  viewType,
+}) {
+  const encodedId = encodeURIComponent(id);
+  const query = viewType === "tui" ? "?viewType=tui&v=ui-smoke" : "?v=ui-smoke";
+  const bundlePath = path.join(
+    repoRoot,
+    "plugins",
+    pluginDirName,
+    "dist",
+    "views",
+    "bundle.js",
+  );
+  return {
+    id,
+    label,
+    viewType,
+    pluginName: `@elizaos/${pluginDirName}`,
+    path: viewPath,
+    order: 100,
+    bundlePath: "dist/views/bundle.js",
+    bundleUrl: `/api/views/${encodedId}/bundle.js${query}`,
+    componentExport,
+    available: true,
+    realBundleAvailable: existsSync(bundlePath),
+    visibleInManager: true,
+    capabilities: [
+      {
+        id: "get-state",
+        label: "Get state",
+        inputSchema: { type: "object" },
+      },
+    ],
+    _smokePluginDirName: pluginDirName,
+  };
+}
+
+// A collapsed declaration carries a `modalities` array as its 6th element and
+// expands to one view object per surface (gui + tui), all sharing the same
+// `/<id>` route and `<Name>View` componentExport. A legacy declaration carries
+// a single `viewType` string (default "gui").
+const smokeViews = smokeViewDeclarations.flatMap(
+  ([
+    id,
+    label,
+    pluginDirName,
+    viewPath,
+    componentExport,
+    modalitiesOrViewType = "gui",
+  ]) => {
+    const viewTypes = Array.isArray(modalitiesOrViewType)
+      ? modalitiesOrViewType
+      : [modalitiesOrViewType];
+    return viewTypes.map((viewType) =>
+      smokeViewObject({
+        id,
+        label,
+        pluginDirName,
+        viewPath,
+        componentExport,
+        viewType,
+      }),
     );
-    return {
-      id,
-      label,
-      viewType,
-      pluginName: `@elizaos/${pluginDirName}`,
-      path: viewPath,
-      order: 100,
-      bundlePath: "dist/views/bundle.js",
-      bundleUrl: `/api/views/${encodedId}/bundle.js${query}`,
-      componentExport,
-      available: true,
-      realBundleAvailable: existsSync(bundlePath),
-      visibleInManager: true,
-      capabilities: [
-        {
-          id: "get-state",
-          label: "Get state",
-          inputSchema: { type: "object" },
-        },
-      ],
-      _smokePluginDirName: pluginDirName,
-    };
   },
 );
 
@@ -527,19 +501,13 @@ const stubCatalogApps = [
     category: "social",
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-steward-app",
-    displayName: "Steward",
-    description: "Review wallet approvals and inventory status.",
-    capabilities: ["wallet", "approvals", "inventory"],
-  }),
-  stubCatalogApp({
     name: "@elizaos/plugin-elizamaker",
     displayName: "ElizaMaker",
     description: "Run drop, mint, whitelist, and verification workflows.",
     capabilities: ["drops", "minting", "whitelist"],
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-shopify-ui",
+    name: "@elizaos/plugin-shopify",
     displayName: "Shopify",
     description: "Manage Shopify store operations from the agent workspace.",
     category: "platform",
@@ -551,14 +519,14 @@ const stubCatalogApps = [
     category: "platform",
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-hyperliquid-app",
+    name: "@elizaos/plugin-hyperliquid",
     displayName: "Hyperliquid",
     description: "Inspect Hyperliquid markets, positions, and order status.",
     category: "platform",
     capabilities: ["hyperliquid", "trading", "wallet"],
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-polymarket-app",
+    name: "@elizaos/plugin-polymarket",
     displayName: "Polymarket",
     description: "Browse prediction markets and native trading readiness.",
     category: "platform",
@@ -638,6 +606,53 @@ const stubMemoryBrowseResponse = {
   limit: 50,
   offset: 0,
 };
+
+const simpleViewsState = {
+  notes: [
+    {
+      id: "note-ui-smoke",
+      title: "UI smoke note",
+      body: "Rendered from the optional simple views plugin.",
+      color: "yellow",
+      createdAt: "2026-06-25T00:00:00.000Z",
+      updatedAt: "2026-06-25T00:00:00.000Z",
+    },
+  ],
+  events: [
+    {
+      id: "event-ui-smoke",
+      title: "UI smoke calendar event",
+      date: "2026-06-25",
+      time: "09:00",
+      notes: "Rendered from the optional simple views plugin.",
+      color: "green",
+      createdAt: "2026-06-25T00:00:00.000Z",
+    },
+  ],
+  selectedDate: "2026-06-25",
+};
+
+const smokeNotifications = [
+  {
+    id: "smoke-notification-view-qa",
+    title: "View switching ready",
+    body: "Notes and Simple Calendar are registered for desktop QA.",
+    category: "workflow",
+    priority: "high",
+    source: "ui-smoke",
+    createdAt: Date.UTC(2026, 5, 25, 9, 0, 0),
+    deepLink: "/views",
+  },
+  {
+    id: "smoke-notification-cloud-chat",
+    title: "Cloud chat stub online",
+    body: "The smoke backend is serving deterministic chat responses.",
+    category: "status",
+    priority: "normal",
+    source: "ui-smoke",
+    createdAt: Date.UTC(2026, 5, 25, 8, 55, 0),
+  },
+];
 
 const emptyComputerUseApprovalSnapshot = {
   mode: "full_control",
@@ -1207,6 +1222,12 @@ function normalizeAssistantInput(value) {
 
 function classifyAssistantAction(text) {
   const normalized = text.toLowerCase();
+  if (/\b(note|notes|sticky)\b/.test(normalized)) {
+    return { type: "navigate", target: "/notes" };
+  }
+  if (/\b(calendar|schedule|event|events)\b/.test(normalized)) {
+    return { type: "navigate", target: "/simple-calendar" };
+  }
   if (/\b(wallet|inventory|address|balance)\b/.test(normalized)) {
     return { type: "navigate", target: "/wallet" };
   }
@@ -1220,6 +1241,51 @@ function classifyAssistantAction(text) {
     return { type: "navigate", target: "/chat" };
   }
   return { type: "noop", target: null };
+}
+
+function navigationDetailForTarget(target) {
+  switch (target) {
+    case "/notes":
+      return { viewId: "notes", viewPath: "/notes", viewLabel: "Notes" };
+    case "/simple-calendar":
+      return {
+        viewId: "simple-calendar",
+        viewPath: "/simple-calendar",
+        viewLabel: "Simple Calendar",
+      };
+    case "/wallet":
+      return { viewId: "wallet", viewPath: "/wallet", viewLabel: "Wallet" };
+    case "/views":
+      return { viewPath: "/views", viewLabel: "Springboard" };
+    case "/settings":
+      return {
+        viewId: "settings",
+        viewPath: "/settings",
+        viewLabel: "Settings",
+      };
+    case "/chat":
+      return { viewPath: "/chat", viewLabel: "Chat" };
+    default:
+      return typeof target === "string" && target.length > 0
+        ? { viewPath: target }
+        : null;
+  }
+}
+
+function maybeBroadcastAssistantNavigation(text) {
+  if (!HUMAN_CHAT_FIXTURES) return;
+  const action = classifyAssistantAction(text);
+  if (action.type !== "navigate") return;
+  const detail = navigationDetailForTarget(action.target);
+  if (!detail) return;
+  setTimeout(() => {
+    broadcastWsEvent({
+      type: "shell:navigate:view",
+      viewType: "gui",
+      alwaysOnTop: false,
+      ...detail,
+    });
+  }, 50);
 }
 
 function createDeterministicAssistantText({ body, conversationId, transport }) {
@@ -1238,6 +1304,21 @@ function createDeterministicAssistantText({ body, conversationId, transport }) {
       action: classifyAssistantAction(inputText),
     }).slice(0, -2)}`;
   }
+  const action = classifyAssistantAction(inputText);
+  if (HUMAN_CHAT_FIXTURES) {
+    if (action.type === "navigate") {
+      const label =
+        action.target === "/simple-calendar"
+          ? "Simple Calendar"
+          : action.target === "/notes"
+            ? "Notes"
+            : action.target?.replace(/^\//, "") || "that view";
+      return `Opening ${label}.`;
+    }
+    return inputText
+      ? `I received "${inputText}".`
+      : "I am ready when you are.";
+  }
   const payload = {
     fixture: "ui-smoke-assistant-v1",
     registrySeam: "strict-fixture-registry",
@@ -1248,7 +1329,7 @@ function createDeterministicAssistantText({ body, conversationId, transport }) {
       length: inputText.length,
       hash: stableTextHash(inputText),
     },
-    action: classifyAssistantAction(inputText),
+    action,
   };
   return JSON.stringify(payload);
 }
@@ -3213,7 +3294,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/notifications") {
-    sendJson(req, res, 200, { notifications: [], unreadCount: 0 });
+    const notifications = SMOKE_NOTIFICATIONS ? smokeNotifications : [];
+    sendJson(req, res, 200, {
+      notifications,
+      unreadCount: notifications.filter((notification) => {
+        return !notification.readAt;
+      }).length,
+    });
     return;
   }
 
@@ -3695,6 +3782,7 @@ const server = http.createServer(async (req, res) => {
       writeSseEvent(res, { type: "token", text, fullText: text });
       writeSseEvent(res, { type: "done", fullText: text, agentName: "Eliza" });
       res.end();
+      maybeBroadcastAssistantNavigation(body.text);
       return;
     }
 
@@ -3708,6 +3796,7 @@ const server = http.createServer(async (req, res) => {
       });
       appendStubMessage(conversationId, createStubMessage("assistant", text));
       sendJson(req, res, 200, { text, agentName: "Eliza" });
+      maybeBroadcastAssistantNavigation(body.text);
       return;
     }
   }
@@ -4329,6 +4418,15 @@ const server = http.createServer(async (req, res) => {
       totalBuffered: 0,
       replayed: true,
     });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/approvals") {
+    // Mirror the canonical pending-actions route
+    // (packages/agent/src/api/approval-routes.ts). With no approval service in
+    // the smoke stub, the real route serves an empty pending list so the home
+    // widget stays quiet and retries without logging a 501.
+    sendJson(req, res, 200, { pending: [] });
     return;
   }
 
@@ -5050,6 +5148,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/simple-views/state") {
+    sendJson(req, res, 200, simpleViewsState);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/simple-views/interact") {
+    await drainRequest(req);
+    sendJson(req, res, 200, {
+      success: true,
+      text: "OK",
+      state: simpleViewsState,
+    });
+    return;
+  }
+
   if (
     req.method === "GET" &&
     url.pathname === "/api/__ui-smoke/unhandled-requests"
@@ -5217,6 +5330,15 @@ wsServer.on("connection", (ws) => {
   ws.send(JSON.stringify({ type: "ready" }));
   ws.on("message", () => {});
 });
+
+function broadcastWsEvent(payload) {
+  const message = JSON.stringify(payload);
+  for (const client of wsServer.clients) {
+    if (client.readyState === 1) {
+      client.send(message);
+    }
+  }
+}
 
 server.listen(port, "127.0.0.1", () => {
   console.log(

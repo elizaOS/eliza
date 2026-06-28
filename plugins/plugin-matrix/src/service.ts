@@ -15,6 +15,7 @@ import {
   type Content,
   createUniqueUuid,
   type EventPayload,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   lifeOpsPassiveConnectorsEnabled,
@@ -1335,6 +1336,17 @@ export class MatrixService extends Service implements IMatrixService {
       } catch (err) {
         logger.warn(
           `Matrix inbound memory persist failed: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+      try {
+        await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+          runtime: this.runtime,
+          message: coreMessage,
+          source: MATRIX_SERVICE_NAME,
+        });
+      } catch (err) {
+        logger.warn(
+          `Matrix inbound event emit failed: ${err instanceof Error ? err.message : String(err)}`
         );
       }
       return;

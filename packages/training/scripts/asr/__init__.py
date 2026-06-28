@@ -1,1 +1,1 @@
-# ASR fine-tune scaffolding for Qwen3-ASR (eliza-1 ASR model).
+# ASR fine-tune scaffolding for frozen eliza-1 ASR artifacts.

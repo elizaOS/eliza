@@ -29,9 +29,7 @@ import {
 import { persistTranscriptAudioWav } from "./transcript-audio-store.js";
 
 function service(ctx: RouteHandlerContext): TranscriptService {
-	return new TranscriptService(
-		ctx.runtime as unknown as TranscriptServiceRuntime,
-	);
+	return new TranscriptService(ctx.runtime as TranscriptServiceRuntime);
 }
 
 /** The body a recording session POSTs to create a transcript record. */

@@ -8,22 +8,33 @@ function readSource(relativePath: string): string {
   return readFileSync(resolve(root, relativePath), "utf8");
 }
 
-describe("facewear visual copy", () => {
-  it("keeps the XR view on shell theme tokens instead of a custom hardcoded palette", () => {
-    const source = readSource("ui/FacewearXrView.tsx");
+// Glyphs the spatial / shell surfaces must not hardcode (custom palettes,
+// raw color literals, emoji). The collapsed facewear views render through the
+// shared spatial vocabulary + shell theme tokens, never a bespoke palette.
+const FORBIDDEN = ["#0a0a0c", "#6366f1", "#a1a1aa", "rgba("];
 
-    expect(source).toContain("bg-bg");
-    expect(source).toContain("text-txt");
-    expect(source).toContain("border-border");
-    expect(source).not.toContain("#0a0a0c");
-    expect(source).not.toContain("#6366f1");
-    expect(source).not.toContain("#a1a1aa");
-    expect(source).not.toContain("rgba(");
-    expect(source).not.toContain("<p");
+describe("facewear visual copy", () => {
+  it("keeps the unified Facewear view on the shared spatial vocabulary, not a custom palette", () => {
+    for (const file of [
+      "components/FacewearView.tsx",
+      "components/FacewearSpatialView.tsx",
+    ]) {
+      const source = readSource(file);
+      for (const glyph of FORBIDDEN) {
+        expect(source, `${file} must not contain "${glyph}"`).not.toContain(
+          glyph,
+        );
+      }
+      // The spatial source uses the @elizaos/ui/spatial primitives, never raw
+      // HTML tags it would have to style itself.
+      expect(source, `${file} renders via spatial primitives`).toContain(
+        "@elizaos/ui/spatial",
+      );
+    }
   });
 
   it("does not render redundant helper copy under the Facewear header", () => {
-    const source = readSource("ui/FacewearView.tsx");
+    const source = readSource("components/FacewearView.tsx");
 
     expect(source).not.toContain(
       "Manage all connected XR devices and smartglasses.",

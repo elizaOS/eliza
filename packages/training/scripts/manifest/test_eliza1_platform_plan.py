@@ -56,17 +56,26 @@ def test_mtp_required_files_match_bundle_layout() -> None:
     assert "mtp/validation-real.json" in tier_plan.required_files
     assert "mtp/runtime-smoke-native.json" in tier_plan.required_files
     assert "mtp/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
-    small_plan = build_plan()["0_8b"]
-    assert "mtp/drafter-0_8b.gguf" in small_plan.required_files
+    small_plan = build_plan()["2b"]
+    assert "mtp/drafter-2b.gguf" in small_plan.required_files
     assert "mtp/target-meta.json" in small_plan.required_files
     assert "mtp/validation-real.json" in small_plan.required_files
     assert "mtp/runtime-smoke-native.json" in small_plan.required_files
     assert "licenses/LICENSE.mtp" in small_plan.required_files
 
 
+def test_gemma_quantization_sidecars_follow_required_kernels() -> None:
+    plan = build_plan()
+    for tier_plan in plan.values():
+        assert "quantization/turboquant.json" in tier_plan.required_files
+        assert "quantization/fused_turboquant.json" in tier_plan.required_files
+        assert "quantization/qjl_config.json" not in tier_plan.required_files
+        assert "quantization/polarquant_config.json" not in tier_plan.required_files
+
+
 def test_text_contexts_ship_half_and_native_contexts() -> None:
     plan = build_plan()
-    for tier in ("0_8b", "2b", "4b", "9b", "27b"):
+    for tier in ("2b", "4b", "9b", "27b"):
         assert plan[tier].contexts == ("128k", "256k")
         assert f"text/eliza-1-{tier}-128k.gguf" in plan[tier].required_files
         assert f"text/eliza-1-{tier}-256k.gguf" in plan[tier].required_files
@@ -77,24 +86,15 @@ def test_text_contexts_ship_half_and_native_contexts() -> None:
 
 def test_imagegen_required_files_match_tier_defaults() -> None:
     plan = build_plan()
-    for tier in ("0_8b", "2b", "4b"):
+    for tier in ("2b", "4b", "9b", "27b", "27b-256k"):
         assert "imagegen/sd-1.5-Q5_0.gguf" in plan[tier].required_files
         assert "imagegen/z-image-turbo-Q4_K_M.gguf" not in plan[tier].required_files
-    for tier in ("9b", "27b", "27b-256k"):
-        assert "imagegen/z-image-turbo-Q4_K_M.gguf" in plan[tier].required_files
-        assert "imagegen/vae/ae.safetensors" in plan[tier].required_files
-        assert (
-            "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-            in plan[tier].required_files
-        )
-        assert "imagegen/sd-1.5-Q5_0.gguf" not in plan[tier].required_files
+        assert "imagegen/vae/ae.safetensors" not in plan[tier].required_files
 
 
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
     plan = build_plan()
     kokoro_gguf = "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf"
-    assert kokoro_gguf in plan["0_8b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["0_8b"].required_files
     assert kokoro_gguf in plan["2b"].required_files
     assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["2b"].required_files
     assert kokoro_gguf in plan["4b"].required_files
@@ -126,8 +126,10 @@ def test_readiness_mentions_vad_native_gguf_caveat() -> None:
     assert "Gemma 4 E2B (`2b`)" in text
     assert "Gemma 4 E4B (`4b`)" in text
     assert "Gemma 4 12B (`9b`)" in text
-    assert "published Qwen3-ASR 0.6B / 1.7B GGUF repos" in text
-    assert "Qwen3-Embedding 0.6B / 4B / 8B GGUF repos" in text
+    assert "0.8B/2B/4B/9B" not in text
+    assert "2B/4B/9B carry Kokoro" in text
+    assert "Qwen3-ASR and Qwen3-Embedding are retired" in text
+    assert "Base-v1 release readiness remains blocked" in text
     assert "not evaluated in plan-only mode" in text
     assert "VAD latency/boundary/endpoint/false-barge-in" in text
     assert "Release evidence must use real final hashes" in text
@@ -141,8 +143,8 @@ def test_release_status_blockers_detect_missing_canonical_bundle(
     tmp_path: Path,
 ) -> None:
     blockers = release_status_blockers(tmp_path / "bundles", build_plan())
-    assert any("missing canonical local bundle" in item for item in blockers["0_8b"])
-    assert any("release.json" in item and "missing" in item for item in blockers["0_8b"])
+    assert any("missing canonical local bundle" in item for item in blockers["2b"])
+    assert any("release.json" in item and "missing" in item for item in blockers["2b"])
 
 
 def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -> None:
@@ -177,7 +179,7 @@ def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -
     assert "Publish-blocking status:" in text
 
 
-def test_release_status_blockers_accept_base_v1_uploaded_evidence(
+def test_release_status_blockers_reject_base_v1_retired_qwen_sources(
     tmp_path: Path,
 ) -> None:
     """A `base-v1` bundle (upstream base models, GGUF + fully optimized,
@@ -208,7 +210,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "finetuned": False,
                 "sourceModels": {
                     "text": {"repo": "google/gemma-4-E2B-Base"},
-                    "voice": {"repo": "onnx-community/Kokoro-82M-v1.0-ONNX"},
+                    "voice": {"repo": ELIZA_1_HF_REPO},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
@@ -247,7 +249,10 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
         )
     )
     blockers = release_status_blockers(tmp_path / "bundles", plan)
-    assert blockers["2b"] == []
+    assert any("retired Qwen asr provenance" in item for item in blockers["2b"])
+    assert any(
+        "retired Qwen embedding provenance" in item for item in blockers["2b"]
+    )
 
 
 def test_release_status_blockers_rejects_incomplete_uploaded_paths(
@@ -270,7 +275,7 @@ def test_release_status_blockers_rejects_incomplete_uploaded_paths(
                 "finetuned": False,
                 "sourceModels": {
                     "text": {"repo": "google/gemma-4-E2B-Base"},
-                    "voice": {"repo": "onnx-community/Kokoro-82M-v1.0-ONNX"},
+                    "voice": {"repo": ELIZA_1_HF_REPO},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
@@ -363,7 +368,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
     assert any("hf.uploadEvidence missing" in item for item in blockers["2b"])
 
 
-def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
+def test_release_status_blockers_base_v1_rejects_qwen_component_repos(
     tmp_path: Path,
 ) -> None:
     plan = build_plan()
@@ -401,8 +406,10 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
 
     blockers = release_status_blockers(tmp_path / "bundles", plan)
 
-    assert any("Qwen3-ASR-2B-GGUF" in item for item in blockers["2b"])
-    assert any("Qwen3-Embedding-2B-GGUF" in item for item in blockers["2b"])
+    assert any("retired Qwen asr provenance" in item for item in blockers["2b"])
+    assert any(
+        "retired Qwen embedding provenance" in item for item in blockers["2b"]
+    )
 
 
 def test_release_status_blockers_base_v1_requires_finetuned_false(

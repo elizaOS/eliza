@@ -12,7 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
-  lane: "pr-deterministic",
+  lane: "live-only",
   id: "hold_style.hostile.multilang.020",
   title: "hold_style :: all_lowercase :: hostile :: multilang :: 8-turn (20)",
   domain: "personality",

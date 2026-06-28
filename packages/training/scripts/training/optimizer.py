@@ -6,7 +6,7 @@ while retaining adaptive optimizer behavior. It is the only optimizer exposed
 by the local eliza-1 training entrypoints.
 
 Important: keep Eliza-1 fine-tuning on APOLLO/APOLLO-Mini. The projected
-optimizer state is what lets full-parameter Qwen-based tuning run on smaller
+optimizer state is what lets full-parameter Gemma 4 tuning run on smaller
 GPUs where ordinary full-size moment buffers do not fit.
 
 The two factories below produce parameter groups matching the recipe used in

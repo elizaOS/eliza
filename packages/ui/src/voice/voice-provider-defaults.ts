@@ -5,7 +5,7 @@
  * settings "advanced mode" picker design:
  *
  *   - Desktop running a local agent → on-device models
- *     (TTS: `local-inference` / OmniVoice, ASR: `local-inference` / Qwen3-ASR).
+ *     (TTS: `local-inference` / OmniVoice, ASR: `local-inference` / Gemma ASR).
  *   - Mobile running a local agent → on-device Kokoro TTS
  *     (TTS: `local-inference`; Kokoro is ~82M params and runs comfortably on
  *     phones — see `selectVoiceBackend({ mobile: true })`). ASR still routes
@@ -60,7 +60,7 @@ export function pickDefaultVoiceProvider(
   }
 
   // Local / local-only: split by platform. Desktop has the CPU/GPU budget
-  // for OmniVoice + Qwen3-ASR. Mobile runs on-device Kokoro for TTS (small +
+  // for OmniVoice + Gemma ASR. Mobile runs on-device Kokoro for TTS (small +
   // fast) but offloads the heavier ASR pipeline to Eliza Cloud. A web shell
   // hosting a local agent can't run on-device audio, so it stays on Cloud.
   if (platform === "desktop") {

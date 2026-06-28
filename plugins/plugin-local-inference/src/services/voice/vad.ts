@@ -9,7 +9,7 @@
  *            acoustic activity right now".
  *
  *   Tier 2 — a model VAD provider. Resolver order is an optional injected
- *            Qwen toolkit adapter when supplied, otherwise the fused
+ *            external VAD adapter when supplied, otherwise the fused
  *            `libelizainference` Silero v5 VAD ABI (`eliza_inference_vad_*`,
  *            backend id `silero-ggml`). 512-sample windows at 16 kHz (32 ms
  *            hop), one speech probability per window. This is the
@@ -61,9 +61,13 @@ export class VadUnavailableError extends Error {
 	}
 }
 
-/** Relative path of the fused Silero v5 GGML VAD model inside an Eliza-1
- *  bundle. The file is read by `libelizainference`'s native VAD ABI. */
+/** Relative paths of the fused Silero v5 model inside an Eliza-1 bundle. */
 const SILERO_VAD_GGML_REL_PATH = path.join("vad", "silero-vad-v5.1.2.ggml.bin");
+const SILERO_VAD_GGUF_REL_PATH = path.join("vad", "silero-vad-v5.gguf");
+const SILERO_VAD_REL_PATHS = [
+	SILERO_VAD_GGML_REL_PATH,
+	SILERO_VAD_GGUF_REL_PATH,
+] as const;
 
 /**
  * Resolve the fused-libelizainference Silero GGML VAD model on disk. An
@@ -71,7 +75,8 @@ const SILERO_VAD_GGML_REL_PATH = path.join("vad", "silero-vad-v5.1.2.ggml.bin");
  * result is `null` (no silent substitution of a different model). When
  * `modelPath` is not given the search order is:
  *   1. `<bundleRoot>/vad/silero-vad-v5.1.2.ggml.bin`
- *   2. `<state-dir>/local-inference/vad/silero-vad-v5.1.2.ggml.bin`
+ *   2. `<bundleRoot>/vad/silero-vad-v5.gguf`
+ *   3. `<state-dir>/local-inference/vad/<same filenames>`
  *   3. `$ELIZA_VAD_MODEL_PATH`
  * Returns `null` when none exist.
  */
@@ -83,10 +88,10 @@ export function resolveSileroVadPath(opts: {
 		return existsSync(opts.modelPath) ? path.resolve(opts.modelPath) : null;
 	}
 	const candidates: Array<string | undefined> = [
-		opts.bundleRoot
-			? path.join(opts.bundleRoot, SILERO_VAD_GGML_REL_PATH)
-			: undefined,
-		path.join(localInferenceRoot(), SILERO_VAD_GGML_REL_PATH),
+		...SILERO_VAD_REL_PATHS.map((rel) =>
+			opts.bundleRoot ? path.join(opts.bundleRoot, rel) : undefined,
+		),
+		...SILERO_VAD_REL_PATHS.map((rel) => path.join(localInferenceRoot(), rel)),
 		process.env.ELIZA_VAD_MODEL_PATH?.trim() || undefined,
 	];
 	for (const c of candidates) {
@@ -371,10 +376,10 @@ export type { VadLike } from "./types.js";
 
 import type { VadLike } from "./types.js";
 
-export type VadProviderId = "qwen-toolkit" | "silero-ggml";
+export type VadProviderId = "external-vad" | "silero-ggml";
 export type VadProviderPreference = "auto" | VadProviderId;
 
-export interface QwenToolkitVadAdapter {
+export interface ExternalVadAdapter {
 	isAvailable?(): boolean | Promise<boolean>;
 	loadVad(opts: { sampleRate: number }): Promise<VadLike>;
 }
@@ -389,7 +394,7 @@ export interface CreateVadDetectorOptions {
 	bundleRoot?: string;
 	ffi?: ElizaInferenceFfi | null;
 	ctx?: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
-	qwenToolkitVad?: QwenToolkitVadAdapter | null;
+	externalVad?: ExternalVadAdapter | null;
 	config?: VadDetectorConfig;
 	prefer?: VadProviderPreference;
 }
@@ -399,10 +404,10 @@ export function vadProviderOrder(
 ): VadProviderId[] {
 	if (prefer !== "auto") return [prefer];
 	// `silero-ggml` is the fused `libelizainference` VAD ABI — the sole
-	// on-device VAD runtime. The optional injected `qwen-toolkit` adapter is
+	// on-device VAD runtime. The optional injected `external-vad` adapter is
 	// tried first only when a caller supplies one; otherwise the fused engine
 	// is the single path, and an unavailable fused VAD fails fast.
-	return ["qwen-toolkit", "silero-ggml"];
+	return ["external-vad", "silero-ggml"];
 }
 
 export async function resolveVadProvider(
@@ -414,20 +419,20 @@ export async function resolveVadProvider(
 
 	for (const provider of vadProviderOrder(opts.prefer)) {
 		switch (provider) {
-			case "qwen-toolkit": {
+			case "external-vad": {
 				tried.push(provider);
-				if (!opts.qwenToolkitVad) {
-					reasons.push("qwen-toolkit: no adapter supplied");
+				if (!opts.externalVad) {
+					reasons.push("external-vad: no adapter supplied");
 					break;
 				}
-				const available = (await opts.qwenToolkitVad.isAvailable?.()) ?? true;
+				const available = (await opts.externalVad.isAvailable?.()) ?? true;
 				if (!available) {
-					reasons.push("qwen-toolkit: adapter reported unavailable");
+					reasons.push("external-vad: adapter reported unavailable");
 					break;
 				}
 				return {
 					id: provider,
-					vad: await opts.qwenToolkitVad.loadVad({ sampleRate }),
+					vad: await opts.externalVad.loadVad({ sampleRate }),
 				};
 			}
 			case "silero-ggml": {
@@ -454,7 +459,7 @@ export async function resolveVadProvider(
 				if (!modelPath) {
 					throw new VadUnavailableError(
 						"model-missing",
-						`[voice] Fused Silero v5 GGML VAD model not found. Looked for ${SILERO_VAD_GGML_REL_PATH} in the Eliza-1 bundle and under ${localInferenceRoot()}, or set ELIZA_VAD_MODEL_PATH.`,
+						`[voice] Fused Silero v5 GGML/GGUF VAD model not found. Looked for ${SILERO_VAD_REL_PATHS.join(" or ")} in the Eliza-1 bundle and under ${localInferenceRoot()}, or set ELIZA_VAD_MODEL_PATH.`,
 					);
 				}
 				return {

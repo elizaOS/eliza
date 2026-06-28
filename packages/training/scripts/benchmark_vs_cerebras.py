@@ -373,9 +373,9 @@ def _find_checkpoint(output_dir: Path, tier: str, entry: Any) -> Path | None:
     Returns None if no checkpoint is found.
 
     Matches directories starting with any of:
-    - entry.eliza_short_name (e.g. "eliza-1-0_8b")
-    - tier with dots→dashes (e.g. "qwen3-5-0-8b")
-    - tier safe variant (e.g. "eliza-1-qwen3_5_0_8b" for APOLLO runs)
+    - entry.eliza_short_name (e.g. "eliza-1-2b")
+    - tier with dots→dashes (e.g. "gemma4-e2b")
+    - tier safe variant (e.g. "eliza-1-gemma4_e2b" for APOLLO runs)
     """
     eliza_name = entry.eliza_short_name
     safe_tier = tier.replace(".", "_").replace("-", "_")

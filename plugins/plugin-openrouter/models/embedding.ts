@@ -31,22 +31,18 @@ export async function handleTextEmbedding(
   let text: string;
   if (typeof params === "string") {
     text = params;
-  } else if (typeof params === "object" && params.text) {
+  } else if (typeof params === "object" && typeof params.text === "string") {
     text = params.text;
   } else {
     const errorMsg = "Invalid input format for embedding";
-    logger.warn(errorMsg);
-    const fallbackVector = Array(embeddingDimension).fill(0) as number[];
-    fallbackVector[0] = 0.2;
-    return fallbackVector;
+    logger.error(errorMsg);
+    throw new Error(errorMsg);
   }
 
   if (!text.trim()) {
     const errorMsg = "Empty text for embedding";
-    logger.warn(errorMsg);
-    const fallbackVector = Array(embeddingDimension).fill(0) as number[];
-    fallbackVector[0] = 0.3;
-    return fallbackVector;
+    logger.error(errorMsg);
+    throw new Error(errorMsg);
   }
 
   // Truncate to stay within embedding model token limits (~4 chars per token)
@@ -102,9 +98,7 @@ export async function handleTextEmbedding(
     if (!Array.isArray(embedding) || embedding.length !== embeddingDimension) {
       const errorMsg = `Embedding length ${embedding.length} does not match configured dimension ${embeddingDimension}`;
       logger.error(errorMsg);
-      const fallbackVector = Array(embeddingDimension).fill(0) as number[];
-      fallbackVector[0] = 0.4;
-      return fallbackVector;
+      throw new Error(errorMsg);
     }
 
     if (data.usage) {

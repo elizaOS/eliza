@@ -2,11 +2,15 @@ import {
   type Component,
   registerTerminalView,
   type Terminal,
+  type TerminalViewMountOptions,
   truncateToWidth,
 } from "@elizaos/tui";
 import { describe, expect, it, vi } from "vitest";
 import { runAutonomousCli } from "../cli/index.ts";
 import { startAgentTerminalTui } from "../tui/agent-terminal-tui.ts";
+
+const ESC = "";
+const CTRL_L = "";
 
 class TestTerminal implements Terminal {
   private inputHandler?: (data: string) => void;
@@ -52,7 +56,7 @@ class TestTerminal implements Terminal {
 
   text(): string {
     // biome-ignore lint/suspicious/noControlCharactersInRegex: strips ANSI escape sequences
-    return this.writes.join("").replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "");
+    return this.writes.join("").replace(/\[[0-9;?]*[A-Za-z]/g, "");
   }
 }
 
@@ -74,7 +78,7 @@ async function flushTicks(): Promise<void> {
 /**
  * Poll until a request matching `predicate` has been issued. Deterministic
  * replacement for guessing tick counts when an action triggers chained awaited
- * fetches (create-conversation → post-message).
+ * fetches (create-conversation -> post-message).
  */
 async function waitForCall(
   calls: Array<{ url: string }>,
@@ -89,8 +93,24 @@ async function waitForCall(
   return calls.some(predicate);
 }
 
+/** The last frame the terminal rendered (the live screen), ANSI-stripped. */
+function lastFrameLines(terminal: TestTerminal): string[] {
+  // The TUI writes whole frames; the final write that contains the composer
+  // separator line is the current screen. Splitting the joined output on the
+  // composer separator is brittle, so just strip ANSI off the full buffer and
+  // return its lines — assertions look for the relative ordering of markers.
+  return terminal.text().split(/\r?\n/);
+}
+
 describe("agent terminal tui", () => {
-  it("starts in prod-compatible terminal mode and supports keyboard view/chat actions", async () => {
+  it("keeps a bottom composer always visible and sends chat while a view is mounted", async () => {
+    // wallet is a registered terminal view so opening it mounts inline.
+    const walletView: Component = {
+      render: (width) => [truncateToWidth("WALLET BODY", width)],
+      handleInput: () => {},
+      invalidate: () => {},
+    };
+    const unregisterWallet = registerTerminalView("wallet", walletView);
     const terminal = new TestTerminal();
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const fetchImpl = vi.fn(
@@ -115,7 +135,7 @@ describe("agent terminal tui", () => {
             ],
           });
         }
-        if (url.endsWith("/api/views/wallet/navigate?viewType=tui")) {
+        if (url.includes("/api/views/wallet/navigate")) {
           return response({ ok: true });
         }
         if (url.endsWith("/api/conversations")) {
@@ -138,49 +158,64 @@ describe("agent terminal tui", () => {
     await handle?.ready;
     await flushTicks();
 
-    expect(terminal.text()).toContain("elizaOS terminal tui");
-    expect(terminal.text()).toContain("↑/↓ select");
-    expect(terminal.text()).toContain("1. Messages TUI");
-    expect(terminal.text()).toContain("2. Wallet TUI");
+    // (a) The default screen lists views AND pins the composer at the bottom.
+    const boot = lastFrameLines(terminal);
+    expect(boot.join("\n")).toContain("elizaOS terminal tui");
+    expect(boot.join("\n")).toContain("1. Messages TUI");
+    // The composer prompt + its label sit on the last rows of the frame.
+    const composerIdx = boot.lastIndexOf(
+      boot.filter((l) => l.includes("chat")).at(-1) ?? "",
+    );
+    const listIdx = boot.lastIndexOf(
+      boot.filter((l) => l.includes("registered tui views")).at(-1) ?? "",
+    );
+    expect(composerIdx).toBeGreaterThan(listIdx);
 
+    // Open the wallet view via search (composer is focused by default; the
+    // top-level "/" search is a view-block keybinding, so focus the view first).
+    terminal.send(CTRL_L); // focus the view block
     terminal.send("/");
     terminal.send("wal");
     await flushTicks();
-    const searchRender = terminal
-      .text()
-      .slice(terminal.text().lastIndexOf("search views"));
-    expect(searchRender).toContain("filter: wal");
-    expect(searchRender).toContain("2. Wallet TUI");
-    expect(searchRender).not.toContain("1. Messages TUI");
+    const searchText = terminal.text();
+    expect(searchText.slice(searchText.lastIndexOf("search views"))).toContain(
+      "filter: wal",
+    );
+    terminal.send("\r");
+    await flushTicks();
 
+    // (b) Type into the composer + Enter while a view is mounted: a message
+    // send fires and the view stays mounted.
+    terminal.send(CTRL_L); // focus the composer
+    terminal.send("hello over ssh");
     terminal.send("\r");
     expect(
       await waitForCall(calls, (call) =>
-        call.url.endsWith("/api/views/wallet/navigate?viewType=tui"),
+        call.url.endsWith("/api/conversations/conv-terminal/messages"),
       ),
     ).toBe(true);
-
-    terminal.send("c");
-    terminal.send("hello over ssh");
-    terminal.send("\r");
-    await waitForCall(calls, (call) =>
-      call.url.endsWith("/api/conversations/conv-terminal/messages"),
-    );
 
     const chatCall = calls.find((call) =>
       call.url.endsWith("/api/conversations/conv-terminal/messages"),
     );
-    expect(chatCall).toBeTruthy();
     expect(JSON.parse(String(chatCall?.init?.body))).toMatchObject({
       text: "hello over ssh",
       source: "terminal-tui",
       metadata: { viewId: "wallet", viewType: "tui" },
     });
 
+    // The view is still mounted (its header is still on screen) and the
+    // composer is still rendered below it.
+    await flushTicks();
+    const after = terminal.text();
+    expect(after).toContain("elizaOS terminal tui · Wallet TUI");
+    expect(after).toContain("WALLET BODY");
+
     handle?.stop();
+    unregisterWallet();
   });
 
-  it("renders a registered terminal view inline instead of only navigating", async () => {
+  it("renders a registered terminal view inline with the composer below it", async () => {
     let rendered = 0;
     const liveView: Component = {
       render: (width) => [
@@ -218,19 +253,185 @@ describe("agent terminal tui", () => {
     await handle?.ready;
     await flushTicks();
 
-    // The registered view is flagged in the list…
-    expect(terminal.text()).toContain("Phone TUI ▣");
+    // The registered view is flagged in the list.
+    expect(terminal.text()).toContain("Phone TUI");
 
-    // …and quick-opening it renders the view's real content inline.
+    // Quick-open it (digit keys are view-block keybindings → focus the view).
+    terminal.send(CTRL_L);
     terminal.send("1");
     await flushTicks();
-    expect(terminal.text()).toContain("LIVE PHONE VIEW");
-    expect(terminal.text()).toContain("esc/q returns to views");
+    const open = terminal.text();
+    expect(open).toContain("LIVE PHONE VIEW");
+    // The composer is still rendered (chat-at-bottom) while the view is up.
+    expect(open).toContain("chat");
 
-    // Esc returns to the list (no GUI-navigate fetch was issued for it).
-    terminal.send("");
+    // Esc returns to the list.
+    terminal.send(ESC);
     await flushTicks();
     expect(terminal.text()).toContain("registered tui views");
+
+    handle?.stop();
+    unregister();
+  });
+
+  it("routes a /navigate slash command through the composer and swaps the view in place", async () => {
+    const walletView: Component = {
+      render: (width) => [truncateToWidth("WALLET BODY", width)],
+      handleInput: () => {},
+      invalidate: () => {},
+    };
+    const unregisterWallet = registerTerminalView("wallet", walletView);
+    const terminal = new TestTerminal();
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = vi.fn(
+      async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith("/api/views?viewType=tui")) {
+          return response({
+            views: [
+              {
+                id: "wallet",
+                label: "Wallet TUI",
+                path: "/wallet/tui",
+                viewType: "tui",
+              },
+            ],
+          });
+        }
+        if (url.includes("/api/commands?surface=tui")) {
+          return response({
+            commands: [
+              {
+                key: "wallet",
+                nativeName: "wallet",
+                description: "Open the wallet view",
+                textAliases: ["/wallet"],
+                scope: "both",
+                acceptsArgs: false,
+                args: [],
+                requiresAuth: false,
+                requiresElevated: false,
+                target: { kind: "navigate", viewId: "wallet" },
+              },
+            ],
+            surface: "tui",
+            agentId: null,
+            generatedAt: new Date().toISOString(),
+          });
+        }
+        if (url.includes("/api/views/wallet/navigate")) {
+          return response({ ok: true });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    ) as unknown as typeof fetch;
+
+    const handle = startAgentTerminalTui({
+      apiBaseUrl: "http://127.0.0.1:2138",
+      terminal,
+      fetchImpl,
+    });
+    await handle?.ready;
+    await flushTicks();
+
+    // Composer is focused by default — type the slash command and submit. The
+    // autocomplete catalog comes from /api/commands (a navigate target).
+    terminal.send("/wallet");
+    // The editor shows its slash autocomplete while typing "/".
+    expect(terminal.text()).toContain("wallet");
+    terminal.send("\r");
+    await flushTicks();
+
+    // navigate-view dispatch swapped the mounted view in place (no list teardown).
+    expect(
+      await waitForCall(calls, (call) =>
+        call.url.includes("/api/views/wallet/navigate"),
+      ),
+    ).toBe(true);
+    expect(terminal.text()).toContain("elizaOS terminal tui · Wallet TUI");
+    expect(terminal.text()).toContain("WALLET BODY");
+
+    handle?.stop();
+    unregisterWallet();
+  });
+
+  it("dispatches a focused view button activation to the agent (onActivate -> POST activate)", async () => {
+    const activations: string[] = [];
+    // Register a factory-backed view: the host builds it with its own
+    // onActivate, which the component fires on Enter (mirroring the spatial
+    // component's activate path).
+    const factory = (options?: TerminalViewMountOptions): Component => ({
+      render: (width) => [truncateToWidth("ACTIVATE ME", width)],
+      handleInput: (data: string) => {
+        if (data === "\r" || data === "\n") {
+          activations.push("send-it");
+          options?.onActivate?.("send-it");
+        }
+      },
+      invalidate: () => {},
+    });
+    const unregister = registerTerminalView("approve", factory(), factory);
+
+    const terminal = new TestTerminal();
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = vi.fn(
+      async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith("/api/views?viewType=tui")) {
+          return response({
+            views: [
+              {
+                id: "approve",
+                label: "Approve TUI",
+                path: "/approve/tui",
+                viewType: "tui",
+              },
+            ],
+          });
+        }
+        if (url.includes("/api/views/approve/navigate")) {
+          return response({ ok: true });
+        }
+        if (url.includes("/api/views/approve/activate")) {
+          return response({
+            ok: true,
+            viewId: "approve",
+            elementId: "send-it",
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    ) as unknown as typeof fetch;
+
+    const handle = startAgentTerminalTui({
+      apiBaseUrl: "http://127.0.0.1:2138",
+      terminal,
+      fetchImpl,
+    });
+    await handle?.ready;
+    await flushTicks();
+
+    // Focus the view block, open it, then activate its focused control.
+    terminal.send(CTRL_L);
+    terminal.send("1");
+    await flushTicks();
+    expect(terminal.text()).toContain("ACTIVATE ME");
+
+    terminal.send("\r"); // Enter activates the focused control
+    expect(activations).toEqual(["send-it"]);
+    expect(
+      await waitForCall(calls, (call) =>
+        call.url.includes("/api/views/approve/activate"),
+      ),
+    ).toBe(true);
+    const activateCall = calls.find((call) =>
+      call.url.includes("/api/views/approve/activate"),
+    );
+    expect(JSON.parse(String(activateCall?.init?.body))).toMatchObject({
+      elementId: "send-it",
+    });
 
     handle?.stop();
     unregister();

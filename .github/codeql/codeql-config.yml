@@ -1,0 +1,10 @@
+name: elizaOS CodeQL
+
+# Keep the default CodeQL query selection. This config only documents files
+# that are intentionally not parseable source.
+paths-ignore:
+  # WHY: this benchmark fixture is deliberately invalid TypeScript; the Solana
+  # runner test writes bad code here to assert syntax failures are reported
+  # cleanly. Analyzing it adds noisy parser diagnostics without adding security
+  # coverage.
+  - packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts

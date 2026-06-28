@@ -22,6 +22,11 @@ export {
   registerFallbackAnchors,
 } from "./consolidation-policy.js";
 export {
+  buildFallbackDefaultPack,
+  FALLBACK_DEFAULT_PACK_ID,
+  FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS,
+} from "./default-pack.js";
+export {
   expectedReplyKindForTask,
   isCompletionTimeoutDue,
   isRecurringTrigger,
@@ -65,6 +70,30 @@ export {
   TestNoopScheduledTaskDispatcher,
 } from "./runner.js";
 export {
+  type GetScheduledTaskRunnerOptions,
+  getScheduledTaskRunner,
+  getScheduledTaskRunnerDeps,
+  registerScheduledTaskRunnerDeps,
+  type ScheduledTaskRunnerDepsBundle,
+  type ScheduledTaskRunnerDepsProvider,
+  ScheduledTaskRunnerService,
+} from "./runner-service.js";
+export {
+  scheduledTaskFilterSchema,
+  scheduledTaskInputSchema,
+  scheduledTaskSchema,
+  scheduledTaskSnoozePayloadSchema,
+  scheduledTaskStateSchema,
+  scheduledTaskVerbSchema,
+} from "./schema.js";
+export {
+  type DefaultTaskPack,
+  getDefaultTaskPacks,
+  registerDefaultTaskPack,
+  resolvePacksToSeed,
+  seedRegisteredTaskPacks,
+} from "./seed-registry.js";
+export {
   createInMemoryScheduledTaskLogStore,
   createStateLogger,
   type ScheduledTaskLogStore,
@@ -93,6 +122,7 @@ export type {
   ScheduledTaskEscalation,
   ScheduledTaskFilter,
   ScheduledTaskGateRef,
+  ScheduledTaskInput,
   ScheduledTaskKind,
   ScheduledTaskLogEntry,
   ScheduledTaskLogTransition,

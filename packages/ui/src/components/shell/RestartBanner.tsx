@@ -53,7 +53,6 @@ export function RestartBanner() {
         border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
         color: "var(--text)",
         maxWidth: "22rem",
-        backdropFilter: "blur(12px)",
       }}
       role="status"
       aria-live="polite"

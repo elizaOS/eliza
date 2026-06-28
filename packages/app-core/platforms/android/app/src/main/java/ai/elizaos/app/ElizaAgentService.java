@@ -1115,7 +1115,56 @@ public class ElizaAgentService extends Service {
 
     // ── Process lifecycle ────────────────────────────────────────────────
 
+    /**
+     * Start the in-process bionic inference host whenever the fused native lib
+     * AND a local voice bundle (kokoro) are present — independent of the LLM
+     * runtime mode and of whether the agent process spawns fresh or adopts a
+     * surviving one.
+     *
+     * <p>Previously the host was started ONLY inside {@link #startAgentProcess()}'s
+     * fresh-spawn {@code delegateToBionicHost} block, so after a process restart
+     * that adopts a surviving agent (or when the agent runs cloud-routed) the
+     * host never bound its abstract UDS, and {@code TalkMode}'s local Kokoro TTS
+     * silently fell back to the system (Google) TTS. The voice host serves Kokoro
+     * from {@code libelizainference} + the staged bundle and needs no LLM, so its
+     * lifecycle is decoupled from agent inference here.
+     *
+     * <p>{@link ElizaBionicInferenceServer#start()} is idempotent and never throws
+     * (it logs + returns on lib-load / socket-bind failure), so this is purely
+     * additive: worst case the host stays down and TalkMode falls back to system
+     * TTS exactly as before — it cannot affect agent startup.
+     */
+    private synchronized void ensureBionicVoiceHost() {
+        if (bionicInferenceServer != null) {
+            return;
+        }
+        File fusedLib = new File(nativeLibraryDir(), "libelizainference.so");
+        if (!fusedLib.isFile()) {
+            return;
+        }
+        File kokoroVoice = new File(getFilesDir(), "eliza-1/bundle/tts/kokoro");
+        if (!kokoroVoice.isDirectory()) {
+            return;
+        }
+        try {
+            String defaultBundleDir =
+                new File(getFilesDir(), "eliza-1/bundle").getAbsolutePath();
+            ElizaBionicInferenceServer host =
+                new ElizaBionicInferenceServer(BIONIC_INFERENCE_SOCKET_NAME, defaultBundleDir);
+            host.start();
+            bionicInferenceServer = host;
+            Log.i(TAG, "ensureBionicVoiceHost: local voice host started"
+                + " (kokoro bundle present, independent of LLM mode)");
+        } catch (Throwable t) {
+            Log.w(TAG, "ensureBionicVoiceHost: could not start local voice host", t);
+        }
+    }
+
     private void requestAgentStart(boolean restartFirst) {
+        // Bring up the local-voice (Kokoro TTS) bionic host on every service
+        // start, before the agent-already-running guards below — so it binds
+        // even when the agent is adopted rather than freshly spawned.
+        ensureBionicVoiceHost();
         synchronized (processLock) {
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
@@ -1320,6 +1369,7 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
+            agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("AGENT_COMMAND", "android-bridge");
             agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
@@ -1393,10 +1443,11 @@ public class ElizaAgentService extends Service {
             // (tryBuildAospFusedTextLoader) and aosp-llama-paths.ts
             // (isAospEnabled reads ELIZA_LOCAL_LLAMA).
             // This is required, not optional: the eliza-1 model tiers are
-            // qwen35-arch + QJL/PolarQuant/TBQ-quantized, and the stock
-            // llama-cpp-capacitor JNI lib cannot load those GGUFs at all
-            // (`context->loadModel() returned false`). The fused
-            // libelizainference.so carries the kernels + qwen35 arch and is
+            // Gemma-4-arch GGUFs (TurboQuant-quantized; stock f16/q8_0 KV — the
+            // legacy QJL/PolarQuant/TBQ KV kernels are retired post-#9033), and
+            // the stock llama-cpp-capacitor JNI lib cannot load those GGUFs at
+            // all (`context->loadModel() returned false`). The fused
+            // libelizainference.so carries the kernels + Gemma arch and is
             // the SOLE text/voice native library the bun agent loads.
             //
             // This was previously gated on `BuildConfig.AOSP_BUILD &&
@@ -1538,7 +1589,7 @@ public class ElizaAgentService extends Service {
 
                 // Keep decode chunks bounded for stock APK runs while avoiding
                 // unnecessary multi-chunk prompt prefill. Pixel validation on
-                // eliza-1-0_8b showed 256-token chunks reduce native prefill
+                // eliza-1-2b showed 256-token chunks reduce native prefill
                 // time versus the older 64-token default, without blocking
                 // health/startup probes because the HTTP server binds after
                 // model prewarm. Branded AOSP keeps the historical 512-token

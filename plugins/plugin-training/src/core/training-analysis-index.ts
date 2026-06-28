@@ -11,6 +11,7 @@ import {
   normalizeElizaOneBenchmarkTier,
 } from "./eliza1-benchmark-recipe.js";
 import { EVAL_COMPARISON_ARTIFACT_SCHEMA } from "./eval-comparison-artifact.js";
+import { escapeHtml, escapeScriptJson } from "./html-escape";
 import { ELIZA1_BUNDLE_STAGE_SCHEMA } from "./eliza1-bundle-stager.js";
 import { HUGGINGFACE_DATASET_INGEST_SCHEMA } from "./huggingface-dataset-ingest.js";
 import { TRAINING_READINESS_REPORT_SCHEMA } from "./training-readiness-report.js";
@@ -798,8 +799,12 @@ function summarizeScenarioRun(
     acc[status] = (acc[status] ?? 0) + 1;
     return acc;
   }, {});
+  // resolveManifestFilePath (not resolveManifestPath): existsSync(dir) works for
+  // directories too, so a runDir stored cwd-relative resolves deterministically
+  // (manifest-relative if that exists on disk, else the cwd-relative location)
+  // instead of luck-depending on the manifest dir being no deeper than cwd.
   const runDir =
-    resolveManifestPath(path, payload.runDir) ??
+    resolveManifestFilePath(path, payload.runDir) ??
     (path.endsWith("matrix.json") ? dirname(path) : undefined);
   const nativeJsonlPath = resolveManifestFilePath(path, payload.nativeJsonlPath);
   const nativeManifestPath = resolveManifestFilePath(
@@ -1964,17 +1969,7 @@ function buildAnalysisCoverage(
   };
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
-function escapeScriptJson(value: unknown): string {
-  return JSON.stringify(value).replace(/</g, "\\u003c");
-}
 
 function pathLink(path: unknown): string | undefined {
   const value = stringValue(path);

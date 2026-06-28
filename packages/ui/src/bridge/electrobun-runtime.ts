@@ -49,7 +49,7 @@ export function isElectrobunRuntime(): boolean {
 function isCapacitorNativePlatform(): boolean {
   try {
     const cap = (
-      globalThis as unknown as {
+      globalThis as typeof globalThis & {
         Capacitor?: {
           isNativePlatform?: () => boolean;
           getPlatform?: () => string;

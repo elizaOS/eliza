@@ -42,6 +42,29 @@ export interface SwabbleAudioLevelEvent {
   peak?: number;
 }
 
+/**
+ * Emitted by the native detector when a configured trigger phrase ("hey eliza")
+ * fires. This is the signal that arms the UI listening window
+ * (`wake-listen-window.ts`) — distinct from the continuous `audioLevel` meter.
+ *
+ * Field shape mirrors the canonical `SwabbleWakeWordEvent` in
+ * `@elizaos/capacitor-swabble` (`plugins/plugin-native-swabble/src/definitions.ts`);
+ * kept as a local copy because the bridge models native plugins structurally
+ * rather than importing the Capacitor package.
+ */
+export interface SwabbleWakeWordEvent {
+  /** The detected wake word (e.g. "eliza"). */
+  wakeWord: string;
+  /** The command text following the wake word ("" when none yet). */
+  command: string;
+  /** Full transcript text at detection. */
+  transcript: string;
+  /** Seconds between the wake word and command start (-1 on web — no timing). */
+  postGap: number;
+  /** Detector confidence in [0,1] when available. */
+  confidence?: number;
+}
+
 export interface SwabblePluginLike extends NativePlugin {
   getConfig(): Promise<{ config: SwabbleConfig | null }>;
   isListening(): Promise<{ listening: boolean }>;
@@ -51,6 +74,10 @@ export interface SwabblePluginLike extends NativePlugin {
   addListener(
     eventName: "audioLevel",
     listenerFunc: (event: SwabbleAudioLevelEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "wakeWord",
+    listenerFunc: (event: SwabbleWakeWordEvent) => void,
   ): Promise<PluginListenerHandle>;
 }
 
@@ -560,9 +587,22 @@ export interface ScreenCapturePermissionStatus {
   microphone: "granted" | "denied" | "prompt";
 }
 
+export interface ScreenCaptureScreenshotResult {
+  base64: string;
+  format: string;
+  width: number;
+  height: number;
+  timestamp: number;
+}
+
 export interface ScreenCapturePluginLike extends NativePlugin {
   checkPermissions?: () => Promise<ScreenCapturePermissionStatus>;
   requestPermissions?: () => Promise<ScreenCapturePermissionStatus>;
+  captureScreenshot(options?: {
+    format?: string;
+    quality?: number;
+    scale?: number;
+  }): Promise<ScreenCaptureScreenshotResult>;
 }
 
 export interface WebsiteBlockerPermissionResult {
@@ -740,7 +780,8 @@ export interface TalkModePluginLike extends NativePlugin {
  * returns turn-level results (speaker embedding + diariz labels) to JS.
  *
  * PCM and the float/int8 payloads are base64-encoded (LE-s16 for PCM, LE-fp32
- * for the embedding, raw int8 for the labels) — see the JNI host.
+ * for segmented turn PCM + embedding, raw int8 for the labels) — see the JNI
+ * host.
  */
 export interface ElizaVoiceTurn {
   turnId: string;
@@ -756,6 +797,10 @@ export interface ElizaVoiceTurn {
   /** base64 int8 per-frame pyannote powerset labels ("" when none). */
   labels: string;
   labelCount: number;
+  /** Optional base64 LE-fp32 segmented turn PCM, present only when requested. */
+  pcm?: string;
+  /** Sample rate for `pcm` (currently 16000). */
+  pcmSampleRate?: number;
 }
 
 export interface ElizaVoicePluginLike extends NativePlugin {
@@ -780,10 +825,12 @@ export interface ElizaVoicePluginLike extends NativePlugin {
   pipelineProcess(options: {
     handle: string;
     pcm16: string;
+    includePcm?: boolean;
   }): Promise<{ turns: ElizaVoiceTurn[] }>;
   /** Force-finalize an open turn; returns any flushed turn. */
   pipelineFlush(options: {
     handle: string;
+    includePcm?: boolean;
   }): Promise<{ turns: ElizaVoiceTurn[] }>;
   pipelineReset(options: { handle: string }): Promise<void>;
   pipelineClose(options: { handle: string }): Promise<void>;

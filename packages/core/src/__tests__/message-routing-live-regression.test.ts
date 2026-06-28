@@ -5,6 +5,7 @@ import {
 	actionResultsSuppressPostActionContinuation,
 	extractPlannerActionNames,
 	findWebLookupActionName,
+	findWebLookupActionNames,
 	inferDirectCurrentRequestCandidateActions,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
@@ -177,6 +178,28 @@ describe("live routing regressions", () => {
 			similes: ["LOOKUP_WEB"],
 		};
 		expect(findWebLookupActionName([simileAction])).toBe("SOME_FETCH");
+	});
+
+	it("surfaces BOTH web tools to the planner, WEB_FETCH first", () => {
+		// The planner-surfacing path offers WEB_FETCH (a constructible live API)
+		// ahead of WEB_SEARCH (open-ended discovery) so a price/weather ask is
+		// fetched live inline rather than answered from a stale search result.
+		expect(
+			findWebLookupActionNames([{ name: "WEB_SEARCH" }, { name: "WEB_FETCH" }]),
+		).toEqual(["WEB_FETCH", "WEB_SEARCH"]);
+		// Only one web tool registered → exactly that one is surfaced.
+		expect(findWebLookupActionNames([{ name: "WEB_SEARCH" }])).toEqual([
+			"WEB_SEARCH",
+		]);
+		// A single action that resolves via BOTH a fetch name and a search simile
+		// must surface ONCE (the searchAction !== fetchAction dedupe guard).
+		expect(
+			findWebLookupActionNames([
+				{ name: "WEB_FETCH", similes: ["WEB_SEARCH"] },
+			]),
+		).toEqual(["WEB_FETCH"]);
+		// No web backend → empty, so the turn is not forced toward a web tool.
+		expect(findWebLookupActionNames([{ name: "SHELL" }])).toEqual([]);
 	});
 
 	it("does not promote a coding/spawn request to a web-lookup (stays TASKS)", () => {

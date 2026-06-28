@@ -23,13 +23,9 @@ export type RuntimeHarness = {
 
 async function resolveAllowedPlugin(name: string): Promise<Plugin> {
   switch (name) {
-    case "@elizaos/plugin-shopify-ui": {
-      const { shopifyPlugin } = await import("@elizaos/plugin-shopify-ui");
-      return shopifyPlugin;
-    }
-    case "@elizaos/plugin-vincent": {
-      const { vincentPlugin } = await import("@elizaos/plugin-vincent");
-      return vincentPlugin;
+    case "@elizaos/plugin-shopify": {
+      const { shopifyRoutePlugin } = await import("@elizaos/plugin-shopify");
+      return shopifyRoutePlugin;
     }
     default:
       throw new Error(`Unsupported live test plugin allow entry: ${name}`);

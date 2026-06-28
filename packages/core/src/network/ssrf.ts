@@ -71,6 +71,57 @@ function parseIpv4(address: string): number[] | null {
 	return numbers;
 }
 
+/**
+ * Parse the legacy/non-canonical IPv4 forms that the OS resolver
+ * (`getaddrinfo`/`inet_aton`) accepts: octal (`0177`), hex (`0x7f`), plain
+ * decimal (`2130706433`), and 1-3 part short forms (`127.1`). An SSRF guard
+ * must classify these the way the resolver would actually connect, otherwise
+ * `http://0177.0.0.1/` (octal localhost) slips past a literal-IP check.
+ * Returns the four octets of the resulting 32-bit address, or null when the
+ * string is not a numeric IPv4 in any of these encodings.
+ */
+function parseIpv4Loose(address: string): number[] | null {
+	const parts = address.split(".");
+	if (parts.length < 1 || parts.length > 4) {
+		return null;
+	}
+	const values: number[] = [];
+	for (const part of parts) {
+		let value: number;
+		if (/^0x[0-9a-f]+$/i.test(part)) {
+			value = Number.parseInt(part.slice(2), 16);
+		} else if (/^0[0-7]+$/.test(part)) {
+			value = Number.parseInt(part, 8);
+		} else if (/^(?:0|[1-9][0-9]*)$/.test(part)) {
+			value = Number.parseInt(part, 10);
+		} else {
+			return null;
+		}
+		if (!Number.isSafeInteger(value) || value < 0) {
+			return null;
+		}
+		values.push(value);
+	}
+	const n = values.length;
+	// Each leading part is a single byte; the final part absorbs the rest.
+	for (let i = 0; i < n - 1; i++) {
+		if (values[i] > 0xff) return null;
+	}
+	const lastMax = [0xffffffff, 0xffffff, 0xffff, 0xff][n - 1];
+	if (values[n - 1] > lastMax) {
+		return null;
+	}
+	let ip = 0;
+	for (let i = 0; i < n - 1; i++) {
+		ip += values[i] * 2 ** (8 * (3 - i));
+	}
+	ip += values[n - 1];
+	if (ip > 0xffffffff) {
+		return null;
+	}
+	return [(ip >>> 24) & 0xff, (ip >>> 16) & 0xff, (ip >>> 8) & 0xff, ip & 0xff];
+}
+
 function parseIpv4FromMappedIpv6(mapped: string): number[] | null {
 	if (mapped.includes(".")) {
 		return parseIpv4(mapped);
@@ -154,7 +205,13 @@ export function isPrivateIpAddress(address: string): boolean {
 		const mapped = normalized.slice("::ffff:".length);
 		const ipv4 = parseIpv4FromMappedIpv6(mapped);
 		if (ipv4) {
-			return isPrivateIpv4(ipv4);
+			if (isPrivateIpv4(ipv4)) {
+				return true;
+			}
+			// inet_aton reading of an octal/hex/decimal mapped octet
+			// (e.g. ::ffff:0177.0.0.1) that the OS resolver would honor.
+			const loose = mapped.includes(".") ? parseIpv4Loose(mapped) : null;
+			return loose ? isPrivateIpv4(loose) : false;
 		}
 	}
 
@@ -167,11 +224,19 @@ export function isPrivateIpAddress(address: string): boolean {
 		);
 	}
 
-	const ipv4 = parseIpv4(normalized);
-	if (!ipv4) {
-		return false;
+	const strict = parseIpv4(normalized);
+	if (strict && isPrivateIpv4(strict)) {
+		return true;
 	}
-	return isPrivateIpv4(ipv4);
+	// Also classify the inet_aton interpretation the OS resolver would actually
+	// connect to, so octal/hex/decimal/short-form encodings of a private IP
+	// (e.g. "0177.0.0.1", "0x7f.0.0.1", "2130706433", "127.1") cannot bypass a
+	// literal-IP SSRF check by reading as a public address here.
+	const loose = parseIpv4Loose(normalized);
+	if (loose && isPrivateIpv4(loose)) {
+		return true;
+	}
+	return false;
 }
 
 /**

@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
+import { maxMtimeUnder } from "./lib/artifact-staleness.mjs";
 import {
   buildWindowsRepairSteps,
   classifyElectrobunViewFailure,
@@ -13,6 +14,7 @@ import {
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
+import { assertRendererRebuiltSince } from "./lib/renderer-build-manifest.mjs";
 
 const ROOT = process.cwd();
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +38,12 @@ const COMMAND_PREFIX = (process.env.ELIZA_DESKTOP_COMMAND_PREFIX ?? "")
   .split(/\s+/)
   .filter(Boolean);
 const DESKTOP_BUILD_LOCK_DIR = path.join(ROOT, ".turbo", "desktop-build.lock");
+const CLEANUP_HELPER_SCRIPT = path.join(
+  ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const RUNTIME_COPY_SCRIPT = fs.existsSync(
   path.join(ROOT, "scripts", "copy-runtime-node-modules.ts"),
 )
@@ -86,6 +94,33 @@ function isProcessAlive(pid) {
   }
 }
 
+function removePathRecursive(targetPath, label = "path cleanup") {
+  const result = spawnSync("node", [CLEANUP_HELPER_SCRIPT, targetPath], {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const detail = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    throw new Error(
+      `${label} failed with exit code ${result.status ?? 1}${
+        detail ? `: ${detail}` : ""
+      }`,
+    );
+  }
+}
+
+function removeDesktopBuildLockDir() {
+  removePathRecursive(DESKTOP_BUILD_LOCK_DIR, "desktop build lock cleanup");
+}
+
 function withDesktopBuildLock(run) {
   const lockParent = path.dirname(DESKTOP_BUILD_LOCK_DIR);
   const staleAfterMs = 30 * 60 * 1000;
@@ -118,7 +153,7 @@ function withDesktopBuildLock(run) {
         (ownerPid !== null && !isProcessAlive(ownerPid)) ||
         Date.now() - stat.mtimeMs > staleAfterMs
       ) {
-        fs.rmSync(DESKTOP_BUILD_LOCK_DIR, { recursive: true, force: true });
+        removeDesktopBuildLockDir();
         continue;
       }
 
@@ -135,7 +170,7 @@ function withDesktopBuildLock(run) {
   try {
     run();
   } finally {
-    fs.rmSync(DESKTOP_BUILD_LOCK_DIR, { recursive: true, force: true });
+    removeDesktopBuildLockDir();
   }
 }
 
@@ -153,7 +188,9 @@ function resolveWorkspacePluginDir(pluginDirName) {
 
 const APP_CORE_PACKAGE_DIR = resolveWorkspacePackageDir("app-core");
 const AGENT_PACKAGE_DIR = resolveWorkspacePackageDir("agent");
-const CLOUD_SDK_PACKAGE_DIR = resolveWorkspacePackageDir("cloud-sdk");
+const CLOUD_SDK_PACKAGE_DIR = resolveWorkspacePackageDir(
+  path.join("cloud", "sdk"),
+);
 const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
 const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-agent-orchestrator",
@@ -831,10 +868,7 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
   });
 }
 
-function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
-  const distDir = path.join(packageDir, "dist");
-  if (!fs.existsSync(distDir)) return false;
-
+function workspaceRuntimePackageMarkersPresent(packageName, distDir) {
   if (packageName === "@elizaos/core") {
     return (
       fs.existsSync(path.join(distDir, "node", "index.node.js")) &&
@@ -851,6 +885,31 @@ function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
     );
   }
 
+  return true;
+}
+
+function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
+  const distDir = path.join(packageDir, "dist");
+  if (!fs.existsSync(distDir)) return false;
+  if (!workspaceRuntimePackageMarkersPresent(packageName, distDir))
+    return false;
+
+  // Presence of the marker files isn't enough — a dist built from older sources
+  // would silently reuse stale runtime code (issue #9309). Reuse only when the
+  // dist is at least as new as the package's src. ELIZA_DESKTOP_TRUST_RUNTIME_-
+  // PACKAGE_DIST=1 bypasses the mtime check for environments where checkout
+  // mtimes are unreliable.
+  if (process.env.ELIZA_DESKTOP_TRUST_RUNTIME_PACKAGE_DIST === "1") return true;
+  const srcDir = path.join(packageDir, "src");
+  if (!fs.existsSync(srcDir)) return true;
+  const srcMtime = maxMtimeUnder(srcDir);
+  const distMtime = maxMtimeUnder(distDir);
+  if (srcMtime > distMtime) {
+    console.log(
+      `[desktop-build] ${packageName} dist is stale (src newer than dist) — rebuilding`,
+    );
+    return false;
+  }
   return true;
 }
 
@@ -1011,12 +1070,262 @@ function copyRuntimeNodeModulesWithRetry() {
   }
 }
 
+const FUSED_LIB_STAGE_SCRIPT = path.join(
+  SCRIPT_DIR,
+  "stage-desktop-fused-lib.mjs",
+);
+// "auto" → the stager picks the host's best backend (Metal on macOS, CUDA when
+// nvcc is present, else CPU) with the CPU fallback always baked in, so a local
+// `--build-fused-lib` produces "CPU + platform GPU" for the build host.
+const FUSED_LIB_VARIANT =
+  getArgValue(args, "fused-lib-variant") ??
+  process.env.ELIZA_DESKTOP_FUSED_LIB_VARIANT ??
+  "auto";
+// Where the fused lib is staged so the Electrobun copy (dist -> eliza-dist)
+// carries it; app-core's runtime probe (ensureBundledFusedLibDir) then finds
+// `<eliza-dist>/local-inference/lib` with no env wiring.
+const FUSED_LIB_OUT_DIR = path.join(ROOT, "dist", "local-inference", "lib");
+
+function fusedLibFilenames() {
+  if (process.platform === "darwin") return ["libelizainference.dylib"];
+  if (process.platform === "win32")
+    return ["elizainference.dll", "libelizainference.dll"];
+  return ["libelizainference.so"];
+}
+
+function fusedLibAlreadyStaged() {
+  return fusedLibFilenames().some((name) =>
+    fs.existsSync(path.join(FUSED_LIB_OUT_DIR, name)),
+  );
+}
+
+// Provenance for the staged fused lib so the reuse gate never silently reuses a
+// lib built for a DIFFERENT variant/platform than this build targets (#9309).
+const FUSED_LIB_SIDECAR = path.join(FUSED_LIB_OUT_DIR, "staged-fused-lib.json");
+
+function readFusedLibSidecar() {
+  try {
+    return JSON.parse(fs.readFileSync(FUSED_LIB_SIDECAR, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeFusedLibSidecar() {
+  fs.mkdirSync(FUSED_LIB_OUT_DIR, { recursive: true });
+  fs.writeFileSync(
+    FUSED_LIB_SIDECAR,
+    `${JSON.stringify(
+      {
+        variant: FUSED_LIB_VARIANT,
+        platform: process.platform,
+        builtAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+/**
+ * A staged lib whose provenance sidecar names a DIFFERENT variant/platform than
+ * this build targets — a confirmed wrong-variant lib we must not ship.
+ */
+function fusedLibStagedVariantMismatch() {
+  if (!fusedLibAlreadyStaged()) return false;
+  const sidecar = readFusedLibSidecar();
+  if (!sidecar) return false; // no provenance ≠ wrong provenance
+  return (
+    sidecar.variant !== FUSED_LIB_VARIANT ||
+    sidecar.platform !== process.platform
+  );
+}
+
+/**
+ * Whether a staged lib can be reused. A lib with a matching sidecar is reused; a
+ * sidecar-less lib (e.g. a prebuilt artifact a CI step dropped into
+ * dist/local-inference/lib) is TRUSTED and reused — we can't confirm its variant
+ * but it was deliberately staged. Only a sidecar that names a different
+ * variant/platform forces a rebuild.
+ */
+function fusedLibStagedForCurrentVariant() {
+  return fusedLibAlreadyStaged() && !fusedLibStagedVariantMismatch();
+}
+
+const FUSED_LIB_FORK_DIR = path.join(
+  PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
+  "native",
+  "llama.cpp",
+);
+
+/**
+ * Ensure the native llama.cpp fork submodule is checked out (the fused build
+ * needs its CMakeLists). Release CI checks out with `submodules: false`, so the
+ * fork is absent; init just the one path on demand rather than requiring the
+ * workflow to fetch every submodule. Returns true if the fork is present after.
+ */
+function ensureFusedLibSubmodule() {
+  if (fs.existsSync(path.join(FUSED_LIB_FORK_DIR, "CMakeLists.txt")))
+    return true;
+  const rel = path.relative(ROOT, FUSED_LIB_FORK_DIR).split(path.sep).join("/");
+  console.log(
+    `[desktop-build] Native fork missing; initializing submodule ${rel}`,
+  );
+  // NB: no --depth/shallow here — a shallow submodule fetch fails with
+  // "Server does not allow request for unadvertised object <sha>" when the
+  // recorded gitlink commit isn't the remote tip, which is common. Reliability
+  // over speed: this path must actually produce the fork.
+  spawnSync(
+    "git",
+    ["-C", ROOT, "submodule", "update", "--init", "--recursive", rel],
+    { stdio: "inherit" },
+  );
+  return fs.existsSync(path.join(FUSED_LIB_FORK_DIR, "CMakeLists.txt"));
+}
+
+/**
+ * Build + stage the fused `libelizainference` into the desktop bundle so a
+ * COMPILED app ships with working local inference — no first-run download, no
+ * manual `build:fused-desktop`. The "auto" variant bakes CPU in and layers the
+ * host's best GPU backend (Metal on macOS; CUDA when nvcc is present; else CPU),
+ * so it works on every host.
+ *
+ * Gating:
+ *   - Reuses an already-staged lib (a prior build, or a prebuilt artifact a CI
+ *     step dropped into dist/local-inference/lib).
+ *   - Builds when explicitly asked (`--build-fused-lib` /
+ *     ELIZA_DESKTOP_BUILD_FUSED_LIB=1) OR automatically on CI release builds
+ *     (CI=true) — initializing the native submodule on demand. Off for plain
+ *     local dev builds (keeps iteration fast).
+ *   - An EXPLICIT request hard-fails if it can't produce the lib (unless
+ *     ELIZA_DESKTOP_FUSED_LIB_OPTIONAL=1). A CI auto-build is BEST-EFFORT: a
+ *     missing toolchain or a build failure warns and ships without the lib
+ *     (cloud fallback) rather than breaking the release. Set
+ *     ELIZA_DESKTOP_FUSED_LIB_REQUIRED=1 to make CI auto-builds hard-fail too.
+ */
+function stageDesktopFusedLib() {
+  const explicitlyRequested =
+    getBooleanArg(args, "build-fused-lib") ||
+    process.env.ELIZA_DESKTOP_BUILD_FUSED_LIB === "1";
+  const ciAutoBuild = process.env.CI === "true";
+  const shouldBuild = explicitlyRequested || ciAutoBuild;
+  const required =
+    (explicitlyRequested ||
+      process.env.ELIZA_DESKTOP_FUSED_LIB_REQUIRED === "1") &&
+    process.env.ELIZA_DESKTOP_FUSED_LIB_OPTIONAL !== "1";
+
+  if (
+    fusedLibStagedForCurrentVariant() &&
+    process.env.ELIZA_DESKTOP_REBUILD_FUSED_LIB !== "1"
+  ) {
+    console.log(
+      `[desktop-build] Reusing already-staged fused lib in ${FUSED_LIB_OUT_DIR} ` +
+        `(variant=${FUSED_LIB_VARIANT}, ${process.platform})`,
+    );
+    return;
+  }
+
+  // A staged lib whose sidecar names a DIFFERENT variant/platform is a confirmed
+  // wrong-variant lib — never silently reused. (A sidecar-less drop-in is trusted
+  // and was already reused above.)
+  const variantMismatch = fusedLibStagedVariantMismatch();
+  if (variantMismatch) {
+    const sidecar = readFusedLibSidecar();
+    console.warn(
+      `[desktop-build] Staged fused lib does not match this build ` +
+        `(want variant=${FUSED_LIB_VARIANT}/${process.platform}, found ` +
+        `${sidecar.variant}/${sidecar.platform}). ` +
+        `It will be rebuilt to avoid shipping a wrong-variant native lib.`,
+    );
+  }
+
+  if (!shouldBuild) {
+    if (variantMismatch) {
+      // Can't rebuild here (no toolchain requested) and the staged lib is the
+      // wrong variant — drop it so the app cleanly falls back to cloud inference
+      // instead of dlopen()-ing a mismatched backend on the device.
+      for (const name of fusedLibFilenames()) {
+        fs.rmSync(path.join(FUSED_LIB_OUT_DIR, name), { force: true });
+      }
+      fs.rmSync(FUSED_LIB_SIDECAR, { force: true });
+      console.warn(
+        "[desktop-build] Removed the mismatched fused lib; this build ships without " +
+          "local inference. Rebuild with --build-fused-lib to stage the right variant.",
+      );
+      return;
+    }
+    console.log(
+      "[desktop-build] Skipping fused libelizainference build (local-inference will be " +
+        "unavailable in this build). Enable with --build-fused-lib or " +
+        "ELIZA_DESKTOP_BUILD_FUSED_LIB=1 (CI release builds enable it automatically).",
+    );
+    return;
+  }
+
+  // Surface a hard failure for an explicit request that can't proceed; otherwise
+  // warn and ship without the lib so a release never breaks on the native build.
+  const giveUp = (reason) => {
+    if (required) {
+      fail(
+        `Cannot build the fused libelizainference for the desktop bundle: ${reason}. ` +
+          "Install the toolchain / init submodules, or set " +
+          "ELIZA_DESKTOP_FUSED_LIB_OPTIONAL=1 to ship without local inference.",
+      );
+    }
+    console.warn(
+      `[desktop-build] Skipping fused libelizainference build — ${reason}. ` +
+        "The compiled app will fall back to cloud inference.",
+    );
+  };
+
+  if (!which("cmake")) {
+    giveUp("cmake not found on PATH");
+    return;
+  }
+  if (!ensureFusedLibSubmodule()) {
+    giveUp(`native fork not available at ${FUSED_LIB_FORK_DIR}`);
+    return;
+  }
+
+  fs.mkdirSync(FUSED_LIB_OUT_DIR, { recursive: true });
+  run(
+    "node",
+    [
+      FUSED_LIB_STAGE_SCRIPT,
+      "--variant",
+      FUSED_LIB_VARIANT,
+      "--out",
+      FUSED_LIB_OUT_DIR,
+    ],
+    {
+      cwd: ROOT,
+      // A CI auto-build that fails must not abort the whole release; an explicit
+      // request is allowed to hard-fail.
+      allowFailure: !required,
+      label: `Building + staging fused libelizainference (${FUSED_LIB_VARIANT}) into the desktop bundle`,
+    },
+  );
+
+  if (!fusedLibAlreadyStaged()) {
+    giveUp("the build produced no lib in the output dir");
+    return;
+  }
+  // Record provenance so a later build with a different variant/platform won't
+  // silently reuse this lib.
+  writeFusedLibSidecar();
+}
+
 function stageDesktopBuild() {
   ensureWorkspaceCheckoutPresent();
   ensureAppDirs();
 
   ensureRootRuntimeBundle();
   ensureWorkspaceRuntimePackagesBuilt();
+
+  // Build + bundle the fused local-inference native lib so the packaged app
+  // serves local AI out of the box. Gated (see stageDesktopFusedLib) so plain
+  // dev builds stay fast; auto-built best-effort on CI release builds.
+  stageDesktopFusedLib();
 
   runBun(["run", "generate:css-strings"], {
     cwd: UI_PACKAGE_DIR,
@@ -1046,10 +1355,20 @@ function stageDesktopBuild() {
 
   ensureUiGeneratedAssets();
 
+  // Capture the moment the renderer build starts so we can prove afterward that
+  // a FRESH bundle was produced — not a stale dist silently reused (issue #9309).
+  const rendererBuildStartedAt = Date.now() - 1000;
   runBunPackageBinary("vite", ["build"], {
     cwd: APP_DIR,
     env: desktopRendererBuildEnv(),
     label: `Building renderer bundle (VITE_APP_VARIANT=${variant}, ELIZA_BUILD_VARIANT=${buildVariant})`,
+  });
+  // Fail loudly if the renderer manifest is missing or predates this build (a
+  // cached/stale dist was reused) or was built for a different variant.
+  assertRendererRebuiltSince(path.join(APP_DIR, "dist"), {
+    notBefore: rendererBuildStartedAt,
+    expectVariant: buildVariant,
+    label: "desktop",
   });
 
   runDesktopPreflight();
@@ -1183,7 +1502,7 @@ function mirrorTreePreservingSymlinks(src, dst) {
     if (dstLstat) {
       try {
         if (dstLstat.isDirectory() && !dstLstat.isSymbolicLink()) {
-          fs.rmSync(dst, { force: true, recursive: true });
+          removePathRecursive(dst, "desktop mirror directory cleanup");
         } else {
           fs.unlinkSync(dst);
         }
@@ -1285,8 +1604,16 @@ function packageDesktopBuild() {
       : "Packaging Electrobun app",
   });
 
-  mirrorCanonicalToLegacy("build");
-  mirrorCanonicalToLegacy("artifacts");
+  // The legacy compatibility path (APP_DIR/electrobun) is not read by any
+  // production code — only docs and this mirror fn reference it (the inno
+  // installer takes BuildDir as a param; copy-runtime-node-modules reads the
+  // canonical platforms/electrobun path). Mirroring the entire ~2.3 GB /
+  // ~110k-file build tree on every package build is pure waste, so make it
+  // opt-in (default off). Set ELIZA_ELECTROBUN_MIRROR_LEGACY=1 to restore it.
+  if (process.env.ELIZA_ELECTROBUN_MIRROR_LEGACY === "1") {
+    mirrorCanonicalToLegacy("build");
+    mirrorCanonicalToLegacy("artifacts");
+  }
 
   // Electrobun's built-in rcedit call references a CI-local D:\ path that
   // doesn't exist on developer machines. Re-embed the icon from a locally

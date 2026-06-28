@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,6 +9,22 @@ import {
   isReloadableChangePath,
   startAgentSourceWatcher,
 } from "./agent-source-watcher.mjs";
+import { resolveRepoRootFromImportMeta } from "./repo-root.mjs";
+
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -23,7 +40,7 @@ async function waitUntil(predicate, timeoutMs) {
 describe("collectAgentSourceDirs", () => {
   let root = null;
   afterEach(() => {
-    if (root) rmSync(root, { recursive: true, force: true });
+    if (root) removePathRecursive(root);
     root = null;
   });
 
@@ -117,7 +134,7 @@ describe("startAgentSourceWatcher (integration)", () => {
   afterEach(() => {
     if (handle) handle.close();
     handle = null;
-    if (root) rmSync(root, { recursive: true, force: true });
+    if (root) removePathRecursive(root);
     root = null;
   });
 
@@ -154,7 +171,10 @@ describe("startAgentSourceWatcher (integration)", () => {
     const srcDir = path.join(root, "plugins", "plugin-x", "src");
     mkdirSync(srcDir, { recursive: true });
     for (let i = 0; i < 20; i++) {
-      writeFileSync(path.join(srcDir, `mod-${i}.ts`), `export const v${i}=0;\n`);
+      writeFileSync(
+        path.join(srcDir, `mod-${i}.ts`),
+        `export const v${i}=0;\n`,
+      );
     }
 
     const calls = [];

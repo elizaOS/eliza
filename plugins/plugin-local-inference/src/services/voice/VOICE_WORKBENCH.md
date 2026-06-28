@@ -20,10 +20,11 @@ unifies them onto **one scenario format, one metric module, and one report**.
 The schema, corpus generator (incl. acoustic degradation), metric module,
 headless runner, report, scenario-runner `voice` turn kind, headful scenario
 player, and the `voice:workbench` CLI are all **implemented and unit-tested**.
-The only intentionally **gated** piece is the real **acoustic-model** lane
-(`--real`): driving the corpus through Qwen3-ASR / WeSpeaker / pyannote / Silero
-/ Kokoro needs the native fused lib + GGUF bundles, so it reports `skipped`
-(never `pass`) when those artifacts are absent.
+The real **acoustic-model** lane (`--real`) is implemented as a provisioned
+hardware lane: it generates distinct human voices with ElevenLabs, synthesizes
+agent echoes with the fused local TTS, and scores the corpus through fused ASR,
+WeSpeaker, pyannote, and the shipped respond/self-voice gate. Missing real
+artifacts are a hard failure in `--real`, not all-skipped evidence.
 
 ### Execution lanes (`voice:workbench`)
 
@@ -31,7 +32,7 @@ The only intentionally **gated** piece is the real **acoustic-model** lane
 | --- | --- | --- | --- |
 | `--mock` (default) | `groundTruthMockServices` echoes ground truth | runner → scorers → report wiring | ✅ always |
 | `--logic` | `realDecisionLogicServices` runs the SHIPPED EOT + respond/echo/bystander/wake-word gate + name extraction + owner inference | the **decision logic** (catches a regression the moment it lands) | ✅ always (no models) |
-| `--real` | real acoustic backend | real WER/DER/EOT-latency, acoustic speaker verification | 🟡 gated → `skipped` |
+| `--real` | ElevenLabs human speech + fused local TTS/ASR + WeSpeaker + pyannote | real WER/DER/EOT/respond/self-voice/owner-security measurements | ✅ provisioned nightly/hardware lane |
 
 The `--logic` lane is the key anti-hollow guarantee: it does NOT echo the corpus,
 it runs the same gate the UI client ships (`@elizaos/shared/voice/respond-gate`),
@@ -48,6 +49,7 @@ reply, and holds on a mid-utterance pause — asserted by tests, not assumed.
 | **WER consolidation** | `@elizaos/shared/voice-wer` | The previously-duplicated `wordErrorRate` (`e2e-harness.ts` **and** `voice-selftest-harness.ts`, with subtly different normalization) is now defined once — Unicode-aware, contraction-preserving — and imported by both. |
 | **Acoustic robustness corpus** | `corpus-augment.ts` | Seeded, deterministic degradation DSP: additive room noise (white/pink at a target SNR), Freeverb reverb, far-field attenuation, telephone/low-quality line (band-limit + µ-law), and competing background talkers. Wired into the corpus generator via a per-turn / per-scenario `environment` so a clean scenario and a noisy one share one schema. |
 | **Real-decision-logic adapter** | `workbench-logic-services.ts` | Runs the SHIPPED EOT + respond/echo/bystander/wake-word gate + name extraction over the corpus (no models). The `--logic` lane. |
+| **Real acoustic adapter** | `workbench-real-services.ts` | The `--real` lane: ElevenLabs-generated human speech, fused local agent TTS, fused ASR, WeSpeaker speaker centroids, pyannote speech/overlap labels, live `selfVoiceSimilarity`, owner inference, and the same respond gate. |
 | **Respond/echo gate (single source)** | `@elizaos/shared/voice/respond-gate` | `shouldRespondToVoiceTurn` + `buildVoiceTurnSignal`, promoted out of the UI so the client and the workbench share one definition. The UI re-exports it. |
 | **Owner inference** | `@elizaos/shared/voice/owner-inference` | `resolveOwnerCandidate` — proposes the owner from who speaks most/most-confidently, only when sufficient AND unambiguous, else UNDECIDED. The logic an owner-detection provider/evaluator runs when no owner is enrolled. |
 | **Echo + owner scorers** | `e2e-harness.ts` | `scoreEchoRejection` (agent-echo turns correctly suppressed) and `scoreOwnerSecurity` (owner-vs-intruder accuracy + impostor-accept rate). |
@@ -100,24 +102,22 @@ The workbench is the convergence point for these previously-disjoint harnesses:
 | `e2e-harness.ts:wordErrorRate` + `voice-selftest-harness.ts:wordErrorRate` | **Done** — one `@elizaos/shared/voice-wer`. |
 | Pure scoring lib (`e2e-harness.ts`) | **Promoted** to the single metric module (EOT/diarization/respond/entity scorers added). |
 | `packages/app-core/scripts/voice-duet.mjs` (`voice:duet`), `voice-e2e-hardware.ts`, `voice-vad-smoke.ts`, `voice-attribution-smoke.ts`, `lib/duet-bridge.mjs` | Feed measurements into the shared scorers + report (planned absorb). |
-| `packages/benchmarks/voice/three-voice-scenario.mjs`, `three-voice-e2e-real.mjs` | Corpus-generation precedent the `VoiceScenario` corpus generator extends (planned). |
+| `packages/benchmarks/voice/three-voice-scenario.mjs` | Corpus-generation precedent the `VoiceScenario` corpus generator extends (planned). |
 | `packages/benchmarks/voicebench/` (TS latency p95/p99) | The report layer mirrors its p95/p99 shape; remains a research bench linked from the workbench. |
 | Per-spec inline `tinyWav()` fixtures (`packages/app/test/ui-smoke/voice-*.spec.ts`) | Replaced by the versioned corpus (planned). |
 
-## Remaining (gated — needs real acoustic models / live cloud / device)
+## External / Device Follow-Ups
 
-Not stubbed here (no LARP); each reports `skipped`, never `pass`, until the
-artifact is present. Full detail + why in
+Full detail + why in
 [research/VOICE_8785_ASSESSMENT.md §5](./research/VOICE_8785_ASSESSMENT.md).
 
-- **`--real` acoustic lane** — drive the corpus through the real Qwen3-ASR /
-  WeSpeaker / pyannote / Silero / openWakeWord / Kokoro models to measure real
-  WER/DER/EOT-latency and acoustic speaker verification. Needs the native fused
-  lib + GGUF bundles (model loading EMFILEs under the repo's `coverage=true`
-  bunfig — run real smokes OUTSIDE `bun test`).
 - **Live cloud STT/TTS round-trip** — ElevenLabs via `/api/v1/voice/*`; needs an
   authenticated Cloud session (the test account returns HTTP 402 — a billing
   state, not a code bug).
+- **PCM-level AEC** — still a product/runtime feature beyond the workbench
+  scorer: it needs a time-aligned playback reference and cancellation path in
+  the live audio transport, then the workbench can score the resulting echo
+  corpus.
 - **Headful real-backend + recorded A/V** — the 10 `voice-workbench-*.spec.ts`
   run with mocked backends; a real-backend headful lane with audio+video capture
   needs a provisioned local backend on the CI host.

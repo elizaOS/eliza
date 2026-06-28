@@ -1,15 +1,30 @@
 /**
- * W1-A REST surface unit tests for the ScheduledTask routes.
+ * Unit tests for the PA-specific dev `/registries` composite route.
  *
- * Exercises the handler with a mock LifeOpsRouteContext + an in-memory
- * runner so the route logic is testable without spinning up the full
- * runtime. The DB-backed runner is covered separately via the runtime
- * wiring path (`runtime-wiring.ts`).
+ * The generic ScheduledTask REST surface (list / schedule / verbs / history)
+ * moved to `@elizaos/plugin-scheduling` and is covered by that package's
+ * `routes/scheduled-tasks.test.ts`. What stays here is the composite registry
+ * introspection that fans out over the PA-only registries.
  */
 
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
+} from "@elizaos/plugin-scheduling";
 import { describe, expect, it } from "vitest";
 import type { ChannelContribution } from "../lifeops/channels/contract.js";
 import {
@@ -31,29 +46,6 @@ import {
   registerFamilyRegistry,
   registerFeatureFlagRegistry,
 } from "../lifeops/registries/index.js";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import {
-  createInMemoryScheduledTaskLogStore,
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  type ScheduledTaskRunnerHandle,
-  TestNoopScheduledTaskDispatcher,
-} from "../lifeops/scheduled-task/index.js";
 import type { SendPolicyContribution } from "../lifeops/send-policy/contract.js";
 import {
   createSendPolicyRegistry,
@@ -168,139 +160,7 @@ function setRemoteAddress(socket: Socket, remoteAddress: string): void {
   });
 }
 
-describe("scheduled-tasks REST handler", () => {
-  it("POST /api/lifeops/scheduled-tasks creates and returns a task", async () => {
-    const runner = makeRunner();
-    const handler = makeScheduledTasksRouteHandler({
-      resolveRunner: async () => runner,
-    });
-    const { ctx, res } = buildCtx({
-      method: "POST",
-      pathname: "/api/lifeops/scheduled-tasks",
-      body: {
-        kind: "reminder",
-        promptInstructions: "drink water",
-        trigger: { kind: "manual" },
-        priority: "low",
-        respectsGlobalPause: true,
-        source: "user_chat",
-        createdBy: "tester",
-        ownerVisible: true,
-      },
-      runner,
-    });
-    const handled = await handler(ctx);
-    expect(handled).toBe(true);
-    expect(res.statusCode).toBe(201);
-    const payload = JSON.parse(res.body ?? "{}");
-    expect(payload.task.taskId).toBeDefined();
-    expect(payload.task.state.status).toBe("scheduled");
-  });
-
-  it("POST schedule rejects invalid payloads with 400", async () => {
-    const runner = makeRunner();
-    const handler = makeScheduledTasksRouteHandler({
-      resolveRunner: async () => runner,
-    });
-    const { ctx, res } = buildCtx({
-      method: "POST",
-      pathname: "/api/lifeops/scheduled-tasks",
-      body: { kind: "not-a-real-kind" },
-      runner,
-    });
-    await handler(ctx);
-    expect(res.statusCode).toBe(400);
-  });
-
-  it("GET /api/lifeops/scheduled-tasks lists tasks", async () => {
-    const runner = makeRunner();
-    await runner.schedule({
-      kind: "reminder",
-      promptInstructions: "ping",
-      trigger: { kind: "manual" },
-      priority: "low",
-      respectsGlobalPause: true,
-      source: "user_chat",
-      createdBy: "x",
-      ownerVisible: true,
-    });
-    const handler = makeScheduledTasksRouteHandler({
-      resolveRunner: async () => runner,
-    });
-    const { ctx, res } = buildCtx({
-      method: "GET",
-      pathname: "/api/lifeops/scheduled-tasks",
-      runner,
-    });
-    await handler(ctx);
-    expect(res.statusCode).toBe(200);
-    const payload = JSON.parse(res.body ?? "{}");
-    expect(payload.tasks).toHaveLength(1);
-  });
-
-  it("POST /:id/complete fires onComplete pipeline; /:id/acknowledge does not (cross-agent §7.6)", async () => {
-    const runner = makeRunner();
-    const child = {
-      kind: "reminder" as const,
-      promptInstructions: "child-of-pipeline",
-      trigger: { kind: "manual" as const },
-      priority: "low" as const,
-      respectsGlobalPause: true,
-      source: "user_chat" as const,
-      createdBy: "x",
-      ownerVisible: true,
-    };
-    const parent = await runner.schedule({
-      ...child,
-      promptInstructions: "parent",
-      pipeline: { onComplete: [child as never] },
-    });
-    const handler = makeScheduledTasksRouteHandler({
-      resolveRunner: async () => runner,
-    });
-    {
-      const { ctx, res } = buildCtx({
-        method: "POST",
-        pathname: `/api/lifeops/scheduled-tasks/${parent.taskId}/complete`,
-        body: { reason: "smoke" },
-        runner,
-      });
-      await handler(ctx);
-      expect(res.statusCode).toBe(200);
-    }
-    const all = await runner.list();
-    expect(
-      all.find((t) => t.promptInstructions === "child-of-pipeline"),
-    ).toBeDefined();
-  });
-
-  it("GET /:id/history returns user-visible state surface", async () => {
-    const runner = makeRunner();
-    const task = await runner.schedule({
-      kind: "reminder",
-      promptInstructions: "x",
-      trigger: { kind: "manual" },
-      priority: "low",
-      respectsGlobalPause: true,
-      source: "user_chat",
-      createdBy: "x",
-      ownerVisible: true,
-    });
-    const handler = makeScheduledTasksRouteHandler({
-      resolveRunner: async () => runner,
-    });
-    const { ctx, res } = buildCtx({
-      method: "GET",
-      pathname: `/api/lifeops/scheduled-tasks/${task.taskId}/history`,
-      runner,
-    });
-    await handler(ctx);
-    expect(res.statusCode).toBe(200);
-    const payload = JSON.parse(res.body ?? "{}");
-    expect(payload.taskId).toBe(task.taskId);
-    expect(payload.status).toBe("scheduled");
-  });
-
+describe("dev /registries composite route", () => {
   it("GET /api/lifeops/dev/registries returns registry health (loopback only)", async () => {
     const runner = makeRunner();
     const handler = makeScheduledTasksRouteHandler({

@@ -6,12 +6,15 @@ export {
 export {
 	type BackendDecision,
 	BackendDispatcher,
+	type BackendId,
 	type BackendOverride,
 	type BackendPlan,
 	decideBackend,
+	ELIZA_LLM_BACKEND_ENV,
 	type GenerateArgs as BackendGenerateArgs,
 	type GenerateResult,
 	type LocalInferenceBackend,
+	litertBackendSupported,
 	readBackendOverride,
 	resolveCatalogForPlan,
 } from "./backend";
@@ -30,6 +33,11 @@ export {
 	type LocalGenerateOutcome,
 	makeCloudFallbackHandler,
 } from "./cloud-fallback";
+export {
+	computeRuntimeContextFit,
+	type RuntimeContextFit,
+	type RuntimeContextFitInput,
+} from "./context-fit";
 export {
 	buildDeviceResourceMetricsDevPayload,
 	type DeviceBridgeStatus,
@@ -213,6 +221,13 @@ export type {
 	ModelHubSnapshot,
 	TextGenerationSlot,
 } from "./types";
+export {
+	getVisionContextAugmenter,
+	registerVisionContextAugmenter,
+	type VisionAugmentResult,
+	type VisionContextAugmenter,
+	type VisionFusedContext,
+} from "./vision/augmenter";
 export {
 	VisionEmbeddingCache,
 	type VisionEmbeddingCacheConfig,

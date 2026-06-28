@@ -48,18 +48,6 @@ registerAppShellPage({
     })),
 });
 
-registerAppShellPage({
-  id: "model-tester.tui",
-  pluginId: MODEL_TESTER_APP_NAME,
-  label: "Model Tester TUI",
-  icon: "Terminal",
-  path: "/model-tester/tui",
-  loader: () =>
-    import("./ModelTesterAppView.js").then((module) => ({
-      default: module.ModelTesterTuiView,
-    })),
-});
-
 // In a terminal host (the Node agent, no DOM), register the unified spatial
 // view so the model tester renders inline in the terminal. Lazy + DOM-guarded
 // so the terminal engine stays out of browser/mobile bundles.

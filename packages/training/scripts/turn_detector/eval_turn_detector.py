@@ -122,7 +122,7 @@ def gate_report(*, f1: float, mean_latency_ms: float) -> dict[str, Any]:
     }
 
 
-LIVEKIT_IM_END_TOKEN: Final[str] = "<|im_end|>"
+GEMMA_END_OF_TURN_TOKEN: Final[str] = "<end_of_turn>"
 
 
 def _format_livekit_prompt(tokenizer: Any, transcript: str) -> str:
@@ -135,7 +135,7 @@ def _format_livekit_prompt(tokenizer: Any, transcript: str) -> str:
         tokenize=False,
         add_special_tokens=False,
     )
-    ix = templated.rfind(LIVEKIT_IM_END_TOKEN)
+    ix = templated.rfind(GEMMA_END_OF_TURN_TOKEN)
     if ix >= 0:
         templated = templated[:ix]
     return templated
@@ -152,8 +152,8 @@ def run_onnx_eval(
 
     Scoring matches ``probabilityFromOnnxOutput`` in
     ``plugins/plugin-local-inference/src/services/voice/eot-classifier.ts``:
-    apply the chat template (minus trailing ``<|im_end|>``), forward,
-    then ``P(EOU) = softmax(logits[:, last_real_pos, :])[<|im_end|>]``.
+    apply the chat template (minus trailing ``<end_of_turn>``), forward,
+    then ``P(EOU) = softmax(logits[:, last_real_pos, :])[<end_of_turn>]``.
 
     When any record carries a non-``"und"`` ``lang`` field we additionally
     roll up ``f1ByLang[<lang>]`` into the report so the multilingual
@@ -172,12 +172,12 @@ def run_onnx_eval(
     tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path.parent))
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
-    im_end_ids = tokenizer(LIVEKIT_IM_END_TOKEN, add_special_tokens=False)[
+    eot_ids = tokenizer(GEMMA_END_OF_TURN_TOKEN, add_special_tokens=False)[
         "input_ids"
     ]
-    if not im_end_ids:
-        raise SystemExit("tokenizer did not produce an <|im_end|> id")
-    im_end_id = int(im_end_ids[0])
+    if not eot_ids:
+        raise SystemExit("tokenizer did not produce an <end_of_turn> id")
+    eot_id = int(eot_ids[0])
     session = onnxruntime.InferenceSession(
         str(model_path), providers=["CPUExecutionProvider"]
     )
@@ -202,7 +202,7 @@ def run_onnx_eval(
         last_logits = logits[0, -1, :].astype("float64")
         last_logits = last_logits - last_logits.max()
         probs = np.exp(last_logits) / np.exp(last_logits).sum()
-        probability = float(probs[im_end_id])
+        probability = float(probs[eot_id])
         predictions.append(1 if probability >= decision_threshold else 0)
         golds.append(r.label)
         langs.append(r.lang)

@@ -33,7 +33,7 @@ export const FieldSwitch = React.forwardRef<
         onCheckedChange?.(!checked);
       }}
       className={cn(
-        "inline-flex h-10 w-full cursor-pointer select-none items-center gap-3 rounded-sm border border-border/50 bg-bg/50 px-4 py-2 text-sm text-txt transition-[border-color,background-color,box-shadow] hover:border-accent/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex h-10 w-full cursor-pointer select-none items-center gap-3 rounded-sm border border-border/50 bg-bg/50 px-4 py-2 text-sm text-txt transition-[border-color,background-color,box-shadow] hover:border-accent/40    disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
     >

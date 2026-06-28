@@ -124,7 +124,7 @@ export class FarcasterClient {
             // the cast_id variant's fields too — cast at this SDK boundary.
             ...(embeds && embeds.length > 0
               ? {
-                  embeds: embeds.map((url) => ({ url })) as unknown as Parameters<
+                  embeds: embeds.map((url) => ({ url })) as Parameters<
                     NeynarAPIClient["publishCast"]
                   >[0]["embeds"],
                 }

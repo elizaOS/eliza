@@ -24,6 +24,7 @@ import {
 import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
+import { augmentVisionRequest } from "./services/vision/augmenter.js";
 
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
 export const LOCAL_INFERENCE_PRIORITY = -100;
@@ -727,6 +728,8 @@ function tryGetImageGenArbiter(
 function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
 	prompt?: string;
+	signal?: AbortSignal;
+	onTextChunk?: (chunk: string) => void | Promise<void>;
 } {
 	const url = typeof params === "string" ? params : params.imageUrl;
 	if (typeof url !== "string" || !url) {
@@ -737,15 +740,38 @@ function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 		);
 	}
 	const prompt = typeof params === "object" ? params.prompt : undefined;
+	const signal =
+		typeof params === "object"
+			? (params as { signal?: AbortSignal }).signal
+			: undefined;
+	// Token-by-token streaming is intentionally explicit for vision. Hidden image
+	// preprocessing can happen inside a streaming chat turn; only forward the
+	// runtime callback when the call itself asks for `stream: true`.
+	const wantsStream =
+		typeof params === "object" &&
+		(params as { stream?: boolean }).stream === true;
+	const streamSink =
+		wantsStream && typeof params === "object"
+			? (params as { onStreamChunk?: (chunk: string) => void | Promise<void> })
+					.onStreamChunk
+			: undefined;
+	const onTextChunk =
+		typeof streamSink === "function"
+			? (chunk: string) => streamSink(chunk)
+			: undefined;
 	if (url.startsWith("data:")) {
 		return {
 			image: { kind: "dataUrl", dataUrl: url },
 			prompt,
+			...(signal ? { signal } : {}),
+			...(onTextChunk ? { onTextChunk } : {}),
 		};
 	}
 	return {
 		image: { kind: "url", url },
 		prompt,
+		...(signal ? { signal } : {}),
+		...(onTextChunk ? { onTextChunk } : {}),
 	};
 }
 
@@ -789,13 +815,14 @@ function createImageDescriptionHandler() {
 			markEliza1VisionHandlerPresent(runtime);
 			const modelKeyCandidate =
 				typeof params === "object"
-					? (params as unknown as { modelKey?: unknown }).modelKey
+					? (params as { modelKey?: unknown }).modelKey
 					: undefined;
 			const modelKey =
 				typeof modelKeyCandidate === "string" && modelKeyCandidate
 					? modelKeyCandidate
 					: "gemma-vl";
 			const request = paramsToVisionRequest(params);
+			await augmentVisionRequest(request);
 			const result = await arbiter.requestVisionDescribe<
 				typeof request,
 				ImageDescriptionResult | string
@@ -1003,9 +1030,9 @@ function resolveImageGenModelKeyFromRuntime(runtime: IAgentRuntime): string {
 const TIER_TO_DEFAULT_IMAGE_MODEL_KEY: Readonly<Record<string, string>> = {
 	"eliza-1-2b": "imagegen-sd-1_5-q5_0",
 	"eliza-1-4b": "imagegen-sd-1_5-q5_0",
-	"eliza-1-9b": "imagegen-z-image-turbo-q4_k_m",
-	"eliza-1-27b": "imagegen-z-image-turbo-q4_k_m",
-	"eliza-1-27b-256k": "imagegen-z-image-turbo-q4_k_m",
+	"eliza-1-9b": "imagegen-sd-1_5-q5_0",
+	"eliza-1-27b": "imagegen-sd-1_5-q5_0",
+	"eliza-1-27b-256k": "imagegen-sd-1_5-q5_0",
 };
 
 export function createLocalInferenceModelHandlers(): NonNullable<

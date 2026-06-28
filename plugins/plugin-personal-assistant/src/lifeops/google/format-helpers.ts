@@ -64,7 +64,7 @@ export function messageText(message: Memory): string {
   return typeof text === "string" ? text : "";
 }
 
-type LifeOpsModelType = (typeof ModelType)[keyof typeof ModelType];
+export type LifeOpsModelType = (typeof ModelType)[keyof typeof ModelType];
 
 type LifeOpsModelCallArgs = {
   runtime: IAgentRuntime;

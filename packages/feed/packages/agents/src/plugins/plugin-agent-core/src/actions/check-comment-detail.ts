@@ -77,7 +77,7 @@ export const checkCommentDetailAction: Action = {
       description: "The ID of the comment to retrieve",
       required: true,
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [

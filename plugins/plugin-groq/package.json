@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-groq",
-  "version": "2.0.3-beta.2",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -35,6 +35,7 @@
   },
   "sideEffects": false,
   "files": [
+    "registry-entry.json",
     "dist",
     "auto-enable.ts"
   ],
@@ -65,7 +66,7 @@
   "scripts": {
     "dev": "bun run build.ts --watch",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "format": "bunx @biomejs/biome format --write .",
     "test": "vitest run --config vitest.config.ts",
     "test:harness": "bunx vitest run --config vitest.harness.config.ts",

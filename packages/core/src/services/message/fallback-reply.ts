@@ -1,4 +1,31 @@
-import { APICallError, RetryError } from "ai";
+type ErrorWithStatus = {
+	status?: unknown;
+	statusCode?: unknown;
+	lastError?: unknown;
+	errors?: unknown;
+};
+
+function asErrorObject(error: unknown): ErrorWithStatus | null {
+	return typeof error === "object" && error !== null
+		? (error as ErrorWithStatus)
+		: null;
+}
+
+function unwrapRetryError(error: unknown): unknown {
+	const candidate = asErrorObject(error);
+	if (!candidate) return error;
+	if (candidate.lastError) return candidate.lastError;
+	if (Array.isArray(candidate.errors) && candidate.errors.length > 0) {
+		return candidate.errors[candidate.errors.length - 1];
+	}
+	return error;
+}
+
+function hasHttpStatus(error: unknown, statuses: readonly number[]): boolean {
+	const candidate = asErrorObject(error);
+	if (!candidate) return false;
+	return statuses.includes(Number(candidate.statusCode ?? candidate.status));
+}
 
 /**
  * Detect provider rate-limit / 429 failures so the user-facing failure reply
@@ -14,15 +41,8 @@ import { APICallError, RetryError } from "ai";
  * duck-type covers raw OpenAI-SDK errors that expose `.status` instead.
  */
 export function isRateLimitError(error: unknown): boolean {
-	const unwrapped = RetryError.isInstance(error) ? error.lastError : error;
-	if (APICallError.isInstance(unwrapped) && unwrapped.statusCode === 429) {
-		return true;
-	}
-	if (
-		typeof unwrapped === "object" &&
-		unwrapped !== null &&
-		(unwrapped as { status?: unknown }).status === 429
-	) {
+	const unwrapped = unwrapRetryError(error);
+	if (hasHttpStatus(unwrapped, [429])) {
 		return true;
 	}
 	if (!(error instanceof Error)) return false;
@@ -48,19 +68,8 @@ export function isRateLimitError(error: unknown): boolean {
  * first, message-substring fallback second.
  */
 export function isAuthError(error: unknown): boolean {
-	const unwrapped = RetryError.isInstance(error) ? error.lastError : error;
-	if (
-		APICallError.isInstance(unwrapped) &&
-		(unwrapped.statusCode === 401 || unwrapped.statusCode === 403)
-	) {
-		return true;
-	}
-	if (
-		typeof unwrapped === "object" &&
-		unwrapped !== null &&
-		((unwrapped as { status?: unknown }).status === 401 ||
-			(unwrapped as { status?: unknown }).status === 403)
-	) {
+	const unwrapped = unwrapRetryError(error);
+	if (hasHttpStatus(unwrapped, [401, 403])) {
 		return true;
 	}
 	if (!(error instanceof Error)) return false;

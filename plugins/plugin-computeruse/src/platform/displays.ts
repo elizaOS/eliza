@@ -27,6 +27,7 @@
 
 import { execFileSync, execSync } from "node:child_process";
 import { currentPlatform } from "./helpers.js";
+import { psHostAvailable, runPsHost } from "./ps-host.js";
 
 export interface DisplayInfo {
   /** OS-stable identifier or a 0-based fallback index. */
@@ -58,11 +59,22 @@ export class NoDisplayError extends Error {
 
 let cached: DisplayInfo[] | null = null;
 let cachedAt = 0;
-const CACHE_MS = 2000;
+// Display topology is stable for the life of a session in the overwhelming
+// majority of cases (hot-plug mid-task is rare), and enumeration shells out —
+// on Windows a cold `powershell.exe` spawn is ~10-16s under Defender (#9581),
+// and it sits on the capture hot path (`captureDisplay` → `findDisplay` →
+// `listDisplays` every turn, plus a burst per dirty-region capture). A 2s TTL
+// re-spawned that probe constantly. A longer TTL collapses it to ~once per
+// window; `refreshDisplays()` forces a fresh read when a caller knows the
+// layout changed. Override with `COMPUTERUSE_DISPLAYS_CACHE_MS`.
+const CACHE_MS = (() => {
+  const raw = Number(process.env.COMPUTERUSE_DISPLAYS_CACHE_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 30_000;
+})();
 
 /**
- * List all attached displays. Cached briefly to avoid spamming xrandr /
- * PowerShell on burst calls (provider runs every turn).
+ * List all attached displays. Cached to avoid spamming xrandr / PowerShell on
+ * burst calls (provider runs every turn; see {@link CACHE_MS}).
  *
  * Returns a single-display fallback when the OS reports nothing — most
  * callers want a sensible default, not an empty array. Use `isHeadless()`
@@ -578,14 +590,15 @@ function ensurePrimary(displays: DisplayInfo[]): DisplayInfo[] {
   return displays;
 }
 
+const WIN_ENUM_PS =
+  "Add-Type -AssemblyName System.Windows.Forms; " +
+  "[System.Windows.Forms.Screen]::AllScreens | " +
+  "Select-Object DeviceName,Primary,Bounds | " +
+  "ConvertTo-Json -Compress -Depth 4";
+
 function enumerateWindows(): DisplayInfo[] {
   try {
-    const psCmd =
-      "Add-Type -AssemblyName System.Windows.Forms; " +
-      "[System.Windows.Forms.Screen]::AllScreens | " +
-      "Select-Object DeviceName,Primary,Bounds | " +
-      "ConvertTo-Json -Compress -Depth 4";
-    const output = execSync(`powershell -NoProfile -Command "${psCmd}"`, {
+    const output = execSync(`powershell -NoProfile -Command "${WIN_ENUM_PS}"`, {
       timeout: 5000,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -596,4 +609,26 @@ function enumerateWindows(): DisplayInfo[] {
     /* fall through */
   }
   return [fallbackPrimary()];
+}
+
+/**
+ * Asynchronously populate the display cache via the warm PowerShell host
+ * (Windows only). Lets the service pre-seed the cache at init without the
+ * blocking ~10-16s cold `powershell.exe` spawn that the sync
+ * {@link listDisplays} path would otherwise pay on the first turn. No-op (and
+ * never throws) when the host is unavailable — the sync path remains the
+ * fallback. Override the resulting TTL with `COMPUTERUSE_DISPLAYS_CACHE_MS`.
+ */
+export async function warmDisplaysCache(): Promise<void> {
+  if (currentPlatform() !== "win32" || !psHostAvailable()) return;
+  try {
+    const output = await runPsHost(WIN_ENUM_PS, 15_000);
+    const parsed = parseWindowsScreens(output);
+    if (parsed.length > 0) {
+      cached = parsed;
+      cachedAt = Date.now();
+    }
+  } catch {
+    /* leave cache untouched; sync enumeration remains the fallback */
+  }
 }

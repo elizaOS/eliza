@@ -11,8 +11,10 @@
  * bundle.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -27,6 +29,26 @@ import {
 
 let tmpDir: string;
 let nodeModulesDir: string;
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+);
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath: string): void {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 function writePackageJson(
   name: string,
@@ -51,7 +73,7 @@ describe("assertRequiredBundledPackagesLanded", () => {
   });
 
   afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+    removePathRecursive(tmpDir);
   });
 
   it("passes when every required package has a package.json", () => {
@@ -388,6 +410,41 @@ describe("assertRequiredBundledPackagesLanded", () => {
     ).toBe(targetNodeModules);
   });
 
+  it("hoists Smithy signing packages so AWS signing trees stay tar-safe", () => {
+    const rootDestDir = path.join(tmpDir, "dist");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(
+      targetNodeModules,
+      "@aws-sdk",
+      "signature-v4-multi-region",
+      "node_modules",
+      "@smithy",
+      "signature-v4",
+    );
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@smithy/core",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@smithy/core", "3.26.0"]]),
+        resolvedVersion: "3.25.0",
+      }),
+    ).toBe(targetNodeModules);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@smithy/signature-v4",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@smithy/signature-v4", "5.5.2"]]),
+        resolvedVersion: "5.5.0",
+      }),
+    ).toBe(targetNodeModules);
+  });
+
   it("collapses WalletConnect patch drift to avoid duplicate desktop runtime copies", () => {
     const rootDestDir = path.join(tmpDir, "dist");
     const targetNodeModules = path.join(rootDestDir, "node_modules");
@@ -430,6 +487,38 @@ describe("assertRequiredBundledPackagesLanded", () => {
           ["@walletconnect/universal-provider", "2.19.0"],
         ]),
         resolvedVersion: "2.21.1",
+      }),
+    ).toBe(path.join(requesterDestDir, "node_modules"));
+  });
+
+  it("reuses newer root Smithy packages so AWS SDK support trees stay tar-safe", () => {
+    const rootDestDir = path.join(tmpDir, "dist");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(
+      targetNodeModules,
+      "@aws-sdk",
+      "signature-v4-multi-region",
+    );
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@smithy/signature-v4",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@smithy/signature-v4", "5.5.2"]]),
+        resolvedVersion: "5.4.6",
+      }),
+    ).toBe(targetNodeModules);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@smithy/signature-v4",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@smithy/signature-v4", "5.4.6"]]),
+        resolvedVersion: "5.5.2",
       }),
     ).toBe(path.join(requesterDestDir, "node_modules"));
   });

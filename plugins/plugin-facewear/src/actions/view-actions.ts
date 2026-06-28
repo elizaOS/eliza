@@ -1,3 +1,4 @@
+import { listViews } from "@elizaos/agent/api/views-registry";
 import type {
   Action,
   HandlerCallback,
@@ -20,8 +21,13 @@ function firstConnectionId(svc: XRSessionService): string | null {
   return svc.getConnections()[0]?.id ?? null;
 }
 
-function agentBaseUrl(runtime: IAgentRuntime): string {
-  const port = (runtime as unknown as { port?: number }).port ?? 31337;
+function agentBaseUrl(): string {
+  // The API port is orchestrator-assigned (never hardcoded) — read it from the
+  // environment, not a non-existent `runtime.port` field. Falls back to 31337.
+  const port =
+    process.env.ELIZA_API_PORT?.trim() ||
+    process.env.ELIZA_PORT?.trim() ||
+    "31337";
   return process.env.XR_AGENT_URL ?? `http://localhost:${port}`;
 }
 
@@ -88,7 +94,7 @@ export const xrOpenViewAction: Action = {
       return { success: false, text };
     }
 
-    const base = agentBaseUrl(runtime);
+    const base = agentBaseUrl();
     const scale = (options?.scale as number | undefined) ?? 1.0;
     svc.openView(connId, viewId, base, { scale, followMode: "billboard" });
     const text = `Opening ${viewId} view on your headset.`;
@@ -142,17 +148,12 @@ export const xrCloseViewAction: Action = {
       text = `Closed ${viewId}.`;
       await callback?.({ text });
     } else {
-      // Close all
-      for (const view of [
-        "wallet",
-        "training",
-        "companion",
-        "task-coordinator",
-        "views-manager",
-      ]) {
-        svc.closeView(connId, view);
+      const views = collectXRViews();
+      for (const view of views) {
+        svc.closeView(connId, view.id);
       }
-      text = "Closed all XR panels.";
+      text =
+        views.length > 0 ? "Closed all XR panels." : "No XR panels to close.";
       await callback?.({ text });
     }
     return { success: true, text };
@@ -220,7 +221,7 @@ export const xrListViewsAction: Action = {
       {
         name: "agent",
         content: {
-          text: "Available XR views: wallet, training, companion, task-coordinator.",
+          text: "Available XR views are registered by the loaded plugins.",
           action: "XR_LIST_VIEWS",
         },
       },
@@ -241,7 +242,7 @@ export const xrListViewsAction: Action = {
     }
 
     // Collect XR view declarations from all registered plugins
-    const xrViews = collectXRViews(runtime);
+    const xrViews = collectXRViews();
 
     const connId = firstConnectionId(svc);
     if (connId && (options?.sendCatalog as boolean | undefined) !== false) {
@@ -353,70 +354,41 @@ export const facewearResizeViewAction = xrResizeViewAction;
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** Extract a likely view id from natural language */
-function extractViewId(text: string): string {
+export function extractViewId(text: string): string {
   const lower = text.toLowerCase();
-  const known = [
-    "wallet",
-    "companion",
-    "training",
-    "task-coordinator",
-    "views-manager",
-    "polymarket",
-    "vincent",
-    "steward",
-    "shopify",
-    "phone",
-    "contacts",
-    "messages",
-    "feed",
-    "defense-of-the-agents",
-  ];
-  for (const id of known) {
-    if (lower.includes(id.replace("-", " ")) || lower.includes(id)) return id;
+  for (const view of collectXRViews()) {
+    const terms = [view.id, view.id.replace(/-/g, " "), view.label].map(
+      (term) => term.toLowerCase(),
+    );
+    if (terms.some((term) => term && lower.includes(term))) {
+      return view.id;
+    }
   }
-  // Try to extract quoted word
   const quoted = text.match(/["']([^"']+)["']/);
   if (quoted) return quoted[1] ?? "";
   return "";
 }
 
+type XRViewSummary = {
+  id: string;
+  label: string;
+  icon?: string;
+  description?: string;
+};
+
 /** Collect all XR-typed views from registered plugins */
-function collectXRViews(
-  runtime: IAgentRuntime,
-): Array<{ id: string; label: string; icon?: string; description?: string }> {
-  const plugins =
-    (
-      runtime as unknown as {
-        plugins?: Array<{
-          views?: Array<{
-            id: string;
-            label: string;
-            viewType?: string;
-            icon?: string;
-            description?: string;
-          }>;
-        }>;
-      }
-    ).plugins ?? [];
-  const seen = new Set<string>();
-  const result: Array<{
-    id: string;
-    label: string;
-    icon?: string;
-    description?: string;
-  }> = [];
-  for (const plugin of plugins) {
-    for (const view of plugin.views ?? []) {
-      if (view.viewType === "xr" && !seen.has(view.id)) {
-        seen.add(view.id);
-        result.push({
-          id: view.id,
-          label: view.label,
-          icon: view.icon,
-          description: view.description,
-        });
-      }
-    }
+export function collectXRViews(): XRViewSummary[] {
+  const byId = new Map<string, XRViewSummary>();
+  for (const view of listViews({ developerMode: true, viewType: "xr" })) {
+    if (view.viewType !== "xr") continue;
+    byId.set(view.id, {
+      id: view.id,
+      label: view.label,
+      icon: view.icon,
+      description: view.description,
+    });
   }
-  return result;
+  return [...byId.values()].sort(
+    (a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id),
+  );
 }

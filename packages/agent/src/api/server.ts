@@ -23,16 +23,17 @@ function tokenMatches(expected: string, provided: string): boolean {
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import path from "node:path";
-import { handleCloudPairRoute } from "@elizaos/app-core/api/cloud-pair-route";
 import {
   type AgentRuntime,
   type IAgentRuntime,
   isStreamingDestinationConfigured,
   logger,
+  NotificationService,
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
   type Route,
   readRequestBody,
+  ServiceType,
   sendJson,
   sendJsonError,
   stringToUuid,
@@ -390,6 +391,7 @@ import {
 } from "../services/plugin-manager-types.ts";
 import {
   PROACTIVE_INTERACTION_SOURCE,
+  type ProactiveOffer,
   registerProactiveInteractionDecider,
 } from "../services/proactive-interaction-decider.ts";
 import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
@@ -449,6 +451,7 @@ import {
   handleFirstRunRoutes,
   handleHealthRoutes,
   handleInboxAndCloudRelayRouteGroup,
+  handleInteractionsRoutes,
   handleLifeOpsRuntimePluginRoute,
   handleMemoryRoutes,
   handleMiscRoutes,
@@ -469,6 +472,7 @@ import {
   isPublicRuntimePluginRoute,
   registerBuiltinViews,
   tryHandleHonoRuntimeRoute,
+  tryHandleLifeOpsInboxFallbackLazy,
   tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
@@ -489,6 +493,7 @@ import {
   parseEventCursor,
   selectReplayEvents,
 } from "./ws-event-replay.ts";
+import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
 export {
   executeFallbackParsedActions,
@@ -1781,10 +1786,45 @@ export {
 // restart doesn't reset the proactive-comment cooldowns/caps (#8792).
 const proactiveInteractionGate = new ProactiveInteractionGate();
 
+function proactiveNotificationGroupKey(offer: ProactiveOffer): string {
+  if (offer.groupKey) return offer.groupKey;
+  const basis = (offer.deepLink || offer.title || offer.text)
+    .toLowerCase()
+    .replace(/[^a-z0-9:/._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
+  return `proactive-interaction:${basis || "general"}`;
+}
+
+async function notifyProactiveInteraction(
+  rt: IAgentRuntime,
+  offer: ProactiveOffer,
+): Promise<void> {
+  const service = rt.getService(ServiceType.NOTIFICATION);
+  if (!(service instanceof NotificationService)) {
+    logger.debug(
+      "[proactive-interaction] notification service unavailable; suppressing notify-lane offer",
+    );
+    return;
+  }
+
+  const title = offer.title?.trim() || offer.text;
+  await service.notify({
+    title,
+    body: title === offer.text ? undefined : offer.text,
+    category: "agent",
+    priority: "low",
+    source: PROACTIVE_INTERACTION_SOURCE,
+    deepLink: offer.deepLink,
+    groupKey: proactiveNotificationGroupKey(offer),
+    data: { kind: "proactive-interaction" },
+  });
+}
+
 /**
  * Wire the proactive-interaction decider (#8792): subscribe to VIEW_SWITCHED and
- * route an admitted, model-judged comment into the chat via the existing
- * proactive-message pipeline. No-ops when disabled by config/kill-switch.
+ * route an admitted, model-judged offer into chat suggestions or low-priority
+ * notifications. No-ops when disabled by config/kill-switch.
  */
 function wireProactiveInteractionDecider(
   rt: IAgentRuntime,
@@ -1794,6 +1834,8 @@ function wireProactiveInteractionDecider(
     gate: proactiveInteractionGate,
     route: (text) =>
       routeProactiveText(state, text, PROACTIVE_INTERACTION_SOURCE),
+    notify: (offer) => notifyProactiveInteraction(rt, offer),
+    shouldSuppress: () => state.activeChatTurnCount > 0,
   });
 }
 
@@ -1979,9 +2021,18 @@ async function handleRequest(
   // and wedging the dashboard at "Connecting to backend…". The route is a
   // cloud-SSO handoff that a local on-device agent never legitimately serves,
   // so skipping it when unavailable is safe.
+  // Dynamic import (matching the account-pool / vault-mirror seams in this
+  // package) so agent never *statically* imports @elizaos/app-core: the static
+  // import was what produced the circular re-export init-order `undefined`
+  // above, and it is the build-time edge that puts @elizaos/app-core <->
+  // @elizaos/agent in a Turbo dependency cycle (#9626). `.catch(() => null)`
+  // keeps the on-device path graceful when app-core isn't present at all.
+  const cloudPairMod = await import(
+    /* @vite-ignore */ "@elizaos/app-core/api/cloud-pair-route"
+  ).catch(() => null);
   if (
-    typeof handleCloudPairRoute === "function" &&
-    (await handleCloudPairRoute(req, res))
+    typeof cloudPairMod?.handleCloudPairRoute === "function" &&
+    (await cloudPairMod.handleCloudPairRoute(req, res))
   ) {
     return;
   }
@@ -3085,8 +3136,8 @@ async function handleRequest(
   // by handleAgentStatusRoutes above.
 
   // ═══════════════════════════════════════════════════════════════════════
-  // BSC trade routes and wallet trade execute — now handled by
-  // @elizaos/plugin-steward-app plugin routes. See plugins/plugin-steward-app/src/plugin.ts.
+  // BSC trade routes and wallet trade execute are handled by registered wallet
+  // plugin routes when the relevant backend is installed.
   // ═══════════════════════════════════════════════════════════════════════
 
   if (
@@ -3311,6 +3362,21 @@ async function handleRequest(
     return;
   }
 
+  // ── Interaction reporting (/api/interactions/shortcut) ────────────────────
+  if (
+    await handleInteractionsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
   // ── View routes (/api/views/*) ────────────────────────────────────────────
   if (
     await handleViewsRoutes({
@@ -3431,9 +3497,9 @@ async function handleRequest(
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
       hostContext: {
-        config: state.config as unknown as Record<string, unknown>,
+        config: state.config as Record<string, unknown>,
         saveConfig: (nextConfig) => {
-          state.config = nextConfig as unknown as ElizaConfig;
+          state.config = nextConfig as ElizaConfig;
           saveElizaConfig(state.config);
         },
         restartRuntime,
@@ -3463,6 +3529,20 @@ async function handleRequest(
       pathname,
       method,
       runtime: state.runtime,
+      res,
+    })
+  ) {
+    return;
+  }
+
+  // ── LifeOps inbox compatibility fallback ────────────────────────────────
+  // The inbox view is bundled independently from the PA-owned inbox cache
+  // route. When PA is absent, serve an empty wire payload instead of a 404 loop.
+  if (
+    await tryHandleLifeOpsInboxFallbackLazy({
+      pathname,
+      method,
+      url,
       res,
     })
   ) {
@@ -3702,6 +3782,7 @@ export async function startApiServer(opts?: {
     chatConnectionPromise: null,
     adminEntityId: null,
     conversations: new Map(),
+    activeChatTurnCount: 0,
     conversationRestorePromise: null,
     deletedConversationIds,
     cloudManager: null,
@@ -5112,7 +5193,7 @@ export async function startApiServer(opts?: {
   const assertX402RoutesValid = async (
     rt: AgentRuntime | null | undefined,
   ): Promise<void> => {
-    if (!rt?.routes?.length) return;
+    if (!rt || !runtimeRoutesNeedX402Validation(rt.routes)) return;
     const agentId =
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)

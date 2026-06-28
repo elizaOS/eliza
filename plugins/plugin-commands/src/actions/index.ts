@@ -7,7 +7,7 @@
  */
 
 import { createCommandActions } from "./command-actions";
-import { GATE_SAFE_COMMAND_KEYS } from "./handlers";
+import { DETERMINISTIC_COMMAND_KEYS } from "./handlers";
 
 export * from "./command-actions";
 export * from "./command-settings";
@@ -16,8 +16,10 @@ export * from "./handlers";
 export * from "./shortcuts";
 
 /**
- * The deterministic command actions for the built-in gate-safe commands. Built
+ * The deterministic command actions for the built-in deterministic commands. Built
  * from the default registry so they can be registered statically on the plugin;
  * request-time command resolution reads the per-runtime store directly.
  */
-export const commandActions = createCommandActions([...GATE_SAFE_COMMAND_KEYS]);
+export const commandActions = createCommandActions([
+	...DETERMINISTIC_COMMAND_KEYS,
+]);

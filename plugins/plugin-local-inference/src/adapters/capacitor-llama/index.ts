@@ -294,12 +294,12 @@ async function tryLocalInferenceModel<T>(
 function buildNativeResult(
 	result: LocalGenerationResult,
 ): LocalNativeTextModelResult {
-	const nativeResult = {
+	const nativeResult = Object.assign(new String(result.text), {
 		text: result.text,
 		toolCalls: result.toolCalls,
 		...(result.finishReason ? { finishReason: result.finishReason } : {}),
-	};
-	return nativeResult as unknown as LocalNativeTextModelResult;
+	});
+	return nativeResult as LocalNativeTextModelResult;
 }
 
 function getLocalModelLabel(
@@ -809,9 +809,18 @@ export const localAiPlugin: Plugin = {
 
 export default localAiPlugin;
 
-// On-device fused voice-turn entry (the production caller for
-// `LocalInferenceEngine.runVoiceTurn`, #8786). The native iOS/Android
-// mic-capture layer imports `runDeviceVoiceTurn` and hands it captured PCM.
+// On-device fused voice-turn entry (#8786): native iOS/Android mic-capture
+// front-ends hand completed PCM turns to `NativePcmVoiceTurnCoordinator`, which
+// serializes them through `runDeviceVoiceTurn` → `LocalInferenceEngine.runVoiceTurn`
+// (ASR + MTP text + speaker-attribution + TTS in one pass). On memory-constrained
+// devices the optional next-stage preload predictor (#8809) warms the response
+// model as soon as ASR completes.
+export {
+	type NativePcmVoiceTurn,
+	NativePcmVoiceTurnCoordinator,
+	type NativePcmVoiceTurnCoordinatorOptions,
+	type NativePcmVoiceTurnResult,
+} from "./native-voice-capture";
 export {
 	type CapacitorTextRunnerOptions,
 	createCapacitorMtpTextRunner,

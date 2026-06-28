@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-local-inference",
-	"version": "2.0.3-beta.2",
+	"version": "2.0.3-beta.7",
 	"description": "Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -89,6 +89,7 @@
 		}
 	},
 	"files": [
+		"registry-entry.json",
 		"dist",
 		"src"
 	],
@@ -106,7 +107,7 @@
 		"robustness:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/real-robustness-asr.ts",
 		"voicestack:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/real-voice-stack.ts",
 		"agentvoice:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/real-agent-voice-overlap.ts",
-		"clean": "rm -rf dist .turbo node_modules",
+		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",

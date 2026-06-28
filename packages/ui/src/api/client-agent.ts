@@ -142,6 +142,7 @@ import {
   mapAcpSessionsToCodingAgentSessions,
   mapTaskThreadsToCodingAgentSessions,
 } from "./client-types";
+import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -248,9 +249,11 @@ const SETTINGS_MUTATION_TIMEOUT_MS = 30_000;
 const DESKTOP_STATUS_RPC_TIMEOUT_MS = 1_500;
 
 async function getDesktopStatusRpc<T>(
+  baseUrl: string,
   rpcMethod: string,
   params?: unknown,
 ): Promise<T | null> {
+  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
   const outcome = await invokeDesktopBridgeRequestWithTimeout<T>({
     rpcMethod,
     ipcChannel: "agent",
@@ -258,6 +261,14 @@ async function getDesktopStatusRpc<T>(
     timeoutMs: DESKTOP_STATUS_RPC_TIMEOUT_MS,
   });
   return outcome.status === "ok" && outcome.value ? outcome.value : null;
+}
+
+async function invokeLocalDesktopAgentRpc<T>(
+  baseUrl: string,
+  options: { rpcMethod: string; ipcChannel: string; params?: unknown },
+): Promise<T | null> {
+  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
+  return invokeDesktopBridgeRequest<T>(options);
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +699,16 @@ declare module "./client-base" {
       limit?: number;
       minLlmCallsPerTrajectory?: number;
     }): Promise<{ dataset: TrainingDatasetRecord }>;
+    writeTrainingBenchmarkMatrix(options: {
+      rows: Array<{
+        modelId: string;
+        benchmark: string;
+        score: number;
+        variant: "reference" | "base" | "trained";
+      }>;
+      outputDir?: string;
+      referenceModelId?: string;
+    }): Promise<{ outputDir: string; artifactPath: string; artifact: unknown }>;
     listTrainingJobs(): Promise<{ jobs: TrainingJobRecord[] }>;
     startTrainingJob(
       options?: StartTrainingOptions,
@@ -1180,7 +1201,10 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
     };
   }
   try {
-    const viaRpc = await getDesktopStatusRpc<AgentStatus>("getAgentStatus");
+    const viaRpc = await getDesktopStatusRpc<AgentStatus>(
+      this.getBaseUrl(),
+      "getAgentStatus",
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -1214,7 +1238,10 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
 
 ElizaClient.prototype.getBootProgress = async function (this: ElizaClient) {
   try {
-    return await getDesktopStatusRpc<AgentBootProgress>("bootProgress");
+    return await getDesktopStatusRpc<AgentBootProgress>(
+      this.getBaseUrl(),
+      "bootProgress",
+    );
   } catch {
     return null;
   }
@@ -1222,7 +1249,10 @@ ElizaClient.prototype.getBootProgress = async function (this: ElizaClient) {
 
 ElizaClient.prototype.getLaunchProgress = async function (this: ElizaClient) {
   try {
-    return await getDesktopStatusRpc<LaunchSnapshot>("launchProgress");
+    return await getDesktopStatusRpc<LaunchSnapshot>(
+      this.getBaseUrl(),
+      "launchProgress",
+    );
   } catch {
     return null;
   }
@@ -1230,8 +1260,10 @@ ElizaClient.prototype.getLaunchProgress = async function (this: ElizaClient) {
 
 ElizaClient.prototype.getAgentSelfStatus = async function (this: ElizaClient) {
   try {
-    const viaRpc =
-      await getDesktopStatusRpc<AgentSelfStatusSnapshot>("getAgentSelfStatus");
+    const viaRpc = await getDesktopStatusRpc<AgentSelfStatusSnapshot>(
+      this.getBaseUrl(),
+      "getAgentSelfStatus",
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -1245,6 +1277,7 @@ ElizaClient.prototype.getRuntimeSnapshot = async function (
 ) {
   try {
     const viaRpc = await getDesktopStatusRpc<RuntimeDebugSnapshot>(
+      this.getBaseUrl(),
       "getRuntimeSnapshot",
       opts,
     );
@@ -1273,11 +1306,14 @@ ElizaClient.prototype.setAutomationMode = async function (
 ) {
   try {
     const viaRpc =
-      await invokeDesktopBridgeRequest<AgentAutomationModeResponse>({
-        rpcMethod: "setAgentAutomationMode",
-        ipcChannel: "agent:setAgentAutomationMode",
-        params: { mode },
-      });
+      await invokeLocalDesktopAgentRpc<AgentAutomationModeResponse>(
+        this.getBaseUrl(),
+        {
+          rpcMethod: "setAgentAutomationMode",
+          ipcChannel: "agent:setAgentAutomationMode",
+          params: { mode },
+        },
+      );
     if (viaRpc) return { mode: viaRpc.mode };
   } catch {
     /* fall through */
@@ -1292,11 +1328,14 @@ ElizaClient.prototype.setTradeMode = async function (this: ElizaClient, mode) {
   if (isTradePermissionMode(mode)) {
     try {
       const viaRpc =
-        await invokeDesktopBridgeRequest<TradePermissionModeResponse>({
-          rpcMethod: "setTradePermissionMode",
-          ipcChannel: "agent:setTradePermissionMode",
-          params: { mode },
-        });
+        await invokeLocalDesktopAgentRpc<TradePermissionModeResponse>(
+          this.getBaseUrl(),
+          {
+            rpcMethod: "setTradePermissionMode",
+            ipcChannel: "agent:setTradePermissionMode",
+            params: { mode },
+          },
+        );
       if (viaRpc) {
         return {
           ok: viaRpc.ok ?? true,
@@ -1346,10 +1385,13 @@ ElizaClient.prototype.getFirstRunStatus = async function (this: ElizaClient) {
   // same "transport not ready" semantic as before RPC was wired.
   // Server contract: eliza/packages/agent/src/api/first-run-routes.ts.
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
+    const viaRpc = await invokeLocalDesktopAgentRpc<{
       complete: boolean;
       cloudProvisioned?: boolean;
-    }>({ rpcMethod: "getFirstRunStatus", ipcChannel: "agent" });
+    }>(this.getBaseUrl(), {
+      rpcMethod: "getFirstRunStatus",
+      ipcChannel: "agent",
+    });
     if (viaRpc) return viaRpc;
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
@@ -1385,7 +1427,7 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
   // a 401-shaped fallback response (see the auth-client.ts authMe wrapper
   // history if you need the bug story).
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
+    const viaRpc = await invokeLocalDesktopAgentRpc<{
       required: boolean;
       pairingEnabled: boolean;
       expiresAt: number | null;
@@ -1394,7 +1436,7 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
       bootstrapRequired?: boolean;
       localAccess?: boolean;
       passwordConfigured?: boolean;
-    }>({ rpcMethod: "getAuthStatus", ipcChannel: "agent" });
+    }>(this.getBaseUrl(), { rpcMethod: "getAuthStatus", ipcChannel: "agent" });
     if (viaRpc) return viaRpc;
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
@@ -1486,10 +1528,13 @@ ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
 
 ElizaClient.prototype.getFirstRunOptions = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<FirstRunOptions>({
-      rpcMethod: "getFirstRunOptions",
-      ipcChannel: "agent",
-    });
+    const viaRpc = await invokeLocalDesktopAgentRpc<FirstRunOptions>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "getFirstRunOptions",
+        ipcChannel: "agent",
+      },
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
@@ -1537,7 +1582,8 @@ ElizaClient.prototype.getSubscriptionStatus = async function (
   this: ElizaClient,
 ) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<SubscriptionStatusResponse>(
+    const viaRpc = await invokeLocalDesktopAgentRpc<SubscriptionStatusResponse>(
+      this.getBaseUrl(),
       {
         rpcMethod: "getSubscriptionStatus",
         ipcChannel: "agent",
@@ -1721,10 +1767,13 @@ ElizaClient.prototype.getConfig = async function (this: ElizaClient) {
   });
   let viaRpc: AppConfigResponse | null = null;
   try {
-    viaRpc = await invokeDesktopBridgeRequest<AppConfigResponse>({
-      rpcMethod: "getConfig",
-      ipcChannel: "agent",
-    });
+    viaRpc = await invokeLocalDesktopAgentRpc<AppConfigResponse>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "getConfig",
+        ipcChannel: "agent",
+      },
+    );
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
@@ -1741,10 +1790,13 @@ ElizaClient.prototype.getConfig = async function (this: ElizaClient) {
 
 ElizaClient.prototype.getConfigSchema = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<ConfigSchemaResponse>({
-      rpcMethod: "getConfigSchema",
-      ipcChannel: "agent",
-    });
+    const viaRpc = await invokeLocalDesktopAgentRpc<ConfigSchemaResponse>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "getConfigSchema",
+        ipcChannel: "agent",
+      },
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -1760,11 +1812,14 @@ ElizaClient.prototype.updateConfig = async function (this: ElizaClient, patch) {
   let out: Record<string, unknown> | null = null;
   let transport = "rpc";
   try {
-    out = await invokeDesktopBridgeRequest<Record<string, unknown>>({
-      rpcMethod: "updateConfig",
-      ipcChannel: "agent:updateConfig",
-      params: patch,
-    });
+    out = await invokeLocalDesktopAgentRpc<Record<string, unknown>>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "updateConfig",
+        ipcChannel: "agent:updateConfig",
+        params: patch,
+      },
+    );
   } catch {
     out = null;
   }
@@ -2306,10 +2361,13 @@ ElizaClient.prototype.emitTriggerEvent = async function (
 
 ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<TriggerHealthSnapshot>({
-      rpcMethod: "getTriggerHealth",
-      ipcChannel: "agent",
-    });
+    const viaRpc = await invokeLocalDesktopAgentRpc<TriggerHealthSnapshot>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "getTriggerHealth",
+        ipcChannel: "agent",
+      },
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -2355,6 +2413,16 @@ ElizaClient.prototype.buildTrainingDataset = async function (
   return this.fetch("/api/training/datasets/build", {
     method: "POST",
     body: JSON.stringify(options ?? {}),
+  });
+};
+
+ElizaClient.prototype.writeTrainingBenchmarkMatrix = async function (
+  this: ElizaClient,
+  options,
+) {
+  return this.fetch("/api/training/benchmarks/matrix", {
+    method: "POST",
+    body: JSON.stringify(options),
   });
 };
 
@@ -2628,10 +2696,13 @@ ElizaClient.prototype.fetchModels = async function (
 
 ElizaClient.prototype.getCorePlugins = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<CorePluginsResponse>({
-      rpcMethod: "getCorePlugins",
-      ipcChannel: "agent",
-    });
+    const viaRpc = await invokeLocalDesktopAgentRpc<CorePluginsResponse>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "getCorePlugins",
+        ipcChannel: "agent",
+      },
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -2877,10 +2948,13 @@ ElizaClient.prototype.getAgentEvents = async function (
 
 ElizaClient.prototype.getExtensionStatus = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<ExtensionStatus>({
-      rpcMethod: "getExtensionStatus",
-      ipcChannel: "agent",
-    });
+    const viaRpc = await invokeLocalDesktopAgentRpc<ExtensionStatus>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "getExtensionStatus",
+        ipcChannel: "agent",
+      },
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -3011,10 +3085,10 @@ ElizaClient.prototype.getCharacter = async function (this: ElizaClient) {
   // loosely as Record. Catch swallows AgentNotReadyError + transport
   // failure → fall through to HTTP.
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
+    const viaRpc = await invokeLocalDesktopAgentRpc<{
       character: CharacterData;
       agentName: string;
-    }>({ rpcMethod: "getCharacter", ipcChannel: "agent" });
+    }>(this.getBaseUrl(), { rpcMethod: "getCharacter", ipcChannel: "agent" });
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -3224,11 +3298,14 @@ ElizaClient.prototype.getUpdateStatus = async function (
   force = false,
 ) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<UpdateStatus>({
-      rpcMethod: "getUpdateStatus",
-      ipcChannel: "agent",
-      params: { force },
-    });
+    const viaRpc = await invokeLocalDesktopAgentRpc<UpdateStatus>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "getUpdateStatus",
+        ipcChannel: "agent",
+        params: { force },
+      },
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -3251,10 +3328,13 @@ ElizaClient.prototype.getAgentAutomationMode = async function (
 ) {
   try {
     const viaRpc =
-      await invokeDesktopBridgeRequest<AgentAutomationModeResponse>({
-        rpcMethod: "getAgentAutomationMode",
-        ipcChannel: "agent:getAgentAutomationMode",
-      });
+      await invokeLocalDesktopAgentRpc<AgentAutomationModeResponse>(
+        this.getBaseUrl(),
+        {
+          rpcMethod: "getAgentAutomationMode",
+          ipcChannel: "agent:getAgentAutomationMode",
+        },
+      );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -3268,11 +3348,14 @@ ElizaClient.prototype.setAgentAutomationMode = async function (
 ) {
   try {
     const viaRpc =
-      await invokeDesktopBridgeRequest<AgentAutomationModeResponse>({
-        rpcMethod: "setAgentAutomationMode",
-        ipcChannel: "agent:setAgentAutomationMode",
-        params: { mode },
-      });
+      await invokeLocalDesktopAgentRpc<AgentAutomationModeResponse>(
+        this.getBaseUrl(),
+        {
+          rpcMethod: "setAgentAutomationMode",
+          ipcChannel: "agent:setAgentAutomationMode",
+          params: { mode },
+        },
+      );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -3288,10 +3371,13 @@ ElizaClient.prototype.getTradePermissionMode = async function (
 ) {
   try {
     const viaRpc =
-      await invokeDesktopBridgeRequest<TradePermissionModeResponse>({
-        rpcMethod: "getTradePermissionMode",
-        ipcChannel: "agent:getTradePermissionMode",
-      });
+      await invokeLocalDesktopAgentRpc<TradePermissionModeResponse>(
+        this.getBaseUrl(),
+        {
+          rpcMethod: "getTradePermissionMode",
+          ipcChannel: "agent:getTradePermissionMode",
+        },
+      );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -3305,11 +3391,14 @@ ElizaClient.prototype.setTradePermissionMode = async function (
 ) {
   try {
     const viaRpc =
-      await invokeDesktopBridgeRequest<TradePermissionModeResponse>({
-        rpcMethod: "setTradePermissionMode",
-        ipcChannel: "agent:setTradePermissionMode",
-        params: { mode },
-      });
+      await invokeLocalDesktopAgentRpc<TradePermissionModeResponse>(
+        this.getBaseUrl(),
+        {
+          rpcMethod: "setTradePermissionMode",
+          ipcChannel: "agent:setTradePermissionMode",
+          params: { mode },
+        },
+      );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */

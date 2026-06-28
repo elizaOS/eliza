@@ -51,16 +51,20 @@ async function* walk(dir) {
     const entryPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       yield* walk(entryPath);
-    } else if (entry.isFile() && entry.name.endsWith(".js")) {
+    } else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".js") || entry.name.endsWith(".d.ts"))
+    ) {
       yield entryPath;
     }
   }
 }
 
-// dist only ever contains emitted .js runtime files, so a TypeScript-source
-// extension (.ts/.tsx/.mts/.cts) in a specifier is always broken at runtime
-// and must be rewritten to its .js equivalent. tsc's
-// rewriteRelativeImportExtensions normally handles this, but this step is the
+// dist only ever contains emitted .js runtime files plus .d.ts declarations,
+// so a TypeScript-source extension (.ts/.tsx/.mts/.cts) in a specifier is
+// always broken for NodeNext consumers and must be rewritten to its .js
+// equivalent. tsc's rewriteRelativeImportExtensions normally handles runtime
+// JS, but it does not currently rewrite declaration emit, so this step is the
 // node-ESM safety net and must not treat .ts as already-resolved.
 const TS_SOURCE_EXTENSION = /\.([cm]?)tsx?$/;
 
@@ -98,6 +102,18 @@ async function resolveRelativeSpecifier(fromFile, specifier) {
     return `${specifier}.js`;
   }
   if (await exists(path.join(resolved, "index.js"))) {
+    return `${specifier}/index.js`;
+  }
+  // Declaration-only modules: a bundled build (e.g. `bun build` with a single
+  // entrypoint) emits one `dist/index.js` but still writes per-file `.d.ts`
+  // declarations. Those `.d.ts` re-exports have no sibling `.js`, yet the
+  // specifier must still carry a `.js` extension for NodeNext consumers — type
+  // resolution maps the `.js` specifier onto the adjacent `.d.ts`. Without this,
+  // a bare `from "./x"` in a `.d.ts` is unresolvable for NodeNext importers.
+  if (await exists(`${resolved}.d.ts`)) {
+    return `${specifier}.js`;
+  }
+  if (await exists(path.join(resolved, "index.d.ts"))) {
     return `${specifier}/index.js`;
   }
   return specifier;

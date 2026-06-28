@@ -149,7 +149,7 @@ export function WithdrawDialog({
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="pl-7 bg-black/40 border-white/10 text-white font-mono focus:border-[var(--brand-orange)]/50"
+                    className="pl-7 bg-black/40 border-white/10 text-white font-mono "
                     min={payoutThreshold}
                     max={withdrawableBalance}
                     step="0.01"

@@ -22,6 +22,10 @@ export const inboxPlugin: Plugin = {
       description: "Cross-channel inbox triage",
       icon: "Inbox",
       path: "/inbox",
+      // ONE declaration → GUI + XR + TUI, all drawn from the single InboxView
+      // spatial source. `modalities` is a plain literal here (plugin.ts is not
+      // in the view bundle).
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "InboxView",
       tags: ["inbox", "triage", "communication", "email", "mail", "messages"],

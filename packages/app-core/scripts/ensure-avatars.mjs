@@ -11,7 +11,7 @@
  *   node scripts/ensure-avatars.mjs
  *   node scripts/ensure-avatars.mjs --force   # re-download even if present
  */
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -31,6 +31,12 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = join(
+  ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const PUBLIC = join(ROOT, "eliza", "plugins", "app-companion", "public");
 const VRMS_DIR = join(PUBLIC, "vrms");
 const ANIMATIONS_DIR = join(PUBLIC, "animations");
@@ -87,6 +93,13 @@ function gitAvailable() {
   } catch {
     return false;
   }
+}
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
 }
 
 /** Count files matching an extension in a directory (non-recursive). */
@@ -212,7 +225,7 @@ export function runEnsureAvatars({
   try {
     // Clean up any previous failed attempt
     if (existsSync(tmpDir)) {
-      rmSync(tmpDir, { recursive: true, force: true });
+      removePathRecursive(tmpDir);
     }
 
     // Clone and checkout pinned commit for reproducibility.
@@ -236,7 +249,7 @@ export function runEnsureAvatars({
 
     const avatarVrms = join(tmpDir, "vrms");
     if (existsSync(avatarVrms) && !useLocalVrms) {
-      rmSync(VRMS_DIR, { recursive: true, force: true });
+      removePathRecursive(VRMS_DIR);
       mkdirSync(VRMS_DIR, { recursive: true });
       mkdirSync(join(VRMS_DIR, "previews"), { recursive: true });
       mkdirSync(join(VRMS_DIR, "backgrounds"), { recursive: true });
@@ -269,7 +282,7 @@ export function runEnsureAvatars({
 
     const avatarAnims = join(tmpDir, "animations");
     if (existsSync(avatarAnims)) {
-      rmSync(ANIMATIONS_DIR, { recursive: true, force: true });
+      removePathRecursive(ANIMATIONS_DIR);
       mkdirSync(ANIMATIONS_DIR, { recursive: true });
       copyPathIfExists(
         join(avatarAnims, "idle.glb"),
@@ -317,7 +330,7 @@ export function runEnsureAvatars({
   } finally {
     try {
       if (existsSync(tmpDir)) {
-        rmSync(tmpDir, { recursive: true, force: true });
+        removePathRecursive(tmpDir);
       }
     } catch {
       // Ignore cleanup errors

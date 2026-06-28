@@ -30,6 +30,17 @@ import {
   type WorkbenchTurn,
 } from "./voice-workbench-player";
 
+declare global {
+  interface Window {
+    /** Legacy vendor-prefixed AudioContext (Safari / older WebKit). */
+    webkitAudioContext?: typeof AudioContext;
+    /** e2e automation hook — drives a WorkbenchScenario and returns its report. */
+    __voiceWorkbench?: (
+      scenario: WorkbenchScenario,
+    ) => Promise<VoiceWorkbenchReport>;
+  }
+}
+
 function detectPlatform(): VoiceWorkbenchPlatform {
   if (isAndroid) return "android";
   if (isElectrobunRuntime()) return "desktop";
@@ -45,11 +56,7 @@ function resolveTtsRoute(
 }
 
 function getAudioCtx(): AudioContext {
-  const Ctor =
-    (window as unknown as { AudioContext?: typeof AudioContext })
-      .AudioContext ??
-    (window as unknown as { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext;
+  const Ctor = window.AudioContext ?? window.webkitAudioContext;
   if (!Ctor) throw new Error("AudioContext unavailable");
   return new Ctor();
 }
@@ -133,13 +140,7 @@ export function VoiceWorkbenchShell() {
   // Expose the player to automation. There is no default scenario — the runner
   // (or the e2e lane) supplies the WorkbenchScenario to drive.
   useEffect(() => {
-    (
-      window as unknown as {
-        __voiceWorkbench?: (
-          scenario: WorkbenchScenario,
-        ) => Promise<VoiceWorkbenchReport>;
-      }
-    ).__voiceWorkbench = (scenario) => run(scenario);
+    window.__voiceWorkbench = (scenario) => run(scenario);
   }, [run]);
 
   return (
@@ -166,6 +167,9 @@ export function VoiceWorkbenchShell() {
       <div
         data-testid="voice-workbench-overall"
         data-overall={report?.overall ?? "pending"}
+        data-diarization-status={report?.diarization.status ?? "pending"}
+        data-der={report?.diarization.der ?? ""}
+        data-max-der={report?.diarization.maxDer ?? ""}
         data-running={running ? "1" : "0"}
         style={{
           fontSize: 16,
@@ -186,6 +190,8 @@ export function VoiceWorkbenchShell() {
             data-testid={`voice-workbench-turn-${t.index}`}
             data-status={t.status}
             data-speaker={t.speaker}
+            data-predicted-speaker-label={t.predictedSpeakerLabel ?? ""}
+            data-expected-speaker-label={t.expectedSpeakerLabel}
             data-responded={t.responded ? "1" : "0"}
             data-expect-respond={t.expectRespond ? "1" : "0"}
             style={{ marginBottom: 6 }}

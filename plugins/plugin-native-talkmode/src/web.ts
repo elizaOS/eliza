@@ -46,10 +46,10 @@ export class TalkModeWeb extends WebPlugin {
 
     // Check for Web Speech API support
     const SpeechRecognitionAPI: SpeechRecognitionCtor | undefined =
-      ((window as unknown as SpeechRecognitionWindow).SpeechRecognition as
+      ((window as SpeechRecognitionWindow).SpeechRecognition as
         | SpeechRecognitionCtor
         | undefined) ||
-      ((window as unknown as SpeechRecognitionWindow).webkitSpeechRecognition as
+      ((window as SpeechRecognitionWindow).webkitSpeechRecognition as
         | SpeechRecognitionCtor
         | undefined);
 
@@ -255,10 +255,10 @@ export class TalkModeWeb extends WebPlugin {
 
     // Check if speech recognition is supported
     const SpeechRecognitionAPI: SpeechRecognitionCtor | undefined =
-      ((window as unknown as SpeechRecognitionWindow).SpeechRecognition as
+      ((window as SpeechRecognitionWindow).SpeechRecognition as
         | SpeechRecognitionCtor
         | undefined) ||
-      ((window as unknown as SpeechRecognitionWindow).webkitSpeechRecognition as
+      ((window as SpeechRecognitionWindow).webkitSpeechRecognition as
         | SpeechRecognitionCtor
         | undefined);
 

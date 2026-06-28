@@ -41,7 +41,8 @@ function methodBadgeClass(method: HttpMethod) {
     case "GET":
       return `${base} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 `;
     case "POST":
-      return `${base} bg-blue-500/10 text-blue-400 border-blue-500/30 `;
+      // Brand rule: no blue. Slate keeps POST distinct from the amber PUT.
+      return `${base} bg-slate-500/10 text-slate-300 border-slate-500/30 `;
     case "PUT":
       return `${base} bg-amber-500/10 text-amber-400 border-amber-500/30 `;
     case "PATCH":
@@ -217,7 +218,7 @@ export function ApiRouteExplorerClient({
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search endpoints..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-none border border-white/10 bg-black/40 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-[#ff5800] focus:border-[#ff5800] transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-none border border-white/10 bg-black/40 text-sm text-white placeholder:text-white/30     transition-all"
                 />
               </div>
 

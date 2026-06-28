@@ -4,6 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import {
+  bucket,
+  computeVerdict,
+  parseNavigationTabPaths,
+} from "./aesthetic-audit-rules";
+import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -14,6 +19,19 @@ import {
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
 import { VIEW_CASES } from "./plugin-view-cases";
+
+// Strict-gate config (#9304). The audit was a pure reporter — `broken` /
+// `needs-work` verdicts only landed in report.json and never failed a run, so a
+// regressed view shipped green. With `ELIZA_AUDIT_APP_STRICT=1` the audit becomes
+// a GATE that fails on any `broken` verdict (a real crash / blank render /
+// console error / empty view) outside the shrinking debt allowlist below.
+// `needs-work` (design debt: blue / orange-hover / off-token radius) is logged
+// with a count but not hard-gated yet — capture the current set into
+// AESTHETIC_VERDICT_DEBT from a clean CI run, then tighten this to gate it too.
+const AUDIT_STRICT = process.env.ELIZA_AUDIT_APP_STRICT === "1";
+// Key: `${slug}-${viewport}`. Value: the worst verdict currently tolerated for
+// that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention).
+const AESTHETIC_VERDICT_DEBT: Record<string, "broken" | "needs-work"> = {};
 
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
@@ -55,6 +73,7 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   automations: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",
+  files: "/apps/files",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   "fine-tuning": "/apps/fine-tuning",
@@ -71,6 +90,7 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   tutorial: "/tutorial",
   help: "/help",
   logs: "/apps/logs",
+  background: "/background",
 };
 
 // ── navigation TAB_PATHS coverage guard (#8796) ──────────────────────────────
@@ -79,23 +99,6 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
 const NAV_INDEX_PATH = fileURLToPath(
   new URL("../../../ui/src/navigation/index.ts", import.meta.url),
 );
-
-function parseNavigationTabPaths(source: string): Record<string, string> {
-  const block = source.match(
-    /export const TAB_PATHS\s*:\s*Record<BuiltinTab,\s*string>\s*=\s*\{([\s\S]*?)\};/,
-  );
-  if (!block) {
-    throw new Error(
-      `[all-views-aesthetic-audit] could not locate TAB_PATHS in ${NAV_INDEX_PATH}`,
-    );
-  }
-  const entries: Record<string, string> = {};
-  const entryRe = /"?([a-z][a-z-]*)"?\s*:\s*"([^"]+)"/g;
-  for (const m of block[1].matchAll(entryRe)) {
-    entries[m[1]] = m[2];
-  }
-  return entries;
-}
 
 interface AuditCase {
   slug: string;
@@ -131,38 +134,6 @@ const VIEWPORTS = [
 ] as const;
 
 // ── Brand-color analysis (ported from cloud-frontend aesthetic-audit) ────────
-type Bucket = "orange" | "black" | "blue" | "white" | "neutral" | "transparent";
-
-function parseRgb(input: string): [number, number, number, number] | null {
-  const m = input.match(
-    /^rgba?\(\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)(?:\s*,\s*(\d+\.?\d*))?\s*\)$/,
-  );
-  if (!m) return null;
-  return [
-    Number(m[1]),
-    Number(m[2]),
-    Number(m[3]),
-    m[4] === undefined ? 1 : Number(m[4]),
-  ];
-}
-
-function bucket(color: string): Bucket {
-  const rgb = parseRgb(color);
-  if (!rgb) return "neutral";
-  const [r, g, b, a] = rgb;
-  if (a === 0) return "transparent";
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  const saturation = max === 0 ? 0 : (max - min) / max;
-  if (lum < 0.08) return "black";
-  if (lum > 0.95 && saturation < 0.05) return "white";
-  if (saturation < 0.15) return "neutral";
-  if (r > 200 && g > 90 && g < 200 && b < 100) return "orange";
-  if (b > r + 20 && b > g + 10) return "blue";
-  return "neutral";
-}
-
 interface ViewFinding {
   slug: string;
   viewport: string;
@@ -301,69 +272,6 @@ function renderManualReviewStub(finding: ViewFinding): string {
 // chrome is in scope, so they're exempt from the readable-content + floating-
 // overlay-clearance + light-surface checks. They still must not crash, log
 // console errors, render fully blank, or use blue.
-const OVERLAY_NATIVE_OR_CANVAS_SLUGS = new Set([
-  "builtin-chat",
-  "builtin-phone",
-  "builtin-messages",
-  "builtin-camera",
-  "plugin-phone-gui",
-  "plugin-messages-gui",
-  "plugin-scape-gui",
-  "plugin-2004scape-gui",
-  "plugin-clawville-gui",
-  "plugin-hyperscape-gui",
-  "plugin-defense-of-the-agents-gui",
-]);
-
-function computeVerdict(
-  finding: Omit<ViewFinding, "verdict">,
-): ViewFinding["verdict"] {
-  const exempt =
-    finding.viewType === "tui" ||
-    OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(finding.slug);
-  // A console error (a real crash signal) is broken for every view. Overlay-
-  // native/canvas/terminal surfaces legitimately render little chrome text and
-  // screenshot near-one-color (an overlay over a solid bg, an empty canvas), so
-  // the readable-content + blank-screenshot floors are waived for them.
-  if (
-    finding.consoleErrors.length > 0 ||
-    (!exempt &&
-      (finding.qualityIssues.length > 0 || finding.readableChars < 10))
-  ) {
-    return "broken";
-  }
-  // TUI terminals are exempt from ALL color/light-surface rules (#8796 open
-  // question): a terminal renders an ANSI/slate palette by design, so blue-gray
-  // there is the terminal aesthetic, not a brand violation. They pass once they
-  // render with no real console errors.
-  if (finding.viewType === "tui") {
-    return "good";
-  }
-  // Overlay-native/canvas surfaces waive the floating-overlay + hover heuristics
-  // (they own their surface), but the no-blue brand rule still holds.
-  if (exempt) {
-    return finding.blueColors.length > 0 ? "needs-work" : "good";
-  }
-  if (
-    finding.blueColors.length > 0 ||
-    finding.hoverViolations.length > 0 ||
-    !finding.overlayPresent
-  ) {
-    return "needs-work";
-  }
-  // Off-scale border-radius is a soft signal, not a crash or a brand violation:
-  // the criterion (#8796 AC3) only asks the harness to FLAG non-token radius, and
-  // we cannot run a fix-grind here. Surfacing it via the report + a non-blocking
-  // `needs-eyeball` verdict records the data without destabilizing the 152/152
-  // green baseline (a `needs-work`/`broken` verdict would block the gate). TUI +
-  // games/canvas surfaces are exempt above (same set as the blue rule), since a
-  // terminal/canvas owns its own geometry.
-  if (finding.borderRadiusViolations.length > 0) {
-    return "needs-eyeball";
-  }
-  return "good";
-}
-
 const findings: ViewFinding[] = [];
 
 test.describe("all-views aesthetic audit (#8796)", () => {
@@ -397,9 +305,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       `audit BUILTIN_TAB_PATHS path drift vs navigation: ${mismatched.join(", ")}`,
     ).toEqual([]);
 
-    const uncovered = [...navDistinctPaths].filter(
-      (p) => !inlinedPaths.has(p),
-    );
+    const uncovered = [...navDistinctPaths].filter((p) => !inlinedPaths.has(p));
     expect(
       uncovered,
       `navigation TAB_PATHS adds routes the audit does not cover: ${uncovered.join(", ")}`,
@@ -567,5 +473,37 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         `${rows}</table>`,
       "utf8",
     );
+
+    // Gate (#9304). Always log the verdict tally; in strict mode, fail the run
+    // on any `broken` view not covered by the debt allowlist.
+    const broken = findings.filter((f) => f.verdict === "broken");
+    const needsWork = findings.filter((f) => f.verdict === "needs-work");
+    const undebtedBroken = broken.filter(
+      (f) => AESTHETIC_VERDICT_DEBT[`${f.slug}-${f.viewport}`] !== "broken",
+    );
+    console.log(
+      `[aesthetic-audit] ${findings.length} findings — ` +
+        `broken=${broken.length} needs-work=${needsWork.length} ` +
+        `needs-eyeball=${findings.filter((f) => f.verdict === "needs-eyeball").length} ` +
+        `good=${findings.filter((f) => f.verdict === "good").length} ` +
+        `(strict=${AUDIT_STRICT}, undebted-broken=${undebtedBroken.length})`,
+    );
+    if (AUDIT_STRICT && undebtedBroken.length > 0) {
+      const detail = undebtedBroken
+        .map(
+          (f) =>
+            `  ${f.slug} @ ${f.viewport}: ${
+              [...f.consoleErrors, ...f.qualityIssues].join("; ") ||
+              `readableChars=${f.readableChars}`
+            }`,
+        )
+        .join("\n");
+      throw new Error(
+        `[aesthetic-audit] STRICT gate failed: ${undebtedBroken.length} ` +
+          `non-exempt 'broken' view(s) not in AESTHETIC_VERDICT_DEBT:\n${detail}\n` +
+          `Fix the view or, if genuinely accepted debt, add the slug-viewport key ` +
+          `to AESTHETIC_VERDICT_DEBT (and shrink it over time).`,
+      );
+    }
   });
 });

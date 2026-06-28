@@ -19,7 +19,10 @@ const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
 }));
 
-vi.mock("@elizaos/agent", () => ({
+// inbox.ts imports hasOwnerAccess from the @elizaos/agent/security/access
+// subpath (the barrel does not re-export it); mock that exact specifier or the
+// real owner check runs and every subaction returns PERMISSION_DENIED.
+vi.mock("@elizaos/agent/security/access", () => ({
   hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 

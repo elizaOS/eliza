@@ -108,7 +108,7 @@ jobs:
       - name: Install homepage browser
         if: steps.homepage-scope.outputs.run == 'true'
         working-directory: packages/homepage
-        run: ../../node_modules/.bin/playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Generate missing snapshot baselines
         if: steps.homepage-scope.outputs.run == 'true'
@@ -152,7 +152,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   format-check:
-    name: Format Check (biome)
+    name: Format + Type Safety Ratchet
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -176,6 +176,12 @@ jobs:
           setup-python: "false"
           install-protoc: "false"
           run-postinstall: "false"
+
+      - name: Run type-safety ratchet self-test
+        run: bun run audit:type-safety-ratchet:self-test
+
+      - name: Run type-safety ratchet
+        run: bun run audit:type-safety-ratchet
 
       - name: Run biome format check
         run: bun run format:check

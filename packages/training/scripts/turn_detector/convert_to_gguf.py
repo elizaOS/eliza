@@ -4,8 +4,8 @@
 The two ship targets for the semantic end-of-turn detector are:
 
   - ``livekit/turn-detector`` — SmolLM2-135M distill (EN) at revision
-    ``v1.2.2-en`` for the 0_8b / 2b tiers; pruned Qwen2.5-0.5B at
-    ``v0.4.1-intl`` for ≥4b tiers.
+    ``v1.2.2-en`` for the 2b tier; pruned Qwen2.5-0.5B at
+    ``v0.4.1-intl`` for 4b / 9b / 27b / 27b-256k tiers.
   - ``latishab/turnsense`` — Apache-2.0 fallback (binary classifier on a
     SmolLM2-135M head).
 
@@ -294,8 +294,9 @@ def main(argv: list[str] | None = None) -> int:
         "notes": (
             "Turn-detector GGUF conversion via the in-repo llama.cpp fork. "
             "Supports the LiveKit Turn Detector lineage (SmolLM2-135M @ "
-            "v1.2.2-en for 0_8b/2b tiers; pruned Qwen2.5-0.5B @ v0.4.1-intl "
-            "for >=4b tiers) and the Apache-2.0 latishab/turnsense fallback. "
+            "v1.2.2-en for the 2b tier; pruned Qwen2.5-0.5B @ v0.4.1-intl "
+            "for 4b / 9b / 27b / 27b-256k tiers) and the Apache-2.0 "
+            "latishab/turnsense fallback. "
             "Both lineages are Llama-shaped or qwen2-shaped and ride the "
             "fork's existing LM arch tags without any new ops."
         ),

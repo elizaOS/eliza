@@ -5,7 +5,7 @@ files under ``bundles/<tier>/``. This publisher is the operator-side mirror of
 that contract: it validates local ``eliza-1-<tier>.bundle`` directories, writes
 the repo README, and uploads each bundle into the single model repo.
 
-The v1 model repo is intentionally base/raw Qwen-lineage GGUF: converted and
+The v1 model repo is intentionally base/raw Gemma 4 GGUF: converted and
 Eliza-optimized for local inference, but not fine-tuned. Fine-tuned v2 weights
 will replace or add promoted bundle revisions after the APOLLO SFT gates pass.
 """
@@ -709,7 +709,8 @@ def build_model_card(repo_id: str, plans: Sequence[BundlePlan]) -> str:
             "library_name: gguf",
             "tags:",
             "  - gguf",
-            "  - qwen",
+            "  - gemma",
+            "  - gemma4",
             "  - eliza-1",
             "  - local-inference",
             "---",
@@ -717,7 +718,7 @@ def build_model_card(repo_id: str, plans: Sequence[BundlePlan]) -> str:
             "# Eliza-1",
             "",
             "Eliza-1 is the single elizaOS local-inference model repository. "
-            "The v1 bundles are raw/base Qwen-lineage GGUF weights converted "
+            "The v1 bundles are raw/base Gemma 4 GGUF weights converted "
             "and packaged for the Eliza local harness; they are not fine-tuned.",
             "",
             "Runtime bundles live under `bundles/<tier>/` so the app can resolve "

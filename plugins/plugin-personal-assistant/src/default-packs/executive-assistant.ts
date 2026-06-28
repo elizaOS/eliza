@@ -7,15 +7,18 @@
  * and screen-time scenarios remain in `@elizaos/plugin-health`.
  */
 
+import { MEETING_PREP_INSTRUCTIONS } from "../lifeops/optimized-prompt-instructions.js";
 import type { DefaultPack } from "./registry-types.js";
 import {
-  compileTaskDefinitions,
   type CheckInTaskDefinition,
+  compileTaskDefinitions,
   type RecapTaskDefinition,
   type ReminderTaskDefinition,
   type TaskDefinition,
   type WatcherTaskDefinition,
 } from "./task-definitions.js";
+
+export { MEETING_PREP_INSTRUCTIONS } from "../lifeops/optimized-prompt-instructions.js";
 
 export const EXECUTIVE_ASSISTANT_PACK_KEY = "executive-assistant";
 
@@ -80,7 +83,7 @@ const dailyCommandBrief: RecapTaskDefinition = {
     "Assemble a command brief from calendar, inbox, pending prompts, overdue tasks, relationship follow-ups, documents awaiting action, travel holds, and money admin. Use icons or compact labels in the owner surface. Keep prose minimal and ask for one decision at a time.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone", "morningWindow"],
-    includeRecentTaskStates: { limit: 20 },
+    includeRecentTaskStates: {},
   },
   trigger: {
     kind: "relative_to_anchor",
@@ -99,11 +102,10 @@ const dailyCommandBrief: RecapTaskDefinition = {
 const meetingPrep: ReminderTaskDefinition = {
   ...base,
   definitionKind: "reminder",
-  promptInstructions:
-    "Prepare the next working block: scan upcoming calendar events, related threads, docs, blockers, and people context. Surface missing agenda, location, dial-in, prep document, decision owner, and likely follow-up. Keep the owner-facing result compact.",
+  promptInstructions: MEETING_PREP_INSTRUCTIONS,
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 10 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "*/30 7-19 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -121,7 +123,7 @@ const calendarConflictSweep: WatcherTaskDefinition = {
   promptInstructions:
     "Scan calendar for overlaps, missing travel buffers, missing locations, no-agenda meetings, and unaccepted priority events. Create owner-visible approval or reminder tasks for conflicts that need a decision. Do not message external people directly.",
   contextRequest: {
-    includeOwnerFacts: ["timezone", "workingHours"],
+    includeOwnerFacts: ["timezone"],
   },
   trigger: { kind: "cron", expression: "0 6,12,17 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -141,7 +143,7 @@ const inboxDecisions: RecapTaskDefinition = {
     "Find inbox items that require a decision, approval, scheduling answer, payment answer, or delegated reply. Group by required action, not by sender. Present only the smallest useful batch and create pending prompts for unresolved decisions.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 15 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 10,15 * * 1-5", tz: "owner_local" },
   priority: "high",
@@ -160,7 +162,7 @@ const waitingOnWatcher: WatcherTaskDefinition = {
     "Scan delegated items, sent questions, shared docs, and open approvals for waiting-on states. Create follow-up tasks with subject.kind='thread' or subject.kind='relationship' using stable IDs from context. Avoid duplicate nudges already represented by an active task.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 30 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 11 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -180,7 +182,7 @@ const delegationReview: CheckInTaskDefinition = {
     "Ask for a fast delegation pass over active projects and open loops. Convert owner replies into assignments, follow-ups, or reminders through ScheduledTask records. Keep the prompt short and focused on one unresolved owner decision.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 25 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 16 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -204,7 +206,7 @@ const decisionLogCapture: RecapTaskDefinition = {
     "Capture decisions from recent chats, approvals, meetings, and documents. Store concise decision records with owner, date, source thread or document, rationale, and follow-up task references. Surface only ambiguous decisions needing confirmation.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 20 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "30 17 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -222,8 +224,8 @@ const travelReadiness: WatcherTaskDefinition = {
   promptInstructions:
     "Scan upcoming travel for booking holds, confirmation numbers, passport or ID notes, calendar gaps, airport transfer gaps, lodging gaps, weather-sensitive reminders, and expense capture. Create reminders or approval tasks for missing items.",
   contextRequest: {
-    includeOwnerFacts: ["timezone", "homeAirport"],
-    includeRecentTaskStates: { limit: 20 },
+    includeOwnerFacts: ["timezone"],
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 13 * * *", tz: "owner_local" },
   priority: "medium",
@@ -243,7 +245,7 @@ const expenseSweep: RecapTaskDefinition = {
     "Collect likely reimbursable expenses from receipts, payments, calendar travel, and inbox confirmations. Group by trip or project and request only missing classification details. Keep the owner surface visual and terse.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 20 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 18 * * 5", tz: "owner_local" },
   priority: "low",
@@ -262,7 +264,7 @@ const renewalSweep: ReminderTaskDefinition = {
     "Review subscriptions, trials, renewals, warranties, insurance dates, and recurring charges. Surface near-term actions with amount, renewal date, owner decision needed, and cancel or keep options. Avoid low-confidence guesses.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 20 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 9 * * 1", tz: "owner_local" },
   priority: "medium",
@@ -281,7 +283,7 @@ const peopleCadencePrep: RecapTaskDefinition = {
     "Prepare relationship touchpoints from overdue cadence edges, upcoming birthdays or milestones, recent promises, shared threads, and open asks. Use EntityStore names and relationship context only. Keep suggestions brief and action-oriented.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 20 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 8 * * 1", tz: "owner_local" },
   priority: "medium",
@@ -300,7 +302,7 @@ const documentSignatureSweep: WatcherTaskDefinition = {
     "Scan documents, approval requests, and inbox attachments for signature, review, redline, notarization, or upload tasks. Create owner-visible approval tasks for items that need explicit approval before sending.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 20 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 14 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -320,7 +322,7 @@ const endOfDayCloseout: CheckInTaskDefinition = {
     "Run a closeout: show unresolved decisions, tomorrow risks, waiting-on items, promises made today, and tasks worth moving. Ask for one compact confirmation batch and write updates into ScheduledTask records.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone", "eveningWindow"],
-    includeRecentTaskStates: { limit: 30 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 18 * * 1-5", tz: "owner_local" },
   priority: "high",
@@ -344,7 +346,7 @@ const approvalBatchReview: RecapTaskDefinition = {
     "Batch pending approvals into safe actions. Separate reversible drafts from irreversible actions, note risk and downstream effects, and ask for the smallest approval set.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 35 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "30 14 * * 1-5", tz: "owner_local" },
   priority: "high",
@@ -363,7 +365,7 @@ const privacyRedactionSweep: WatcherTaskDefinition = {
     "Inspect outgoing summaries, delegated drafts, and briefing packets for credentials, financial account data, addresses, and sensitive personal context. Create approval tasks for unsafe shares.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 20 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 12,17 * * 1-5", tz: "owner_local" },
   priority: "high",
@@ -382,8 +384,8 @@ const interruptionFirebreak: CheckInTaskDefinition = {
   promptInstructions:
     "Protect the next focus block by triaging incoming items into wait, draft, delegate, or interrupt. Escalate only items that truly require owner attention now.",
   contextRequest: {
-    includeOwnerFacts: ["preferredName", "timezone", "workingHours"],
-    includeRecentTaskStates: { limit: 25 },
+    includeOwnerFacts: ["preferredName", "timezone"],
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 9,13 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -407,7 +409,7 @@ const statusCompression: RecapTaskDefinition = {
     "Compress active project and assistant work into green, yellow, red, owner, next move, blocker, and decision needed. Use compact status indicators and avoid narrative unless asked.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 50 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "30 16 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -426,7 +428,7 @@ const vipEscalationSweep: WatcherTaskDefinition = {
     "Scan VIP and high-trust relationship threads for decisions that may need a different channel. Choose DM, email, SMS, voice call, or wait based on urgency without reflexively interrupting.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 25 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 9-18 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -446,7 +448,7 @@ const delegationMapReview: RecapTaskDefinition = {
     "Map delegated work by owner, deadline, dependency, next check-in, and risk. Find unclear ownership and propose follow-ups without duplicating active tasks.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 50 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 15 * * 1,4", tz: "owner_local" },
   priority: "medium",
@@ -465,7 +467,7 @@ const remoteAgentRecovery: WatcherTaskDefinition = {
     "Review remote agent and assistant tasks for stuck states, missing inputs, failed handoffs, or stale status. Create the next safe recovery action with owner approval when needed.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 50 },
+    includeRecentTaskStates: {},
   },
   trigger: {
     kind: "cron",
@@ -489,7 +491,7 @@ const familyLogisticsPrep: ReminderTaskDefinition = {
     "Coordinate family logistics from schedules, pickups, appointments, errands, shared promises, and reminders. Ask only for owner decisions that unblock the plan.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 25 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 7 * * *", tz: "owner_local" },
   priority: "low",
@@ -508,7 +510,7 @@ const outageRecoverySweep: WatcherTaskDefinition = {
     "After connector, service, or workflow outages, identify impacted commitments, missed messages, failed automations, stale approvals, and the repair order.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 50 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 12 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -528,7 +530,7 @@ const weeklyOperatingReview: RecapTaskDefinition = {
     "Assemble a weekly operating review across goals, projects, calendar load, delegated work, inbox debt, money admin, travel, relationships, and pending approvals. Use compact status indicators and convert each owner decision into a task.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 50 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 15 * * 5", tz: "owner_local" },
   priority: "high",
@@ -547,7 +549,7 @@ const boardPackPrep: WatcherTaskDefinition = {
     "Prepare board pack gaps from documents, open approvals, missing metrics, calendar deadlines, and unresolved risks. Surface only missing inputs and owner decisions.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 50 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 11 * * 1,3", tz: "owner_local" },
   priority: "high",
@@ -567,7 +569,7 @@ const chiefOfStaffHandoff: RecapTaskDefinition = {
     "Build a chief-of-staff handoff with weekly priorities, delegated owners, blocked decisions, relationship follow-ups, and status risks. Keep it terse and owner-actionable.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 50 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 16 * * 4", tz: "owner_local" },
   priority: "medium",
@@ -586,7 +588,7 @@ const eventPlanning: WatcherTaskDefinition = {
     "Coordinate event planning gaps across calendar holds, invite list, venue confirmation, menu or prep documents, travel buffers, and delegated follow-ups.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 35 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 10 * * 2,5", tz: "owner_local" },
   priority: "medium",
@@ -606,7 +608,7 @@ const financeDisputeSweep: CheckInTaskDefinition = {
     "Find finance disputes that need evidence or owner approval. Collect receipts, payment records, related messages, approval owner, and a safe next-action draft.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 35 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "30 11 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -630,7 +632,7 @@ const giftMilestonePrep: ReminderTaskDefinition = {
     "Prepare relationship milestone gifts from calendar dates, preferences in messages, budget notes, delivery deadlines, and explicit owner approval before purchase.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 20 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 8 * * 2", tz: "owner_local" },
   priority: "low",
@@ -649,7 +651,7 @@ const hiringLoopCoordination: WatcherTaskDefinition = {
     "Coordinate hiring loop gaps: interview calendar, candidate documents, panel owner reminders, scorecard deadline, and follow-up messages.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 30 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 12 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -669,7 +671,7 @@ const introRoutingSweep: RecapTaskDefinition = {
     "Triage inbound intro requests into accept, delegate, decline, or schedule. Use relationship context and create approval-ready reply drafts.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 30 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "30 10,15 * * 1-5", tz: "owner_local" },
   priority: "medium",
@@ -688,7 +690,7 @@ const legalDeadlineSweep: WatcherTaskDefinition = {
     "Track legal document deadlines across signature documents, counsel messages, calendar cutoff, missing approvals, and safe follow-up drafts.",
   contextRequest: {
     includeOwnerFacts: ["timezone"],
-    includeRecentTaskStates: { limit: 30 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 9 * * 1-5", tz: "owner_local" },
   priority: "high",
@@ -707,8 +709,8 @@ const travelDisruptionRecovery: WatcherTaskDefinition = {
   promptInstructions:
     "Recover from travel disruptions by reworking itinerary, calendar conflicts, hotel and ground transport, people notifications, receipts, and approval decisions.",
   contextRequest: {
-    includeOwnerFacts: ["timezone", "homeAirport"],
-    includeRecentTaskStates: { limit: 35 },
+    includeOwnerFacts: ["timezone"],
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 7-21 * * *", tz: "owner_local" },
   priority: "high",
@@ -728,7 +730,7 @@ const vendorNegotiationPrep: CheckInTaskDefinition = {
     "Prepare vendor renewal negotiation context: contract documents, current spend, cancellation deadline, prior messages, approval owner, and concise reply draft.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 35 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 13 * * 2", tz: "owner_local" },
   priority: "medium",
@@ -752,7 +754,7 @@ const monthlyAdminReview: RecapTaskDefinition = {
     "Prepare a monthly admin review: recurring charges, documents, renewals, taxes, warranties, household tasks, insurance, travel credits, and stale approvals. Surface the smallest set of decisions that unlocks progress.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 50 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 10 1 * *", tz: "owner_local" },
   priority: "medium",
@@ -771,7 +773,7 @@ const homeOpsSweep: ReminderTaskDefinition = {
     "Review household and personal operations: deliveries, maintenance, errands, appointments, documents, reservations, gifts, and support tickets. Create reminders or pending prompts for owner decisions only.",
   contextRequest: {
     includeOwnerFacts: ["preferredName", "timezone"],
-    includeRecentTaskStates: { limit: 20 },
+    includeRecentTaskStates: {},
   },
   trigger: { kind: "cron", expression: "0 9 * * 6", tz: "owner_local" },
   priority: "low",

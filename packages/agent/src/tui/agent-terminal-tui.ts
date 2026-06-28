@@ -11,6 +11,7 @@ import {
   Editor,
   type EditorTheme,
   getTerminalView,
+  getTerminalViewFactory,
   hasTerminalView,
   ProcessTerminal,
   type SelectItem,
@@ -83,13 +84,29 @@ async function readJson<T>(
   return (await response.json()) as T;
 }
 
+/**
+ * The persistent shell layout: a mounted spatial-view block on top with a
+ * fixed chat composer pinned to the bottom rows, both always visible.
+ *
+ * Mode collapses to where the *view block* is: the default `list` (registered
+ * tui views to pick from), `view` (a mounted spatial/registered view rendering
+ * inline), or `search` (filter the list). Chat is never a mode — the composer
+ * is always rendered last.
+ *
+ * Focus has two targets: `view` routes Tab/arrows/Enter to the mounted view's
+ * controls (and the top-level keybindings `/ r 1-9 q`), while `composer` sends
+ * every printable char + Enter to the chat input. Ctrl+L toggles between them;
+ * Esc from the composer returns focus to the view block.
+ */
 class AgentTerminalView implements Component {
   private views: ViewEntry[] = [];
   private selectedView: ViewEntry | null = null;
   private status = "starting terminal tui";
-  private mode: "views" | "search" | "chat" | "detail" = "views";
-  /** The registered terminal view rendered inline in `detail` mode. */
-  private detailView: Component | null = null;
+  private mode: "list" | "search" | "view" = "list";
+  /** The registered terminal view rendered inline in `view` mode. */
+  private mountedView: Component | null = null;
+  /** Which surface receives keyboard input: the view block or the composer. */
+  private focusTarget: "view" | "composer" = "composer";
   private searchQuery = "";
   private readonly viewList = new SelectList([], 12, selectTheme);
   private readonly chatInput: Editor;
@@ -104,6 +121,8 @@ class AgentTerminalView implements Component {
     private readonly onExit?: () => void,
   ) {
     this.chatInput = new Editor(tui, editorTheme, { paddingX: 0 });
+    // The composer owns input by default so a user can type immediately.
+    this.chatInput.focused = true;
     this.viewList.onSelect = (item) => {
       const view = this.views.find((candidate) => candidate.id === item.value);
       if (view) void this.openView(view);
@@ -177,17 +196,19 @@ class AgentTerminalView implements Component {
     }
   }
 
-  render(width: number): string[] {
-    if (this.mode === "detail" && this.detailView) {
+  /** Lines for the view block (everything above the pinned composer). */
+  private renderViewBlock(width: number): string[] {
+    if (this.mode === "view" && this.mountedView) {
       const header = [
         ansi.bold(
           `elizaOS terminal tui · ${this.selectedView?.label ?? "view"}`,
         ),
-        ansi.dim("esc/q returns to views · this is the live view render"),
+        ansi.dim(
+          `${this.focusTarget === "view" ? "tab/↑↓ focus · enter activates" : "ctrl+l focuses the view"} · esc/q closes`,
+        ),
         "",
       ];
-      const body = this.detailView.render(width);
-      return [...header, ...body].map((line) => truncateToWidth(line, width));
+      return [...header, ...this.mountedView.render(width)];
     }
 
     const selected = this.selectedView
@@ -199,23 +220,9 @@ class AgentTerminalView implements Component {
       `status: ${this.status}`,
       `selected: ${selected}`,
       "",
-      "shortcuts: ↑/↓ select  enter open  1-9 quick-open  r refresh  / search  c chat  q quit",
-      "chat: type after pressing c, enter sends, esc returns to views",
+      "shortcuts: ↑/↓ select  enter open  1-9 quick-open  r refresh  / search  ctrl+l focus  q quit",
       "",
     ];
-
-    if (this.mode === "chat") {
-      const hint =
-        this.commands.length > 0
-          ? ansi.dim("type / for commands · enter sends · esc returns to views")
-          : ansi.dim("enter sends · esc returns to views");
-      lines.push(ansi.cyan("chat composer"), this.lastChatLine, hint, "");
-      lines.push(...this.chatInput.render(width));
-      // Guard every line to the terminal width — the TUI render loop throws on
-      // any overflow (e.g. the shortcuts line on an 80-col terminal).
-      return lines.map((line) => truncateToWidth(line, width));
-    }
-
     if (this.mode === "search") {
       lines.push(
         ansi.cyan("search views"),
@@ -224,36 +231,84 @@ class AgentTerminalView implements Component {
         "",
       );
     }
-
     lines.push(ansi.cyan("registered tui views"));
     lines.push(...this.viewList.render(width));
-    return lines.map((line) => truncateToWidth(line, width));
+    return lines;
+  }
+
+  /** The chat composer block, always pinned to the bottom rows. */
+  private renderComposer(width: number): string[] {
+    const focusedComposer = this.focusTarget === "composer";
+    const hint =
+      this.commands.length > 0
+        ? "type / for commands · enter sends · ctrl+l focuses the view"
+        : "enter sends · ctrl+l focuses the view";
+    const label = focusedComposer
+      ? ansi.cyan("chat")
+      : ansi.dim("chat (ctrl+l to type)");
+    return [
+      ansi.dim("─".repeat(Math.max(1, width))),
+      label,
+      this.lastChatLine,
+      ansi.dim(hint),
+      ...this.chatInput.render(width),
+    ];
+  }
+
+  render(width: number): string[] {
+    const composer = this.renderComposer(width);
+    // Reserve the bottom rows for the composer; the view block fills the rest of
+    // the visible viewport so the composer is pinned to the last rows. Falls
+    // back to a generous default height when the terminal size is unknown.
+    const height = this.tui.terminal.rows || 24;
+    const viewHeight = Math.max(1, height - composer.length);
+    let viewBlock = this.renderViewBlock(width);
+    if (viewBlock.length > viewHeight) {
+      // Keep the most recent / focused content visible by trimming the top.
+      viewBlock = viewBlock.slice(viewBlock.length - viewHeight);
+    } else {
+      while (viewBlock.length < viewHeight) viewBlock.push("");
+    }
+    return [...viewBlock, ...composer].map((line) =>
+      truncateToWidth(line, width),
+    );
   }
 
   handleInput(data: string): void {
-    if (this.mode === "detail") {
-      // Esc / q / Ctrl+C return to the view list; everything else drives the
-      // inline view so it stays interactive.
-      if (data === "" || data === "q" || data === "") {
-        this.mode = "views";
-        this.detailView = null;
-        this.status = `${this.views.length} tui views ready`;
-        this.tui.requestRender();
-        return;
-      }
-      this.detailView?.handleInput?.(data);
-      this.tui.requestRender();
+    // Ctrl+L toggles which surface owns the keyboard (view block <-> composer).
+    if (data === "") {
+      this.setFocus(this.focusTarget === "composer" ? "view" : "composer");
       return;
     }
-    if (this.mode === "chat") {
-      this.handleChatInput(data);
+    // Ctrl+C always exits the whole TUI regardless of focus.
+    if (data === "") {
+      this.onExit?.();
       return;
     }
+
+    if (this.focusTarget === "composer") {
+      this.handleComposerInput(data);
+      return;
+    }
+
+    // -- view-focused: top-level keybindings + the mounted view / list --------
     if (this.mode === "search") {
       this.handleSearchInput(data);
       return;
     }
-    if (data === "\u0003" || data === "q") {
+    if (this.mode === "view" && this.mountedView) {
+      // Esc / q close the mounted view back to the list; everything else drives
+      // the inline view so it stays interactive (tab/arrows/enter activate).
+      if (data === "" || data === "q") {
+        this.closeMountedView();
+        return;
+      }
+      this.mountedView.handleInput?.(data);
+      this.tui.requestRender();
+      return;
+    }
+    // List mode, view-focused.
+    if (data === "q") {
       this.onExit?.();
       return;
     }
@@ -261,13 +316,9 @@ class AgentTerminalView implements Component {
       void this.refreshViews();
       return;
     }
-    if (data === "c") {
-      this.enterChatMode();
-      return;
-    }
-    // Bare `/` enters view-search mode (a top-level keybinding). The Editor's
-    // own `/`-at-line-start slash menu lives inside the composer and only
-    // fires once chat mode owns the input, so the two never collide.
+    // Bare slash enters view-search mode (a top-level keybinding while the view
+    // block is focused). The composer slash menu is unaffected -- it only fires
+    // once the composer owns the input.
     if (data === "/") {
       this.mode = "search";
       this.status = "filtering tui views";
@@ -283,57 +334,81 @@ class AgentTerminalView implements Component {
     this.viewList.handleInput(data);
   }
 
-  private enterChatMode(): void {
-    this.mode = "chat";
-    // Keep focus on the view so Escape/Ctrl+C can return to views; the Editor
-    // renders its cursor off its own `focused` flag, which we drive manually.
-    this.chatInput.focused = true;
-    this.tui.requestRender();
-  }
-
-  private exitChatMode(): void {
-    this.mode = "views";
-    this.chatInput.focused = false;
-    this.tui.requestRender();
-  }
-
-  private handleChatInput(data: string): void {
+  /** Route a keystroke into the always-on composer. */
+  private handleComposerInput(data: string): void {
     // Escape with an open dropdown closes the dropdown (handled by the Editor)
-    // rather than exiting chat mode, so one Escape doesn't do two things.
-    if (data === "\u001b" && this.chatInput.isShowingAutocomplete()) {
+    // rather than moving focus, so one Escape does not do two things.
+    if (data === "" && this.chatInput.isShowingAutocomplete()) {
       this.chatInput.handleInput(data);
       this.tui.requestRender();
       return;
     }
-    // Escape (no dropdown) and Ctrl+C return to the view list instead of
-    // tearing down the whole TUI.
-    if (data === "\u001b" || data === "\u0003") {
-      this.exitChatMode();
+    // Escape (no dropdown) hands focus back to the view block.
+    if (data === "") {
+      this.setFocus("view");
       return;
     }
     this.chatInput.handleInput(data);
     this.tui.requestRender();
   }
 
+  /** Move keyboard focus between the view block and the composer. */
+  private setFocus(target: "view" | "composer"): void {
+    this.focusTarget = target;
+    this.chatInput.focused = target === "composer";
+    this.tui.requestRender();
+  }
+
+  /** Unmount the active view and return to the list (view block stays focused). */
+  private closeMountedView(): void {
+    this.mode = "list";
+    this.mountedView = null;
+    this.status = `${this.views.length} tui views ready`;
+    this.tui.requestRender();
+  }
+
   invalidate(): void {
     this.viewList.invalidate();
+    this.mountedView?.invalidate?.();
   }
 
   private async openView(view: ViewEntry): Promise<void> {
     this.selectedView = view;
+    this.mode = this.mode === "search" ? "list" : this.mode;
     // A plugin-registered terminal view renders its real content inline — the
     // first time a `viewType: "tui"` view actually renders in the terminal,
-    // rather than only navigating the GUI shell.
-    const registered = getTerminalView(view.id);
-    if (registered) {
-      this.detailView = registered;
-      this.mode = "detail";
+    // rather than only navigating the GUI shell. Mount via the view's factory
+    // (when one is registered) so we can supply `onActivate`: a focused button
+    // activation in the view dispatches the view-scoped action to the agent.
+    // Fall back to the cached default component for legacy registrations.
+    const factory = getTerminalViewFactory(view.id);
+    const mounted = factory
+      ? factory({ onActivate: (elementId) => this.activateElement(elementId) })
+      : getTerminalView(view.id);
+    if (mounted) {
+      this.mountedView = mounted;
+      this.mode = "view";
+      // Surface focus to the view block so its controls are immediately
+      // tab/enter-drivable; the composer stays one Ctrl+L away.
+      this.setFocus("view");
       this.status = `viewing ${view.label}`;
+      // Tell the runtime which view is active so the activate endpoint can
+      // resolve elements and the planner upweights its scoped actions. Best
+      // effort; the inline render does not depend on it.
+      void this.navigateView(view, { silent: true });
       this.tui.requestRender();
       return;
     }
     this.status = `opening ${view.label}`;
     this.tui.requestRender();
+    await this.navigateView(view, { silent: false });
+  }
+
+  /** POST the navigate event so the runtime marks this view active. */
+  private async navigateView(
+    view: ViewEntry,
+    { silent }: { silent: boolean },
+  ): Promise<void> {
     try {
       await readJson<{ ok?: boolean }>(
         this.fetchImpl,
@@ -341,10 +416,47 @@ class AgentTerminalView implements Component {
         `/api/views/${encodeURIComponent(view.id)}/navigate?viewType=tui`,
         { method: "POST", body: JSON.stringify({ viewType: "tui" }) },
       );
-      this.status = `opened ${view.label}`;
+      if (!silent) this.status = `opened ${view.label}`;
+    } catch (error) {
+      if (!silent) {
+        this.status =
+          error instanceof Error
+            ? error.message
+            : `failed to open ${view.label}`;
+      }
+    } finally {
+      this.tui.requestRender();
+    }
+  }
+
+  /**
+   * A focused control in the mounted view was activated — dispatch it to the
+   * agent via POST /api/views/:id/activate, which resolves the element to its
+   * view-scoped action (CLICK_ELEMENT semantics) and runs it. The view's local
+   * onPress already fired (state change) inside the spatial component; this is
+   * the agent-facing half. Fire-and-forget; surfaced in the status line.
+   */
+  private async activateElement(elementId: string): Promise<void> {
+    const view = this.selectedView;
+    if (!view) return;
+    this.status = `activating ${elementId}…`;
+    this.tui.requestRender();
+    try {
+      await readJson<{ ok?: boolean }>(
+        this.fetchImpl,
+        this.apiBaseUrl,
+        `/api/views/${encodeURIComponent(view.id)}/activate?viewType=tui`,
+        {
+          method: "POST",
+          body: JSON.stringify({ elementId, viewType: "tui" }),
+        },
+      );
+      this.status = `activated ${elementId}`;
     } catch (error) {
       this.status =
-        error instanceof Error ? error.message : `failed to open ${view.label}`;
+        error instanceof Error
+          ? `activate failed: ${error.message}`
+          : `activate failed: ${elementId}`;
     } finally {
       this.tui.requestRender();
     }
@@ -352,7 +464,7 @@ class AgentTerminalView implements Component {
 
   private handleSearchInput(data: string): void {
     if (data === "\u001b") {
-      this.mode = "views";
+      this.mode = "list";
       this.searchQuery = "";
       this.viewList.setFilter("");
       this.status = `${this.views.length} tui views ready`;
@@ -364,7 +476,7 @@ class AgentTerminalView implements Component {
       const view = selected
         ? this.views.find((candidate) => candidate.id === selected.value)
         : null;
-      this.mode = "views";
+      this.mode = "list";
       if (view) void this.openView(view);
       return;
     }

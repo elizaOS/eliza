@@ -40,6 +40,14 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
     actions: [],
     plugins: [],
     logger: {
+      level: "info",
+      trace: vi.fn(),
+      fatal: vi.fn(),
+      success: vi.fn(),
+      progress: vi.fn(),
+      log: vi.fn(),
+      clear: vi.fn(),
+      child: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
@@ -173,6 +181,119 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("alpha beta gamma");
   });
 
+  it("does not stream internal tool or evaluation payloads as visible chat text", async () => {
+    const internalToolPayload = JSON.stringify({
+      type: "tool_call",
+      toolCall: {
+        id: "tool-1",
+        name: "VIEWS",
+        arguments: { action: "show", view: "notes" },
+        status: "pending",
+      },
+      contextEvent: {
+        id: "tool:VIEWS",
+        type: "tool",
+        source: "message-service",
+      },
+    });
+    const internalEvaluationPayload = JSON.stringify({
+      type: "evaluation",
+      evaluation: {
+        success: true,
+        decision: "FINISH",
+        thought: "Opened the Notes view successfully.",
+      },
+    });
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, _callback, options) {
+        await options?.onStreamChunk?.(internalToolPayload);
+        await options?.onStreamChunk?.(internalEvaluationPayload);
+        return {
+          didRespond: true,
+          responseContent: { text: "Navigated to Notes (gui)." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "tool-stream-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("open notes"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: (chunk) => chunks.push(chunk),
+        onSnapshot: (text) => snapshots.push(text),
+      },
+    );
+
+    expect(chunks).toEqual([]);
+    expect(snapshots).toEqual(["Navigated to Notes (gui)."]);
+    expect(result.text).toBe("Navigated to Notes (gui).");
+  });
+
+  it("routes a clean extension to onChunk but an in-place revision to onSnapshot", async () => {
+    // chat-routes' appendIncomingText() runs every onStreamChunk value through
+    // resolveStreamingUpdate(responseText, incoming):
+    //   - a clean extension of the buffer => append => onChunk(delta)
+    //   - an in-place revision that does NOT extend the buffer => replace =>
+    //     onSnapshot(full text)
+    // This locks that the route does not garble a corrected snapshot into the
+    // delta stream. "helo world" -> "hello world" is the canonical revision
+    // (fixes a typo in an already-streamed word) classified as a replacement.
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, _callback, options) {
+        await Promise.resolve();
+        await options?.onStreamChunk?.("helo world");
+        await Promise.resolve();
+        await options?.onStreamChunk?.("hello world");
+        return {
+          didRespond: true,
+          responseContent: { text: "hello world" },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "streaming-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+
+    const runtime = createRuntime({ messageService: service });
+
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("typo"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: (chunk) => chunks.push(chunk),
+        onSnapshot: (text) => snapshots.push(text),
+      },
+    );
+
+    // First emission appended as a delta; the revision replaced via snapshot.
+    expect(chunks).toEqual(["helo world"]);
+    expect(snapshots).toEqual(["hello world"]);
+    // The corrected text is what the caller ends up with — no "helo" garble.
+    expect(result.text).toBe("hello world");
+  });
+
   it("returns sanitized action result summaries for UI handoffs", async () => {
     const message = createChatMessage("create a workflow");
     const getActionResults = vi.fn(() => [
@@ -264,6 +385,10 @@ describe("generateChatResponse token streaming", () => {
     const directParams = useModel.mock.calls[0]?.[1] as { prompt?: string };
     expect(directParams.prompt).not.toContain("/no_think");
     expect(directParams.prompt).toContain("can you hear me locally?");
+    expect(directParams.prompt).toContain("<start_of_turn>user\n");
+    expect(directParams.prompt).toContain("<end_of_turn>\n");
+    expect(directParams.prompt).toContain("<start_of_turn>model\n");
+    expect(directParams.prompt).not.toContain("<|im_start|>");
 
     expect(useModel).toHaveBeenCalledWith(
       expect.anything(),
@@ -271,6 +396,7 @@ describe("generateChatResponse token streaming", () => {
         stream: true,
         maxTokens: 20,
         prompt: expect.stringContaining("<think>\n\n</think>\n"),
+        stopSequences: ["<end_of_turn>", "<start_of_turn>"],
         providerOptions: expect.objectContaining({
           androidLocal: expect.objectContaining({
             minFirstSentenceChars: 12,

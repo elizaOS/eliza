@@ -26,6 +26,7 @@ interface NutModule {
   mouse: {
     config: { mouseSpeed: number; autoDelayMs: number };
     setPosition: (point: { x: number; y: number }) => Promise<unknown>;
+    getPosition: () => Promise<{ x: number; y: number }>;
     move: (path: Promise<unknown> | unknown) => Promise<unknown>;
     click: (button: number) => Promise<unknown>;
     doubleClick: (button: number) => Promise<unknown>;
@@ -151,6 +152,14 @@ function resolveKeyCode(key: string): number {
     const code = m.Key[mapped];
     if (code !== undefined) return code;
   }
+  // Modifier names (shift / ctrl / alt / cmd / meta / super / win) — needed so
+  // key_down/key_up can hold a bare modifier. These live in MODIFIER_KEYS as
+  // nutjs Key names (e.g. "LeftShift"); resolve to the left-hand variant.
+  const modifierNames = MODIFIER_KEYS[canonical] ?? MODIFIER_KEYS[key.trim().toLowerCase()];
+  if (modifierNames && modifierNames.length > 0) {
+    const code = m.Key[modifierNames[0]];
+    if (code !== undefined) return code;
+  }
   // Single character — map A-Z / 0-9 directly via Key enum
   if (key.length === 1) {
     const upper = key.toUpperCase();
@@ -162,6 +171,22 @@ function resolveKeyCode(key: string): number {
   const raw = m.Key[key];
   if (raw !== undefined) return raw;
   throw new Error(`Unsupported key for nutjs driver: "${key}"`);
+}
+
+/** Resolve a POSIX-style button name to the nutjs `Button` enum value. Pure-ish
+ * (reads the loaded module). Throws on an unknown button. */
+function resolveButton(button: "left" | "middle" | "right"): number {
+  const m = nut();
+  switch (button) {
+    case "left":
+      return m.Button.LEFT;
+    case "middle":
+      return m.Button.MIDDLE;
+    case "right":
+      return m.Button.RIGHT;
+    default:
+      throw new Error(`Unsupported mouse button: "${button}"`);
+  }
 }
 
 function resolveModifierCodes(modifier: string): number[] {
@@ -223,9 +248,99 @@ export async function nutRightClick(x: number, y: number): Promise<void> {
   await m.mouse.click(m.Button.RIGHT);
 }
 
+export async function nutMiddleClick(x: number, y: number): Promise<void> {
+  const m = nut();
+  await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+  await m.mouse.click(m.Button.MIDDLE);
+}
+
 export async function nutMouseMove(x: number, y: number): Promise<void> {
   const m = nut();
   await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+}
+
+/**
+ * Press (and hold) a mouse button at `(x, y)` without releasing it. Pairs with
+ * `nutMouseUp` to express hold-drags, marquee selection, and press-and-hold
+ * gestures that a single `click` cannot. The caller is responsible for the
+ * matching release.
+ */
+export async function nutMouseDown(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): Promise<void> {
+  const m = nut();
+  await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+  await m.mouse.pressButton(resolveButton(button));
+}
+
+/** Release a previously-held mouse button at `(x, y)`. See {@link nutMouseDown}. */
+export async function nutMouseUp(
+  x: number,
+  y: number,
+  button: "left" | "middle" | "right" = "left",
+): Promise<void> {
+  const m = nut();
+  await m.mouse.setPosition(new m.Point(validateInt(x), validateInt(y)));
+  await m.mouse.releaseButton(resolveButton(button));
+}
+
+/** Inter-notch / inter-step pacing (ms) — small, just enough to defeat event
+ * coalescing in fast consumers (e.g. Chromium's MouseWheelEventQueue) without
+ * making input feel sluggish. */
+const SCROLL_NOTCH_DELAY_MS = 8;
+const DRAG_STEP_DELAY_MS = 8;
+const DRAG_STEPS = 20;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/** Clamp a requested scroll amount to a safe per-notch count (1..20). Pure. */
+export function clampScrollNotches(amount: number): number {
+  return Math.max(1, Math.min(validateInt(amount), 20));
+}
+
+/**
+ * Interpolated integer waypoints from (x1,y1) to (x2,y2) over `steps` moves
+ * (excludes the start, includes the end). Pure — exported for unit tests.
+ */
+export function interpolateDragSteps(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  steps: number = DRAG_STEPS,
+): Array<{ x: number; y: number }> {
+  const n = Math.max(1, Math.floor(steps));
+  const points: Array<{ x: number; y: number }> = [];
+  for (let i = 1; i <= n; i += 1) {
+    const t = i / n;
+    points.push({
+      x: Math.round(x1 + (x2 - x1) * t),
+      y: Math.round(y1 + (y2 - y1) * t),
+    });
+  }
+  return points;
+}
+
+async function manualDragMove(
+  m: NutModule,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): Promise<void> {
+  // Interpolated move with the button held — fallback for libnut builds whose
+  // `mouse.move(straightTo)` does not carry a real button-down on Windows.
+  const points = interpolateDragSteps(x1, y1, x2, y2);
+  for (let i = 0; i < points.length; i += 1) {
+    await m.mouse.setPosition(new m.Point(points[i].x, points[i].y));
+    if (i < points.length - 1) await sleep(DRAG_STEP_DELAY_MS);
+  }
 }
 
 export async function nutDrag(
@@ -242,10 +357,75 @@ export async function nutDrag(
   await m.mouse.setPosition(new m.Point(sx1, sy1));
   await m.mouse.pressButton(m.Button.LEFT);
   try {
-    await m.mouse.move(m.straightTo(new m.Point(sx2, sy2)));
+    try {
+      await m.mouse.move(m.straightTo(new m.Point(sx2, sy2)));
+    } catch {
+      await manualDragMove(m, sx1, sy1, sx2, sy2);
+    }
   } finally {
     await m.mouse.releaseButton(m.Button.LEFT);
   }
+}
+
+/**
+ * Densify a polyline by interpolating integer waypoints along every segment so
+ * a held-button drag traces curves/corners instead of teleporting corner to
+ * corner. Includes the very first point and every segment endpoint. Pure —
+ * exported for unit tests.
+ *
+ * `perSegmentSteps` controls how many intermediate points are inserted between
+ * consecutive vertices (≥1; the endpoint is always included).
+ */
+export function densifyDragPath(
+  path: Array<{ x: number; y: number }>,
+  perSegmentSteps: number = DRAG_STEPS,
+): Array<{ x: number; y: number }> {
+  if (path.length === 0) return [];
+  const first = { x: validateInt(path[0].x), y: validateInt(path[0].y) };
+  const out: Array<{ x: number; y: number }> = [first];
+  for (let i = 1; i < path.length; i += 1) {
+    const a = out[out.length - 1];
+    const b = { x: validateInt(path[i].x), y: validateInt(path[i].y) };
+    out.push(...interpolateDragSteps(a.x, a.y, b.x, b.y, perSegmentSteps));
+  }
+  return out;
+}
+
+/**
+ * Press the left button at the first point, move through every interpolated
+ * waypoint with the button held, then release at the last point. Backs
+ * multi-point `drag(path)` and AOSP swipe paths. Requires ≥2 points.
+ */
+export async function nutDragPath(
+  path: Array<{ x: number; y: number }>,
+): Promise<void> {
+  if (path.length < 2) {
+    throw new Error("nutDragPath requires at least two points");
+  }
+  const m = nut();
+  const points = densifyDragPath(path);
+  const start = points[0];
+  const end = points[points.length - 1];
+  await m.mouse.setPosition(new m.Point(start.x, start.y));
+  await m.mouse.pressButton(m.Button.LEFT);
+  try {
+    for (let i = 1; i < points.length; i += 1) {
+      await m.mouse.setPosition(new m.Point(points[i].x, points[i].y));
+      if (i < points.length - 1) await sleep(DRAG_STEP_DELAY_MS);
+    }
+  } finally {
+    await m.mouse.setPosition(new m.Point(end.x, end.y));
+    await m.mouse.releaseButton(m.Button.LEFT);
+  }
+}
+
+export async function nutGetCursorPosition(): Promise<{
+  x: number;
+  y: number;
+}> {
+  const m = nut();
+  const p = await m.mouse.getPosition();
+  return { x: Math.round(p.x), y: Math.round(p.y) };
 }
 
 export async function nutScroll(
@@ -257,12 +437,16 @@ export async function nutScroll(
   const m = nut();
   const sx = validateInt(x);
   const sy = validateInt(y);
-  const clicks = Math.max(1, Math.min(validateInt(amount), 20));
+  const clicks = clampScrollNotches(amount);
   await m.mouse.setPosition(new m.Point(sx, sy));
-  if (direction === "up") await m.mouse.scrollUp(clicks);
-  else if (direction === "down") await m.mouse.scrollDown(clicks);
-  else if (direction === "left") await m.mouse.scrollLeft(clicks);
-  else await m.mouse.scrollRight(clicks);
+  // Emit one wheel notch at a time so coalescing consumers register each notch.
+  for (let i = 0; i < clicks; i += 1) {
+    if (direction === "up") await m.mouse.scrollUp(1);
+    else if (direction === "down") await m.mouse.scrollDown(1);
+    else if (direction === "left") await m.mouse.scrollLeft(1);
+    else await m.mouse.scrollRight(1);
+    if (i < clicks - 1) await sleep(SCROLL_NOTCH_DELAY_MS);
+  }
 }
 
 // ── Keyboard ────────────────────────────────────────────────────────────────
@@ -278,6 +462,19 @@ export async function nutKeyPress(key: string): Promise<void> {
   const code = resolveKeyCode(key);
   await m.keyboard.pressKey(code);
   await m.keyboard.releaseKey(code);
+}
+
+/** Press (and hold) a single key without releasing it. Pairs with `nutKeyUp`
+ * to express press-and-hold (e.g. holding Shift while issuing other input). */
+export async function nutKeyDown(key: string): Promise<void> {
+  const m = nut();
+  await m.keyboard.pressKey(resolveKeyCode(key));
+}
+
+/** Release a previously-held key. See {@link nutKeyDown}. */
+export async function nutKeyUp(key: string): Promise<void> {
+  const m = nut();
+  await m.keyboard.releaseKey(resolveKeyCode(key));
 }
 
 export async function nutKeyCombo(combo: string): Promise<void> {

@@ -4,7 +4,8 @@ The input is `eliza_native_v1` JSONL (legacy flat `ElizaRecord` rows and
 chatml `{messages,tools}` rows are coerced to that shape automatically — see
 _to_native). For each row, the benchmark renders the
 request side with the tokenizer chat template, generates from a base or tuned
-Qwen checkpoint, and compares the decoded output to the native response side.
+Gemma / Eliza-1 checkpoint, and compares the decoded output to the native
+response side.
 
 Primary score:
   - tool_call_structure: expected native tool names and argument keys appear
@@ -120,8 +121,8 @@ def _parse_json_object(text: str) -> dict[str, Any] | None:
     if start < 0:
         return None
     # Walk forward to find the balanced closing brace. Using rfind would
-    # corrupt the slice when the model appends trailing XML (Qwen <tool_call>
-    # blocks) after the eliza JSON object.
+    # corrupt the slice when the model appends trailing tool-call markup after
+    # the eliza JSON object.
     depth = 0
     in_str = False
     escape = False

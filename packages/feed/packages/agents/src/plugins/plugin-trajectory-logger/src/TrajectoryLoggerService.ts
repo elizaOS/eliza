@@ -619,7 +619,7 @@ export class TrajectoryLoggerService extends Service {
       // The plugin's TrajectoryStep type and the training package's TrajectoryStep
       // are structurally compatible but declared separately. Use unknown bridge.
       const trainingSteps =
-        trajectory.steps as unknown as TrainingTrajectoryStep[];
+        trajectory.steps as TrainingTrajectoryStep[];
       const judgment = computeDeterministicRewardJudgment({
         steps: trainingSteps,
         totalReward: trajectory.totalReward,

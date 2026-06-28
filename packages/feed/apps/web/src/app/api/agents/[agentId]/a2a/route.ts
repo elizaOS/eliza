@@ -158,7 +158,7 @@ async function getTaskStoreAndTaskId(
   }
 
   const jsonRpcHandler = await getAgentJsonRpcHandler(agentId);
-  const handlerWithRequestHandler = jsonRpcHandler as unknown as {
+  const handlerWithRequestHandler = jsonRpcHandler as {
     requestHandler: {
       taskStore: PersistentTaskStore;
     };
@@ -327,7 +327,7 @@ export const POST = withErrorHandling(async function POST(
 
       // Use type assertions to access internal SDK structure
       // These properties exist at runtime but aren't in the public types
-      const handlerWithRequestHandler = jsonRpcHandler as unknown as {
+      const handlerWithRequestHandler = jsonRpcHandler as {
         requestHandler: {
           taskStore: PersistentTaskStore;
         };

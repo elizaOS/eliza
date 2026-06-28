@@ -102,7 +102,9 @@ describe("DatabaseView", () => {
     render(<DatabaseView />);
 
     await waitFor(() => {
-      expect(screen.getByText("databaseview.DatabaseNotAvailab")).toBeTruthy();
+      expect(
+        screen.getByText("databaseview.StartAgentToUseDatabase"),
+      ).toBeTruthy();
     });
     // Disconnected status must NOT trigger a table fetch.
     expect(clientMock.getDatabaseTables).not.toHaveBeenCalled();
@@ -176,7 +178,7 @@ describe("DatabaseView", () => {
     fireEvent.click(await screen.findByText("empty_tbl"));
 
     await waitFor(() => {
-      expect(screen.getByText("databaseview.TableIsEmpty")).toBeTruthy();
+      expect(screen.getByText("databaseview.NoDataInsertViaSql")).toBeTruthy();
     });
   });
 

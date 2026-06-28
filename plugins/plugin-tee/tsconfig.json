@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -18,7 +18,6 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": false,
-    "noImplicitAny": false,
     "noUncheckedIndexedAccess": false,
     "types": ["node"]
   },

@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import { collectWorkspaceMaps } from "./lib/workspace-discovery.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const recursiveCleanupScript = path.join(
+  repoRoot,
+  "packages/scripts/rm-path-recursive.mjs",
+);
 const rootPkg = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
@@ -25,7 +30,13 @@ const localPackages = [
   // any per-package side effects (e.g. the app-core argon2/jose linking).
   "eliza/packages/core",
   "eliza/packages/contracts",
-  "eliza/packages/cloud-routing",
+  "eliza/packages/cloud/routing",
+  // @elizaos/app-core's registry/index.ts eagerly re-exports
+  // `@elizaos/registry/first-party` (#9190 moved the curated app/plugin/connector
+  // registry out of app-core into this package). It must be linked or the agent
+  // boot crashes with "Cannot find package '@elizaos/registry' imported from
+  // .../app-core/dist/registry/index.js". Foundational, so listed up here.
+  "eliza/packages/registry",
   // @elizaos/agent's remote-plugin-bridge imports the `./error` subpath of
   // plugin-worker-runtime eagerly at boot. Without linking it here its
   // node_modules entry is never established, so boot crashes with
@@ -35,13 +46,11 @@ const localPackages = [
   "eliza/plugins/plugin-elizamaker",
   "eliza/plugins/plugin-documents",
   "eliza/plugins/plugin-personal-assistant",
-  "eliza/plugins/plugin-steward-app",
   "eliza/plugins/plugin-task-coordinator",
   "eliza/plugins/plugin-training",
-  "eliza/plugins/plugin-shopify-ui",
-  "eliza/plugins/plugin-vincent",
+  "eliza/plugins/plugin-shopify",
   "eliza/packages/app-core",
-  "eliza/packages/cloud-sdk",
+  "eliza/packages/cloud/sdk",
   "eliza/packages/shared",
   "eliza/packages/skills",
   "eliza/packages/ui",
@@ -196,6 +205,22 @@ function pathExists(filePath) {
   }
 }
 
+function removeDirectoryRecursive(filePath) {
+  try {
+    execFileSync("node", [recursiveCleanupScript, filePath], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(
+      `Failed to remove directory ${filePath}${detail ? `: ${detail}` : ""}`,
+      { cause: error },
+    );
+  }
+}
+
 function removePath(filePath) {
   try {
     const stat = fs.lstatSync(filePath);
@@ -203,7 +228,11 @@ function removePath(filePath) {
       fs.unlinkSync(filePath);
       return;
     }
-    fs.rmSync(filePath, { force: true, recursive: stat.isDirectory() });
+    if (stat.isDirectory()) {
+      removeDirectoryRecursive(filePath);
+      return;
+    }
+    fs.rmSync(filePath, { force: true });
   } catch (error) {
     if (error?.code === "ENOENT") {
       return;

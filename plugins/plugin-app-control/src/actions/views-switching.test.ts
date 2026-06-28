@@ -33,7 +33,16 @@ const coreMock = vi.hoisted(() => ({
 		error instanceof Error ? error.message : String(error),
 }));
 
-vi.mock("@elizaos/core", () => coreMock);
+// views-show.ts (loaded via ./views.js and the direct resolveIntentView import)
+// pulls getUserMessageText from @elizaos/core, so the mock must carry the real
+// implementation — keep the rest of core mocked. Mirrors views-management.test.ts.
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return {
+		...coreMock,
+		getUserMessageText: actual.getUserMessageText,
+	};
+});
 
 function message(text: string, roomId = "room-1") {
 	return {
@@ -361,7 +370,7 @@ describe("view switching — VIEWS action resolver", () => {
 	});
 
 	describe("model param hallucination — user's words win over a wrong view param", () => {
-		// A weak/local planner (the 0.8B) frequently emits VIEWS with a WRONG view
+		// A weak local planner can emit VIEWS with a WRONG view
 		// param (e.g. view:"wallet" for "open my calendar"). The user's own words
 		// are authoritative when they name a registered domain surface, so the
 		// hallucinated param must not mis-navigate. This is the "structured
@@ -410,6 +419,35 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.success).toBe(false);
 			expect(result?.text).toContain("No view matches");
 			expect(navigated).toEqual([]);
+		});
+
+		it("does not fall back to Knowledge/Documents for standalone notes when no notes view is registered", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "open notes");
+			expect(result?.success).toBe(false);
+			expect(result?.text).toContain('No view matches "notes"');
+			expect(navigated).toEqual([]);
+		});
+
+		it("opens a registered notes view for standalone notes requests", async () => {
+			const withNotes: ViewSummary[] = [
+				...REGISTRY,
+				{
+					id: "notes",
+					label: "Notes",
+					description: "Simple notes",
+					path: "/notes",
+					pluginName: "@elizaos/plugin-simple-views",
+					available: true,
+					viewType: "gui",
+					tags: ["notes"],
+					visibleInManager: true,
+				},
+			];
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(withNotes, "open notes");
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["notes"]);
 		});
 
 		it("asks which one when a target is genuinely ambiguous", async () => {
@@ -700,6 +738,79 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(ok).toBe(false);
 			expect(owner).toHaveBeenCalled();
 		});
+
+		// A sub-agent completion relay carries content.source="sub_agent" (not the
+		// origin connector). Its true origin is on metadata.originSource. The
+		// desktop-mode gate must resolve the EFFECTIVE source so a Discord-triggered
+		// build relay doesn't terminate on "Opening your Settings now." instead of
+		// relaying the result.
+		function relayMessage(text: string, metadata: Record<string, unknown>) {
+			return {
+				entityId: "user-1",
+				roomId: "room-1",
+				agentId: "agent-1",
+				content: { text, source: "sub_agent", metadata },
+			};
+		}
+
+		it("gates desktop-only mode off a sub-agent relay that ORIGINATED on a text connector", async () => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				relayMessage("Opening your Settings now.", {
+					subAgent: true,
+					originSource: "discord",
+				}) as never,
+				undefined as never,
+				{ action: "open", view: "settings" } as never,
+			);
+			expect(ok).toBe(false);
+		});
+
+		it("gates desktop-only mode off a sub-agent relay with unknown/missing origin (a relay never navigates UI)", async () => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				relayMessage("Opening your Settings now.", {
+					subAgent: true,
+				}) as never,
+				undefined as never,
+				{ action: "open", view: "settings" } as never,
+			);
+			expect(ok).toBe(false);
+		});
+
+		// Spawning a sub-agent from WITHIN the Eliza app: the dashboard sends
+		// source="client_chat" (a view-capable local surface), so the relay's
+		// originSource is view-capable and desktop navigation stays available — the
+		// user is in the app and CAN see views. Only text connectors are restricted.
+		it.each([
+			"client_chat",
+			"app",
+			"chat",
+			"user_chat",
+		])("keeps desktop navigation for a sub-agent relay that originated in the app (%s)", async (originSource) => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				{ agentId: "agent-1" } as never,
+				relayMessage("show my wallet", {
+					subAgent: true,
+					originSource,
+				}) as never,
+				undefined as never,
+				{ action: "show", view: "wallet" } as never,
+			);
+			expect(ok).toBe(true);
+		});
 	});
 
 	describe("BUG PROBE: developerMode-gated views reachable by ACTIVE command", () => {
@@ -759,7 +870,6 @@ describe("resolveIntentView — expanded surfaces + multilingual", () => {
 			["what's on my to-do list", "todos"],
 			["my tasks", "todos"],
 			["pull up my documents", "documents"],
-			["my notes", "documents"],
 			["who do I know at Acme", "relationships"],
 			["my contacts", "relationships"],
 			["I want to add a new feature to my app", "task-coordinator"],
@@ -767,6 +877,11 @@ describe("resolveIntentView — expanded surfaces + multilingual", () => {
 		];
 		it.each(EN_CASES)('"%s" -> %s', (phrase, viewId) => {
 			expect(resolveIntentView(phrase)).toBe(viewId);
+		});
+
+		it("routes notes to the Notes view instead of Knowledge/Documents", () => {
+			expect(resolveIntentView("my notes")).toBe("notes");
+			expect(resolveIntentView("pull up my notes")).toBe("notes");
 		});
 	});
 

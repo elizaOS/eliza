@@ -50,6 +50,10 @@ import {
   transcribeLocalInferenceWav,
 } from "../voice/local-asr-transcribe";
 import {
+  PlaybackFramePump,
+  type PlaybackFrameTap,
+} from "../voice/playback-frame-pump";
+import {
   collapseWhitespace,
   nextIdleMouthOpen,
   normalizeCacheText,
@@ -114,6 +118,18 @@ export type {
   VoiceTranscriptPreviewEvent,
   VoiceTurn,
 } from "../voice/voice-chat-types";
+
+declare global {
+  interface Window {
+    /**
+     * Headless-test observability flag — set true the first time a real TTS
+     * playback starts. The voice self-test + real-audio e2e poll this to prove
+     * audio flowed (the only honest "reply was spoken" signal in a headless
+     * browser).
+     */
+    __voicePlaybackStarted?: boolean;
+  }
+}
 
 // ── Shared mutable state ─────────────────────────────────────────────
 
@@ -253,6 +269,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const talkModeHandlesRef = useRef<PluginListenerHandle[]>([]);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const playbackFrameTapRef = useRef<PlaybackFrameTap | null>(null);
   const animFrameRef = useRef<number>(0);
   const speakingStartRef = useRef<number>(0);
   const speechTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -276,9 +293,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     // voice self-test + real-audio e2e poll this to prove audio flowed (the
     // only honest "reply was spoken" signal in a headless browser).
     if (typeof window !== "undefined") {
-      (
-        window as unknown as { __voicePlaybackStarted?: boolean }
-      ).__voicePlaybackStarted = true;
+      window.__voicePlaybackStarted = true;
     }
   });
 
@@ -329,6 +344,26 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const interruptOnSpeechRef = useRef(options.interruptOnSpeech ?? true);
   interruptOnSpeechRef.current = options.interruptOnSpeech ?? true;
   const interruptSpeechRef = useRef<() => void>(() => {});
+  const playbackFramePumpRef = useRef<PlaybackFramePump | null>(null);
+
+  const getPlaybackFramePump = useCallback(() => {
+    if (!playbackFramePumpRef.current) {
+      playbackFramePumpRef.current = new PlaybackFramePump();
+    }
+    return playbackFramePumpRef.current;
+  }, []);
+
+  const stopPlaybackFrameTap = useCallback(
+    (options: { reset?: boolean; drain?: boolean } = {}) => {
+      const tap = playbackFrameTapRef.current;
+      playbackFrameTapRef.current = null;
+      if (!tap) return;
+      void tap.stop(options).catch(() => {
+        /* best effort only */
+      });
+    },
+    [],
+  );
 
   // ── ElevenLabs Web Audio refs ──────────────────────────────────────
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -730,7 +765,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       }
       // Defer to the next backend (talk-mode / browser) when the server can't
       // transcribe right now — capturing here would only 502 at stop() with no
-      // recoverable fallback (no whisper model / native adapter installed).
+      // recoverable fallback (no local ASR assets / native adapter installed).
       if (!(await isLocalInferenceAsrReady())) {
         return false;
       }
@@ -1026,6 +1061,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
     activeTaskFinishRef.current?.();
     activeTaskFinishRef.current = null;
+    stopPlaybackFrameTap({ reset: true, drain: false });
 
     // Browser TTS
     synthRef.current?.cancel();
@@ -1058,7 +1094,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     clearSpeechTimers();
     usingAudioAnalysisRef.current = false;
     setUsingAudioAnalysis(false);
-  }, [clearSpeechTimers]);
+  }, [clearSpeechTimers, stopPlaybackFrameTap]);
 
   const stopSpeaking = useCallback(() => {
     if (assistantTtsDebounceRef.current != null) {
@@ -1290,6 +1326,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
+      const playbackTap = await getPlaybackFramePump()
+        .tapSource(ctx, source, audioBuffer)
+        .catch(() => null);
 
       await new Promise<void>((resolve) => {
         let finished = false;
@@ -1305,6 +1344,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
+          if (playbackFrameTapRef.current === playbackTap) {
+            playbackFrameTapRef.current = null;
+          }
+          void playbackTap?.stop({ reset: true }).catch(() => {
+            /* best effort only */
+          });
           source.onended = null;
           try {
             source.disconnect();
@@ -1339,6 +1384,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
+        if (playbackTap) {
+          playbackFrameTapRef.current = playbackTap;
+          playbackTap.start(playStartMs);
+        }
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
@@ -1357,6 +1406,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [
       clearSpeechTimers,
+      getPlaybackFramePump,
       makeElevenCacheKey,
       markAudioBlocked,
       markAudioPlaying,
@@ -1460,6 +1510,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
+      const playbackTap = await getPlaybackFramePump()
+        .tapSource(ctx, source, audioBuffer)
+        .catch(() => null);
 
       await new Promise<void>((resolve) => {
         let finished = false;
@@ -1475,6 +1528,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
+          if (playbackFrameTapRef.current === playbackTap) {
+            playbackFrameTapRef.current = null;
+          }
+          void playbackTap?.stop({ reset: true }).catch(() => {
+            /* best effort only */
+          });
           source.onended = null;
           try {
             source.disconnect();
@@ -1493,6 +1552,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         wrappedFinish = finish;
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
+        if (playbackTap) {
+          playbackFrameTapRef.current = playbackTap;
+          playbackTap.start(playStartMs);
+        }
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
@@ -1511,6 +1574,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     },
     [
       clearSpeechTimers,
+      getPlaybackFramePump,
       makeLocalInferenceCacheKey,
       markAudioBlocked,
       markAudioPlaying,

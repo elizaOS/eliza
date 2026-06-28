@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { ScrollText } from "lucide-react";
+import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { LogEntry } from "../../api";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -6,7 +7,7 @@ import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatTime } from "../../utils/format";
-import { ChatSearchHint } from "../composites/chat-search-hint";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import {
@@ -35,6 +36,75 @@ function logEntryKey(entry: LogEntry): string {
  * neither caller passed contentHeader/inModal — both props default to
  * the same shape the wrapper used to apply.
  */
+// Memoized so the live-tail (which appends entries and re-renders the list)
+// reconciles only NEW rows — each existing `entry` is a stable object, so memo
+// skips re-rendering (and re-formatting) every prior row on every tail update.
+const LogRow = memo(function LogRow({ entry }: { entry: LogEntry }) {
+  return (
+    <div
+      className="flex flex-col gap-1 px-3 py-3 text-sm md:flex-row md:items-start md:gap-3"
+      data-testid="log-entry"
+    >
+      {/* Timestamp */}
+      <span className="shrink-0 whitespace-nowrap text-xs-tight text-muted tabular-nums md:w-[5.75rem]">
+        {formatTime(entry.timestamp, { fallback: "—" })}
+      </span>
+
+      {/* Level */}
+      <span
+        className={`shrink-0 font-semibold uppercase tracking-[0.08em] text-xs-tight md:w-14 ${
+          entry.level === "error"
+            ? "text-danger"
+            : entry.level === "warn"
+              ? "text-warning"
+              : entry.level === "info"
+                ? "text-muted-strong"
+                : entry.level === "debug"
+                  ? "text-muted"
+                  : "text-muted"
+        }`}
+      >
+        {entry.level}
+      </span>
+
+      {/* Source */}
+      <span className="min-w-0 shrink-0 break-words text-xs-tight text-muted md:w-20 md:truncate">
+        [{entry.source}]
+      </span>
+
+      {/* Tag badges */}
+      <span className="inline-flex max-w-full shrink-0 flex-wrap gap-1 md:max-w-[14rem]">
+        {(entry.tags ?? []).map((t: string) => {
+          return (
+            <span
+              key={t}
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium ${
+                (
+                  {
+                    agent: "border-accent/25 bg-accent/10 text-accent-fg",
+                    cloud: "border-accent/20 bg-accent/8 text-accent",
+                    plugins: "border-accent/25 bg-accent/10 text-accent-fg",
+                  } as Record<string, string>
+                )[t] ?? "border-border/35 bg-bg-hover text-muted-strong"
+              }`}
+              style={{
+                fontFamily: "var(--font-body, sans-serif)",
+              }}
+            >
+              <span className="break-all">{t}</span>
+            </span>
+          );
+        })}
+      </span>
+
+      {/* Message */}
+      <span className="min-w-0 flex-1 break-words leading-6 text-txt">
+        {entry.message}
+      </span>
+    </div>
+  );
+});
+
 export function LogsView({
   contentHeader,
   inModal,
@@ -185,16 +255,11 @@ function LogsViewBody() {
   return (
     <div className="flex h-full flex-col gap-3" data-testid="logs-view">
       {/* Filters row — filters left, count beside the title */}
-      <PagePanel variant="surface" className="space-y-3 p-3 sm:p-4">
+      <PagePanel variant="surface" className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-semibold text-txt">
-              {t("logsview.FilterLogs")}
-            </span>
-            <span className="text-xs text-muted tabular-nums">
-              {filteredLogs.length}
-            </span>
-          </div>
+          <span className="text-xs text-muted tabular-nums">
+            {filteredLogs.length}
+          </span>
           {errorCount > 0 ? (
             <span className="text-xs text-danger tabular-nums">
               {t("logsview.ErrorCount", {
@@ -204,7 +269,6 @@ function LogsViewBody() {
             </span>
           ) : null}
         </div>
-        <ChatSearchHint noun="logs" query={searchQuery} />
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={logLevelFilter === "" ? "all" : logLevelFilter}
@@ -214,7 +278,7 @@ function LogsViewBody() {
           >
             <SelectTrigger
               ref={levelControl.ref}
-              className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+              className="w-40 h-10 rounded-sm text-sm text-txt"
               {...levelControl.agentProps}
             >
               <SelectValue placeholder={t("logsview.AllLevels")} />
@@ -236,7 +300,7 @@ function LogsViewBody() {
           >
             <SelectTrigger
               ref={sourceControl.ref}
-              className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+              className="w-40 h-10 rounded-sm text-sm text-txt"
               {...sourceControl.agentProps}
             >
               <SelectValue placeholder={t("logsview.AllSources")} />
@@ -260,7 +324,7 @@ function LogsViewBody() {
             >
               <SelectTrigger
                 ref={tagControl.ref}
-                className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+                className="w-40 h-10 rounded-sm text-sm text-txt"
                 {...tagControl.agentProps}
               >
                 <SelectValue placeholder={t("logsview.AllTags")} />
@@ -292,12 +356,21 @@ function LogsViewBody() {
         {logLoadError ? (
           <div
             role="alert"
-            className="rounded-sm border border-danger/35 bg-danger/8 px-3 py-2 text-xs text-danger"
+            className="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-danger"
           >
-            {t("logsview.LoadFailed", {
-              defaultValue: "Failed to load logs: {{message}}",
-              message: logLoadError,
-            })}
+            <span>
+              {t("logsview.LoadFailed", {
+                defaultValue: "Failed to load logs: {{message}}",
+                message: logLoadError,
+              })}
+            </span>
+            <Button
+              size="sm"
+              className="text-black hover:text-black"
+              onClick={() => void loadLogs()}
+            >
+              {t("common.retry", { defaultValue: "Retry" })}
+            </Button>
           </div>
         ) : null}
       </PagePanel>
@@ -305,96 +378,45 @@ function LogsViewBody() {
       {/* Log entries — full remaining height */}
       <PagePanel
         variant="surface"
-        className="flex-1 min-h-0 overflow-y-auto p-2 font-mono text-sm"
+        className="flex-1 min-h-0 overflow-y-auto font-mono text-sm"
       >
         {initialLoading && filteredLogs.length === 0 && !logLoadError ? (
           <ListSkeleton className="m-1" rows={8} rowClassName="h-10" />
         ) : filteredLogs.length === 0 ? (
-          <PagePanel.Empty
-            variant="panel"
-            role="status"
-            className="m-1 min-h-[16rem] rounded-sm border-border/35 bg-bg-hover/60 px-6 py-10"
-            description={
+          <ChatEmptyStateWithRecommendations
+            icon={ScrollText}
+            title={
               hasActiveFilters
                 ? t("logsview.NoLogEntriesMatchingFiltersDescription")
                 : t("logsview.NoLogEntriesYetDescription")
             }
-            title={t(
+            recommendations={
               hasActiveFilters
-                ? "logsview.NoLogEntriesMatchingFilters"
-                : "logsview.NoLogEntriesYet",
-            )}
+                ? [
+                    "Show me only error-level logs",
+                    "What do the recent agent logs say?",
+                  ]
+                : [
+                    "Why isn't the agent emitting any logs?",
+                    "Summarize what the system has done so far",
+                    "Show me recent errors and warnings",
+                  ]
+            }
+            primaryAction={
+              hasActiveFilters
+                ? {
+                    label: t("logsview.ClearFilters"),
+                    onClick: handleClearFilters,
+                  }
+                : undefined
+            }
           />
         ) : (
-          <PagePanel variant="inset" className="overflow-hidden rounded-sm">
+          <div className="overflow-hidden">
             {filteredLogs.map((entry: LogEntry) => (
-              <div
-                key={logEntryKey(entry)}
-                className="flex flex-col gap-1 px-3 py-3 text-sm md:flex-row md:items-start md:gap-3"
-                data-testid="log-entry"
-              >
-                {/* Timestamp */}
-                <span className="shrink-0 whitespace-nowrap text-xs-tight text-muted tabular-nums md:w-[5.75rem]">
-                  {formatTime(entry.timestamp, { fallback: "—" })}
-                </span>
-
-                {/* Level */}
-                <span
-                  className={`shrink-0 font-semibold uppercase tracking-[0.08em] text-xs-tight md:w-14 ${
-                    entry.level === "error"
-                      ? "text-danger"
-                      : entry.level === "warn"
-                        ? "text-warning"
-                        : entry.level === "info"
-                          ? "text-muted-strong"
-                          : entry.level === "debug"
-                            ? "text-muted"
-                            : "text-muted"
-                  }`}
-                >
-                  {entry.level}
-                </span>
-
-                {/* Source */}
-                <span className="min-w-0 shrink-0 break-words text-xs-tight text-muted md:w-20 md:truncate">
-                  [{entry.source}]
-                </span>
-
-                {/* Tag badges */}
-                <span className="inline-flex max-w-full shrink-0 flex-wrap gap-1 md:max-w-[14rem]">
-                  {(entry.tags ?? []).map((t: string) => {
-                    return (
-                      <span
-                        key={t}
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium ${
-                          (
-                            {
-                              agent:
-                                "border-accent/25 bg-accent/10 text-accent-fg",
-                              cloud: "border-accent/20 bg-accent/8 text-accent",
-                              plugins:
-                                "border-accent/25 bg-accent/10 text-accent-fg",
-                            } as Record<string, string>
-                          )[t] ??
-                          "border-border/35 bg-bg-hover text-muted-strong"
-                        }`}
-                        style={{
-                          fontFamily: "var(--font-body, sans-serif)",
-                        }}
-                      >
-                        <span className="break-all">{t}</span>
-                      </span>
-                    );
-                  })}
-                </span>
-
-                {/* Message */}
-                <span className="min-w-0 flex-1 break-words leading-6 text-txt">
-                  {entry.message}
-                </span>
-              </div>
+              <LogRow key={logEntryKey(entry)} entry={entry} />
             ))}
-          </PagePanel>
+          </div>
         )}
       </PagePanel>
     </div>

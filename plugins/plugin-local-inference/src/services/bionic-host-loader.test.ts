@@ -1,4 +1,7 @@
+import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { BionicHostLoader } from "./bionic-host-loader";
 
@@ -38,14 +41,35 @@ function startHost(
 }
 
 let host: net.Server | null = null;
+const tempDirs: string[] = [];
 afterEach(() => {
 	host?.close();
 	host = null;
+	for (const dir of tempDirs.splice(0)) {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
 });
 
 const SOCK = `eliza-bionic-test-${process.pid}`;
+const describeLinuxOnly =
+	process.platform === "linux" ? describe : describe.skip;
 
-describe("BionicHostLoader (real abstract-UDS)", () => {
+function makeBundleModelPath(manifest: unknown = {}): string {
+	const bundleRoot = fs.mkdtempSync(
+		path.join(os.tmpdir(), "eliza-bionic-bundle-"),
+	);
+	tempDirs.push(bundleRoot);
+	fs.mkdirSync(path.join(bundleRoot, "text"), { recursive: true });
+	fs.mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+	fs.writeFileSync(path.join(bundleRoot, "asr", "gemma-asr.gguf"), "asr");
+	fs.writeFileSync(
+		path.join(bundleRoot, "eliza-1.manifest.json"),
+		JSON.stringify(manifest),
+	);
+	return path.join(bundleRoot, "text", "model.gguf");
+}
+
+describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 	it("round-trips a buffered generate and returns the host completion", async () => {
 		let seen: Record<string, unknown> | null = null;
 		host = startHost(SOCK, (req) => {
@@ -129,5 +153,74 @@ describe("BionicHostLoader (real abstract-UDS)", () => {
 		const loader = new BionicHostLoader(`eliza-bionic-absent-${process.pid}`);
 		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
 		await expect(loader.generate({ prompt: "x" })).rejects.toThrow();
+	});
+
+	it("transcribe forwards op=asr with pcm + sampleRate and returns the transcript", async () => {
+		let seen: Record<string, unknown> | null = null;
+		host = startHost(SOCK, (req) => {
+			seen = req;
+			return JSON.stringify({ ok: true, text: "the quick brown fox" });
+		});
+		const loader = new BionicHostLoader(SOCK);
+		const modelPath = makeBundleModelPath();
+		await loader.loadModel({ modelPath });
+		const out = await loader.transcribe({
+			pcmBase64: "AAAA",
+			sampleRate: 16000,
+		});
+		expect(out).toBe("the quick brown fox");
+		expect(seen).toMatchObject({
+			op: "asr",
+			pcmBase64: "AAAA",
+			sampleRate: 16000,
+			bundleDir: path.dirname(path.dirname(modelPath)),
+		});
+	});
+
+	it("transcribe refuses Qwen ASR provenance before contacting the host", async () => {
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({
+			modelPath: makeBundleModelPath({
+				lineage: { asr: { base: "Qwen3-ASR" } },
+			}),
+		});
+		await expect(
+			loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 }),
+		).rejects.toThrow(/Qwen ASR provenance/);
+	});
+
+	it("describeImage forwards op=image with bytes + prompt and returns the description", async () => {
+		let seen: Record<string, unknown> | null = null;
+		host = startHost(SOCK, (req) => {
+			seen = req;
+			return JSON.stringify({ ok: true, text: "a cat on a desk" });
+		});
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({
+			modelPath: "/data/x/eliza-1/bundle/text/model.gguf",
+		});
+		const out = await loader.describeImage({
+			imageBase64: "iVBORw0K",
+			prompt: "what is this?",
+		});
+		expect(out).toBe("a cat on a desk");
+		expect(seen).toMatchObject({
+			op: "image",
+			imageBase64: "iVBORw0K",
+			prompt: "what is this?",
+			mmprojPath: "",
+			bundleDir: "/data/x/eliza-1/bundle",
+		});
+	});
+
+	it("transcribe throws on host ok:false", async () => {
+		host = startHost(SOCK, () =>
+			JSON.stringify({ ok: false, error: "no asr weights staged" }),
+		);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: makeBundleModelPath() });
+		await expect(
+			loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 }),
+		).rejects.toThrow(/no asr weights staged/);
 	});
 });

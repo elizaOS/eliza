@@ -68,9 +68,9 @@ describe("flattenGenerateTextParamsForAospPrompt", () => {
       }),
     ).toBe(
       [
-        "<|im_start|>system\nStage 1 instructions<|im_end|>",
-        "<|im_start|>user\nSay pixel bundle ok.<|im_end|>",
-        "<|im_start|>assistant\n",
+        "<start_of_turn>system\nStage 1 instructions<end_of_turn>",
+        "<start_of_turn>user\nSay pixel bundle ok.<end_of_turn>",
+        "<start_of_turn>model\n",
       ].join("\n"),
     );
   });
@@ -83,9 +83,9 @@ describe("flattenGenerateTextParamsForAospPrompt", () => {
       }),
     ).toBe(
       [
-        "<|im_start|>system\nYou are Eliza.<|im_end|>",
-        "<|im_start|>user\nhello<|im_end|>",
-        "<|im_start|>assistant\n",
+        "<start_of_turn>system\nYou are Eliza.<end_of_turn>",
+        "<start_of_turn>user\nhello<end_of_turn>",
+        "<start_of_turn>model\n",
       ].join("\n"),
     );
   });
@@ -114,12 +114,12 @@ describe("buildGenerateArgsFromParams", () => {
         signal: ctrl.signal,
       }),
     ).toEqual({
-      prompt: "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n",
+      prompt: "<start_of_turn>user\nhello<end_of_turn>\n<start_of_turn>model\n",
       maxTokens: 384,
       temperature: 0,
       grammar: 'root ::= "ok"',
       signal: ctrl.signal,
-      stopSequences: ["<|im_end|>", "<|im_start|>"],
+      stopSequences: ["<end_of_turn>", "<start_of_turn>"],
     });
   });
 

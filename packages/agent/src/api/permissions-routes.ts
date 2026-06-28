@@ -59,17 +59,23 @@ function currentPlatform(): "darwin" | "win32" | "linux" {
   return p === "darwin" || p === "win32" || p === "linux" ? p : "linux";
 }
 
+function isPermissionsRegistry(
+  service: unknown,
+): service is IPermissionsRegistry {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    "get" in service &&
+    "check" in service &&
+    "request" in service
+  );
+}
+
 function getPermissionRegistry(
   runtime: AgentRuntime | null,
 ): IPermissionsRegistry | null {
   const service = runtime?.getService(PERMISSIONS_REGISTRY_SERVICE);
-  return service &&
-    typeof service === "object" &&
-    "get" in service &&
-    "check" in service &&
-    "request" in service
-    ? (service as unknown as IPermissionsRegistry)
-    : null;
+  return isPermissionsRegistry(service) ? service : null;
 }
 
 function unavailableWebsiteBlockingPermission(): PermissionState {

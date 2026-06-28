@@ -406,11 +406,12 @@
  * literals at the component layer.
  */
 :root {
-  /* On-brand memory-type cues: gold (focal) + blue (info) + neutral grays.
-     No decorative indigo/purple/green/amber; the per-type icon carries the rest
-     of the distinction. */
-  --memory-type-messages-bg: rgba(29, 145, 232, 0.14);
-  --memory-type-messages-fg: rgb(29, 145, 232);
+  /* On-brand memory-type cues: gold (focal) + neutral slate/stone grays.
+     No decorative blue/indigo/purple/green/amber; the per-type icon carries the
+     rest of the distinction. Messages use a darker slate so they read distinct
+     from facts (slate-500) without grabbing the gold primary accent. */
+  --memory-type-messages-bg: rgba(71, 85, 105, 0.14);
+  --memory-type-messages-fg: rgb(71, 85, 105);
   --memory-type-memories-bg: rgba(240, 185, 11, 0.16);
   --memory-type-memories-fg: rgb(240, 185, 11);
   --memory-type-facts-bg: rgba(100, 116, 139, 0.14);
@@ -489,8 +490,6 @@
   border: 0;
   background: var(--logs-toolbar-button-bg);
   color: var(--muted-strong);
-  box-shadow: var(--logs-toolbar-button-shadow);
-  backdrop-filter: blur(12px);
   transition:
     background-color 200ms,
     color 200ms,
@@ -509,11 +508,6 @@
 .logs-toolbar-button:disabled:hover {
   background: var(--logs-toolbar-button-bg);
   color: var(--muted-strong);
-}
-
-[data-theme="dark"] .logs-toolbar-button,
-.dark .logs-toolbar-button {
-  box-shadow: var(--logs-toolbar-button-shadow-dark);
 }
 
 /* Component-level theme overrides removed — use theme variables directly. */

@@ -98,12 +98,11 @@ from benchmarks.eliza1_gates import apply_gates  # noqa: E402
 
 VISION_TIERS: Final[set[str]] = set(ELIZA_1_VISION_TIERS)
 MTP_TIERS: Final[set[str]] = set(ELIZA_1_MTP_TIERS)
-EMBEDDING_TIERS: Final[set[str]] = {"4b"}
-EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
-EMBEDDING_FILE: Final[str] = "Qwen3-Embedding-0.6B-Q8_0.gguf"
+EMBEDDING_TIERS: Final[set[str]] = set()
+RETIRED_QWEN_EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
+RETIRED_QWEN_EMBEDDING_FILE: Final[str] = "Qwen3-Embedding-0.6B-Q8_0.gguf"
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (2500, 3700),
     "2b": (4000, 5500),
     "4b": (6000, 8000),
     "9b": (10000, 14000),
@@ -249,7 +248,7 @@ def _remove_stale_text_variants(
     """Remove stale text variants from an existing bundle restage.
 
     Restaging a bundle in place can leave older release-label files such as
-    ``eliza-1-0_8b-32k.gguf`` next to the newly staged 128k file. The manifest
+    ``eliza-1-27b-64k.gguf`` next to the newly staged 128k file. The manifest
     collector must only see the current tier matrix files, otherwise publish
     validation fails closed on the stale filename even when the GGUF metadata
     advertises a larger native context.
@@ -354,8 +353,8 @@ def _write_licenses(
     if tier in EMBEDDING_TIERS:
         texts["LICENSE.embedding"] = (
             "Eliza-1 embedding model license notice.\n\n"
-            "The text-embedding artifact is Qwen3-Embedding-0.6B (Apache-2.0, 1024-dim Matryoshka, 32k ctx). "
-            "Lineage recorded in eliza-1.manifest.json's lineage.embedding block.\n\n"
+            "A dedicated embedding artifact is active for this tier. Lineage is "
+            "recorded in eliza-1.manifest.json's lineage.embedding block.\n\n"
             "Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0\n"
         )
     for name, text in texts.items():
@@ -836,7 +835,10 @@ def _write_lineage(
             "license": "apache-2.0",
         }
     if has_embedding:
-        data["embedding"] = {"base": EMBEDDING_REPO, "license": "apache-2.0"}
+        data["embedding"] = {
+            "base": "configured-dedicated-gemma-compatible-embedding",
+            "license": "apache-2.0",
+        }
     _json_write(path, data)
     out: dict[str, LineageEntry] = {}
     for slot, spec in data.items():
@@ -1024,9 +1026,10 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
             bundle_dir=bundle_dir,
             dry_run=False,
             link_mode="copy",
-            asr_repo=None,
-            asr_file=None,
-            asr_mmproj_file=None,
+            asr_repo=getattr(args, "asr_repo", None),
+            asr_file=getattr(args, "asr_file", None),
+            asr_mmproj_file=getattr(args, "asr_mmproj_file", None),
+            allow_retired_qwen_asr=getattr(args, "allow_retired_qwen_asr", False),
             upload_repo=None,
             upload_prefix="",
             public=False,
@@ -1038,31 +1041,22 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
         )
         assets_mod.stage_assets(assets_args)
 
-    # 2. Stage embedding (non-lite) — Qwen3-Embedding-0.6B GGUF.
+    # 2. Dedicated embedding artifacts are disabled until a Gemma-compatible
+    # source is published. Active tiers reuse the text backbone for embeddings.
     has_embedding = tier in EMBEDDING_TIERS
     if has_embedding and not args.skip_assets:
-        try:
-            from huggingface_hub import HfApi, hf_hub_download
-
-            api = HfApi()
-            rev = str(api.model_info(EMBEDDING_REPO).sha)
-            cached = Path(
-                hf_hub_download(
-                    repo_id=EMBEDDING_REPO,
-                    filename=EMBEDDING_FILE,
-                    revision=rev,
-                    repo_type="model",
-                )
-            )
-            dest = bundle_dir / "embedding" / "eliza-1-embedding.gguf"
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            if dest.exists():
-                dest.unlink()
-            shutil.copy2(cached, dest)
-        except Exception as exc:  # pragma: no cover - network path
-            raise SystemExit(
-                f"failed to stage embedding GGUF for {tier}: {exc}"
-            ) from exc
+        raise SystemExit(
+            "dedicated embedding staging is disabled until a verified "
+            "Gemma-compatible embedding artifact is configured"
+        )
+    stale_embedding_files = sorted((bundle_dir / "embedding").glob("*"))
+    if stale_embedding_files:
+        raise SystemExit(
+            "retired Qwen embedding artifacts are present in the bundle; remove "
+            f"{bundle_dir / 'embedding'} before staging active Gemma bundles. "
+            f"Retired source: {RETIRED_QWEN_EMBEDDING_REPO}/"
+            f"{RETIRED_QWEN_EMBEDDING_FILE}"
+        )
 
     text_substituted = bool(args.text_substituted)
     drafter_stamp_only = bool(args.drafter_stamp_only)
@@ -1392,6 +1386,32 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--skip-assets",
         action="store_true",
         help="Skip the HF asset stage (voice/ASR/VAD already present in --bundle-dir).",
+    )
+    ap.add_argument(
+        "--asr-repo",
+        default=None,
+        help=(
+            "ASR GGUF model repo passed through to stage_eliza1_bundle_assets. "
+            "Required unless --skip-assets is set."
+        ),
+    )
+    ap.add_argument(
+        "--asr-file",
+        default=None,
+        help="Exact ASR GGUF file path inside --asr-repo.",
+    )
+    ap.add_argument(
+        "--asr-mmproj-file",
+        default=None,
+        help="Exact ASR mmproj GGUF file path inside --asr-repo.",
+    )
+    ap.add_argument(
+        "--allow-retired-qwen-asr",
+        action="store_true",
+        help=(
+            "Allow retired Qwen3-ASR repos for explicit legacy bundle reproduction. "
+            "Do not use for active Gemma Eliza-1 releases."
+        ),
     )
     ap.add_argument(
         "--skip-wakeword",

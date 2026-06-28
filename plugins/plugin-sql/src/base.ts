@@ -1,4 +1,5 @@
 import {
+  type AccessContext,
   type Agent,
   type AgentRunCounts,
   type AgentRunSummary,
@@ -1415,6 +1416,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
      * (embeddings included) to preserve existing behavior.
      */
     includeEmbedding?: boolean;
+    accessContext?: AccessContext;
   }): Promise<Memory[]> {
     const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
     const includeEmbedding = params.includeEmbedding !== false;
@@ -1556,6 +1558,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     roomIds: UUID[];
     tableName: string;
     limit?: number;
+    accessContext?: AccessContext;
   }): Promise<Memory[]> {
     return this.withDatabase(async () => {
       if (params.roomIds.length === 0) return [];
@@ -2218,6 +2221,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     roomId?: UUID;
     worldId?: UUID;
     entityId?: UUID;
+    accessContext?: AccessContext;
   }): Promise<Memory[]> {
     return await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,

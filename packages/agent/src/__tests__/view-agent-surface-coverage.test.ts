@@ -17,23 +17,19 @@ const CONVERTED_PLUGINS = [
   "plugin-wallet-ui",
   "app-model-tester",
   "plugin-app-control",
-  "plugin-clawville",
   "plugin-companion",
   "plugin-contacts",
-  "plugin-defense-of-the-agents",
   "plugin-facewear",
   "plugin-feed",
-  "plugin-hyperliquid-app",
+  "plugin-hyperliquid",
   "plugin-messages",
   "plugin-phone",
-  "plugin-polymarket-app",
+  "plugin-polymarket",
   "plugin-screenshare",
-  "plugin-shopify-ui",
-  "plugin-steward-app",
+  "plugin-shopify",
   "plugin-task-coordinator",
   "plugin-training",
   "plugin-trajectory-logger",
-  "plugin-vincent",
 ] as const;
 
 /** Remaining views to convert; must stay empty for the ratchet to pass. */
@@ -114,7 +110,6 @@ const CONVERTED_SHELL_PAGES = [
   "pages/HeartbeatsView",
   "pages/DocumentsView",
   "pages/ConfigPageView",
-  "pages/ViewCatalog",
 ] as const;
 
 /**

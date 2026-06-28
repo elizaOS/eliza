@@ -3,18 +3,36 @@
  * Build script for plugin-computeruse
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const RM_RECURSIVE_SCRIPT = fileURLToPath(
+  new URL("../../packages/scripts/rm-path-recursive.mjs", import.meta.url),
+);
 
 const externalDeps = await externalsFromPackageJson("./package.json", {
   extra: ["node:*"],
 });
 
+function rmRecursive(target: string) {
+  const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, target], {
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `rm-path-recursive failed for ${target} with status ${result.status}`,
+    );
+  }
+}
+
 async function cleanBuild(outdir = "dist") {
   if (existsSync(outdir)) {
-    await rm(outdir, { recursive: true, force: true });
+    rmRecursive(outdir);
     console.log(`Cleaned ${outdir} directory`);
   }
   if (existsSync("tsconfig.build.tsbuildinfo")) {
@@ -33,20 +51,24 @@ async function build() {
       (async () => {
         console.log("Bundling with Bun...");
         const outputs: BuildArtifact[] = [];
-        for (const entrypoint of [
-          "./src/index.ts",
-          "./src/register-routes.ts",
+        for (const { entrypoint, outdir } of [
+          { entrypoint: "./src/index.ts", outdir: "./dist" },
+          { entrypoint: "./src/register-routes.ts", outdir: "./dist" },
+          {
+            entrypoint: "./src/mobile/ocr-provider.ts",
+            outdir: "./dist/mobile",
+          },
         ]) {
           const result = await Bun.build({
             entrypoints: [entrypoint],
-            outdir: "./dist",
+            outdir,
             target: "node",
             format: "esm",
             sourcemap: "linked",
             minify: false,
             external: externalDeps,
             naming: {
-              entry: "[dir]/[name].[ext]",
+              entry: "[name].[ext]",
             },
           });
 

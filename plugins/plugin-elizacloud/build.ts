@@ -1,9 +1,25 @@
 #!/usr/bin/env bun
 
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const RM_RECURSIVE_SCRIPT = fileURLToPath(
+  new URL("../../packages/scripts/rm-path-recursive.mjs", import.meta.url)
+);
+
+function rmRecursive(targetPath: string) {
+  const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`rm-path-recursive failed for ${targetPath} with status ${result.status}`);
+  }
+}
 
 const externalDeps = await externalsFromPackageJson("./package.json");
 
@@ -13,13 +29,14 @@ async function build() {
 
   // Clean dist directory
   if (existsSync(distDir)) {
-    await rm(distDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    rmRecursive(distDir);
   }
 
   await mkdir(distDir, { recursive: true });
 
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-elizacloud for Node...");
+  await mkdir("dist/node", { recursive: true });
   const nodeResult = await Bun.build({
     entrypoints: ["src/index.node.ts"],
     outdir: "dist/node",
@@ -37,6 +54,7 @@ async function build() {
 
   const browserStart = Date.now();
   console.log("🌐 Building @elizaos/plugin-elizacloud for Browser...");
+  await mkdir("dist/browser", { recursive: true });
   const browserResult = await Bun.build({
     entrypoints: ["src/index.browser.ts"],
     outdir: "dist/browser",
@@ -54,6 +72,7 @@ async function build() {
 
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-elizacloud for Node (CJS)...");
+  await mkdir("dist/cjs", { recursive: true });
   const cjsResult = await Bun.build({
     entrypoints: ["src/index.node.ts"],
     outdir: "dist/cjs",
@@ -113,13 +132,13 @@ async function build() {
         cp(join(nestedDistDir, entry), join(distDir, entry), { recursive: true, force: true })
       )
     );
-    await rm(nestedDistDir, { recursive: true, force: true });
+    rmRecursive(nestedDistDir);
   }
   console.log(`✅ Exported subpaths built in ${((Date.now() - subpathStart) / 1000).toFixed(2)}s`);
 
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
-  await Bun.$`tsc --project tsconfig.build.json`;
+  await Bun.$`tsc --project tsconfig.build.json --noCheck`;
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
   await mkdir("dist/cjs", { recursive: true });

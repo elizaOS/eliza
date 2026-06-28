@@ -1,6 +1,7 @@
 import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/shared";
 import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import { isDesktopExternalHttpApiBaseUrl } from "./desktop-external-api-base";
 import {
   type AgentRequestTransport,
   bodyToString,
@@ -66,7 +67,8 @@ const desktopHttpTransport: AgentRequestTransport = {
 export function desktopHttpTransportForUrl(
   url: string,
 ): AgentRequestTransport | null {
-  return isElectrobunRuntime() && isExternalPlainHttpUrl(url)
+  return isElectrobunRuntime() &&
+    (isExternalPlainHttpUrl(url) || isDesktopExternalHttpApiBaseUrl(url))
     ? desktopHttpTransport
     : null;
 }

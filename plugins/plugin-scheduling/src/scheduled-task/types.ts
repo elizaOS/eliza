@@ -255,6 +255,13 @@ export interface ScheduledTask {
   executionProfile?: TaskExecutionProfile;
 }
 
+/**
+ * The "input shape" accepted by `runner.schedule()` — the full task minus the
+ * server-managed `taskId` and `state` (the runner generates both). Consumers
+ * (seed packs, the SCHEDULED_TASKS action, the REST route) build this shape.
+ */
+export type ScheduledTaskInput = Omit<ScheduledTask, "taskId" | "state">;
+
 export type ScheduledTaskRef = string | ScheduledTask;
 export type EventFilter = unknown; // typed via EventKindRegistry per kind
 export type GateParams = unknown; // typed via TaskGateRegistry per kind
@@ -321,6 +328,10 @@ export interface OwnerFactsView {
   eveningWindow?: { start?: string; end?: string };
   quietHours?: { start: string; end: string; tz: string };
   travelActive?: boolean;
+  personalBaseline?: {
+    sampleCount?: number;
+    windowDays?: number;
+  };
 }
 
 /**

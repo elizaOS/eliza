@@ -14,14 +14,6 @@ export const UI_E2E_SUITES = [
     recordEnv: { ELIZA_UI_SMOKE_FORCE_STUB: "1" },
   },
   {
-    name: "cloud-frontend",
-    displayName: "Cloud frontend",
-    configDir: "packages/cloud-frontend",
-    script: "test:e2e",
-    coverage:
-      "Runs cloud login/session, dashboard routes, settings, API key, billing, route coverage, visual pages, screenshots, traces, and videos.",
-  },
-  {
     name: "cloud-e2e",
     displayName: "Cloud full-stack mock e2e",
     configDir: "packages/test/cloud-e2e",
@@ -40,7 +32,7 @@ export const UI_E2E_SUITES = [
   {
     name: "os-homepage",
     displayName: "OS homepage",
-    configDir: "packages/os-homepage",
+    configDir: "packages/os/homepage",
     script: "test:e2e",
     coverage:
       "Runs OS homepage routes, checkout/preorder flows, link resilience, mobile/desktop screenshots, traces, and videos.",
@@ -60,6 +52,14 @@ export const UI_E2E_SUITES = [
     script: "test:agent-surface-e2e",
     coverage:
       "Runs the shared agent-surface fixture in Chromium, drives fill/click/focus capability bridge interactions, and records screenshots.",
+  },
+  {
+    name: "ui-springboard",
+    displayName: "Springboard view launcher",
+    configDir: "packages/ui",
+    script: "test:springboard-e2e",
+    coverage:
+      "Runs the Springboard launcher fixture in Chromium, asserts tiles + image tiles render, captures desktop/mobile rest + edit screenshots, drives tap-launch/long-press-edit/favorite/page-nav with a recorded video, and asserts the view-interaction telemetry stream fired.",
   },
   {
     name: "app-xr",

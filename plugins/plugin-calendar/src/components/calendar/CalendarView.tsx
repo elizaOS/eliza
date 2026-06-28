@@ -1,63 +1,161 @@
 /**
- * CalendarView — registered top-level calendar overlay view.
+ * CalendarView — the single GUI/XR data wrapper for the calendar surface.
  *
- * Thin host wrapper around the rich `CalendarSection`: CalendarSection owns the
- * prev/today/next nav, the day/week/month SegmentedControl, the "New" button,
- * the time/month/agenda grids, and the `EventEditorDrawer` — all instrumented
- * through `useAgentElement` so the floating chat can drive them. This wrapper
- * only owns the selection id the section reports back, and routes a
- * chat-about-event request through the shared `setActionNotice` affordance.
+ * It owns the live calendar feed (via {@link useCalendarWeek}: the event list,
+ * the day/week/month view mode, prev/today/next nav, and the loading/error
+ * state), derives a presentational agenda from it, and renders the one
+ * {@link CalendarSpatialView} inside a {@link SpatialSurface}. Omitting the
+ * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
+ * `window.__elizaXRContext`, so the SAME component serves both surfaces. The
+ * TUI surface renders the same `CalendarSpatialView` through the terminal
+ * registry (see `register-terminal-view.tsx`).
  *
- * `getPrimedEvent` returns `null`: there is no deep-link / widget prime cache in
- * this view yet, so CalendarSection resolves selected events from the loaded
- * feed only. That is the honest behavior — no fabricated cache.
+ * Selecting an event routes a chat-about-event notice through the shared
+ * `setActionNotice` affordance — the same honest behavior the previous
+ * CalendarSection-backed wrapper used (this view owns no event editor drawer).
+ * Creating an event surfaces the same notice, pointing the user at the
+ * assistant.
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { SpatialSurface } from "@elizaos/ui/spatial";
 import { useAppSelector } from "@elizaos/ui/state";
-import type { ReactElement } from "react";
-import { useCallback, useState } from "react";
-import { CalendarSection } from "../CalendarSection.js";
+import { useCallback, useMemo, useState } from "react";
+import {
+  type CalendarViewMode,
+  useCalendarWeek,
+} from "../../hooks/useCalendarWeek.js";
+import {
+  type CalendarEventRow,
+  type CalendarSnapshot,
+  CalendarSpatialView,
+} from "./CalendarSpatialView.tsx";
 
-export function CalendarView(): ReactElement {
+const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+function formatTimeOfDay(iso: string): string {
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: TIME_ZONE,
+  }).format(new Date(parsed));
+}
+
+function formatRangeLabel(start: Date, end: Date): string {
+  const startLabel = new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(start);
+  const endLabel = new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(end);
+  return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
+}
+
+function formatWhen(event: LifeOpsCalendarEvent): string {
+  if (event.isAllDay) return "All day";
+  const start = formatTimeOfDay(event.startAt);
+  const end = formatTimeOfDay(event.endAt);
+  return [start, end].filter(Boolean).join(" - ") || "Scheduled";
+}
+
+function detailFor(event: LifeOpsCalendarEvent): string | undefined {
+  const origin =
+    typeof event.calendarSummary === "string" && event.calendarSummary.trim()
+      ? event.calendarSummary.trim()
+      : null;
+  return event.location?.trim() || origin || undefined;
+}
+
+function toRows(
+  events: LifeOpsCalendarEvent[],
+  selectedId: string | null,
+): CalendarEventRow[] {
+  return events.map((event) => ({
+    id: event.id,
+    title: event.title.trim() || "Untitled event",
+    when: formatWhen(event),
+    detail: detailFor(event),
+    selected: event.id === selectedId,
+  }));
+}
+
+export function CalendarView() {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const calendar = useCalendarWeek();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const handleChatAboutEvent = useCallback(
-    (event: LifeOpsCalendarEvent) => {
-      // The event buttons are already agent-surface instrumented, so the
-      // floating chat can act on the selected event. Surface a notice that
-      // points the user at the assistant rather than fabricating a launcher
-      // this view doesn't own.
-      setActionNotice(
-        `Ask the assistant about “${event.title}”.`,
-        "info",
-        4000,
-      );
-    },
-    [setActionNotice],
+  const periodLabel = useMemo(
+    () => formatRangeLabel(calendar.windowStart, calendar.windowEnd),
+    [calendar.windowStart, calendar.windowEnd],
   );
 
+  const events = useMemo(
+    () => toRows(calendar.events, selectedId),
+    [calendar.events, selectedId],
+  );
+
+  const onAction = useCallback(
+    (action: string) => {
+      if (action.startsWith("select:")) {
+        const id = action.slice("select:".length);
+        setSelectedId(id);
+        const event = calendar.events.find((candidate) => candidate.id === id);
+        if (event) {
+          setActionNotice(
+            `Ask the assistant about “${event.title.trim() || "this event"}”.`,
+            "info",
+            4000,
+          );
+        }
+        return;
+      }
+      if (action.startsWith("mode:")) {
+        const mode = action.slice("mode:".length) as CalendarViewMode;
+        if (mode === "day" || mode === "week" || mode === "month") {
+          calendar.setViewMode(mode);
+        }
+        return;
+      }
+      switch (action) {
+        case "prev":
+          calendar.goPrevious();
+          return;
+        case "next":
+          calendar.goNext();
+          return;
+        case "today":
+          calendar.goToToday();
+          return;
+        case "new":
+          setActionNotice(
+            "Ask the assistant to create a calendar event.",
+            "info",
+            4000,
+          );
+          return;
+      }
+    },
+    [calendar, setActionNotice],
+  );
+
+  const snapshot: CalendarSnapshot = {
+    events,
+    periodLabel,
+    mode: calendar.viewMode,
+    loading: calendar.loading,
+    error: calendar.error,
+  };
+
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        padding: "1.5rem",
-        boxSizing: "border-box",
-        background: "var(--background, #eef8ff)",
-        color: "var(--foreground, #0a0a0a)",
-      }}
-      data-testid="calendar-view"
-    >
-      <CalendarSection
-        selectedEventId={selectedEventId}
-        onSelectEvent={setSelectedEventId}
-        onChatAboutEvent={handleChatAboutEvent}
-        getPrimedEvent={() => null}
-      />
-    </div>
+    <SpatialSurface>
+      <CalendarSpatialView snapshot={snapshot} onAction={onAction} />
+    </SpatialSurface>
   );
 }
 

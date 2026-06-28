@@ -43,6 +43,12 @@ export CARGO_HOME="/home/builder/.cargo"
 log() { printf '[bun-riscv64] %s\n' "$*"; }
 die() { printf '[bun-riscv64][FATAL] %s\n' "$*" >&2; exit 1; }
 
+RM_PATH_RECURSIVE="${RM_PATH_RECURSIVE:-/opt/rm-path-recursive.mjs}"
+remove_path_recursive() {
+    [ -r "$RM_PATH_RECURSIVE" ] || die "recursive cleanup helper not mounted at $RM_PATH_RECURSIVE"
+    bun "$RM_PATH_RECURSIVE" "$@"
+}
+
 prepare_ninja_object_dirs() {
     local ninja_file="$1"
     local ninja_dir
@@ -175,7 +181,7 @@ if compgen -G "/opt/webkit-patches/*.patch" >/dev/null; then
     cd "$SRC_ROOT/WebKit"
     git config user.email "bun-riscv64@eliza.local"
     git config user.name "bun-riscv64 build"
-    for p in $(ls /opt/webkit-patches/*.patch | sort); do
+    while IFS= read -r p; do
         # In C_LOOP mode, the 0003-disable-dfg-ftl-on-riscv64 patch is
         # unnecessary — ENABLE_C_LOOP=ON in CMake forcibly disables every
         # JIT tier, so the upstream PlatformEnable.h ifdefs never reach
@@ -198,7 +204,7 @@ if compgen -G "/opt/webkit-patches/*.patch" >/dev/null; then
         # 3-way merge is tolerant of context drift; on hard conflict, fail
         # rather than silently skipping.
         git apply --3way "$p" || die "WebKit patch failed: $p — see webkit-patches/README.md for rebase guidance"
-    done
+    done < <(find /opt/webkit-patches -maxdepth 1 -type f -name '*.patch' | sort)
     cd "$SRC_ROOT"
 else
     log "No webkit-patches/*.patch present; building WebKit @ ${WEBKIT_COMMIT} as-is."
@@ -230,14 +236,14 @@ if compgen -G "/opt/bun-patches/*.patch" >/dev/null; then
     cd "$SRC_ROOT/bun"
     git config user.email "bun-riscv64@eliza.local"
     git config user.name "bun-riscv64 build"
-    for p in $(ls /opt/bun-patches/*.patch | sort); do
+    while IFS= read -r p; do
         log "  -> $p"
         if git apply --reverse --check "$p" >/dev/null 2>&1; then
             log "     already applied; skipping"
             continue
         fi
         git apply --3way "$p" || die "Bun patch failed: $p"
-    done
+    done < <(find /opt/bun-patches -maxdepth 1 -type f -name '*.patch' | sort)
     cd "$SRC_ROOT"
 else
     die "No bun-patches/*.patch present — Bun's build system needs riscv64 awareness (Arch type, cpu flags, WebKit pin, etc.). Populate bun-patches/ before running build.sh."
@@ -370,7 +376,7 @@ export BUN_SYSROOT=/sysroot
 export BUN_DISABLE_TINYCC=1
 
 BUN_BUILD_DIR="$SRC_ROOT/bun/build/release"
-rm -rf "$BUN_BUILD_DIR"
+remove_path_recursive "$BUN_BUILD_DIR"
 mkdir -p "$BUN_BUILD_DIR/deps"
 ln -s "$WEBKIT_BUILD_DIR" "$BUN_BUILD_DIR/deps/WebKit"
 
@@ -436,7 +442,7 @@ log "  → eval reports: $QEMU_EVAL_OUT"
 
 log "Smoke test: qemu-riscv64-static bun <script.js>"
 SMOKE_DIR="$(mktemp -d /tmp/bun-riscv64-smoke.XXXXXX)"
-trap 'rm -rf "$SMOKE_DIR"' EXIT
+trap 'remove_path_recursive "$SMOKE_DIR"' EXIT
 SMOKE_JS="$SMOKE_DIR/entrypoint.js"
 printf '%s\n' 'console.log("bun-riscv64-script-ok", process.arch);' > "$SMOKE_JS"
 QEMU_SCRIPT_OUT="$(qemu-riscv64-static -L /sysroot "$BUN_BIN" "$SMOKE_JS" 2>&1)" || \

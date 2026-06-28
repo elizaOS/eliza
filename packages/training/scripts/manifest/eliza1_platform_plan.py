@@ -21,11 +21,12 @@ try:
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         ELIZA_1_VISION_TIERS,
+        REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
-        canonical_qwen_source_repo_error,
+        canonical_source_repo_error,
         required_voice_artifacts_for_tier,
     )
 except ImportError:  # pragma: no cover - script execution path
@@ -35,16 +36,16 @@ except ImportError:  # pragma: no cover - script execution path
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         ELIZA_1_VISION_TIERS,
+        REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
-        canonical_qwen_source_repo_error,
+        canonical_source_repo_error,
         required_voice_artifacts_for_tier,
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_8b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
@@ -61,7 +62,6 @@ TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = (
 )
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("128k", "256k"),
     "2b": ("128k", "256k"),
     "4b": ("128k", "256k"),
     "9b": ("128k", "256k"),
@@ -78,20 +78,28 @@ VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.gguf",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
-Z_IMAGE_COMPANION_ARTIFACTS: Final[tuple[str, ...]] = (
-    "imagegen/vae/ae.safetensors",
-    "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-)
 IMAGEGEN_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("imagegen/sd-1.5-Q5_0.gguf",),
     "2b": ("imagegen/sd-1.5-Q5_0.gguf",),
     "4b": ("imagegen/sd-1.5-Q5_0.gguf",),
-    "9b": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
-    "27b": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
-    "27b-256k": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
+    "9b": ("imagegen/sd-1.5-Q5_0.gguf",),
+    "27b": ("imagegen/sd-1.5-Q5_0.gguf",),
+    "27b-256k": ("imagegen/sd-1.5-Q5_0.gguf",),
 }
 VISION_TIERS: Final[frozenset[str]] = ELIZA_1_VISION_TIERS
 MTP_TIERS: Final[frozenset[str]] = ELIZA_1_MTP_TIERS
+
+QUANTIZATION_SIDECARS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
+    "turboquant_q4": (
+        "quantization/turboquant.json",
+        "quantization/fused_turboquant.json",
+    ),
+    "turbo3_tcq": (
+        "quantization/turboquant.json",
+        "quantization/fused_turboquant.json",
+    ),
+    "qjl": ("quantization/qjl_config.json",),
+    "polarquant": ("quantization/polarquant_config.json",),
+}
 
 COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     tier: (
@@ -110,18 +118,6 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-        "windows-x64-vulkan",
-        "windows-arm64-cpu",
-        "windows-arm64-vulkan",
-    ),
     "2b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
@@ -208,6 +204,18 @@ def text_artifact_name(tier: str, ctx: str) -> str:
     return f"text/eliza-1-{tier}-{ctx}.gguf"
 
 
+def required_quantization_sidecars_for_tier(tier: str) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for kernel in REQUIRED_KERNELS_BY_TIER[tier]:
+        for rel_path in QUANTIZATION_SIDECARS_BY_REQUIRED_KERNEL.get(kernel, ()):
+            if rel_path in seen:
+                continue
+            out.append(rel_path)
+            seen.add(rel_path)
+    return tuple(out)
+
+
 def required_files_for_tier(tier: str) -> tuple[str, ...]:
     text_files = tuple(text_artifact_name(tier, ctx) for ctx in CONTEXTS_BY_TIER[tier])
     voice_files = tuple(f"tts/{name}" for name in required_voice_artifacts_for_tier(tier))
@@ -245,10 +253,7 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         *COMPONENT_LICENSES_BY_TIER[tier],
         "checksums/SHA256SUMS",
         "evidence/release.json",
-        "quantization/turboquant.json",
-        "quantization/fused_turboquant.json",
-        "quantization/qjl_config.json",
-        "quantization/polarquant_config.json",
+        *required_quantization_sidecars_for_tier(tier),
     )
 
 
@@ -426,7 +431,7 @@ def release_status_blockers(
                                 else None
                             )
                             if isinstance(repo, str):
-                                repo_error = canonical_qwen_source_repo_error(
+                                repo_error = canonical_source_repo_error(
                                     slot, repo, tier=tier
                                 )
                                 if repo_error is not None:
@@ -526,8 +531,8 @@ def render_readiness(
         "Important caveats:",
         "",
         "- Text, ASR, MTP, vision mmproj, and OmniVoice TTS payloads are "
-        "GGUF artifacts when a tier ships them. 0.8B/2B/4B/9B carry Kokoro "
-        "plus OmniVoice; Kokoro is ONNX by design. "
+        "GGUF artifacts when a tier ships them. 2B/4B/9B carry Kokoro "
+        "plus OmniVoice; Kokoro is the fused GGUF runtime path. "
         "27B-class tiers ship OmniVoice GGUF only.",
         "- VAD is a native silero-vad-cpp GGUF artifact at "
         "`vad/silero-vad-v5.gguf`. "
@@ -536,11 +541,12 @@ def render_readiness(
         "readiness path.",
         "- Canonical active text tiers are Gemma 4 E2B (`2b`), "
         "Gemma 4 E4B (`4b`), Gemma 4 12B (`9b`), "
-        "and Gemma 4 31B (`27b`). ASR and embedding are real Qwen3 upstream "
-        "exceptions: use the published Qwen3-ASR "
-        "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
-        "repos; do not invent gemma-4-ASR, gemma-4-Embedding, "
-        "Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.",
+        "and Gemma 4 31B (`27b`). Qwen3-ASR and Qwen3-Embedding are retired "
+        "for active Gemma bundles. Base-v1 release readiness remains blocked "
+        "until verified Gemma-compatible ASR GGUF/model-projector artifacts "
+        "and any dedicated embedding artifacts are configured, hosted, and "
+        "recorded in `sourceModels`; base-v1-candidate bundles may record "
+        "explicit experimental sources without becoming default-eligible.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
         "Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "

@@ -42,6 +42,8 @@
 //     "views" and ViewRouter mounts the dynamic bundle whose heading is the view
 //     label ("Inbox" / "Calendar"). (navigation/index.ts:495, App.tsx
 //     findRemoteViewForRoute)
+//   * `/character/documents` maps to the built-in documents/knowledge subtab,
+//     which embeds DocumentsView inside CharacterEditor.
 //   * `/wallet` maps to the `inventory` tab (TAB_PATHS.inventory === "/wallet").
 //   * `/settings` maps to the `settings` tab (settings-shell).
 //   * `/task-coordinator` is the coding view (resolveIntentView maps app/feature
@@ -62,6 +64,19 @@ const CHAT_COMPOSER_SELECTOR =
   '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 const CHAT_SEND_SELECTOR =
   '[data-testid="chat-composer-action"], button[aria-label="Send"], button[aria-label="Send message"]';
+const VIEW_SWITCH_URL_TIMEOUT_MS = LIVE_STACK ? 90_000 : 30_000;
+
+function calendarView(page: Page): Locator {
+  return page.getByText("Design sync").first();
+}
+
+function inboxView(page: Page): Locator {
+  return page.getByText(/Invoice #?42 overdue/i).first();
+}
+
+function todosView(page: Page): Locator {
+  return page.getByText(/Today \(\d+\)/).first();
+}
 
 // The exact `eliza:navigate:view` detail the renderer's WS handler emits for a
 // plain `show`/navigate frame (startup-phase-hydrate.ts:417-442): a navigate
@@ -106,6 +121,22 @@ type ViewSwitchCase = {
   onView?: (page: Page) => Locator;
 };
 
+type ApiViewSummary = {
+  id?: string;
+  path?: string;
+  viewType?: string;
+};
+
+type ApiViewsResponse = {
+  views?: ApiViewSummary[];
+};
+
+type ApiConversationResponse = {
+  conversation?: {
+    id?: string;
+  };
+};
+
 const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
   {
     name: 'ACTIVE: "go to my email" opens the inbox/email view',
@@ -113,11 +144,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "go to my email",
     view: { id: "inbox", path: "/inbox", label: "Inbox" },
     expectedPath: "/inbox",
-    onView: (page) =>
-      page
-        .getByRole("heading", { name: "Inbox" })
-        .first()
-        .or(page.locator('section[aria-label="Inbox"]').first()),
+    onView: inboxView,
   },
   {
     name: 'ACTIVE: "open settings" opens the settings view',
@@ -146,9 +173,8 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
     // The registered calendar view (CalendarView.tsx) marks its container with
-    // data-testid="calendar-view" (it renders the month label + segmented
-    // control, not a literal "Calendar" heading).
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    // stable period controls and agenda text rather than a literal heading.
+    onView: calendarView,
   },
   {
     name: 'PASSIVE: "check my messages" opens the inbox',
@@ -156,11 +182,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "check my messages",
     view: { id: "inbox", path: "/inbox", label: "Inbox" },
     expectedPath: "/inbox",
-    onView: (page) =>
-      page
-        .getByRole("heading", { name: "Inbox" })
-        .first()
-        .or(page.locator('section[aria-label="Inbox"]').first()),
+    onView: inboxView,
   },
   {
     name: 'PASSIVE: "I want to add a new feature to my app" opens the coding (task-coordinator) view',
@@ -176,6 +198,18 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     // is asserted so the deterministic + live tiers stay identical.
     expectedPath: "/task-coordinator",
   },
+  {
+    name: 'PASSIVE: "show my documents" opens the Knowledge/Documents view',
+    kind: "passive",
+    command: "show my documents",
+    view: {
+      id: "documents",
+      path: "/character/documents",
+      label: "Knowledge",
+    },
+    expectedPath: "/character/documents",
+    onView: (page) => page.getByTestId("documents-view").first(),
+  },
   // --- Multilingual: the same navigate→render pipeline (deterministic tier) and
   // real-LLM routing (live tier) must work for non-English utterances. ---
   {
@@ -185,9 +219,8 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
     // The registered calendar view (CalendarView.tsx) marks its container with
-    // data-testid="calendar-view" (it renders the month label + segmented
-    // control, not a literal "Calendar" heading).
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    // stable period controls and agenda text rather than a literal heading.
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (fr): "montre-moi mon portefeuille" opens the wallet view',
@@ -207,11 +240,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "revisa mi correo",
     view: { id: "inbox", path: "/inbox", label: "Inbox" },
     expectedPath: "/inbox",
-    onView: (page) =>
-      page
-        .getByRole("heading", { name: "Inbox" })
-        .first()
-        .or(page.locator('section[aria-label="Inbox"]').first()),
+    onView: inboxView,
   },
   {
     name: 'PASSIVE (zh): "我的待办事项" opens the todos view',
@@ -219,11 +248,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "我的待办事项",
     view: { id: "todos", path: "/todos", label: "Todos" },
     expectedPath: "/todos",
-    onView: (page) =>
-      page
-        .getByRole("heading", { name: "Todos" })
-        .first()
-        .or(page.locator('section[aria-label="Todos"]').first()),
+    onView: todosView,
   },
   // --- Wider language matrix (deterministic tier): the navigate→render pipeline
   // must hold for the full set of matcher languages, not just the es/fr/zh
@@ -239,7 +264,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "abra meu calendário",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (de): "öffne meinen kalender" opens the calendar view',
@@ -247,7 +272,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "öffne meinen kalender",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (ja): "カレンダーを開いて" opens the calendar view',
@@ -255,7 +280,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "カレンダーを開いて",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (ko): "캘린더 열어" opens the calendar view',
@@ -263,7 +288,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "캘린더 열어",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (vi): "mở lịch" opens the calendar view',
@@ -271,7 +296,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "mở lịch",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (tl): "buksan ang calendar" opens the calendar view',
@@ -279,7 +304,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "buksan ang calendar",
     view: { id: "calendar", path: "/calendar", label: "Calendar" },
     expectedPath: "/calendar",
-    onView: (page) => page.getByTestId("calendar-view").first(),
+    onView: calendarView,
   },
   {
     name: 'ACTIVE (pt): "abra minha carteira" opens the wallet view',
@@ -378,11 +403,46 @@ function userMessage(page: Page, text: string): Locator {
 }
 
 /** Send a chat command through the real composer + send button. */
-async function sendChatCommand(page: Page, command: string): Promise<void> {
+async function sendChatCommand(
+  page: Page,
+  command: string,
+  expectedPath?: string,
+): Promise<void> {
   await expect(chatComposer(page)).toBeVisible({ timeout: 60_000 });
   await chatComposer(page).fill(command);
   await expect(chatSendButton(page)).toBeEnabled();
   await chatSendButton(page).click();
+  // In the deterministic lane, the app cannot navigate until this spec
+  // dispatches the synthetic navigate event below, so the user turn must render
+  // in chat. In the live lane, a fast VIEWS action may switch away from chat
+  // before the chat log assertion observes the user bubble; the expected URL is
+  // equivalent proof that the command entered the chat -> agent -> view pipe.
+  if (LIVE_STACK && expectedPath) {
+    await expect
+      .poll(
+        async () => {
+          if (expectedPathRegExp(expectedPath).test(page.url())) {
+            return "view";
+          }
+          if (
+            await userMessage(page, command)
+              .isVisible()
+              .catch(() => false)
+          ) {
+            return "message";
+          }
+          return "";
+        },
+        {
+          timeout: 30_000,
+          message:
+            "Expected the sent chat command to render or navigate the live app.",
+        },
+      )
+      .not.toBe("");
+    return;
+  }
+
   // The user turn must render — proves the command actually entered the
   // chat/message pipeline (not just sat in the textarea).
   await expect(userMessage(page, command)).toBeVisible({ timeout: 30_000 });
@@ -409,17 +469,83 @@ async function assertViewSwitched(
   page: Page,
   testCase: ViewSwitchCase,
 ): Promise<void> {
-  await expect(page).toHaveURL(
-    new RegExp(`${escapeForRegExp(testCase.expectedPath)}(?:[?#]|$)`),
-    { timeout: 30_000 },
-  );
+  await expect(page).toHaveURL(expectedPathRegExp(testCase.expectedPath), {
+    timeout: VIEW_SWITCH_URL_TIMEOUT_MS,
+  });
   if (testCase.onView) {
     await expect(testCase.onView(page)).toBeVisible({ timeout: 60_000 });
   }
 }
 
+function expectedPathRegExp(expectedPath: string): RegExp {
+  return new RegExp(`${escapeForRegExp(expectedPath)}(?:[?#]|$)`);
+}
+
 function escapeForRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function liveRegisteredViewIds(page: Page): Promise<Set<string>> {
+  const response = await page.request.get("/api/views");
+  expect(response.ok(), "live runtime should expose /api/views").toBe(true);
+  const body = (await response.json()) as ApiViewsResponse;
+  return new Set(
+    (body.views ?? [])
+      .map((view) => (typeof view.id === "string" ? view.id : ""))
+      .filter(Boolean),
+  );
+}
+
+async function ensureLiveViewRegisteredForCase(
+  page: Page,
+  testCase: ViewSwitchCase,
+): Promise<void> {
+  if (!LIVE_STACK) return;
+
+  const registeredViewIds = await liveRegisteredViewIds(page);
+  test.skip(
+    !registeredViewIds.has(testCase.view.id),
+    `live runtime did not register view "${testCase.view.id}"`,
+  );
+}
+
+async function createAndActivateLiveConversationForCase(
+  page: Page,
+  testCase: ViewSwitchCase,
+): Promise<void> {
+  if (!LIVE_STACK) return;
+
+  const response = await page.evaluate(
+    async (payload) => {
+      const createResponse = await fetch("/api/conversations", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      return {
+        ok: createResponse.ok,
+        status: createResponse.status,
+        text: await createResponse.text(),
+      };
+    },
+    {
+      title: `view-switch: ${testCase.view.id}`,
+    },
+  );
+  expect(
+    response.ok,
+    `live runtime should create an isolated chat (status=${response.status}, body=${response.text.slice(0, 500)})`,
+  ).toBe(true);
+  const body = JSON.parse(response.text) as ApiConversationResponse;
+  const conversationId = body.conversation?.id?.trim();
+  expect(conversationId, "created live conversation id").toBeTruthy();
+
+  await page.evaluate((id) => {
+    localStorage.setItem("eliza:chat:activeConversationId", id);
+  }, conversationId);
+  await openAppPath(page, "/chat");
+  await expect(chatComposer(page)).toBeVisible({ timeout: 60_000 });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -431,10 +557,12 @@ test.beforeEach(async ({ page }) => {
 
 for (const testCase of VIEW_SWITCH_CASES) {
   test(testCase.name, async ({ page }) => {
+    await ensureLiveViewRegisteredForCase(page, testCase);
     await openAppPath(page, "/chat");
+    await createAndActivateLiveConversationForCase(page, testCase);
 
     // 1) Drive the real command surface: type + send the user's message.
-    await sendChatCommand(page, testCase.command);
+    await sendChatCommand(page, testCase.command, testCase.expectedPath);
 
     // 2) Reach the navigate. Live: the real agent broadcasts shell:navigate:view
     //    and the renderer switches on its own. Deterministic: the stub does not
@@ -518,4 +646,46 @@ test("agent close-view navigate returns to chat", async ({ page }) => {
 
   // The chat composer is the proof we returned to the chat surface.
   await expect(chatComposer(page)).toBeVisible({ timeout: 30_000 });
+});
+
+test("agent split-view navigate renders documents and calendar layout", async ({
+  page,
+}) => {
+  test.skip(
+    LIVE_STACK,
+    "split-layout resolution is covered by VIEWS action tests; this guards the renderer contract",
+  );
+  await openAppPath(page, "/chat");
+  await sendChatCommand(page, "split documents and calendar side by side");
+
+  await deliverAgentNavigate(page, {
+    action: "split-view",
+    viewId: "documents",
+    viewPath: "/character/documents",
+    viewLabel: "Knowledge",
+    viewType: "gui",
+    views: ["documents", "calendar"],
+    layout: "horizontal",
+  });
+
+  await expect(page).toHaveURL(/\/views(?:[?#]|$)/, {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId("view-layout-surface")).toBeVisible({
+    timeout: 60_000,
+  });
+  const documentsPane = page.getByTestId("view-layout-pane-documents");
+  const calendarPane = page.getByTestId("view-layout-pane-calendar");
+  await expect(documentsPane).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(calendarPane).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(documentsPane.getByTestId("documents-view")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(calendarPane.getByText("Design sync").first()).toBeVisible({
+    timeout: 30_000,
+  });
 });

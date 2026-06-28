@@ -110,7 +110,7 @@ def base_kwargs(tier: str = "4b") -> dict:
         kwargs["files"]["vision"] = []
     if VOICE_BACKENDS_BY_TIER[tier] == ("kokoro",):
         kwargs["files"]["voice"] = [
-            FileEntry(path="tts/kokoro/model_q4.onnx", sha256=SHA),
+            FileEntry(path="tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf", sha256=SHA),
             FileEntry(path="tts/kokoro/tokenizer.json", sha256=SHA),
             FileEntry(path="tts/kokoro/voices/af_bella.bin", sha256=SHA),
         ]
@@ -712,34 +712,45 @@ def _base_v1_provenance() -> dict:
     }
 
 
-def test_base_v1_manifest_validates_and_is_default_eligible():
+def test_base_v1_manifest_blocks_until_gemma_asr_source_is_configured():
     kwargs = base_kwargs("4b")
     kwargs["provenance"] = _base_v1_provenance()
-    # base-v1 evals are runnable on base weights: text perplexity vs the
-    # upstream GGUF passes, RTF / WER / VAD / mtp / e2e / 30-turn pass.
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+
+    assert any("retired Qwen asr provenance" in e for e in exc.value.errors)
+
+
+def test_base_v1_candidate_accepts_explicit_non_qwen_asr_source():
+    kwargs = base_kwargs("4b")
+    kwargs["default_eligible"] = False
+    prov = _base_v1_provenance()
+    prov["releaseState"] = "base-v1-candidate"
+    prov["sourceModels"]["asr"] = {
+        "repo": "example/gemma-compatible-asr-gguf",
+        "file": "asr/eliza-1-asr.gguf",
+    }
+    kwargs["provenance"] = prov
     manifest = build_manifest(**kwargs)
-    assert manifest["defaultEligible"] is True
-    assert manifest["provenance"]["releaseState"] == "base-v1"
+    assert manifest["defaultEligible"] is False
+    assert manifest["provenance"]["releaseState"] == "base-v1-candidate"
     assert manifest["provenance"]["finetuned"] is False
-    assert manifest["provenance"]["sourceModels"]["text"]["repo"].endswith(
-        "gemma-4-E4B-GGUF"
-    )
+    assert manifest["provenance"]["sourceModels"]["asr"]["repo"].startswith("example/")
     assert validate_manifest(manifest) == ()
 
 
-def test_base_v1_27b_provenance_requires_qwen36_text_source():
-    kwargs = base_kwargs("27b")
-    prov = _base_v1_provenance()
-    prov["sourceModels"]["text"] = {"repo": "google/gemma-4-31B"}
-    kwargs["provenance"] = prov
-    assert validate_manifest(build_manifest(**kwargs)) == ()
-
-    prov = _base_v1_provenance()
-    prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3-4B"}
-    kwargs["provenance"] = prov
-    with pytest.raises(Eliza1ManifestError) as exc:
-        build_manifest(**kwargs)
-    assert any("Qwen/Qwen3-4B" in e for e in exc.value.errors)
+def test_base_v1_27b_provenance_requires_gemma4_text_source():
+    assert (
+        manifest_mod.canonical_source_repo_error(
+            "text", "google/gemma-4-31B", tier="27b"
+        )
+        is None
+    )
+    error = manifest_mod.canonical_source_repo_error(
+        "text", "Qwen/Qwen3-4B", tier="27b"
+    )
+    assert error is not None
+    assert "Qwen/Qwen3-4B" in error
 
 
 def test_base_v1_provenance_requires_finetuned_false():
@@ -764,7 +775,7 @@ def test_base_v1_provenance_requires_coverage_for_shipped_components():
     assert any("provenance.sourceModels.vision" in e for e in exc.value.errors)
 
 
-def test_base_v1_provenance_rejects_fake_qwen_asr_and_embedding_repos():
+def test_base_v1_provenance_rejects_retired_qwen_asr_and_embedding_repos():
     kwargs = base_kwargs("4b")
     kwargs["lineage"] = {
         **kwargs["lineage"],
@@ -777,17 +788,31 @@ def test_base_v1_provenance_rejects_fake_qwen_asr_and_embedding_repos():
     kwargs["embed_mteb_score"] = 0.62
     kwargs["embed_mteb_passed"] = True
     prov = _base_v1_provenance()
-    prov["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-1.8B-GGUF"}
+    prov["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-1.7B-GGUF"}
     prov["sourceModels"]["embedding"] = {
-        "repo": "Qwen/Qwen3-Embedding-1.7B-GGUF"
+        "repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"
     }
     kwargs["provenance"] = prov
 
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
 
-    assert any("Qwen3-ASR-1.8B-GGUF" in e for e in exc.value.errors)
-    assert any("Qwen3-Embedding-1.7B-GGUF" in e for e in exc.value.errors)
+    assert any("retired Qwen asr provenance" in e for e in exc.value.errors)
+    assert any("retired Qwen embedding provenance" in e for e in exc.value.errors)
+
+
+def test_base_v1_provenance_rejects_unconfigured_gemma_asr_repo():
+    kwargs = base_kwargs("4b")
+    prov = _base_v1_provenance()
+    prov["sourceModels"]["asr"] = {
+        "repo": "example/gemma-compatible-asr-gguf"
+    }
+    kwargs["provenance"] = prov
+
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+
+    assert any("no canonical Gemma-compatible asr source" in e for e in exc.value.errors)
 
 
 def test_provenance_rejects_unknown_release_state():

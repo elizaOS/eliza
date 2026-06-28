@@ -143,9 +143,9 @@ if (ffi.diarizSupported?.() && ffi.diarizOpen && ffi.diarizSegment) {
 	console.log(
 		`  labels seen=${[...seen].sort().join(",")}  overlap(≥4) frames=${overlapFrames}/${labels.length}`,
 	);
-	const ok = seen.size >= 1; // diarizer produced speaker activity on the mix
+	const ok = overlapFrames > 0 && [...seen].some((label) => label >= 4);
 	console.log(
-		`  → ${ok ? "PASS" : "FAIL"} (diarizer segments the simultaneous-speech mix${overlapFrames > 0 ? "; overlap pairs detected" : ""})`,
+		`  → ${ok ? "PASS" : "FAIL"} (requires pyannote powerset overlap labels ≥4, not just any speech activity)`,
 	);
 	pass &&= ok;
 } else {

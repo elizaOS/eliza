@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Canonical backstop watcher for Nebius H200 SFT runs launched via
 # train_nebius.sh full. Codified from the v4b watcher that rescued the
-# 2026-05-13 0.8B SFT after the original watcher's nebius-CLI auth-check
+# 2026-05-13 retired small-tier SFT after the original watcher's nebius-CLI auth-check
 # false-positive teardown (incident: .swarm/STATUS.md, 2026-05-12 22:28Z).
 #
 # Design (corrects the v4 watcher bug):
@@ -17,8 +17,8 @@
 #
 # Required env / args:
 #   NEBIUS_PROJECT_ID            (export, e.g. project-e00kfz6cpr00q21z892vec)
-#   NEBIUS_VM_NAME               (export, e.g. eliza-train-h200-0_8b-v5)
-#   RUN_NAME                     (export, e.g. eliza-1-0_8b-apollo-...-v5-1234)
+#   NEBIUS_VM_NAME               (export, e.g. eliza-train-h200-2b-v5)
+#   RUN_NAME                     (export, e.g. eliza-1-2b-apollo-...-v5-1234)
 #   VM_IP                        (export OR auto-derive via vm_ip())
 #   $1 = FULL_PID                 (PID of `bash train_nebius.sh full`)
 #   $2 = DEADLINE_HOURS           (optional, default 12 to match the runner cap)

@@ -134,6 +134,7 @@ export interface CloudHandoffRetryDetail {
  */
 export const TUTORIAL_CHAT_CONTROL_EVENT =
   "eliza:tutorial:chat-control" as const;
+export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
 
 export interface TutorialChatControlDetail {
   /**
@@ -149,6 +150,12 @@ export interface TutorialChatControlDetail {
   text?: string;
 }
 
+export interface ChatPrefillEventDetail {
+  text: string;
+  /** Select the inserted draft after focusing the composer. Defaults to false. */
+  select?: boolean;
+}
+
 /** Dispatch a tutorial chat-control instruction to the overlay. */
 export function dispatchTutorialChatControl(
   detail: TutorialChatControlDetail,
@@ -159,6 +166,12 @@ export function dispatchTutorialChatControl(
   );
 }
 
+/** Dispatch a request to open the floating chat and prefill its composer. */
+export function dispatchChatPrefill(detail: ChatPrefillEventDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(CHAT_PREFILL_EVENT, { detail }));
+}
+
 // ── Event-name unions (shared base widened with the UI-only events) ───────
 
 export type ElizaDocumentEventName =
@@ -167,6 +180,9 @@ export type ElizaDocumentEventName =
 
 export type ElizaWindowEventName =
   | SharedWindowEventName
+  | typeof VOICE_CONTROL_EVENT
+  | typeof TUTORIAL_CHAT_CONTROL_EVENT
+  | typeof CHAT_PREFILL_EVENT
   | typeof CLOUD_HANDOFF_PHASE_EVENT
   | typeof CLOUD_HANDOFF_RETRY_EVENT;
 

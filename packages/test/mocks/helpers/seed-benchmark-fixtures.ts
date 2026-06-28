@@ -18,7 +18,7 @@ export async function seedBenchmarkLifeOpsFixtures(
   await ensureLifeOpsSchema(runtime);
 
   const service = new LifeOpsService(runtime);
-  const david = await service.upsertRelationship({
+  await service.upsertRelationship({
     name: "David Park",
     primaryChannel: "email",
     primaryHandle: "david.park@example.com",
@@ -80,16 +80,6 @@ export async function seedBenchmarkLifeOpsFixtures(
     tags: ["cable", "internet", "support", "outage"],
     relationshipType: "vendor",
     lastContactedAt: isoOffsetFromNow(-30 * DAY_MS),
-    metadata: { mocked: true },
-  });
-
-  await service.createFollowUp({
-    relationshipId: david.id,
-    dueAt: isoOffsetFromNow(7 * DAY_MS),
-    reason: "Follow up about the project plan",
-    priority: 2,
-    draft: null,
-    completedAt: null,
     metadata: { mocked: true },
   });
 

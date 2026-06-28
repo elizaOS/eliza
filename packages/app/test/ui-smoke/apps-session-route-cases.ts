@@ -138,15 +138,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "vincent",
-    path: "/vincent",
-    readyChecks: [
-      { text: "Vincent" },
-      { selector: '[data-testid="vincent-shell"]' },
-    ],
-    timeoutMs: 90_000,
-  },
-  {
     name: "runtime app window",
     path: "/apps/runtime",
     selector: '[data-testid="runtime-view"]',
@@ -257,10 +248,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 
 const managerVisibleViewTileCases = [
   { viewId: "calendar", path: "/calendar" },
-  { viewId: "clawville", path: "/clawville" },
   { viewId: "companion", path: "/companion" },
   { viewId: "contacts", path: "/contacts" },
-  { viewId: "defense-of-the-agents", path: "/defense-of-the-agents" },
   { viewId: "documents", path: "/documents" },
   { viewId: "facewear", path: "/apps/facewear" },
   { viewId: "feed", path: "/feed" },
@@ -286,9 +275,6 @@ const managerVisibleViewTileCases = [
   { viewId: "training", path: "/apps/fine-tuning" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
-  { viewId: "vincent", path: "/vincent" },
-  { viewId: "waifu-imagegen", path: "/waifu-imagegen" },
-  { viewId: "waifu-swap", path: "/waifu-swap" },
   { viewId: "wallet", path: "/wallet" },
   { viewId: "vector-browser", path: "/vector-browser" },
 ];

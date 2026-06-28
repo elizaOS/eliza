@@ -265,7 +265,7 @@ describe("WS3 image-gen — coexistence with vision-describe", () => {
 					visState.loaded += 1;
 					return makeFakeVisionBackend(visState);
 				},
-				modelFamily: "qwen3-vl",
+				modelFamily: "gemma-vl",
 			}),
 		);
 
@@ -280,7 +280,7 @@ describe("WS3 image-gen — coexistence with vision-describe", () => {
 			{ image: { kind: "bytes"; bytes: Uint8Array }; prompt: string },
 			{ title: string; description: string }
 		>({
-			modelKey: "qwen3-vl-2b",
+			modelKey: "gemma-vl-2b",
 			payload: {
 				image: { kind: "bytes", bytes: new Uint8Array([1, 2, 3]) },
 				prompt: "describe",

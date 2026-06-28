@@ -24,6 +24,7 @@
 
 import type { Plugin, Route } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
+import { clipboardAction } from "./actions/clipboard.js";
 import { useComputerAction } from "./actions/use-computer.js";
 import { computerUseAgentAction } from "./actions/use-computer-agent.js";
 import { windowAction } from "./actions/window.js";
@@ -88,6 +89,9 @@ export const computerUsePlugin: Plugin = {
   actions: [
     ...promoteSubactionsToActions(useComputerAction),
     ...promoteSubactionsToActions(windowAction),
+    // CLIPBOARD (read/write the host clipboard) — a core computer-use capability
+    // (trycua/cua parity). Promoted to CLIPBOARD_READ / CLIPBOARD_WRITE.
+    ...promoteSubactionsToActions(clipboardAction),
     computerUseAgentAction,
   ],
 

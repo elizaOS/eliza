@@ -55,7 +55,7 @@ export async function transcribeWavWithWords(
 ): Promise<LocalAsrTranscript> {
 	if (await localInferenceEngine.available()) {
 		const audio = decodeMonoPcm16Wav(audioWav);
-		await localInferenceEngine.ensureActiveBundleVoiceReady();
+		await localInferenceEngine.ensureActiveBundleAsrReady();
 		const { text, words } = await localInferenceEngine.transcribePcmTimed(
 			audio,
 			signal,

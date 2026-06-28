@@ -150,21 +150,24 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-browser": existing(
     "plugins/plugin-browser/src/routes/workspace-routes.test.ts",
   ),
+  "plugin-calendar": existing(
+    "plugins/plugin-calendar/test/calendar-routes.test.ts",
+  ),
   "plugin-documents": existing("plugins/plugin-documents/test/routes.test.ts"),
   "plugin-elizacloud": existing(
     "plugins/plugin-elizacloud/__tests__/cloud-billing-routes.test.ts",
   ),
-  "plugin-hyperliquid-app": existing(
-    "plugins/plugin-hyperliquid-app/src/routes.real.test.ts",
+  "plugin-hyperliquid": existing(
+    "plugins/plugin-hyperliquid/src/routes.real.test.ts",
   ),
   "plugin-local-inference": existing(
     "plugins/plugin-local-inference/__tests__/voice-models-routes.test.ts",
   ),
-  "plugin-polymarket-app": existing(
-    "plugins/plugin-polymarket-app/src/routes.real.test.ts",
+  "plugin-polymarket": existing(
+    "plugins/plugin-polymarket/src/routes.real.test.ts",
   ),
-  "plugin-shopify-ui": existing(
-    "plugins/plugin-shopify-ui/src/routes.contract.test.ts",
+  "plugin-shopify": existing(
+    "plugins/plugin-shopify/src/routes.contract.test.ts",
   ),
   "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
   "plugin-social-alpha": existing(
@@ -196,9 +199,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-music": covered(
     "plugins/plugin-music/src/__tests__/routes-e2e.test.ts",
   ),
-  "plugin-mysticism": covered(
-    "plugins/plugin-mysticism/src/__tests__/routes-e2e.test.ts",
-  ),
   "plugin-telegram": covered("plugins/plugin-telegram/src/routes-e2e.test.ts"),
   "plugin-workflow": covered(
     "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts",
@@ -227,15 +227,10 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
     reason:
       "model-tester is a dev-only diagnostic surface whose routes proxy live model providers; it has no deterministic fixture and is not shipped in the default agent.",
   },
-  "plugin-steward-app": {
+  "plugin-vision": {
     status: "exempt",
     reason:
-      "steward-app routes proxy the hosted Steward cloud backend; they require live Steward credentials and have no keyless mock yet (tracked for the e2e-mock-infra issue).",
-  },
-  "plugin-vincent": {
-    status: "exempt",
-    reason:
-      "vincent routes broker the Lit/Vincent agent-wallet backend over live credentials; no deterministic fixture exists for the keyless lane yet.",
+      "vision's HTTP routes (/api/vision/capture-requests, /api/vision/screen-frame) are a renderer↔agent screen-capture bridge queue backed by ScreenCaptureBridgeService; they only drain/settle in-process capture requests against a live on-device screen-capture + vision backend (verified on Pixel 9a in #9105/#9356) and have no deterministic keyless fixture, so a keyless route e2e cannot stand them up.",
   },
 };
 
@@ -249,20 +244,10 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
  * tests, so they are deliberately absent here.)
  */
 export const ZERO_TEST_EXEMPT: Record<string, string> = {
-  "plugin-2004scape":
-    "Game-world client surface (RuneScape-era 3D client); no unit-testable logic, exercised through the game-apps Playwright smoke and the unified spatial view framework.",
-  "plugin-hyperscape":
-    "3D/MMO game-world client surface; rendering + world state are not unit-testable, exercised through the game-apps Playwright smoke.",
-  "plugin-scape":
-    "Game-world client surface; no headless logic to unit-test, exercised through the game-apps Playwright smoke.",
   "plugin-action-bench":
     "Benchmark/eval harness plugin used to drive scenario benchmarks; it has no shipped runtime behavior to unit-test and runs only under the benchmark lanes.",
-  "plugin-google-meet-cute":
-    "Experimental Google Meet companion surface gated behind live Google Meet credentials; no deterministic fixture exists.",
   "plugin-native-shared-types":
     "Pure shared TypeScript type/contract definitions for the native bridges; there is no runtime behavior to test.",
-  "plugin-remote-ledger":
-    "Static remote-ledger app shell package with only manifest/assets today; the deterministic PR scenario exercises the remote-ledger view route, and there is no runtime logic to unit-test in this plugin package.",
   "plugin-tee":
     "Trusted-execution (dstack TEE) attestation/key-release; requires real TEE hardware + a dstack socket, validated by the dedicated TEE smoke scripts.",
   "plugin-xmtp":

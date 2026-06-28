@@ -58,7 +58,7 @@ import {
  *    to use the generic emitEvent overload.
  */
 import {
-	AttachmentBuilder,
+	type AttachmentBuilder,
 	type Channel,
 	type Collection,
 	ChannelType as DiscordChannelType,
@@ -137,7 +137,7 @@ import type {
 } from "./types";
 import { DiscordEventTypes } from "./types";
 import {
-	getAttachmentFileName,
+	buildOutboundDiscordAttachment,
 	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
 	splitMessage,
@@ -478,7 +478,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public accountId: string = DEFAULT_ACCOUNT_ID;
 	private defaultAccountId = DEFAULT_ACCOUNT_ID;
 	private readonly accountPool = new DiscordAccountClientPool();
-	client: DiscordJsClient | null;
+	client: DiscordJsClient | null = null;
 	character: Character;
 	discordSettings: DiscordSettings;
 	messageManager?: MessageManager;
@@ -1282,13 +1282,13 @@ export class DiscordService extends Service implements IDiscordService {
 	 *
 	 * @param {IAgentRuntime} runtime - The AgentRuntime instance
 	 */
-	constructor(runtime: IAgentRuntime) {
+	constructor(runtime?: IAgentRuntime) {
 		super(runtime);
 
 		// Load Discord settings with proper priority (env vars > character settings > defaults)
-		this.discordSettings = getDiscordSettings(runtime);
+		this.discordSettings = getDiscordSettings(this.runtime);
 
-		this.character = runtime.character;
+		this.character = this.runtime.character;
 
 		this.defaultAccountId = normalizeAccountId(
 			resolveDefaultDiscordAccountId(this.runtime),
@@ -1324,7 +1324,7 @@ export class DiscordService extends Service implements IDiscordService {
 				"Initialized Discord account client pool",
 			);
 		} catch (error) {
-			runtime.logger.error(
+			this.runtime.logger.error(
 				`Error initializing Discord client: ${error instanceof Error ? error.message : String(error)}`,
 			);
 			this.syncLegacyDefaultAliases(null);
@@ -1459,9 +1459,8 @@ export class DiscordService extends Service implements IDiscordService {
 					if (content.attachments && content.attachments.length > 0) {
 						for (const media of content.attachments) {
 							if (media.url) {
-								const fileName = getAttachmentFileName(media);
 								files.push(
-									new AttachmentBuilder(media.url, { name: fileName }),
+									await buildOutboundDiscordAttachment(media, runtime),
 								);
 							}
 						}

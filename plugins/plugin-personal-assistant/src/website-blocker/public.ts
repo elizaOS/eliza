@@ -40,5 +40,5 @@ export {
   WEBSITE_BLOCKER_UNBLOCK_TASK_NAME,
   WEBSITE_BLOCKER_UNBLOCK_TASK_TAGS,
   WebsiteBlockerService,
-  websiteBlockerProvider,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
+export { websiteBlockerProvider } from "@elizaos/plugin-blocker/providers/website-blocker";

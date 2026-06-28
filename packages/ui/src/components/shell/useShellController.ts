@@ -2,6 +2,7 @@ import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
 import type {
   ChatTurnStatus,
+  Conversation,
   ImageAttachment,
 } from "../../api/client-types-chat";
 import {
@@ -10,10 +11,12 @@ import {
 } from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import {
-  useApp,
+  useChatComposer,
   useChatTurnStatus,
   useConversationMessages,
 } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
+import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
@@ -28,6 +31,7 @@ import {
   isTranscriptionStartPhrase,
   stripExitPhrase,
 } from "../../voice/transcription-exit";
+import { useWakeListenWindow } from "../../voice/useWakeListenWindow";
 import {
   createVoiceCapture,
   type VoiceCaptureBackend,
@@ -35,10 +39,15 @@ import {
   type VoiceCaptureState,
 } from "../../voice/voice-capture-factory";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
+import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
-import { requestConversationResetUndo } from "./conversation-undo-store";
+import { dispatchHomeSpringboardNavigation } from "./home-springboard-events";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
+
+/** Upper bound (ms) the conversation-switch / clear loading spinner may show
+ *  before it is force-cleared — see `runWithConversationLoading`. */
+const CONVERSATION_LOADING_MAX_MS = 12_000;
 
 /** How a voice capture turn is consumed when it produces a final transcript.
  *  `"transcription"` records long-form: finals accumulate into ONE recording
@@ -139,24 +148,24 @@ export interface ShellController {
    *  the mic isn't listening over the keyboard; clearing the draft (on send)
    *  resumes it — restoring the prior voice state without a re-tap. */
   setComposerHasDraft: (hasDraft: boolean) => void;
-  /** DEV-only: clear the conversation and start a fresh, greeted one. */
+  /** Clear the conversation and start a fresh, greeted one. */
   clearConversation: () => void;
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
    *  `no_provider` failure gate to let the user wire a provider in one tap. */
   openSettings: () => void;
-  /** Return to the home dashboard (the /chat route). Drives the chat header's
-   *  Home button, which is disabled while already on the home screen. */
+  /** Return to the combined Home/Springboard surface and select Home. */
   navigateHome?: () => void;
-  /** Open the Views catalog. Drives the chat header's Views button, which is
-   *  disabled while already on the views screen. */
+  /** Open the combined Home/Springboard surface and select Springboard. */
   navigateToViews?: () => void;
-  /** The active app tab. Lets the chat header DISABLE the Home button on the
-   *  home screen ("chat"), Views on "views", and Settings on "settings". */
+  /** The active app tab. */
   currentTab?: string;
   /** Stop an in-flight reply stream (the composer's stop control). */
   stop: () => void;
   /** Horizontal-swipe navigation between conversations (sheet-open only). */
   conversationNav: ConversationNav;
+  /** True while a conversation switch or clear is fetching messages. The overlay
+   *  only renders the spinner when the visible thread is empty. */
+  conversationLoading?: boolean;
 }
 
 /** Adjacent-conversation navigation for the overlay's horizontal swipe. */
@@ -169,6 +178,36 @@ export interface ConversationNav {
   goPrev: () => void;
   /** Select the older (next) conversation. */
   goNext: () => void;
+}
+
+/**
+ * Pure adjacent-conversation navigation for the overlay's horizontal swipe
+ * (#8929). The list is most-recent-first, so "prev" moves toward the newer
+ * (lower index) conversation and "next" toward the older (higher index) one.
+ * `hasPrev`/`hasNext` drive the swipe edge hints; `goPrev`/`goNext` select the
+ * adjacent conversation by id. When the active conversation isn't in the list
+ * (not-found), neither direction is navigable. Extracted as a pure function so
+ * the index-walk is unit-testable without rendering the AppContext-bound hook.
+ */
+export function buildConversationNav(
+  conversations: readonly Pick<Conversation, "id">[] | null | undefined,
+  activeConversationId: string | null | undefined,
+  onSelect: (id: string) => void,
+): ConversationNav {
+  const list = Array.isArray(conversations) ? conversations : [];
+  const index = list.findIndex((c) => c.id === activeConversationId);
+  const hasPrev = index > 0;
+  const hasNext = index >= 0 && index < list.length - 1;
+  return {
+    hasPrev,
+    hasNext,
+    goPrev: () => {
+      if (hasPrev) onSelect(list[index - 1].id);
+    },
+    goNext: () => {
+      if (hasNext) onSelect(list[index + 1].id);
+    },
+  };
 }
 
 /**
@@ -192,13 +231,33 @@ function sameStringList(a?: string[], b?: string[]): boolean {
   return true;
 }
 
+// Granular shallow selection instead of useApp() so the shell controller only
+// re-renders when one of the exact fields it reads changes — not on every one of
+// the ~300 AppContext fields. typecheck enforces completeness: any `s.x` used
+// below but not selected here is a compile error, so this stays value-equivalent.
+const selectShellController = (s: AppContextValue) => ({
+  tab: s.tab,
+  chatFirstTokenReceived: s.chatFirstTokenReceived,
+  sendChatText: s.sendChatText,
+  agentStatus: s.agentStatus,
+  characterData: s.characterData,
+  uiLanguage: s.uiLanguage,
+  elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+  handleNewConversation: s.handleNewConversation,
+  handleSelectConversation: s.handleSelectConversation,
+  activeConversationId: s.activeConversationId,
+  conversations: s.conversations,
+  setTab: s.setTab,
+  handleChatStop: s.handleChatStop,
+});
+
 export function useShellController(): ShellController {
-  const app = useApp();
   const {
-    chatSending,
+    tab,
     chatFirstTokenReceived,
     sendChatText,
     agentStatus,
+    characterData,
     uiLanguage,
     elizaCloudVoiceProxyAvailable,
     handleNewConversation,
@@ -207,67 +266,104 @@ export function useShellController(): ShellController {
     conversations,
     setTab,
     handleChatStop,
-    t,
-  } = app;
+  } = useAppSelectorShallow(selectShellController);
+  // The wake phrase for transcript-mode inline replies follows the character
+  // name (issue #9880); falls back to the running agent name, then "eliza".
+  const wakeCharacterName =
+    characterData?.name?.trim() || agentStatus?.agentName?.trim() || "eliza";
+  const wakeCharacterNameRef = React.useRef(wakeCharacterName);
+  wakeCharacterNameRef.current = wakeCharacterName;
   // Read per-token streaming messages from the isolated context so token updates
   // don't depend on the giant AppContext value identity.
   const { conversationMessages } = useConversationMessages();
+  // chatSending lives in ChatComposerContext; the AppContext copy is intentionally
+  // stale so send/typing churn does not fan out through the whole app.
+  const { chatSending } = useChatComposer();
   // Live server-reported phase of the in-flight turn (from the chat-send SSE),
   // read from its dedicated context so status events re-render only chat surfaces.
   const { serverTurnStatus } = useChatTurnStatus();
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
-  // Return to the home dashboard (the /chat route) from the chat header's Home
-  // button. Stable identity.
-  const navigateHome = React.useCallback(() => setTab("chat"), [setTab]);
-  // Open the Views catalog from the chat header's Views button. Stable identity.
-  const navigateToViews = React.useCallback(() => setTab("views"), [setTab]);
+  // Return to the combined Home/Springboard route and reset its internal page.
+  // If the route is not mounted yet, the next mount starts on Home; if it is
+  // already mounted on Springboard, this event flips it without a remount.
+  const navigateHome = React.useCallback(() => {
+    setTab("chat");
+    dispatchHomeSpringboardNavigation("home");
+  }, [setTab]);
+  const navigateToViews = React.useCallback(() => {
+    setTab("chat");
+    dispatchHomeSpringboardNavigation("springboard");
+  }, [setTab]);
 
-  // DEV-only debug affordance: drop the current conversation and start a fresh,
-  // greeted one (handleNewConversation resets draft state + creates a new
-  // conversation with a bootstrap greeting).
+  // True while a clear or conversation switch is fetching the next thread, so
+  // the overlay can show an in-thread spinner instead of an empty sheet. Cache
+  // hits paint synchronously inside handleSelectConversation; the overlay only
+  // renders the spinner when the visible thread is still empty.
+  const [conversationLoading, setConversationLoading] = React.useState(false);
+  const conversationLoadingSeqRef = React.useRef(0);
+
+  const runWithConversationLoading = React.useCallback(
+    (task: () => Promise<unknown>) => {
+      const seq = conversationLoadingSeqRef.current + 1;
+      conversationLoadingSeqRef.current = seq;
+      setConversationLoading(true);
+      // Watchdog: never let the empty-thread spinner outlive a stuck switch or
+      // create. A cache-hit switch resolves in the same tick and a network load
+      // in a few seconds, but the on-device agent can be model-bound (a warming
+      // or loading 1.4 GB model, an in-flight generation), and a spinner that
+      // hangs there reads as a permanently frozen new chat. Force-clear after a
+      // bound so the (already-activated) conversation is usable while a slow
+      // greeting backfills. Seq-guarded so a newer switch owns the flag.
+      const watchdog = setTimeout(() => {
+        if (conversationLoadingSeqRef.current === seq) {
+          setConversationLoading(false);
+        }
+      }, CONVERSATION_LOADING_MAX_MS);
+      void task().finally(() => {
+        clearTimeout(watchdog);
+        if (conversationLoadingSeqRef.current === seq) {
+          setConversationLoading(false);
+        }
+      });
+    },
+    [],
+  );
+
+  // Clear the chat: drop the current conversation and start a fresh, greeted one
+  // (handleNewConversation resets draft state + creates a new conversation with a
+  // bootstrap greeting; an empty draft we just left is pruned, a non-empty
+  // conversation is kept and remains swipe-reachable).
   const clearConversation = React.useCallback(() => {
     // A fresh conversation's bootstrap greeting is NOT a reply to a voice turn —
     // clear the voice flag so the greeting isn't spoken aloud after a prior
     // voice session.
     setLastTurnVoice(false);
-    const previousConversationId = activeConversationId;
-    void handleNewConversation();
-    // Soft-undo: let the user restore the conversation they just cleared (#8929).
-    requestConversationResetUndo({
-      previousConversationId,
-      restore: (id) => {
-        void handleSelectConversation(id);
-      },
-      translate: typeof t === "function" ? (key) => t(key) : undefined,
-    });
-  }, [
-    activeConversationId,
-    handleNewConversation,
-    handleSelectConversation,
-    t,
-  ]);
+    runWithConversationLoading(handleNewConversation);
+  }, [handleNewConversation, runWithConversationLoading]);
 
-  // Horizontal-swipe navigation between conversations (#8929). `conversations`
-  // is most-recent-first, so "prev" moves toward newer (lower index) and "next"
-  // toward older (higher index). hasPrev/hasNext drive the swipe edge hints.
-  const conversationNav = React.useMemo<ConversationNav>(() => {
-    const list = Array.isArray(conversations) ? conversations : [];
-    const index = list.findIndex((c) => c.id === activeConversationId);
-    const hasPrev = index > 0;
-    const hasNext = index >= 0 && index < list.length - 1;
-    return {
-      hasPrev,
-      hasNext,
-      goPrev: () => {
-        if (hasPrev) void handleSelectConversation(list[index - 1].id);
-      },
-      goNext: () => {
-        if (hasNext) void handleSelectConversation(list[index + 1].id);
-      },
-    };
-  }, [conversations, activeConversationId, handleSelectConversation]);
+  // Switch conversations behind a loading flag so an uncached swipe shows the
+  // spinner; a cached one resolves within the same tick (thread already painted).
+  const selectConversation = React.useCallback(
+    (id: string) => {
+      runWithConversationLoading(() => handleSelectConversation(id));
+    },
+    [handleSelectConversation, runWithConversationLoading],
+  );
+
+  // Horizontal-swipe navigation between conversations (#8929). Computed by the
+  // pure `buildConversationNav` helper (unit-tested) so the index-walk and
+  // boundary logic stay verifiable independent of this AppContext-bound hook.
+  const conversationNav = React.useMemo<ConversationNav>(
+    () =>
+      buildConversationNav(
+        conversations,
+        activeConversationId,
+        selectConversation,
+      ),
+    [conversations, activeConversationId, selectConversation],
+  );
 
   // "Ready" here means the agent's FIRST-TURN CAPABILITY is online (it can
   // answer) — NOT that the startup coordinator finished hydrating. The shell now
@@ -315,6 +411,9 @@ export function useShellController(): ShellController {
   // RESUMES it on exit, so turning transcript off leaves the mic on. Only the
   // mic button turns the mic (and thus transcript) fully off.
   const resumeHandsFreeAfterTranscriptRef = React.useRef(false);
+  // Set when a wake-triggered inline reply is sent during transcription, so the
+  // assistant's answer is folded into the transcript once it arrives (#9880).
+  const recordReplyIntoTranscriptRef = React.useRef(false);
   // Forward handle to `toggleTranscriptionMode` (defined far below) so the
   // converse capture loop can flip INTO transcription on a spoken "start
   // transcription" without a definition-order/closure problem.
@@ -464,6 +563,21 @@ export function useShellController(): ShellController {
   }, [messages]);
   const latestAgentReplyRef = React.useRef(latestAgentReply);
   latestAgentReplyRef.current = latestAgentReply;
+
+  // When a wake-triggered inline reply was sent during transcription, fold the
+  // agent's answer into the transcript record (speaker-labeled) so the parallel
+  // chat is captured, then clear the one-shot flag (#9880).
+  React.useEffect(() => {
+    if (!recordReplyIntoTranscriptRef.current) return;
+    if (!transcriptionModeRef.current) return;
+    if (chatSending) return; // wait for the reply to finish streaming
+    const reply = latestAgentReply.text.trim();
+    if (!reply) return;
+    recordReplyIntoTranscriptRef.current = false;
+    transcriptSessionRef.current?.addFinal(reply, Date.now(), {
+      speakerLabel: wakeCharacterNameRef.current,
+    });
+  }, [latestAgentReply, chatSending]);
 
   const send = React.useCallback(
     (
@@ -620,6 +734,42 @@ export function useShellController(): ShellController {
                 setHandsFree(true);
                 handsFreeRef.current = true;
               }
+              return;
+            }
+            // Wake word DURING transcription → one inline reply, parallel-chat
+            // style: the agent answers (and speaks) while recording keeps
+            // running (issue #9880). The user's wake utterance is still folded
+            // into the transcript so the exchange is captured; the turn is sent
+            // WITHOUT the transcriptionMode metadata so the server reply gate
+            // does not suppress it, and we do NOT leave transcription mode.
+            const wake = matchWakeName(text, wakeCharacterNameRef.current);
+            if (wake.matched) {
+              setTranscript("");
+              transcriptSessionRef.current?.addFinal(text, Date.now(), {
+                audioWav: segment.audioWav,
+                words: segment.words,
+              });
+              const command = wake.command.trim() || text;
+              const respondContext = {
+                recentAgentReply: latestAgentReplyRef.current.text,
+                replyAgeMs: latestAgentReplyRef.current.at
+                  ? Math.max(0, Date.now() - latestAgentReplyRef.current.at)
+                  : Number.POSITIVE_INFINITY,
+                agentSpeaking: speakingRef.current,
+              };
+              // Capture the assistant's spoken reply into the transcript too, so
+              // the parallel chat is part of the record.
+              recordReplyIntoTranscriptRef.current = true;
+              send(command, {
+                channelType: "VOICE_DM",
+                metadata: {
+                  voiceSource: lastBackend,
+                  voiceTurnSignal: buildVoiceTurnSignal(
+                    command,
+                    respondContext,
+                  ),
+                },
+              });
               return;
             }
             // Accumulate this utterance into the recording session — it does NOT
@@ -834,6 +984,34 @@ export function useShellController(): ShellController {
     }
   }, [responding, startCapture, stopCapture, voiceOutput]);
 
+  // "Hey eliza" wake word: a native detection arms a bounded listening window
+  // that opens the mic and closes once the agent has responded (or after an idle
+  // timeout if nothing is said). Implemented as a temporary hands-free engage —
+  // it never persists "always-on", and it stays inert when the user already
+  // chose always-on (wake is only an entry ramp, never an exit). See
+  // ../../voice/VOICE_UX.md.
+  const wakeAlreadyAlwaysOn =
+    handsFree && loadContinuousChatMode() === "always-on";
+  useWakeListenWindow({
+    enabled: true,
+    alwaysOn: wakeAlreadyAlwaysOn,
+    agentBusy: responding,
+    characterName: wakeCharacterName,
+    onOpen: React.useCallback(() => {
+      setIsOpen(true);
+      setHandsFree(true);
+      handsFreeRef.current = true;
+      voiceOutput.unlockAudio();
+      if (!responding && !captureRef.current) startCapture("converse");
+    }, [responding, startCapture, voiceOutput]),
+    onClose: React.useCallback(() => {
+      // Close the temporary window without disturbing a persisted mode.
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      if (captureRef.current) stopCapture();
+    }, [stopCapture]),
+  });
+
   // Toggle transcription mode (long-form, record-only — the agent never replies
   // to a transcribed turn). It is an ADDITIVE voice layer: the mic stays on and
   // the composer keeps working; enabling it just pauses the hands-free REPLY
@@ -1045,8 +1223,17 @@ export function useShellController(): ShellController {
     openSettings,
     navigateHome,
     navigateToViews,
-    currentTab: app.tab,
+    currentTab: tab,
     stop: stopTurn,
     conversationNav,
+    // Revealability is driven by the EXPLICIT, sequence-guarded loading flag
+    // (set by runWithConversationLoading on clear/select/new and cleared in its
+    // finally) — never by `messages.length === 0`. A bare message-count heuristic
+    // is a STEADY-STATE condition, not a transient one: it latches true forever
+    // for a genuinely-empty active conversation (greeting generation failed
+    // silently, or an existing zero-message conversation was selected), which
+    // pinned a perpetual loading spinner and let the grabber/pill open the sheet
+    // into a never-resolving loader.
+    conversationLoading,
   };
 }

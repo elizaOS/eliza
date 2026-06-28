@@ -29,6 +29,7 @@ export * from "./agent-admin-routes.ts";
 export * from "./agent-lifecycle-routes.ts";
 export * from "./agent-model.ts";
 export * from "./agent-transfer-routes.ts";
+export * from "./approval-routes.ts";
 export * from "./auth-routes.ts";
 export * from "./bug-report-routes.ts";
 export * from "./character-routes.ts";

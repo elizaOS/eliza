@@ -65,6 +65,8 @@ interface WalletStateParams {
   agentName: string | undefined;
   /** Current character draft name (from characterDraft?.name) */
   characterName: string | undefined;
+  /** Hydrate capability flags from the running backend config. */
+  hydrateServerConfig?: boolean;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────
@@ -74,6 +76,7 @@ export function useWalletState({
   promptModal,
   agentName,
   characterName,
+  hydrateServerConfig = true,
 }: WalletStateParams) {
   // ── Feature toggles ────────────────────────────────────────────────
   const [walletEnabled, setWalletEnabledRaw] = useState(loadWalletEnabled);
@@ -109,6 +112,7 @@ export function useWalletState({
   // Server config (written by TOGGLE_CAPABILITY agent action) wins on
   // first load; localStorage remains a fallback for offline / stale.
   useEffect(() => {
+    if (!hydrateServerConfig) return;
     let cancelled = false;
     void client
       .getConfig()
@@ -133,7 +137,7 @@ export function useWalletState({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hydrateServerConfig]);
 
   // ── Wallet / Inventory ─────────────────────────────────────────────
   const [walletAddresses, setWalletAddresses] =

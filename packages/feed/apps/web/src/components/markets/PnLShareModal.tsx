@@ -6,7 +6,7 @@ import {
   logger,
   trackExternalShare,
 } from "@feed/shared";
-import { Download, LogOut, Twitter, X } from "lucide-react";
+import { Download, LogOut, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CategoryPnLShareCard } from "@/components/markets/CategoryPnLShareCard";
@@ -190,9 +190,16 @@ export function PnLShareModal({
     }
 
     const generatePreview = async () => {
+      const cardElement = offscreenCardRef.current;
+      if (!cardElement) {
+        setPreviewImageUrl(null);
+        setIsGeneratingImage(false);
+        return;
+      }
+
       setIsGeneratingImage(true);
       const htmlToImage = await import("html-to-image");
-      const dataUrl = await htmlToImage.toPng(offscreenCardRef.current!, {
+      const dataUrl = await htmlToImage.toPng(cardElement, {
         pixelRatio: 2,
         cacheBust: true,
         backgroundColor: "#050816",
@@ -346,29 +353,31 @@ export function PnLShareModal({
       {/* Off-screen card for rendering to image */}
       <div style={{ position: "absolute", left: "-9999px", top: "-9999px" }}>
         <div ref={offscreenCardRef}>
-          {canShare && type === "portfolio" && portfolioData && (
-            <PortfolioPnLShareCard data={portfolioData} user={user!} />
+          {canShare && type === "portfolio" && portfolioData && user && (
+            <PortfolioPnLShareCard data={portfolioData} user={user} />
           )}
-          {canShare && type === "category" && categoryData && (
+          {canShare && type === "category" && categoryData && user && (
             <CategoryPnLShareCard
               category={category}
               data={categoryData}
-              user={user!}
+              user={user}
             />
           )}
         </div>
       </div>
 
       {/* Modal */}
-      <div
-        className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-0 backdrop-blur-sm md:p-4"
+      <button
+        type="button"
+        aria-label="Close share modal"
+        className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm"
         onClick={onClose}
-        role="dialog"
-        aria-modal="true"
-      >
+      />
+      <div className="pointer-events-none fixed inset-0 z-[111] flex items-center justify-center p-0 md:p-4">
         <div
-          className="flex h-full w-full flex-col bg-sidebar md:h-auto md:max-h-[90vh] md:w-auto md:min-w-[480px] md:max-w-4xl md:overflow-hidden md:rounded-2xl md:border md:border-border md:shadow-2xl"
-          onClick={(event) => event.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          className="pointer-events-auto flex h-full w-full flex-col bg-sidebar md:h-auto md:max-h-[90vh] md:w-auto md:min-w-[480px] md:max-w-4xl md:overflow-hidden md:rounded-2xl md:border md:border-border md:shadow-2xl"
         >
           {/* Header */}
           <div className="flex shrink-0 items-start justify-between border-border border-b px-6 py-4">
@@ -424,7 +433,7 @@ export function PnLShareModal({
             {authStatus?.connected && (
               <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-2">
                 <div className="flex items-center gap-2">
-                  <Twitter className="h-4 w-4 text-sky-400" />
+                  <X className="h-4 w-4 text-sky-400" />
                   <span className="text-foreground text-sm">
                     Connected as{" "}
                     <span className="font-semibold">
@@ -463,7 +472,7 @@ export function PnLShareModal({
                 }
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-sidebar-accent px-4 py-3 font-semibold text-foreground text-sm transition hover:border-border hover:bg-sidebar-accent/80 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Twitter className="h-4 w-4 text-sky-400" />
+                <X className="h-4 w-4 text-sky-400" />
                 <span className="hidden sm:inline">Share to X</span>
               </button>
 
@@ -483,118 +492,122 @@ export function PnLShareModal({
 
       {/* Twitter Confirmation Modal */}
       {showTwitterConfirm && (
-        <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          onClick={() => !isPostingToTwitter && setShowTwitterConfirm(false)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-sidebar shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-border border-b px-6 py-4">
-              <div className="flex items-center gap-2">
-                <Twitter className="h-5 w-5 text-sky-400" />
-                <h2 className="font-semibold text-foreground text-xl">
-                  Share to X
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  !isPostingToTwitter && setShowTwitterConfirm(false)
-                }
-                disabled={isPostingToTwitter}
-                className="rounded-lg p-2 text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Close modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-4 px-6 py-6">
-              {/* Preview */}
-              <div className="relative aspect-[1200/630] w-full overflow-hidden rounded-xl border border-border bg-muted/30">
-                {previewImageUrl ? (
-                  <img
-                    src={previewImageUrl}
-                    alt="Tweet Preview"
-                    className="h-full w-full object-contain"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-                    No preview available
-                  </div>
-                )}
-              </div>
-
-              {/* Tweet Text Editor */}
-              <div>
-                <label
-                  htmlFor="tweet-text"
-                  className="mb-2 block font-medium text-foreground text-sm"
-                >
-                  Tweet Text
-                </label>
-                <textarea
-                  id="tweet-text"
-                  value={tweetText}
-                  onChange={(e) => setTweetText(e.target.value)}
-                  maxLength={280}
-                  rows={4}
+        <>
+          <button
+            type="button"
+            aria-label="Close X confirmation"
+            className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm"
+            onClick={() => !isPostingToTwitter && setShowTwitterConfirm(false)}
+          />
+          <div className="pointer-events-none fixed inset-0 z-[121] flex items-center justify-center p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="pointer-events-auto relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-sidebar shadow-2xl"
+            >
+              <div className="flex items-center justify-between border-border border-b px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <X className="h-5 w-5 text-sky-400" />
+                  <h2 className="font-semibold text-foreground text-xl">
+                    Share to X
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    !isPostingToTwitter && setShowTwitterConfirm(false)
+                  }
                   disabled={isPostingToTwitter}
-                  className="w-full resize-none rounded-lg border border-border bg-muted/30 px-4 py-3 text-foreground placeholder-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="What's on your mind?"
-                />
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-muted-foreground text-xs">
-                    {tweetText.length} / 280 characters
-                  </span>
-                  {tweetText.length > 280 && (
-                    <span className="text-red-400 text-xs">
-                      Text is too long
-                    </span>
+                  className="rounded-lg p-2 text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Close modal"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-4 px-6 py-6">
+                {/* Preview */}
+                <div className="relative aspect-[1200/630] w-full overflow-hidden rounded-xl border border-border bg-muted/30">
+                  {previewImageUrl ? (
+                    <img
+                      src={previewImageUrl}
+                      alt="Tweet Preview"
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                      No preview available
+                    </div>
                   )}
                 </div>
-              </div>
 
-              {/* Actions */}
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowTwitterConfirm(false)}
-                  disabled={isPostingToTwitter}
-                  className="rounded-lg border border-border px-6 py-2.5 text-foreground transition hover:bg-sidebar-accent disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleTwitterPost}
-                  disabled={
-                    isPostingToTwitter ||
-                    !tweetText.trim() ||
-                    tweetText.length > 280
-                  }
-                  className="flex items-center gap-2 rounded-lg bg-sky-500 px-6 py-2.5 font-medium text-foreground transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isPostingToTwitter ? (
-                    <>
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-foreground/20 border-t-foreground" />
-                      Posting...
-                    </>
-                  ) : (
-                    <>
-                      <Twitter className="h-4 w-4" />
-                      Post
-                    </>
-                  )}
-                </button>
+                {/* Tweet Text Editor */}
+                <div>
+                  <label
+                    htmlFor="tweet-text"
+                    className="mb-2 block font-medium text-foreground text-sm"
+                  >
+                    Tweet Text
+                  </label>
+                  <textarea
+                    id="tweet-text"
+                    value={tweetText}
+                    onChange={(e) => setTweetText(e.target.value)}
+                    maxLength={280}
+                    rows={4}
+                    disabled={isPostingToTwitter}
+                    className="w-full resize-none rounded-lg border border-border bg-muted/30 px-4 py-3 text-foreground placeholder-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="What's on your mind?"
+                  />
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-muted-foreground text-xs">
+                      {tweetText.length} / 280 characters
+                    </span>
+                    {tweetText.length > 280 && (
+                      <span className="text-red-400 text-xs">
+                        Text is too long
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowTwitterConfirm(false)}
+                    disabled={isPostingToTwitter}
+                    className="rounded-lg border border-border px-6 py-2.5 text-foreground transition hover:bg-sidebar-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTwitterPost}
+                    disabled={
+                      isPostingToTwitter ||
+                      !tweetText.trim() ||
+                      tweetText.length > 280
+                    }
+                    className="flex items-center gap-2 rounded-lg bg-sky-500 px-6 py-2.5 font-medium text-foreground transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isPostingToTwitter ? (
+                      <>
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-foreground/20 border-t-foreground" />
+                        Posting...
+                      </>
+                    ) : (
+                      <>
+                        <X className="h-4 w-4" />
+                        Post
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );

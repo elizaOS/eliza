@@ -44,7 +44,7 @@ export const dispatchToAgentAction: Action = {
       description:
         'The exact instruction to send to the agent (e.g., "open a 2x long on TSLAI for $100", "post about the current market")',
     },
-  } as unknown as Action["parameters"],
+  },
 
   examples: [
     [
@@ -123,7 +123,7 @@ export const dispatchToAgentAction: Action = {
         success: false,
         text: "Missing required parameters for agent dispatch.",
       };
-      _callback?.({ content: failResult as unknown as Content });
+      _callback?.({ content: failResult });
       return failResult;
     }
 
@@ -144,8 +144,8 @@ export const dispatchToAgentAction: Action = {
         success: false,
         text: `Failed to dispatch to agent "${agentId}": ${result.error ?? "Unknown error"}. Check the Team Members list for the correct agent [id: ...] and retry.`,
         values: { agentId, command, error: result.error },
-      } as unknown as ActionResult;
-      _callback?.({ content: failResult as unknown as Content });
+      };
+      _callback?.({ content: failResult });
       return failResult;
     }
 
@@ -159,8 +159,8 @@ export const dispatchToAgentAction: Action = {
         agentResponse: result.response,
         actionsExecuted: result.actionsExecuted,
       },
-    } as unknown as ActionResult;
-    _callback?.({ content: successResult as unknown as Content });
+    };
+    _callback?.({ content: successResult });
     return successResult;
   },
 };

@@ -12755,6 +12755,14 @@
     }
   });
 
+  // eliza-core-stub:@elizaos/core
+  var require_core = __commonJS({
+    "eliza-core-stub:@elizaos/core"(exports, module) {
+      var noop = new Proxy(() => noop, { get: () => noop });
+      module.exports = new Proxy({}, { get: () => noop });
+    }
+  });
+
   // packages/ui/src/first-run/__e2e__/onboarding-fixture.tsx
   var import_client = __toESM(require_client(), 1);
 
@@ -13002,6 +13010,7 @@
   }
 
   // packages/ui/src/config/boot-config-store.ts
+  var import_core = __toESM(require_core(), 1);
   var DEFAULT_BOOT_CONFIG = {
     branding: {},
     cloudApiBase: "https://www.elizacloud.ai"
@@ -13032,7 +13041,7 @@
     return getBootConfigStore().current;
   }
 
-  // packages/ui/src/events/index.ts
+  // packages/shared/src/events/index.ts
   var TRAY_ACTION_EVENT = "eliza:tray-action";
 
   // node_modules/.bun/@capacitor+core@8.4.0/node_modules/@capacitor/core/dist/index.js
@@ -16812,7 +16821,8 @@
     onPick,
     onCreateNew,
     onRetry,
-    onBack
+    onBack,
+    showBack = true
   }) {
     const binding = phase === "binding";
     return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
@@ -16837,7 +16847,7 @@
           ] }) : phase === "error" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "flex w-full flex-col items-center gap-4 py-4", children: [
             /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: "text-center text-sm leading-snug text-white/85", children: errorMessage ?? "Could not load your agents. Try again." }),
             /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "flex items-center gap-3", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+              showBack && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
                 "button",
                 {
                   type: "button",
@@ -16856,7 +16866,7 @@
                   type: "button",
                   "data-testid": "onboarding-agent-retry",
                   onClick: onRetry,
-                  className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-opacity hover:opacity-90 active:scale-[0.98] motion-reduce:active:scale-100",
+                  className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] motion-reduce:active:scale-100",
                   children: [
                     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(RefreshCw, { className: "h-4 w-4" }),
                     "Try again"
@@ -16865,7 +16875,7 @@
               )
             ] })
           ] }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "flex w-full flex-col gap-2.5", children: agents.map((agent) => {
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "flex w-full flex-col gap-2.5 max-h-[min(50vh,380px)] overflow-y-auto overscroll-contain pr-0.5", children: agents.map((agent) => {
               const isActive = activeAgentId !== null && agent.agent_id === activeAgentId;
               const deleting = isDeletingStatus(agent.status);
               const isBinding = binding && bindingAgentId === agent.agent_id;
@@ -16880,7 +16890,7 @@
                   disabled,
                   "aria-current": isActive ? "true" : void 0,
                   onClick: () => onPick(agent.agent_id),
-                  className: "group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-4 py-3.5 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:active:scale-100",
+                  className: "group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-4 py-3.5 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:active:scale-100",
                   children: [
                     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Bot, { className: "h-5 w-5 text-white/90" }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: "flex min-w-0 flex-1 flex-col gap-1", children: [
@@ -16908,36 +16918,42 @@
                 agent.agent_id
               );
             }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "mt-1 flex items-center justify-between gap-3", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
-                "button",
-                {
-                  type: "button",
-                  "data-testid": "onboarding-agent-back",
-                  disabled: binding,
-                  onClick: onBack,
-                  className: "inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 disabled:opacity-50",
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ChevronLeft, { className: "h-4 w-4" }),
-                    "Back"
-                  ]
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
-                "button",
-                {
-                  type: "button",
-                  "data-testid": "onboarding-agent-create",
-                  disabled: binding,
-                  onClick: onCreateNew,
-                  className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100",
-                  children: [
-                    binding ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(LoaderCircle, { className: "h-4 w-4 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Plus, { className: "h-4 w-4" }),
-                    "Create new"
-                  ]
-                }
-              )
-            ] })
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+              "div",
+              {
+                className: `mt-1 flex items-center gap-3 ${showBack ? "justify-between" : "justify-end"}`,
+                children: [
+                  showBack && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+                    "button",
+                    {
+                      type: "button",
+                      "data-testid": "onboarding-agent-back",
+                      disabled: binding,
+                      onClick: onBack,
+                      className: "inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 disabled:opacity-50",
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ChevronLeft, { className: "h-4 w-4" }),
+                        "Back"
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+                    "button",
+                    {
+                      type: "button",
+                      "data-testid": "onboarding-agent-create",
+                      disabled: binding,
+                      onClick: onCreateNew,
+                      className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100",
+                      children: [
+                        binding ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(LoaderCircle, { className: "h-4 w-4 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Plus, { className: "h-4 w-4" }),
+                        "Create new"
+                      ]
+                    }
+                  )
+                ]
+              }
+            )
           ] })
         ]
       }
@@ -17124,7 +17140,7 @@
                     value: draft.remoteApiBase,
                     onChange: (e) => c.updateDraft("remoteApiBase", e.target.value),
                     placeholder: "https://agent.example.com",
-                    className: "w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-white/70 focus:bg-white/[0.14]"
+                    className: "w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40  "
                   }
                 )
               ] }),
@@ -17134,7 +17150,7 @@
                   {
                     htmlFor: "onboarding-remote-password",
                     className: "text-[12px] font-medium text-white/70",
-                    children: "Password"
+                    children: "Access token"
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
@@ -17147,10 +17163,11 @@
                     onKeyDown: (e) => {
                       if (e.key === "Enter") void finishAndMaybeClose();
                     },
-                    placeholder: "Optional",
-                    className: "w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40 focus:border-white/70 focus:bg-white/[0.14]"
+                    placeholder: "Leave blank to pair with a code",
+                    className: "w-full rounded-xl border border-white/25 bg-white/10 px-4 py-3 text-[15px] text-white outline-none transition-colors placeholder:text-white/40  "
                   }
-                )
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("p", { className: "text-[11px] leading-relaxed text-white/45", children: "The server's ELIZA_API_TOKEN. Leave blank to pair with a one-time code shown on the host." })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "mt-1 flex items-center justify-between gap-3", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
@@ -17173,7 +17190,7 @@
                     "data-testid": "onboarding-remote-connect",
                     disabled: busy || draft.remoteApiBase.trim().length === 0,
                     onClick: () => void finishAndMaybeClose(),
-                    className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100",
+                    className: "inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-[#FF5800] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-50 motion-reduce:active:scale-100",
                     children: [
                       busy ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(LoaderCircle, { className: "h-4 w-4 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ArrowRight, { className: "h-4 w-4" }),
                       "Connect"
@@ -17215,7 +17232,8 @@
                 onPick: c.onPickAgent,
                 onCreateNew: c.onCreateNewAgent,
                 onRetry: c.onRetryPicker,
-                onBack: c.onBackFromPicker
+                onBack: c.onBackFromPicker,
+                showBack: !cloudOnly
               }
             )
           ) : onInference ? (
@@ -17236,7 +17254,7 @@
                     "data-testid": "onboarding-inference-cloud",
                     disabled: busy,
                     onClick: chooseCloudInference,
-                    className: "group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-[transform,box-shadow,opacity] duration-200 ease-out hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100",
+                    className: "group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left transition-[transform,opacity] duration-200 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100",
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Cloud, { className: "h-5 w-5 text-[#FF5800]" }) }),
                       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex min-w-0 flex-1 flex-col gap-0.5", children: [
@@ -17257,7 +17275,7 @@
                     "data-testid": "onboarding-inference-local",
                     disabled: busy,
                     onClick: chooseLocalInference,
-                    className: "group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100",
+                    className: "group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-5 py-4 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100",
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Cpu, { className: "h-5 w-5 text-white/90" }) }),
                       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex min-w-0 flex-1 flex-col gap-0.5", children: [
@@ -17304,7 +17322,7 @@
                     "data-testid": "onboarding-option-cloud",
                     disabled: busy,
                     onClick: chooseCloud,
-                    className: "group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left shadow-[0_8px_24px_-8px_rgba(0,0,0,0.35)] transition-[transform,box-shadow,opacity] duration-200 ease-out hover:shadow-[0_12px_30px_-8px_rgba(0,0,0,0.45)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100",
+                    className: "group flex w-full items-center gap-3.5 rounded-2xl bg-white px-5 py-4 text-left transition-[transform,opacity] duration-200 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100",
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#FF5800]/10", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Cloud, { className: "h-5 w-5 text-[#FF5800]" }) }),
                       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex min-w-0 flex-1 items-center gap-2", children: [
@@ -17322,7 +17340,7 @@
                     "data-testid": "onboarding-option-local",
                     disabled: busy || cloudOnly,
                     onClick: chooseLocal,
-                    className: `group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-white/[0.08] px-5 py-4 text-left backdrop-blur-sm transition-colors duration-200 hover:bg-white/[0.14] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100 ${cloudOnly ? "hidden" : ""}`,
+                    className: `group flex w-full items-center gap-3.5 rounded-2xl border border-white/20 bg-black/85 px-5 py-4 text-left transition-colors duration-200 hover:bg-black/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100 ${cloudOnly ? "hidden" : ""}`,
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.12]", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ShieldCheck, { className: "h-5 w-5 text-white/90" }) }),
                       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "flex min-w-0 flex-1 items-center gap-2", children: [

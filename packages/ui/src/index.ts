@@ -96,14 +96,6 @@ export {
   WhatsAppIcon,
 } from "./cloud-ui/components/icons";
 export {
-  type AspectRatio,
-  EnhancedLoading,
-  ImageEmptyState,
-  ImageLoadingState,
-  ImagePromptInput,
-  type StylePreset,
-} from "./cloud-ui/components/image-gen";
-export {
   AnimatedCounter,
   AnimatedCounterWithLabel,
   EarningsSimulator,
@@ -182,11 +174,6 @@ export {
   type BrowserLaunchWidgetProps,
 } from "./components/chat/widgets/browser-launch-widget";
 export {
-  ChatHistorySwiper,
-  type ChatHistorySwiperProps,
-  type HistoryCard,
-} from "./components/chat/widgets/chat-history-swiper";
-export {
   type CredentialRequestVariant,
   CredentialRequestWidget,
   type CredentialRequestWidgetProps,
@@ -228,6 +215,13 @@ export type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "./components/chat/widgets/types";
+// Surfaced directly on the root barrel (also reachable via the composites/hooks
+// chains) so dist-mapped consumers resolve them by name.
+export {
+  ChatEmptyStateWithRecommendations,
+  type ChatEmptyStateWithRecommendationsProps,
+  type ChatRecommendation,
+} from "./components/composites/chat/ChatEmptyStateWithRecommendations";
 export { ChatSearchHint } from "./components/composites/chat-search-hint";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
@@ -466,10 +460,33 @@ export * from "./first-run/first-run-config";
 export * from "./first-run/mobile-runtime-mode";
 export * from "./first-run/pre-seed-local-runtime";
 export * from "./genui/index";
+export {
+  DEFAULT_FRAME_BUDGET,
+  type FrameBudget,
+  type FrameBudgetSummary,
+  type FrameBudgetTelemetryEvent,
+  frameBudgetMs,
+  shouldReportFrameBudget,
+  summarizeFrameSamples,
+} from "./hooks/frame-budget";
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";
+export { useChatPrefill } from "./hooks/useChatPrefill";
 export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility";
+export {
+  type FrameBudgetMonitorOptions,
+  isPerfHudEnabled,
+  startFrameBudgetMonitor,
+  useFrameBudgetMonitor,
+} from "./hooks/useFrameBudgetMonitor";
+export {
+  DEFAULT_CLS_BUDGET,
+  type LayoutShiftMonitorOptions,
+  type LayoutShiftTelemetryEvent,
+  startLayoutShiftMonitor,
+  useLayoutShiftMonitor,
+} from "./hooks/useLayoutShiftMonitor";
 export { useMediaQuery } from "./hooks/useMediaQuery";
 export {
   type AnyRenderTelemetryEvent,
@@ -511,6 +528,8 @@ export {
   getVrmPreviewUrl,
   getVrmUrl,
   mergeStreamingText,
+  useAppSelector,
+  useAppSelectorShallow,
   useCompanionSceneConfig,
   usePtySessions,
   useTranslation,

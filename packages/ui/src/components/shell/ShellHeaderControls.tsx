@@ -21,14 +21,14 @@ import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";
 
 const SHELL_CONTROL_BASE_CLASSNAME =
-  "border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt ring-1 ring-inset ring-white/6  supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt";
+  "border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt    transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt";
 
 const SHELL_ICON_BUTTON_CLASSNAME = `inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-sm ${SHELL_CONTROL_BASE_CLASSNAME}`;
 
 const SHELL_EXPANDED_BUTTON_CLASSNAME = `inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-sm px-3.5 py-0 ${SHELL_CONTROL_BASE_CLASSNAME}`;
 
 const SHELL_SEGMENTED_CONTROL_CLASSNAME =
-  "inline-flex items-center gap-0.5 rounded-sm border border-border/45 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_52%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] p-0.5 ring-1 ring-inset ring-white/6 ";
+  "inline-flex items-center gap-0.5 rounded-sm border border-border/45 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_52%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] p-0.5    ";
 
 const SHELL_SEGMENT_ACTIVE_CLASSNAME =
   "border-[color:color-mix(in_srgb,var(--accent)_34%,var(--border))] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent)_20%,var(--card)),color-mix(in_srgb,var(--accent)_10%,var(--bg)))] text-[color:color-mix(in_srgb,var(--text-strong)_78%,var(--accent)_22%)] ";
@@ -243,6 +243,7 @@ export function ShellHeaderControls({
   return (
     <div
       className={`min-w-0 w-full overflow-visible flex items-center ${className ?? ""}`}
+      data-window-titlebar-padding="true"
       data-no-camera-drag="true"
     >
       {/* Left: shell view toggle (hidden outside companion overlay) */}

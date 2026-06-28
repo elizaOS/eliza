@@ -350,7 +350,7 @@ export class AutonomousCoordinator {
     if (recordTrajectories) {
       // Enrich NPC trajectories with world state context
       // Derive archetype from character sheet metadata
-      const feedMeta = (runtime.character as unknown as Record<string, unknown>)
+      const feedMeta = (runtime.character as Record<string, unknown>)
         ?.feed as Record<string, unknown> | undefined;
       const archetype = feedMeta
         ? deriveArchetype(
@@ -431,8 +431,8 @@ export class AutonomousCoordinator {
             worldStateSnapshotId: snapshotId ?? null,
             packId: StaticDataRegistry.getPackId() ?? null,
             npcRole,
-            memorySnapshot: memorySnapshot as unknown as JsonValue,
-            relationshipSnapshot: relationshipSnapshot as unknown as JsonValue,
+            memorySnapshot: memorySnapshot as JsonValue,
+            relationshipSnapshot: relationshipSnapshot as JsonValue,
           };
         } catch (enrichError) {
           logger.warn(
@@ -470,7 +470,7 @@ export class AutonomousCoordinator {
       setTrajectoryContext(
         runtime,
         trajId,
-        trajectoryRecorder as unknown as Parameters<
+        trajectoryRecorder as Parameters<
           typeof setTrajectoryContext
         >[2],
         async () => this.captureEnvironmentState(agentUserId),
@@ -583,7 +583,7 @@ export class AutonomousCoordinator {
                   redTeamNpcIds:
                     (trustOutcomes.redTeamNpcIds as string[]) ?? [],
                   interactionLabels:
-                    (trustOutcomes.interactionLabels as unknown as InteractionLabel[]) ??
+                    (trustOutcomes.interactionLabels as InteractionLabel[]) ??
                     [],
                 },
               }

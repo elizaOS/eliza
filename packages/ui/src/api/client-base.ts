@@ -61,6 +61,8 @@ const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
 ]);
+const REPLAYABLE_WS_EVENT_TYPES = new Set(["shell:navigate:view"]);
+const WS_EVENT_BACKLOG_LIMIT = 8;
 
 type StreamChatEvent = {
   type?: string;
@@ -446,6 +448,7 @@ export class ElizaClient {
   private requestTransport: AgentRequestTransport = fetchAgentTransport;
   private ws: WebSocket | null = null;
   private wsHandlers = new Map<string, Set<WsEventHandler>>();
+  private wsEventBacklog = new Map<string, Record<string, unknown>[]>();
   private wsSendQueue: string[] = [];
   private readonly wsSendQueueLimit = 32;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -606,6 +609,16 @@ export class ElizaClient {
     if (!persist) {
       return;
     }
+    this.persistBaseUrl(normalized);
+  }
+
+  /**
+   * Persist a base URL to every consumer that reads it out-of-band (boot config,
+   * localStorage, the `window.__ELIZA_API_BASE__` global). Shared by
+   * {@link setBaseUrl} and {@link repointBaseUrl} so both keep the same
+   * persistence semantics — the only difference between them is the WS handling.
+   */
+  private persistBaseUrl(normalized: string): void {
     // Update boot config so other consumers (resolveApiUrl, etc.) see the new base.
     const config = getBootConfig();
     setBootConfig({ ...config, apiBase: normalized || undefined });
@@ -629,6 +642,77 @@ export class ElizaClient {
     } else {
       clearElizaApiBase();
     }
+  }
+
+  /**
+   * Re-point the live client at a new base **in place**, keeping the realtime
+   * channel visually continuous — the seamless shared→dedicated handoff swap.
+   *
+   * Unlike {@link setBaseUrl}, which `disconnectWs()`es and leaves the socket
+   * dead until some later boot phase calls `connectWs()` (a visible drop + the
+   * `disconnected` connection-state flap), this:
+   *   1. tears down the old socket WITHOUT emitting a `disconnected` state, so
+   *      connection-state listeners never see a gap (the chat surface stays
+   *      "connected" throughout);
+   *   2. flips the base + persistence to the new (dedicated) host;
+   *   3. immediately `connectWs()`s to the new base.
+   *
+   * The transcript was already copied to the dedicated agent by the handoff
+   * supervisor, so live updates resume against the dedicated host with no
+   * full-screen reload, no coordinator re-entry, and no draft loss. Used ONLY by
+   * the handoff's silent re-point — every other base change still goes through
+   * `setBaseUrl`.
+   *
+   * Note on the WS swap: on cloud bases (the shared REST adapter and
+   * `*.elizacloud.ai`) `connectWs()` reports connected-over-REST and no socket
+   * is opened, so `ws-reconnected` does NOT fire and live updates resume via
+   * REST/SSE keyed off the new `baseUrl`. The socket teardown + reconnect path
+   * (steps 1 and 3, where `onopen` fires `ws-reconnected`) is exercised only for
+   * non-cloud hosts — it is forward-cover for when a base actually uses `/ws`.
+   * The "invisible" wins (no `disconnected` flap, no `StartupScreen`, no draft
+   * clear) hold independent of whether a socket is involved.
+   */
+  repointBaseUrl(baseUrl: string): void {
+    const normalized = normalizeBaseUrl(baseUrl);
+    if (!normalized) return;
+    // Quietly drop the old socket. We intentionally do NOT call disconnectWs():
+    // it sets connectionState = "disconnected" and emits, which would surface a
+    // visible "reconnecting" flicker mid-handoff. Suppress onclose (which would
+    // otherwise schedule a reconnect against the OLD base) and close silently.
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      try {
+        this.ws.close();
+      } catch {
+        /* already closing */
+      }
+      this.ws = null;
+    }
+    // Pending outbound WS frames were addressed to the old host; drop them so
+    // they aren't replayed against the dedicated socket. The send-queue is for
+    // offline buffering, not cross-host carry-over.
+    this.wsSendQueue = [];
+    this.wsEventBacklog.clear();
+
+    this._userSetBase = normalized.length > 0;
+    this._baseUrl = normalized;
+    this.persistBaseUrl(normalized);
+
+    // Reconnect immediately against the new base. connectWs() derives the WS
+    // host from this.baseUrl, so the socket comes up on the dedicated host; its
+    // onopen fires `ws-reconnected` (this.wsHasConnectedOnce is already true),
+    // re-hydrating live state without a reload.
+    this.backoffMs = 500;
+    this.reconnectAttempt = 0;
+    this.disconnectedAt = null;
+    this.connectWs();
   }
 
   /** True when we have a usable HTTP(S) API endpoint. */
@@ -962,6 +1046,47 @@ export class ElizaClient {
 
   // --- WebSocket ---
 
+  private rememberReplayableWsEvent(
+    type: string,
+    data: Record<string, unknown>,
+  ): void {
+    if (!REPLAYABLE_WS_EVENT_TYPES.has(type)) return;
+    const backlog = this.wsEventBacklog.get(type) ?? [];
+    backlog.push(data);
+    if (backlog.length > WS_EVENT_BACKLOG_LIMIT) {
+      backlog.splice(0, backlog.length - WS_EVENT_BACKLOG_LIMIT);
+    }
+    this.wsEventBacklog.set(type, backlog);
+  }
+
+  private replayBackloggedWsEvents(
+    type: string,
+    handler: WsEventHandler,
+  ): void {
+    const backlog = this.wsEventBacklog.get(type);
+    if (!backlog?.length) return;
+    const pending = backlog.slice();
+    queueMicrotask(() => {
+      if (!this.wsHandlers.get(type)?.has(handler)) return;
+      for (const data of pending) {
+        try {
+          handler(data);
+        } catch {
+          // Match normal WS dispatch: a handler error must not poison replay.
+        }
+      }
+      const current = this.wsEventBacklog.get(type);
+      if (!current?.length) return;
+      const delivered = new Set(pending);
+      const remaining = current.filter((data) => !delivered.has(data));
+      if (remaining.length > 0) {
+        this.wsEventBacklog.set(type, remaining);
+      } else {
+        this.wsEventBacklog.delete(type);
+      }
+    });
+  }
+
   connectWs(): void {
     if (shouldTreatAsConnectedWithoutWebSocket(this.baseUrl)) {
       this.backoffMs = 500;
@@ -1086,10 +1211,12 @@ export class ElizaClient {
         >;
         const type = data.type as string;
         const handlers = this.wsHandlers.get(type);
-        if (handlers) {
+        if (handlers?.size) {
           for (const handler of handlers) {
             handler(data);
           }
+        } else {
+          this.rememberReplayableWsEvent(type, data);
         }
         // Also fire "all" handlers
         const allHandlers = this.wsHandlers.get("*");
@@ -1290,6 +1417,7 @@ export class ElizaClient {
       this.wsHandlers.set(type, new Set());
     }
     this.wsHandlers.get(type)?.add(handler);
+    this.replayBackloggedWsEvents(type, handler);
     return () => {
       this.wsHandlers.get(type)?.delete(handler);
     };
@@ -1307,6 +1435,7 @@ export class ElizaClient {
     this.ws?.close();
     this.ws = null;
     this.wsSendQueue = [];
+    this.wsEventBacklog.clear();
     // Reset connection state on intentional disconnect
     this.reconnectAttempt = 0;
     this.disconnectedAt = null;

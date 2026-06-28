@@ -72,7 +72,8 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 | `website_blocker` | `WebsiteBlockerService` | `src/website-blocker/service.ts` | Hosts-file blocking (SelfControl) lifecycle |
 | `activity_tracker` | `ActivityTrackerService` | `src/activity-profile/activity-tracker-service.ts` | Legacy activity projection for assistant context; health/screen-time domain logic belongs in `@elizaos/plugin-health` |
 | `presence_signal_bridge` | `PresenceSignalBridgeService` | `src/activity-profile/presence-signal-bridge-service.ts` | Device presence signal forwarding |
-| `lifeops_scheduled_task_runner` | `ScheduledTaskRunnerService` | `src/lifeops/scheduled-task/service.ts` | Scheduled-task execution engine |
+
+The `lifeops_scheduled_task_runner` service (`ScheduledTaskRunnerService`) is now **registered by the always-loaded `@elizaos/plugin-scheduling`**, not PA. PA is a consumer: `init()` injects its production deps (DB-backed store, production dispatcher, owner-facts / channel-keys / host-capability probes, anchor registry) via `registerLifeOpsScheduledTaskRunnerDeps(runtime)` (see `src/lifeops/scheduled-task/runtime-wiring.ts`). `src/lifeops/scheduled-task/service.ts` is a back-compat re-export of the moved service.
 
 ### Evaluators
 
@@ -250,7 +251,7 @@ bun run --cwd plugins/plugin-personal-assistant clean              # Remove dist
 
 - **OWNER_SCREENTIME is macOS-only.** It is platform-gated via `isDarwin()` in `src/plugin.ts` (`platformGatedActionUmbrellas`). Do not add it unconditionally.
 - **Scheduler task init is deferred.** Task workers are registered inside `init()`, but `ensureTask` calls are scheduled via `runtime.initPromise` so they run after the runtime finishes initializing. Failures are non-fatal to plugin load; check `LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY` in the runtime cache for diagnostics.
-- **The runner never inspects `promptInstructions`.** Routing is done purely on structural `ScheduledTask` fields. See `src/lifeops/scheduled-task/runner.ts`.
+- **The runner never inspects `promptInstructions`.** Routing is done purely on structural `ScheduledTask` fields. The runner lives in `plugins/plugin-scheduling/src/scheduled-task/runner.ts`; the personal-assistant side wires it in via `src/lifeops/scheduled-task/{service,scheduler,runtime-wiring}.ts`.
 - **Approval flows require an approval queue.** Outbound message sends and document signatures go through `PgApprovalQueue` before any external dispatch. Never dispatch directly from action handlers.
 - **`LifeOpsService` is composed from mixins.** Core logic lives in `src/lifeops/service-mixin-*.ts` files. `src/lifeops/service.ts` composes them. Add a new domain capability as a mixin.
 - **Default packs must pass lint.** `bun run lint:default-packs` (also `pretest`) enforces the rules embedded in `scripts/lint-default-packs.mjs`. CI blocks packs that fail.

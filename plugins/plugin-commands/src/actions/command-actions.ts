@@ -1,7 +1,7 @@
 /**
  * Command actions — the registered elizaOS `Action`s for agent-target commands.
  *
- * One action per gate-safe command (`/help`, `/status`, `/whoami`, …).
+ * One action per deterministic command (`/help`, `/status`, `/models`, …).
  * Each action's `validate()` is strictly slash-only (it matches just its own
  * command key) and its `similes` are the slash aliases only — no natural
  * language — so the LLM never misroutes a conversational message to a command.
@@ -13,7 +13,7 @@ import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { detectCommand, hasCommand } from "../parser";
 import { findCommandByKey } from "../registry";
 import { resolveCommand } from "./dispatch";
-import { isGateSafeCommand } from "./handlers";
+import { isDeterministicCommand } from "./handlers";
 
 /** Sources that are the local owner surface (authorized + elevated). */
 const OWNER_SOURCES: ReadonlySet<string> = new Set([
@@ -61,7 +61,8 @@ function buildAction(
 		handler: async (runtime, message, _state, _options, callback) => {
 			const result = await resolveCommand(runtime, message, {
 				...resolveTrust(message),
-				gateSafeOnly: true,
+				deterministicOnly: true,
+				...(callback ? { callback } : {}),
 			});
 			if (!result.handled || result.reply === undefined) {
 				return { success: false };
@@ -76,12 +77,12 @@ function buildAction(
 
 /**
  * Build the deterministic command actions for the per-runtime registry. One
- * action per gate-safe agent-target command. Call after `useRuntime(agentId)`.
+ * action per deterministic agent-target command. Call after `useRuntime(agentId)`.
  */
 export function createCommandActions(commandKeys: string[]): Action[] {
 	const actions: Action[] = [];
 	for (const key of commandKeys) {
-		if (!isGateSafeCommand(key)) continue;
+		if (!isDeterministicCommand(key)) continue;
 		const definition = findCommandByKey(key);
 		if (!definition) continue;
 		if (definition.target && definition.target.kind !== "agent") continue;

@@ -156,21 +156,22 @@ hardware probe to usable memory first:
   at the 4B floor because the OS background-task model makes large local tiers
   unsafe no matter how much RAM the phone reports.
 - **Always the biggest we can.** Tiers are sorted by RAM floor, largest first; we
-  return the first whose floor fits. Because every tier's `minRamGb` already
-  includes a **native 128k window under QJL**, "largest tier that fits" is
-  identical to "biggest model that still gets 128k".
+  return the first whose floor fits. Every tier's `minRamGb` already includes
+  the active 128k release floor under Gemma 4's stock `q8_0` KV cache, so
+  "largest tier that fits" is identical to "biggest model that still gets 128k".
 - **Every shrink is always on.** Weights are **TurboQuant** (the catalog `sizeGb`
-  is the compressed GGUF), and the KV cache is **QJL** (`qjl1_256`, head_dim=256)
-  — never user-selectable. These are what let a 2B model carry a 128k window in a
-  couple of GB and a 27B model fit a 32 GB box.
+  is the compressed GGUF), and the KV cache is stock **`q8_0`**. Gemma 4's MQA,
+  SWA, and shared-KV geometry are already compact; the legacy QJL/PolarQuant
+  head_dim=128 KV kernels do not apply to the active Gemma tiers.
 - **128k is the target, context flexes only as a last resort.** When even 2B can't
-  reach 128k on this device, we keep 2B and shrink the QJL window to the largest
-  that fits (QJL KV scales ~linearly with tokens) — we never drop to a smaller or
-  0.8B model. If not even a minimal (8k) window fits, the function returns `null`
-  and the modality routes to **Cloud** (AUTO).
+  reach 128k on this device, we keep 2B and shrink the `q8_0` KV window to the
+  largest that fits (KV scales ~linearly with tokens) — we never drop to a smaller
+  or 0.8B model. If not even a minimal (8k) window fits, the function returns
+  `null` and the modality routes to **Cloud** (AUTO).
 
 So the device-fit answer is deterministic and consumer-invisible: the biggest
-eliza-1 that fits, at 128k when possible, with TurboQuant + QJL always applied.
+eliza-1 that fits, at 128k when possible, with TurboQuant + stock `q8_0` KV always
+applied.
 
 ## Memory / fit (#8809) — invisible
 
@@ -183,18 +184,21 @@ never sees a quant or context-length setting.
 
 ## Removing 0.8B / 2B floor — implementation
 
-- `ELIZA_1_TIER_IDS`, `ELIZA_1_VISION_TIER_IDS`, `ELIZA_1_MTP_TIER_IDS` already
-  start at `eliza-1-2b` (0.8B dropped from the catalog).
-- Sweep the remaining `eliza-1-0_8b` / `0_8b` references (recommendation ladders,
-  configs, device-tier defaults, tests) so nothing assigns or recommends 0.8B.
+- `ELIZA_1_TIER_IDS`, `ELIZA_1_VISION_TIER_IDS`, `ELIZA_1_MTP_TIER_IDS` start at
+  `eliza-1-2b` (0.8B dropped from the catalog).
+- The retired 0.8B product-path assignments and recommendations have been swept
+  from recommendation ladders, configs, device-tier defaults, tests, and the
+  local-model Remote catalog. Remaining mentions are historical
+  provenance/evidence notes, not active recommendations.
 - The device-tier "smallest tier" floor becomes 2B; weak devices that can't fit
   2B locally route that modality to **Cloud** (via Auto) instead of falling to
   0.8B.
 
 ## Implementation checklist (mapping to the issues)
 
-1. **0.8B removal sweep** — finish purging `eliza-1-0_8b` from recommendation,
-   configs, device-tier, tests. (#8808/#8809 adjacent)
+1. **0.8B removal sweep** — product-path assignments and recommendations now
+   start at `eliza-1-2b`; historical/provenance mentions are intentionally not
+   active model choices. (#8808/#8809 adjacent)
 2. **`auto` routing policy** — wire `classifyDeviceTier()` per modality (landed
    for #8811); this powers **Auto**.
 3. **Consumer Intelligence section** — new Local/Cloud/Auto control; read-only

@@ -2,15 +2,16 @@ name: Cloud CF Deploy
 
 # Cloudflare deployment for the Eliza Cloud surfaces + Workers API.
 #
-# The web frontend is split across TWO Pages projects (two domains, two builds
-# from one repo):
-#   - `eliza-cloud`  ->  packages/cloud-frontend  ->  elizacloud.ai apex
-#       The lander + dashboard ("the cloud console"). Steward login + dashboard.
+# The web frontend builds ONE codebase (packages/app, which mounts the whole
+# cloud UI via @elizaos/ui/cloud) into TWO Pages projects (two domains, one
+# build target — packages/cloud/frontend has been deleted):
+#   - `eliza-cloud`  ->  packages/app (build:web)  ->  elizacloud.ai apex
+#       The cloud console (lander + dashboard) origin. Steward login + dashboard.
 #   - `eliza-app`    ->  packages/app (build:web)  ->  app.elizacloud.ai
 #       The Eliza agent app (chat + views) — the same web UI as `bun run dev`.
-# This reverses the brief Topology-A apex swap (which buried the lander/dashboard
-# under the agent app's local-first onboarding). The agent app now lives on its
-# own subdomain; the apex stays the console we've always had.
+# This re-consolidates the brief Topology-A apex split: both the apex and the
+# subdomain now serve packages/app; the only difference is the canonical-origin
+# env baked into each bundle (apex = elizacloud.ai, subdomain = app.elizacloud.ai).
 #
 # Per environment (both projects):
 # - push to develop  -> staging   (api-staging.elizacloud.ai; staging.* / app-staging.*)
@@ -19,7 +20,7 @@ name: Cloud CF Deploy
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
-#   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud-api/wrangler.toml
+#   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud/api/wrangler.toml
 # Provider secrets are published when configured (the Worker calls native
 # providers directly and uses OpenRouter as the backup):
 #   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
@@ -31,22 +32,20 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - "packages/cloud-api/**"
-      - "packages/cloud-frontend/**"
-      - "packages/cloud-shared/**"
-      - "packages/cloud-services/**"
-      - "packages/cloud-sdk/**"
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/services/**"
+      - "packages/cloud/sdk/**"
       - "packages/app/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
     branches: [main, develop]
     paths:
-      - "packages/cloud-api/**"
-      - "packages/cloud-frontend/**"
-      - "packages/cloud-shared/**"
-      - "packages/cloud-services/**"
-      - "packages/cloud-sdk/**"
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/services/**"
+      - "packages/cloud/sdk/**"
       - "packages/app/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
@@ -62,12 +61,13 @@ on:
           - production
 
 concurrency:
-  # Manual production deploys (workflow_dispatch) must run to completion: they
-  # are intentional and must NOT be cancelled by routine pushes. Give them a
-  # per-run-unique group + no cancel-in-progress. Push/PR runs keep the
-  # dedupe-to-latest behavior (a new push cancels the older in-progress run).
+  # Manual deploys (workflow_dispatch) and branch deploys must run to
+  # completion: cancelling an in-progress push deploy lets a busy develop/main
+  # stream starve Cloudflare publishes indefinitely. Push runs still share a
+  # ref-scoped group, so GitHub keeps at most the running deploy plus the newest
+  # pending commit. PR validation keeps the old dedupe-to-latest behavior.
   group: cloud-cf-deploy-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event_name }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -103,13 +103,13 @@ jobs:
         run: bun run build:core
 
       - name: Verify Worker
-        run: bun run --cwd packages/cloud-api typecheck
+        run: bun run --cwd packages/cloud/api typecheck
 
       - name: Run Worker e2e
-        run: bun run --cwd packages/cloud-api test:e2e
+        run: bun run --cwd packages/cloud/api test:e2e
 
       - name: Build
-        run: bun run --cwd packages/cloud-api build
+        run: bun run --cwd packages/cloud/api build
 
       - name: Resolve deploy environment
         id: env
@@ -152,7 +152,7 @@ jobs:
 
       - name: Publish Worker AI secrets
         if: steps.cf.outputs.configured == 'true'
-        working-directory: packages/cloud-api
+        working-directory: packages/cloud/api
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -202,19 +202,22 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true'
-        working-directory: packages/cloud-api
+        working-directory: packages/cloud/api
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler deploy ${{ steps.env.outputs.wrangler_args }}
 
   # ---------------------------------------------------------------------------
-  # Console frontend (Cloudflare Pages) — cloud-frontend at the elizacloud.ai apex.
-  # The lander + dashboard. Deploys to the `eliza-cloud` Pages project.
+  # Console frontend (Cloudflare Pages) — packages/app at the elizacloud.ai apex.
+  # The cloud console (lander + dashboard) origin, built from packages/app (which
+  # mounts the cloud UI via @elizaos/ui/cloud). Deploys to the `eliza-cloud`
+  # Pages project. The only difference from the `deploy-app` job below is the
+  # canonical-origin env baked into the bundle (apex vs the app.* subdomain).
   # ---------------------------------------------------------------------------
   deploy-console:
     name: Deploy Console (Pages · elizacloud.ai)
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -236,11 +239,12 @@ jobs:
       - name: Build linked elizaOS core workspace
         run: bun run build:core
 
-      # The lander + dashboard. The vite build is the gate (it resolves
-      # @elizaos/* to source); typecheck is enforced by the separate verify
-      # workflow, not here.
-      - name: Build console (cloud-frontend)
-        run: bun run --cwd packages/cloud-frontend build
+      # The cloud console origin, built from packages/app. The vite build is the
+      # gate (it resolves @elizaos/* to source); typecheck is enforced by the
+      # separate verify workflow, not here. Identical build to deploy-app — only
+      # the canonical-origin env below differs (apex vs app.* subdomain).
+      - name: Build console (packages/app)
+        run: bun run --cwd packages/app build:web
         env:
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
@@ -261,13 +265,17 @@ jobs:
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
-      # Gate: refuse to deploy a bundle where Rolldown folded the bn.js/crypto
-      # graph into an eager chunk — that ships the "Class constructor cannot be
-      # invoked without 'new'" Buffer.allocUnsafe crash that blanks every route.
-      # This regression has reached prod multiple times; fail the deploy instead.
+      # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
+      # eager chunk (the "Class constructor cannot be invoked without 'new'"
+      # Buffer.allocUnsafe module-init crash that blanks every route). This
+      # regression has reached prod multiple times; fail the deploy instead.
+      # HARD GATE: the chunking fold is fixed (#9150) — the `manualChunks` pin
+      # now lives under `rollupOptions.output` (the key Vite reads) and folds
+      # the crypto/wallet/solana graph into one lazy `vendor-crypto` chunk, so a
+      # clean build passes and any future eager-chunk regression fails the deploy.
       - name: Verify bundle chunk safety
-        working-directory: packages/cloud-frontend
-        run: node scripts/verify-chunk-safety.mjs
+        working-directory: packages/app
+        run: bun run verify:chunks
 
       - name: Resolve Pages branch
         id: pages
@@ -309,7 +317,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true'
-        working-directory: packages/cloud-frontend
+        working-directory: packages/app
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -375,7 +383,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -411,6 +419,18 @@ jobs:
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+
+      # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
+      # eager chunk (the "Class constructor cannot be invoked without 'new'"
+      # Buffer.allocUnsafe module-init crash that blanks every route). This
+      # regression has reached prod multiple times; fail the deploy instead.
+      # HARD GATE: the chunking fold is fixed (#9150) — the `manualChunks` pin
+      # now lives under `rollupOptions.output` (the key Vite reads) and folds
+      # the crypto/wallet/solana graph into one lazy `vendor-crypto` chunk, so a
+      # clean build passes and any future eager-chunk regression fails the deploy.
+      - name: Verify bundle chunk safety
+        working-directory: packages/app
+        run: bun run verify:chunks
 
       - name: Resolve Pages branch
         id: pages

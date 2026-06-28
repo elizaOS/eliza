@@ -1,4 +1,4 @@
-// Keep in sync with packages/robot/eliza_robot/profiles/schema.py
+// Keep in sync with packages/research/robot/eliza_robot/profiles/schema.py
 //
 // Zod schemas for RobotProfileDescriptor and its component types. Mirror of
 // the Pydantic RobotProfile schema; parses both bridge `profile.describe`

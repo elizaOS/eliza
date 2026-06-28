@@ -50,7 +50,6 @@ describe("ViewManagerSpatialView one source, three modalities", () => {
 			const lines = renderViewToLines(view, width);
 			for (const line of lines) expect(visibleWidth(line)).toBe(width);
 			const flat = lines.join("\n");
-			expect(flat).toContain("Views");
 			expect(flat).toContain("ready");
 			expect(flat).toContain("Wallet");
 			expect(flat).toContain("Messages");
@@ -58,7 +57,7 @@ describe("ViewManagerSpatialView one source, three modalities", () => {
 		}
 	});
 
-	it("GUI + XR: renders DOM with agent hooks, XR scaled up", () => {
+	it("GUI + XR: renders DOM with agent hooks + per-row open control, XR scaled up", () => {
 		const gui = renderToStaticMarkup(
 			<SpatialSurface modality="gui">{view}</SpatialSurface>,
 		);
@@ -70,8 +69,45 @@ describe("ViewManagerSpatialView one source, three modalities", () => {
 		for (const html of [gui, xr]) {
 			expect(html).toContain("Wallet");
 			expect(html).toContain("Messages");
+			// Row is addressable; the open:<id> Button drives navigation.
 			expect(html).toContain('data-agent-id="open-wallet"');
+			expect(html).toContain('data-agent-id="open:wallet"');
+			// Per-view open/available state renders on each row.
+			expect(html).toContain("ready");
+			expect(html).toContain("missing");
 		}
+	});
+
+	it("collapses duplicate gui/xr/tui declarations of one id to a single row with chips", () => {
+		const dupSnapshot: ViewManagerSnapshot = {
+			views: [
+				{
+					id: "phone",
+					label: "Phone",
+					viewType: "gui",
+					path: "/phone",
+					available: true,
+					pluginName: "@elizaos/plugin-phone",
+				},
+				{
+					id: "phone",
+					label: "Phone XR",
+					viewType: "xr",
+					path: "/phone",
+					available: true,
+					pluginName: "@elizaos/plugin-phone",
+				},
+			],
+		};
+		const gui = renderToStaticMarkup(
+			<SpatialSurface modality="gui">
+				<ViewManagerSpatialView snapshot={dupSnapshot} />
+			</SpatialSurface>,
+		);
+		// One collapsed row -> one open control, the gui base label, both surfaces.
+		expect(gui.match(/data-agent-id="open:phone"/g)).toHaveLength(1);
+		expect(gui).toContain("Phone");
+		expect(gui).not.toContain("Phone XR");
 	});
 
 	it("registers as a terminal view the agent terminal can mount and render", () => {

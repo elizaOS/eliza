@@ -187,9 +187,16 @@ const FFI_STUB_DIR = path.resolve(
 );
 const STUB_DYLIB = path.join(
 	FFI_STUB_DIR,
+	// Per-OS shared-library naming. Windows must load a PE `.dll` — attempting to
+	// `dlopen` the committed Linux `.so` fails with error 193 (ERROR_BAD_EXE_FORMAT)
+	// rather than skipping. No Windows stub is built/committed, so the `existsSync`
+	// guards below skip these integration tests on Windows (same as Linux before
+	// `make -C scripts/ffi-stub`), instead of hard-failing on a format mismatch.
 	process.platform === "darwin"
 		? "libelizainference_stub.dylib"
-		: "libelizainference_stub.so",
+		: process.platform === "win32"
+			? "libelizainference_stub.dll"
+			: "libelizainference_stub.so",
 );
 
 function bunOnPath(): string | null {
@@ -215,8 +222,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-	it("ELIZA_INFERENCE_ABI_VERSION is 12 (per-word ASR timestamps)", () => {
-		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(12);
+	it("ELIZA_INFERENCE_ABI_VERSION is 13 (streaming vision describe)", () => {
+		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(13);
 	});
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {

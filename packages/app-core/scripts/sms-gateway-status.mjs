@@ -157,7 +157,7 @@ function main() {
   }
   if (has(output, /BLOCKED routing-contracts/)) {
     console.log(
-      "[sms-gateway-status] blocked: build linked workspaces with bun run --cwd packages/cloud-shared build:linked-workspaces, then rerun sms-gateway:status",
+      "[sms-gateway-status] blocked: build linked workspaces with bun run --cwd packages/cloud/shared build:linked-workspaces, then rerun sms-gateway:status",
     );
   }
   if (has(output, /BLOCKED android-transport/)) {

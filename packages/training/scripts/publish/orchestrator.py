@@ -86,7 +86,7 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
     KernelVerification,
     LineageEntry,
     build_manifest,
-    canonical_qwen_source_repo_error,
+    canonical_source_repo_error,
     required_voice_artifacts_for_tier,
     text_context_for_manifest,
 )
@@ -155,6 +155,15 @@ REQUIRED_QUANTIZATION_SIDECARS: Mapping[str, tuple[str, ...]] = {
     "qjl": ("qjl_config.json",),
     "polarquant": ("polarquant_config.json",),
 }
+REQUIRED_QUANTIZATION_SIDECARS_BY_KERNEL: Mapping[str, tuple[str, ...]] = {
+    # turboquant_q4 is the Gemma weight-quant proof. The fused sidecar is still
+    # required because it carries the runtime kernel layout pins consumed by the
+    # manifest builder.
+    "turboquant_q4": ("turboquant.json", "fused_turboquant.json"),
+    "turbo3_tcq": ("turboquant.json", "fused_turboquant.json"),
+    "qjl": ("qjl_config.json",),
+    "polarquant": ("polarquant_config.json",),
+}
 REQUIRED_KERNEL_MANIFEST_KEYS: tuple[str, ...] = (
     "kernel_target",
     "block_layout_version",
@@ -188,13 +197,13 @@ REQUIRED_RELEASE_FINAL_FLAGS: tuple[str, ...] = (
 BASE_V1_RELEASE_FINAL_FLAGS: tuple[str, ...] = tuple(
     flag for flag in REQUIRED_RELEASE_FINAL_FLAGS if flag != "weights"
 )
-REQUIRED_GRAPH_CACHE_FAMILIES: tuple[str, ...] = (
-    "turbo3",
-    "turbo4",
-    "turbo3_tcq",
-    "qjl",
-    "polar",
-)
+REQUIRED_GRAPH_CACHE_FAMILIES_BY_KERNEL: Mapping[str, tuple[str, ...]] = {
+    "turbo3": ("turbo3",),
+    "turbo4": ("turbo4",),
+    "turbo3_tcq": ("turbo3_tcq",),
+    "qjl": ("qjl",),
+    "polarquant": ("polar",),
+}
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.
 TIER_TAGLINES: Mapping[str, str] = {
     "2b": "modern phones",
@@ -322,100 +331,135 @@ def _kernel_targets(kernel_manifest: Mapping[str, Any]) -> set[str]:
     return set()
 
 
-def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
+def _unique_preserving_order(values: Sequence[str]) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        out.append(value)
+        seen.add(value)
+    return tuple(out)
+
+
+def _required_quantization_sidecar_names_for_tier(tier: str) -> tuple[str, ...]:
+    names: list[str] = []
+    for kernel in REQUIRED_KERNELS_BY_TIER[tier]:
+        names.extend(REQUIRED_QUANTIZATION_SIDECARS_BY_KERNEL.get(kernel, ()))
+    return _unique_preserving_order(names)
+
+
+def _known_quantization_sidecar_names() -> tuple[str, ...]:
+    return _unique_preserving_order(
+        name
+        for names in REQUIRED_QUANTIZATION_SIDECARS.values()
+        for name in names
+    )
+
+
+def _required_graph_cache_families_for_tier(tier: str) -> tuple[str, ...]:
+    families: list[str] = []
+    for kernel in REQUIRED_KERNELS_BY_TIER[tier]:
+        families.extend(REQUIRED_GRAPH_CACHE_FAMILIES_BY_KERNEL.get(kernel, ()))
+    return _unique_preserving_order(families)
+
+
+def _validate_quantization_sidecars(bundle: Path, *, tier: str) -> list[Path]:
     found: list[Path] = []
-    for method, names in REQUIRED_QUANTIZATION_SIDECARS.items():
-        for name in names:
-            sidecar = _find_sidecar_by_name(bundle, name)
-            if sidecar is None:
+    required_names = set(_required_quantization_sidecar_names_for_tier(tier))
+    for name in _known_quantization_sidecar_names():
+        sidecar = _find_sidecar_by_name(bundle, name)
+        if sidecar is None:
+            if name in required_names:
+                method = REQUIRED_METHOD_BY_SIDECAR[name]
                 raise OrchestratorError(
                     "bundle layout: missing quantization sidecar for "
                     f"{method}; expected {name} in bundle root, text/, "
                     "mtp/, evals/, or quantization/",
                     EXIT_MISSING_FILE,
                 )
-            data = _read_sidecar(sidecar)
-            kernel_manifest = data.get("kernel_manifest")
-            if not isinstance(kernel_manifest, dict):
+            continue
+
+        data = _read_sidecar(sidecar)
+        kernel_manifest = data.get("kernel_manifest")
+        if not isinstance(kernel_manifest, dict):
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} missing kernel_manifest object",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        expected_method = REQUIRED_METHOD_BY_SIDECAR[name]
+        if data.get("method") != expected_method:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} method must be "
+                f"{expected_method!r}; got {data.get('method')!r}",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        missing_keys = [
+            key for key in REQUIRED_KERNEL_MANIFEST_KEYS if key not in kernel_manifest
+        ]
+        if missing_keys:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} has partial "
+                f"kernel_manifest; missing {missing_keys}",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        targets = _kernel_targets(kernel_manifest)
+        if not targets:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} kernel_manifest.kernel_target "
+                "must be a non-empty array",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        expected_targets = set(REQUIRED_KERNEL_TARGETS_BY_SIDECAR[name])
+        missing_targets = sorted(expected_targets - targets)
+        if missing_targets:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} targets {sorted(targets)} "
+                f"but must cover {sorted(expected_targets)}; missing "
+                f"{missing_targets}",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        for manifest_field in (
+            "block_layout_version",
+            "codebook_hash",
+            "per_block_tolerance",
+        ):
+            section = kernel_manifest.get(manifest_field)
+            if not isinstance(section, dict):
                 raise OrchestratorError(
-                    f"quantization sidecar {sidecar} missing kernel_manifest object",
+                    f"quantization sidecar {sidecar} kernel_manifest.{manifest_field} "
+                    "must be an object",
                     EXIT_BUNDLE_LAYOUT_FAIL,
                 )
-            expected_method = REQUIRED_METHOD_BY_SIDECAR[name]
-            if data.get("method") != expected_method:
+            missing_field_targets = sorted(expected_targets - set(section))
+            if missing_field_targets:
                 raise OrchestratorError(
-                    f"quantization sidecar {sidecar} method must be "
-                    f"{expected_method!r}; got {data.get('method')!r}",
+                    f"quantization sidecar {sidecar} kernel_manifest.{manifest_field} "
+                    f"missing target metadata for {missing_field_targets}",
                     EXIT_BUNDLE_LAYOUT_FAIL,
                 )
-            missing_keys = [
-                key
-                for key in REQUIRED_KERNEL_MANIFEST_KEYS
-                if key not in kernel_manifest
-            ]
-            if missing_keys:
-                raise OrchestratorError(
-                    f"quantization sidecar {sidecar} has partial "
-                    f"kernel_manifest; missing {missing_keys}",
-                    EXIT_BUNDLE_LAYOUT_FAIL,
-                )
-            targets = _kernel_targets(kernel_manifest)
-            if not targets:
-                raise OrchestratorError(
-                    f"quantization sidecar {sidecar} kernel_manifest.kernel_target "
-                    "must be a non-empty array",
-                    EXIT_BUNDLE_LAYOUT_FAIL,
-                )
-            expected_targets = set(REQUIRED_KERNEL_TARGETS_BY_SIDECAR[name])
-            missing_targets = sorted(expected_targets - targets)
-            if missing_targets:
-                raise OrchestratorError(
-                    f"quantization sidecar {sidecar} targets {sorted(targets)} "
-                    f"but must cover {sorted(expected_targets)}; missing "
-                    f"{missing_targets}",
-                    EXIT_BUNDLE_LAYOUT_FAIL,
-                )
-            for manifest_field in (
-                "block_layout_version",
-                "codebook_hash",
-                "per_block_tolerance",
-            ):
-                section = kernel_manifest.get(manifest_field)
-                if not isinstance(section, dict):
-                    raise OrchestratorError(
-                        f"quantization sidecar {sidecar} kernel_manifest.{manifest_field} "
-                        "must be an object",
-                        EXIT_BUNDLE_LAYOUT_FAIL,
-                    )
-                missing_field_targets = sorted(expected_targets - set(section))
-                if missing_field_targets:
-                    raise OrchestratorError(
-                        f"quantization sidecar {sidecar} kernel_manifest.{manifest_field} "
-                        f"missing target metadata for {missing_field_targets}",
-                        EXIT_BUNDLE_LAYOUT_FAIL,
-                    )
-                for target in expected_targets:
-                    value = section.get(target)
-                    if manifest_field == "per_block_tolerance":
-                        if (
-                            not isinstance(value, (int, float))
-                            or isinstance(value, bool)
-                            or value <= 0
-                        ):
-                            raise OrchestratorError(
-                                f"quantization sidecar {sidecar} "
-                                f"kernel_manifest.{manifest_field}.{target} must be a "
-                                "positive number",
-                                EXIT_BUNDLE_LAYOUT_FAIL,
-                            )
-                    elif not isinstance(value, str) or not value:
+            for target in expected_targets:
+                value = section.get(target)
+                if manifest_field == "per_block_tolerance":
+                    if (
+                        not isinstance(value, (int, float))
+                        or isinstance(value, bool)
+                        or value <= 0
+                    ):
                         raise OrchestratorError(
                             f"quantization sidecar {sidecar} "
                             f"kernel_manifest.{manifest_field}.{target} must be a "
-                            "non-empty string",
+                            "positive number",
                             EXIT_BUNDLE_LAYOUT_FAIL,
                         )
-            found.append(sidecar)
+                elif not isinstance(value, str) or not value:
+                    raise OrchestratorError(
+                        f"quantization sidecar {sidecar} "
+                        f"kernel_manifest.{manifest_field}.{target} must be a "
+                        "non-empty string",
+                        EXIT_BUNDLE_LAYOUT_FAIL,
+                    )
+        found.append(sidecar)
     return found
 
 
@@ -942,7 +986,10 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             EXIT_MISSING_FILE,
         )
 
-    out["quantization_sidecars"] = _validate_quantization_sidecars(bundle)
+    out["quantization_sidecars"] = _validate_quantization_sidecars(
+        bundle,
+        tier=ctx.tier,
+    )
 
     missing_platform_files = sorted(
         rel for rel in required_files_for_tier(ctx.tier) if not (bundle / rel).is_file()
@@ -1130,6 +1177,7 @@ def _require_existing_json_report(
     rel_path: str,
     require_runtime_ready: bool,
     model_sha256s: set[str] | None = None,
+    required_cache_families: Sequence[str] = (),
 ) -> Mapping[str, Any]:
     if not rel_path.startswith(("evals/", "evidence/")):
         raise OrchestratorError(
@@ -1180,6 +1228,7 @@ def _require_existing_json_report(
             rel_path,
             data,
             model_sha256s=model_sha256s,
+            required_cache_families=required_cache_families,
         )
     else:
         _validate_platform_report(rel_path, data, target=target)
@@ -1242,7 +1291,7 @@ def _validate_base_v1_provenance(
         if not isinstance(source.get("repo"), str) or not source.get("repo"):
             errors.append(f"sourceModels.{slot}.repo must be a non-empty string")
         elif (
-            repo_error := canonical_qwen_source_repo_error(
+            repo_error := canonical_source_repo_error(
                 slot, source["repo"], tier=tier
             )
         ) is not None:
@@ -1258,6 +1307,7 @@ def _validate_runtime_dispatch_report(
     data: Mapping[str, Any],
     *,
     model_sha256s: set[str] | None = None,
+    required_cache_families: Sequence[str] = (),
 ) -> None:
     errors: list[str] = []
     if data.get("runtimeReady") is not True:
@@ -1282,7 +1332,7 @@ def _validate_runtime_dispatch_report(
     ):
         errors.append("kernelSet must be an array of strings")
     else:
-        missing = sorted(set(REQUIRED_GRAPH_CACHE_FAMILIES) - set(kernel_set))
+        missing = sorted(set(required_cache_families) - set(kernel_set))
         if missing:
             errors.append(f"kernelSet missing {missing}")
     graph = data.get("graphDispatch")
@@ -1295,7 +1345,7 @@ def _validate_runtime_dispatch_report(
         ):
             errors.append("graphDispatch.cacheFamilies must be an array of strings")
         else:
-            missing = sorted(set(REQUIRED_GRAPH_CACHE_FAMILIES) - set(families))
+            missing = sorted(set(required_cache_families) - set(families))
             if missing:
                 errors.append(f"graphDispatch.cacheFamilies missing {missing}")
         command = graph.get("command")
@@ -1514,6 +1564,9 @@ def validate_release_evidence(
             rel_path=dispatch_path,
             require_runtime_ready=True,
             model_sha256s=text_model_sha256s,
+            required_cache_families=_required_graph_cache_families_for_tier(
+                ctx.tier,
+            ),
         )
 
     for target in REQUIRED_PLATFORM_EVIDENCE_BY_TIER[ctx.tier]:

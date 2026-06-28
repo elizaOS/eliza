@@ -52,34 +52,47 @@ const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	"eliza-1-4b": 2560,
 };
 
-// Same-file MTP draft window. Eliza-1 tiers at 2B and larger embed a single
-// NextN head in the text GGUF, so speculative decoding needs no separate
-// drafter download, just a draft window. The 0.8B low-memory tier is explicitly
-// non-MTP. Mirrors `runtime.mtp` in @elizaos/shared catalog.ts (draftMin 1 /
-// draftMax 2 is the throughput peak for a single head). Kept local so this
-// package does not take a dependency on @elizaos/shared.
-const SAME_FILE_MTP_DRAFT = { draftMin: 1, draftMax: 2 } as const;
+// Gemma 4 MTP uses a separate assistant/drafter GGUF. The current shared
+// catalog declares `mtp/drafter-<tier>.gguf` with a measured one-token draft
+// window; omitting a drafter path would select the retired same-file path.
+const GEMMA_MTP_DRAFT = { draftMin: 1, draftMax: 1 } as const;
 
 const ELIZA_1_LOAD_METADATA: Record<
 	string,
 	{
 		contextSize: number;
-		mtp?: { draftMin: number; draftMax: number };
+		mtp?: { drafterFile: string; draftMin: number; draftMax: number };
 	}
 > = {
 	// 2B is the smallest/entry tier (the small-phone default). Every shipped
-	// tier carries a single NextN head (per native/AGENTS.md §1 "MTP ships on
-	// 2B and larger tiers"), so same-file MTP is always available.
-	"eliza-1-2b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
-	"eliza-1-4b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
-	"eliza-1-9b": { contextSize: 65536, mtp: SAME_FILE_MTP_DRAFT },
-	"eliza-1-27b": { contextSize: 131072, mtp: SAME_FILE_MTP_DRAFT },
-	"eliza-1-27b-256k": { contextSize: 262144, mtp: SAME_FILE_MTP_DRAFT },
+	// tier can use a Gemma 4 assistant drafter when that companion GGUF is
+	// staged next to the bundle. The bridge never falls back to same-file MTP
+	// because that belonged to the retired pre-Gemma contract.
+	"eliza-1-2b": {
+		contextSize: 131072,
+		mtp: { drafterFile: "mtp/drafter-2b.gguf", ...GEMMA_MTP_DRAFT },
+	},
+	"eliza-1-4b": {
+		contextSize: 65536,
+		mtp: { drafterFile: "mtp/drafter-4b.gguf", ...GEMMA_MTP_DRAFT },
+	},
+	"eliza-1-9b": {
+		contextSize: 65536,
+		mtp: { drafterFile: "mtp/drafter-9b.gguf", ...GEMMA_MTP_DRAFT },
+	},
+	"eliza-1-27b": {
+		contextSize: 131072,
+		mtp: { drafterFile: "mtp/drafter-27b.gguf", ...GEMMA_MTP_DRAFT },
+	},
+	"eliza-1-27b-256k": {
+		contextSize: 262144,
+		mtp: { drafterFile: "mtp/drafter-27b-256k.gguf", ...GEMMA_MTP_DRAFT },
+	},
 };
 
-// Native bionic-host override for the same-file MTP draft window. When
-// ELIZA_BIONIC_MTP is set this forces speculative decoding on/off regardless
-// of the tier default above (the JNI keystone path reads the same env). "0"/
+// Native bionic-host override for Gemma separate-drafter MTP. When
+// ELIZA_BIONIC_MTP is set this forces speculative decoding on/off when a
+// drafter GGUF is available (the JNI keystone path reads the same env). "0"/
 // "false"/"no"/"off" → force OFF; "1"/"true"/"yes"/"on" → force ON; absent →
 // fall back to the tier default. Mirrors arm_bionic_text_cfg() in
 // elizavoice-jni.cpp.
@@ -820,6 +833,31 @@ function resolveFromManifest(slot: string): string | null {
 	return resolveManifestModel(slot)?.path ?? null;
 }
 
+function drafterCandidates(modelPath: string, drafterFile: string): string[] {
+	const modelDir = path.dirname(modelPath);
+	const basename = path.basename(drafterFile);
+	const candidates = new Set<string>();
+	if (path.basename(modelDir) === "text") {
+		const bundleRoot = path.dirname(modelDir);
+		candidates.add(path.join(bundleRoot, drafterFile));
+	}
+	candidates.add(path.join(modelDir, drafterFile));
+	candidates.add(path.join(modelDir, basename));
+	candidates.add(path.join(modelsDir(), drafterFile));
+	candidates.add(path.join(modelsDir(), basename));
+	return [...candidates];
+}
+
+function resolveGemmaDrafterPath(
+	modelPath: string,
+	drafterFile: string,
+): string | null {
+	for (const candidate of drafterCandidates(modelPath, drafterFile)) {
+		if (existsSync(candidate)) return candidate;
+	}
+	return null;
+}
+
 function resolveFirstGguf(): string | null {
 	const dir = modelsDir();
 	if (!existsSync(dir)) return null;
@@ -848,23 +886,25 @@ export function buildLoadArgsFromRegistryModel(model: {
 	const eliza1 = ELIZA_1_LOAD_METADATA[model.id];
 	if (eliza1) {
 		args.contextSize = eliza1.contextSize;
-		// Keep F16 KV by default for shipped qwen35 Eliza-1 tiers. Their
-		// head_dim=256 is incompatible with the current QJL1_256/fused QJL-TBQ
-		// path (head_dim=128). ELIZA_BIONIC_KV_QUANT=1 is an explicit lab
-		// override for compatible test bundles only.
+		// Keep stock KV by default for shipped Gemma 4 Eliza-1 tiers. Their
+		// MQA + windowed-SWA + shared-KV setup is already compact, while the
+		// QJL1_256/TBQ lab path is only for compatible non-shipping test bundles.
 		if (process.env.ELIZA_BIONIC_KV_QUANT?.trim() === "1") {
 			args.cacheTypeK = "qjl1_256";
 			args.cacheTypeV = "tbq3_0";
 		}
-		// Same-file MTP draft window for the tier's NextN head. Every shipped
-		// tier (2B and up) carries a NextN head. ELIZA_BIONIC_MTP forces it
-		// on/off regardless of the tier default.
+		// Gemma 4 MTP requires a separate assistant/drafter GGUF. Only pass MTP
+		// hints when that companion is physically present; otherwise generation
+		// remains non-speculative instead of accidentally selecting same-file MTP.
 		const mtpOverride = bionicMtpOverride();
 		const mtpEnabled = mtpOverride ?? eliza1.mtp !== undefined;
-		if (mtpEnabled) {
-			const draft = eliza1.mtp ?? SAME_FILE_MTP_DRAFT;
-			args.draftMin = draft.draftMin;
-			args.draftMax = draft.draftMax;
+		const drafterPath = eliza1.mtp
+			? resolveGemmaDrafterPath(model.path, eliza1.mtp.drafterFile)
+			: null;
+		if (mtpEnabled && eliza1.mtp && drafterPath) {
+			args.draftModelPath = drafterPath;
+			args.draftMin = eliza1.mtp.draftMin;
+			args.draftMax = eliza1.mtp.draftMax;
 			args.mobileSpeculative = true;
 		}
 	}
@@ -1094,7 +1134,8 @@ function resolveEmbeddingDimension(): number {
 // This path is only reached when `getFormattedChat` is unavailable or
 // the model has no baked-in Jinja template. Use model-agnostic plain-text
 // role labels (`role:\ncontent`) — hardcoding Llama-3 special tokens here
-// breaks Qwen3 / Eliza-1 GGUFs whose templates use <|im_start|>/<|im_end|>
+// breaks non-Llama GGUFs, including current Gemma 4 Eliza-1 bundles whose
+// templates may not use Llama-style turn markers.
 // (#7612). When params include a legacy `prompt`, pass it through unchanged.
 function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 	if (typeof params.prompt === "string" && params.prompt.length > 0) {
@@ -1172,34 +1213,76 @@ function deriveBionicBundleDir(modelPath: string): string {
 	return "";
 }
 
-/** Qwen/ChatML prompt — eliza-1's template — built without the device-bridge. */
-function buildChatMlPrompt(params: GenerateTextParams): string {
-	// If the caller already handed us a complete ChatML prompt — e.g. the Android
-	// direct-chat fast path, whose prompt ends with an `<|im_start|>assistant`
-	// turn pre-filled with an empty `<think></think>` block (Qwen3
-	// enable_thinking=false) — use it VERBATIM. Re-wrapping it in another
-	// <|im_start|>user/…/assistant turn double-nests the markers AND drops the
-	// pre-filled think block, so the model burns its first (capped) tokens on
-	// hidden `<think>…` reasoning and the short-reply fast path returns empty —
-	// which then falls through to the full response handler and pays a SECOND
-	// cold prefill. Pass it through so the fast path can actually answer.
-	if (
-		typeof params.prompt === "string" &&
-		params.prompt.includes("<|im_start|>assistant")
-	) {
-		return params.prompt;
+function roleForGemmaPrompt(role: string): "system" | "user" | "model" {
+	if (role === "assistant") return "model";
+	if (role === "system") return "system";
+	return "user";
+}
+
+function collectChatMlPromptMessages(
+	prompt: string,
+	system?: string,
+): { role: string; content: string }[] | null {
+	const headerPattern = /<\|im_start\|>(system|user|assistant)(?:\n|$)/g;
+	const headers: Array<{ index: number; role: string; bodyStart: number }> = [];
+	let match = headerPattern.exec(prompt);
+	while (match !== null) {
+		headers.push({
+			index: match.index,
+			role: match[1],
+			bodyStart: match.index + match[0].length,
+		});
+		match = headerPattern.exec(prompt);
 	}
-	const msgs = collectMessagesForNativeTemplate(params);
-	if (!msgs || msgs.length === 0) {
-		return `<|im_start|>user\n${flattenChatParamsForPrompt(params)}<|im_end|>\n<|im_start|>assistant\n`;
+	if (headers.length === 0) return null;
+
+	const result: { role: string; content: string }[] = [];
+	if (system?.trim() && headers[0]?.role !== "system") {
+		result.push({ role: "system", content: system.trim() });
 	}
+	for (let i = 0; i < headers.length; i += 1) {
+		const current = headers[i];
+		const next = headers[i + 1];
+		const rawContent = prompt
+			.slice(current.bodyStart, next ? next.index : prompt.length)
+			.replace(/<\|im_end\|>\s*$/g, "")
+			.trim();
+		if (!rawContent) continue;
+		result.push({ role: current.role, content: rawContent });
+	}
+	return result.length > 0 ? result : null;
+}
+
+function renderGemmaPromptMessages(
+	messages: Array<{ role: string; content: string }>,
+): string {
 	let out = "";
-	for (const m of msgs) {
-		const role =
-			m.role === "assistant" || m.role === "system" ? m.role : "user";
-		out += `<|im_start|>${role}\n${m.content}<|im_end|>\n`;
+	for (const m of messages) {
+		const content = m.content.trim();
+		if (!content) continue;
+		out += `<start_of_turn>${roleForGemmaPrompt(m.role)}\n${content}<end_of_turn>\n`;
 	}
-	return `${out}<|im_start|>assistant\n`;
+	return `${out}<start_of_turn>model\n`;
+}
+
+/** Gemma fallback prompt for bionic paths built without device-bridge templating. */
+export function buildGemmaBionicPrompt(params: GenerateTextParams): string {
+	const prompt = typeof params.prompt === "string" ? params.prompt : "";
+	const trimmedPrompt = prompt.trimEnd();
+	// If the caller already handed us a complete Gemma prompt, use it verbatim.
+	if (
+		trimmedPrompt.includes("<start_of_turn>") &&
+		trimmedPrompt.includes("<start_of_turn>model")
+	) {
+		return trimmedPrompt;
+	}
+	const msgs = prompt.includes("<|im_start|>")
+		? collectChatMlPromptMessages(prompt, params.system)
+		: collectMessagesForNativeTemplate(params);
+	if (!msgs || msgs.length === 0) {
+		return `<start_of_turn>user\n${flattenChatParamsForPrompt(params).trim()}<end_of_turn>\n<start_of_turn>model\n`;
+	}
+	return renderGemmaPromptMessages(msgs);
 }
 
 function bionicHostGenerate(
@@ -1364,7 +1447,8 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			const installed = resolveLocalLoadArgs(slot);
 			const baseRequest = {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
-				prompt: buildChatMlPrompt(params),
+				drafterPath: installed?.draftModelPath ?? "",
+				prompt: buildGemmaBionicPrompt(params),
 				maxTokens: params.maxTokens ?? 256,
 			};
 			// When the runtime wants streaming (chat SSE / voice), server-push the
@@ -1408,7 +1492,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		// Prefer the model's native chat template via the Capacitor
 		// `LlamaCpp.getFormattedChat()` round-trip. That path invokes
 		// `llama_chat_apply_template()` on the loaded GGUF, which:
-		//   * honours the model's own Jinja template (Llama-3, Qwen,
+		//   * honours the model's own Jinja template (Gemma, Llama-3,
 		//     Mistral, Phi, …) without per-model code on our side,
 		//   * sets up llama.cpp's internal antiprompt list against the
 		//     model's true stop tokens so generation terminates at the
@@ -1417,7 +1501,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		// Fall back to the plain-text flatten when the model has no chat
 		// template baked in (older or non-instruct GGUFs) or when the legacy
 		// `params.prompt` is already set. The fallback is model-agnostic —
-		// no Llama-3 special tokens — so it works across Qwen3, Eliza-1, etc.
+		// no Llama-3 special tokens — so it works across Gemma, Eliza-1, etc.
 		const messagesForTemplate = collectMessagesForNativeTemplate(params);
 		let nativePrompt: string | null = null;
 		if (messagesForTemplate) {
@@ -1593,6 +1677,111 @@ export async function attachMobileDeviceBridgeToServer(
 	await mobileDeviceBridge.attachToHttpServer(server);
 }
 
+/** Resolve a data:/http(s)/file image URL to base64 image bytes for the host. */
+async function imageUrlToBase64(url: string): Promise<string> {
+	if (url.startsWith("data:")) {
+		const comma = url.indexOf(",");
+		return comma >= 0 ? url.slice(comma + 1) : url;
+	}
+	const resp = await fetch(url);
+	if (!resp.ok) {
+		throw new Error(
+			`[mobile-device-bridge] IMAGE_DESCRIPTION failed to fetch ${url}: ${resp.status}`,
+		);
+	}
+	return Buffer.from(await resp.arrayBuffer()).toString("base64");
+}
+
+/**
+ * Collapse the degenerate repetition the small on-device vision model emits on
+ * sparse UI screenshots (e.g. "…text input field at the bottom." repeated for
+ * the whole token budget). We keep the first occurrence of each distinct
+ * sentence in order and cap the result, so the agent sees a bounded, low-token
+ * description — the EPIC #9105 "continuous low-token screen understanding"
+ * shape — without paying for a native generation-loop rebuild.
+ */
+function collapseDescriptionRepetition(text: string): string {
+	const sentences = text
+		.replace(/\s+/g, " ")
+		.split(/(?<=[.!?])\s+/)
+		.map((s) => s.trim())
+		.filter(Boolean);
+	const seen = new Set<string>();
+	const kept: string[] = [];
+	for (const sentence of sentences) {
+		const key = sentence
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, " ")
+			.trim();
+		if (key && seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		kept.push(sentence);
+		if (kept.length >= 6) {
+			break;
+		}
+	}
+	return kept.join(" ").trim() || text.trim();
+}
+
+/**
+ * On-device IMAGE_DESCRIPTION via the bionic host (op="image"). The EPIC #9105
+ * GET_SCREEN describe loop — and any agent vision-describe — routes here on a
+ * bionic-delegated phone: the image bytes go to the in-process GPU host's mmproj
+ * describe (`eliza_inference_describe_image`) and come back as text. Without
+ * this the mobile build registered NO on-device IMAGE_DESCRIPTION provider
+ * (PR #9219's handler lives in `ensureLocalInferenceHandler`, which the mobile
+ * agent bundle never reaches), so vision-describe silently fell through to the
+ * cloud handler. bundleDir is "" so the host uses its own default bundle (which
+ * owns `vision/<mmproj>.gguf` + the resident text model).
+ */
+function makeBionicImageDescriptionHandler() {
+	return async (
+		_runtime: IAgentRuntime,
+		params: string | { imageUrl?: string; prompt?: string },
+	) => {
+		const socketName = bionicSocketName();
+		if (!socketName) {
+			throw new Error(
+				"[mobile-device-bridge] IMAGE_DESCRIPTION requires the bionic host (ELIZA_BIONIC_HOST_DELEGATED=1)",
+			);
+		}
+		const url = typeof params === "string" ? params : params?.imageUrl;
+		if (typeof url !== "string" || url.length === 0) {
+			throw new Error(
+				"[mobile-device-bridge] IMAGE_DESCRIPTION requires a non-empty imageUrl",
+			);
+		}
+		const prompt =
+			typeof params === "object" && params ? params.prompt : undefined;
+		const imageBase64 = await imageUrlToBase64(url);
+		const res = await bionicHostGenerate(socketName, {
+			op: "image",
+			bundleDir: "",
+			imageBase64,
+			mmprojPath: "",
+			prompt: prompt ?? "",
+		});
+		if (!res.ok) {
+			throw new Error(
+				`[mobile-device-bridge] bionic image describe failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		const raw = (res.text ?? "").trim();
+		if (!raw) {
+			throw new Error(
+				"[mobile-device-bridge] bionic image describe returned empty text",
+			);
+		}
+		const description = collapseDescriptionRepetition(raw);
+		return {
+			title: description.split(/[.!?]/, 1)[0]?.trim() || "Image",
+			description,
+		};
+	};
+}
+
 export async function ensureMobileDeviceBridgeInferenceHandlers(
 	runtime: AgentRuntime,
 ): Promise<boolean> {
@@ -1654,6 +1843,23 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
 		PROVIDER,
 		LOCAL_INFERENCE_PRIORITY,
 	);
+	// On-device vision describe (EPIC #9105): route IMAGE_DESCRIPTION to the
+	// bionic host op="image" so the GET_SCREEN describe loop runs on the GPU
+	// instead of degrading to the cloud handler. Only meaningful when bionic
+	// delegation is active; the handler self-checks the socket and throws
+	// cleanly otherwise (so a non-bionic build just falls through to the next
+	// registered provider).
+	if (bionicSocketName()) {
+		runtimeWithRegistration.registerModel(
+			ModelType.IMAGE_DESCRIPTION,
+			makeBionicImageDescriptionHandler(),
+			PROVIDER,
+			LOCAL_INFERENCE_PRIORITY,
+		);
+		logger.info(
+			"[mobile-device-bridge] Registered bionic IMAGE_DESCRIPTION handler (op=image)",
+		);
+	}
 	const embeddingModelPath = resolveLocalModelPath("TEXT_EMBEDDING");
 	if (
 		!embeddingModelPath &&

@@ -61,6 +61,7 @@ const WARMING_STATUS = { state: "starting", canRespond: false };
 const appMock = vi.hoisted(() => ({
   value: {
     startupCoordinator: { phase: "ready" },
+    activeConversationId: null as string | null | undefined,
     conversationMessages: [] as Array<{
       id: string;
       role: string;
@@ -71,20 +72,60 @@ const appMock = vi.hoisted(() => ({
     chatFirstTokenReceived: false,
     sendChatText: vi.fn(),
     agentStatus: { state: "running", canRespond: true },
+    // Conversation-management callbacks the controller wraps in the loading
+    // flag (clear / swipe). Default to instant resolution; the watchdog tests
+    // override handleNewConversation with a controllable promise.
+    handleNewConversation: vi.fn(() => Promise.resolve()),
+    handleSelectConversation: vi.fn(() => Promise.resolve()),
+    conversations: [] as Array<{ id: string }>,
+    setTab: vi.fn(),
+    handleChatStop: vi.fn(),
+    uiLanguage: "en",
+    elizaCloudVoiceProxyAvailable: false,
   },
   // Live server-reported turn status (#8813), read via useChatTurnStatus().
   serverTurnStatus: null as { kind: string } | null,
 }));
 
+const composerMock = vi.hoisted(() => ({
+  value: {
+    chatInput: "",
+    chatSending: false,
+    chatPendingImages: [],
+    setChatInput: vi.fn(),
+    setChatPendingImages: vi.fn(),
+  },
+}));
+
+// Mirror the real store selector by applying the selector to the mock value
+// (useShellController reads via useAppSelectorShallow, #9141). Hoisted so both
+// the barrel and the deep app-store mock factories below can reference it.
+const { useAppSelectorShallowMock } = vi.hoisted(() => ({
+  useAppSelectorShallowMock: (
+    selector: (value: typeof appMock.value) => unknown,
+  ) => selector(appMock.value),
+}));
+
 vi.mock("../../../state", () => ({
   useApp: () => appMock.value,
+  useAppSelectorShallow: useAppSelectorShallowMock,
   useConversationMessages: () => ({
     conversationMessages: appMock.value.conversationMessages,
+    removeConversationMessage: vi.fn(),
   }),
+  useChatComposer: () => composerMock.value,
   useChatTurnStatus: () => ({
     serverTurnStatus: appMock.serverTurnStatus,
     setServerTurnStatus: vi.fn(),
   }),
+}));
+
+// useShellController imports useAppSelectorShallow from the deep app-store path
+// (not the ../../state barrel) so the selector hook stays decoupled from the
+// barrel's transitive shell imports (#9141/#9249). Mock that exact specifier or
+// the controller reads the real empty store instead of appMock.value.
+vi.mock("../../../state/app-store", () => ({
+  useAppSelectorShallow: useAppSelectorShallowMock,
 }));
 
 vi.mock("../../local-inference/useHomeModelStatus", () => ({
@@ -112,12 +153,18 @@ vi.mock("../useShellVoiceOutput", () => ({
 afterEach(() => {
   cleanup();
   appMock.value.startupCoordinator.phase = "ready";
+  appMock.value.activeConversationId = null;
   appMock.value.conversationMessages = [];
   appMock.value.chatSending = false;
+  composerMock.value.chatSending = false;
   appMock.value.chatFirstTokenReceived = false;
   appMock.serverTurnStatus = null;
   appMock.value.sendChatText.mockClear();
   appMock.value.agentStatus = { ...READY_STATUS };
+  appMock.value.handleNewConversation = vi.fn(() => Promise.resolve());
+  appMock.value.handleSelectConversation = vi.fn(() => Promise.resolve());
+  appMock.value.activeConversationId = null;
+  appMock.value.conversations = [];
 });
 
 describe("useShellController", () => {
@@ -162,6 +209,76 @@ describe("useShellController", () => {
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
     expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("hi");
   });
+
+  // Regression: a steady-state empty active conversation (greeting generation
+  // failed silently, or an existing zero-message conversation was selected) must
+  // NOT report conversationLoading=true. A message-count heuristic latched the
+  // flag true forever, pinning a perpetual loading spinner and letting the
+  // grabber/pill open the chat sheet into a never-resolving loader. Revealability
+  // must come from the explicit, sequence-guarded loading flag only.
+  it("does not report loading for a steady-state empty active conversation", () => {
+    appMock.value.activeConversationId = "conv-empty";
+    appMock.value.conversationMessages = [];
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.conversationLoading).toBe(false);
+  });
+});
+
+// ── Conversation loading watchdog + swipe (clear/new-chat robustness) ────────
+
+describe("useShellController — conversation loading watchdog", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("force-clears the loading spinner when the new-chat create hangs", async () => {
+    // A create that never resolves — the on-device agent queued behind a
+    // warming/loading model or an in-flight generation. The spinner must NOT
+    // hang there forever ("reset shows a spinner but never makes the new chat").
+    let resolveCreate: (() => void) | undefined;
+    appMock.value.handleNewConversation = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolveCreate = () => r();
+        }),
+    );
+
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.clearConversation());
+    expect(result.current.conversationLoading).toBe(true);
+
+    // Self-clears after the bounded watchdog window.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+
+    // A late create resolution neither errors nor re-sticks the spinner.
+    await act(async () => {
+      resolveCreate?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+  });
+
+  it("clears the loading flag as soon as a fast switch resolves (no needless wait)", async () => {
+    appMock.value.conversations = [{ id: "a" }, { id: "b" }];
+    appMock.value.activeConversationId = "a";
+
+    const { result } = renderHook(() => useShellController());
+
+    // Swipe to the next (older) conversation — the path that "thumbs back and
+    // forth". It resolves instantly, so the flag clears well before the cap and
+    // never strands the UI.
+    await act(async () => {
+      result.current.conversationNav.goNext();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(appMock.value.handleSelectConversation).toHaveBeenCalledWith("b");
+    expect(result.current.conversationLoading).toBe(false);
+  });
 });
 
 // ── Rich turn status derivation (#8813) ──────────────────────────────────────
@@ -173,21 +290,21 @@ describe("useShellController — turnStatus derivation", () => {
   });
 
   it("is thinking while sending before the first token", () => {
-    appMock.value.chatSending = true;
+    composerMock.value.chatSending = true;
     appMock.value.chatFirstTokenReceived = false;
     const { result } = renderHook(() => useShellController());
     expect(result.current.turnStatus).toEqual({ kind: "thinking" });
   });
 
   it("is streaming once the first token has arrived", () => {
-    appMock.value.chatSending = true;
+    composerMock.value.chatSending = true;
     appMock.value.chatFirstTokenReceived = true;
     const { result } = renderHook(() => useShellController());
     expect(result.current.turnStatus).toEqual({ kind: "streaming" });
   });
 
   it("prefers the live server status (e.g. running_action) while sending", () => {
-    appMock.value.chatSending = true;
+    composerMock.value.chatSending = true;
     appMock.value.chatFirstTokenReceived = false;
     appMock.serverTurnStatus = {
       kind: "running_action",
@@ -201,7 +318,7 @@ describe("useShellController — turnStatus derivation", () => {
   });
 
   it("surfaces a waking server status even before chatSending settles", () => {
-    appMock.value.chatSending = false;
+    composerMock.value.chatSending = false;
     appMock.serverTurnStatus = { kind: "waking" } as { kind: string };
     const { result } = renderHook(() => useShellController());
     expect(result.current.turnStatus).toEqual({ kind: "waking" });
@@ -209,11 +326,22 @@ describe("useShellController — turnStatus derivation", () => {
 
   it("speaking (voice output) wins over the server status", () => {
     voiceOutputMock.speaking = true;
-    appMock.value.chatSending = true;
+    composerMock.value.chatSending = true;
     appMock.serverTurnStatus = { kind: "streaming" } as { kind: string };
     const { result } = renderHook(() => useShellController());
     expect(result.current.turnStatus).toEqual({ kind: "speaking" });
     voiceOutputMock.speaking = false;
+  });
+
+  it("uses the live composer chatSending value instead of the stale AppContext copy", () => {
+    appMock.value.chatSending = false;
+    composerMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = false;
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.responding).toBe(true);
+    expect(result.current.turnStatus).toEqual({ kind: "thinking" });
   });
 });
 
@@ -366,6 +494,39 @@ describe("useShellController — voice capture routing", () => {
     await act(async () => result.current.toggleTranscriptionMode());
     expect(result.current.transcriptionMode).toBe(false);
     expect(result.current.handsFree).toBe(false);
+  });
+
+  it("wake word DURING transcription sends one inline reply and KEEPS recording (#9880)", async () => {
+    const { result } = renderHook(() => useShellController());
+    // Enter transcription mode directly (record-only; replies suppressed).
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(result.current.transcriptionMode).toBe(true);
+    // Let the transcription re-listen loop open a transcription-intent capture.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    appMock.value.sendChatText.mockClear();
+
+    // A plain utterance is recorded silently — NOT sent.
+    act(() => fireFinalTranscript("the meeting starts at noon"));
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+
+    // The wake phrase makes the agent reply inline (parallel chat) while
+    // transcription continues — sent as a VOICE_DM, WITHOUT transcriptionMode
+    // metadata (so the server reply gate doesn't suppress it).
+    act(() => fireFinalTranscript("hey eliza what is on my calendar"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
+      "what is on my calendar",
+    );
+    const meta = appMock.value.sendChatText.mock.calls[0]?.[1] as {
+      channelType?: string;
+      metadata?: { transcriptionMode?: boolean };
+    };
+    expect(meta?.channelType).toBe("VOICE_DM");
+    expect(meta?.metadata?.transcriptionMode).toBeUndefined();
+    // Crucially, transcription did NOT exit — recording continues.
+    expect(result.current.transcriptionMode).toBe(true);
   });
 
   it("does NOT respond to pure thinking-noise in always-on (shouldRespond gate)", async () => {

@@ -335,13 +335,6 @@ function createPackagedDesktopEnv(args: {
     ELIZA_DESKTOP_TEST_BRIDGE_TOKEN: args.bridgeToken,
     ELIZA_STATE_DIR: args.stateDir,
     ELECTROBUN_CONSOLE: "1",
-    // These regressions assert the main packaged shell. The native pill is
-    // covered by its own unit/UI tests and adds a second WebKitGTK toplevel on
-    // Linux headless runs, which can trip native Bun/WebKit startup crashes
-    // before the test bridge is reachable. Allow an explicit opt-in for future
-    // pill-specific packaged coverage.
-    ELIZA_DESKTOP_PILL:
-      args.baseEnv.ELIZA_TEST_PACKAGED_ENABLE_PILL === "1" ? "1" : "0",
   };
 
   if (process.platform === "win32") {

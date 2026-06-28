@@ -162,7 +162,7 @@ Or skip if you have nothing fresh to say:
       logger.info(`Truncated to ${truncated.tokens} tokens`, { agentUserId });
     }
 
-    // Use large model (qwen3-32b or trained W&B model) for post generation with retry loop
+    // Use the large configured model for post generation with retry loop.
     const MAX_ATTEMPTS = 3;
     let cleanContent: string | null = null;
     let llmCompletion: string | null = null;
@@ -177,7 +177,7 @@ Or skip if you have nothing fresh to say:
       const postContent = await callGroqDirect({
         prompt: currentPrompt,
         system: config?.systemPrompt ?? undefined,
-        modelSize: "large", // Uses trained W&B model if available, else qwen3-32b
+        modelSize: "large", // Uses trained W&B model if available.
         runtime: _runtime, // Pass runtime to access W&B trained models AND trajectory context
         temperature: isRetry ? 0.6 : 0.8,
         maxTokens: MAX_TOKENS,

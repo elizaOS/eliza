@@ -89,15 +89,15 @@ def test_eliza_1_umbrella_is_cc_by_nc_sa() -> None:
     assert "Attribution-NonCommercial-ShareAlike 4.0 International" in rendered
 
 
-def test_qwen3_asr_and_embedding_remain_upstream_exceptions() -> None:
+def test_qwen3_asr_and_embedding_are_retired_sources() -> None:
     asr = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.asr")
     embedding = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.embedding")
 
-    assert "Qwen3-ASR-0.6B-GGUF" in asr.upstream_repo
-    assert "Qwen3-ASR-1.7B-GGUF" in asr.upstream_repo
-    assert "Qwen3 upstream exception" in asr.render()
+    assert "Qwen3-ASR is retired" in asr.upstream_repo
+    assert "Qwen3-ASR GGUF artifacts are retired" in asr.render()
     assert "Qwen3.5-ASR" not in asr.render()
-    assert "Qwen3-Embedding-0.6B-GGUF" in embedding.upstream_repo
+    assert "Qwen3-Embedding is retired" in embedding.upstream_repo
+    assert "Qwen3-Embedding weights" in embedding.render()
     assert "Qwen3.5-Embedding" not in embedding.render()
 
 
@@ -115,7 +115,7 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
         f"text/eliza-1-{tier}-128k.gguf": b"\x00gguf\x00",
         "tts/omnivoice-base-Q4_K_M.gguf": b"omnivoice-model",
         "tts/omnivoice-tokenizer-Q4_K_M.gguf": b"omnivoice-tokenizer",
-        "tts/kokoro/model_q4.onnx": b"kokoro-model",
+        "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf": b"kokoro-model",
         "tts/kokoro/tokenizer.json": b"kokoro-tokenizer",
         "tts/kokoro/voices/af_bella.bin": b"kokoro-voice",
         "asr/eliza-1-asr.gguf": b"asr",
@@ -179,8 +179,8 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
                             "sha256": sha["tts/omnivoice-tokenizer-Q4_K_M.gguf"],
                         },
                         {
-                            "path": "tts/kokoro/model_q4.onnx",
-                            "sha256": sha["tts/kokoro/model_q4.onnx"],
+                            "path": "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+                            "sha256": sha["tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf"],
                         },
                         {
                             "path": "tts/kokoro/tokenizer.json",
@@ -363,7 +363,7 @@ def _mark_harness_evidence_passed(bundle: Path, tier: str) -> None:
 
 
 def test_finalize_sets_licenses_true_and_keeps_the_rest_honest(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "2b")
     evidence = finalize(bundle, tmp_path)
     assert evidence["final"]["licenses"] is True
     # Real upstream license text + sidecar were written.
@@ -409,14 +409,14 @@ def test_finalize_sets_licenses_true_and_keeps_the_rest_honest(tmp_path: Path) -
 
 
 def test_finalize_syncs_voice_lineage_to_staged_backends(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "2b")
 
     finalize(bundle, tmp_path)
 
     lineage = json.loads((bundle / "lineage.json").read_text())
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert "Serveurperso/OmniVoice-GGUF" in lineage["voice"]["base"]
-    assert "onnx-community/Kokoro-82M-v1.0-ONNX" in lineage["voice"]["base"]
+    assert "elizaos/eliza-1" in lineage["voice"]["base"]
     assert lineage["voice"]["backends"] == ["omnivoice", "kokoro"]
     assert manifest["lineage"]["voice"] == {
         "base": lineage["voice"]["base"],
@@ -425,7 +425,7 @@ def test_finalize_syncs_voice_lineage_to_staged_backends(tmp_path: Path) -> None
 
 
 def test_finalize_syncs_manifest_hashes_for_changed_payloads(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "2b")
     cache_path = bundle / "cache" / "voice-preset-default.bin"
     cache_path.write_bytes(b"new preset bytes")
 
@@ -446,7 +446,7 @@ def test_finalize_syncs_manifest_hashes_for_changed_payloads(tmp_path: Path) -> 
 
 
 def test_finalize_prunes_stale_optional_license_files(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "2b")
     manifest_path = bundle / "eliza-1.manifest.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["files"]["voice"] = [
@@ -476,7 +476,7 @@ def test_finalize_prunes_stale_optional_license_files(tmp_path: Path) -> None:
 
 
 def test_finalize_does_not_block_on_provisional_eval_rows(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "2b")
     aggregate_path = bundle / "evals" / "aggregate.json"
     aggregate = json.loads(aggregate_path.read_text())
     aggregate["gateReport"]["failures"] = ["text_eval: text_eval below threshold"]
@@ -511,9 +511,9 @@ def test_finalize_does_not_block_on_provisional_eval_rows(tmp_path: Path) -> Non
 
 
 def test_finalize_syncs_harness_evidence_and_release_checksum(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "2b")
     (bundle / "evals" / "android_e2e.json").write_text(
-        json.dumps({"status": "pass", "tier": "0_8b"}),
+        json.dumps({"status": "pass", "tier": "2b"}),
         encoding="utf-8",
     )
 
@@ -543,13 +543,13 @@ def test_finalize_syncs_harness_evidence_and_release_checksum(tmp_path: Path) ->
 def test_finalize_reports_manifest_errors_separately_from_hashes(
     tmp_path: Path,
 ) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "2b")
     manifest_path = bundle / "eliza-1.manifest.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["files"]["text"][0]["ctx"] = 32768
-    manifest["files"]["text"][0]["path"] = "text/eliza-1-0_8b-32k.gguf"
-    old_path = bundle / "text" / "eliza-1-0_8b-128k.gguf"
-    new_path = bundle / "text" / "eliza-1-0_8b-32k.gguf"
+    manifest["files"]["text"][0]["path"] = "text/eliza-1-2b-32k.gguf"
+    old_path = bundle / "text" / "eliza-1-2b-128k.gguf"
+    new_path = bundle / "text" / "eliza-1-2b-32k.gguf"
     old_path.rename(new_path)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -586,8 +586,8 @@ def test_finalize_requires_upload_evidence_for_sizefirst(tmp_path: Path) -> None
 
 
 def test_finalize_demotes_stale_dispatch_pass_to_pending(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
-    _mark_harness_evidence_passed(bundle, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "2b")
+    _mark_harness_evidence_passed(bundle, "2b")
     dispatch_path = bundle / "evals" / "metal_dispatch.json"
     dispatch = json.loads(dispatch_path.read_text())
     dispatch["modelSha256"] = "f" * 64
@@ -604,7 +604,7 @@ def test_finalize_demotes_stale_dispatch_pass_to_pending(tmp_path: Path) -> None
 def test_finalize_dev_workstation_partial_evidence_on_cpu_and_vulkan(
     tmp_path: Path,
 ) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "2b")
     finalize(bundle, tmp_path)
     cpu = json.loads(
         (bundle / "evidence" / "platform" / "linux-x64-cpu.json").read_text()

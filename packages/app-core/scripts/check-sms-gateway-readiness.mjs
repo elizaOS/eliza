@@ -5,7 +5,7 @@
  * This command is read-only: it does not send SMS and does not modify macOS,
  * Android, BlueBubbles, or cloud state.
  */
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,9 +13,21 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 const packagesRoot = path.resolve(scriptDir, "..", "..");
-const homepageScript = path.join(scriptDir, "check-homepage-public-readiness.mjs");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+const homepageScript = path.join(
+  scriptDir,
+  "check-homepage-public-readiness.mjs",
+);
 const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
-const cloudOnboardingScript = path.join(scriptDir, "verify-cloud-sms-onboarding-flow.mjs");
+const cloudOnboardingScript = path.join(
+  scriptDir,
+  "verify-cloud-sms-onboarding-flow.mjs",
+);
 const routingContractTests = [
   path.join(
     packagesRoot,
@@ -43,7 +55,8 @@ const routingContractTests = [
     "index.test.ts",
   ),
 ];
-const adbPath = "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
+const adbPath =
+  "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
 const bridgeUrl = "http://127.0.0.1:8795";
 const onboardingContinuationUrl =
   "https://elizaos-homepage.pages.dev/get-started/?onboardingSession=readiness-smoke";
@@ -71,7 +84,9 @@ function printSection(title, result) {
   if (result.stdout.trim()) console.log(result.stdout.trim());
   if (result.stderr.trim()) console.error(result.stderr.trim());
   if (result.status !== 0) {
-    console.error(`[sms-gateway-readiness] ${title} exited with ${result.status}`);
+    console.error(
+      `[sms-gateway-readiness] ${title} exited with ${result.status}`,
+    );
     blocked = true;
   }
 }
@@ -91,11 +106,14 @@ function usbInventoryFromIoreg() {
   const devices = [];
   for (const line of result.stdout.split(/\r?\n/)) {
     const nameMatch = line.match(/"USB Product Name"\s*=\s*"([^"]+)"/);
-    const registryMatch = line.match(/\+\-o\s+([^@<]+)@/);
+    const registryMatch = line.match(/\+-o\s+([^@<]+)@/);
     const name = nameMatch?.[1] ?? registryMatch?.[1];
     if (!name) continue;
     const trimmed = name.trim();
-    if (!trimmed || /Root Hub|XHCI|\bUSB\s*(?:3\.|2\.|1\.|Bus)\b/i.test(trimmed)) {
+    if (
+      !trimmed ||
+      /Root Hub|XHCI|\bUSB\s*(?:3\.|2\.|1\.|Bus)\b/i.test(trimmed)
+    ) {
       continue;
     }
     if (!devices.includes(trimmed)) devices.push(trimmed);
@@ -123,9 +141,7 @@ function printHostUsbState() {
   const fallback = usbInventoryFromIoreg();
   printSection("host usb", {
     status: fallback.status,
-    stdout: fallback.stdout.trim()
-      ? fallback.stdout.trim()
-      : fallback.stdout,
+    stdout: fallback.stdout.trim() ? fallback.stdout.trim() : fallback.stdout,
     stderr: fallback.stderr.trim(),
   });
 }
@@ -155,7 +171,10 @@ function fetchDeployedGetStartedChunk(body) {
     };
   }
 
-  const chunkUrl = new URL(`/assets/${getStartedMatch[1]}`, onboardingContinuationUrl).href;
+  const chunkUrl = new URL(
+    `/assets/${getStartedMatch[1]}`,
+    onboardingContinuationUrl,
+  ).href;
   const chunk = curlText(chunkUrl);
   if (chunk.status !== 0) return chunk;
 
@@ -186,16 +205,21 @@ function printOnboardingContinuationState() {
   const statusLine = lines.pop() ?? "";
   const body = lines.join("\n");
   const [httpCode, effectiveUrl] = statusLine.split(/\s+/, 2);
-  const hasAppShell = body.includes('id="root"') && body.includes("/assets/index-");
+  const hasAppShell =
+    body.includes('id="root"') && body.includes("/assets/index-");
   const chunk = hasAppShell
     ? fetchDeployedGetStartedChunk(body)
     : { status: 1, stdout: "", stderr: "app shell missing" };
   const hasOnboardingSession = chunk.stdout.includes("onboardingSession");
-  const hasOnboardingChatApi = chunk.stdout.includes("/api/eliza-app/first-run/chat");
+  const hasOnboardingChatApi = chunk.stdout.includes(
+    "/api/eliza-app/first-run/chat",
+  );
   const hasBlooioPlatform = chunk.stdout.includes("blooio");
   const passed =
     httpCode === "200" &&
-    effectiveUrl?.startsWith("https://elizaos-homepage.pages.dev/get-started/") &&
+    effectiveUrl?.startsWith(
+      "https://elizaos-homepage.pages.dev/get-started/",
+    ) &&
     hasAppShell &&
     chunk.status === 0 &&
     hasOnboardingSession &&
@@ -207,12 +231,18 @@ function printOnboardingContinuationState() {
       `url=${effectiveUrl || onboardingContinuationUrl} status=${httpCode || "unknown"} app-shell=${hasAppShell ? "yes" : "no"}` +
       ` chunk=${chunk.url ?? "unknown"} onboardingSession=${hasOnboardingSession ? "yes" : "no"}` +
       ` onboardingChatApi=${hasOnboardingChatApi ? "yes" : "no"} platform=blooio:${hasBlooioPlatform ? "yes" : "no"}`,
-    stderr: [result.stderr.trim(), chunk.stderr?.trim()].filter(Boolean).join("\n"),
+    stderr: [result.stderr.trim(), chunk.stderr?.trim()]
+      .filter(Boolean)
+      .join("\n"),
   });
 }
 
 function printAndroidState() {
-  printGateSection("android doctor", run("node", [installScript, "--doctor"]), /\bBLOCKED\b/);
+  printGateSection(
+    "android doctor",
+    run("node", [installScript, "--doctor"]),
+    /\bBLOCKED\b/,
+  );
   printSection("adb devices", run(adbPath, ["devices", "-l"]));
   printHostUsbState();
 }
@@ -240,6 +270,13 @@ function createRoutingContractCwd() {
   return cwd;
 }
 
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
+
 function printRoutingContractState() {
   const cwd = createRoutingContractCwd();
   try {
@@ -250,7 +287,7 @@ function printRoutingContractState() {
       );
     }
   } finally {
-    fs.rmSync(cwd, { recursive: true, force: true });
+    removePathRecursive(cwd);
   }
 }
 

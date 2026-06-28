@@ -116,7 +116,7 @@ export const GameModal: Story = {
 /**
  * #8930 — with a populated conversation, the RotateCcw reset button appears in
  * the composer header row (visible only when there are messages to clear).
- * Clicking it resets to a fresh greeted thread and surfaces the soft-undo toast.
+ * Clicking it resets to a fresh greeted thread without returning to the old one.
  */
 export const WithResetButton: Story = {
   decorators: [withMessages(SAMPLE_MESSAGES)],

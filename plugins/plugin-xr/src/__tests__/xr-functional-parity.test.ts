@@ -1,5 +1,5 @@
 /**
- * Feature-by-feature functional parity validation for all 24 XR views.
+ * Feature-by-feature functional parity validation for all 18 XR views.
  *
  * The architectural guarantee: every XR view uses the SAME bundlePath
  * ("dist/views/bundle.js") and the SAME componentExport as the GUI view.
@@ -101,14 +101,33 @@ function parseViewEntries(source: string): ViewEntry[] {
   for (const obj of objects) {
     const id = obj.match(/\bid:\s*"([^"]+)"/)?.[1];
     const label = obj.match(/label:\s*"([^"]+)"/)?.[1];
-    const viewType = (obj.match(/viewType:\s*"([^"]+)"/)?.[1] ?? "gui") as
-      | "gui"
-      | "tui"
-      | "xr";
     const bundlePath = obj.match(/bundlePath:\s*"([^"]+)"/)?.[1];
     const componentExport = obj.match(/componentExport:\s*"([^"]+)"/)?.[1];
-    if (id && label && bundlePath && componentExport) {
-      entries.push({ id, label, viewType, bundlePath, componentExport });
+    if (!id || !label || !bundlePath || !componentExport) continue;
+
+    // A single declaration may draw several surfaces via `modalities:
+    // ["gui","xr","tui"]` (the collapsed one-source pattern) instead of a
+    // duplicate declaration per `viewType`. Either form yields one ViewEntry
+    // per surface, sharing the same bundle + component — so the GUI=XR parity
+    // checks hold trivially for the collapsed form (it IS the same declaration).
+    const modalitiesMatch = obj.match(
+      /modalities:\s*([A-Za-z0-9_]+|\[[^\]]*\])/,
+    );
+    const modalityLiterals = modalitiesMatch
+      ? [...modalitiesMatch[1].matchAll(/"(gui|tui|xr)"/g)].map((m) => m[1])
+      : [];
+    const viewTypes =
+      modalityLiterals.length > 0
+        ? modalityLiterals
+        : [obj.match(/viewType:\s*"([^"]+)"/)?.[1] ?? "gui"];
+    for (const viewType of viewTypes) {
+      entries.push({
+        id,
+        label,
+        viewType: viewType as "gui" | "tui" | "xr",
+        bundlePath,
+        componentExport,
+      });
     }
   }
   return entries;
@@ -146,17 +165,17 @@ const PLUGIN_REGISTRY: Array<{
     ],
   },
   {
-    pluginDir: "plugins/plugin-hyperliquid-app",
-    manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
-    requiredTerms: ["HyperliquidAppView", "useState"],
+    pluginDir: "plugins/plugin-hyperliquid",
+    manifestPath: "plugins/plugin-hyperliquid/src/plugin.ts",
+    xrComponentSrc: "plugins/plugin-hyperliquid/src/HyperliquidView.tsx",
+    requiredTerms: ["HyperliquidView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-messages",
     manifestPath: "plugins/plugin-messages/src/plugin.ts",
     xrComponentSrc:
-      "plugins/plugin-messages/src/components/MessagesAppView.tsx",
-    requiredTerms: ["MessagesAppView", "Button"],
+      "plugins/plugin-messages/src/components/MessagesView.tsx",
+    requiredTerms: ["MessagesView", "useState"],
   },
   {
     pluginDir: "plugins/app-model-tester",
@@ -167,44 +186,32 @@ const PLUGIN_REGISTRY: Array<{
   {
     pluginDir: "plugins/plugin-phone",
     manifestPath: "plugins/plugin-phone/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-phone/src/components/PhoneAppView.tsx",
-    requiredTerms: ["PhoneAppView", "Phone", "Button", "Tabs"],
+    xrComponentSrc: "plugins/plugin-phone/src/components/PhoneView.tsx",
+    requiredTerms: ["PhoneView", "PhoneSpatialView", "Button"],
   },
   {
-    pluginDir: "plugins/plugin-polymarket-app",
-    manifestPath: "plugins/plugin-polymarket-app/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-polymarket-app/src/PolymarketAppView.tsx",
-    requiredTerms: ["PolymarketAppView", "useState"],
+    pluginDir: "plugins/plugin-polymarket",
+    manifestPath: "plugins/plugin-polymarket/src/plugin.ts",
+    xrComponentSrc: "plugins/plugin-polymarket/src/PolymarketView.tsx",
+    requiredTerms: ["PolymarketView", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-shopify-ui",
-    manifestPath: "plugins/plugin-shopify-ui/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-shopify-ui/src/ShopifyAppView.tsx",
-    requiredTerms: ["ShopifyAppView", "useState"],
-  },
-  {
-    pluginDir: "plugins/plugin-steward-app",
-    manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-steward-app/src/StewardView.tsx",
-    requiredTerms: ["StewardView", "useState"],
-  },
-  {
-    pluginDir: "plugins/plugin-vincent",
-    manifestPath: "plugins/plugin-vincent/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-vincent/src/VincentAppView.tsx",
-    requiredTerms: ["VincentAppView", "useState"],
+    pluginDir: "plugins/plugin-shopify",
+    manifestPath: "plugins/plugin-shopify/src/plugin.ts",
+    xrComponentSrc: "plugins/plugin-shopify/src/ShopifyView.tsx",
+    requiredTerms: ["ShopifyView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-wallet-ui",
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
     xrComponentSrc: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
-    requiredTerms: ["InventoryView", "Button", "useInventoryData"],
+    requiredTerms: ["InventoryView", "useInventoryData"],
   },
   {
     pluginDir: "plugins/plugin-feed",
     manifestPath: "plugins/plugin-feed/src/index.ts",
-    xrComponentSrc: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
-    requiredTerms: ["FeedOperatorSurface", "useState"],
+    xrComponentSrc: "plugins/plugin-feed/src/components/FeedView.tsx",
+    requiredTerms: ["FeedView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-app-control",
@@ -213,25 +220,11 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["ViewManagerView", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-clawville",
-    manifestPath: "plugins/plugin-clawville/src/index.ts",
-    xrComponentSrc:
-      "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
-    requiredTerms: ["ClawvilleOperatorSurface", "useState"],
-  },
-  {
-    pluginDir: "plugins/plugin-defense-of-the-agents",
-    manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-    xrComponentSrc:
-      "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
-    requiredTerms: ["DefenseAgentsOperatorSurface", "useState"],
-  },
-  {
     pluginDir: "plugins/plugin-screenshare",
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
     xrComponentSrc:
-      "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
-    requiredTerms: ["ScreenshareOperatorSurface", "useState"],
+      "plugins/plugin-screenshare/src/components/ScreenshareView.tsx",
+    requiredTerms: ["ScreenshareView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-task-coordinator",
@@ -279,18 +272,17 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
       "plugins/plugin-contacts/src/components/ContactsAppView.interact.ts",
     capabilities: ["terminal-list-contacts", "terminal-create-contact"],
   },
-  "plugins/plugin-hyperliquid-app": {
-    srcFile:
-      "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.interact.ts",
+  "plugins/plugin-hyperliquid": {
+    srcFile: "plugins/plugin-hyperliquid/src/hyperliquid-interact.ts",
     capabilities: ["terminal-hyperliquid-state"],
   },
   "plugins/plugin-messages": {
     srcFile:
-      "plugins/plugin-messages/src/components/MessagesAppView.interact.ts",
+      "plugins/plugin-messages/src/components/messages-interact.ts",
     capabilities: ["terminal-list-threads", "terminal-send-sms"],
   },
   "plugins/plugin-phone": {
-    srcFile: "plugins/plugin-phone/src/components/PhoneAppView.interact.ts",
+    srcFile: "plugins/plugin-phone/src/components/phone-interact.ts",
     capabilities: ["terminal-phone-state", "terminal-place-call"],
   },
   "plugins/plugin-wallet-ui": {
@@ -298,22 +290,11 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
     capabilities: ["terminal-wallet-state"],
   },
   "plugins/plugin-feed": {
-    srcFile: "plugins/plugin-feed/src/ui/FeedOperatorSurface.interact.ts",
+    srcFile: "plugins/plugin-feed/src/ui/feed-interact.ts",
     capabilities: ["get-state", "refresh-agent-status"],
   },
-  "plugins/plugin-clawville": {
-    srcFile:
-      "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.interact.ts",
-    capabilities: ["terminal-clawville-state", "terminal-clawville-command"],
-  },
-  "plugins/plugin-defense-of-the-agents": {
-    srcFile:
-      "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.interact.ts",
-    capabilities: ["terminal-defense-state", "terminal-defense-command"],
-  },
   "plugins/plugin-screenshare": {
-    srcFile:
-      "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.interact.ts",
+    srcFile: "plugins/plugin-screenshare/src/ui/screenshare-interact.ts",
     capabilities: ["terminal-screenshare-state", "terminal-screenshare-start"],
   },
   "plugins/plugin-task-coordinator": {
@@ -330,7 +311,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("XR feature-by-feature functional parity — all 20 views", () => {
+describe("XR feature-by-feature functional parity — all 18 views", () => {
   // A. Shared bundle architecture ─────────────────────────────────────────────
 
   it("A — every XR view uses the same bundlePath as the GUI view (shared bundle = shared features)", () => {
@@ -427,7 +408,7 @@ describe("XR feature-by-feature functional parity — all 20 views", () => {
     );
   });
 
-  it("B — all 24 XR component sources use React hooks (useState/useEffect) for stateful UIs", () => {
+  it("B — all 18 XR component sources use React hooks (useState/useEffect) for stateful UIs", () => {
     const noHooks: string[] = [];
     for (const { pluginDir, xrComponentSrc } of PLUGIN_REGISTRY) {
       if (!fileExists(xrComponentSrc)) continue;
@@ -500,11 +481,11 @@ describe("XR feature-by-feature functional parity — all 20 views", () => {
 
   // Summary assertion ─────────────────────────────────────────────────────────
 
-  it("summary — all 20 plugins have XR views that are functionally identical to their GUI views", () => {
+  it("summary — all 17 plugins have XR views that are functionally identical to their GUI views", () => {
     // This test is a logical consequence of tests A, B, C, D above all passing.
     // It explicitly states the guarantee: same bundle + same component = same features.
     const xrPluginCount = PLUGIN_REGISTRY.length;
-    expect(xrPluginCount).toBe(20);
+    expect(xrPluginCount).toBe(17);
 
     for (const { pluginDir, manifestPath } of PLUGIN_REGISTRY) {
       const source = readFile(manifestPath);

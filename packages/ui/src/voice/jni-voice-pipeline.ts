@@ -19,12 +19,14 @@
  *
  *   startAudioFrames() → `audioFrame` events → batch (~1 s) →
  *     ElizaVoice.pipelineProcess (native VAD + segmentation + speaker + diariz)
- *       → onTurn(JniAttributedTurn) → buildVoiceTurnSignal → VOICE_DM
+ *       → onCompletedPcmTurn? (ASR/text/TTS) + onTurn(JniAttributedTurn)
+ *       → buildVoiceTurnSignal → VOICE_DM
  *
  * It is native-only: construction throws off Android (no `ElizaVoice` plugin),
  * and the caller gates it behind `isPlatform("android") && isNativePlatform()`.
  */
 
+import { logger } from "@elizaos/logger";
 import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,
@@ -32,6 +34,7 @@ import type {
   TalkModePluginLike,
 } from "../bridge/native-plugins";
 import {
+  type BuildVoiceTurnSignalContext,
   buildVoiceTurnSignal,
   type VoiceTurnSignal,
   type VoiceTurnSpeakerAttribution,
@@ -67,6 +70,19 @@ export interface JniAttributedTurn {
 
 export type JniTurnListener = (turn: JniAttributedTurn) => void;
 
+export interface JniCompletedPcmTurn {
+  turnId: string;
+  audio: {
+    pcm: Float32Array;
+    sampleRate: number;
+  };
+  signal: VoiceTurnSignal;
+}
+
+export type JniCompletedPcmTurnListener = (
+  turn: JniCompletedPcmTurn,
+) => void | Promise<void>;
+
 /**
  * Resolves the enrolled-entity attribution for a turn's speaker embedding. The
  * caller injects this so the embedding→entity match (and the enrolled-speaker
@@ -78,13 +94,44 @@ export type SpeakerResolver = (
   embedding: Float32Array,
 ) => Promise<VoiceTurnSpeakerAttribution | null>;
 
+export type SelfVoiceSimilarityResolver = (
+  embedding: Float32Array,
+) => Promise<number | null | undefined> | number | null | undefined;
+
+export type SelfVoiceContextProvider =
+  | Pick<
+      BuildVoiceTurnSignalContext,
+      "agentSpeaking" | "recentAgentReply" | "replyAgeMs"
+    >
+  | (() =>
+      | Pick<
+          BuildVoiceTurnSignalContext,
+          "agentSpeaking" | "recentAgentReply" | "replyAgeMs"
+        >
+      | Promise<
+          Pick<
+            BuildVoiceTurnSignalContext,
+            "agentSpeaking" | "recentAgentReply" | "replyAgeMs"
+          >
+        >);
+
 export interface JniVoicePipelineOptions {
   /** Override the on-device bundle dir (else the app's eliza-1/bundle default). */
   bundleDir?: string;
   /** Resolves a turn's speaker embedding to an enrolled entity (optional). */
   resolveSpeaker?: SpeakerResolver;
+  /** Resolves a turn's embedding against the agent-TTS voice centroid. */
+  resolveSelfVoiceSimilarity?: SelfVoiceSimilarityResolver;
+  /** Supplies reply recency / playback state for acoustic self-voice gating. */
+  selfVoiceContext?: SelfVoiceContextProvider;
   /** Entity ids the agent answers to without a wake word (owner + enrolled). */
   knownSpeakerEntityIds?: readonly string[];
+  /**
+   * Optional handoff for the segmented PCM turn. When present, the native
+   * bridge requests the completed turn PCM and dispatches it here so the host
+   * can queue it through the fused ASR → text → TTS device voice path.
+   */
+  onCompletedPcmTurn?: JniCompletedPcmTurnListener;
 }
 
 function base64ToFloat32(b64: string): Float32Array {
@@ -135,7 +182,7 @@ function concatFramesToBase64(frames: TalkModeAudioFrameEvent[]): string {
   for (let i = 0; i < merged.length; i += CHUNK) {
     out += String.fromCharCode.apply(
       null,
-      merged.subarray(i, i + CHUNK) as unknown as number[],
+      Array.from(merged.subarray(i, i + CHUNK)),
     );
   }
   return btoa(out);
@@ -242,6 +289,7 @@ export class JniVoicePipeline {
     if (this.pipelineHandle) {
       const flushed = await this.voice.pipelineFlush({
         handle: this.pipelineHandle,
+        includePcm: Boolean(this.options.onCompletedPcmTurn),
       });
       await this.emitTurns(flushed.turns);
     }
@@ -281,6 +329,7 @@ export class JniVoicePipeline {
     const res = await this.voice.pipelineProcess({
       handle: this.pipelineHandle,
       pcm16,
+      includePcm: Boolean(this.options.onCompletedPcmTurn),
     });
     await this.emitTurns(res.turns);
   }
@@ -292,14 +341,24 @@ export class JniVoicePipeline {
         embedding.length > 0 && this.options.resolveSpeaker
           ? await this.options.resolveSpeaker(embedding)
           : null;
+      const selfVoiceSimilarity =
+        embedding.length > 0 && this.options.resolveSelfVoiceSimilarity
+          ? await this.options.resolveSelfVoiceSimilarity(embedding)
+          : undefined;
+      const selfVoiceContext = await this.resolveSelfVoiceContext();
       // Transcript is the ASR path's concern; the ambient gate's audio-frame
       // inputs (speaker identity, wake word) are what this pipeline supplies.
       // An empty transcript degrades to the conservative transcript gate, which
       // the diarization speaker gate then refines.
       const signal = buildVoiceTurnSignal("", {
+        ...selfVoiceContext,
         ...(attribution ? { speaker: attribution } : {}),
         ...(this.options.knownSpeakerEntityIds
           ? { knownSpeakerEntityIds: this.options.knownSpeakerEntityIds }
+          : {}),
+        ...(typeof selfVoiceSimilarity === "number" &&
+        Number.isFinite(selfVoiceSimilarity)
+          ? { selfVoiceSimilarity }
           : {}),
       });
       this.turnsObserved += 1;
@@ -313,7 +372,45 @@ export class JniVoicePipeline {
         diarizDistinctClasses: raw.diarizDistinctClasses,
         signal,
       };
+      this.dispatchCompletedPcmTurn(raw, signal);
       for (const listener of this.turnListeners) listener(turn);
     }
+  }
+
+  private async resolveSelfVoiceContext(): Promise<
+    Pick<
+      BuildVoiceTurnSignalContext,
+      "agentSpeaking" | "recentAgentReply" | "replyAgeMs"
+    >
+  > {
+    const provider = this.options.selfVoiceContext;
+    if (!provider) return {};
+    return typeof provider === "function" ? await provider() : provider;
+  }
+
+  private dispatchCompletedPcmTurn(
+    raw: ElizaVoiceTurn,
+    signal: VoiceTurnSignal,
+  ): void {
+    const listener = this.options.onCompletedPcmTurn;
+    if (!listener) return;
+    const pcm = base64ToFloat32(raw.pcm ?? "");
+    if (pcm.length === 0) return;
+    void Promise.resolve(
+      listener({
+        turnId: raw.turnId,
+        audio: {
+          pcm,
+          sampleRate:
+            typeof raw.pcmSampleRate === "number" ? raw.pcmSampleRate : 16_000,
+        },
+        signal,
+      }),
+    ).catch((error) => {
+      logger.warn(
+        { error, turnId: raw.turnId },
+        "[JniVoicePipeline] completed PCM turn listener failed",
+      );
+    });
   }
 }

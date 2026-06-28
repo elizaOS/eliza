@@ -31,6 +31,7 @@ export const financesPlugin: Plugin = {
         "Owner finance dashboard — balance, transactions, recurring charges",
       icon: "Wallet",
       path: "/finances",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "FinancesView",
       tags: ["finances", "owner", "money"],

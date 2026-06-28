@@ -7,7 +7,7 @@ import {
   createHandler,
   ensureWorkspace,
   loadConfig,
-} from "../../../cloud-services/coding-remote-runner/src/index.ts";
+} from "../../../cloud/services/coding-remote-runner/src/index.ts";
 import { E2BRemoteCapabilityRouterService } from "./e2b-capability-router.ts";
 
 const REMOTE_RUNNER_URL = "https://coding-remote-runner.test";

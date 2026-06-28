@@ -118,7 +118,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
               className={cn(
                 "flex min-w-0 items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors sm:text-sm",
                 activeTab === tab.value
-                  ? "bg-card text-txt shadow-sm"
+                  ? "bg-card text-txt"
                   : "text-muted hover:bg-surface hover:text-txt",
               )}
             >

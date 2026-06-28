@@ -93,8 +93,8 @@ describe("LocalInferenceService activation prewarm", () => {
 		const prewarm = vi
 			.spyOn(localInferenceEngine, "prewarmConversation")
 			.mockResolvedValue(true);
-		const voiceReady = vi
-			.spyOn(localInferenceEngine, "ensureActiveBundleVoiceReady")
+		const asrReady = vi
+			.spyOn(localInferenceEngine, "ensureActiveBundleAsrReady")
 			.mockResolvedValue({} as never);
 		const transcribe = vi
 			.spyOn(localInferenceEngine, "transcribePcm")
@@ -122,7 +122,7 @@ describe("LocalInferenceService activation prewarm", () => {
 				"stable-stage1-prefix",
 			);
 		});
-		expect(voiceReady).toHaveBeenCalledOnce();
+		expect(asrReady).toHaveBeenCalledOnce();
 		expect(transcribe).toHaveBeenCalledWith({
 			pcm: expect.any(Float32Array),
 			sampleRate: 16_000,

@@ -1,20 +1,22 @@
 name: cloud-e2e
 
-# Mock-stack E2E for cloud-api + cloud-frontend.
+# Mock-stack E2E for cloud-api + the cloud web app (packages/app).
 # Runs `bun run cloud:e2e`, which boots in-process PGlite + ioredis-mock + Hetzner mock +
-# control-plane mock and drives real cloud-api / cloud-frontend dev servers via Playwright.
+# control-plane mock and drives the real cloud-api / cloud web dev servers via Playwright.
 
 on:
   pull_request:
     branches: [develop, main]
     paths:
-      - "packages/cloud-api/**"
-      - "packages/cloud-frontend/**"
-      - "packages/cloud-shared/**"
-      - "packages/cloud-services/**"
-      - "packages/cloud-sdk/**"
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/services/**"
+      - "packages/cloud/sdk/**"
       - "packages/test/cloud-mocks/**"
       - "packages/test/cloud-e2e/**"
+      # The showcase loop (#9300) deploys + validates these example apps, so an
+      # edit to either app must trigger the showcase e2e + brand-lint lane.
+      - "packages/examples/cloud/**"
       - ".github/workflows/cloud-e2e.yml"
   workflow_dispatch:
 
@@ -46,7 +48,7 @@ jobs:
 
       - name: Build cloud-shared (drizzle artifacts)
         # cloud-e2e fixture re-runs migrations against PGlite so build is best-effort.
-        run: bun run --cwd packages/cloud-shared build || true
+        run: bun run --cwd packages/cloud/shared build || true
 
       - name: Run cloud E2E
         run: bun run cloud:e2e

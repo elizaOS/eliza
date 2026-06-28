@@ -23,12 +23,12 @@ on:
       - 'packages/scripts/cloud/admin/daemons/apps-provisioning-worker.ts'
       - 'packages/scripts/cloud/admin/daemons/provisioning-worker.ts'
       - 'packages/scripts/cloud/admin/eliza-apps-worker.service'
-      - 'packages/cloud-shared/src/lib/services/provisioning-jobs.ts'
-      - 'packages/cloud-shared/src/lib/services/provisioning-job-types.ts'
-      - 'packages/cloud-shared/src/lib/services/apps-deploy-backend.ts'
-      - 'packages/cloud-shared/src/lib/services/tenant-db/**'
-      - 'packages/cloud-shared/src/lib/services/app-deploy-runner.ts'
-      - 'packages/cloud-sdk/**'
+      - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
+      - 'packages/cloud/shared/src/lib/services/provisioning-job-types.ts'
+      - 'packages/cloud/shared/src/lib/services/apps-deploy-backend.ts'
+      - 'packages/cloud/shared/src/lib/services/tenant-db/**'
+      - 'packages/cloud/shared/src/lib/services/app-deploy-runner.ts'
+      - 'packages/cloud/sdk/**'
       - 'packages/core/**'
       - 'plugins/plugin-sql/**'
   workflow_dispatch:
@@ -197,7 +197,7 @@ jobs:
             # packages/scripts has no package.json, so bun's workspace graph
             # doesn't link @elizaos/cloud-shared for the daemon — create it.
             mkdir -p node_modules/@elizaos
-            ln -sfn ../../packages/cloud-shared node_modules/@elizaos/cloud-shared
+            ln -sfn ../../packages/cloud/shared node_modules/@elizaos/cloud-shared
 
             sudo install -m 0644 \
               packages/scripts/cloud/admin/eliza-apps-worker.service \

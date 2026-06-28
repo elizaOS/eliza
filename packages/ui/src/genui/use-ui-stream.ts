@@ -14,17 +14,14 @@ export function officialSpecToEliza(
   if (!spec) return null;
   const { root, elements, state } = spec;
   const components = Object.entries(elements).map(([id, el]) => {
-    const record = el as unknown as Record<string, unknown>;
-    const type = record.type as string | undefined;
-    const props = record.props as Record<string, unknown> | undefined;
-    const children = record.children as string[] | undefined;
+    const { type, props, children } = el;
     return {
       id,
       component: type ?? "unknown",
       ...(children ? { children } : {}),
-      ...(props ? (props as Record<string, unknown>) : {}),
+      ...(props ? props : {}),
     };
-  }) as unknown as ElizaGenUiSpec["components"];
+  }) as ElizaGenUiSpec["components"];
   return {
     version: "0.1",
     root: root ?? "",
@@ -46,7 +43,10 @@ export function useUIStream(
     onError,
     onComplete: onComplete
       ? (spec: OfficialSpec) => {
-          onComplete(spec as unknown as ElizaGenUiSpec | null);
+          // Convert the json-render OfficialSpec (keyed `elements`) into the
+          // ElizaGenUiSpec (array `components`) consumers are typed against —
+          // the same conversion applied to the returned `spec` below.
+          onComplete(officialSpecToEliza(spec));
         }
       : undefined,
   });

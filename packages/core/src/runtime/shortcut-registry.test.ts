@@ -98,7 +98,7 @@ describe("matchShortcut — explicit tier (always-on)", () => {
 	});
 });
 
-describe("matchShortcut — natural tier (flag-gated)", () => {
+describe("matchShortcut — natural tier (caller-enabled)", () => {
 	const defs = [openSettingsNatural];
 	it("does not fire when natural is disabled (default)", () => {
 		expect(matchShortcut(defs, "open settings")).toBeNull();

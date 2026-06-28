@@ -3,15 +3,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
-// Load cloud-shared/.env into process.env (without overriding an explicit shell
+// Load cloud/shared/.env into process.env (without overriding an explicit shell
 // value) so provider keys placed there — e.g. CEREBRAS_API_KEY for the real-LLM
 // marquee lane — are visible to BOTH this runner's test gates and the booted
 // worker (the cloud-api dev wrapper already syncs the same file into .dev.vars).
 // Mirrors how sync-api-dev-vars sources keys, so "put it in .env and go" works.
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 for (const envFile of [
-  path.resolve(configDir, "../../cloud-shared/.env"),
-  path.resolve(configDir, "../../cloud-shared/.env.local"),
+  path.resolve(configDir, "../../cloud/shared/.env"),
+  path.resolve(configDir, "../../cloud/shared/.env.local"),
 ]) {
   if (!fs.existsSync(envFile)) continue;
   for (const line of fs.readFileSync(envFile, "utf8").split("\n")) {
@@ -33,6 +33,12 @@ for (const envFile of [
 // `seedTestUser()` throws "ELIZA_KMS_BACKEND=steward requires steward.{...}".
 process.env.NODE_ENV ??= "test";
 process.env.ELIZA_KMS_BACKEND ??= "memory";
+const bunSourceCondition = "--conditions=eliza-source";
+if (!process.env.BUN_OPTIONS?.includes(bunSourceCondition)) {
+  process.env.BUN_OPTIONS = process.env.BUN_OPTIONS?.trim()
+    ? `${process.env.BUN_OPTIONS} ${bunSourceCondition}`
+    : bunSourceCondition;
+}
 
 const frontendUrl = process.env.E2E_FRONTEND_URL ?? "http://127.0.0.1:0";
 const recording = !!process.env.E2E_RECORD;

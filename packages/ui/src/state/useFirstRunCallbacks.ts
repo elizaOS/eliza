@@ -674,6 +674,10 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             name: firstRunName,
             bio: style?.bio ?? ["An autonomous AI agent."],
             ...(preferAgentId ? { preferAgentId } : {}),
+            // This legacy callback path does not own the shared→dedicated
+            // handoff supervisor; keep it dedicated-direct even when
+            // preferSharedCloudTier is default-on. The controller path owns the
+            // shared bridge and background handoff.
             onProgress: () => {},
           });
 

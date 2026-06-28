@@ -4046,6 +4046,53 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "CLIPBOARD",
+			description:
+				"CLIPBOARD action. Read or write the host system clipboard. actions: read, write. Linux requires wl-clipboard (Wayland) or xclip (X11); macOS uses pbcopy/pbpaste; Windows uses PowerShell Set-Clipboard / Get-Clipboard.",
+			parameters: [
+				{
+					name: "action",
+					description: "Clipboard operation verb.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["read", "write"],
+					},
+					descriptionCompressed: "Clipboard operation verb.",
+				},
+				{
+					name: "text",
+					description: "Payload for write.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Payload for write.",
+				},
+			],
+			descriptionCompressed: "CLIPBOARD action=read|write",
+			similes: [
+				"USE_CLIPBOARD",
+				"CLIPBOARD_ACTION",
+				"COPY",
+				"PASTE",
+				"READ_CLIPBOARD",
+				"WRITE_CLIPBOARD",
+			],
+			exampleCalls: [
+				{
+					user: "Use CLIPBOARD with the provided parameters.",
+					actions: ["CLIPBOARD"],
+					params: {
+						CLIPBOARD: {
+							action: "read",
+							text: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "COMMANDS_COMMAND",
 			description: "List all commands",
 			parameters: [],
@@ -4053,9 +4100,26 @@ export const allActionsSpec = {
 			descriptionCompressed: "List all commands",
 		},
 		{
+			name: "COMPACT_COMMAND",
+			description: "Compact conversation history",
+			parameters: [
+				{
+					name: "instructions",
+					description: "Optional compaction instructions",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional compaction instructions",
+				},
+			],
+			similes: ["/compact"],
+			descriptionCompressed: "Compact convo history",
+		},
+		{
 			name: "COMPUTER_USE",
 			description:
-				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
+				"computer_use: real desktop control on macOS/Linux/Windows. Screenshot before acting. Results include screenshot when available. Use for Finder/Desktop/native-app/browser/file/terminal on owner's machine. actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/middle_click/mouse_down/mouse_up/type/key/key_combo/key_down/key_up/scroll/drag/detect_elements/ocr/open/launch. mouse_down/up + key_down/up are press-and-hold primitives (button held until released); drag accepts a multi-point `path`; open(target) opens a file/URL/folder; launch(app,appArgs) starts an app and returns its pid. Also resolves pending computer-use approvals from approve:<id> / deny:<id> chat button callbacks.",
 			parameters: [
 				{
 					name: "action",
@@ -4070,13 +4134,23 @@ export const allActionsSpec = {
 							"double_click",
 							"right_click",
 							"mouse_move",
+							"middle_click",
+							"mouse_down",
+							"mouse_up",
 							"type",
 							"key",
 							"key_combo",
+							"key_down",
+							"key_up",
 							"scroll",
 							"drag",
+							"get_cursor_position",
 							"detect_elements",
 							"ocr",
+							"open",
+							"launch",
+							"kill_app",
+							"set_value",
 							"resolve_approval",
 						],
 					},
@@ -4105,6 +4179,23 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed: "Start [x, y] pixel coordinate for drag.",
+				},
+				{
+					name: "path",
+					description:
+						"Multi-point polyline [[x,y],...] (≥2 points) for drag; traces every waypoint with the button held. Supersedes startCoordinate/coordinate when present.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "array",
+							items: {
+								type: "number",
+							},
+						},
+					},
+					descriptionCompressed:
+						"Multi-point polyline [[x, y],. ] (≥2 points) for drag. traces every waypoint with the button held. Supersedes startCoordinate/coordinate when present.",
 				},
 				{
 					name: "text",
@@ -4141,13 +4232,15 @@ export const allActionsSpec = {
 				},
 				{
 					name: "button",
-					description: "Mouse button for click_with_modifiers.",
+					description:
+						"Mouse button for click_with_modifiers and mouse_down/mouse_up (default left).",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["left", "middle", "right"],
 					},
-					descriptionCompressed: "Mouse button for click_with_modifiers.",
+					descriptionCompressed:
+						"Mouse button for click_with_modifiers and mouse_down/mouse_up (default left).",
 				},
 				{
 					name: "clicks",
@@ -4235,9 +4328,45 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Optional reason for an approval decision.",
 				},
+				{
+					name: "target",
+					description:
+						"File path / URL / folder to open with the OS default handler (action=open).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"File path/URL/folder to open with the OS default handler (action=open).",
+				},
+				{
+					name: "app",
+					description:
+						"Application name or executable path to launch (action=launch).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"app name or executable path to launch (action=launch).",
+				},
+				{
+					name: "appArgs",
+					description:
+						"Arguments for the launched application (action=launch).",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"Arguments for the launched app (action=launch).",
+				},
 			],
 			descriptionCompressed:
-				"Desktop: screenshot|click|double|right|move|type|key|scroll|drag|detect|ocr|approve",
+				"Desktop: screenshot|click|double|right|middle|move|down|up|type|key|scroll|drag|detect|ocr|open|launch|approve",
 			similes: [
 				"USE_COMPUTER",
 				"CONTROL_COMPUTER",
@@ -4268,6 +4397,7 @@ export const allActionsSpec = {
 							action: "screenshot",
 							coordinate: "example",
 							startCoordinate: "example",
+							path: "example",
 							text: "example",
 							modifiers: "example",
 							key: "example",
@@ -4280,6 +4410,9 @@ export const allActionsSpec = {
 							approvalId: "example",
 							approved: false,
 							reason: "example",
+							target: "example",
+							app: "example",
+							appArgs: "example",
 						},
 					},
 				},
@@ -4327,6 +4460,30 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"When true, emit a chat callback after each dispatched step with compact progress and the step kind/rationale.",
 				},
+				{
+					name: "maxDurationMs",
+					description:
+						"Wall-clock budget in ms; the loop aborts before a step that exceeds it.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 0,
+					},
+					descriptionCompressed:
+						"Wall-clock budget in ms. the loop aborts before a step that exceeds it.",
+				},
+				{
+					name: "imageRetentionLast",
+					description:
+						"Keep only the N most-recent steps' screenshots in the bounded history (token control).",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+					},
+					descriptionCompressed:
+						"Keep only the N most-recent steps' screenshots in the bounded history (token control).",
+				},
 			],
 			descriptionCompressed:
 				"Autonomous desktop loop: scene -> Brain -> cascade -> click. Pass {goal, maxSteps?, streamProgress?}.",
@@ -4340,6 +4497,8 @@ export const allActionsSpec = {
 							goal: "example",
 							maxSteps: 5,
 							streamProgress: false,
+							maxDurationMs: 1,
+							imageRetentionLast: 1,
 						},
 					},
 				},
@@ -4701,6 +4860,23 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "ELEVATED_COMMAND",
+			description: "Set elevated permission mode",
+			parameters: [
+				{
+					name: "level",
+					description: "off, on, ask, full",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "off, on, ask, full",
+				},
+			],
+			similes: ["/elevated", "/elev"],
+			descriptionCompressed: "Set elevated permission mode",
 		},
 		{
 			name: "ELIZAOS",
@@ -5783,61 +5959,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "MC",
-			description:
-				"Drive a Minecraft bot. Choose one action: connect (host?,port?,username?,auth?,version?), disconnect, goto (x,y,z), stop, look (yaw,pitch), control (control,state,durationMs?), waypoint_goto (name), dig (x,y,z), place (x,y,z,face), chat (message), attack (entityId), waypoint_set (name), waypoint_delete (name).",
-			parameters: [
-				{
-					name: "action",
-					description: "Operation to run.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: [
-							"connect",
-							"disconnect",
-							"goto",
-							"stop",
-							"look",
-							"control",
-							"waypoint_goto",
-							"dig",
-							"place",
-							"chat",
-							"attack",
-							"waypoint_set",
-							"waypoint_delete",
-						],
-					},
-					descriptionCompressed: "Action.",
-				},
-				{
-					name: "params",
-					description:
-						"Optional JSON object containing the fields required by the chosen op.",
-					required: false,
-					schema: {
-						type: "object",
-					},
-					descriptionCompressed: "Op fields.",
-				},
-			],
-			descriptionCompressed:
-				"minecraft ops: connect|disconnect|goto|stop|look|control|waypoint_*|dig|place|chat|attack",
-			exampleCalls: [
-				{
-					user: "Use MC with the provided parameters.",
-					actions: ["MC"],
-					params: {
-						MC: {
-							action: "connect",
-							params: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "MCP",
 			description:
 				"Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource. Cloud runtimes also accept action=search_actions and action=list_connections.",
@@ -5991,6 +6112,23 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "MODEL_COMMAND",
+			description: "Set or show current model",
+			parameters: [
+				{
+					name: "model",
+					description: "provider/model or alias",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "provider/model or alias",
+				},
+			],
+			similes: ["/model", "/m"],
+			descriptionCompressed: "Set or show current model",
 		},
 		{
 			name: "MODELS_COMMAND",
@@ -6252,91 +6390,11 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "MYSTICISM_READING",
-			description:
-				"Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
-			parameters: [
-				{
-					name: "type",
-					description: "Reading type: tarot, astrology, or iching.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: ["tarot", "astrology", "iching"],
-					},
-					descriptionCompressed: "Reading type: tarot, astrology, or iching.",
-				},
-				{
-					name: "action",
-					description: "Action: start, followup, or deepen.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: ["start", "followup", "deepen"],
-					},
-					descriptionCompressed: "Action: start, followup, or deepen.",
-				},
-				{
-					name: "question",
-					description: "Optional question or focus for the reading.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional question or focus for the reading.",
-				},
-				{
-					name: "context",
-					description:
-						"Optional additional context (e.g., birth data hint for astrology).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional additional context (e. g. , birth data hint for astrology).",
-				},
-			],
-			descriptionCompressed:
-				"Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
-			similes: [
-				"TAROT_READING",
-				"READ_TAROT",
-				"DRAW_CARDS",
-				"TAROT_SPREAD",
-				"CARD_READING",
-				"ICHING_READING",
-				"CAST_HEXAGRAM",
-				"CONSULT_ICHING",
-				"THROW_COINS",
-				"ORACLE_READING",
-				"ASTROLOGY_READING",
-				"BIRTH_CHART",
-				"NATAL_CHART",
-				"HOROSCOPE_READING",
-				"ZODIAC_READING",
-				"READING_FOLLOWUP",
-				"CONTINUE_READING",
-				"NEXT_CARD",
-				"PROCEED_READING",
-				"DEEPEN_READING",
-				"EXPLORE_DEEPER",
-				"ELABORATE_READING",
-			],
-			exampleCalls: [
-				{
-					user: "Use MYSTICISM_READING with the provided parameters.",
-					actions: ["MYSTICISM_READING"],
-					params: {
-						MYSTICISM_READING: {
-							type: "tarot",
-							action: "start",
-							question: "example",
-							context: "example",
-						},
-					},
-				},
-			],
+			name: "NEW_COMMAND",
+			description: "Start a new conversation",
+			parameters: [],
+			similes: ["/new"],
+			descriptionCompressed: "Start a new convo",
 		},
 		{
 			name: "OSWORLD",
@@ -6792,80 +6850,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "PAYMENT",
-			description:
-				"Payment router for the active mysticism reading session. Set action to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
-			parameters: [
-				{
-					name: "action",
-					description: "Operation: check or request.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: ["check", "request"],
-					},
-					descriptionCompressed: "Operation: check or request.",
-				},
-				{
-					name: "amount",
-					description:
-						"For request — payment amount as a string (e.g. '3.00').",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"For request - payment amount as a string (e. g. '3. 00').",
-				},
-				{
-					name: "entityId",
-					description:
-						"For check — optional entity id whose active reading payment should be checked. Defaults to the current sender.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"For check - optional entity id whose active reading payment should be checked. Defaults to the current sender.",
-				},
-				{
-					name: "roomId",
-					description:
-						"For check — optional room id whose active reading payment should be checked. Defaults to the current room.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"For check - optional room id whose active reading payment should be checked. Defaults to the current room.",
-				},
-			],
-			descriptionCompressed: "Mysticism payment ops: check, request.",
-			similes: [
-				"REQUEST_PAYMENT",
-				"CHARGE_USER",
-				"ASK_FOR_PAYMENT",
-				"SET_PRICE",
-				"CHECK_PAYMENT",
-				"VERIFY_PAYMENT",
-				"PAYMENT_STATUS",
-			],
-			exampleCalls: [
-				{
-					user: "Use PAYMENT with the provided parameters.",
-					actions: ["PAYMENT"],
-					params: {
-						PAYMENT: {
-							action: "check",
-							amount: "example",
-							entityId: "example",
-							roomId: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "PERPETUAL_MARKET",
 			description:
 				"Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this read-only app.",
@@ -7135,6 +7119,48 @@ export const allActionsSpec = {
 				"CLAUDE_MAX_PROXY_STATUS",
 				"CHECK_PROXY",
 			],
+		},
+		{
+			name: "QUEUE_COMMAND",
+			description: "Set queue mode",
+			parameters: [
+				{
+					name: "mode",
+					description: "steer, followup, collect, interrupt, or options",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"steer, followup, collect, interrupt, or options",
+				},
+			],
+			similes: ["/queue", "/q"],
+			descriptionCompressed: "Set queue mode",
+		},
+		{
+			name: "REASONING_COMMAND",
+			description: "Set reasoning visibility",
+			parameters: [
+				{
+					name: "level",
+					description: "off, on, stream",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "off, on, stream",
+				},
+			],
+			similes: ["/reasoning", "/reason"],
+			descriptionCompressed: "Set reasoning visibility",
+		},
+		{
+			name: "RESET_COMMAND",
+			description: "Reset session state",
+			parameters: [],
+			similes: ["/reset"],
+			descriptionCompressed: "Reset session state",
 		},
 		{
 			name: "RESOLVE_REQUEST",
@@ -8756,6 +8782,23 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "THINK_COMMAND",
+			description: "Set thinking level",
+			parameters: [
+				{
+					name: "level",
+					description: "off, minimal, low, medium, high, xhigh",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "off, minimal, low, medium, high, xhigh",
+				},
+			],
+			similes: ["/think", "/thinking", "/t"],
+			descriptionCompressed: "Set thinking level",
+		},
+		{
 			name: "TODO",
 			description:
 				"Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
@@ -8915,6 +8958,23 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "TTS_COMMAND",
+			description: "Text-to-speech settings",
+			parameters: [
+				{
+					name: "action",
+					description: "on, off, status, provider, limit, audio",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "on, off, status, provider, limit, audio",
+				},
+			],
+			similes: ["/tts", "/voice"],
+			descriptionCompressed: "Text-to-speech settings",
 		},
 		{
 			name: "TUNNEL",
@@ -9168,6 +9228,23 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "VERBOSE_COMMAND",
+			description: "Set verbose output level",
+			parameters: [
+				{
+					name: "level",
+					description: "off, on, full",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "off, on, full",
+				},
+			],
+			similes: ["/verbose", "/v"],
+			descriptionCompressed: "Set verbose output level",
 		},
 		{
 			name: "VISUALWEBBENCH_TASK",
@@ -9473,6 +9550,11 @@ export const allActionsSpec = {
 							"maximize",
 							"restore",
 							"close",
+							"get_current_window_id",
+							"get_application_windows",
+							"set_bounds",
+							"get_window_size",
+							"get_window_position",
 						],
 					},
 					descriptionCompressed: "Window operation verb.",
@@ -9507,21 +9589,43 @@ export const allActionsSpec = {
 				},
 				{
 					name: "x",
-					description: "Target X coordinate for window move.",
+					description: "Target X coordinate for window move / set_bounds.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "Target X coordinate for window move.",
+					descriptionCompressed:
+						"Target X coordinate for window move/set_bounds.",
 				},
 				{
 					name: "y",
-					description: "Target Y coordinate for window move.",
+					description: "Target Y coordinate for window move / set_bounds.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "Target Y coordinate for window move.",
+					descriptionCompressed:
+						"Target Y coordinate for window move/set_bounds.",
+				},
+				{
+					name: "width",
+					description: "Window width for set_bounds.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+					},
+					descriptionCompressed: "Window width for set_bounds.",
+				},
+				{
+					name: "height",
+					description: "Window height for set_bounds.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+					},
+					descriptionCompressed: "Window height for set_bounds.",
 				},
 			],
 			descriptionCompressed:
@@ -9539,6 +9643,8 @@ export const allActionsSpec = {
 							arrangement: "example",
 							x: 1,
 							y: 1,
+							width: 1,
+							height: 1,
 						},
 					},
 				},

@@ -40,7 +40,6 @@ function buildFeedOAuthRedirectUri(
  * - Email magic link (no password)
  * - Passkey (WebAuthn)
  * - OAuth: Google, Discord, Twitter/X
- * - Farcaster SIWF
  */
 
 type Step = "idle" | "email-sent" | "loading" | "error";
@@ -53,10 +52,14 @@ interface LoginModalProps {
 }
 
 function getStewardApiUrl(): string {
-  if (typeof window === "undefined") {
-    return process.env.NEXT_PUBLIC_STEWARD_API_URL ?? "http://localhost:3200";
+  const envUrl = process.env.NEXT_PUBLIC_STEWARD_API_URL;
+  if (envUrl) return envUrl;
+  // No build-time env: use the canonical Steward host in production,
+  // the local docker Steward (:3200) during development.
+  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
+    return "https://eliza.steward.fi";
   }
-  return process.env.NEXT_PUBLIC_STEWARD_API_URL ?? "http://localhost:3200";
+  return "http://localhost:3200";
 }
 
 const STEWARD_TENANT_ID = process.env.NEXT_PUBLIC_STEWARD_TENANT_ID ?? "feed";
@@ -246,13 +249,6 @@ export function LoginModal({
                 </Button>
               </div>
 
-              {/* Farcaster */}
-              <FarcasterSignInSection
-                onLoginSuccess={onLoginSuccess}
-                onClose={onClose}
-                loading={step === "loading"}
-              />
-
               <div className="relative flex items-center gap-3">
                 <div className="flex-1 border-t" />
                 <span className="text-muted-foreground text-xs">
@@ -314,85 +310,6 @@ export function LoginModal({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ── Farcaster section ─────────────────────────────────────────────────────────
-
-function FarcasterSignInSection({
-  onLoginSuccess,
-  onClose,
-  loading,
-}: {
-  onLoginSuccess: (token: string) => Promise<void>;
-  onClose: () => void;
-  loading: boolean;
-}) {
-  const [error, setError] = useState("");
-  const [SignInButton, setSignInButton] = useState<React.ComponentType<{
-    onSuccess?: (res: unknown) => void;
-    onError?: (err: unknown) => void;
-  }> | null>(null);
-
-  useEffect(() => {
-    import("@farcaster/auth-kit")
-      .then((mod) => setSignInButton(() => mod.SignInButton))
-      .catch(() => {
-        // auth-kit unavailable — omit the button silently
-      });
-  }, []);
-
-  const handleSuccess = useCallback(
-    async (res: { message?: string; signature?: string; nonce?: string }) => {
-      setError("");
-      try {
-        const r = await fetch("/api/auth/farcaster", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            message: res.message,
-            signature: res.signature,
-            nonce: res.nonce,
-          }),
-        });
-        const data = (await r.json()) as {
-          ok: boolean;
-          token?: string;
-          error?: string;
-        };
-        if (!data.ok || !data.token)
-          throw new Error(data.error ?? "Farcaster auth failed");
-        await onLoginSuccess(data.token);
-        onClose();
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Farcaster sign-in failed";
-        logger.warn("Farcaster SIWF failed", { error: msg }, "LoginModal");
-        setError(msg);
-      }
-    },
-    [onLoginSuccess, onClose],
-  );
-
-  if (!SignInButton) return null;
-
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <div className={loading ? "pointer-events-none opacity-50" : ""}>
-        <SignInButton
-          onSuccess={(res) =>
-            void handleSuccess(res as Parameters<typeof handleSuccess>[0])
-          }
-          onError={(err) => {
-            const msg =
-              err instanceof Error ? err.message : "Farcaster sign-in error";
-            setError(msg);
-          }}
-        />
-      </div>
-      {error && <p className="text-destructive text-xs">{error}</p>}
-    </div>
   );
 }
 

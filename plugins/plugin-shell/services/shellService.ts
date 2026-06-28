@@ -91,7 +91,7 @@ export class ShellService extends Service {
   private maxHistoryPerConversation = 100;
   private scopeKey?: string;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
     this.shellConfig = loadShellConfig();
     this.currentDirectory = this.shellConfig.allowedDirectory;

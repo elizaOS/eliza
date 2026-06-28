@@ -167,6 +167,78 @@ describe("MemoryArbiter — fit-to-budget LRU eviction", () => {
 		).toBe(true);
 	});
 
+	it("counts the engine's external footprint so evictToFit fires for the dominant roles (#8809 AC#1)", async () => {
+		const registry = new SharedResourceRegistry();
+		const events: ArbiterEvent[] = [];
+		// Budget 1000 MB. The active text/embedding bundle — the dominant
+		// resident consumer — is owned by the engine, NOT the arbiter's resident
+		// map, and is reported via externalFootprintMb=500. Two 400 MB capability
+		// models then can't both fit on top of it.
+		const arbiter = new MemoryArbiter({
+			registry,
+			now,
+			budgetMb: () => 1000,
+			externalFootprintMb: () => 500,
+		});
+		arbiter.onEvent((e) => events.push(e));
+		const embedding = makeCapability("embedding", {
+			residentRole: "embedding",
+			estimatedMb: 400,
+		});
+		const vision = makeCapability("vision-describe", {
+			residentRole: "vision",
+			estimatedMb: 400,
+		});
+		arbiter.registerCapability(embedding.registration);
+		arbiter.registerCapability(vision.registration);
+
+		clock = 1;
+		const e = await arbiter.acquire("embedding", "emb"); // 500 + 400 = 900 ≤ 1000
+		await e.release();
+		clock = 2;
+		const v = await arbiter.acquire("vision-describe", "vl"); // +400 → 1300 > 1000
+		await v.release();
+
+		// Without the external term this stays a silent no-op (800 ≤ 1000) and
+		// both models pile on top of the text bundle, overcommitting RAM. With
+		// it, the fit path evicts the LRU resident (emb).
+		expect(embedding.unloads).toEqual(["emb"]);
+		expect(arbiter.residentSnapshot().map((s) => s.modelKey)).toEqual(["vl"]);
+		expect(
+			events.some((e) => e.type === "eviction" && e.reason === "fit"),
+		).toBe(true);
+	});
+
+	it("keeps both models resident when no external footprint is reported", async () => {
+		const registry = new SharedResourceRegistry();
+		// externalFootprintMb defaults to 0 (the pre-#8809 accounting): 400 + 400
+		// ≤ 1000 → both fit, no eviction. This is the control for the test above.
+		const arbiter = new MemoryArbiter({ registry, now, budgetMb: () => 1000 });
+		const embedding = makeCapability("embedding", {
+			residentRole: "embedding",
+			estimatedMb: 400,
+		});
+		const vision = makeCapability("vision-describe", {
+			residentRole: "vision",
+			estimatedMb: 400,
+		});
+		arbiter.registerCapability(embedding.registration);
+		arbiter.registerCapability(vision.registration);
+
+		const e = await arbiter.acquire("embedding", "emb");
+		await e.release();
+		const v = await arbiter.acquire("vision-describe", "vl");
+		await v.release();
+
+		expect(embedding.unloads).toEqual([]);
+		expect(
+			arbiter
+				.residentSnapshot()
+				.map((s) => s.modelKey)
+				.sort(),
+		).toEqual(["emb", "vl"]);
+	});
+
 	it("never evicts the text target to make room", async () => {
 		const registry = new SharedResourceRegistry();
 		const arbiter = new MemoryArbiter({ registry, now, budgetMb: () => 1000 });
