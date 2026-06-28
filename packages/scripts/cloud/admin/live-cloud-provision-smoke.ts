@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 
 import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
-import { privateKeyToAccount } from "viem/accounts";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
 import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
 import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
+import { eq } from "drizzle-orm";
+import { privateKeyToAccount } from "viem/accounts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -312,8 +312,7 @@ async function createAgent(): Promise<void> {
         agentConfig: {
           name: `Cloud Smoke ${runId}`,
           username: `cloud-smoke-${runId}`,
-          system:
-            "Concise test assistant for cloud provisioning smoke checks.",
+          system: "Concise test assistant for cloud provisioning smoke checks.",
           bio: ["Cloud provisioning smoke test agent."],
           topics: ["cloud provisioning smoke"],
           adjectives: ["concise"],
