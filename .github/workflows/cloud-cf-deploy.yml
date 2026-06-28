@@ -182,7 +182,7 @@ jobs:
               echo "::notice::$name is not configured; skipping"
               return 0
             fi
-            printf '%s' "$value" | bunx wrangler@4.100.0 secret put "$name" ${{ steps.env.outputs.wrangler_args }}
+            printf '%s' "$value" | bunx wrangler secret put "$name" ${{ steps.env.outputs.wrangler_args }}
           }
 
           for name in \
@@ -206,7 +206,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx wrangler@4.100.0 deploy ${{ steps.env.outputs.wrangler_args }}
+        run: bunx wrangler deploy ${{ steps.env.outputs.wrangler_args }}
 
   # ---------------------------------------------------------------------------
   # Console frontend (Cloudflare Pages) — packages/app at the elizacloud.ai apex.
@@ -326,7 +326,7 @@ jobs:
         # ignore wrangler.toml — which silently drops the `functions/` upload
         # (so `_middleware.ts` never runs and `/api/*` falls through to the
         # SPA's index.html instead of being proxied to the API Worker).
-        run: bunx wrangler@4.100.0 pages deploy --project-name=eliza-cloud --branch=${{ steps.pages.outputs.branch }}
+        run: bunx wrangler pages deploy --project-name=eliza-cloud --branch=${{ steps.pages.outputs.branch }}
 
       # Same-origin checks against the SITE_URL custom domains were removed: those
       # domains were served by Vercel, which has been decommissioned. We verify the
@@ -479,7 +479,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx wrangler@4.100.0 pages project create eliza-app --production-branch=main 2>/dev/null || true
+        run: bunx wrangler pages project create eliza-app --production-branch=main 2>/dev/null || true
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true'
@@ -490,4 +490,4 @@ jobs:
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
         # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload.
-        run: bunx wrangler@4.100.0 pages deploy --project-name=eliza-app --branch=${{ steps.pages.outputs.branch }}
+        run: bunx wrangler pages deploy --project-name=eliza-app --branch=${{ steps.pages.outputs.branch }}
