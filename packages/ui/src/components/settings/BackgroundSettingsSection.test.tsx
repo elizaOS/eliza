@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";
-import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
+import { BackgroundSettingsSection } from "./BackgroundSettingsSection";
 
 vi.mock("../pages/background-image", async (importOriginal) => {
   const actual =
@@ -17,24 +17,12 @@ function seed(opts: { setBackgroundConfig?: (config: unknown) => void } = {}) {
   __setAppValueForTests({
     t: (_key: string, opts?: { defaultValue?: string }) =>
       opts?.defaultValue ?? _key,
-    uiLanguage: "en",
-    setUiLanguage: vi.fn(),
-    uiThemeMode: "system",
-    setUiThemeMode: vi.fn(),
     backgroundConfig: { mode: "shader", color: "#ef5a1f" },
     setBackgroundConfig: opts.setBackgroundConfig ?? vi.fn(),
     undoBackgroundConfig: vi.fn(),
     canUndoBackground: false,
     elizaCloudConnected: false,
     elizaCloudAuthRejected: false,
-    activePackId: null,
-    selectedVrmIndex: 0,
-    customVrmUrl: "",
-    customVrmPreviewUrl: "",
-    customBackgroundUrl: "",
-    customWorldUrl: "",
-    firstRunName: "",
-    firstRunStyle: "",
     setState: vi.fn(),
   } as never);
 }
@@ -45,12 +33,12 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("AppearanceSettingsSection background controls", () => {
-  it("consolidates the unified background controls into Appearance settings", () => {
+describe("BackgroundSettingsSection", () => {
+  it("renders the unified background controls as a standalone subview", () => {
     const setBackgroundConfig = vi.fn();
     seed({ setBackgroundConfig });
 
-    render(<AppearanceSettingsSection />);
+    render(<BackgroundSettingsSection />);
 
     expect(screen.getByTestId("background-settings-controls")).not.toBeNull();
     fireEvent.click(screen.getByLabelText("Set background to Blue"));

@@ -95,8 +95,11 @@ function DeviceCard({
 
 export function FacewearAppView({
   onOpenSmartglasses,
+  embedded,
 }: {
   onOpenSmartglasses?: () => void;
+  /** When rendered inside the Settings subview, suppress the duplicate header. */
+  embedded?: boolean;
 } = {}) {
   const [status, setStatus] = useState<FacewearStatusResponse>({
     connected: false,
@@ -167,26 +170,28 @@ export function FacewearAppView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-bg text-txt">
-      <div className="px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Glasses className="h-4 w-4 text-accent" />
-              <h1 className="text-sm font-semibold">Facewear</h1>
+      {embedded ? null : (
+        <div className="px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Glasses className="h-4 w-4 text-accent" />
+                <h1 className="text-sm font-semibold">Facewear</h1>
+              </div>
             </div>
+            <span
+              className={`inline-flex h-7 items-center gap-1.5 px-1.5 text-xs font-medium ${
+                activeCount > 0
+                  ? "text-green-700 dark:text-green-300"
+                  : "text-muted"
+              }`}
+            >
+              <Zap className="h-3.5 w-3.5" />
+              {activeCount > 0 ? `${activeCount} on` : "0 on"}
+            </span>
           </div>
-          <span
-            className={`inline-flex h-7 items-center gap-1.5 px-1.5 text-xs font-medium ${
-              activeCount > 0
-                ? "text-green-700 dark:text-green-300"
-                : "text-muted"
-            }`}
-          >
-            <Zap className="h-3.5 w-3.5" />
-            {activeCount > 0 ? `${activeCount} on` : "0 on"}
-          </span>
         </div>
-      </div>
+      )}
 
       <div className="mx-auto w-full max-w-3xl p-4">
         {loading && (

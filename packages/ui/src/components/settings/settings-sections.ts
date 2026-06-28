@@ -2,6 +2,7 @@ import {
   Archive,
   Bot,
   Brain,
+  Image as ImageIcon,
   KeyRound,
   LayoutGrid,
   Lock,
@@ -24,6 +25,7 @@ import { AdvancedSection } from "./AdvancedSection";
 import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
 import { AppPermissionsSection } from "./AppPermissionsSection";
 import { AppsManagementSection } from "./AppsManagementSection";
+import { BackgroundSettingsSection } from "./BackgroundSettingsSection";
 import { CapabilitiesSection } from "./CapabilitiesSection";
 import { CloudAgentsSection } from "./CloudAgentsSection";
 import { ConnectorsSection } from "./ConnectorsSection";
@@ -265,6 +267,24 @@ registerSettingsSection({
   defaultTitle: "Eliza Cloud Agents",
   order: 1.5,
   Component: CloudAgentsSection,
+});
+
+// Background — its own Settings subview (the unified wallpaper picker), sitting
+// right after Appearance in the System group. The standalone `/background`
+// route is demoted to a preview view; Settings → Background is the canonical
+// editing surface.
+registerSettingsSection({
+  id: "background",
+  label: "settings.sections.background.label",
+  defaultLabel: "Background",
+  icon: ImageIcon,
+  tone: "neutral",
+  hue: "rose",
+  group: "system",
+  titleKey: "settings.sections.background.label",
+  defaultTitle: "Background",
+  order: 7.5,
+  Component: BackgroundSettingsSection,
 });
 
 /** Every section the Settings view should render — built-ins plus any added by

@@ -126,6 +126,7 @@ function FacewearSettingsSection() {
       active === "devices"
         ? createElement(FacewearAppView, {
             onOpenSmartglasses: () => setActive("smartglasses"),
+            embedded: true,
           })
         : createElement(SmartglassesView),
     ),

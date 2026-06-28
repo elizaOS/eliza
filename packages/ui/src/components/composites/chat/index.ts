@@ -5,6 +5,7 @@ export * from "./chat-composer-shell";
 export * from "./chat-conversation-item";
 export * from "./chat-conversation-rename-dialog";
 export * from "./chat-empty-state";
+export * from "./ChatEmptyStateWithRecommendations";
 export * from "./chat-message";
 export * from "./chat-message-actions";
 export * from "./chat-source";
