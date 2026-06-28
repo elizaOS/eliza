@@ -118,15 +118,15 @@ Many additional `eliza-robot-validate-*`, `eliza-robot-closeout-*`, and Nebius m
 
 ```bash
 # Bridge (Python sidecar)
-bun run --cwd packages/robot robot:bridge:mock     # mock backend, port 9100
-bun run --cwd packages/robot robot:bridge:mujoco   # MuJoCo backend, port 9100
-bun run --cwd packages/robot robot:demo            # voice + sim demo
+bun run --cwd packages/research/robot robot:bridge:mock     # mock backend, port 9100
+bun run --cwd packages/research/robot robot:bridge:mujoco   # MuJoCo backend, port 9100
+bun run --cwd packages/research/robot robot:demo            # voice + sim demo
 
 # TS surface
-bun run --cwd packages/robot build         # tsdown — emit dist/
-bun run --cwd packages/robot typecheck     # tsgo --noEmit
-bun run --cwd packages/robot lint          # biome check --write
-bun run --cwd packages/robot test          # vitest run + pytest shim
+bun run --cwd packages/research/robot build         # tsdown — emit dist/
+bun run --cwd packages/research/robot typecheck     # tsgo --noEmit
+bun run --cwd packages/research/robot lint          # biome check --write
+bun run --cwd packages/research/robot test          # vitest run + pytest shim
 
 # Python direct (requires uv)
 uv run pytest tests/ -q
@@ -161,7 +161,7 @@ uv run eliza-robot-benchmark-alberta --steps-per-task 16000 --seeds 3
 **Add a TS export:**
 
 1. Add the type/value to `src/types.ts` or `src/index.ts`.
-2. Re-run `bun run --cwd packages/robot build` to emit updated `dist/`.
+2. Re-run `bun run --cwd packages/research/robot build` to emit updated `dist/`.
 
 ## Conventions / gotchas
 
@@ -169,7 +169,7 @@ uv run eliza-robot-benchmark-alberta --steps-per-task 16000 --seeds 3
 - **Profiles are first-class:** Every function that touches a robot accepts `RobotProfileId`. No hardcoded robot names anywhere in the stack.
 - **Safety failures must be loud:** Do NOT catch-and-continue on calibration or safety failures. Robots cause damage when guarded by silent fallbacks.
 - **Python runtime:** Requires Python `>=3.12,<3.13` (Alberta framework uses PEP 695 syntax). Use `uv` for all Python commands.
-- **alberta-framework:** Resolved from the repo-local `packages/alberta` workspace package (`editable = true` in `uv.sources`).
+- **alberta-framework:** Resolved from the repo-local `packages/research/alberta` workspace package (`editable = true` in `uv.sources`).
 - **numpy<2:** Pinned for Brax/MuJoCo/JAX ABI compatibility. Do not widen until upstream wheels support numpy 2.x.
 - **Do not commit:** `checkpoints/`, `*.mp4/gif/webm`, `calibration_data/`, `trajectories.db`, `data/raw/`, `out/`, `wandb/`, `*.usd`, large `*.npz` files. CI gate at `scripts/check-no-large-binaries.sh` fails any tracked file over 5 MB outside known-source asset dirs.
 - **TS surface is thin:** The heavy logic lives in the Python sidecar (`eliza_robot`). The `src/` directory only re-exports constants and type aliases consumed by `@elizaos/plugin-ainex`.

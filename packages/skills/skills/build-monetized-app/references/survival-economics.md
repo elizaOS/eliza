@@ -17,7 +17,7 @@ The dashboard view at `https://www.elizacloud.ai/dashboard/earnings` shows the r
 
 ## Container billing
 
-Container hosting is pay-as-you-go, billed daily. The cron at `packages/cloud-api/cron/container-billing/route.ts` runs once per day and, for each container:
+Container hosting is pay-as-you-go, billed daily. The cron at `packages/cloud/api/cron/container-billing/route.ts` runs once per day and, for each container:
 
 1. Computes the day's hosting cost (CPU + RAM at the tier's per-second rate)
 2. Pulls from `redeemable_earnings_ledger` first (if `pay_as_you_go_from_earnings = true`, which is the org default)

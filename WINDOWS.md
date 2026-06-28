@@ -137,7 +137,7 @@ Also working (manual verification):
 - `bun run dev` — API + dashboard dev server
 - `bun run dev:cloud`, `bun run build:cloud`
 - All `packages/core` / `packages/agent` / `packages/app-core` /
-  `packages/cloud-api` / `packages/cloud-frontend` / `packages/ui` /
+  `packages/cloud/api` / `packages/cloud-frontend` / `packages/ui` /
   `packages/shared` workflows
 
 The Bun shell that runs `package.json` scripts handles `FOO=bar cmd`-style

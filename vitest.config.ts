@@ -73,11 +73,11 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/cloud-sdk$/,
-        replacement: path.join(root, "packages/cloud-sdk/src/index.ts"),
+        replacement: path.join(root, "packages/cloud/sdk/src/index.ts"),
       },
       {
         find: /^@elizaos\/cloud-sdk\/(.+)$/,
-        replacement: path.join(root, "packages/cloud-sdk/src/$1"),
+        replacement: path.join(root, "packages/cloud/sdk/src/$1"),
       },
       {
         find: /^@elizaos\/tui$/,

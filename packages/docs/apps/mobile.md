@@ -63,7 +63,7 @@ Focused proof gates for this boundary:
 bun run --cwd packages/app-core test src/platform/ios-runtime-backends.test.ts --reporter verbose
 bun run --cwd plugins/plugin-coding-tools test src/lib/run-shell.test.ts src/lib/terminal-capabilities.test.ts --reporter verbose
 bun run --cwd packages/agent test src/services/e2b-capability-router.test.ts src/services/e2b-capability-router.coding-remote-runner.test.ts --reporter verbose
-bun run --cwd packages/cloud-services/coding-remote-runner test
+bun run --cwd packages/cloud/services/coding-remote-runner test
 ```
 
 Those tests prove the iOS local runtime policy is TypeScript-owned and

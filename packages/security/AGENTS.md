@@ -14,7 +14,7 @@ Also provides two sub-path security utilities:
 - `@elizaos/security/mcp-server-config` — MCP stdio/remote server config validation (SSRF and prototype-pollution guard, GHSA-54rx-pcr9-hg9x).
 - `@elizaos/security/network-policy` — IP/host allow-list primitives (`isBlockedPrivateOrLinkLocalIp`, `normalizeHostLike`) used internally and by the MCP config validator.
 
-Consumed by: `packages/cloud-shared` (field crypto, auth events), `packages/agent` (audit wiring), `packages/security/soc2-verify` (control verification), `packages/plugin-remote-manifest` (manifest signing), `packages/cloud-api` (auth layer), `packages/plugin-worker-runtime` (worker crypto).
+Consumed by: `packages/cloud/shared` (field crypto, auth events), `packages/agent` (audit wiring), `packages/security/soc2-verify` (control verification), `packages/plugin-remote-manifest` (manifest signing), `packages/cloud/api` (auth layer), `packages/plugin-worker-runtime` (worker crypto).
 
 ## Layout
 

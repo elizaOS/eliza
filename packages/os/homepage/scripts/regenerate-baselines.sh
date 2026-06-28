@@ -2,9 +2,9 @@
 # Regenerate Playwright visual-regression baselines for @elizaos/os-homepage.
 #
 # Usage:
-#   bash packages/os-homepage/scripts/regenerate-baselines.sh
+#   bash packages/os/homepage/scripts/regenerate-baselines.sh
 #
-# Snapshots land under packages/os-homepage/tests/visual.spec.ts-snapshots/
+# Snapshots land under packages/os/homepage/tests/visual.spec.ts-snapshots/
 # and are platform-suffixed (chromium-darwin / chromium-linux). Run this on
 # each target platform to refresh that platform's snapshots, then commit the
 # resulting PNGs.

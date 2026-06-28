@@ -884,7 +884,7 @@ function syncDirectoryContents(
 }
 
 const sourceRuntimePackages = [
-  ["@elizaos/cloud-sdk", "packages/cloud-sdk"],
+  ["@elizaos/cloud-sdk", "packages/cloud/sdk"],
   ["@elizaos/plugin-agent-skills", "plugins/plugin-agent-skills"],
   ["@elizaos/plugin-app-control", "plugins/plugin-app-control"],
   ["@elizaos/plugin-browser", "plugins/plugin-browser"],

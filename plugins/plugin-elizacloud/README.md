@@ -182,9 +182,9 @@ When the Cloud API adds or changes public routes, update `@elizaos/cloud-sdk`
 first, then update this plugin to consume the new SDK route or helper:
 
 ```bash
-bun run --cwd packages/cloud-sdk build
-bun run --cwd packages/cloud-sdk typecheck
-bun run --cwd packages/cloud-sdk test
+bun run --cwd packages/cloud/sdk build
+bun run --cwd packages/cloud/sdk typecheck
+bun run --cwd packages/cloud/sdk test
 ```
 
 ## Publishing

@@ -59,11 +59,11 @@ const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const uiSourceRoot = getUiSourceRoot(repoRoot);
 const cloudRoutingSourceRoot = path.join(
   elizaWorkspaceRoot,
-  "packages/cloud-routing/src",
+  "packages/cloud/routing/src",
 );
 const cloudSdkSourceRoot = path.join(
   elizaWorkspaceRoot,
-  "packages/cloud-sdk/src",
+  "packages/cloud/sdk/src",
 );
 // @elizaos/logger was extracted from @elizaos/core (core's src re-exports it via
 // `export * from "@elizaos/logger"`). Since core is source-aliased for tests,

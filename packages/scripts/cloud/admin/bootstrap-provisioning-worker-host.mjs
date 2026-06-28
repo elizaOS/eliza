@@ -154,11 +154,11 @@ Bootstrap the Hetzner host used by the Eliza provisioning-worker deploy workflow
 
 Required:
   HCLOUD_TOKEN in the local environment.
-  A cloud runtime env file, defaulting to packages/cloud-shared/.env.local.
+  A cloud runtime env file, defaulting to packages/cloud/shared/.env.local.
 
 Examples:
   HCLOUD_TOKEN=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment staging
-  HCLOUD_TOKEN=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment production --env-file packages/cloud-shared/.env.production
+  HCLOUD_TOKEN=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment production --env-file packages/cloud/shared/.env.production
 
 Options:
   --environment staging|production   GitHub environment and deploy branch default.

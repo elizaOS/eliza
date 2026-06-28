@@ -2707,7 +2707,7 @@ export const INVALID_TRACER_PROVIDER = {};
       ...(() => {
         const cloudSdkSrcDir = path.resolve(
           elizaRoot,
-          "packages/cloud-sdk/src",
+          "packages/cloud/sdk/src",
         );
         if (!fs.existsSync(path.join(cloudSdkSrcDir, "index.ts"))) {
           return [];

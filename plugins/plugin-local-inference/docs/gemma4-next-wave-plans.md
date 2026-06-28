@@ -106,8 +106,8 @@ OTHER-PLUGIN / CROSS-PACKAGE IMPACT (flagged): packages/shared barrel (@elizaos/
 cloud hf-proxy route and client base swap
 
 ### Steps
-- **NEW packages/cloud-api/v1/hf-proxy/[...path]/route.ts** — Hono leaf, auth via requireUserOrApiKeyWithOrg, rebuild upstream HF URL from path param, attach cloud HF_TOKEN, forward Range, stream body back unbuffered preserving content-range and etag  _(risk: medium pass-through streaming, exact range for resume)_
-- **packages/cloud-shared/src/types/cloud-worker-env.ts plus wrangler.toml** — Add optional HF_TOKEN to Bindings, document as wrangler secret, keep hf-proxy out of publicPathPrefixes in middleware auth  _(risk: low additive binding plus secret deploy)_
+- **NEW packages/cloud/api/v1/hf-proxy/[...path]/route.ts** — Hono leaf, auth via requireUserOrApiKeyWithOrg, rebuild upstream HF URL from path param, attach cloud HF_TOKEN, forward Range, stream body back unbuffered preserving content-range and etag  _(risk: medium pass-through streaming, exact range for resume)_
+- **packages/cloud/shared/src/types/cloud-worker-env.ts plus wrangler.toml** — Add optional HF_TOKEN to Bindings, document as wrangler secret, keep hf-proxy out of publicPathPrefixes in middleware auth  _(risk: low additive binding plus secret deploy)_
 - **NEW packages/shared/src/local-inference/hf-proxy.ts** — Add resolveHfDownloadBase: cloud proxy base plus bearer when ELIZAOS_CLOUD_API_KEY set, else default HF host no auth, ELIZA_HF_BASE_URL override wins  _(risk: medium must mirror HF resolve path, unit-test)_
 - **packages/shared/src/local-inference/catalog.ts** — Use resolveHfDownloadBase base in buildHuggingFaceResolveUrlForPath near line 620, keep encoding and download flag, ModelScope branch untouched  _(risk: medium central URL builder, tests guard it)_
 - **plugins/plugin-local-inference/src/services/downloader.ts** — Swap resolveHubAuthHeaders for resolveHfDownloadBase authHeader at lines 573 and 882, drop local HF_TOKEN, reword GGUF error hint to cloud-link state  _(risk: medium auth swap on download path, verify 206 resume)_

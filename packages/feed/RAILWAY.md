@@ -27,14 +27,14 @@ deployed — the game loop and DB schema are provisioned in-process so the servi
 ### Root cause (why feed.elizacloud.ai currently returns cloud-api)
 
 The `cloud-api` production Worker declares a wildcard route in
-`packages/cloud-api/wrangler.toml` `[env.production].routes`:
+`packages/cloud/api/wrangler.toml` `[env.production].routes`:
 
 ```toml
 { pattern = "*.elizacloud.ai/*", zone_name = "elizacloud.ai" }
 ```
 
 This makes the Worker the default origin for **every** proxied `elizacloud.ai`
-subdomain. The Worker entrypoint (`packages/cloud-api/src/index.ts`) has **no**
+subdomain. The Worker entrypoint (`packages/cloud/api/src/index.ts`) has **no**
 feed passthrough: `feed.elizacloud.ai` is not `www.`, not a UUID agent subdomain
 (`proxyGeneratedAgentRequest`), and not a `FRONTEND_ALIAS_TARGETS` host (only
 `staging.elizacloud.ai` is), so the request falls through to the full cloud-api
@@ -45,7 +45,7 @@ A Worker **cannot** opt a host out of its own route from `wrangler.toml` — the
 carve-out must happen at the Cloudflare zone level. The repo already does this
 for `headscale.elizacloud.ai` via a **DNS-only (proxied=false)** record
 (`cloudflare_dns_record.headscale` in
-`packages/cloud-infra/cloud/terraform/hetzner/control-plane/main.tf`): a grey-cloud
+`packages/cloud/infra/cloud/terraform/hetzner/control-plane/main.tf`): a grey-cloud
 record bypasses Cloudflare's proxy entirely, so the wildcard Worker route never
 runs and the request hits the real origin directly.
 
@@ -62,7 +62,7 @@ custom domain.
 2. **Point the `feed` DNS record at that target as DNS-only.** Either:
    - **IaC (preferred):** add `cloudflare_dns_record.feed` (type=`CNAME`,
      content=`var.feed_railway_target`, `proxied = false`, `ttl = 300`) in
-     `packages/cloud-infra/cloud/terraform/hetzner/control-plane/main.tf`, plus a
+     `packages/cloud/infra/cloud/terraform/hetzner/control-plane/main.tf`, plus a
      one-shot `import` block in `import.tf` to adopt the existing dashboard-created
      `feed` record (mirroring the headscale adoption). `ttl` must be `> 1` when
      `proxied=false`.
@@ -91,7 +91,7 @@ already terminates TLS and serves SSE/cron without a proxy in between).
 
 > **Worker-side alternative (CI-deployable, no DNS change):** add a
 > `feed.elizacloud.ai` entry to `FRONTEND_ALIAS_TARGETS` in
-> `packages/cloud-api/src/index.ts` with `appHost === apiHost ===` the Railway
+> `packages/cloud/api/src/index.ts` with `appHost === apiHost ===` the Railway
 > feed host. The Worker already reverse-proxies aliased hosts (it does this for
 > `staging.elizacloud.ai`) and streams the response, so SSE passes through. This
 > ships via the normal `wrangler deploy` CI lane and needs no Cloudflare DNS edit,

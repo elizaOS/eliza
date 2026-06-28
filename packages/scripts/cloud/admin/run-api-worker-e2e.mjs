@@ -250,7 +250,7 @@ async function main() {
         [
           "run",
           "--cwd",
-          "packages/cloud-api",
+          "packages/cloud/api",
           "wrangler",
           "dev",
           "--ip",
@@ -277,7 +277,7 @@ async function main() {
 
     result = spawnSync(
       bun,
-      ["run", "--cwd", "packages/cloud-api", "test:e2e"],
+      ["run", "--cwd", "packages/cloud/api", "test:e2e"],
       {
         stdio: "inherit",
         env: workerEnv,

@@ -22,7 +22,7 @@
       "!**/build",
       "!**/.next",
       "!**/node_modules",
-      "!packages/cloud-sdk/src/**/*.d.ts",
+      "!packages/cloud/sdk/src/**/*.d.ts",
       "!packages/plugin-remote-manifest/src/**/*.d.ts",
       "!packages/plugin-worker-runtime/src/**/*.d.ts",
       "!packages/logger/src/**/*.d.ts",
@@ -138,7 +138,7 @@
       }
     },
     {
-      "includes": ["packages/cloud-api/**/*.ts"],
+      "includes": ["packages/cloud/api/**/*.ts"],
       "linter": {
         "rules": {
           "style": {
@@ -220,8 +220,8 @@
         "!packages/agent/**",
         "!packages/app-core/**",
         "!packages/benchmarks/**",
-        "!packages/cloud-api/**",
-        "!packages/cloud-shared/**",
+        "!packages/cloud/api/**",
+        "!packages/cloud/shared/**",
         "!packages/examples/**",
         "!packages/os/**",
         "!packages/research/robot/**",

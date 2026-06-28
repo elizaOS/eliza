@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
-const cloudApiRoot = path.join(repoRoot, "packages/cloud-api");
-const integrationRoot = path.join(repoRoot, "packages/cloud-api/test/e2e");
+const cloudApiRoot = path.join(repoRoot, "packages/cloud/api");
+const integrationRoot = path.join(repoRoot, "packages/cloud/api/test/e2e");
 const testCwd = path.join(repoRoot, ".tmp/cloud-integration-bun");
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 
@@ -38,7 +38,7 @@ const integrationEnv = {
 };
 
 const isolatedServerFiles = new Set([
-  "packages/cloud-api/test/e2e/agent-token-flow.test.ts",
+  "packages/cloud/api/test/e2e/agent-token-flow.test.ts",
 ]);
 const isolatedDbFiles = new Set([]);
 

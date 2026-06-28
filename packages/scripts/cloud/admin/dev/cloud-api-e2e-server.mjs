@@ -114,7 +114,7 @@ function filteredRequestHeaders(incomingHeaders) {
 }
 
 const workerUrl = pathToFileURL(
-  path.join(repoRoot, "packages/cloud-api/src/index.ts"),
+  path.join(repoRoot, "packages/cloud/api/src/index.ts"),
 ).href;
 const worker = (await import(workerUrl)).default;
 const env = {

@@ -85,7 +85,7 @@ export const firmwareSigningScript: Check = {
   async run(ctx): Promise<CheckResult> {
     const path = join(
       ctx.elizaRoot,
-      "packages/chip/fw/signing/sign-firmware.sh",
+      "packages/research/chip/fw/signing/sign-firmware.sh",
     );
     return readUtf8Safe(path)
       ? {

@@ -1,10 +1,10 @@
 @import "@fontsource/poppins/300.css";
 @import "@fontsource/poppins/500.css";
-@import "../../ui/src/styles/base.css";
-@import "../../ui/src/styles/tailwind-theme.css";
+@import "../../../ui/src/styles/base.css";
+@import "../../../ui/src/styles/tailwind-theme.css";
 @import "tailwindcss";
 @import "tw-animate-css";
-@source "../../ui/src";
+@source "../../../ui/src";
 
 :root {
   --background: var(--brand-blue);

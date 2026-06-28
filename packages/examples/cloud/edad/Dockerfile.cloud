@@ -13,11 +13,11 @@ WORKDIR /repo
 ENV NODE_ENV=production
 ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
 
-COPY packages/cloud-sdk ./packages/cloud-sdk
+COPY packages/cloud/sdk ./packages/cloud/sdk
 COPY packages/examples/cloud/edad ./packages/examples/cloud/edad
 
 RUN mkdir -p packages/examples/cloud/edad/node_modules/@elizaos && \
-  ln -s /repo/packages/cloud-sdk packages/examples/cloud/edad/node_modules/@elizaos/cloud-sdk
+  ln -s /repo/packages/cloud/sdk packages/examples/cloud/edad/node_modules/@elizaos/cloud-sdk
 RUN cd packages/examples/cloud/edad && \
   rm -rf ./dist && \
   bun build --conditions=eliza-source server.ts --outdir=./dist --target=bun --format=esm && \

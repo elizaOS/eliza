@@ -10,7 +10,7 @@ Use this skill when you need to build an app that takes a markup on every chat o
 Read `references/sdk-flow.md` for the 6-step build flow with a self-contained code example. External references (all public):
 
 - **Working chat-app**: [`packages/examples/cloud/edad`](https://github.com/elizaos/eliza/tree/develop/packages/examples/cloud/edad) — copyable end-to-end implementation. Read its `server.ts` for the canonical chat-forwarder shape using `@elizaos/cloud-sdk`.
-- **SDK reference**: [`@elizaos/cloud-sdk` README](https://github.com/elizaos/eliza/blob/develop/packages/cloud-sdk/README.md) — typed methods + helpers + auth.
+- **SDK reference**: [`@elizaos/cloud-sdk` README](https://github.com/elizaos/eliza/blob/develop/packages/cloud/sdk/README.md) — typed methods + helpers + auth.
 - **Human-readable recipe**: [`packages/docs/cloud/monetized-apps.mdx`](https://github.com/elizaos/eliza/blob/develop/packages/docs/cloud/monetized-apps.mdx) — same loop, narrative form, with the schema fields explained.
 
 ## Skill Pairing
@@ -24,7 +24,7 @@ request both skills for Cloud app builds.
 
 ## The survival-economics loop
 
-An Eliza-style agent running in an Eliza Cloud container costs ~$0.67/day at the default tier (256 MB CPU + 512 MB RAM). When the org's credit balance and the owner's redeemable earnings both hit zero, the container is stopped after a 48-hour grace window. The container-billing cron pulls earnings before credits, so an app that earns more than its hosting costs keeps the agent alive indefinitely. See `references/survival-economics.md` for the exact accounting (`redeemable_earnings_ledger`, `credit_transactions`, the cron at `packages/cloud-api/cron/container-billing/route.ts`).
+An Eliza-style agent running in an Eliza Cloud container costs ~$0.67/day at the default tier (256 MB CPU + 512 MB RAM). When the org's credit balance and the owner's redeemable earnings both hit zero, the container is stopped after a 48-hour grace window. The container-billing cron pulls earnings before credits, so an app that earns more than its hosting costs keeps the agent alive indefinitely. See `references/survival-economics.md` for the exact accounting (`redeemable_earnings_ledger`, `credit_transactions`, the cron at `packages/cloud/api/cron/container-billing/route.ts`).
 
 This is why the skill exists: making money is how the agent stays online.
 

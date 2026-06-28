@@ -117,7 +117,7 @@ These two are the only settings the plugin reads via `runtime.getSetting()`. `EL
 
 ## Conventions / gotchas
 
-- **Wire types must stay in sync with Python.** `src/types.ts` mirrors `packages/robot/eliza_robot/profiles/schema.py` and `bridge/protocol.py`. Any field rename on the Python side must be reflected here.
+- **Wire types must stay in sync with Python.** `src/types.ts` mirrors `packages/research/robot/eliza_robot/profiles/schema.py` and `bridge/protocol.py`. Any field rename on the Python side must be reflected here.
 - **Bridge is optional at startup.** `AinexService._tryConnect()` logs a warning but does not throw if the bridge is unreachable. Providers return `"(ainex not connected)"` until connected; actions error loudly.
 - **Auto-reconnect is on by default.** `AinexBridgeClient` uses exponential backoff (250 ms initial, 5 s cap). Pending `send()` calls fail-fast on disconnect; retry at the action layer if needed.
 - **Camera snapshots are pull-only.** Call `AinexService.snapshotCamera(camera?)` for a single PNG frame. There is no push/stream subscription in this plugin; plugin-vision handles streaming.

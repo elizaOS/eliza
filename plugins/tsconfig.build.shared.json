@@ -51,7 +51,7 @@
       "@elizaos/plugin-elizacloud": [
         "../packages/agent/src/external-modules.d.ts"
       ],
-      "@elizaos/cloud-sdk": ["../packages/cloud-sdk/dist/index.d.ts"],
+      "@elizaos/cloud-sdk": ["../packages/cloud/sdk/dist/index.d.ts"],
       "@elizaos/scenario-runner": [
         "../packages/scenario-runner/dist/index.d.ts"
       ]

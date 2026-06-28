@@ -4,7 +4,7 @@
  * first-visit fallback when the browser gives no usable language hint.
  *
  * The route handler is mounted at the cloud edge in
- * `packages/cloud-api/src/bootstrap-app.ts`.
+ * `packages/cloud/api/src/bootstrap-app.ts`.
  */
 
 import { getBootConfig } from "../config/boot-config";

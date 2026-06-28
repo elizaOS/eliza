@@ -82,8 +82,8 @@
         "./plugins/plugin-native-websiteblocker/src/index.ts"
       ],
       "@elizaos/capacitor-wifi": ["./plugins/plugin-native-wifi/src/index.ts"],
-      "@elizaos/cloud-sdk": ["./packages/cloud-sdk/src/index.ts"],
-      "@elizaos/cloud-sdk/*": ["./packages/cloud-sdk/src/*"],
+      "@elizaos/cloud-sdk": ["./packages/cloud/sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["./packages/cloud/sdk/src/*"],
       "@elizaos/contracts": ["./packages/contracts/src/index.ts"],
       "@elizaos/contracts/*": ["./packages/contracts/src/*"],
       "@elizaos/core": ["./packages/core/src/index.node.ts"],
@@ -209,8 +209,8 @@
       "@elizaos/vault/*": ["./packages/vault/src/*"],
       "@elizaos/app-wallet": ["./plugins/app-wallet/src/index.ts"],
       "@elizaos/app-wallet/*": ["./plugins/app-wallet/src/*"],
-      "@elizaos/cloud-shared": ["./packages/cloud-shared/src/index.ts"],
-      "@elizaos/cloud-shared/*": ["./packages/cloud-shared/src/*"],
+      "@elizaos/cloud-shared": ["./packages/cloud/shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["./packages/cloud/shared/src/*"],
       "@elizaos/plugin-wallet-ui/*": ["./plugins/plugin-wallet-ui/src/*"]
     }
   },

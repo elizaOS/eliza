@@ -88,8 +88,8 @@
 			"@elizaos/vault/*": ["../../packages/vault/src/*"],
 			"@elizaos/security": ["../../packages/security/src/index.ts"],
 			"@elizaos/security/*": ["../../packages/security/src/*"],
-			"@elizaos/cloud-sdk": ["../../packages/cloud-sdk/src/index.ts"],
-			"@elizaos/cloud-sdk/*": ["../../packages/cloud-sdk/src/*"],
+			"@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
+			"@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
 			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
 			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
 			"csstype": [

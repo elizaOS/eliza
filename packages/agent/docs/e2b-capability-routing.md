@@ -95,7 +95,7 @@ If no direct remote runner URL is set, `eliza-cloud` uses the Cloud API at
 then treated as the remote runner HTTP runner URL.
 
 The Cloud control plane should use the coding remote runner image from
-`packages/cloud-services/coding-remote-runner`. Publish it and set:
+`packages/cloud/services/coding-remote-runner`. Publish it and set:
 
 ```text
 ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE=ghcr.io/elizaos/coding-remote-runner:<tag>

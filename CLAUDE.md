@@ -23,7 +23,7 @@ say **Eliza agents**. Exception: the **Eliza Classic** plugin keeps `Eliza`
 - **Monorepo:** [Turbo](https://turbo.build) drives `build` / `typecheck` /
   `lint` / `test` across workspaces. Workspace globs are in `package.json`
   (`packages/*`, `plugins/*`, `packages/native/*`, `packages/os/*`,
-  `packages/examples/*`, `packages/cloud-services/*`, …).
+  `packages/examples/*`, `packages/cloud/services/*`, …).
 - **Lint/format:** [Biome](https://biomejs.dev) (`biome.json`). Ignore globs in
   `.biomeignore`.
 - **Tests:** Vitest, orchestrated by `packages/scripts/run-all-tests.mjs`.
@@ -75,7 +75,7 @@ packages/        framework, shared libraries, and product surfaces
   cloud-sdk/ cloud-routing/ cloud-infra/  cloud client SDK, model routing, IaC
   contracts/     on-chain contracts + ABIs
   security/ vault/ soc2-verify/  secrets, key management, compliance tooling
-  os/ os-homepage/ robot/        device/OS images, OS landing, robotics
+  os/ robot/                     device/OS images, OS landing, robotics
   plugin-host-shim*/ plugin-worker-runtime/ plugin-remote-manifest/
                  plugin loading shims for native/electrobun/ios/android/worker targets
   homepage/ docs/ docs-elizacloud-redirect/  marketing site, docs site, redirects

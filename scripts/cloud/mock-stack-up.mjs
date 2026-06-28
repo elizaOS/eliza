@@ -323,7 +323,7 @@ async function main() {
     );
     const migrate = spawn(
       "bun",
-      ["run", "--cwd", "packages/cloud-shared", "db:migrate"],
+      ["run", "--cwd", "packages/cloud/shared", "db:migrate"],
       {
         cwd: REPO_ROOT,
         env: { ...process.env, DATABASE_URL: `pglite://${PGDATA_DIR}` },
@@ -397,7 +397,7 @@ async function main() {
     }
 
     {
-      const proc = spawn("bun", ["run", "--cwd", "packages/cloud-api", "dev"], {
+      const proc = spawn("bun", ["run", "--cwd", "packages/cloud/api", "dev"], {
         cwd: REPO_ROOT,
         env: { ...baseEnv, API_DEV_PORT: String(apiPort) },
       });

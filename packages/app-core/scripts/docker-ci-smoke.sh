@@ -705,7 +705,7 @@ fi
 log "Building shared/cloud package artifacts"
 # plugin-streaming imports @elizaos/cloud-routing during its declarations build,
 # so Docker smoke needs the local workspace package built and linked.
-for package_dir in packages/shared packages/cloud-sdk packages/cloud-routing packages/skills; do
+for package_dir in packages/shared packages/cloud/sdk packages/cloud/routing packages/skills; do
   if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
     log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
     pushd "$package_dir" >/dev/null
@@ -716,8 +716,8 @@ done
 mkdir -p node_modules/@elizaos
 "${RM_PATH_RECURSIVE[@]}" node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing node_modules/@elizaos/skills
 ln -s ../../packages/shared node_modules/@elizaos/shared
-ln -s ../../packages/cloud-sdk node_modules/@elizaos/cloud-sdk
-ln -s ../../packages/cloud-routing node_modules/@elizaos/cloud-routing
+ln -s ../../packages/cloud/sdk node_modules/@elizaos/cloud-sdk
+ln -s ../../packages/cloud/routing node_modules/@elizaos/cloud-routing
 ln -s ../../packages/skills node_modules/@elizaos/skills
 
 log "Building Capacitor plugins"

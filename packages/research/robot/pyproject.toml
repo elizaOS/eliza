@@ -41,7 +41,7 @@ dependencies = [
   "roslibpy>=2.0.0",
   "stable-baselines3>=2.8.0",
   "gymnasium>=1.2.3",
-  # Alberta Plan continual-learning framework (vendored at packages/alberta).
+  # Alberta Plan continual-learning framework (vendored at packages/research/alberta).
   # Provides the streaming continual-RL control + plasticity machinery used by
   # eliza_robot.rl.alberta. Requires Python 3.12 (PEP 695 syntax).
   "alberta-framework",

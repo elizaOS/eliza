@@ -13,7 +13,7 @@
  * `DateLike` fields arrive over the wire as ISO strings; `Page.tsx` adapts them
  * to `Date` before rendering.
  *
- * Backend contract (see `packages/cloud-api/analytics/{breakdown,projections}`):
+ * Backend contract (see `packages/cloud/api/analytics/{breakdown,projections}`):
  *   - GET /api/analytics/breakdown  accepts ONLY `timeRange`
  *     (`daily` | `weekly` | `monthly`); it derives startDate/endDate/granularity
  *     server-side. It does NOT honor arbitrary `startDate`/`endDate`/

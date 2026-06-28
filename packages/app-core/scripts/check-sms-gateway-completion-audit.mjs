@@ -176,7 +176,7 @@ const checks = [
     blockedDetail:
       "linked workspace test runtime is not built or Bun coverage output failed",
     next: [
-      "build linked workspaces: bun run --cwd packages/cloud-shared build:linked-workspaces",
+      "build linked workspaces: bun run --cwd packages/cloud/shared build:linked-workspaces",
       "rerun: bun run --cwd packages/app-core sms-gateway:status",
     ],
   },

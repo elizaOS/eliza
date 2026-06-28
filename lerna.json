@@ -4,7 +4,7 @@
     "packages/*",
     "packages/app-core/platforms/*",
     "plugins/*",
-    "packages/cloud-sdk"
+    "packages/cloud/sdk"
   ],
   "npmClient": "bun",
   "command": {

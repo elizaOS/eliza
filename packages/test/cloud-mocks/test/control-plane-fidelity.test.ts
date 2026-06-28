@@ -1,6 +1,6 @@
 /**
  * Fidelity tests for control-plane mock — closes the 6 gaps vs the real impl
- * in `packages/cloud-services/container-control-plane/src/index.ts`:
+ * in `packages/cloud/services/container-control-plane/src/index.ts`:
  *
  *   1. POST /api/v1/eliza/agents/:id/stream with JSON-RPC body (SSE response)
  *   2. Dual-token auth (bearer + x-container-control-plane-token)

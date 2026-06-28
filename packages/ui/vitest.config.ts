@@ -199,14 +199,14 @@ export default defineConfig({
         find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
         replacement: resolve(
           monorepoRoot,
-          "packages/cloud-sdk/src/cloud-setup-session/index.ts",
+          "packages/cloud/sdk/src/cloud-setup-session/index.ts",
         ),
       },
       {
         find: /^@elizaos\/cloud-sdk\/cloud-setup-session\/(.+)$/,
         replacement: resolve(
           monorepoRoot,
-          "packages/cloud-sdk/src/cloud-setup-session/$1",
+          "packages/cloud/sdk/src/cloud-setup-session/$1",
         ),
       },
     ],

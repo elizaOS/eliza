@@ -1,4 +1,4 @@
-# packages/chip — Eliza E1 RISC-V AI SoC
+# packages/research/chip — Eliza E1 RISC-V AI SoC
 
 Pre-tapeout hardware/software **evidence package** for the Eliza E1 RISC-V AI
 SoC scaffold. Treat every change as production-grade engineering work intended

@@ -276,5 +276,5 @@ const content = [
 writeFileSync(outputPath, content, "utf8");
 
 console.log(
-  `[sync-api-dev-vars] wrote packages/cloud-api/.dev.vars (${entries.length} keys)`,
+  `[sync-api-dev-vars] wrote packages/cloud/api/.dev.vars (${entries.length} keys)`,
 );

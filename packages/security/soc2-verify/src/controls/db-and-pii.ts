@@ -8,7 +8,7 @@ export const dbSslmode: Check = {
   tsc: ["CC6.7"],
   severity: "high",
   async run(ctx): Promise<CheckResult> {
-    const path = join(ctx.elizaRoot, "packages/cloud-shared/src/db/client.ts");
+    const path = join(ctx.elizaRoot, "packages/cloud/shared/src/db/client.ts");
     const src = readUtf8Safe(path);
     if (!src) {
       return {
@@ -38,7 +38,7 @@ const ENCRYPTED_COLUMN_TARGETS: Array<{
   columns: Array<{ source: string; encryptedPrefix?: string }>;
 }> = [
   {
-    schemaFile: "packages/cloud-shared/src/db/schemas/users.ts",
+    schemaFile: "packages/cloud/shared/src/db/schemas/users.ts",
     table: "users",
     columns: [
       { source: "email" },
@@ -47,7 +47,7 @@ const ENCRYPTED_COLUMN_TARGETS: Array<{
     ],
   },
   {
-    schemaFile: "packages/cloud-shared/src/db/schemas/platform-credentials.ts",
+    schemaFile: "packages/cloud/shared/src/db/schemas/platform-credentials.ts",
     table: "platform_credentials",
     columns: [
       { source: "platform_user_id" },
@@ -56,7 +56,7 @@ const ENCRYPTED_COLUMN_TARGETS: Array<{
     ],
   },
   {
-    schemaFile: "packages/cloud-shared/src/db/schemas/conversations.ts",
+    schemaFile: "packages/cloud/shared/src/db/schemas/conversations.ts",
     table: "conversation_messages",
     columns: [{ source: "content" }],
   },
@@ -118,25 +118,25 @@ export const piiEncryptionColumns: Check = {
 };
 
 const SOFT_DELETE_TARGETS = [
-  { file: "packages/cloud-shared/src/db/schemas/users.ts", table: "users" },
+  { file: "packages/cloud/shared/src/db/schemas/users.ts", table: "users" },
   {
-    file: "packages/cloud-shared/src/db/schemas/conversations.ts",
+    file: "packages/cloud/shared/src/db/schemas/conversations.ts",
     table: "conversations",
   },
   {
-    file: "packages/cloud-shared/src/db/schemas/api-keys.ts",
+    file: "packages/cloud/shared/src/db/schemas/api-keys.ts",
     table: "api_keys",
   },
   {
-    file: "packages/cloud-shared/src/db/schemas/secrets.ts",
+    file: "packages/cloud/shared/src/db/schemas/secrets.ts",
     table: "secrets",
   },
   {
-    file: "packages/cloud-shared/src/db/schemas/agent-sandboxes.ts",
+    file: "packages/cloud/shared/src/db/schemas/agent-sandboxes.ts",
     table: "agent_sandboxes",
   },
   {
-    file: "packages/cloud-shared/src/db/schemas/platform-credentials.ts",
+    file: "packages/cloud/shared/src/db/schemas/platform-credentials.ts",
     table: "platform_credentials",
   },
 ];
@@ -183,11 +183,11 @@ export const auditLogRetention: Check = {
   async run(ctx): Promise<CheckResult> {
     const targets = [
       {
-        file: "packages/cloud-shared/src/db/schemas/secrets.ts",
+        file: "packages/cloud/shared/src/db/schemas/secrets.ts",
         table: "secret_audit_log",
       },
       {
-        file: "packages/cloud-shared/src/db/schemas/auth-events.ts",
+        file: "packages/cloud/shared/src/db/schemas/auth-events.ts",
         table: "auth_events",
       },
     ];
@@ -228,13 +228,13 @@ export const kmsAdoption: Check = {
     const targets = [
       {
         root: ctx.elizaRoot,
-        label: "packages/cloud-shared",
-        path: "packages/cloud-shared",
+        label: "packages/cloud/shared",
+        path: "packages/cloud/shared",
       },
       {
         root: ctx.elizaRoot,
-        label: "packages/cloud-api",
-        path: "packages/cloud-api",
+        label: "packages/cloud/api",
+        path: "packages/cloud/api",
       },
       { root: ctx.elizaRoot, label: "packages/agent", path: "packages/agent" },
       {

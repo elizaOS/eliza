@@ -72,7 +72,7 @@ const CONFIGS = {
       },
       {
         lanes: ["server", "client", "zero_key", "cloud"],
-        patterns: ["packages/cloud-sdk/**", "packages/cloud-shared/**"],
+        patterns: ["packages/cloud/sdk/**", "packages/cloud/shared/**"],
         reason: "cloud surface",
       },
       {

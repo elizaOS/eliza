@@ -133,7 +133,7 @@ the sidecar is available and surface the logs to the human.
 > `POST /api/v1/apps/:id/deploy` (`BUILDING → READY`), is a *separate* surface
 > and is **gated**: it returns `503 { code: "apps_deploy_disabled" }` unless
 > `APPS_DEPLOY_ENABLED=1` on the Worker, plus a production org allowlist (`403`)
-> — see `packages/cloud-api/v1/apps/[id]/deploy/route.ts`. The cloud-e2e specs
+> — see `packages/cloud/api/v1/apps/[id]/deploy/route.ts`. The cloud-e2e specs
 > drive the `/apps/:id/deploy` route, so a from-scratch manual test that follows
 > *this* flow uses `/containers` and won't hit that gate; a tester exercising
 > `/apps/:id/deploy` directly must set the flag first.

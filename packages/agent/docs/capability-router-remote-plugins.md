@@ -674,7 +674,7 @@ Concrete findings from the inspected PR files:
   not sufficient for dynamic plugins because it has no `plugin.modules.list`,
   no remote action/provider/evaluator/service/app manifest, no route registry,
   and no frontend asset contract.
-- `packages/cloud-services/coding-remote-runner/src/index.ts` (historically `coding-satellite`) is appropriately
+- `packages/cloud/services/coding-remote-runner/src/index.ts` (historically `coding-satellite`) is appropriately
   workspace-scoped for filesystem and process execution, including bearer auth
   and path guards, but it exposes only low-level runner capabilities. A coding
   container built from this shape still needs a capability-router plugin server
@@ -692,7 +692,7 @@ Concrete findings from the inspected PR files:
 Current branch provider-adapter check:
 
 - The historical PR files above are not present in this checkout. A current
-  file scan under `packages/agent`, `packages/cloud-services`, `packages/app-core`,
+  file scan under `packages/agent`, `packages/cloud/services`, `packages/app-core`,
   `plugins`, and `.github` finds the canonical implementation in
   `remote-capability-router`, `remote-plugin-adapter`, the agent API route, and
   the Cloud provisioner only.

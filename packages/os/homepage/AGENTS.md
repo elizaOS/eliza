@@ -9,7 +9,7 @@ This is the public-facing website for elizaOS hardware and OS downloads. It serv
 ## Layout
 
 ```
-packages/os-homepage/
+packages/os/homepage/
   src/
     main.tsx                  Entry point — mounts <App> wrapped in <I18nProvider>
     App.tsx                   Router (path-based, no router library) — dispatches to:
@@ -43,11 +43,11 @@ packages/os-homepage/
 
 The app imports from workspace packages via Vite aliases (not workspace exports — the aliases resolve source files directly):
 
-- `@elizaos/shared/brand` → `../shared/src/brand/index.ts` — `BRAND_PATHS`, `BRAND_COLORS`, `LOGO_FILES`, `EXTERNAL_URLS`
-- `@elizaos/shared/hardware-catalog` → `../shared/src/hardware-catalog/index.ts` — `HARDWARE_PRODUCTS`, `Product` type
-- `@elizaos/shared/checkout` → `../shared/src/checkout/index.ts` — `startStripeCheckout`, `StripeCheckoutError`
-- `@elizaos/shared/steward-session-client` → `../shared/src/steward-session-client/index.ts` — session helpers, constants
-- `@elizaos/ui/i18n/region` → `../ui/src/i18n/region.ts` — `detectClientLanguage`
+- `@elizaos/shared/brand` → `../../shared/src/brand/index.ts` — `BRAND_PATHS`, `BRAND_COLORS`, `LOGO_FILES`, `EXTERNAL_URLS`
+- `@elizaos/shared/hardware-catalog` → `../../shared/src/hardware-catalog/index.ts` — `HARDWARE_PRODUCTS`, `Product` type
+- `@elizaos/shared/checkout` → `../../shared/src/checkout/index.ts` — `startStripeCheckout`, `StripeCheckoutError`
+- `@elizaos/shared/steward-session-client` → `../../shared/src/steward-session-client/index.ts` — session helpers, constants
+- `@elizaos/ui/i18n/region` → `../../ui/src/i18n/region.ts` — `detectClientLanguage`
 - `@stwd/sdk` — `StewardAuth` class for magic-link email auth
 
 This package does NOT export anything for other packages to consume.
@@ -57,17 +57,17 @@ This package does NOT export anything for other packages to consume.
 All scripts require Bun. Run from repo root with `--cwd`:
 
 ```bash
-bun run --cwd packages/os-homepage dev          # Dev server on :4455 (runs predev asset sync first)
-bun run --cwd packages/os-homepage build        # Vite build to dist/ (runs prebuild asset sync first)
-bun run --cwd packages/os-homepage preview      # Preview built dist/ on :4455
-bun run --cwd packages/os-homepage deploy       # wrangler pages deploy to elizaos-homepage project
-bun run --cwd packages/os-homepage typecheck    # tsc -b
-bun run --cwd packages/os-homepage test         # node --test tests/smoke.node.test.mjs
-bun run --cwd packages/os-homepage test:e2e     # Playwright e2e suite
-bun run --cwd packages/os-homepage screenshots  # Capture screenshots via scripts/capture-screenshots.mjs
-bun run --cwd packages/os-homepage lint         # Biome check + unsafe auto-fix
-bun run --cwd packages/os-homepage lint:check   # Biome check only
-bun run --cwd packages/os-homepage format       # Biome format --write
+bun run --cwd packages/os/homepage dev          # Dev server on :4455 (runs predev asset sync first)
+bun run --cwd packages/os/homepage build        # Vite build to dist/ (runs prebuild asset sync first)
+bun run --cwd packages/os/homepage preview      # Preview built dist/ on :4455
+bun run --cwd packages/os/homepage deploy       # wrangler pages deploy to elizaos-homepage project
+bun run --cwd packages/os/homepage typecheck    # tsc -b
+bun run --cwd packages/os/homepage test         # node --test tests/smoke.node.test.mjs
+bun run --cwd packages/os/homepage test:e2e     # Playwright e2e suite
+bun run --cwd packages/os/homepage screenshots  # Capture screenshots via scripts/capture-screenshots.mjs
+bun run --cwd packages/os/homepage lint         # Biome check + unsafe auto-fix
+bun run --cwd packages/os/homepage lint:check   # Biome check only
+bun run --cwd packages/os/homepage format       # Biome format --write
 ```
 
 `predev` and `prebuild` hooks run `packages/shared/scripts/sync-to-public.mjs` to copy logos, OG embeds, concept images, and background videos from `@elizaos/shared` into `public/brand/`. This is required — the directory is gitignored.
@@ -107,7 +107,7 @@ Language preference is stored in `localStorage` under the key `os.lang`. The `?l
 ## Conventions / gotchas
 
 - **No router library.** Routing is plain `window.location.pathname` checks in `App.tsx`. Keep routes simple; add a redirect in `public/_redirects` for Cloudflare Pages if a new route needs SPA fallback.
-- **Asset sync is required before dev/build.** The `predev`/`prebuild` hooks run automatically with `bun run dev` or `bun run build`, but not with raw `vite` commands. If `public/brand/` is empty, run `node packages/shared/scripts/sync-to-public.mjs packages/os-homepage/public --logos --ogembeds --concepts --background --background-videos` manually.
+- **Asset sync is required before dev/build.** The `predev`/`prebuild` hooks run automatically with `bun run dev` or `bun run build`, but not with raw `vite` commands. If `public/brand/` is empty, run `node packages/shared/scripts/sync-to-public.mjs packages/os/homepage/public --logos --ogembeds --concepts --background --background-videos` manually.
 - **Vite aliases resolve workspace source directly** rather than workspace package exports. Adding a new `@elizaos/shared/*` sub-path import requires a corresponding alias entry in `vite.config.ts`.
 - **No bare `@elizaos/ui` alias.** UI imports use fully-qualified sub-path aliases only (`@elizaos/ui/button`, `@elizaos/ui/card`, `@elizaos/ui/product-switcher`, `@elizaos/ui/i18n/region`).
 - **`public/_redirects` handles SPA routing.** The Vite build also copies `index.html` to `404.html` via the `spa404Fallback` plugin for Cloudflare Pages compatibility.

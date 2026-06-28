@@ -365,7 +365,7 @@ export async function startCloudStack(
     await runLoggedStep(
       "cloud-migrate",
       BUN,
-      ["run", "--cwd", "packages/cloud-shared", "db:migrate"],
+      ["run", "--cwd", "packages/cloud/shared", "db:migrate"],
       {
         env: stackEnv,
         cwd: REPO_ROOT,
@@ -375,7 +375,7 @@ export async function startCloudStack(
   }
 
   // Boot cloud-api through its wrangler dev launcher — the same entrypoint the
-  // cloud:mock stack uses (`bun run --cwd packages/cloud-api dev`). The earlier
+  // cloud:mock stack uses (`bun run --cwd packages/cloud/api dev`). The earlier
   // no-wrangler "e2e-server" adapter imported cloud-api straight from TypeScript
   // source, which neither node (it can't load the extensionless `.ts` relative
   // imports) nor bun (cloud-api's `@/…` path aliases need a tsconfig `baseUrl`
@@ -386,7 +386,7 @@ export async function startCloudStack(
     spawnLogged(
       "cloud-api",
       BUN,
-      ["run", "--cwd", "packages/cloud-api", "dev"],
+      ["run", "--cwd", "packages/cloud/api", "dev"],
       {
         env: stackEnv,
         cwd: REPO_ROOT,

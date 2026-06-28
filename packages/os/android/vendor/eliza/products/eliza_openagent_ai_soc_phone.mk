@@ -3,7 +3,7 @@
 # The base device tree (board config, kernel cmdline, init.rc, sepolicy,
 # VINTF manifests, NPU HAL fragments) comes from the chip team's
 # `device/eliza/eliza_ai_soc/` tree, imported into the AOSP checkout by
-# `packages/chip/sw/aosp-device/import-aosp-device.sh`. The Eliza common
+# `packages/research/chip/sw/aosp-device/import-aosp-device.sh`. The Eliza common
 # product layer is inherited AFTER the device makefile so the privileged
 # Eliza APK, default-role strips, framework overlay, init.eliza.rc, and
 # assistant/full-control manifest override the AOSP defaults pulled in

@@ -19,7 +19,7 @@ Cloudflare Pages project: `elizaos-homepage`
 bun install
 
 # Start dev server (also syncs brand assets from @elizaos/shared)
-bun run --cwd packages/os-homepage dev
+bun run --cwd packages/os/homepage dev
 ```
 
 Dev server runs on `:4455`.
@@ -27,8 +27,8 @@ Dev server runs on `:4455`.
 ## Build and deploy
 
 ```bash
-bun run --cwd packages/os-homepage build
-bun run --cwd packages/os-homepage deploy
+bun run --cwd packages/os/homepage build
+bun run --cwd packages/os/homepage deploy
 ```
 
 The deploy target is the `elizaos-homepage` Cloudflare Pages project. The custom domain `os.elizacloud.ai` must be pointed at the Pages project with a CNAME before Cloudflare can complete custom-domain verification.
@@ -43,10 +43,10 @@ The deploy target is the `elizaos-homepage` Cloudflare Pages project. The custom
 
 ```bash
 # Node smoke test (no browser required)
-bun run --cwd packages/os-homepage test
+bun run --cwd packages/os/homepage test
 
 # Playwright e2e
-bun run --cwd packages/os-homepage test:e2e
+bun run --cwd packages/os/homepage test:e2e
 ```
 
 For agent-facing documentation (file layout, extension guides, gotchas), see [CLAUDE.md](CLAUDE.md).

@@ -13,7 +13,7 @@
       ],
       "@elizaos/plugin-facewear": ["./plugins/plugin-facewear/dist/index.d.ts"],
       "@elizaos/plugin-facewear/*": ["./plugins/plugin-facewear/dist/*.d.ts"],
-      "@elizaos/cloud-routing": ["./packages/cloud-routing/dist/index.d.ts"],
+      "@elizaos/cloud-routing": ["./packages/cloud/routing/dist/index.d.ts"],
       "@elizaos/agent": ["./packages/agent/dist/index.d.ts"],
       "@elizaos/agent/*": ["./packages/agent/dist/*.d.ts"],
       "@elizaos/shared": ["./packages/shared/dist/index.d.ts"],
@@ -357,7 +357,7 @@
         "./plugins/plugin-bluebubbles/dist/index.d.ts"
       ],
       "@elizaos/plugin-training": ["./plugins/plugin-training/dist/index.d.ts"],
-      "@elizaos/cloud-sdk": ["./packages/cloud-sdk/dist/index.d.ts"]
+      "@elizaos/cloud-sdk": ["./packages/cloud/sdk/dist/index.d.ts"]
     }
   },
   "include": [
@@ -367,7 +367,7 @@
     "plugins/*/src/**/*",
     "plugins/*/typescript/**/*.ts",
     "packages/cloud-*/src/**/*",
-    "packages/cloud-services/*/src/**/*"
+    "packages/cloud/services/*/src/**/*"
   ],
   "exclude": [
     "**/node_modules/**",

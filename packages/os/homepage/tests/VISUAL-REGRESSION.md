@@ -5,7 +5,7 @@ Baseline screenshots that catch unintended visual changes during redesign work.
 ## Generate baselines (first run, or after an intentional redesign)
 
 ```bash
-bun --cwd packages/os-homepage run test:e2e -- --update-snapshots visual.spec.ts
+bun --cwd packages/os/homepage run test:e2e -- --update-snapshots visual.spec.ts
 ```
 
 (If no `test:e2e` script exists, run `bunx playwright test --update-snapshots visual.spec.ts`
@@ -16,7 +16,7 @@ PNGs land in `tests/visual.spec.ts-snapshots/`. Commit them.
 ## Run the diff
 
 ```bash
-bun --cwd packages/os-homepage run test:e2e -- visual.spec.ts
+bun --cwd packages/os/homepage run test:e2e -- visual.spec.ts
 ```
 
 Failure diffs go to `test-results/` (already gitignored).

@@ -66,7 +66,7 @@ assert daemon-driven pool maintenance over time. Timers are cleared on shutdown.
 ### #8922 — Stripe Connect fiat payout ✅ implemented + e2e-covered
 
 The Stripe Connect rail is implemented: the onboarding / transfer / webhook
-routes (`packages/cloud-api/v1/earnings/payout/stripe-connect/*`), the
+routes (`packages/cloud/api/v1/earnings/payout/stripe-connect/*`), the
 SDK-agnostic payout service (`stripe-connect-payout.ts`), the accounts repo +
 schema + migration `0150`. The transfer route is admin-gated and runs a
 compensating saga (validate → debit ledger → transfer → re-credit on failure)

@@ -147,8 +147,8 @@ const TASKS = [
     args: [
       "test",
       "--preload",
-      "packages/cloud-api/test/e2e/preload.ts",
-      "packages/cloud-api/test/e2e/agent-token-flow.test.ts",
+      "packages/cloud/api/test/e2e/preload.ts",
+      "packages/cloud/api/test/e2e/agent-token-flow.test.ts",
       "--timeout",
       "120000",
     ],
@@ -158,7 +158,7 @@ const TASKS = [
     id: "cloud-api-key-client",
     tier: 0,
     command: "bun",
-    args: ["test", "packages/cloud-shared/src/lib/client/api-keys.test.ts"],
+    args: ["test", "packages/cloud/shared/src/lib/client/api-keys.test.ts"],
     env: {
       SKIP_DB_DEPENDENT: "1",
       SKIP_SERVER_CHECK: "true",
