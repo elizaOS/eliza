@@ -203,7 +203,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/view-manager-actual-flow.spec.ts",
       proves:
         "Opens the simple notes view from the View Manager and verifies split-view rendering with the simple calendar.",
-      signals: ["viewLaunchButton(page, \"notes\")", "simple-notes-view"],
+      signals: ['launchSpringboardView(page, "notes")', "simple-notes-view"],
     },
   ],
   "simple-calendar": [
@@ -212,7 +212,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       proves:
         "Opens the simple calendar view from the View Manager and verifies split-view rendering with notes.",
       signals: [
-        "viewLaunchButton(page, \"simple-calendar\")",
+        'launchSpringboardView(page, "simple-calendar")',
         "simple-calendar-view",
       ],
     },
