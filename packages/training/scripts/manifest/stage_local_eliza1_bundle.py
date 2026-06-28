@@ -379,7 +379,7 @@ _GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = (
 
 def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
     """Read the target text-checkpoint sha256 the drafter was distilled
-    against, recorded as a GGUF metadata string by ``distill_mtp_drafter.py``.
+    against, recorded as a GGUF metadata string by the drafter producer.
 
     Returns ``None`` for local stand-in drafters (source-converted GGUFs
     have no such key). The publish path treats a missing key as a hard
@@ -527,8 +527,9 @@ def _write_target_meta(
                 "finalElizaWeights": False,
                 "architecture": None,
                 "architectureSource": (
-                    "not validated; run scripts/mtp/validate_drafter.py "
-                    "against the final target and drafter GGUFs before publish"
+                    "not validated; validate the target/drafter GGUF pair out "
+                    "of band before publish (see plugins/plugin-local-inference/"
+                    "docs/gemma4-mtp-drafter-conversion.md)"
                 ),
                 # sha256 of the text checkpoint this drafter was distilled
                 # against, copied from the drafter GGUF's
@@ -543,7 +544,8 @@ def _write_target_meta(
                         "key": "tokenizer.ggml.*",
                         "blockingReason": (
                             "target/drafter tokenizer metadata has not been "
-                            "validated by scripts/mtp/validate_drafter.py"
+                            "validated out of band (see plugins/plugin-local-"
+                            "inference/docs/gemma4-mtp-drafter-conversion.md)"
                         ),
                     }
                 ],

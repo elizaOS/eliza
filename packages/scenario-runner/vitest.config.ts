@@ -8,6 +8,7 @@ const repoRoot = path.resolve(here, "..", "..");
 const workspacePluginDirs = [
   path.join(repoRoot, "plugins"),
   path.join(repoRoot, "packages"),
+  path.join(repoRoot, "packages", "cloud"),
 ];
 
 type SourceAliasEntry = {

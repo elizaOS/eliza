@@ -474,109 +474,26 @@ fetch() {
   rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
 }
 
-# --- MTP drafter distillation (distill_mtp_drafter.py) ----------------
-# Env knobs (defaults frugal — a small KD job, not a full pipeline):
-#   MTP_TIER              tier the drafter ships for. Active tiers (per
-#                            distill_mtp_drafter.py::ACTIVE_TIERS): 2b,
-#                            4b, 9b, 27b, 27b-256k. Default: 2b.
-#   MTP_TARGET_CHECKPOINT remote path (relative to $REMOTE_TRAIN_DIR) to the
-#                            SFT'd target text HF checkpoint directory. The
-#                            distiller loads the target via
-#                            AutoModelForCausalLM.from_pretrained(<this>).
-#                            Required for a real run.
-#   MTP_TARGET_GGUF       (optional) remote path to the final shipped target
-#                            text GGUF; its sha256 is stamped into the drafter
-#                            GGUF metadata (`mtp-draft.target_checkpoint_sha256`).
-#                            Strongly recommended — without it the script falls
-#                            back to hashing model.safetensors[.index.json].
-#   MTP_TARGET_MODEL_ID   (optional) canonical Eliza-1 target model id.
-#                            Defaults to the tier's entry in
-#                            distill_mtp_drafter.py::DEFAULT_TARGET_MODEL
-#                            (e.g. elizaos/eliza-1/bundles/2b for tier=2b).
-#   MTP_STUDENT_BASE      HF id of the student base. Defaults to
-#                            google/gemma-4-E2B-Base (the Eliza-1 mandated
-#                            student for every active tier — keep this aligned
-#                            with model_registry.py::MTP_DRAFTER_BASE).
-#   MTP_DATASET           distillation corpus (default $TRAIN_FILE).
-#   MTP_EPOCHS / MTP_BATCH / MTP_GRAD_ACCUM / MTP_MAX_SEQ_LEN
-#                            default 1 / 8 / 4 / 2048.
-#   MTP_MAX_SAMPLES       cap examples (default 0 = all; set e.g. 20000 for
-#                            a short budget-bounded run).
-#   MTP_OUT_DIR           remote+local out dir name (default
-#                            out/mtp-drafter-${MTP_TIER}).
+# --- MTP drafter distillation (REMOVED) -------------------------------
+# The in-repo drafter distiller (scripts/distill_mtp_drafter.py) was deleted.
+# Release-grade MTP drafter distillation is H100/H200-gated and now done out of
+# band, not driven from this script. The supported no-train path converts the
+# published Gemma-4 MTP drafter to the mtp-draft GGUF arch and A/B-validates it
+# per plugins/plugin-local-inference/docs/gemma4-mtp-drafter-conversion.md, then
+# stages the result at bundles/<tier>/mtp/drafter-<tier>.gguf.
 run_distill_remote() {
-  local target; target="$(ssh_target)"
-  local tier="${MTP_TIER:-2b}"
-  local target_ckpt="${MTP_TARGET_CHECKPOINT:-}"
-  local target_gguf="${MTP_TARGET_GGUF:-}"
-  local target_model_id="${MTP_TARGET_MODEL_ID:-}"
-  local student_base="${MTP_STUDENT_BASE:-google/gemma-4-E2B-Base}"
-  local ds="${MTP_DATASET:-$TRAIN_FILE}"
-  local epochs="${MTP_EPOCHS:-1}" batch="${MTP_BATCH:-8}" ga="${MTP_GRAD_ACCUM:-4}"
-  local msl="${MTP_MAX_SEQ_LEN:-2048}" maxn="${MTP_MAX_SAMPLES:-0}"
-  local out_dir="${MTP_OUT_DIR:-out/mtp-drafter-${tier}}"
-  local hf_tok="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
-  local log="$REMOTE_TRAIN_DIR/distill_${RUN_NAME}.log"
+  cat >&2 <<'MSG'
+[train_nebius][distill] ERROR: in-repo MTP drafter distillation was removed.
+scripts/distill_mtp_drafter.py no longer exists, so there is nothing to run on
+the remote box. Release-grade MTP drafter distillation is H100/H200-gated and
+done out of band.
 
-  if [ -z "$target_ckpt" ]; then
-    echo "[train_nebius][distill] ERROR: MTP_TARGET_CHECKPOINT is required (remote path to the SFT'd target text HF checkpoint, e.g. checkpoints/eliza-1-2b-apollo-.../final)" >&2
-    return 2
-  fi
-  local target_gguf_arg=""
-  [ -n "$target_gguf" ] && target_gguf_arg="--target-gguf $target_gguf"
-  local target_model_id_arg=""
-  [ -n "$target_model_id" ] && target_model_id_arg="--target-model-id $target_model_id"
-
-  echo "[train_nebius][distill] tier=$tier target_ckpt=$target_ckpt target_gguf=${target_gguf:-(none)} student_base=$student_base dataset=$ds epochs=$epochs batch=$batch ga=$ga seq=$msl max_samples=$maxn"
-  ssh -o StrictHostKeyChecking=no "$target" "cat > $REMOTE_TRAIN_DIR/.run_distill.sh" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-cd $REMOTE_TRAIN_DIR
-export PATH=\$HOME/.local/bin:\$PATH
-export CUDA_VISIBLE_DEVICES=0
-export HF_HOME=/opt/hf-cache
-sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
-${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
-uv sync --extra train
-# Gemma 4 (gemma4 arch) needs transformers >= 4.57.0.dev0; the train
-# extra pins >=4.46. Upgrade in-venv (matches the local box's 5.7.0).
-uv pip install --python .venv/bin/python -U 'transformers>=4.57.0' 'accelerate>=1.1.0'
-# Same cu130-driver problem as run_remote(): the Nebius cuda12.8 image ships a
-# 570.x driver; the cu130-pinned torch can't see CUDA. Swap to cu128.
-.venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null || {
-  echo "[remote][distill] torch cannot see CUDA — swapping to torch 2.11.0+cu128"
-  uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
-  cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
-  [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
-  uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
-  uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
-  .venv/bin/python -c 'import torch; assert torch.cuda.is_available(); print("[remote][distill] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
-}
-export UV_NO_SYNC=1 UV_FROZEN=1
-.venv/bin/python scripts/distill_mtp_drafter.py \\
-  --tier $tier \\
-  --target-checkpoint $target_ckpt $target_gguf_arg $target_model_id_arg \\
-  --student-base $student_base \\
-  --dataset $ds --out-dir $out_dir \\
-  --epochs $epochs --batch-size $batch --grad-accum $ga --max-seq-len $msl --max-samples $maxn
-echo DISTILL_DONE_OK
-EOF
-  # Same PIPESTATUS[0] fix as run_remote — `$?` of a tee pipeline is tee's rc.
-  ssh -o StrictHostKeyChecking=no "$target" "chmod +x $REMOTE_TRAIN_DIR/.run_distill.sh; tmux kill-session -t elizadistill 2>/dev/null || true; tmux new-session -d -s elizadistill \"bash $REMOTE_TRAIN_DIR/.run_distill.sh 2>&1 | tee $log; echo DISTILL_EXIT=\\\${PIPESTATUS[0]} >> $log\""
-  echo "[train_nebius][distill] launched under tmux 'elizadistill' — log: $log"
-  local i=0
-  while true; do
-    sleep 60; i=$((i+1))
-    local tail_out; tail_out="$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$target" "tail -n 3 $log 2>/dev/null" 2>/dev/null || echo '(ssh hiccup)')"
-    echo "[train_nebius][distill] +$((i))m | $(echo "$tail_out" | tr '\n' ' ' | tr '\r' ' ' | tail -c 220)"
-    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$target" "grep -q 'DISTILL_EXIT=' $log 2>/dev/null"; then
-      local rc; rc="$(ssh -o StrictHostKeyChecking=no "$target" "grep 'DISTILL_EXIT=' $log | tail -1 | sed 's/.*=//'" 2>/dev/null || echo '?')"
-      echo "[train_nebius][distill] finished (DISTILL_EXIT=$rc)"
-      [ "$rc" = "0" ] || return 1
-      break
-    fi
-    if [ "$i" -gt 240 ]; then echo "[train_nebius][distill] ERROR: still running after 4h — bailing (VM left up; ssh in or run teardown)"; return 1; fi
-  done
+Supported no-train path (no GPU box needed): convert the published Gemma-4 MTP
+drafter to the mtp-draft GGUF arch and A/B-validate it, per
+  plugins/plugin-local-inference/docs/gemma4-mtp-drafter-conversion.md
+then stage the result at bundles/<tier>/mtp/drafter-<tier>.gguf.
+MSG
+  return 2
 }
 
 fetch_distill() {

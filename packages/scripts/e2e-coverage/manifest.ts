@@ -173,6 +173,9 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-social-alpha": existing(
     "plugins/plugin-social-alpha/src/routes.test.ts",
   ),
+  "plugin-scheduling": existing(
+    "plugins/plugin-scheduling/src/routes/scheduled-tasks.test.ts",
+  ),
   "plugin-training": existing(
     "plugins/plugin-training/src/routes/trajectory-routes.test.ts",
   ),
