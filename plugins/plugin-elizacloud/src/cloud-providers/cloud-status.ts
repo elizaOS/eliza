@@ -36,6 +36,8 @@ export const cloudStatusProvider: Provider = {
       const containers = containerSvc?.getTrackedContainers() ?? [];
       const connected = bridgeSvc?.getConnectedContainerIds() ?? [];
 
+      const apiKeyInvalid = auth.isApiKeyInvalid();
+
       const running = containers.filter((c) => c.status === "running").length;
       const deploying = containers.filter(
         (c) => c.status === "pending" || c.status === "building" || c.status === "deploying"
@@ -52,6 +54,9 @@ export const cloudStatusProvider: Provider = {
 
       const lines = [
         `ElizaCloud: ${containers.length} container(s), ${running} running, ${connected.length} bridged`,
+        ...(apiKeyInvalid
+          ? ["  - WARNING: Eliza Cloud API key REVOKED/INVALID — model calls will 401 until re-provisioned"]
+          : []),
         ...summaries.map(
           (c) =>
             `  - ${c.name} [${c.status}]${c.url ? ` @ ${c.url}` : ""}${c.bridged ? " (bridged)" : ""}`
@@ -62,6 +67,7 @@ export const cloudStatusProvider: Provider = {
         text: lines.join("\n"),
         values: {
           cloudAuthenticated: true,
+          cloudApiKeyInvalid: apiKeyInvalid,
           totalContainers: containers.length,
           runningContainers: running,
           deployingContainers: deploying,

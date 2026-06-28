@@ -26,11 +26,10 @@ import {
   resolveApiSecurityConfig,
   resolveDesktopApiPort,
 } from "@elizaos/core";
-import { isCloudReachable } from "@elizaos/shared";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { CloudCredentials, DeviceAuthResponse, DevicePlatform } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
-import { CloudApiClient } from "../utils/cloud-api";
+import { CloudApiClient, CloudApiError } from "../utils/cloud-api";
 import type { CloudBootstrapService } from "./cloud-bootstrap";
 
 /** SHA-256 hash of hostname + platform + arch + cpu + memory. */
@@ -577,22 +576,26 @@ export class CloudAuthService extends Service {
   }
 
   /**
-   * Probe the saved key: `unreachable` when the cloud can't be reached (a
-   * transient network state, not an auth signal), `valid` when an authenticated
-   * `/models` call succeeds, `invalid` when the cloud is reachable but rejects
-   * the key (revoked/expired). The `invalid` case is debounced upstream so a
-   * one-off 5xx doesn't false-alarm.
+   * Probe the saved key: `valid` when an authenticated `/models` call succeeds,
+   * `invalid` ONLY when the cloud is reachable and explicitly rejects the key
+   * (401/403 — revoked/expired), `unreachable` for every other failure (5xx,
+   * 429, timeout, network error). Only a `CloudApiError` carries a real HTTP
+   * status; timeouts (`AbortSignal.timeout`) and connection failures reject with
+   * a raw fetch/DOMException and so are correctly treated as `unreachable`. A
+   * server-side 5xx/429 is NOT an auth signal — classifying it as `invalid`
+   * would false-alarm a revoked-key error on a transient outage. The `invalid`
+   * case is still debounced upstream so a single 401 blip can't flip the state.
    */
   private async probeApiKey(key: string): Promise<ApiKeyProbe> {
-    if (!(await isCloudReachable())) {
-      return "unreachable";
-    }
     try {
       const validationClient = new CloudApiClient(this.client.getBaseUrl(), key);
       await validationClient.get("/models", { timeoutMs: 2_500 });
       return "valid";
-    } catch {
-      return "invalid";
+    } catch (err) {
+      if (err instanceof CloudApiError && (err.statusCode === 401 || err.statusCode === 403)) {
+        return "invalid";
+      }
+      return "unreachable";
     }
   }
 
@@ -601,9 +604,13 @@ export class CloudAuthService extends Service {
       clearTimeout(this.revalidationTimer);
     }
     // The timer is always cleared in stop(), so it can't outlive the service.
-    this.revalidationTimer = setTimeout(() => {
+    const timer = setTimeout(() => {
       void this.runRevalidation();
     }, delayMs);
+    // Don't let the background re-probe pin the Node event loop / block a clean
+    // process exit. `unref` is Node-only; it's absent on the browser shim type.
+    timer.unref?.();
+    this.revalidationTimer = timer;
   }
 
   private async runRevalidation(): Promise<void> {
