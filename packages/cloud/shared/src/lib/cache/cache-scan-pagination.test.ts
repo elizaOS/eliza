@@ -48,14 +48,21 @@ describe("MemoryCacheAdapter.scan paginates (no dropped keys, opaque cursor)", (
 
 describe("CacheClient SCAN over the memory backend (end-to-end cursor threading)", () => {
   const prevBackend = process.env.CACHE_BACKEND;
+  const prevCacheEnabled = process.env.CACHE_ENABLED;
   let CacheClient: typeof import("./client").CacheClient;
 
   beforeEach(() => {
+    // Cloud Tests intentionally run with CACHE_ENABLED=false globally; this
+    // regression needs the in-memory backend active to exercise SCAN pagination.
     process.env.CACHE_BACKEND = "memory";
+    process.env.CACHE_ENABLED = "true";
   });
   afterAll(() => {
     if (prevBackend === undefined) delete process.env.CACHE_BACKEND;
     else process.env.CACHE_BACKEND = prevBackend;
+
+    if (prevCacheEnabled === undefined) delete process.env.CACHE_ENABLED;
+    else process.env.CACHE_ENABLED = prevCacheEnabled;
   });
 
   test("scanByPrefix returns ALL keys across multiple pages (>100)", async () => {
