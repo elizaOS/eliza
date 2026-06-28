@@ -61,6 +61,7 @@ import {
 } from "@/lib/services/ai-billing";
 import { aiBillingRecordsService } from "@/lib/services/ai-billing-records";
 import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions";
+import { apiKeysService } from "@/lib/services/api-keys";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appsService } from "@/lib/services/apps";
 import { contentModerationService } from "@/lib/services/content-moderation";
@@ -69,6 +70,10 @@ import {
   type CreditReservation,
   creditsService,
 } from "@/lib/services/credits";
+import {
+  isInferenceHotPathCacheEnabled,
+  resolveInferenceAuthContext,
+} from "@/lib/services/inference-auth-context";
 import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
@@ -738,8 +743,52 @@ export async function handleChatCompletionsPOST(
     | null = null;
 
   try {
-    // 1. Authenticate
-    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(req);
+    // 1. Authenticate (+ moderation). #9899: when the inference hot-path cache
+    // is enabled, an API-key dedicated-agent request resolves auth + org +
+    // moderation in a SINGLE cache read (the actual hot path). Otherwise, and
+    // for non-API-key / cache-unavailable requests, the authoritative chain
+    // runs verbatim, so flag-OFF behavior is byte-identical to before.
+    const hotPathEnabled = isInferenceHotPathCacheEnabled();
+    let user: { id: string; organization_id: string };
+    let apiKey: { id: string } | null;
+    let moderationAlreadyChecked = false;
+
+    if (hotPathEnabled) {
+      const resolution = await resolveInferenceAuthContext(req);
+      if (resolution.kind === "suspended") {
+        return addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message:
+                  "Your account has been suspended due to policy violations.",
+                type: "account_suspended",
+                code: "moderation_violation",
+              },
+            },
+            { status: 403 },
+          ),
+        );
+      }
+      if (resolution.kind === "authorized") {
+        user = {
+          id: resolution.ctx.userId,
+          organization_id: resolution.ctx.orgId,
+        };
+        apiKey = { id: resolution.ctx.apiKeyId };
+        // The resolver already verified not-suspended (cache hit = at populate;
+        // origin miss = just now), so the synchronous moderation read is skipped.
+        moderationAlreadyChecked = true;
+      } else {
+        const authed = await requireAuthOrApiKeyWithOrg(req);
+        user = authed.user;
+        apiKey = authed.apiKey ? { id: authed.apiKey.id } : null;
+      }
+    } else {
+      const authed = await requireAuthOrApiKeyWithOrg(req);
+      user = authed.user;
+      apiKey = authed.apiKey ? { id: authed.apiKey.id } : null;
+    }
     // Pre-forward latency instrumentation (#9899): measured TTFT through this
     // route is ~6.5s while cerebras-direct is ~0.24s — 100% of the overhead is
     // pre-forward work, not the model. These marks split it (auth vs the
@@ -821,17 +870,26 @@ export async function handleChatCompletionsPOST(
     // do advertise a reasoning parameter in the catalog. Best-effort lookup;
     // on any failure we fall back to id name-pattern detection.
     let modelSupportedParameters: string[] | undefined;
-    try {
-      const catalogModel = await getCachedGatewayModelById(model);
-      modelSupportedParameters = catalogModel?.supported_parameters;
-    } catch (error) {
-      logger.warn(
-        "[Chat Completions] reasoning-detection catalog lookup failed; using name patterns",
-        {
-          model,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+    // #9899: skip the reasoning-detection catalog read when id name-pattern
+    // detection ALREADY classifies this as a reasoning model. The catalog can
+    // only ADD reasoning, never remove it (modelUsesReasoningTokens ORs the two
+    // signals), so for a name-pattern match the catalog cannot change
+    // computeEffectiveMaxTokens — the read is pure latency. Gated behind the
+    // hot-path flag so flag-OFF keeps the unconditional lookup (byte-identical).
+    const skipCatalogLookup = hotPathEnabled && modelUsesReasoningTokens(model);
+    if (!skipCatalogLookup) {
+      try {
+        const catalogModel = await getCachedGatewayModelById(model);
+        modelSupportedParameters = catalogModel?.supported_parameters;
+      } catch (error) {
+        logger.warn(
+          "[Chat Completions] reasoning-detection catalog lookup failed; using name patterns",
+          {
+            model,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
     }
     const effectiveMaxTokens = computeEffectiveMaxTokens(
       request.max_tokens,
@@ -852,24 +910,31 @@ export async function handleChatCompletionsPOST(
       maxUses: request.webSearchMaxUses,
     });
 
-    // 5. Check content moderation
-    if (await contentModerationService.shouldBlockUser(user.id)) {
-      return addCorsHeaders(
-        Response.json(
-          {
-            error: {
-              message:
-                "Your account has been suspended due to policy violations.",
-              type: "account_suspended",
-              code: "moderation_violation",
+    // 5. Check content moderation. Skipped when the hot-path resolver already
+    // verified the suspension status in this request (#9899) — never skipped on
+    // the slow path.
+    if (!moderationAlreadyChecked) {
+      if (await contentModerationService.shouldBlockUser(user.id)) {
+        return addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message:
+                  "Your account has been suspended due to policy violations.",
+                type: "account_suspended",
+                code: "moderation_violation",
+              },
             },
-          },
-          { status: 403 },
-        ),
-      );
+            { status: 403 },
+          ),
+        );
+      }
     }
 
-    // Start async moderation in background
+    // Start async moderation in background. ALWAYS runs (it is off the hot path)
+    // so new violations are still detected; on a violation we invalidate this
+    // user's inference auth-context so the cached fast path can't keep serving a
+    // user who just crossed the suspension threshold (#9899).
     const lastUserMessage = request.messages
       .filter((m) => m.role === "user")
       .pop();
@@ -888,6 +953,7 @@ export async function handleChatCompletionsPOST(
                 categories: result.flaggedCategories,
               },
             );
+            void apiKeysService.invalidateInferenceContextForUser(user.id);
           },
         );
       }

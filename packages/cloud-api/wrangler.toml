@@ -140,6 +140,14 @@ CACHE_ENABLED = "true"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
+# Inference hot path (#9899). Both default OFF; flag-OFF is byte-identical to
+# the pre-#9899 route. INFERENCE_HOT_PATH_CACHE collapses auth+moderation to a
+# single cache read; INFERENCE_OPTIMISTIC_BILLING enables Tier-2 off-path
+# billing (durable backstop). SAFE_BALANCE_THRESHOLD (USD) left empty -> +Inf ->
+# every org takes the safe synchronous-reserve path even if optimistic is on.
+INFERENCE_HOT_PATH_CACHE = "false"
+INFERENCE_OPTIMISTIC_BILLING = "false"
+SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -305,6 +313,14 @@ CACHE_ENABLED = "true"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
+# Inference hot path (#9899). Both default OFF; flag-OFF is byte-identical to
+# the pre-#9899 route. INFERENCE_HOT_PATH_CACHE collapses auth+moderation to a
+# single cache read; INFERENCE_OPTIMISTIC_BILLING enables Tier-2 off-path
+# billing (durable backstop). SAFE_BALANCE_THRESHOLD (USD) left empty -> +Inf ->
+# every org takes the safe synchronous-reserve path even if optimistic is on.
+INFERENCE_HOT_PATH_CACHE = "false"
+INFERENCE_OPTIMISTIC_BILLING = "false"
+SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -428,6 +444,14 @@ CACHE_ENABLED = "true"
 # would force the dead Upstash path and skip Railway Redis (client.ts:235).
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
+# Inference hot path (#9899). Both default OFF; flag-OFF is byte-identical to
+# the pre-#9899 route. INFERENCE_HOT_PATH_CACHE collapses auth+moderation to a
+# single cache read; INFERENCE_OPTIMISTIC_BILLING enables Tier-2 off-path
+# billing (durable backstop). SAFE_BALANCE_THRESHOLD (USD) left empty -> +Inf ->
+# every org takes the safe synchronous-reserve path even if optimistic is on.
+INFERENCE_HOT_PATH_CACHE = "false"
+INFERENCE_OPTIMISTIC_BILLING = "false"
+SAFE_BALANCE_THRESHOLD = ""
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"

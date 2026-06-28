@@ -11,6 +11,10 @@ import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "../pricing";
 import { logger } from "../utils/logger";
+import {
+  invalidateInferenceAuthContextByKeyHash,
+  invalidateInferenceAuthContextsByKeyHashes,
+} from "./inference-auth-cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -154,12 +158,17 @@ export class ApiKeysService {
   }
 
   /**
-   * Invalidate cache for a specific API key (call on update/delete)
+   * Invalidate cache for a specific API key (call on update/delete).
+   *
+   * Clears BOTH the validation cache (16-char-prefix key) AND the inference
+   * hot-path auth-context entry (full-hash key, #9899). Every api-key mutation
+   * site routes through here, so a revoked/updated key stops fast-pathing
+   * inference immediately rather than waiting out the IAC TTL.
    */
   async invalidateCache(keyHash: string): Promise<void> {
     const cacheKey = CacheKeys.apiKey.validation(keyHash.substring(0, 16));
-    await cache.del(cacheKey);
-    logger.debug("[ApiKeys] Invalidated API key cache");
+    await Promise.all([cache.del(cacheKey), invalidateInferenceAuthContextByKeyHash(keyHash)]);
+    logger.debug("[ApiKeys] Invalidated API key + inference auth-context cache");
   }
 
   async getById(id: string): Promise<ApiKey | undefined> {
@@ -168,6 +177,21 @@ export class ApiKeysService {
 
   async listByOrganization(organizationId: string): Promise<ApiKey[]> {
     return await apiKeysRepository.listByOrganization(organizationId);
+  }
+
+  async listByUser(userId: string): Promise<ApiKey[]> {
+    return await apiKeysRepository.listByUser(userId);
+  }
+
+  /**
+   * Invalidate the inference auth-context cache for ALL of a user's API keys
+   * (#9899). Called when a user is banned/suspended/deactivated: the caller has
+   * only the user_id, so we resolve the user's key hashes and clear each IAC
+   * entry. Best-effort - bounded ultimately by the IAC TTL.
+   */
+  async invalidateInferenceContextForUser(userId: string): Promise<void> {
+    const keys = await apiKeysRepository.listByUser(userId);
+    await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
   }
 
   async create(

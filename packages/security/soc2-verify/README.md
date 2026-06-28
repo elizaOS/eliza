@@ -19,17 +19,17 @@ JSON + Markdown evidence report for auditor sampling.
 
 ```bash
 # Run all checks, write report to .soc2-evidence/<timestamp>/
-bun run packages/soc2-verify/src/cli.ts
+bun run packages/security/soc2-verify/src/cli.ts
 
 # Write to a specific directory; exit non-zero if any critical check fails
-bun run packages/soc2-verify/src/cli.ts --strict-fail --out .soc2-evidence
+bun run packages/security/soc2-verify/src/cli.ts --strict-fail --out .soc2-evidence
 
 # Run only checks whose id contains "CC8.1"
-bun run packages/soc2-verify/src/cli.ts --include CC8.1
+bun run packages/security/soc2-verify/src/cli.ts --include CC8.1
 
 # Or use the package scripts
-bun run --cwd packages/soc2-verify verify
-bun run --cwd packages/soc2-verify verify:strict
+bun run --cwd packages/security/soc2-verify verify
+bun run --cwd packages/security/soc2-verify verify:strict
 ```
 
 ## CLI options
@@ -60,4 +60,4 @@ in the CLI summary and the report.
 - If `gitleaks` is not installed, the secret-scan check returns `skip`; install
   with `brew install gitleaks` for local runs.
 
-See `packages/soc2-verify/CLAUDE.md` for agent-oriented layout and extension guide.
+See `packages/security/soc2-verify/CLAUDE.md` for agent-oriented layout and extension guide.

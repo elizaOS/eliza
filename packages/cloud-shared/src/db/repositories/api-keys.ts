@@ -91,6 +91,17 @@ export class ApiKeysRepository {
     });
   }
 
+  /**
+   * Lists all API keys for a user. Used to fan-out inference auth-context cache
+   * invalidation when a user is banned/deactivated (#9899) - the ban site only
+   * knows the user_id, so it resolves the user's key hashes here.
+   */
+  async listByUser(userId: string): Promise<ApiKey[]> {
+    return await dbRead.query.apiKeys.findMany({
+      where: eq(apiKeys.user_id, userId),
+    });
+  }
+
   async findByName(name: string): Promise<ApiKey[]> {
     return await dbRead.query.apiKeys.findMany({
       where: eq(apiKeys.name, name),

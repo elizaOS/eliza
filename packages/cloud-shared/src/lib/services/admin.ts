@@ -7,6 +7,7 @@
 
 import { and, desc, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
+import { apiKeysRepository } from "../../db/repositories";
 import {
   type AdminUser,
   adminUsers,
@@ -18,6 +19,17 @@ import {
 } from "../../db/schemas";
 import { shouldBlockDevnetBypass } from "../config/deployment-environment";
 import { logger } from "../utils/logger";
+import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
+
+/**
+ * Clear the inference auth-context cache (#9899) for every API key a user owns.
+ * Called on ban so a user who was being served from a warm IAC entry stops
+ * fast-pathing inference immediately (bounded otherwise by the IAC TTL).
+ */
+async function invalidateUserInferenceContext(userId: string): Promise<void> {
+  const keys = await apiKeysRepository.listByUser(userId);
+  await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
+}
 
 // Default anvil wallet - admin in devnet only
 const ANVIL_DEFAULT_WALLET = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -473,6 +485,9 @@ class AdminService {
         banReason: reason,
       });
     }
+
+    // Stop any warm inference fast path for this user immediately (#9899).
+    await invalidateUserInferenceContext(userId);
 
     logger.warn("[Admin] User banned", { userId, adminUserId, reason });
   }

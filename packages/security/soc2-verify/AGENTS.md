@@ -9,7 +9,7 @@ This is a private developer tool (not published to npm). It is run directly via 
 ## Layout
 
 ```
-packages/soc2-verify/
+packages/security/soc2-verify/
   src/
     index.ts          Public API: re-exports types, ALL_CHECKS, runVerification, report helpers
     cli.ts            Entry point for the CLI (bun run src/cli.ts)
@@ -56,17 +56,17 @@ CLI entry is `src/cli.ts` (also exported at `./cli`).
 ## Commands
 
 ```bash
-bun run --cwd packages/soc2-verify verify           # run all checks, write report
-bun run --cwd packages/soc2-verify verify:strict    # exit 1 if any critical check fails
-bun run --cwd packages/soc2-verify test             # vitest run (unit suite)
-bun run --cwd packages/soc2-verify test:watch       # vitest watch
-bun run --cwd packages/soc2-verify typecheck        # tsgo --noEmit
+bun run --cwd packages/security/soc2-verify verify           # run all checks, write report
+bun run --cwd packages/security/soc2-verify verify:strict    # exit 1 if any critical check fails
+bun run --cwd packages/security/soc2-verify test             # vitest run (unit suite)
+bun run --cwd packages/security/soc2-verify test:watch       # vitest watch
+bun run --cwd packages/security/soc2-verify typecheck        # tsgo --noEmit
 ```
 
 Or run the CLI directly with flags:
 
 ```bash
-bun run packages/soc2-verify/src/cli.ts \
+bun run packages/security/soc2-verify/src/cli.ts \
   --out .soc2-evidence/run-1 \
   --strict-fail \
   --include CC8.1          # only run checks whose id contains "CC8.1"
@@ -79,7 +79,7 @@ bun run packages/soc2-verify/src/cli.ts \
 | `SOC2_OUTER_ROOT` | Override the workspace root used for outer-repo checks (`.github/workflows`, etc.). Default: parent of the elizaOS monorepo root. |
 | `SOC2_GITLEAKS_LOG_OPTS` | git log range passed to `gitleaks detect --log-opts`. Default: `--all`. |
 
-Root discovery walks upward from `src/cli.ts` looking for a directory containing both `packages/security/` and `packages/soc2-verify/`. Falls back to `process.cwd()`.
+Root discovery walks upward from `src/cli.ts` looking for a directory containing both `packages/security/` and `packages/core/`. Falls back to `process.cwd()`.
 
 ## Output
 

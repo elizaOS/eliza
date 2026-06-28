@@ -33,6 +33,19 @@ export const CacheKeys = {
     pattern: () => `apikey:*`,
   },
   /**
+   * Inference hot-path caches (#9899). The IAC entry collapses auth + org +
+   * moderation into a single read for API-key dedicated-agent inference; the
+   * org-balance entry is the Tier-2 optimistic-billing gate hint.
+   *
+   * IAC is keyed by the FULL sha256(key) (NOT the 16-char prefix the validation
+   * cache uses) so revoke/ban invalidation by `key_hash` is exact.
+   */
+  inference: {
+    authContext: (fullKeyHash: string) => `iac:auth:${fullKeyHash}:v1`,
+    /** Org credit-balance snapshot used only as the optimistic fast-path gate hint. */
+    orgBalance: (orgId: string) => `iac:org-balance:${orgId}:v1`,
+  },
+  /**
    * App cache keys
    * Used for caching app lookups to reduce DB load on high-traffic app auth
    */
@@ -229,6 +242,16 @@ export const CacheTTL = {
   apiKey: {
     validation: 600, // 10 minutes (was 300s)
     appMapping: 600, // 10 minutes - app-to-API-key mapping rarely changes
+  },
+  /**
+   * Inference hot-path TTLs (#9899). Deliberately short: the IAC entry caches a
+   * fully-authorized auth+moderation decision, so its TTL is the load-bearing
+   * bound on how long a revoked/banned credential is served if explicit
+   * invalidation is missed or lost to KV propagation lag.
+   */
+  inference: {
+    authContext: 60, // 1 minute - worst-case revoked/banned exposure ~= TTL + KV lag
+    orgBalance: 15, // 15 seconds - optimistic-billing gate hint, kept tight to bound drift
   },
   /**
    * App cache TTLs
