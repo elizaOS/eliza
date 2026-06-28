@@ -43,7 +43,10 @@ import {
   type Mock,
   vi,
 } from "vitest";
-import { createAgentOrchestratorPlugin } from "../../src/index.js";
+import {
+  buildAckPhrases,
+  createAgentOrchestratorPlugin,
+} from "../../src/index.js";
 import { AcpService } from "../../src/services/acp-service.js";
 
 type SessionHandler = (sessionId: string, event: string, data: unknown) => void;
@@ -350,9 +353,11 @@ describe("emitProgress routing ladder + cadence", () => {
     // to 0 for ack mode, so it posts immediately).
     await fire(rt, "s-ack", "ready");
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
-    expect(
+    // The ack text is now a rotated phrase from the pool, not a single hardcoded
+    // literal (the mock has no character, so the default floor is used).
+    expect(buildAckPhrases()).toContain(
       (rt.sendMessageToTarget.mock.calls[0][1] as { text: string }).text,
-    ).toBe("working on it now.");
+    );
 
     // Subsequent events (narration, tools) must NOT add more acks.
     await fire(rt, "s-ack", "message", { text: "still working" });
@@ -361,6 +366,32 @@ describe("emitProgress routing ladder + cadence", () => {
     });
     await vi.advanceTimersByTimeAsync(5_000);
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    await rt.dispose();
+  });
+
+  it("ack mode rotates the phrase across separate spawns in the same room (anti-repeat)", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+
+    seedSession(rt, "s-rot-1", "task-1");
+    await fire(rt, "s-rot-1", "ready");
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    // A genuinely separate later user turn (past the per-room dedup window) acks
+    // again — but must NOT repeat the previous phrase verbatim (the robotic
+    // repeat users reported). This is a fresh session, not a verify-retry.
+    await vi.advanceTimersByTimeAsync(120_000);
+    seedSession(rt, "s-rot-2", "task-2");
+    await fire(rt, "s-rot-2", "ready");
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(2);
+
+    const first = (rt.sendMessageToTarget.mock.calls[0][1] as { text: string })
+      .text;
+    const second = (rt.sendMessageToTarget.mock.calls[1][1] as { text: string })
+      .text;
+    expect(second).not.toBe(first);
+    expect(buildAckPhrases()).toContain(second);
 
     await rt.dispose();
   });

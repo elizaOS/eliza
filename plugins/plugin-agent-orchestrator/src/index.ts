@@ -39,6 +39,7 @@ import {
 } from "./actions/sandbox-stub.js";
 import { tasksAction } from "./actions/tasks.js";
 import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
+import { subAgentFailureResponseEvaluator } from "./evaluators/sub-agent-failure.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
 import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { activeWorkspaceContextProvider } from "./providers/active-workspace-context.js";
@@ -218,7 +219,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
     actions: orchestratorActions,
     providers: orchestratorProviders,
     responseHandlerEvaluators: codeExecutionAllowed
-      ? [subAgentCompletionResponseEvaluator]
+      ? [
+          subAgentCompletionResponseEvaluator,
+          subAgentFailureResponseEvaluator,
+        ]
       : [],
     // Eager-start the orchestrator's services. They're declared in `services:`
     // above and registered by elizaOS, but service registration is lazy — the
@@ -595,6 +599,42 @@ export function plannerAlreadyAckedSpawn(
   return plannerReplyAtMs >= sessionCreatedAtMs - lookbackMs;
 }
 
+/**
+ * Build the spawn-ack phrase pool. In "ack" mode the orchestrator posts ONE
+ * short line when it starts a sub-agent; a single hardcoded literal made every
+ * spawn read identically robotic. This returns a small, neutral rotation —
+ * deliberately generic so it reads fine for ANY character. Per-character voice
+ * arrives via the planner's own in-voice reply (which suppresses this ack when
+ * present), NOT by scraping `character.style.chat`: that field holds style
+ * DESCRIPTORS ("casual", "terse"), not utterances, and merging it once surfaced
+ * a literal "casual" as a live spawn ack. Pure + deterministic; unit-tested.
+ */
+export function buildAckPhrases(): string[] {
+  return [
+    "on it.",
+    "got it — starting now.",
+    "on it now.",
+    "okay, getting into it.",
+    "alright, starting on that.",
+    "got it, working on it.",
+  ];
+}
+
+/**
+ * Pick the next spawn-ack, never repeating the immediately-previous one used in
+ * the same room — that verbatim repeat is exactly what reads as robotic.
+ * Deterministic: the first phrase != lastPhrase, else the first phrase.
+ */
+export function pickNextAck(
+  phrases: string[],
+  lastPhrase: string | undefined,
+): string {
+  if (phrases.length === 0) return "on it.";
+  if (phrases.length === 1) return phrases[0];
+  const last = (lastPhrase ?? "").trim().toLowerCase();
+  return phrases.find((p) => p.trim().toLowerCase() !== last) ?? phrases[0];
+}
+
 // Exported for unit tests; not part of the plugin's public API contract.
 export function sanitizePlannerText(text: string): string {
   if (!text) return text;
@@ -834,6 +874,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // request after the window still gets its own.
   const roomAckAt = new Map<string, number>();
   const ACK_ROOM_DEDUP_MS = 60_000;
+  // Last ack phrase posted per room, so consecutive spawns rotate instead of
+  // repeating the same line verbatim. Bounded the same way as roomAckAt.
+  const lastAckByRoom = new Map<string, string>();
+  const ackPhrases = buildAckPhrases();
   // Cache threads by (source, roomId, label) so a rate-limit retry, a
   // mid-flight crash recovery, or a follow-up spawn for the same logical
   // project reuses the existing thread instead of creating a duplicate.
@@ -1262,15 +1306,21 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         await emitProgress(sessionId, target, rawText, sessionLabel);
         return;
       }
+      const roomAckKey = `${target.source}::${target.roomId}`;
+      // "ack" mode posts ONE clean spawn ACK (never the raw sub-agent
+      // narration) and never edits it afterward — the completion synthesis is
+      // the separate final message. Plain text, no emoji. Rotated with per-room
+      // anti-repeat so consecutive spawns never read identically.
+      const chosenAck =
+        progressPolicy.mode === "ack"
+          ? pickNextAck(ackPhrases, lastAckByRoom.get(roomAckKey))
+          : null;
       const initialText = state
         ? displayText
         : progressPolicy.mode === "threaded"
           ? `🚀 [${sessionLabel}] running`
           : progressPolicy.mode === "ack"
-            ? // "ack" mode posts ONE clean spawn ACK (never the raw sub-agent
-              // narration) and never edits it afterward — the completion
-              // synthesis is the separate final message. Plain text, no emoji.
-              "working on it now."
+            ? (chosenAck as string)
             : displayText;
       // Claim the first post synchronously before the await. A second progress
       // event for the same session that arrives while this send is in flight
@@ -1285,7 +1335,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // a concurrent sibling bails here. (Per-session suppression below still
         // guards the heartbeat / narration re-entry for this one session.)
         if (progressPolicy.mode === "ack") {
-          const roomAckKey = `${target.source}::${target.roomId}`;
           const now = Date.now();
           const lastRoomAck = roomAckAt.get(roomAckKey);
           if (
@@ -1298,6 +1347,15 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           if (roomAckAt.size > 512) {
             const oldest = roomAckAt.keys().next().value;
             if (oldest !== undefined) roomAckAt.delete(oldest);
+          }
+          // Record the phrase actually used so the next spawn in this room
+          // rotates off it (anti-repeat). Bounded like roomAckAt.
+          if (chosenAck) {
+            lastAckByRoom.set(roomAckKey, chosenAck);
+            if (lastAckByRoom.size > 512) {
+              const oldestAck = lastAckByRoom.keys().next().value;
+              if (oldestAck !== undefined) lastAckByRoom.delete(oldestAck);
+            }
           }
         }
         firstPostInFlight.add(sessionId);
@@ -1923,6 +1981,7 @@ export {
   handleCodingAgentRoutes,
 } from "./api/routes.js";
 export { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
+export { subAgentFailureResponseEvaluator } from "./evaluators/sub-agent-failure.js";
 // Providers
 export { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 export {

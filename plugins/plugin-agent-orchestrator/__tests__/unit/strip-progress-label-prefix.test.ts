@@ -1,7 +1,9 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  buildAckPhrases,
   compactProgressText,
+  pickNextAck,
   plannerAlreadyAckedSpawn,
   resolveSubAgentProgressPolicy,
   stripProgressLabelPrefix,
@@ -184,5 +186,43 @@ describe("plannerAlreadyAckedSpawn", () => {
     expect(plannerAlreadyAckedSpawn(createdAt, undefined, LOOKBACK)).toBe(
       false,
     );
+  });
+});
+
+describe("buildAckPhrases", () => {
+  it("returns a non-empty, deduped, neutral default rotation (no character scraping)", () => {
+    const phrases = buildAckPhrases();
+    expect(phrases.length).toBeGreaterThan(1);
+    expect(new Set(phrases.map((p) => p.toLowerCase())).size).toBe(
+      phrases.length,
+    );
+    expect(phrases.every((p) => p.trim().length > 0)).toBe(true);
+    expect(phrases).toContain("on it.");
+    // regression (live 2026-06-28): never a bare one-word style descriptor —
+    // scraping character.style.chat once surfaced "casual" as a spawn ack.
+    expect(phrases).not.toContain("casual");
+  });
+});
+
+describe("pickNextAck", () => {
+  it("returns the first phrase when there is no previous ack", () => {
+    expect(pickNextAck(["a", "b", "c"], undefined)).toBe("a");
+  });
+
+  it("never repeats the immediately-previous phrase", () => {
+    expect(pickNextAck(["a", "b", "c"], "a")).toBe("b");
+    expect(pickNextAck(["a", "b", "c"], "b")).toBe("a");
+  });
+
+  it("compares the previous phrase case- and whitespace-insensitively", () => {
+    expect(pickNextAck(["on it.", "got it."], "  ON IT.  ")).toBe("got it.");
+  });
+
+  it("returns the sole element for a single-phrase pool", () => {
+    expect(pickNextAck(["only"], "only")).toBe("only");
+  });
+
+  it("falls back to a safe literal for an empty pool", () => {
+    expect(pickNextAck([], undefined)).toBe("on it.");
   });
 });
