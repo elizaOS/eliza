@@ -29,8 +29,23 @@ No actions, providers, evaluators, or routes. Model handlers only, and **only th
 | `TEXT_LARGE` | `claude --print` or `codex exec` |
 | `TEXT_MEGA` | "" |
 | `RESPONSE_HANDLER` | "" |
+| `ACTION_PLANNER` | "" — **only when `ELIZA_PLANNER_NATIVE_TOOLS=0`** (text-planner mode) |
 
-`TEXT_SMALL` / `TEXT_NANO` / `TEXT_MEDIUM` and `ACTION_PLANNER` are intentionally **not** registered (the planner needs GBNF / native-tool enforcement the CLI cannot honor).
+`TEXT_SMALL` / `TEXT_NANO` / `TEXT_MEDIUM` are intentionally **not** registered (high-frequency triage tiers fall through to the cheap provider).
+
+`ACTION_PLANNER` is **conditional**: in the default native-tools mode
+(`ELIZA_PLANNER_NATIVE_TOOLS=1`) it is **not** registered, because that planner
+needs GBNF / native-tool grammar the free-text CLI cannot honor — so the planner
+stays on a grammar-honoring provider while the CLI still serves the user-facing
+reply (`RESPONSE_HANDLER`) and large generations (`TEXT_LARGE`). In **text-planner
+mode** (`ELIZA_PLANNER_NATIVE_TOOLS=0`) the CLI **does** register and serve
+`ACTION_PLANNER`: the grammar-heavy planner prompt is rewritten into a clean
+"pick ONE action, emit `{action, params}` JSON" routing prompt (see
+`clean-routing-planner.ts`, proven live with `claude --print --model
+claude-opus-4-8`). This is how the **whole brain** (chat + planner + coding) can
+run on a single Claude Max subscription **TOS-clean**, no API key, no stealth.
+Note: the per-turn `claude` subprocess makes the text-planner path slower than a
+direct-API provider (~tens of seconds for a planner turn).
 
 ## Layout
 
