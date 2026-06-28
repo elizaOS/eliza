@@ -96,9 +96,7 @@ export class ApiKeysRepository {
   async findActiveWithUserAndOrg(
     hash: string,
   ): Promise<{ apiKey: ApiKey; user: UserWithOrganization } | undefined> {
-    const load = (
-      db: typeof dbRead,
-    ): Promise<ApiKeyWithRelationalUser | undefined> =>
+    const load = (db: typeof dbRead): Promise<ApiKeyWithRelationalUser | undefined> =>
       db.query.apiKeys.findFirst({
         where: and(eq(apiKeys.key_hash, hash), eq(apiKeys.is_active, true)),
         with: { user: { with: { organization: true } } },
