@@ -10,7 +10,11 @@ import {
   formatDetailTimestamp,
   selectLatestRunForApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, ChatEmptyStateWithRecommendations, useChatPrefill } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
+// Imported via direct subpaths: the big `@elizaos/ui` root barrel doesn't
+// resolve these newly-added members under the plugin's bundler tsconfig.
+import { ChatEmptyStateWithRecommendations } from "@elizaos/ui/components/composites/chat/ChatEmptyStateWithRecommendations";
+import { dispatchChatPrefill } from "@elizaos/ui/events";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useAppSelector } from "@elizaos/ui/state";
 import { LineChart } from "lucide-react";
@@ -158,7 +162,6 @@ export function FeedOperatorSurface({
   focus = "all",
 }: AppOperatorSurfaceProps) {
   const appRuns = useAppSelector((s) => s.appRuns);
-  const { prefill } = useChatPrefill();
   const { run, matchingRuns } = useMemo(
     () => selectLatestRunForApp(appName, appRuns),
     [appName, appRuns],
@@ -350,9 +353,10 @@ export function FeedOperatorSurface({
           primaryAction={{
             label: "Spawn agent",
             onClick: () =>
-              prefill(
-                "Spawn a Feed trading agent and start the prediction-market loop.",
-              ),
+              dispatchChatPrefill({
+                text: "Spawn a Feed trading agent and start the prediction-market loop.",
+                select: true,
+              }),
           }}
         />
       </div>

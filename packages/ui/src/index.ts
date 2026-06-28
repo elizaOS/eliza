@@ -224,6 +224,14 @@ export type {
   ChatSidebarWidgetProps,
 } from "./components/chat/widgets/types";
 export { ChatSearchHint } from "./components/composites/chat-search-hint";
+// Surfaced directly on the root barrel (also reachable via the composites/hooks
+// chains) so dist-mapped consumers resolve them by name.
+export {
+  type ChatEmptyStateWithRecommendationsProps,
+  ChatEmptyStateWithRecommendations,
+  type ChatRecommendation,
+} from "./components/composites/chat/ChatEmptyStateWithRecommendations";
+export { useChatPrefill } from "./hooks/useChatPrefill";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content";

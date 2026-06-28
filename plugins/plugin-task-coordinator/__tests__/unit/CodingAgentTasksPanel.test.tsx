@@ -87,6 +87,27 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
+  // Empty-state recommendations stub — render the title + each recommendation
+  // as a button so tests can assert the chat-seeding empty state.
+  ChatEmptyStateWithRecommendations: ({
+    title,
+    recommendations = [],
+  }: {
+    title?: string;
+    recommendations?: Array<string | { label: string }>;
+  }) => (
+    <div data-testid="task-empty-state">
+      {title ? <p>{title}</p> : null}
+      {recommendations.map((rec) => {
+        const label = typeof rec === "string" ? rec : rec.label;
+        return (
+          <button type="button" key={label}>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  ),
 }));
 
 import { CodingAgentTasksPanel } from "../../src/CodingAgentTasksPanel";
@@ -367,7 +388,9 @@ describe("CodingAgentTasksPanel — list", () => {
     listCodingAgentTaskThreads.mockResolvedValue([]);
     render(<CodingAgentTasksPanel />);
     expect(await screen.findByTestId("task-empty-state")).toBeTruthy();
-    expect(screen.getByText("None")).toBeTruthy();
+    expect(
+      screen.getByText("Dispatch a coding agent to fix a failing test"),
+    ).toBeTruthy();
   });
 });
 
