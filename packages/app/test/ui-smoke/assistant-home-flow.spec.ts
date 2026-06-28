@@ -130,6 +130,13 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
     }
     await fulfillJson(route, { success: true });
   });
+  await page.route("**/api/cloud/compat/agents", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { success: true, data: [] });
+  });
   await page.route("**/api/stream/settings", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -406,27 +413,39 @@ function springboardTile(page: Page, viewId: string) {
   return page.getByTestId(`springboard-tile-${viewId}`).first();
 }
 
-async function revealSpringboardTile(
-  page: Page,
-  viewId: string,
-): Promise<void> {
-  const tile = springboardTile(page, viewId);
-  await expect(tile).toBeAttached();
-  const pageTestId = await tile.evaluate((node) =>
-    node
-      .closest('[data-testid^="springboard-page-"]')
-      ?.getAttribute("data-testid"),
+async function settleHomeSpringboardRail(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const rail = document.querySelector(
+        '[data-testid="home-springboard-rail"]',
+      );
+      if (!rail) return false;
+      return !(rail as HTMLElement)
+        .getAnimations({ subtree: true })
+        .some((animation) => animation.playState === "running");
+    },
+    undefined,
+    { timeout: 5_000 },
   );
-  const pageIndex = pageTestId?.match(/^springboard-page-(\d+)$/)?.[1];
-  if (pageIndex == null) return;
+}
 
-  const pageLocator = page.getByTestId(`springboard-page-${pageIndex}`);
-  if ((await pageLocator.getAttribute("aria-hidden")) === "true") {
-    await page
-      .getByRole("button", { name: `Page ${Number(pageIndex) + 1}` })
-      .click();
-    await expect(pageLocator).toHaveAttribute("aria-hidden", "false");
-  }
+async function openHomeSpringboard(page: Page): Promise<void> {
+  const surface = page.getByTestId("home-springboard-surface");
+  await expect(surface).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:home-springboard:navigate", {
+        detail: { page: "springboard" },
+      }),
+    );
+  });
+  await expect(surface).toHaveAttribute("data-page", "springboard", {
+    timeout: 10_000,
+  });
+  await expect(
+    page.getByTestId("home-springboard-springboard-page"),
+  ).toBeVisible({ timeout: 15_000 });
+  await settleHomeSpringboardRail(page);
 }
 
 function conversationLog(page: Page) {
@@ -764,13 +783,19 @@ test.describe("assistant home app flow", () => {
     await screenshot(page, "04-chat-pill-suppressed");
 
     await openAppPath(page, "/views");
-    await revealSpringboardTile(page, "terminal");
-    await expect(page.getByRole("button", { name: /Terminal/i })).toBeVisible();
+    await expect(springboardTile(page, "settings")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("button", { name: /Settings/i })).toBeVisible();
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "05-views-with-pill");
 
     await openAppPath(page, "/wallet");
-    await expect(page.getByRole("button", { name: /Tokens/i })).toBeVisible();
+    await expect(
+      page.getByTestId("wallets-sidebar").getByRole("button", {
+        name: /^Tokens$/,
+      }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /Open RPC settings/i }),
     ).toBeVisible();
@@ -885,21 +910,25 @@ test.describe("assistant home app flow", () => {
 
     await openReadyChat(page, "/chat");
 
-    // The home dashboard renders behind the floating chat: clock + pinned
-    // tile grid.
-    await expect(page.getByTestId("home-screen")).toBeVisible({
+    // The home dashboard renders behind the floating chat. App launchers now
+    // live on the paired springboard page of HomeSpringboardSurface.
+    await expect(page.getByTestId("home-springboard-surface")).toHaveAttribute(
+      "data-page",
+      "home",
+    );
+    await expect(page.getByTestId("home-springboard-home-page")).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByTestId("home-clock")).toBeVisible();
-    await expect(
-      page.getByRole("navigation", { name: "Pinned views" }),
-    ).toBeVisible();
-    for (const id of ["tutorial", "help", "settings", "views"]) {
-      await expect(page.getByTestId(`home-tile-${id}`)).toBeVisible();
-    }
+    await expect(page.getByTestId("home-screen")).toBeVisible();
+
+    await openHomeSpringboard(page);
+    const settingsTile = page
+      .getByTestId("home-springboard-springboard-page")
+      .getByTestId("springboard-tile-settings");
+    await expect(settingsTile).toBeVisible({ timeout: 15_000 });
 
     // Tapping the Settings tile navigates to the Settings view (setTab path).
-    await page.getByTestId("home-tile-settings").click();
+    await settingsTile.getByRole("button").first().click();
     await expect(page.getByTestId("settings-shell")).toBeVisible({
       timeout: 15_000,
     });
