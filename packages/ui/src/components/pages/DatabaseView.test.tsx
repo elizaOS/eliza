@@ -178,9 +178,7 @@ describe("DatabaseView", () => {
     fireEvent.click(await screen.findByText("empty_tbl"));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("databaseview.NoDataInsertViaSql"),
-      ).toBeTruthy();
+      expect(screen.getByText("databaseview.NoDataInsertViaSql")).toBeTruthy();
     });
   });
 

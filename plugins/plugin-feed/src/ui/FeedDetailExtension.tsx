@@ -192,7 +192,9 @@ function ActivityList({
 }) {
   if (items.length === 0) {
     return (
-      <div className="px-1 py-2 text-xs text-muted">No market activity yet.</div>
+      <div className="px-1 py-2 text-xs text-muted">
+        No market activity yet.
+      </div>
     );
   }
 

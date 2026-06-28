@@ -491,7 +491,10 @@ export function FeedOperatorSurface({
 
           {showDashboard ? (
             <div className="flex flex-col gap-2">
-              <StatLine label="Markets" value={listPreview(predictionMarkets)} />
+              <StatLine
+                label="Markets"
+                value={listPreview(predictionMarkets)}
+              />
               {recentTrades.slice(0, 3).map((trade) => (
                 <div
                   key={trade.id}

@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CHAT_PREFILL_EVENT, type ChatPrefillEventDetail } from "../../../events";
+import {
+  CHAT_PREFILL_EVENT,
+  type ChatPrefillEventDetail,
+} from "../../../events";
 import { ChatEmptyStateWithRecommendations } from "./ChatEmptyStateWithRecommendations";
 
 afterEach(cleanup);
@@ -15,7 +18,10 @@ describe("ChatEmptyStateWithRecommendations", () => {
 
     render(
       <ChatEmptyStateWithRecommendations
-        recommendations={["Upload a document", { label: "Summarize", prompt: "Summarize my docs" }]}
+        recommendations={[
+          "Upload a document",
+          { label: "Summarize", prompt: "Summarize my docs" },
+        ]}
       />,
     );
 

@@ -224,4 +224,3 @@ export function GameSurfaceZone({ children }: { children: ReactNode }) {
     </div>
   );
 }
-

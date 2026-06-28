@@ -688,9 +688,7 @@ describe("InventoryView GUI — dashboard panels", () => {
     // Danger banner.
     expect(screen.getByText("RPC provider unreachable")).toBeTruthy();
     // Empty panels now recommend a next step instead of showing a dead box.
-    expect(
-      await screen.findByText("How do I provide liquidity?"),
-    ).toBeTruthy();
+    expect(await screen.findByText("How do I provide liquidity?")).toBeTruthy();
     expect(screen.getByText("What NFT collections are trending?")).toBeTruthy();
   });
 });

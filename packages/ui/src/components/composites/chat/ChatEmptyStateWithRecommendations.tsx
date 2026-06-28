@@ -58,12 +58,8 @@ export function ChatEmptyStateWithRecommendations({
         className,
       )}
     >
-      {Icon ? (
-        <Icon className="h-7 w-7 text-muted/70" aria-hidden />
-      ) : null}
-      {title ? (
-        <p className="max-w-sm text-sm text-muted">{title}</p>
-      ) : null}
+      {Icon ? <Icon className="h-7 w-7 text-muted/70" aria-hidden /> : null}
+      {title ? <p className="max-w-sm text-sm text-muted">{title}</p> : null}
       {primaryAction ? (
         <Button
           variant="default"

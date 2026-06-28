@@ -844,9 +844,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
           </div>
         ) : null}
         {mutationError ? (
-          <div className="text-xs text-danger">
-            {mutationError}
-          </div>
+          <div className="text-xs text-danger">{mutationError}</div>
         ) : null}
         <ThreadDetailPane
           thread={selectedThreadSummary}
@@ -927,9 +925,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         </div>
       ) : null}
       {mutationError ? (
-        <div className="text-xs text-danger">
-          {mutationError}
-        </div>
+        <div className="text-xs text-danger">{mutationError}</div>
       ) : null}
 
       {threads.length > 0 ? (

@@ -148,8 +148,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
       <Card gap={1} padding={1}>
         <Text bold>Ready to trade?</Text>
         <Text style="caption" tone="muted">
-          Spawn a Feed agent to watch prediction markets and trade
-          autonomously.
+          Spawn a Feed agent to watch prediction markets and trade autonomously.
         </Text>
         <Button grow={1} agent="spawn-agent" onPress={dispatch("spawn")}>
           Spawn agent

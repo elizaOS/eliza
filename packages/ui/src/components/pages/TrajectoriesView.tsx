@@ -641,7 +641,9 @@ export function TrajectoriesView({
                   agentLabel="Previous trajectories page"
                   agentDescription="Move to the previous page of trajectory logs"
                   agentStatus={page === 0 ? "disabled" : "ready"}
-                  onActivate={() => setPage((current) => Math.max(0, current - 1))}
+                  onActivate={() =>
+                    setPage((current) => Math.max(0, current - 1))
+                  }
                   variant="outline"
                   size="sm"
                   type="button"

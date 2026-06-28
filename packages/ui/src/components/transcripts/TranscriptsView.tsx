@@ -131,18 +131,20 @@ export function TranscriptsView({
     return (
       <ShellViewAgentSurface viewId="transcripts">
         <div
-          data-testid="transcripts-empty"
+          data-testid="transcripts-view"
           className="flex h-full min-h-0 w-full"
         >
-          <ChatEmptyStateWithRecommendations
-            icon={AudioLines}
-            title="No transcripts yet. Ask Eliza to record and transcribe a conversation, then it shows up here word-synced to the audio."
-            recommendations={[
-              "Record and transcribe my next meeting",
-              "Start a voice transcription now",
-              "Summarize my most recent recording",
-            ]}
-          />
+          <div data-testid="transcripts-empty" className="flex flex-1">
+            <ChatEmptyStateWithRecommendations
+              icon={AudioLines}
+              title="No transcripts yet. Ask Eliza to record and transcribe a conversation, then it shows up here word-synced to the audio."
+              recommendations={[
+                "Record and transcribe my next meeting",
+                "Start a voice transcription now",
+                "Summarize my most recent recording",
+              ]}
+            />
+          </div>
         </div>
       </ShellViewAgentSurface>
     );

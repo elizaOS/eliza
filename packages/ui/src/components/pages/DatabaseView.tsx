@@ -408,7 +408,9 @@ export function DatabaseView({
         })
       }
       primaryAction={{
-        label: t("databaseview.OpenSettings", { defaultValue: "Open settings" }),
+        label: t("databaseview.OpenSettings", {
+          defaultValue: "Open settings",
+        }),
         onClick: () => {
           window.location.hash = "#/settings";
         },
