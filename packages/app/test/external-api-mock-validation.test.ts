@@ -66,7 +66,6 @@ const VALIDATED: Readonly<
  */
 const CONTRACT_TESTED: Readonly<Record<string, string>> = {
   shopify: "plugins/plugin-shopify/src/routes.contract.test.ts",
-  steward: "plugins/plugin-steward-app/src/steward-bridge.contract.test.ts",
 };
 
 /**
@@ -77,7 +76,7 @@ const CONTRACT_TESTED: Readonly<Record<string, string>> = {
  */
 const DEBT: Readonly<Record<string, string>> = {
   "block-explorers":
-    "bscscan/etherscan/solscan reads in plugin-wallet/plugin-steward-app; public " +
+    "bscscan/etherscan/solscan reads in plugin-wallet; public " +
     "read endpoints — recorded contract test next.",
   "wallet-rpc":
     "EVM/Solana RPC + token-balance providers use inline DTO fixtures.",

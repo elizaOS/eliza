@@ -241,7 +241,6 @@ const realResolveAlias: ModuleAlias[] = [
   },
   ...getWorkspaceAppAliases(repoRoot, [
     "app-task-coordinator",
-    "plugin-steward-app",
     "plugin-wallet",
   ]),
   ...getWorkspacePluginAliases(repoRoot, [
@@ -517,7 +516,6 @@ export default defineConfig({
       // The default real/live lane only uses public chains. Local Anvil coverage
       // stays out of bun run test until it is replaced with public-chain tests.
       elizaWorkspacePattern(
-        "plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts",
       ),
       elizaWorkspacePattern("packages/app-core/platforms/electrobun/**"),
       "apps/chrome-extension/**",

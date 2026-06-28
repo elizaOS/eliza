@@ -62,8 +62,8 @@ describe("normalizeAppRoutePluginId", () => {
   });
 
   it("strips -app / -ui / -routes suffixes", () => {
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-steward-app")).toBe(
-      "steward",
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet-ui")).toBe(
+      "wallet",
     );
     expect(normalizeAppRoutePluginId("@elizaos/plugin-shopify")).toBe(
       "shopify",
@@ -86,9 +86,9 @@ describe("normalizeAppRoutePluginId", () => {
   });
 
   it("is idempotent on an already-short alias (so short tokens match full ids)", () => {
-    expect(normalizeAppRoutePluginId("steward")).toBe("steward");
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-steward-app")).toBe(
-      normalizeAppRoutePluginId("steward"),
+    expect(normalizeAppRoutePluginId("wallet")).toBe("wallet");
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet-ui")).toBe(
+      normalizeAppRoutePluginId("wallet"),
     );
   });
 });

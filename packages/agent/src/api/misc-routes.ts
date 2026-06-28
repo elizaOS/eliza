@@ -808,8 +808,8 @@ export async function handleMiscRoutes(
     return true;
   }
 
-  // Privy wallet routes (/api/privy/*) are now provided by the
-  // @elizaos/plugin-steward-app plugin via the runtime route registry.
+  // Privy wallet routes (/api/privy/*) are provided by wallet/runtime route
+  // registries when the relevant backend is installed.
 
   return false;
 }

@@ -76,7 +76,6 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-elizamaker",
   "plugins/plugin-documents",
   "plugins/plugin-personal-assistant",
-  "plugins/plugin-steward-app",
   "plugins/plugin-task-coordinator",
   "plugins/plugin-training",
   "plugins/plugin-shopify",

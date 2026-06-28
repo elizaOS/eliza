@@ -476,10 +476,10 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
  * exercise.
  *
  * A loader's id is its full package name (e.g. `@elizaos/plugin-personal-assistant`,
- * `@elizaos/plugin-steward-app`, `@elizaos/plugin-elizacloud:routes`). Tokens
+ * `@elizaos/plugin-elizacloud:routes`). Tokens
  * are matched against BOTH the full id and a normalized short alias
  * (see {@link normalizeAppRoutePluginId}), so the ergonomic short forms work
- * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,steward,training,shopify`.
+ * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,training,shopify`.
  */
 export function getSkippedAppRoutePluginIds(): Set<string> {
   return new Set(
@@ -513,7 +513,7 @@ export function getDeferAppRoutesEnabled(
  * Normalize an app-route-plugin id (or a user-supplied skip token) to a short
  * alias for forgiving matching: lowercase, drop the `@elizaos/plugin-` prefix
  * and the `:routes` / `-app` / `-ui` / `-routes` suffixes. So
- * `@elizaos/plugin-steward-app` and `steward` both normalize to `steward`.
+ * `@elizaos/plugin-wallet-ui` and `wallet` both normalize to `wallet`.
  */
 export function normalizeAppRoutePluginId(id: string): string {
   return id
@@ -584,7 +584,7 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   }
 
   // Match a loader against the skip tokens by full id OR normalized short alias
-  // (so both `@elizaos/plugin-steward-app` and `steward` skip the same loader).
+  // (so both `@elizaos/plugin-wallet-ui` and `wallet` skip the same loader).
   const skipNormalized = new Set(
     [...skip].map((token) => normalizeAppRoutePluginId(token)),
   );

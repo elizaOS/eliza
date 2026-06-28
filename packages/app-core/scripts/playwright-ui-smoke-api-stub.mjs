@@ -178,7 +178,6 @@ const smokeViewDeclarations = [
   [
     "steward",
     "Steward",
-    "plugin-steward-app",
     "/steward",
     "StewardView",
     ["gui", "tui"],
@@ -500,12 +499,6 @@ const stubCatalogApps = [
     displayName: "Companion",
     description: "The companion overlay shell for ambient agent presence.",
     category: "social",
-  }),
-  stubCatalogApp({
-    name: "@elizaos/plugin-steward-app",
-    displayName: "Steward",
-    description: "Review wallet approvals and inventory status.",
-    capabilities: ["wallet", "approvals", "inventory"],
   }),
   stubCatalogApp({
     name: "@elizaos/plugin-elizamaker",

@@ -95,18 +95,6 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     windowPath: "/apps/memories",
   },
   {
-    name: "@elizaos/plugin-steward-app",
-    displayName: "Steward",
-    description:
-      "Review wallet approvals, transaction history, and signing execution status.",
-    heroImage: "/api/apps/hero/steward",
-    targetTab: "inventory",
-    capabilities: ["wallet", "transactions", "approvals", "trading"],
-    order: 7,
-    windowPath: "/apps/inventory",
-    hasDetailsPage: true,
-  },
-  {
     name: "@elizaos/app-runtime-debugger",
     displayName: "Runtime Debugger",
     description:

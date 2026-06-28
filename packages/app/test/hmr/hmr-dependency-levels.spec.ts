@@ -102,10 +102,6 @@ const LEVELS = [
     file: "plugins/plugin-simple-views/src/ui.tsx",
   },
   {
-    name: "plugin view steward",
-    file: "plugins/plugin-steward-app/src/StewardView.tsx",
-  },
-  {
     name: "plugin view vincent",
     file: "plugins/plugin-vincent/src/VincentView.tsx",
   },

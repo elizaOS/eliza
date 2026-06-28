@@ -65,13 +65,6 @@ const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
     hasDetailsPage: false,
   },
   {
-    slug: "steward",
-    name: "@elizaos/plugin-steward-app",
-    displayName: "Steward",
-    windowPath: "/apps/inventory",
-    hasDetailsPage: true,
-  },
-  {
     slug: "runtime-debugger",
     name: "@elizaos/app-runtime-debugger",
     displayName: "Runtime Debugger",

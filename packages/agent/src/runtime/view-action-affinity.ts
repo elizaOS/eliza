@@ -119,7 +119,6 @@ export function setActiveViewElements(
  *                 (chains/evm/actions swap+transfer, chains generated specs)
  *   polymarket  — plugins/plugin-polymarket/src/actions.ts (POLYMARKET_STATUS)
  *   hyperliquid — plugins/plugin-hyperliquid/src/actions/perpetual-market.ts
- *   steward     — plugin-steward-app re-exports plugin-wallet's WALLET action
  *   facewear    — plugins/plugin-facewear/src/index.ts (FACEWEAR_, SMARTGLASSES_, XR_ actions)
  *
  * Verified action names + view ids (2026-06-18) — each LifeOps/utility view's

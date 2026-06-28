@@ -234,13 +234,6 @@ function importAppPhone() {
   );
 }
 
-function importAppSteward() {
-  return cachedDynamicImport(
-    "@elizaos/plugin-steward-app",
-    () => import("@elizaos/plugin-steward-app"),
-  );
-}
-
 function importAppTaskCoordinator() {
   return cachedDynamicImport(
     "@elizaos/plugin-task-coordinator",
@@ -682,7 +675,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
       load: importAppTaskCoordinatorRegister,
     },
     { key: "@elizaos/plugin-phone", load: importAppPhone },
-    { key: "@elizaos/plugin-steward-app", load: importAppSteward },
     { key: "@elizaos/plugin-training", load: importAppTraining },
   ];
 

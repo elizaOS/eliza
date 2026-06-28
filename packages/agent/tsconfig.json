@@ -119,9 +119,6 @@
       "@elizaos/app-core/*": [
         "../app-core/src/*"
       ],
-      "@elizaos/plugin-steward-app": [
-        "../../plugins/plugin-steward-app/src/index.ts"
-      ],
       "@elizaos/plugin-shopify": [
         "../../plugins/plugin-shopify/src/index.ts"
       ],

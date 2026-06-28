@@ -2628,15 +2628,6 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/plugin-google$/,
         replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
       },
-      // The Steward app package root includes wallet route handlers and
-      // server-side signing services. The renderer imports only these views.
-      {
-        find: /^@elizaos\/plugin-steward-app$/,
-        replacement: path.resolve(
-          elizaRoot,
-          "plugins/plugin-steward-app/src/ui.ts",
-        ),
-      },
       // The training package root exports runtime routes and native backends.
       // The renderer only needs the fine-tuning UI facade.
       {

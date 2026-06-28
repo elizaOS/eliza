@@ -126,7 +126,6 @@
     "@elizaos/plugin-phone": "workspace:*",
     "@elizaos/plugin-polymarket": "workspace:*",
     "@elizaos/plugin-shopify": "workspace:*",
-    "@elizaos/plugin-steward-app": "workspace:*",
     "@elizaos/plugin-task-coordinator": "workspace:*",
     "@elizaos/plugin-training": "workspace:*",
     "@elizaos/plugin-trajectory-logger": "workspace:*",

@@ -255,10 +255,6 @@ export {
 export * from "./services/cove-quote.ts";
 export * from "./services/dstack-tee-provider.ts";
 export {
-  isStewardEvmBridgeActive,
-  setStewardEvmBridgeActive,
-} from "./services/external-bridge-state.ts";
-export {
   createGlobalPauseStore,
   GLOBAL_PAUSE_CACHE_KEY,
   GLOBAL_PAUSE_SERVICE,

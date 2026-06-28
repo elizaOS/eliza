@@ -175,10 +175,6 @@ declare module "@elizaos/app-steward" {
   export const StewardView: ComponentType<Record<string, unknown>>;
 }
 
-declare module "@elizaos/plugin-steward-app" {
-  export * from "@elizaos/app-steward";
-}
-
 declare module "@elizaos/app-task-coordinator" {
   export const CodingAgentControlChip: EmptyComponent;
   export const CodingAgentSettingsSection: EmptyComponent;

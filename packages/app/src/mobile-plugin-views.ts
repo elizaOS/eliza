@@ -39,16 +39,4 @@ if (platform === "android" || platform === "ios") {
       })),
   });
 
-  registerAppShellPage({
-    id: "steward",
-    viewKind: "release",
-    pluginId: "@elizaos/plugin-steward-app",
-    label: "Steward",
-    icon: "Shield",
-    path: "/steward",
-    loader: () =>
-      import("@elizaos/plugin-steward-app").then((m) => ({
-        default: m.StewardView,
-      })),
-  });
 }

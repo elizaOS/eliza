@@ -88,7 +88,6 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket/src/plugin.ts",
   "plugins/plugin-shopify/src/plugin.ts",
-  "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-vector-browser/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
@@ -163,7 +162,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-polymarket":
     "plugins/plugin-polymarket/src/plugin.ts",
   "@elizaos/plugin-shopify": "plugins/plugin-shopify/src/plugin.ts",
-  "@elizaos/plugin-steward-app": "plugins/plugin-steward-app/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",
   "@elizaos/plugin-task-coordinator/register":
@@ -226,12 +224,6 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     id: "shopify",
     viewType: "xr",
     path: "/shopify",
-  },
-  {
-    manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
-    id: "steward",
-    viewType: "xr",
-    path: "/steward",
   },
   {
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",

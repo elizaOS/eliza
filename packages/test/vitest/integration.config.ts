@@ -54,7 +54,6 @@ const integrationResolveAlias: ModuleAlias[] = [
     "app-task-coordinator",
     "plugin-workflow",
     "plugin-shopify",
-    "plugin-steward-app",
   ]),
   ...getSharedSourceAliases(sharedSourceRoot),
   ...getOptionalInstalledPackageAliases(repoRoot, [

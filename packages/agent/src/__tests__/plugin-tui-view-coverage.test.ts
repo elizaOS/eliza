@@ -38,7 +38,6 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket/src/plugin.ts",
   "plugins/plugin-shopify/src/plugin.ts",
-  "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
@@ -106,13 +105,6 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-shopify-customers",
     "terminal-shopify-create-product",
     "terminal-shopify-adjust-inventory",
-  ],
-  "plugins/plugin-steward-app/src/StewardView.tsx": [
-    "terminal-steward-state",
-    "terminal-steward-pending",
-    "terminal-steward-history",
-    "terminal-steward-approve",
-    "terminal-steward-deny",
   ],
   "plugins/plugin-wallet-ui/src/InventoryView.tsx": [
     "terminal-wallet-state",

@@ -37,7 +37,6 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-polymarket",
   "@elizaos/plugin-shopify",
-  "@elizaos/plugin-steward-app",
   "@elizaos/plugin-training",
 ] as const;
 

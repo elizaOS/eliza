@@ -3136,8 +3136,8 @@ async function handleRequest(
   // by handleAgentStatusRoutes above.
 
   // ═══════════════════════════════════════════════════════════════════════
-  // BSC trade routes and wallet trade execute — now handled by
-  // @elizaos/plugin-steward-app plugin routes. See plugins/plugin-steward-app/src/plugin.ts.
+  // BSC trade routes and wallet trade execute are handled by registered wallet
+  // plugin routes when the relevant backend is installed.
   // ═══════════════════════════════════════════════════════════════════════
 
   if (

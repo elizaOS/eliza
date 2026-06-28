@@ -25,9 +25,6 @@
       "@elizaos/plugin-shopify": [
         "../../plugins/plugin-shopify/src/index.ts"
       ],
-      "@elizaos/plugin-steward-app": [
-        "../../plugins/plugin-steward-app/src/index.ts"
-      ],
       "@elizaos/plugin-training": [
         "../../plugins/plugin-training/src/index.ts"
       ],

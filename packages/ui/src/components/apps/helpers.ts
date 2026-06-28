@@ -72,7 +72,6 @@ const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
   "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-polymarket",
   "@elizaos/plugin-shopify",
-  "@elizaos/plugin-steward-app",
 ]);
 
 const WALLET_SCOPED_APP_NAMES = new Set<string>([
@@ -332,10 +331,7 @@ export function getAppCatalogSectionKey(
     return "featured";
   }
 
-  if (
-    app.name === "@elizaos/plugin-steward-app" ||
-    app.name === "@elizaos/plugin-elizamaker"
-  ) {
+  if (app.name === "@elizaos/plugin-elizamaker") {
     return "finance";
   }
 

@@ -60,7 +60,6 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   facewear: "plugin-facewear",
   polymarket: "plugin-polymarket",
   hyperliquid: "plugin-hyperliquid",
-  steward: "plugin-steward-app",
 };
 
 /** Recursively collect every production `.tsx` under a dir (no tests/stories). */

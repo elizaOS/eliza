@@ -35,7 +35,6 @@
       "@elizaos/plugin-shopify": [
         "../../plugins/plugin-shopify/dist/index.d.ts"
       ],
-      "@elizaos/plugin-steward-app": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-training": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-wallet-ui": [
         "../../plugins/plugin-wallet-ui/dist/index.d.ts"
