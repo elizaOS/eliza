@@ -246,9 +246,7 @@ export class ApiKeysService {
       cache.del(CacheKeys.apiKey.combinedAuth(shortHash)),
       invalidateInferenceAuthContextByKeyHash(keyHash),
     ]);
-    logger.debug(
-      "[ApiKeys] Invalidated API key + combined-auth + inference auth-context cache",
-    );
+    logger.debug("[ApiKeys] Invalidated API key + combined-auth + inference auth-context cache");
   }
 
   async getById(id: string): Promise<ApiKey | undefined> {
