@@ -457,6 +457,39 @@ describe("useShellController — voice capture routing", () => {
     expect(result.current.handsFree).toBe(false);
   });
 
+  it("wake word DURING transcription sends one inline reply and KEEPS recording (#9880)", async () => {
+    const { result } = renderHook(() => useShellController());
+    // Enter transcription mode directly (record-only; replies suppressed).
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(result.current.transcriptionMode).toBe(true);
+    // Let the transcription re-listen loop open a transcription-intent capture.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    appMock.value.sendChatText.mockClear();
+
+    // A plain utterance is recorded silently — NOT sent.
+    act(() => fireFinalTranscript("the meeting starts at noon"));
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+
+    // The wake phrase makes the agent reply inline (parallel chat) while
+    // transcription continues — sent as a VOICE_DM, WITHOUT transcriptionMode
+    // metadata (so the server reply gate doesn't suppress it).
+    act(() => fireFinalTranscript("hey eliza what is on my calendar"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
+      "what is on my calendar",
+    );
+    const meta = appMock.value.sendChatText.mock.calls[0]?.[1] as {
+      channelType?: string;
+      metadata?: { transcriptionMode?: boolean };
+    };
+    expect(meta?.channelType).toBe("VOICE_DM");
+    expect(meta?.metadata?.transcriptionMode).toBeUndefined();
+    // Crucially, transcription did NOT exit — recording continues.
+    expect(result.current.transcriptionMode).toBe(true);
+  });
+
   it("does NOT respond to pure thinking-noise in always-on (shouldRespond gate)", async () => {
     const { result } = renderHook(() => useShellController());
     await act(async () => {

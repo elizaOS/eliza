@@ -67,3 +67,11 @@ export {
   type WakeWindowState,
   wakeWindowReducer,
 } from "./wake-listen-window";
+export {
+  isWakePhrase,
+  levenshtein,
+  matchWakeName,
+  normalizeForWake,
+  type WakeNameMatch,
+  type WakeNameMatchOptions,
+} from "./wake-name-match";
