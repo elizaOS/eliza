@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys, type NewApiKey } from "../schemas/api-keys";
+import type { UserWithOrganization } from "./users";
 
 export type { ApiKey, NewApiKey };
 
@@ -74,6 +75,47 @@ export class ApiKeysRepository {
     }
 
     return apiKey;
+  }
+
+  /**
+   * Cold-auth fast path: resolve an active API key + its user + organization in
+   * ONE relational round-trip (instead of the sequential findActiveByHash +
+   * users.findWithOrganization the auth path does today). Parity-critical:
+   * - RELATIONAL hydration (`with: { organization }`), NOT a hand-JOIN/direct
+   *   select, so the org's `credit_balance` numeric formatting matches the
+   *   existing path (direct selects changed it — documented regression).
+   * - Replica-then-primary fallback mirrors findActiveByHash/Consistent so a
+   *   newly-created key isn't rejected on replica lag.
+   * - Same `is_active` filter + `expires_at` check as findActiveByHash.
+   * The caller still applies user.is_active / org.is_active gates.
+   */
+  async findActiveWithUserAndOrg(
+    hash: string,
+  ): Promise<{ apiKey: ApiKey; user: UserWithOrganization } | undefined> {
+    const load = (db: typeof dbRead) =>
+      db.query.apiKeys.findFirst({
+        where: and(eq(apiKeys.key_hash, hash), eq(apiKeys.is_active, true)),
+        with: { user: { with: { organization: true } } },
+      });
+
+    let row = await load(dbRead);
+    if (!row) {
+      row = await load(dbWrite);
+    }
+    if (!row || !row.user) {
+      return undefined;
+    }
+    if (row.expires_at && new Date(row.expires_at) < new Date()) {
+      return undefined;
+    }
+
+    const { user, ...apiKey } = row;
+    return {
+      apiKey: apiKey as ApiKey,
+      // `user` already carries `organization` from the nested relational `with`,
+      // matching UserWithOrganization ({ ...User, organization: Organization | null }).
+      user: user as unknown as UserWithOrganization,
+    };
   }
 
   /**

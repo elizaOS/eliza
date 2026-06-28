@@ -304,6 +304,27 @@ export async function requireRole(
 }
 
 /**
+ * Cold-auth fast path toggle (off by default). When enabled, API-key auth
+ * resolves key + user + org in one combined lookup instead of two sequential
+ * round-trips. Read once at module init, matching the codebase's env-flag idiom
+ * (e.g. logger.ts). Safe to merge with the flag off: zero behavior change until
+ * it's set in an environment.
+ */
+const AUTH_COMBINED_FASTPATH_ENABLED = process.env.AUTH_COMBINED_FASTPATH === "true";
+
+/**
+ * User + organization active gates applied once an API key has resolved to a
+ * user. Shared by the standard and combined-fast-path API-key flows so they
+ * throw identically (same error types/messages, same ordering).
+ */
+function assertApiKeyUserActive(user: UserWithOrganization | undefined): UserWithOrganization {
+  if (!user) throw new AuthenticationError("User associated with API key not found");
+  if (!user.is_active) throw new ForbiddenError("User account is inactive");
+  if (!user.organization?.is_active) throw new ForbiddenError("Organization is inactive");
+  return user;
+}
+
+/**
  * Validate an API key and return the associated user with full org checks.
  */
 async function validateAndGetApiKeyUser(apiKey: ApiKey): Promise<{ user: UserWithOrganization }> {
@@ -313,11 +334,22 @@ async function validateAndGetApiKeyUser(apiKey: ApiKey): Promise<{ user: UserWit
   }
 
   const user = await usersService.getWithOrganization(apiKey.user_id);
-  if (!user) throw new AuthenticationError("User associated with API key not found");
-  if (!user.is_active) throw new ForbiddenError("User account is inactive");
-  if (!user.organization?.is_active) throw new ForbiddenError("Organization is inactive");
+  return { user: assertApiKeyUserActive(user) };
+}
 
-  return { user };
+/**
+ * Cold-auth fast path (flag-gated): resolve API key + user + org in ONE combined
+ * lookup. Returns the same `api_key` AuthResult as the standard branch on success,
+ * applies the same user/org gates, and returns null for an unknown/invalid key so
+ * callers can preserve their own not-found handling (the Bearer branch falls
+ * through to JWT-vs-key error disambiguation; the X-API-Key branch throws).
+ */
+async function resolveApiKeyFastPath(rawKey: string): Promise<AuthResult | null> {
+  const combined = await apiKeysService.validateApiKeyCombined(rawKey);
+  if (!combined) return null;
+  const user = assertApiKeyUserActive(combined.user);
+  void apiKeysService.incrementUsageDebounced(combined.apiKey.id);
+  return { user, apiKey: combined.apiKey, authMethod: "api_key" };
 }
 
 /**
@@ -360,6 +392,11 @@ export async function requireAuthOrApiKey(request: Request): Promise<AuthResult>
   const authHeader = request.headers.get("authorization");
 
   if (apiKeyHeader && apiKeyHeader.trim().length > 0) {
+    if (AUTH_COMBINED_FASTPATH_ENABLED) {
+      const fast = await resolveApiKeyFastPath(apiKeyHeader);
+      if (!fast) throw new AuthenticationError("Invalid or expired API key");
+      return fast;
+    }
     const apiKey = await apiKeysService.validateApiKey(apiKeyHeader);
     if (!apiKey) throw new AuthenticationError("Invalid or expired API key");
     const { user } = await validateAndGetApiKeyUser(apiKey);
@@ -395,11 +432,16 @@ export async function requireAuthOrApiKey(request: Request): Promise<AuthResult>
     }
 
     // Try as API key (fallback for non-JWT tokens or if JWT validation failed)
-    const apiKey = await apiKeysService.validateApiKey(bearerValue);
-    if (apiKey) {
-      const { user } = await validateAndGetApiKeyUser(apiKey);
-      void apiKeysService.incrementUsageDebounced(apiKey.id);
-      return { user, apiKey, authMethod: "api_key" };
+    if (AUTH_COMBINED_FASTPATH_ENABLED) {
+      const fast = await resolveApiKeyFastPath(bearerValue);
+      if (fast) return fast;
+    } else {
+      const apiKey = await apiKeysService.validateApiKey(bearerValue);
+      if (apiKey) {
+        const { user } = await validateAndGetApiKeyUser(apiKey);
+        void apiKeysService.incrementUsageDebounced(apiKey.id);
+        return { user, apiKey, authMethod: "api_key" };
+      }
     }
 
     if (looksLikeJwt(bearerValue)) {
