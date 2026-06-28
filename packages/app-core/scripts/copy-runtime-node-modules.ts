@@ -67,10 +67,6 @@ const ALWAYS_HOISTED_PACKAGES = new Set([
   // runtime root copy instead of nesting a private AWS SDK tree that exceeds
   // Electrobun's tar-safe path limits.
   "@aws-sdk/client-s3",
-  // AWS SDK signing packages accept Smithy minor drift via semver ranges; keep
-  // one root copy instead of nesting patch/minor variants under AWS packages.
-  "@smithy/core",
-  "@smithy/signature-v4",
   "@elizaos/core",
   "commander",
   "pg",
