@@ -17,7 +17,6 @@ BLOCKED_PATTERNS: tuple[str, ...] = (
     "eliza1_eval_suite",
     "benchmark/server.ts",
     "benchmarks.realm.cli",
-    "validate_drafter.py",
     "mtp_drafter_runtime_smoke",
     "elizaos_webshop",
     "elizaos_terminal_bench",

@@ -58,16 +58,15 @@ active release gate; the live audit rejects legacy-only evidence.
 
 ## MTP Drafter
 
-Distill the smallest drafter only after the 2B target model is fixed:
+The in-repo drafter distiller and validator (`scripts/distill_mtp_drafter.py`,
+`scripts/mtp/validate_drafter.py`) were removed. Release-grade from-scratch
+drafter distillation is H100/H200-gated and done out of band; it is not required
+for a release-shaped bundle.
 
-```bash
-bash scripts/mtp/jobs/distill_mtp_2b.sh
-python scripts/mtp/validate_drafter.py \
-  --tier 2b \
-  --target-gguf bundles/2b/text/eliza-1-2b-256k.gguf \
-  --drafter-gguf bundles/2b/mtp/drafter-2b.gguf \
-  --report-out bundles/2b/mtp/validation-real.json
-```
+The supported, no-train path converts the published Gemma-4 MTP drafter to the
+`mtp-draft` GGUF arch and A/B-validates it against the target, then stages it at
+`bundles/2b/mtp/drafter-2b.gguf`. Full runbook:
+`plugins/plugin-local-inference/docs/gemma4-mtp-drafter-conversion.md`.
 
 Publish only if the MTP acceptance gate improves or preserves latency
 without regressing correctness.
