@@ -28,7 +28,6 @@ import { registerApiKeysCloudRoute } from "./api-keys";
 import { registerApplicationsCloudRoutes } from "./applications";
 import { registerApprovalsCloudRoute } from "./approvals";
 import { registerCloudConnectorsSettingsSection } from "./connectors";
-import { registerDocumentsCloudRoute } from "./documents";
 import { registerJoinFlow } from "./join";
 import { registerMcpsCloudRoute, registerMcpsSettingsSection } from "./mcps";
 import { registerMonetizationCloudRoutes } from "./monetization";
@@ -51,7 +50,6 @@ export function registerAllCloudSurfaces(): void {
   registerApiExplorerCloudRoute();
   registerApplicationsCloudRoutes();
   registerApprovalsCloudRoute();
-  registerDocumentsCloudRoute();
   registerMonetizationCloudRoutes();
   registerAdminCloudRoutes();
   registerMcpsCloudRoute();
