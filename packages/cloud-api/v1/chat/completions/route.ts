@@ -1269,6 +1269,22 @@ async function handleStreamingRequest(
         model,
       });
     },
+    // A provider error during streaming (e.g. the cerebras 429/5xx the
+    // fail-fast path surfaces) fires onError — NOT onFinish or onAbort. Without
+    // this, the upfront credit reservation is never reconciled and the user is
+    // billed for zero output. Mirrors the non-streaming error path's
+    // settleReservation(0). The settler is idempotent (first-call-wins), so a
+    // later onFinish/onAbort cannot double-refund.
+    onError: async ({ error }: { error: unknown }) => {
+      await settleReservation(0);
+      logger.error(
+        "[Chat Completions] Stream provider error — reservation refunded",
+        {
+          model,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    },
   } as Parameters<typeof streamText>[0]);
 
   // Convert to OpenAI-compatible SSE stream
