@@ -36,6 +36,7 @@ const getActiveByProjectName = mock();
 const checkQuota = mock();
 const createContainer = mock();
 const codingContainerImageAllowlist = mock(() => ["ghcr.io/elizaos/*"]);
+const requireDigestPinnedImages = mock(() => false);
 const auditEmit = mock(async () => undefined);
 
 mock.module("@/api-app/services/audit-dispatcher-singleton", () => ({
@@ -52,6 +53,7 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 mock.module("@/lib/config/containers-env", () => ({
   containersEnv: {
     codingContainerImageAllowlist,
+    requireDigestPinnedImages,
   },
 }));
 
@@ -62,6 +64,10 @@ mock.module("@/lib/services/coding-containers", () => ({
         ? image.startsWith(pattern.slice(0, -1))
         : image === pattern,
     ),
+  // Faithful to the real impl: a ref is digest-pinned iff it ends in a full
+  // sha256:<64 hex> digest.
+  imageRequiresDigestPin: (image: string, requireDigest: boolean) =>
+    requireDigest && !/@sha256:[a-f0-9]{64}$/i.test(image),
 }));
 
 mock.module("@/lib/services/containers", () => ({
@@ -166,6 +172,8 @@ describe("containers route", () => {
     checkQuota.mockReset();
     createContainer.mockReset();
     codingContainerImageAllowlist.mockClear();
+    requireDigestPinnedImages.mockReset();
+    requireDigestPinnedImages.mockReturnValue(false);
     auditEmit.mockClear();
   });
 
@@ -228,6 +236,44 @@ describe("containers route", () => {
     });
     expect(body.data).not.toHaveProperty("environment_vars");
     expect(body.data).not.toHaveProperty("metadata");
+    expect(createContainer).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects an unpinned image with 403 when digest-pin is required", async () => {
+    requireDigestPinnedImages.mockReturnValue(true);
+    getActiveByProjectName.mockResolvedValue(null);
+
+    const response = await app.request("/api/v1/containers", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "App",
+        image: "ghcr.io/elizaos/app:latest",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe("CONTAINER_IMAGE_NOT_DIGEST_PINNED");
+    expect(createContainer).not.toHaveBeenCalled();
+  });
+
+  test("provisions a digest-pinned image when digest-pin is required", async () => {
+    requireDigestPinnedImages.mockReturnValue(true);
+    getActiveByProjectName.mockResolvedValue(null);
+    checkQuota.mockResolvedValue({ allowed: true });
+    createContainer.mockResolvedValue(summaryContainer());
+
+    const response = await app.request("/api/v1/containers", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "App",
+        image: `ghcr.io/elizaos/app@sha256:${"a".repeat(64)}`,
+      }),
+    });
+
+    expect(response.status).toBe(201);
     expect(createContainer).toHaveBeenCalledTimes(1);
   });
 

@@ -70,6 +70,28 @@ mock.module("@/lib/utils/logger", () => ({
 
 const { default: app } = await import("./route");
 
+async function postCodingContainer(image: string): Promise<Response> {
+  return app.fetch(
+    new Request("https://api.example.test/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-API-Key": "test-key",
+      },
+      body: JSON.stringify({
+        agent: "claude",
+        container: { name: "bnancy", image },
+        workspacePath: "/workspace/the-family",
+        source: {
+          sourceKind: "project",
+          projectId: "the-family",
+          rootPath: "/workspace/the-family",
+        },
+      }),
+    }),
+  );
+}
+
 describe("coding containers route", () => {
   beforeEach(() => {
     requireUserOrApiKeyWithOrg.mockClear();
@@ -79,6 +101,7 @@ describe("coding containers route", () => {
     enqueueAgentProvisionOnce.mockClear();
     getJobForOrg.mockClear();
     triggerImmediate.mockClear();
+    delete process.env.CONTAINER_IMAGE_REQUIRE_DIGEST;
   });
 
   test("creates custom-image coding containers as custom execution-tier agents", async () => {
@@ -124,5 +147,33 @@ describe("coding containers route", () => {
         success: true,
       }),
     );
+  });
+
+  test("rejects an allowlisted-but-unpinned image with 403 when digest-pin is required", async () => {
+    process.env.CONTAINER_IMAGE_REQUIRE_DIGEST = "true";
+
+    // ghcr.io/dexploarer/* is in the default allowlist, so this passes the
+    // allowlist gate but fails the digest-pin gate (mutable :latest).
+    const response = await postCodingContainer("ghcr.io/dexploarer/bnancy:latest");
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        success: false,
+        code: "CODING_CONTAINER_IMAGE_NOT_DIGEST_PINNED",
+      }),
+    );
+    expect(createCodingContainerAgent).not.toHaveBeenCalled();
+  });
+
+  test("accepts a digest-pinned image when digest-pin is required", async () => {
+    process.env.CONTAINER_IMAGE_REQUIRE_DIGEST = "true";
+
+    const response = await postCodingContainer(
+      `ghcr.io/dexploarer/bnancy@sha256:${"a".repeat(64)}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(createCodingContainerAgent).toHaveBeenCalledTimes(1);
   });
 });

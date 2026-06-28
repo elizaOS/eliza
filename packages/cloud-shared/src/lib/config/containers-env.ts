@@ -148,6 +148,31 @@ export const containersEnv = {
       .filter((entry) => entry.length > 0);
   },
 
+  /**
+   * Whether image refs must be pinned to a full `@sha256:<64hex>` digest to be
+   * accepted by the container image gate (in addition to the allowlist).
+   *
+   * SECURITY: a mutable tag (`:latest`, `:stable`, or an implicit latest) lets
+   * the registry swap the bytes behind an allowed name after the gate passes.
+   * Requiring a digest pin makes the accepted image content-addressed.
+   *
+   * OPT-IN, default OFF everywhere — enabling it in prod would reject the
+   * current first-party `:tag`/`:latest` deploys, so it must NOT be flipped on
+   * until those images are themselves digest-pinned (a separate ops step).
+   * Read via `CONTAINER_IMAGE_REQUIRE_DIGEST` (with `ELIZA_`/`CONTAINERS_`
+   * fallbacks); only the literal string `"true"` enables it.
+   */
+  requireDigestPinnedImages(): boolean {
+    const env = getCloudAwareEnv();
+    return (
+      pick(
+        env.CONTAINER_IMAGE_REQUIRE_DIGEST,
+        env.ELIZA_CONTAINER_IMAGE_REQUIRE_DIGEST,
+        env.CONTAINERS_IMAGE_REQUIRE_DIGEST,
+      ) === "true"
+    );
+  },
+
   /** Explicit operator-pinned agent image, without the hardcoded fallback. */
   defaultAgentImageOverride(): string | undefined {
     const env = getCloudAwareEnv();
