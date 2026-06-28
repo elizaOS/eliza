@@ -435,22 +435,24 @@ export function useCloudState({
 
   const handleCloudLogin = useCallback(
     async (prePoppedWindow: Window | null = null) => {
+      let prePoppedWindowNavigatedExternally = false;
+      const closePrePoppedWindow = () => {
+        if (!prePoppedWindow || prePoppedWindowNavigatedExternally) return;
+        try {
+          prePoppedWindow.close();
+        } catch {
+          // Cross-origin — ignore.
+        }
+      };
+
       if (
         isCloudStatusAuthenticated(elizaCloudConnected, elizaCloudStatusReason)
       ) {
-        try {
-          prePoppedWindow?.close();
-        } catch {
-          // Cross-origin — ignore.
-        }
+        closePrePoppedWindow();
         return;
       }
       if (elizaCloudLoginBusyRef.current || elizaCloudLoginBusy) {
-        try {
-          prePoppedWindow?.close();
-        } catch {
-          // Cross-origin — ignore.
-        }
+        closePrePoppedWindow();
         await elizaCloudLoginCompletionRef.current;
         return;
       }
@@ -481,11 +483,7 @@ export function useCloudState({
       // cookie + localStorage JWT) and native (Bearer-from-localStorage).
       const existingStewardToken = readStoredStewardToken()?.trim();
       if (existingStewardToken || hasStewardLoginLauncher()) {
-        try {
-          prePoppedWindow?.close();
-        } catch {
-          // Cross-origin — ignore.
-        }
+        closePrePoppedWindow();
         try {
           await launchStewardLogin();
           await pollCloudCredits();
@@ -530,11 +528,7 @@ export function useCloudState({
           cloudStatus?.reason,
         );
         if (alreadyAuthenticated) {
-          try {
-            prePoppedWindow?.close();
-          } catch {
-            // Cross-origin — ignore.
-          }
+          closePrePoppedWindow();
           await pollCloudCredits();
           await loadWalletConfig().catch(() => undefined);
           setElizaCloudLoginError(null);
@@ -560,11 +554,7 @@ export function useCloudState({
           resp = await client.cloudLogin();
         }
         if (!resp.ok) {
-          try {
-            prePoppedWindow?.close();
-          } catch {
-            // Cross-origin — ignore.
-          }
+          closePrePoppedWindow();
           setElizaCloudLoginError(
             resp.error || "Failed to start Eliza Cloud login",
           );
@@ -588,6 +578,7 @@ export function useCloudState({
           setElizaCloudLoginFallbackUrl(resp.browserUrl);
           if (prePoppedWindow) {
             navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl);
+            prePoppedWindowNavigatedExternally = true;
           } else {
             try {
               await openExternalUrl(resp.browserUrl);
@@ -598,11 +589,7 @@ export function useCloudState({
             }
           }
         } else {
-          try {
-            prePoppedWindow?.close();
-          } catch {
-            // Cross-origin — ignore.
-          }
+          closePrePoppedWindow();
         }
 
         const sessionId = resp.sessionId ?? "";
@@ -686,11 +673,7 @@ export function useCloudState({
                 client.setToken(poll.token);
               }
 
-              try {
-                prePoppedWindow?.close();
-              } catch {
-                // Cross-origin — ignore.
-              }
+              closePrePoppedWindow();
               void closeExternalBrowser();
 
               stopCloudLoginPolling();

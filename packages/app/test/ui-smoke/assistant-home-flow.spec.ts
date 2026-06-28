@@ -130,6 +130,13 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
     }
     await fulfillJson(route, { success: true });
   });
+  await page.route("**/api/cloud/compat/agents", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { success: true, data: [] });
+  });
   await page.route("**/api/stream/settings", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
