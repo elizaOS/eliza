@@ -26,12 +26,6 @@ import type {
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
 } from "@elizaos/shared";
-import { CalendarDomain } from "./domains/calendar-service.js";
-import type {
-  Constructor,
-  LifeOpsServiceBase,
-  MixinClass,
-} from "./service-mixin-core.js";
 
 export interface LifeOpsCalendarService {
   listCalendars(
@@ -90,97 +84,4 @@ export interface LifeOpsCalendarService {
     request?: GetLifeOpsCalendarFeedRequest,
     now?: Date,
   ): Promise<LifeOpsNextCalendarEventContext>;
-}
-
-/** @internal */
-export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
-  Base: TBase,
-): MixinClass<TBase, LifeOpsCalendarService> {
-  const CalendarBase = Base;
-  return class extends CalendarBase {
-    // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
-    // Public (not private) to avoid TS4094 on the re-exported mixin class.
-    readonly calendarDomain = new CalendarDomain(this);
-
-    listCalendars(
-      requestUrl: URL,
-      request?: ListLifeOpsCalendarsRequest,
-    ): Promise<LifeOpsCalendarSummary[]> {
-      return this.calendarDomain.listCalendars(requestUrl, request);
-    }
-
-    setCalendarIncluded(
-      requestUrl: URL,
-      request: {
-        calendarId: string;
-        includeInFeed: boolean;
-        side?: LifeOpsConnectorSide;
-        mode?: LifeOpsConnectorMode;
-        grantId?: string;
-      },
-    ): Promise<LifeOpsCalendarSummary> {
-      return this.calendarDomain.setCalendarIncluded(requestUrl, request);
-    }
-
-    getCalendarFeed(
-      requestUrl: URL,
-      request?: GetLifeOpsCalendarFeedRequest,
-      now?: Date,
-    ): Promise<LifeOpsCalendarFeed> {
-      return this.calendarDomain.getCalendarFeed(requestUrl, request, now);
-    }
-
-    createCalendarEvent(
-      requestUrl: URL,
-      request: CreateLifeOpsCalendarEventRequest,
-      now?: Date,
-    ): Promise<LifeOpsCalendarEvent> {
-      return this.calendarDomain.createCalendarEvent(requestUrl, request, now);
-    }
-
-    updateCalendarEvent(
-      requestUrl: URL,
-      request: {
-        mode?: LifeOpsConnectorMode | null;
-        side?: LifeOpsConnectorSide | null;
-        grantId?: string;
-        calendarId?: string | null;
-        eventId: string;
-        title?: string;
-        description?: string;
-        location?: string;
-        startAt?: string;
-        endAt?: string;
-        timeZone?: string;
-        attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
-      },
-    ): Promise<LifeOpsCalendarEvent> {
-      return this.calendarDomain.updateCalendarEvent(requestUrl, request);
-    }
-
-    deleteCalendarEvent(
-      requestUrl: URL,
-      request: {
-        mode?: LifeOpsConnectorMode | null;
-        side?: LifeOpsConnectorSide | null;
-        grantId?: string;
-        calendarId?: string | null;
-        eventId: string;
-      },
-    ): Promise<void> {
-      return this.calendarDomain.deleteCalendarEvent(requestUrl, request);
-    }
-
-    getNextCalendarEventContext(
-      requestUrl: URL,
-      request?: GetLifeOpsCalendarFeedRequest,
-      now?: Date,
-    ): Promise<LifeOpsNextCalendarEventContext> {
-      return this.calendarDomain.getNextCalendarEventContext(
-        requestUrl,
-        request,
-        now,
-      );
-    }
-  } as unknown as MixinClass<TBase, LifeOpsCalendarService>;
 }
