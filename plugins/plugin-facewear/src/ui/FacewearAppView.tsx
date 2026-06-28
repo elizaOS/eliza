@@ -93,7 +93,11 @@ function DeviceCard({
   );
 }
 
-export function FacewearAppView() {
+export function FacewearAppView({
+  onOpenSmartglasses,
+}: {
+  onOpenSmartglasses?: () => void;
+} = {}) {
   const [status, setStatus] = useState<FacewearStatusResponse>({
     connected: false,
     devices: [],
@@ -124,6 +128,10 @@ export function FacewearAppView() {
 
   function handleConnect(deviceType: FacewearDeviceType): void {
     if (deviceType === "even-realities") {
+      if (onOpenSmartglasses) {
+        onOpenSmartglasses();
+        return;
+      }
       window.location.assign("/apps/smartglasses");
       return;
     }

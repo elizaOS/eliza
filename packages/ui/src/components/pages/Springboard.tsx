@@ -64,6 +64,12 @@ export interface SpringboardProps {
   /** Fires with the rendered page count whenever it changes, so an outer surface
    *  can size the unified page indicator. */
   onPageCountChange?: (count: number) => void;
+  /**
+   * Optional caller-owned page grouping. Used by the app launcher to keep
+   * curated system apps on page 1 and developer tools on page 2 regardless of
+   * persisted user layout. When omitted, the normal persisted layout is used.
+   */
+  pageGroups?: string[][];
   /** Controlled edit mode. When omitted, edit mode is local state. */
   editing?: boolean;
   onEditingChange?: (editing: boolean) => void;
@@ -238,6 +244,7 @@ export function Springboard({
   page: pageProp,
   onPageChange,
   onPageCountChange,
+  pageGroups,
   editing: editingProp,
   onEditingChange,
   showPageDots = true,
@@ -284,10 +291,20 @@ export function Springboard({
     [editingControlled, onEditingChange],
   );
 
+  const groupedPages = useMemo(() => {
+    if (!pageGroups) return null;
+    const available = new Set(availableIds);
+    const next = pageGroups
+      .map((page) => page.filter((id) => available.has(id)))
+      .filter((page) => page.length > 0);
+    return next.length > 0 ? next : [[]];
+  }, [availableIds, pageGroups]);
+
   // Re-reconcile when the available views change.
   useEffect(() => {
+    if (groupedPages) return;
     setLayout((prev) => reconcileLayout(prev, availableIds));
-  }, [availableIds]);
+  }, [availableIds, groupedPages]);
 
   // Keep the LOCAL active page index in range when pages shrink (views removed).
   // When controlled, the store clamps the page, so this only guards the
@@ -324,8 +341,8 @@ export function Springboard({
   }, [editing, setEditingState]);
 
   const pages = useMemo(
-    () => (layout.pages.length > 0 ? layout.pages : [[]]),
-    [layout.pages],
+    () => groupedPages ?? (layout.pages.length > 0 ? layout.pages : [[]]),
+    [groupedPages, layout.pages],
   );
 
   // Report the page count up so an outer surface (the rail) can size the single
@@ -337,6 +354,7 @@ export function Springboard({
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
+      if (groupedPages) return;
       // Rebuild the layout for this page from the reordered id list.
       let next = layout;
       nextIds.forEach((id, index) => {
@@ -349,7 +367,7 @@ export function Springboard({
       });
       commit(next);
     },
-    [layout, commit],
+    [groupedPages, layout, commit],
   );
 
   const renderTile = useCallback(
@@ -580,8 +598,8 @@ export function Springboard({
                       <Reorder.Item
                         key={id}
                         value={id}
-                        drag={editing}
-                        dragListener={editing}
+                        drag={editing && !groupedPages}
+                        dragListener={editing && !groupedPages}
                         className="flex justify-center"
                       >
                         {renderTile(entry)}

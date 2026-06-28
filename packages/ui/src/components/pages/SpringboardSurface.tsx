@@ -1,4 +1,3 @@
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
 import * as React from "react";
 import {
   type DynamicViewManifest,
@@ -24,77 +23,41 @@ import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { recordRecentViewId } from "../../view-recents";
 import { Springboard } from "./Springboard";
+import {
+  canonicalSpringboardId,
+  compareSpringboardEntries,
+  dedupeSpringboardEntries,
+  isCuratedSpringboardEntryVisible,
+  normalizeSpringboardEntry,
+  springboardKindForCanonicalId,
+  springboardPageGroups,
+} from "./springboard-curation";
 
 const HIDDEN_SPRINGBOARD_VIEW_IDS = new Set([
   "chat",
   "views",
   "apps",
   "views-manager",
-  "character",
   "character-select",
   "voice",
 ]);
 
 const HIDDEN_SPRINGBOARD_PATHS = new Set(["/chat", "/views", "/apps"]);
 
-const SPRINGBOARD_SYSTEM_ENTRY_IDS = new Set([
-  "settings",
-  "tasks",
-  "automations",
-  "triggers",
-  "browser",
-  "inventory",
-  "documents",
-  "files",
-  "plugins",
-  "skills",
-  "trajectories",
-  "transcripts",
-  "relationships",
-  "memories",
-  "runtime",
-  "database",
-  "logs",
-  "background",
-  "stream",
-  "desktop",
-]);
-
 function isVisibleSpringboardView(
   view: ViewRegistryEntry,
-  enabledKinds: EnabledViewKinds,
   activeModality: ViewModality,
 ): boolean {
   if (HIDDEN_SPRINGBOARD_VIEW_IDS.has(view.id)) return false;
   if (view.path && HIDDEN_SPRINGBOARD_PATHS.has(view.path)) return false;
   if ((view.viewType ?? "gui") !== activeModality) return false;
-  if (!isViewVisible(view, enabledKinds)) return false;
   if (
     view.visibleInManager === false &&
-    !SPRINGBOARD_SYSTEM_ENTRY_IDS.has(view.id)
+    springboardKindForCanonicalId(canonicalSpringboardId(view)) === "preview"
   ) {
     return false;
   }
   return true;
-}
-
-function compareEntryLabels(left: { label: string }, right: { label: string }) {
-  return left.label.localeCompare(right.label, undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
-}
-
-function dedupeEntries(entries: ViewEntry[]): ViewEntry[] {
-  const seen = new Set<string>();
-  const out: ViewEntry[] = [];
-  for (const entry of entries) {
-    const key = `${entry.modality}:${entry.id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(entry);
-  }
-  return out;
 }
 
 interface DynamicViewFormState {
@@ -158,11 +121,9 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
   const loadedEntries = React.useMemo(
     () =>
       views
-        .filter((view) =>
-          isVisibleSpringboardView(view, enabledKinds, activeModality),
-        )
+        .filter((view) => isVisibleSpringboardView(view, activeModality))
         .map(viewToEntry),
-    [activeModality, enabledKinds, views],
+    [activeModality, views],
   );
 
   const availableEntries = React.useMemo(
@@ -170,13 +131,30 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
       catalogEntries
         .filter((entry) => entry.state !== "loaded")
         .filter((entry) => entry.modality === activeModality)
-        .sort(compareEntryLabels),
-    [activeModality, catalogEntries],
+        .map(normalizeSpringboardEntry)
+        .filter((entry) =>
+          isCuratedSpringboardEntryVisible(entry, enabledKinds),
+        )
+        .sort(compareSpringboardEntries),
+    [activeModality, catalogEntries, enabledKinds],
   );
 
   const entries = React.useMemo(
-    () => dedupeEntries([...loadedEntries, ...availableEntries]),
-    [availableEntries, loadedEntries],
+    () =>
+      dedupeSpringboardEntries([
+        ...loadedEntries
+          .map(normalizeSpringboardEntry)
+          .filter((entry) =>
+            isCuratedSpringboardEntryVisible(entry, enabledKinds),
+          ),
+        ...availableEntries,
+      ]).sort(compareSpringboardEntries),
+    [availableEntries, enabledKinds, loadedEntries],
+  );
+
+  const pageGroups = React.useMemo(
+    () => springboardPageGroups(entries),
+    [entries],
   );
 
   const entryById = React.useMemo(
@@ -403,6 +381,7 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
         page={springboardPage}
         onPageChange={setSpringboardPage}
         onPageCountChange={setSpringboardPageCount}
+        pageGroups={pageGroups}
         editing={springboardEditing}
         onEditingChange={setSpringboardEditing}
         showPageDots={false}

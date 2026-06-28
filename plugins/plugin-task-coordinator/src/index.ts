@@ -202,6 +202,7 @@ const taskCoordinatorPlugin: Plugin = {
     // runtime export reaches the bundle build.
     {
       id: "task-coordinator",
+      viewKind: "preview",
       label: "Task Coordinator",
       description: "Coding agent task threads, sessions, and controls",
       icon: "SquareTerminal",
@@ -258,6 +259,8 @@ const taskCoordinatorPlugin: Plugin = {
     // OrchestratorView spatial source.
     {
       id: "orchestrator",
+      viewKind: "developer",
+      developerOnly: true,
       label: "Orchestrator",
       description: "Multi-agent task orchestration workbench",
       icon: "Layers",

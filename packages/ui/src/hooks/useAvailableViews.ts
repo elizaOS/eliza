@@ -203,6 +203,25 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   background: "ImageIcon",
 };
 
+const TAB_VIEW_KINDS: Partial<Record<BuiltinTab, ViewKind>> = {
+  chat: "system",
+  tutorial: "system",
+  help: "system",
+  documents: "system",
+  character: "system",
+  settings: "system",
+  tasks: "system",
+  browser: "system",
+  inventory: "system",
+  files: "system",
+  skills: "system",
+  transcripts: "system",
+  relationships: "system",
+  trajectories: "developer",
+  database: "developer",
+  logs: "developer",
+};
+
 const BUILTIN_SHELL_VIEW_ENTRIES: ViewRegistryEntry[] = Object.entries(
   TAB_PATHS,
 ).map(([id, path]) => ({
@@ -215,6 +234,8 @@ const BUILTIN_SHELL_VIEW_ENTRIES: ViewRegistryEntry[] = Object.entries(
   pluginName: "@elizaos/builtin",
   tags: [id],
   builtin: true,
+  viewKind: TAB_VIEW_KINDS[id as BuiltinTab] ?? "preview",
+  developerOnly: TAB_VIEW_KINDS[id as BuiltinTab] === "developer",
   visibleInManager: false,
   desktopTabEnabled: true,
 }));

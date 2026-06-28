@@ -28,7 +28,7 @@ const platform = getFrontendPlatform();
 if (platform === "android" || platform === "ios") {
   registerAppShellPage({
     id: "vincent",
-    viewKind: "release",
+    viewKind: "preview",
     pluginId: "@elizaos/plugin-vincent",
     label: "Vincent",
     icon: "Zap",
@@ -41,7 +41,7 @@ if (platform === "android" || platform === "ios") {
 
   registerAppShellPage({
     id: "companion",
-    viewKind: "release",
+    viewKind: "preview",
     pluginId: "@elizaos/plugin-companion",
     label: "Companion",
     icon: "Bot",
@@ -54,7 +54,7 @@ if (platform === "android" || platform === "ios") {
 
   registerAppShellPage({
     id: "steward",
-    viewKind: "release",
+    viewKind: "preview",
     pluginId: "@elizaos/plugin-steward-app",
     label: "Steward",
     icon: "Shield",

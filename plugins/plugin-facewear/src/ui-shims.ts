@@ -2,6 +2,33 @@ import type { ComponentType, RefObject } from "react";
 
 declare module "@elizaos/ui" {
   export const TerminalPluginView: ComponentType<Record<string, unknown>>;
+  export type SettingsSectionTone =
+    | "ok"
+    | "warn"
+    | "muted"
+    | "accent"
+    | "neutral";
+  export type SettingsSectionHue = "accent" | "amber" | "rose" | "slate";
+
+  export interface SettingsSectionDef {
+    id: string;
+    label: string;
+    defaultLabel: string;
+    icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+    tone: SettingsSectionTone;
+    hue: SettingsSectionHue;
+    titleKey: string;
+    defaultTitle: string;
+    group: string;
+    order?: number;
+    bodyClassName?: string;
+    developerOnly?: boolean;
+    hideOnCloud?: boolean;
+    viewKind?: "system" | "release" | "developer" | "preview";
+    Component: ComponentType;
+  }
+
+  export function registerSettingsSection(section: SettingsSectionDef): void;
 }
 
 declare module "@elizaos/ui/agent-surface" {
@@ -39,6 +66,7 @@ declare module "@elizaos/ui/app-shell-registry" {
     path: string;
     order?: number;
     developerOnly?: boolean;
+    viewKind?: "system" | "release" | "developer" | "preview";
     group?: string;
     Component?: ComponentType<unknown>;
     loader?: AppShellPageLoader;

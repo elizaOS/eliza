@@ -8,10 +8,12 @@ export const walletAppPlugin: Plugin = {
     category: "wallet",
     icon: "Wallet",
     visibleInAppStore: true,
+    viewKind: "system",
     developerOnly: false,
     navTabs: [
       {
         id: "wallet.inventory",
+        viewKind: "system",
         label: "Wallet",
         icon: "Wallet",
         path: "/inventory",
@@ -27,6 +29,7 @@ export const walletAppPlugin: Plugin = {
     // the bundle build.
     {
       id: "wallet",
+      viewKind: "system",
       label: "Wallet",
       description: "Non-custodial wallet inventory and token balances",
       icon: "Wallet",

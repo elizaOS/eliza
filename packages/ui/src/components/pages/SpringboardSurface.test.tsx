@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
@@ -67,6 +73,7 @@ function availableApp(id: string, label: string): ViewEntry {
 const DEFAULT_VIEWS = [
   view("chat", "Chat", "/chat"),
   view("views", "Views", "/views"),
+  view("logs", "Logs", "/apps/logs", { viewKind: "developer" }),
   view("settings", "Settings", "/settings", { visibleInManager: false }),
   view("notes", "Notes", "/notes"),
   view("views-manager", "View Manager", "/views"),
@@ -77,7 +84,7 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/");
   useEnabledViewKindsMock.mockReturnValue({
     developer: true,
-    preview: true,
+    preview: false,
   });
   useRoutableViewsMock.mockReturnValue({
     views: DEFAULT_VIEWS,
@@ -100,14 +107,15 @@ afterEach(() => {
 });
 
 describe("SpringboardSurface", () => {
-  it("shows Settings as a tile and hides Home/Springboard self-links", () => {
+  it("shows curated tiles and hides self-links plus preview-gated entries", () => {
     render(<SpringboardSurface />);
 
     expect(screen.getByTestId("springboard-tile-settings")).toBeTruthy();
-    expect(screen.getByTestId("springboard-tile-notes")).toBeTruthy();
     expect(screen.queryByTestId("springboard-tile-chat")).toBeNull();
     expect(screen.queryByTestId("springboard-tile-views")).toBeNull();
     expect(screen.queryByTestId("springboard-tile-views-manager")).toBeNull();
+    expect(screen.queryByTestId("springboard-tile-notes")).toBeNull();
+    expect(screen.queryByTestId("springboard-tile-weather")).toBeNull();
   });
 
   it("navigates loaded views through the browser route", () => {
@@ -121,7 +129,7 @@ describe("SpringboardSurface", () => {
   it("uses the catalog get action for available apps", () => {
     const get = vi.fn(async (_entry: ViewEntry) => {});
     useViewCatalogMock.mockReturnValue({
-      entries: [availableApp("weather", "Weather")],
+      entries: [availableApp("feed", "Feed")],
       loading: false,
       error: null,
       refresh: vi.fn(),
@@ -129,10 +137,23 @@ describe("SpringboardSurface", () => {
     });
 
     render(<SpringboardSurface />);
-    fireEvent.click(screen.getByRole("button", { name: "Weather" }));
+    fireEvent.click(screen.getByRole("button", { name: "Feed" }));
 
     expect(get).toHaveBeenCalledTimes(1);
     const launched = get.mock.calls.at(0)?.at(0);
-    expect(launched?.id).toBe("weather");
+    expect(launched?.id).toBe("feed");
+  });
+
+  it("keeps system apps on page 1 and developer apps on page 2", () => {
+    render(<SpringboardSurface />);
+
+    const pageOne = screen.getByTestId("springboard-page-0");
+    const pageTwo = screen.getByTestId("springboard-page-1");
+
+    expect(
+      within(pageOne).getByTestId("springboard-tile-settings"),
+    ).toBeTruthy();
+    expect(within(pageOne).queryByTestId("springboard-tile-logs")).toBeNull();
+    expect(within(pageTwo).getByTestId("springboard-tile-logs")).toBeTruthy();
   });
 });

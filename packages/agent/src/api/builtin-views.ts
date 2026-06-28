@@ -42,7 +42,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "camera",
-    viewKind: "release",
+    viewKind: "preview",
     label: "Camera",
     description:
       "Live camera preview with photo capture and front/back switching",
@@ -98,7 +98,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "automations",
-    viewKind: "release",
+    viewKind: "preview",
     label: "Automations",
     description: "Scheduled tasks and recurring workflows",
     icon: "Clock3",
@@ -110,7 +110,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "plugins-page",
-    viewKind: "release",
+    viewKind: "preview",
     label: "Plugins",
     description: "Manage installed plugins, configure credentials",
     icon: "Puzzle",
@@ -143,7 +143,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "transcripts",
-    viewKind: "release",
+    viewKind: "system",
     label: "Transcripts",
     description:
       "Recorded voice transcripts — play, scrub, and read with word sync",
@@ -156,8 +156,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "memories",
-    viewKind: "developer",
-    developerOnly: true,
+    viewKind: "preview",
+    developerOnly: false,
     label: "Memories",
     description: "Agent memory viewer and management",
     icon: "Brain",
@@ -208,7 +208,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "background",
-    viewKind: "system",
+    viewKind: "preview",
     label: "Background",
     description:
       "Set the app background — pick a shader color, upload an image, or generate one",

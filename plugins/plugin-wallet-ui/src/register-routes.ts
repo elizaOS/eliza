@@ -23,6 +23,7 @@ registerAppShellPage({
   id: "wallet.inventory",
   pluginId: "app-wallet",
   label: "Wallet",
+  viewKind: "system",
   icon: "Wallet",
   path: "/inventory",
   order: 50,
