@@ -202,6 +202,7 @@ async function waitForViteClient(page: Page): Promise<void> {
 // deliberately defers them). They are HMR-validated when the view is actually
 // rendered; a follow-up may add a dev-only graph warmup to fold them back in.
 const VIEWS_NOT_IN_ROOT_GRAPH = new Set<string>([
+  "plugin view companion",
   "plugin view contacts",
   "plugin view relationships",
   "plugin view hyperliquid",
