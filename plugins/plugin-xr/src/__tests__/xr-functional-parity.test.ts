@@ -167,15 +167,15 @@ const PLUGIN_REGISTRY: Array<{
   {
     pluginDir: "plugins/plugin-hyperliquid-app",
     manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
-    requiredTerms: ["HyperliquidAppView", "useState"],
+    xrComponentSrc: "plugins/plugin-hyperliquid-app/src/HyperliquidView.tsx",
+    requiredTerms: ["HyperliquidView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-messages",
     manifestPath: "plugins/plugin-messages/src/plugin.ts",
     xrComponentSrc:
-      "plugins/plugin-messages/src/components/MessagesAppView.tsx",
-    requiredTerms: ["MessagesAppView", "Button"],
+      "plugins/plugin-messages/src/components/MessagesView.tsx",
+    requiredTerms: ["MessagesView", "useState"],
   },
   {
     pluginDir: "plugins/app-model-tester",
@@ -186,8 +186,8 @@ const PLUGIN_REGISTRY: Array<{
   {
     pluginDir: "plugins/plugin-phone",
     manifestPath: "plugins/plugin-phone/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-phone/src/components/PhoneAppView.tsx",
-    requiredTerms: ["PhoneAppView", "Phone", "Button", "Tabs"],
+    xrComponentSrc: "plugins/plugin-phone/src/components/PhoneView.tsx",
+    requiredTerms: ["PhoneView", "PhoneSpatialView", "Button"],
   },
   {
     pluginDir: "plugins/plugin-polymarket-app",
@@ -198,8 +198,8 @@ const PLUGIN_REGISTRY: Array<{
   {
     pluginDir: "plugins/plugin-shopify-ui",
     manifestPath: "plugins/plugin-shopify-ui/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-shopify-ui/src/ShopifyAppView.tsx",
-    requiredTerms: ["ShopifyAppView", "useState"],
+    xrComponentSrc: "plugins/plugin-shopify-ui/src/ShopifyView.tsx",
+    requiredTerms: ["ShopifyView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-steward-app",
@@ -279,17 +279,16 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
     capabilities: ["terminal-list-contacts", "terminal-create-contact"],
   },
   "plugins/plugin-hyperliquid-app": {
-    srcFile:
-      "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.interact.ts",
+    srcFile: "plugins/plugin-hyperliquid-app/src/hyperliquid-interact.ts",
     capabilities: ["terminal-hyperliquid-state"],
   },
   "plugins/plugin-messages": {
     srcFile:
-      "plugins/plugin-messages/src/components/MessagesAppView.interact.ts",
+      "plugins/plugin-messages/src/components/messages-interact.ts",
     capabilities: ["terminal-list-threads", "terminal-send-sms"],
   },
   "plugins/plugin-phone": {
-    srcFile: "plugins/plugin-phone/src/components/PhoneAppView.interact.ts",
+    srcFile: "plugins/plugin-phone/src/components/phone-interact.ts",
     capabilities: ["terminal-phone-state", "terminal-place-call"],
   },
   "plugins/plugin-wallet-ui": {
@@ -488,11 +487,11 @@ describe("XR feature-by-feature functional parity — all 18 views", () => {
 
   // Summary assertion ─────────────────────────────────────────────────────────
 
-  it("summary — all 18 plugins have XR views that are functionally identical to their GUI views", () => {
+  it("summary — all 17 plugins have XR views that are functionally identical to their GUI views", () => {
     // This test is a logical consequence of tests A, B, C, D above all passing.
     // It explicitly states the guarantee: same bundle + same component = same features.
     const xrPluginCount = PLUGIN_REGISTRY.length;
-    expect(xrPluginCount).toBe(18);
+    expect(xrPluginCount).toBe(17);
 
     for (const { pluginDir, manifestPath } of PLUGIN_REGISTRY) {
       const source = readFile(manifestPath);

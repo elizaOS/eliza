@@ -136,21 +136,6 @@
       "xr": true
     },
     {
-      "id": "vincent",
-      "gui": true,
-      "xr": true
-    },
-    {
-      "id": "waifu-imagegen",
-      "gui": true,
-      "xr": true
-    },
-    {
-      "id": "waifu-swap",
-      "gui": true,
-      "xr": true
-    },
-    {
       "id": "wallet",
       "gui": true,
       "xr": true

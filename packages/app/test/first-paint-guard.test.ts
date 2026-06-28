@@ -28,7 +28,6 @@ const ALLOWED_BLOCKING_IMPORTERS = new Set([
 /** Heavy app plugins that must NOT block first paint — deferred to idle. */
 const MUST_BE_DEFERRED = [
   "importPersonalAssistant",
-  "importAppVincent",
   "importAppTaskCoordinator",
   "importAppTaskCoordinatorRegister",
   "importAppPhone",

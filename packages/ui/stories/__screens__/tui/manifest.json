@@ -27,9 +27,6 @@
     "trajectory-logger",
     "vector-browser",
     "views-manager",
-    "vincent",
-    "waifu-imagegen",
-    "waifu-swap",
     "wallet"
   ],
   "skipped": []
