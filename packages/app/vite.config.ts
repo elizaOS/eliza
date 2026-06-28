@@ -1674,7 +1674,7 @@ function isIgnoredWorkspaceGeneratedOutput(normalizedFile: string): boolean {
     normalizedFile.includes("/packages/examples/") ||
     normalizedFile.includes("/packages/feed/") ||
     normalizedFile.includes("/output/generated-cad/") ||
-    normalizedFile.includes("/packages/robot/") ||
+    normalizedFile.includes("/packages/research/robot/") ||
     normalizedFile.includes("/src/i18n/generated/") ||
     normalizedFile.endsWith(".d.ts") ||
     normalizedFile.endsWith(".d.ts.map") ||
@@ -3312,7 +3312,7 @@ export const INVALID_TRACER_PROVIDER = {};
         "**/*.d.ts.map",
         "**/*.tsbuildinfo",
         "**/packages/**/output/generated-cad/**",
-        "**/packages/robot/**",
+        "**/packages/research/robot/**",
         "**/packages/**/src/i18n/generated/**",
         "**/packages/benchmarks/**",
         "**/packages/os/**",

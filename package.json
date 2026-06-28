@@ -232,6 +232,7 @@
     "packages/*",
     "!packages/feed",
     "packages/security/soc2-verify",
+    "packages/research/*",
     "packages/benchmarks/lib",
     "packages/benchmarks/interrupt-bench",
     "packages/benchmarks/eliza-1",
