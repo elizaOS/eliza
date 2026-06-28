@@ -19,19 +19,19 @@
     "esModuleInterop": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@elizaos/shared/brand": ["../shared/src/brand/index.ts"],
-      "@elizaos/shared/checkout": ["../shared/src/checkout/index.ts"],
+      "@elizaos/shared/brand": ["../../shared/src/brand/index.ts"],
+      "@elizaos/shared/checkout": ["../../shared/src/checkout/index.ts"],
       "@elizaos/shared/hardware-catalog": [
-        "../shared/src/hardware-catalog/index.ts"
+        "../../shared/src/hardware-catalog/index.ts"
       ],
       "@elizaos/shared/steward-session-client": [
-        "../shared/src/steward-session-client/index.ts"
+        "../../shared/src/steward-session-client/index.ts"
       ],
-      "@elizaos/ui/button": ["../ui/src/cloud-ui/components/button.tsx"],
-      "@elizaos/ui/card": ["../ui/src/components/ui/card.tsx"],
-      "@elizaos/ui/i18n/region": ["../ui/src/i18n/region.ts"],
+      "@elizaos/ui/button": ["../../ui/src/cloud-ui/components/button.tsx"],
+      "@elizaos/ui/card": ["../../ui/src/components/ui/card.tsx"],
+      "@elizaos/ui/i18n/region": ["../../ui/src/i18n/region.ts"],
       "@elizaos/ui/product-switcher": [
-        "../ui/src/cloud-ui/components/product-switcher.tsx"
+        "../../ui/src/cloud-ui/components/product-switcher.tsx"
       ]
     },
     "types": ["vite/client"]

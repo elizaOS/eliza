@@ -121,7 +121,7 @@
       "project": ["src/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/os-homepage": {
+    "packages/os/homepage": {
       "entry": [
         "index.html",
         "src/main.tsx",

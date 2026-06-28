@@ -8,7 +8,7 @@ export default defineConfig({
   outputDir: recording
     ? path.resolve(
         import.meta.dirname,
-        "../../e2e-recordings/os-homepage/test-results",
+        "../../../e2e-recordings/os-homepage/test-results",
       )
     : "./test-results",
   expect: {

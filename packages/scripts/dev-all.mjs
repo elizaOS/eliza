@@ -273,7 +273,7 @@ const services = [
   },
   {
     name: "os-homepage",
-    cwd: "packages/os-homepage",
+    cwd: "packages/os/homepage",
     command: [
       bunBin,
       "run",

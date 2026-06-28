@@ -6,7 +6,7 @@
 //
 // Enable with:
 //   LIVE_OS_HOMEPAGE_STEWARD_CHECKOUT=1 \
-//   bun run --cwd packages/os-homepage test:e2e live-steward-checkout.spec.ts --project desktop
+//   bun run --cwd packages/os/homepage test:e2e live-steward-checkout.spec.ts --project desktop
 
 import { StewardAuth } from "@stwd/sdk";
 import { expect, type Page, type Route, test } from "playwright/test";

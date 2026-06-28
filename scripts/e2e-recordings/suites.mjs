@@ -32,7 +32,7 @@ export const UI_E2E_SUITES = [
   {
     name: "os-homepage",
     displayName: "OS homepage",
-    configDir: "packages/os-homepage",
+    configDir: "packages/os/homepage",
     script: "test:e2e",
     coverage:
       "Runs OS homepage routes, checkout/preorder flows, link resilience, mobile/desktop screenshots, traces, and videos.",

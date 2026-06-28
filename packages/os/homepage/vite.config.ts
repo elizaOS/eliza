@@ -76,53 +76,53 @@ export default defineConfig({
       { find: /^@\//, replacement: `${path.resolve(packageDir, "./src")}/` },
       {
         find: /^@elizaos\/shared\/brand$/,
-        replacement: path.resolve(packageDir, "../shared/src/brand/index.ts"),
+        replacement: path.resolve(packageDir, "../../shared/src/brand/index.ts"),
       },
       {
         find: /^@elizaos\/shared\/checkout$/,
         replacement: path.resolve(
           packageDir,
-          "../shared/src/checkout/index.ts",
+          "../../shared/src/checkout/index.ts",
         ),
       },
       {
         find: /^@elizaos\/shared\/hardware-catalog$/,
         replacement: path.resolve(
           packageDir,
-          "../shared/src/hardware-catalog/index.ts",
+          "../../shared/src/hardware-catalog/index.ts",
         ),
       },
       {
         find: /^@elizaos\/shared\/steward-session-client$/,
         replacement: path.resolve(
           packageDir,
-          "../shared/src/steward-session-client/index.ts",
+          "../../shared/src/steward-session-client/index.ts",
         ),
       },
       {
         find: /^@elizaos\/ui\/button$/,
         replacement: path.resolve(
           packageDir,
-          "../ui/src/cloud-ui/components/button.tsx",
+          "../../ui/src/cloud-ui/components/button.tsx",
         ),
       },
       {
         find: /^@elizaos\/ui\/card$/,
         replacement: path.resolve(
           packageDir,
-          "../ui/src/components/ui/card.tsx",
+          "../../ui/src/components/ui/card.tsx",
         ),
       },
       {
         find: /^@elizaos\/ui\/product-switcher$/,
         replacement: path.resolve(
           packageDir,
-          "../ui/src/cloud-ui/components/product-switcher.tsx",
+          "../../ui/src/cloud-ui/components/product-switcher.tsx",
         ),
       },
       {
         find: /^@elizaos\/ui\/i18n\/region$/,
-        replacement: path.resolve(packageDir, "../ui/src/i18n/region.ts"),
+        replacement: path.resolve(packageDir, "../../ui/src/i18n/region.ts"),
       },
     ],
   },
