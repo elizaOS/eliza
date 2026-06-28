@@ -147,48 +147,70 @@ then prod.
 
 ---
 
-## Tier 2 — optimistic off-path billing (DEFERRED — needs a durable backstop)
+## Tier 2 — optimistic off-path billing (IMPLEMENTED — flag-gated, default OFF)
 
 The user's "fire off billing without blocking, no DB writes in the hot path" ask
-means removing the synchronous `reserveCredits`. The review showed this is **not
-safe** as a naive "skip reserve + debit in waitUntil" change. To do it correctly
-requires ALL of:
+means removing the synchronous `reserveCredits`. A naive "skip reserve + debit in
+`waitUntil`" change is **not safe**; the review (appendix) showed it needs a
+durable backstop and several guards. Tier 2 ships all of them behind
+`INFERENCE_OPTIMISTIC_BILLING` (default OFF). Implementation lives in
+`@/lib/services/inference-billing-fast-path` (settler, gate, sweep) and
+`@/lib/services/inference-auth-cache` (org-balance hint). When eligible, the
+org-credits branch SKIPS `reserveCredits` and instead: writes a durable KV
+pending-charge → forwards → debits the ACTUAL cost off the response path (the
+existing `settleReservation` chain, now backed by `createOptimisticDebitSettler`).
 
-1. **Durable pending-charge backstop** independent of `waitUntil` (best-effort,
-   dropped on isolate eviction): write a pending-charge row / enqueue to the
-   existing Cloudflare Queue BEFORE forwarding, settled idempotently by a
-   reconciler. Bounds dropped-`waitUntil` loss to "eventually charged" instead of
-   "free forever" (blocker BILL-4).
-2. **Org-scoped balance hint + org-level invalidation** (balance is per-org, IAC
-   is per-credential — one credential's invalidation can't stop N others draining
-   the same org) (blocker BILL-2).
+1. **Durable pending-charge backstop** independent of `waitUntil`
+   (`writePendingInferenceCharge` → `iac:pending:<requestId>:v1`, TTL 1800s),
+   written BEFORE forwarding. A `* * * * *` cron
+   (`/api/cron/sweep-inference-charges` → `sweepStalePendingInferenceCharges`)
+   settles entries older than a 20-min grace whose inline settle never ran,
+   charging the ESTIMATE. Steady-state the inline settler deletes its own entry,
+   so the sweep set is just rare stragglers — it does NOT process every request.
+   Bounds dropped-`waitUntil` loss to "eventually charged" (blocker BILL-4).
+2. **Org-scoped balance hint + org-level invalidation** (`OrgBalanceHint`,
+   `iac:org-balance:<orgId>:v1`, TTL 15s) — the gate reads the org balance, not a
+   per-credential value. On any failed/over-drawn debit the hint is invalidated
+   so the next request re-reads fresh (blocker BILL-2).
 3. **Uncollected-overage handling:** the DB `CHECK(credit_balance >= 0)` means a
-   failed deferred debit does NOT go negative — it silently fails ⇒ free
-   inference. On `success:false` / `uncollected_overage`: record the debt to a
-   ledger (not `credit_balance`), suspend/hard-block the org, invalidate org IAC
-   (blocker BILL-1).
-4. **Idempotent debits** keyed on request id (no reservation txn id to dedupe on)
-   so backstop + `waitUntil` can't double-charge (BILL-minor).
-5. **Fail-safe threshold:** `SAFE_BALANCE_THRESHOLD` defaults to `+Infinity`
-   (everyone slow-path) on unset/malformed, never 0 (blocker BILL-5); evaluated
-   against worst-case spend over the full staleness window at peak rate, from a
-   **freshly-read** balance (not the 600s `user.withOrg` snapshot) (CS-1).
-6. **Streaming + non-streaming parity:** the full-debit + drain-invalidation must
-   live in BOTH `streamText.onFinish` and the non-streaming `settleOffResponsePath`
-   block (blocker RB-5).
-7. **Backend assertion:** IAC fast path requires the KV adapter; on
-   memory/disabled cache, force slow path + warn (invalidation is ineffective on
-   a per-isolate singleton) (CS-5).
+   failed deferred debit does NOT go negative — `deductCredits` returns
+   `success:false`. On failure we log the uncollected amount for alerting,
+   invalidate the org-balance hint, and invalidate the user's IAC
+   (`invalidateInferenceContextForUser`) — forcing the org back onto the
+   synchronous-reserve slow path, which then returns the exact `402` until they
+   top up. So a failed debit is bounded over-spend (the in-flight call only),
+   never free-forever, and self-heals on top-up (blocker BILL-1). A persistent
+   debt ledger would need a migration and is intentionally NOT added (logged
+   instead) — out of scope for the flag-gated MVP.
+4. **Idempotent settlement** keyed on `requestId`: the inline settler atomically
+   CLAIMS the pending entry via `cache.getAndDelete` before debiting, and the
+   cron sweep claims the same way — so the two can never both charge one request
+   (BILL-minor). Residual: the claim is a near-atomic KV get-then-delete; a crash
+   between claim and debit loses a single charge (under-bill, never double-bill).
+5. **Fail-safe threshold:** `resolveSafeBalanceThresholdUsd` returns `+Infinity`
+   (everyone slow-path) on unset/blank/non-finite/non-positive
+   `SAFE_BALANCE_THRESHOLD`, never 0 (blocker BILL-5). The gate
+   (`isOptimisticEligible`) requires `balance > threshold && balance > estimate`
+   from a freshly-read balance (15s hint, not the 600s `user.withOrg` snapshot)
+   (CS-1).
+6. **Settler-shape parity:** `createOptimisticDebitSettler` returns the SAME
+   `(actualCost) => Promise<CreditReconciliationResult|null>` shape as the
+   reservation settler, so the route's single post-response `settleReservation`
+   chain is unchanged and covers both streaming and non-streaming paths (RB-5).
+7. **Backend assertion:** the IAC fast path requires `cache.isAvailable()`; a
+   degraded/memory/disabled cache forces the slow path (resolver returns
+   `slow_path` with reason `cache_unavailable`), since invalidation is ineffective
+   off the bound KV namespace (CS-5).
 
-This is a substantial, separately-reviewable change to a billing-critical system,
-and its prod-critical behavior (KV consistency, `waitUntil` eviction) cannot be
-proven by unit tests. It is **documented here as the next step** and deferred —
-not shipped — pending an explicit product decision on the billing-grace tradeoff
-and the backstop implementation.
+Tier 2 is billing-critical; its prod behavior (KV consistency, `waitUntil`
+eviction) cannot be fully proven by unit tests, so it ships **default OFF**.
+Enable in staging behind `INFERENCE_OPTIMISTIC_BILLING` with a conservative
+`SAFE_BALANCE_THRESHOLD`, watch the `[InferenceBilling]` uncollected/sweep logs,
+then prod.
 
 ---
 
-## Appendix — blockers the review surfaced (why Tier 2 is deferred)
+## Appendix — blockers the review surfaced (and how Tier 2 addresses them)
 
 - **BILL-1 / SEC-4:** `CHECK(credit_balance >= 0)` + `WHERE current_balance >=
   amount` ⇒ failed deferred debit = free inference, not negative balance; the
