@@ -1242,6 +1242,39 @@ export class DockerSandboxProvider implements SandboxProvider {
       const containerId = extractDockerCreateContainerId(
         await ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
       );
+
+      // Pre-seed the cloud runtime config on the HOST side of the
+      // `${volumePath}/eliza:/root/.eliza` mount BEFORE starting the container,
+      // so the agent's loadElizaConfig() at early boot already sees
+      // deploymentTarget/serviceRouting. The post-start `docker exec` write
+      // below otherwise races the agent's config read (~0.6s post-start vs the
+      // ~0.2s boot-time read), leaving cloud agents stuck on runtime=local →
+      // local_inference (#8434/#9887). Best-effort; the post-start write below
+      // stays as a fallback (and overwrites with identical content).
+      try {
+        if (allEnv.ELIZAOS_CLOUD_BASE_URL) {
+          const preSeed = Buffer.from(
+            JSON.stringify(buildManagedElizaRuntimeConfig(allEnv)),
+            "utf-8",
+          ).toString("base64");
+          await ssh.exec(
+            `mkdir -p ${shellQuote(`${volumePath}/eliza`)} && printf %s ${shellQuote(
+              preSeed,
+            )} | base64 -d > ${shellQuote(`${volumePath}/eliza/eliza.json`)}`,
+            DOCKER_CMD_TIMEOUT_MS,
+          );
+          logger.info(
+            `[docker-sandbox] Pre-seeded eliza.json on host volume for ${containerName}`,
+          );
+        }
+      } catch (preSeedErr) {
+        logger.warn(
+          `[docker-sandbox] Failed to pre-seed eliza.json (post-start write will retry): ${
+            preSeedErr instanceof Error ? preSeedErr.message : String(preSeedErr)
+          }`,
+        );
+      }
+
       await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
