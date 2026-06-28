@@ -204,6 +204,7 @@ async function waitForViteClient(page: Page): Promise<void> {
 const VIEWS_NOT_IN_ROOT_GRAPH = new Set<string>([
   "plugin view companion",
   "plugin view contacts",
+  "plugin view focus",
   "plugin view relationships",
   "plugin view hyperliquid",
   "plugin view messages",
