@@ -382,24 +382,18 @@ try {
 
   await snap(mobile, "mobile-springboard");
 
-  // ── ONE page indicator — the doubled-dots regression (#4) ────────────────
-  // The springboard has 2 pages here, so the OLD bug rendered the inner
-  // Springboard dot strip stacked under the rail's home/springboard dots. The
-  // rail now owns the single indicator; the inner strip must be gone.
+  // ── NO page indicator — the dots were removed (they collided with the chat
+  // composer). Navigation is swipe-only. Neither the rail indicator nor the
+  // inner Springboard dot strip may render.
   assert(
-    (await mobile.locator('[data-testid="home-springboard-indicator"]').count()) ===
-      1,
-    "exactly one page-indicator strip is rendered",
+    (await mobile
+      .locator('[data-testid="home-springboard-indicator"]')
+      .count()) === 0,
+    "the page indicator is removed (no colliding dots)",
   );
   assert(
     (await mobile.locator('[aria-label^="Page "]').count()) === 0,
-    "the inner Springboard dot strip is NOT stacked under the rail dots",
-  );
-  assert(
-    (await mobile
-      .locator('[data-testid="home-springboard-indicator"] button')
-      .count()) === 3,
-    "the single indicator shows Home + 2 springboard-page dots",
+    "the inner Springboard dot strip is absent too",
   );
 
   // ── Real per-view images — every tile shows a branded hero IMAGE (generated
@@ -465,14 +459,17 @@ try {
     "re-opening the springboard is a clean launch view (edit mode auto-reset)",
   );
 
-  // ── Tapping a rail dot jumps directly to that page ───────────────────────
-  await mobile.getByLabel("Apps page 2", { exact: true }).click();
-  await mobile.waitForTimeout(200);
+  // ── Swipe to page 2 (no dots — paging is swipe-only now) ─────────────────
+  // page 1 holds app0–app19; app20 lives on page 2.
   assert(
-    (await mobile
-      .getByLabel("Apps page 2", { exact: true })
-      .getAttribute("aria-current")) === "true",
-    "tapping the page-2 dot jumps to springboard page 2",
+    (await mobile.getByTestId("springboard-tile-app20").count()) === 0,
+    "page-2 tile (app20) is not on page 1",
+  );
+  await swipeLeft(mobile.getByTestId("home-springboard-springboard-page"));
+  await mobile.waitForTimeout(450);
+  assert(
+    await mobile.getByTestId("springboard-tile-app20").isVisible(),
+    "swiping the springboard pages forward to page 2 (app20 visible)",
   );
   await snap(mobile, "mobile-springboard-page2");
 

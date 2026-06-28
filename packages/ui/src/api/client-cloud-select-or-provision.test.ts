@@ -135,4 +135,79 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.agentId).toBe("agent-new");
     expect(createCloudCompatAgent).toHaveBeenCalledTimes(1);
   });
+
+  // First-run handoff: a freshly-created dedicated agent whose container is still
+  // provisioning must start on the SHARED REST adapter base (the always-on
+  // in-Worker runtime serves the first turn instantly) — NOT on the dedicated
+  // subdomain, which 202s "starting" until the container boots and made the first
+  // message time out. finishCloud's handoff supervisor switches to the subdomain
+  // once it reports running. The shared base is what `isDirectCloudSharedAgentBase`
+  // matches, which is what gates that supervisor.
+  it("starts a still-provisioning new agent on the shared adapter base (handoff fires)", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-new",
+        agentName: "Eliza",
+        jobId: "job-1",
+        status: "provisioning",
+        nodeId: null,
+        message: "",
+      },
+    });
+    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-new",
+        status: "provisioning",
+        bridge_url: null,
+        web_ui_url: "https://agent-new.example.test",
+        webUiUrl: "https://agent-new.example.test",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+
+    expect(result.created).toBe(true);
+    expect(result.agentId).toBe("agent-new");
+    // Shared REST adapter base, not the dedicated subdomain.
+    expect(result.apiBase).toMatch(/\/api\/v1\/eliza\/agents\/agent-new$/);
+    expect(result.apiBase).not.toContain("agent-new.example.test");
+  });
+
+  // The warm-pool path returns a brand-new agent already `running` with a
+  // dedicated URL — no boot gap — so we use the subdomain immediately.
+  it("uses the dedicated subdomain immediately when a new agent is already running", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-warm",
+        agentName: "Eliza",
+        jobId: "",
+        status: "running",
+        nodeId: null,
+        message: "",
+      },
+    });
+    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-warm",
+        status: "running",
+        web_ui_url: "https://agent-warm.example.test",
+        webUiUrl: "https://agent-warm.example.test",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+
+    expect(result.created).toBe(true);
+    expect(result.apiBase).toContain("agent-warm.example.test");
+  });
 });

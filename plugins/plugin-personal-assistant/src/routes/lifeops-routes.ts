@@ -4,7 +4,6 @@ import {
   createIntegrationTelemetrySpan,
   type RateLimitConfig,
 } from "@elizaos/agent";
-import { handleCalendarRoutes } from "@elizaos/plugin-calendar/routes/calendar-routes";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
 import {
   type AgentRuntime,
@@ -13,10 +12,17 @@ import {
   requireConfirmation,
   type UUID,
 } from "@elizaos/core";
+import { handleCalendarRoutes } from "@elizaos/plugin-calendar/routes/calendar-routes";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
+import { FinancesServiceError } from "@elizaos/plugin-finances/finance-normalize";
+import {
+  FinancesService,
+  sanitizePaymentSourceForClient,
+} from "@elizaos/plugin-finances/finances-service";
+import type { AddPaymentSourceRequest } from "@elizaos/plugin-finances/payment-types";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -76,12 +82,6 @@ import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
-import {
-  FinancesService,
-  sanitizePaymentSourceForClient,
-} from "@elizaos/plugin-finances/finances-service";
-import { FinancesServiceError } from "@elizaos/plugin-finances/finance-normalize";
-import type { AddPaymentSourceRequest } from "@elizaos/plugin-finances/payment-types";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
@@ -993,7 +993,10 @@ export async function handleLifeOpsRoutes(
       pathname,
       url,
       runRoute: (fn) =>
-        runRoute(ctx, fn as unknown as (service: LifeOpsService) => Promise<void>),
+        runRoute(
+          ctx,
+          fn as unknown as (service: LifeOpsService) => Promise<void>,
+        ),
       rateLimit: (key) =>
         rateLimitRequest(ctx, key as LifeOpsRateLimitOperation),
       json: (data, status) => json(res, data, status),

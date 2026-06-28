@@ -161,6 +161,42 @@ vi.mock("@elizaos/ui", () => ({
       { onClick, disabled, type: "button" },
       children,
     ),
+  useChatPrefill: () => ({ prefill: vi.fn() }),
+  // Renders title, an enabled primary-action button, and a button per
+  // recommendation so the empty-state test can assert + click them.
+  ChatEmptyStateWithRecommendations: ({
+    title,
+    recommendations = [],
+    primaryAction,
+  }: {
+    icon?: unknown;
+    title?: string;
+    recommendations?: Array<string | { label: string; prompt?: string }>;
+    primaryAction?: { label: string; onClick: () => void };
+  }) =>
+    React.createElement(
+      "div",
+      { "data-empty-recommendations": true },
+      title ? React.createElement("p", null, title) : null,
+      primaryAction
+        ? React.createElement(
+            "button",
+            {
+              type: "button",
+              onClick: primaryAction.onClick,
+            },
+            primaryAction.label,
+          )
+        : null,
+      recommendations.map((rec) => {
+        const label = typeof rec === "string" ? rec : rec.label;
+        return React.createElement(
+          "button",
+          { key: label, type: "button" },
+          label,
+        );
+      }),
+    ),
   TerminalPluginView: ({ commands }: { commands?: string[] }) =>
     React.createElement(
       "div",
@@ -208,18 +244,6 @@ function cleanupSurfaces() {
     });
     container.remove();
   }
-}
-
-function cardValue(container: HTMLElement, label: string): string {
-  const card = container.querySelector(`[data-surface-card="${label}"]`);
-  if (!card) throw new Error(`No SurfaceCard with label "${label}"`);
-  return card.querySelector("[data-card-value]")?.textContent?.trim() ?? "";
-}
-
-function cardSubtitle(container: HTMLElement, label: string): string {
-  const card = container.querySelector(`[data-surface-card="${label}"]`);
-  if (!card) throw new Error(`No SurfaceCard with label "${label}"`);
-  return card.querySelector("[data-card-subtitle]")?.textContent?.trim() ?? "";
 }
 
 function clickByText(container: HTMLElement, text: string) {
@@ -463,52 +487,41 @@ describe("FeedOperatorSurface (gui/xr) — populated data", () => {
     expect(text).toContain("$1553.25"); // Portfolio chip (totalAssets)
     expect(text).toContain("2 live"); // Markets chip (predictionMarkets.length)
 
-    // Status badges row + active-run count.
-    expect(text).toContain("attached");
+    // Status bar: health indicator + active-run count.
     expect(text).toContain("1 active run");
 
-    // --- Live Status section ---
-    expect(cardValue(container, "Agent")).toBe("Alice Trader");
-    expect(cardSubtitle(container, "Agent")).toBe("running · autonomous");
-    expect(cardValue(container, "Current Focus")).toBe("Grow portfolio to $2k");
-    expect(cardSubtitle(container, "Current Focus")).toBe("active · 65%");
-    expect(cardValue(container, "Portfolio")).toBe("$1553.25 total assets");
-    expect(cardSubtitle(container, "Portfolio")).toBe(
-      "4 positions · +$312.75 total PnL",
-    );
-    expect(cardValue(container, "Team Coordination")).toBe("Studio Ops");
-    expect(cardSubtitle(container, "Team Coordination")).toBe(
-      "$5000.00 wallet · 7 open positions",
-    );
+    // --- Live Status (flat rows) ---
+    expect(text).toContain("Alice Trader");
+    expect(text).toContain("running · autonomous");
+    expect(text).toContain("Grow portfolio to $2k");
+    expect(text).toContain("active · 65%");
+    expect(text).toContain("$1553.25 total assets");
+    expect(text).toContain("4 positions · +$312.75 total PnL");
+    expect(text).toContain("Studio Ops");
+    expect(text).toContain("$5000.00 wallet · 7 open positions");
 
-    // --- Market Watch section ---
+    // --- Market Watch (flat rows) ---
     // listPreview: first markets formatted "title (yes/no)".
-    expect(cardValue(container, "Markets")).toBe(
+    expect(text).toContain(
       "BTC above 100k (0.62/0.38) · ETH above 5k (0.41/0.59)",
     );
-    // Recent-trade card: summarizeFeedActivity + ts + PnL.
+    // Recent-trade row: summarizeFeedActivity + ts + PnL.
     expect(text).toContain("buy BTC-100K $50.00");
     expect(text).toContain("PnL +$12.50");
 
-    // --- Team section ---
-    expect(cardValue(container, "Team Conversations")).toBe(
-      "Strategy Room · Risk Desk",
-    );
-    expect(cardSubtitle(container, "Team Conversations")).toBe("1 active");
-    expect(cardValue(container, "Operator Channel")).toBe("Ready");
+    // --- Team (flat rows) ---
+    expect(text).toContain("Strategy Room · Risk Desk");
+    expect(text).toContain("1 active");
+    expect(text).toContain("Ready"); // Operator channel
     // Last chat message body renders.
     expect(text).toContain("Trim BTC exposure.");
     expect(text).toContain("Operator");
 
-    // --- Steering section ---
-    expect(cardValue(container, "Autonomy")).toBe("Active");
-    expect(cardSubtitle(container, "Autonomy")).toBe(
-      "Trading · Posting paused",
-    );
-    expect(cardValue(container, "Wallet")).toBe("$1240.50");
-    expect(cardSubtitle(container, "Wallet")).toBe(
-      "2 transactions · trading $200.00",
-    );
+    // --- Steering (flat rows) ---
+    expect(text).toContain("Active"); // Autonomy
+    expect(text).toContain("Trading · Posting paused");
+    expect(text).toContain("$1240.50"); // Wallet
+    expect(text).toContain("2 transactions · trading $200.00");
 
     // Suggested-prompt buttons render their labels.
     expect(clickByText(container, "What markets are trending?")).toBeTruthy();
@@ -621,8 +634,8 @@ describe("FeedOperatorSurface (gui/xr) — populated data", () => {
   });
 });
 
-describe("FeedOperatorSurface (gui/xr) — no-run waiting state", () => {
-  it("renders the waiting surface with idle chips and a disabled Spawn agent CTA", async () => {
+describe("FeedOperatorSurface (gui/xr) — no-run empty state", () => {
+  it("renders the readiness empty state with an enabled Spawn agent CTA + recommendations", async () => {
     appState.appRuns = [];
     const container = await renderSurface(
       React.createElement(FeedOperatorSurface, { appName: APP_NAME }),
@@ -633,17 +646,13 @@ describe("FeedOperatorSurface (gui/xr) — no-run waiting state", () => {
     ).not.toBeNull();
 
     const text = container.textContent ?? "";
-    // 4 idle/pending StatChip labels.
-    expect(text).toContain("Agent");
-    expect(text).toContain("Portfolio");
-    expect(text).toContain("Markets");
-    expect(text).toContain("Wallet");
-    // Compact pending status.
-    expect(text).toContain("None");
+    // Readiness prompt + chat-seeding recommendations (not a dead box).
+    expect(text).toContain("Ready to trade?");
+    expect(text).toContain("Spawn a Feed trading agent");
 
-    // Spawn agent CTA present and disabled.
+    // Spawn agent CTA present and enabled (no disabled attribute).
     const spawn = clickByText(container, "Spawn agent") as HTMLButtonElement;
-    expect(spawn.disabled).toBe(true);
+    expect(spawn.disabled).toBe(false);
 
     // With no run, no loaders fire and no controls are wired.
     expect(feedClient.getFeedAgentStatus).not.toHaveBeenCalled();

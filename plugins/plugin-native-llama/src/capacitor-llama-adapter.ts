@@ -402,6 +402,13 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
    * instances never share a context — see the module-level invariant comment.
    */
   private contextId: number | null = null;
+  /**
+   * Cached "is this the iOS Simulator?" probe. The Simulator has no working
+   * Metal GPU backend for llama.cpp, so loading a model with GPU layers hangs
+   * forever (the model never becomes ready) — see {@link isIosSimulator}.
+   * Probed once per adapter instance on first `load()`.
+   */
+  private iosSimulatorProbe: boolean | null = null;
   private tokenIndex = 0;
   private tokenListeners = new Set<(token: string, index: number) => void>();
   private pluginListenerHandle: PluginListenerHandle | null = null;
@@ -463,6 +470,41 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       this.pluginLoadPromise = null;
       throw err;
     }
+  }
+
+  /**
+   * True on the iOS Simulator, where llama.cpp has no usable Metal GPU backend
+   * (loading a model with GPU layers hangs forever). Non-iOS platforms are
+   * never the Simulator. Prefers the cheap process-env marker Xcode injects for
+   * Simulator processes, then falls back to the native hardware probe's
+   * `isSimulator` flag. Cached per instance; any probe failure resolves to
+   * `false` so real devices / Android are never forced onto CPU by accident.
+   */
+  private async isIosSimulator(): Promise<boolean> {
+    if (detectPlatform() !== "ios") return false;
+    if (this.iosSimulatorProbe !== null) return this.iosSimulatorProbe;
+    let result = false;
+    const env = (
+      globalThis as {
+        process?: { env?: Record<string, string | undefined> };
+      }
+    ).process?.env;
+    if (
+      env?.SIMULATOR_UDID ||
+      env?.SIMULATOR_DEVICE_NAME ||
+      env?.SIMULATOR_MODEL_IDENTIFIER
+    ) {
+      result = true;
+    } else {
+      try {
+        const info = await this.getHardwareInfo();
+        result = info.isSimulator === true;
+      } catch {
+        result = false;
+      }
+    }
+    this.iosSimulatorProbe = result;
+    return result;
   }
 
   async getHardwareInfo(): Promise<HardwareInfo> {
@@ -588,7 +630,15 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     const speculativeSamples = options.mobileSpeculative
       ? Math.min(options.speculativeSamples ?? options.draftMax ?? 3, 4)
       : (options.speculativeSamples ?? 3);
-    const nativeGpuEnabled = resolveNativeGpuEnabled(options.useGpu);
+    // The iOS Simulator has no working Metal GPU backend for llama.cpp: loading
+    // with GPU layers (n_gpu_layers=99) hangs indefinitely — the model never
+    // becomes ready, which strands on-device all-local chat and times out the
+    // iOS local-chat full-Bun smoke gate. Force CPU on the Simulator regardless
+    // of the iOS GPU default / explicit useGpu (Metal genuinely cannot run
+    // there). Real devices report isSimulator=false and keep Metal.
+    const nativeGpuEnabled =
+      resolveNativeGpuEnabled(options.useGpu) &&
+      !(await this.isIosSimulator());
     const params: NativeContextParams & Record<string, unknown> = {
       model: options.modelPath,
       n_ctx: options.contextSize ?? 4096,

@@ -477,6 +477,8 @@ export interface PluginWidgetDeclaration {
 	 * `activity`). Omit for widgets that should rank by static `order` only.
 	 */
 	signalKinds?: readonly string[];
+	/** Home-grid footprint (4-col grid). Default 2x1. */
+	size?: { cols: number; rows: number };
 }
 
 export interface PluginAppUiExtension {

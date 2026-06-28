@@ -307,4 +307,49 @@ describe("RelationshipsAttentionWidget (#9143)", () => {
     );
     expect(calls.at(-1)?.[1]).toBeNull();
   });
+
+  it("applies the host-supplied spanClassName to its single root grid-item element", async () => {
+    getRelationshipsPeopleMock.mockResolvedValue({
+      people: [person()],
+      stats: { totalPeople: 1, totalRelationships: 0, totalIdentities: 0 },
+    });
+    getRelationshipsCandidatesMock.mockResolvedValue([]);
+
+    const { container } = render(
+      <RelationshipsAttentionWidget
+        {...fetchProps}
+        spanClassName="col-span-2 row-span-1"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-relationships")).toBeTruthy();
+    });
+    const root = container.firstElementChild;
+    expect(root).not.toBeNull();
+    // The grid-span classes land on the single root grid item (static classes).
+    expect(root?.className).toContain("col-span-2");
+    expect(root?.className).toContain("row-span-1");
+    // The naked card button lives inside that root.
+    expect(
+      root?.querySelector('[data-testid="chat-widget-relationships"]'),
+    ).not.toBeNull();
+  });
+
+  it("falls back to the default 2x1 span when no spanClassName is supplied", async () => {
+    getRelationshipsPeopleMock.mockResolvedValue({
+      people: [person()],
+      stats: { totalPeople: 1, totalRelationships: 0, totalIdentities: 0 },
+    });
+    getRelationshipsCandidatesMock.mockResolvedValue([]);
+
+    const { container } = render(
+      <RelationshipsAttentionWidget {...fetchProps} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-widget-relationships")).toBeTruthy();
+    });
+    expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
 });

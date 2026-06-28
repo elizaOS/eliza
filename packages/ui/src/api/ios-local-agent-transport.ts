@@ -462,18 +462,26 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   }
   fullBunRuntime ??= (async () => {
     try {
-      const mod = (await import(
-        "@elizaos/capacitor-bun-runtime"
-      )) as Partial<FullBunRuntimeModule>;
-      // The dynamic import can resolve to a module WITHOUT the ElizaBunRuntime
-      // export when the package is externalized in the native web bundle — yet
-      // the native plugin is still registered under "ElizaBunRuntime" (the
-      // availability check above passed). Re-create the Capacitor plugin proxy
-      // directly in that case, instead of crashing with "undefined is not an
-      // object (evaluating 'e.start')" — which otherwise blocks iOS
-      // remote-connect and the on-device runtime entirely.
+      // The native ElizaBunRuntime plugin is registered (isFullBunRuntimePlugin-
+      // Available passed above). The JS wrapper `@elizaos/capacitor-bun-runtime`
+      // is externalized in the native web bundle, so the dynamic import has two
+      // non-fatal failure shapes: it can RESOLVE to a module without the
+      // ElizaBunRuntime export, OR it can THROW "Module name … does not resolve
+      // to a valid URL" (a bare specifier the WKWebView can't load). Either way
+      // the native plugin is reachable via registerPlugin — so recover instead of
+      // letting the import error escape to the strict handler and fail iOS local
+      // startup with "Backend Timeout" (the reported first-run hang). A genuine
+      // failure still surfaces below: runtime.start() throwing is NOT caught here.
+      let mod: Partial<FullBunRuntimeModule> | null = null;
+      try {
+        mod = (await import(
+          "@elizaos/capacitor-bun-runtime"
+        )) as Partial<FullBunRuntimeModule>;
+      } catch {
+        mod = null;
+      }
       const plugin =
-        mod.ElizaBunRuntime ??
+        mod?.ElizaBunRuntime ??
         registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime");
       const runtime = wrapFullBunRuntime(plugin);
       const currentStatus = await runtime.getStatus().catch(() => null);

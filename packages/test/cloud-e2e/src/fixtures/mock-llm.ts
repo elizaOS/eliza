@@ -31,6 +31,11 @@ export interface RunningMockLlm {
 export interface MockLlmOptions {
   /** Fixed assistant reply. Default `"PONG"`. */
   reply?: string;
+  /**
+   * Reply from the replayed chat context instead of using `reply`. Useful for
+   * multi-turn tests that need proof the runtime sent prior messages upstream.
+   */
+  echoContext?: boolean;
   /** Reported completion tokens. Default `8`. */
   completionTokens?: number;
   /**
@@ -67,6 +72,38 @@ function estimatePromptTokens(body: ChatCompletionRequestBody): number {
     )
     .join(" ");
   return Math.max(8, Math.ceil(text.length / 4));
+}
+
+function contentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (
+          part &&
+          typeof part === "object" &&
+          "text" in part &&
+          typeof part.text === "string"
+        ) {
+          return part.text;
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join(" ");
+  }
+  return "";
+}
+
+function buildContextEchoReply(body: ChatCompletionRequestBody): string {
+  const userMessages = (body.messages ?? []).filter((m) => m.role === "user");
+  const lastUser = userMessages.at(-1);
+  const turn = Math.max(1, userMessages.length);
+  const priorUserTurns = Math.max(0, userMessages.length - 1);
+  return `turn ${turn} (prior user turns: ${priorUserTurns}): ${contentToText(
+    lastUser?.content,
+  )}`;
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {

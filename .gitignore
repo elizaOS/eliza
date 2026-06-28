@@ -3,6 +3,8 @@ node_modules
 
 # E2E recording output — videos, traces, contact sheets (generated locally)
 /e2e-recordings/
+# Voice trajectory video capture (binary webm — regenerate via record-voice-trajectories.mjs)
+packages/ui/src/components/shell/__e2e__/output-voice-recording/
 
 .next/
 **/.next/**

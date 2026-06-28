@@ -16,9 +16,17 @@ export async function createLifeOpsTestRuntime(
 
   try {
     const { personalAssistantPlugin } = await import("../../src/plugin.js");
+    // The ScheduledTaskRunnerService + the generic scheduled-task route now
+    // live in the always-loaded @elizaos/plugin-scheduling. Load it alongside
+    // PA (as the real runtime does) so PA's injected deps have a runner host.
+    const { schedulingPlugin } = await import("@elizaos/plugin-scheduling");
     return await createRealTestRuntime({
       ...options,
-      plugins: [personalAssistantPlugin, ...(options?.plugins ?? [])],
+      plugins: [
+        schedulingPlugin,
+        personalAssistantPlugin,
+        ...(options?.plugins ?? []),
+      ],
     });
   } finally {
     if (previousDisableProactiveAgent === undefined) {

@@ -327,13 +327,13 @@ describe("FeedView — unified GUI/XR operator surface", () => {
 });
 
 describe("FeedView — no-session waiting state", () => {
-  it("renders the waiting surface with a disabled Spawn agent control and fires no loaders", async () => {
+  it("renders the readiness empty state with an enabled Spawn agent CTA and fires no loaders", async () => {
     appState.appRuns = [];
     render(React.createElement(FeedView));
 
-    await screen.findByText("None");
+    await screen.findByText("Ready to trade?");
     const spawn = button("spawn-agent");
-    expect(spawn.disabled).toBe(true);
+    expect(spawn.disabled).toBe(false);
 
     // With no run, no loaders fire and no controls are wired.
     expect(feedClient.getFeedAgentStatus).not.toHaveBeenCalled();

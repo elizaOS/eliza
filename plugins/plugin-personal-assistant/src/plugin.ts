@@ -87,6 +87,7 @@ import {
 } from "./lifeops/connectors/index.js";
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
+import { FirstRunService } from "./lifeops/first-run/service.js";
 import { createOwnerLocaleExamplesProvider } from "./lifeops/i18n/localized-examples-provider.js";
 import {
   createMultilingualPromptRegistry,
@@ -123,7 +124,8 @@ import {
   LIFEOPS_TASK_NAME,
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
-import { ScheduledTaskRunnerService } from "./lifeops/scheduled-task/service.js";
+import { registerLifeOpsScheduledTaskRunnerDeps } from "./lifeops/scheduled-task/runtime-wiring.js";
+import { getScheduledTaskRunner as getProductionScheduledTaskRunner } from "./lifeops/scheduled-task/service.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
 import {
   createSendPolicyRegistry,
@@ -758,7 +760,11 @@ const rawPersonalAssistantPlugin: Plugin = {
   name: "@elizaos/plugin-personal-assistant",
   description:
     "Personal assistant workspace: executive workflows, owner approvals, scheduled tasks, calendar, inbox, documents, reminders, money admin, and focused owner-operation views.",
-  dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
+  // @elizaos/plugin-scheduling hosts the ScheduledTaskRunnerService + the
+  // generic scheduled-task route; PA injects its production deps into it. It is
+  // always-loaded (CORE + MOBILE), but declaring the dependency guarantees the
+  // runner host is registered before PA's init injects deps + seeds.
+  dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE, "@elizaos/plugin-scheduling"],
   schema: lifeOpsSchema,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
@@ -810,7 +816,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     BrowserBridgePluginService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
-    ScheduledTaskRunnerService,
+    // The ScheduledTaskRunnerService is now registered by the always-loaded
+    // @elizaos/plugin-scheduling. PA injects its production deps via
+    // registerLifeOpsScheduledTaskRunnerDeps(runtime) in init() instead, so
+    // there is exactly one runner service per runtime.
   ],
   responseHandlerEvaluators: [ownerProfileExtractionEvaluator],
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
@@ -882,6 +891,14 @@ const rawPersonalAssistantPlugin: Plugin = {
     (
       runtime as IAgentRuntime & { channelRegistry?: typeof channelRegistry }
     ).channelRegistry = channelRegistry;
+
+    // Inject PA's production scheduled-task deps into the always-loaded
+    // @elizaos/plugin-scheduling runner host. The runner service itself lives
+    // in plugin-scheduling now; this binds it to LifeOps's DB-backed store,
+    // production dispatcher, owner-facts / channel-keys / host-capability
+    // probes, and anchor registry. First-wins, so this stays authoritative for
+    // the lifetime of the runtime once registered.
+    registerLifeOpsScheduledTaskRunnerDeps(runtime);
 
     const sendPolicyRegistry = createSendPolicyRegistry();
     registerSendPolicyRegistry(runtime, sendPolicyRegistry);
@@ -1036,6 +1053,25 @@ const rawPersonalAssistantPlugin: Plugin = {
           await ensureLifeOpsSchedulerTask(runtime);
         },
       });
+      // Seed the first-run defaults pack idempotently on EVERY boot — not
+      // gated behind first-run completion — so devices that predate the pack
+      // still receive the paused weekly-review starter + default routines.
+      // The per-key seeded marker makes this seed-once: a default the user
+      // deletes is never recreated, and fresh first-run installs are covered
+      // by the same marker so there is no double-seed. Uses the production
+      // DB-backed runner so seeded rows reach the scheduler tick.
+      scheduleTaskEnsureAfterRuntimeInit({
+        runtime,
+        prefix: "[lifeops]",
+        label: "default-pack boot seed",
+        ensure: async () => {
+          const runner = getProductionScheduledTaskRunner(runtime, {
+            agentId: runtime.agentId,
+          });
+          const firstRun = new FirstRunService(runtime, { runner });
+          await firstRun.seedDefaultPackOnBoot();
+        },
+      });
     } else {
       runtime.logger.info(
         "[lifeops] Scheduler task skipped — ELIZA_DISABLE_LIFEOPS_SCHEDULER=1",
@@ -1159,11 +1195,14 @@ export {
 export {
   createFirstRunStateStore,
   createOwnerFactStore,
+  createSeededDefaultsStore,
   type FirstRunRecord,
   type FirstRunStateStore,
   type OwnerFactStore,
   type OwnerFacts,
   type OwnerFactsPatch,
+  type SeededDefaultsMarker,
+  type SeededDefaultsStore,
 } from "./lifeops/first-run/state.js";
 export {
   createGlobalPauseStore,

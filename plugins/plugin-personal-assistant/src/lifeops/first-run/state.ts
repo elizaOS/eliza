@@ -204,3 +204,85 @@ export function createFirstRunStateStore(
 export const FIRST_RUN_AFFORDANCE_PATHS: ReadonlyArray<
   "defaults" | "customize"
 > = ["defaults", "customize"];
+
+// --- Seeded-defaults marker ----------------------------------------------
+
+/**
+ * Persistent record of default-pack idempotency keys that have already been
+ * seeded on this device, mapped to the ISO timestamp they were first seeded.
+ *
+ * This is the deletion-respecting marker: once a key is recorded here it is
+ * never re-seeded, even if the user later deletes the resulting task. The
+ * runner's own idempotency dedupe only prevents duplicates while the task
+ * still exists; this marker is what makes the boot seeder a *seed-once*
+ * operation rather than a *re-create-if-missing* one.
+ */
+export type SeededDefaultsMarker = Record<string, string>;
+
+const SEEDED_DEFAULTS_CACHE_KEY =
+  "eliza:lifeops:first-run:default-pack-seeded:v1";
+
+export interface SeededDefaultsStore {
+  /** Read the per-key `seededAt` marker. Missing/garbage reads as `{}`. */
+  read(): Promise<SeededDefaultsMarker>;
+  /** True if `idempotencyKey` has ever been seeded on this device. */
+  has(idempotencyKey: string): Promise<boolean>;
+  /** Record `idempotencyKey` as seeded at `seededAtIso` (no-op if already set). */
+  markSeeded(idempotencyKey: string, seededAtIso: string): Promise<void>;
+  /** Clear the marker entirely (used by reset / tests). */
+  reset(): Promise<void>;
+}
+
+function normalizeSeededMarker(value: unknown): SeededDefaultsMarker {
+  if (!value || typeof value !== "object") return {};
+  const out: SeededDefaultsMarker = {};
+  for (const [key, ts] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof key === "string" && key && typeof ts === "string" && ts) {
+      out[key] = ts;
+    }
+  }
+  return out;
+}
+
+export function createSeededDefaultsStore(
+  runtime: IAgentRuntime,
+): SeededDefaultsStore {
+  const cache = asCacheRuntime(runtime);
+
+  const read = async (): Promise<SeededDefaultsMarker> => {
+    const stored = await cache.getCache<SeededDefaultsMarker>(
+      SEEDED_DEFAULTS_CACHE_KEY,
+    );
+    return normalizeSeededMarker(stored);
+  };
+
+  return {
+    read,
+    async has(idempotencyKey: string): Promise<boolean> {
+      const marker = await read();
+      return Object.hasOwn(marker, idempotencyKey);
+    },
+    async markSeeded(
+      idempotencyKey: string,
+      seededAtIso: string,
+    ): Promise<void> {
+      const marker = await read();
+      if (Object.hasOwn(marker, idempotencyKey)) return;
+      marker[idempotencyKey] = seededAtIso;
+      await cache.setCache<SeededDefaultsMarker>(
+        SEEDED_DEFAULTS_CACHE_KEY,
+        marker,
+      );
+    },
+    async reset(): Promise<void> {
+      if (typeof cache.deleteCache === "function") {
+        await cache.deleteCache(SEEDED_DEFAULTS_CACHE_KEY);
+      } else {
+        await cache.setCache<SeededDefaultsMarker>(
+          SEEDED_DEFAULTS_CACHE_KEY,
+          {},
+        );
+      }
+    },
+  };
+}

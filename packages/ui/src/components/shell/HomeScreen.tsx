@@ -13,6 +13,7 @@ import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -181,7 +182,7 @@ export function HomeScreen({
         // paddingTop: var(--safe-area-top)); adding it again here double-padded
         // the content and left a large empty band above the dashboard. Just a
         // small gutter — the notch is already cleared by the root.
-        "px-4 pt-2",
+        "px-4",
         // Clear the floating chat composer at the bottom.
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
       )}
@@ -194,9 +195,18 @@ export function HomeScreen({
           </div>
         ) : null}
 
-        {/* The prioritized home widgets (#9143). WidgetHost renders nothing when
-            no widget has content, so the home stays clean otherwise. */}
+        {/* The always-on base: a naked sized grid with the time + weather as
+            2×2 neighbours and the week strip — no card, white text on the
+            ambient field. */}
         <div className={enterClass} style={{ animationDelay: "70ms" }}>
+          <DefaultHomeWidgets />
+        </div>
+
+        {/* The prioritized data widgets (#9143) flow in below the base. Each
+            self-hides when empty, so the host renders nothing until a widget has
+            something to show — the base above keeps the dashboard from ever
+            being just the floating chat. */}
+        <div className={enterClass} style={{ animationDelay: "110ms" }}>
           <WidgetHost
             slot="home"
             layout="grid"
@@ -222,20 +232,20 @@ export function HomeScreen({
                     data-testid={`home-tile-${tile.id}`}
                     onClick={() => onOpenTile(tile.target)}
                     className={cn(
-                      // Dark tile, matching the chat panel: a solid dark pane.
-                      "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/70 px-1 py-3.5",
+                      // Naked tile: icon + label sit directly on the ambient
+                      // orange field — no fill, no border.
+                      "flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
                       // Tactile press: a quick scale-down on tap (stilled for
-                      // reduce-motion users), plus the glass brightening on hover.
+                      // reduce-motion users), plus a faint white wash on hover.
                       "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                      "hover:bg-white/[0.14]   ",
+                      "hover:bg-white/8",
                     )}
                   >
-                    {/* No chip behind the icon — it sits directly on the glass tile. */}
                     <Icon
-                      className="h-[22px] w-[22px] text-white/90"
+                      className="h-[22px] w-[22px] text-white"
                       aria-hidden
                     />
-                    <span className="max-w-full truncate text-[11px] font-medium text-white/80">
+                    <span className="max-w-full truncate text-[11px] font-medium text-white">
                       {tile.label}
                     </span>
                   </button>

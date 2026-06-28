@@ -18,6 +18,9 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
+// Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
+// browser barrel, which doesn't reliably re-export this newer component.
+import { ChatEmptyStateWithRecommendations } from "@elizaos/ui/components/composites/chat/ChatEmptyStateWithRecommendations";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import { Button } from "@elizaos/ui/components";
@@ -676,7 +679,17 @@ function PortfolioMoversPanel({
       );
     }
 
-    return <EmptyState icon={TrendingUp} title="None" />;
+    return (
+      <ChatEmptyStateWithRecommendations
+        icon={TrendingUp}
+        className="min-h-[8rem]"
+        recommendations={[
+          "What tokens are trending right now?",
+          "Which of my holdings moved most this week?",
+          "Find new tokens to watch on Base",
+        ]}
+      />
+    );
   }
 
   return (
@@ -693,28 +706,6 @@ function PortfolioMoversPanel({
         maxAbsPnl={maxAbsPnl}
         tone="loss"
       />
-    </div>
-  );
-}
-
-function EmptyState({
-  icon: Icon,
-  title,
-  body,
-}: {
-  icon: LucideIcon;
-  title: string;
-  body?: string;
-}) {
-  return (
-    <div className="flex min-h-[8rem] flex-col items-center justify-center px-4 py-6 text-center">
-      <Icon className="mb-3 h-5 w-5 text-muted" />
-      <div className="text-sm font-semibold text-txt">{title}</div>
-      {body ? (
-        <div className="sr-only mt-1 max-w-sm text-xs-tight text-muted">
-          {body}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -757,24 +748,6 @@ function MarketSourceBadge({ source }: { source: WalletMarketOverviewSource }) {
   );
 }
 
-function MarketSectionHeader({
-  icon: Icon,
-  title,
-  source,
-}: {
-  icon: LucideIcon;
-  title: string;
-  source: WalletMarketOverviewSource;
-}) {
-  return (
-    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-txt">
-      <Icon className="h-4 w-4 text-accent" />
-      <span>{title}</span>
-      <MarketSourceBadge source={source} />
-    </div>
-  );
-}
-
 function MarketDataUnavailable({
   title,
   source,
@@ -785,7 +758,7 @@ function MarketDataUnavailable({
   return (
     <div className="px-1 py-2" title={`${title} unavailable`}>
       <div className="text-sm font-semibold text-warn">Unavailable</div>
-      <div className="sr-only mt-1 text-xs text-muted">
+      <div className="mt-1 text-xs text-muted">
         {source.error ?? `${source.providerName} did not return live data.`}
       </div>
     </div>
@@ -837,7 +810,16 @@ function MarketPriceGrid({
   }
 
   if (prices.length === 0) {
-    return <EmptyState icon={BarChart3} title="None" />;
+    return (
+      <ChatEmptyStateWithRecommendations
+        icon={BarChart3}
+        className="min-h-[8rem]"
+        recommendations={[
+          "What's the price of ETH right now?",
+          "Show me BTC and SOL prices",
+        ]}
+      />
+    );
   }
 
   return (
@@ -861,7 +843,16 @@ function MarketMoverList({
   }
 
   if (movers.length === 0) {
-    return <EmptyState icon={TrendingUp} title="None" />;
+    return (
+      <ChatEmptyStateWithRecommendations
+        icon={TrendingUp}
+        className="min-h-[8rem]"
+        recommendations={[
+          "What are today's top gainers?",
+          "Which tokens are moving on Solana?",
+        ]}
+      />
+    );
   }
 
   return (
@@ -964,9 +955,6 @@ function WalletEmptyHero({
   return (
     <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
       <WalletMotif />
-      <div className="text-base font-semibold text-txt">
-        {hasKeys ? "None" : "Wallet"}
-      </div>
       {hasKeys ? null : (
         <Button
           type="button"
@@ -997,31 +985,27 @@ function MarketPulseHero({
       <WalletEmptyHero hasKeys={hasKeys} onConfigureKeys={onConfigureKeys} />
 
       {overview ? (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.92fr)]">
-          <div className="space-y-4">
-            <div>
-              <MarketSectionHeader
-                icon={BarChart3}
-                title="Spot prices"
-                source={overview.sources.prices}
-              />
-              <MarketPriceGrid
-                prices={overview.prices}
-                source={overview.sources.prices}
-              />
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2 text-xs text-muted">
+              <span>Spot prices</span>
+              <MarketSourceBadge source={overview.sources.prices} />
             </div>
+            <MarketPriceGrid
+              prices={overview.prices}
+              source={overview.sources.prices}
+            />
+          </div>
 
-            <div>
-              <MarketSectionHeader
-                icon={TrendingUp}
-                title="Top movers"
-                source={overview.sources.movers}
-              />
-              <MarketMoverList
-                movers={overview.movers}
-                source={overview.sources.movers}
-              />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2 text-xs text-muted">
+              <span>Top movers</span>
+              <MarketSourceBadge source={overview.sources.movers} />
             </div>
+            <MarketMoverList
+              movers={overview.movers}
+              source={overview.sources.movers}
+            />
           </div>
         </div>
       ) : loading ? (
@@ -1108,7 +1092,7 @@ function PnlChart({
   if (values.length < 2) {
     return (
       <div className="flex h-40 items-center justify-center text-xs text-muted">
-        P&amp;L pending
+        Trade to see your P&amp;L here
       </div>
     );
   }
@@ -1428,7 +1412,7 @@ function WalletRailTabButton({
   active,
   onSelect,
 }: {
-  tab: { id: WalletRailTab; label: string; icon: LucideIcon; count: number };
+  tab: { id: WalletRailTab; label: string; icon: LucideIcon };
   active: boolean;
   onSelect: (id: WalletRailTab) => void;
 }) {
@@ -1456,30 +1440,7 @@ function WalletRailTabButton({
     >
       <tab.icon className="h-3.5 w-3.5 shrink-0" />
       <span className="truncate">{tab.label}</span>
-      <span
-        className={cn("ml-0.5 px-1 py-0.5 font-mono text-[0.62rem] text-muted")}
-      >
-        {tab.count}
-      </span>
     </button>
-  );
-}
-
-function WalletRailEmpty({
-  icon: Icon,
-  title,
-  body,
-}: {
-  icon: LucideIcon;
-  title: string;
-  body?: string;
-}) {
-  return (
-    <div className="flex min-h-[13rem] flex-col items-center justify-center px-5 text-center">
-      <Icon className="mb-3 h-5 w-5 text-muted" />
-      <div className="text-sm font-semibold text-txt">{title}</div>
-      {body ? <div className="sr-only">{body}</div> : null}
-    </div>
   );
 }
 
@@ -1562,7 +1523,16 @@ const TokenRailRow = memo(
 
 function RailNftList({ nfts }: { nfts: NftItem[] }) {
   if (nfts.length === 0) {
-    return <WalletRailEmpty icon={ImageIcon} title="None" />;
+    return (
+      <ChatEmptyStateWithRecommendations
+        icon={ImageIcon}
+        className="min-h-[13rem]"
+        recommendations={[
+          "Find NFTs worth collecting",
+          "Show trending mints this week",
+        ]}
+      />
+    );
   }
 
   return (
@@ -1604,7 +1574,17 @@ function RailPositionList({
   positions: InventoryPositionAsset[];
 }) {
   if (positions.length === 0) {
-    return <WalletRailEmpty icon={Layers3} title="None" />;
+    return (
+      <ChatEmptyStateWithRecommendations
+        icon={Layers3}
+        className="min-h-[13rem]"
+        recommendations={[
+          "Show me my DeFi positions",
+          "Where can I stake my tokens?",
+          "Find the best yield for my USDC",
+        ]}
+      />
+    );
   }
 
   return (
@@ -1691,16 +1671,10 @@ function WalletHoldingsSection({
     id: WalletRailTab;
     label: string;
     icon: LucideIcon;
-    count: number;
   }> = [
-    {
-      id: "tokens",
-      label: "Tokens",
-      icon: Wallet,
-      count: visibleRows.length,
-    },
-    { id: "defi", label: "DeFi", icon: Layers3, count: positions.length },
-    { id: "nfts", label: "NFTs", icon: ImageIcon, count: nfts.length },
+    { id: "tokens", label: "Tokens", icon: Wallet },
+    { id: "defi", label: "DeFi", icon: Layers3 },
+    { id: "nfts", label: "NFTs", icon: ImageIcon },
   ];
   const { ref: enableWalletRef, agentProps: enableWalletAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -1749,7 +1723,15 @@ function WalletHoldingsSection({
         <div className="space-y-1">
           {activeTab === "tokens" ? (
             visibleRows.length === 0 ? (
-              <WalletRailEmpty icon={Wallet} title="None" />
+              <ChatEmptyStateWithRecommendations
+                icon={Wallet}
+                className="min-h-[13rem]"
+                recommendations={[
+                  "How do I fund my wallet?",
+                  "Buy ETH with my card",
+                  "Bridge USDC to Base",
+                ]}
+              />
             ) : (
               visibleRows.map((row) => (
                 <TokenRailRow
@@ -1807,25 +1789,15 @@ function DashboardWindowButton({
 }
 
 function DashboardSection({
-  title,
-  icon: Icon,
   action,
   children,
 }: {
-  title: string;
-  icon: LucideIcon;
   action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-          <Icon className="h-4 w-4 text-accent" />
-          {title}
-        </div>
-        {action}
-      </div>
+      {action ? <div className="flex justify-end">{action}</div> : null}
       {children}
     </section>
   );
@@ -1844,7 +1816,17 @@ function ActivityLog({
   );
 
   if (entries.length === 0) {
-    return <EmptyState icon={Activity} title="None" />;
+    return (
+      <ChatEmptyStateWithRecommendations
+        icon={Activity}
+        className="min-h-[8rem]"
+        recommendations={[
+          "Show my recent transactions",
+          "Swap 0.1 ETH for USDC",
+          "What did my agent do today?",
+        ]}
+      />
+    );
   }
 
   return (
@@ -1907,7 +1889,17 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
   const visible = nfts.slice(0, 6);
 
   if (visible.length === 0) {
-    return <EmptyState icon={ImageIcon} title="None" />;
+    return (
+      <ChatEmptyStateWithRecommendations
+        icon={ImageIcon}
+        className="min-h-[8rem]"
+        recommendations={[
+          "What NFT collections are trending?",
+          "Show floor prices for a collection",
+          "Find NFTs on Base",
+        ]}
+      />
+    );
   }
 
   return (
@@ -1949,7 +1941,17 @@ function LpPositionsPanel({
   positions: InventoryPositionAsset[];
 }) {
   if (positions.length === 0) {
-    return <EmptyState icon={Layers3} title="None" />;
+    return (
+      <ChatEmptyStateWithRecommendations
+        icon={Layers3}
+        className="min-h-[8rem]"
+        recommendations={[
+          "How do I provide liquidity?",
+          "Explain impermanent loss",
+          "Show me top liquidity pools",
+        ]}
+      />
+    );
   }
 
   return (
@@ -2216,7 +2218,7 @@ export function InventoryAppView() {
       data-testid="wallet-shell"
       className="h-full min-h-0 w-full overflow-y-auto bg-bg"
     >
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-5 pt-6 pb-28">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-5 pt-6 pb-12">
         {walletError ? (
           <div className="px-1 py-2 text-sm text-danger">{walletError}</div>
         ) : null}
@@ -2249,8 +2251,6 @@ export function InventoryAppView() {
         {!showMarketPulseHero ? (
           <div className="flex flex-col gap-8">
             <DashboardSection
-              title="P&L"
-              icon={BarChart3}
               action={
                 <div className="flex gap-1">
                   {DASHBOARD_WINDOWS.map((window) => (
@@ -2290,11 +2290,11 @@ export function InventoryAppView() {
               ) : null}
             </DashboardSection>
 
-            <DashboardSection title="Activity" icon={Activity}>
+            <DashboardSection>
               <ActivityLog profile={tradingProfile} events={activityEvents} />
             </DashboardSection>
 
-            <DashboardSection title="Movers" icon={TrendingUp}>
+            <DashboardSection>
               <PortfolioMoversPanel
                 rows={displayedAssetRows}
                 profile={tradingProfile}
@@ -2302,11 +2302,11 @@ export function InventoryAppView() {
               />
             </DashboardSection>
 
-            <DashboardSection title="LP positions" icon={Layers3}>
+            <DashboardSection>
               <LpPositionsPanel positions={lpPositions} />
             </DashboardSection>
 
-            <DashboardSection title="NFTs" icon={ImageIcon}>
+            <DashboardSection>
               <NftPreview nfts={inventoryData.allNfts} />
             </DashboardSection>
           </div>

@@ -7,10 +7,10 @@
  *   - captures REST + EDIT screenshots at desktop (1180×900) and mobile
  *     (402×874),
  *   - records a .webm walkthrough driving REAL interactions: tap-launch a tile,
- *     long-press-to-edit (pointerdown + wait), toggle a favorite, page-nav,
+ *     long-press-to-edit (pointerdown + wait), page-nav,
  *   - reads window.__ELIZA_VIEW_INTERACTION_TELEMETRY__ and asserts a `launch`
- *     and a `favorite` action fired — proving the client telemetry stream emits
- *     on real interactions (closing the telemetry-reader loop).
+ *     action fired — proving the client telemetry stream emits on real
+ *     interactions (closing the telemetry-reader loop).
  *
  * Exits non-zero on any failed assertion or page error.
  *
@@ -176,6 +176,15 @@ const readTelemetry = (p) =>
   p.evaluate(() => window.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? []);
 const readCalls = (p) => p.evaluate(() => window.__springboardCalls ?? {});
 
+/** Edit mode pulses every tile (no pin badge anymore) — the editing signal. */
+const editingTileCount = (p) =>
+  p.evaluate(
+    () =>
+      document.querySelectorAll(
+        '[data-testid^="springboard-tile-"] button.animate-pulse',
+      ).length,
+  );
+
 const errors = [];
 const browser = await chromium.launch();
 
@@ -200,8 +209,8 @@ async function captureViewport(name, viewport, deviceScaleFactor) {
   await longPress(page, "springboard-tile-wallet", 500);
   await page.waitForTimeout(300);
   assert(
-    (await page.getByTestId("springboard-fav-wallet").count()) === 1,
-    `${name}: long-press enters edit mode (pin badges shown, no Edit button)`,
+    (await editingTileCount(page)) > 0,
+    `${name}: long-press enters edit mode (tiles pulse, no Edit button)`,
   );
   await snap(page, `${name}-edit`);
   await page.close();
@@ -243,20 +252,16 @@ assert(
 await longPress(page, `springboard-tile-wallet`, 500);
 await page.waitForTimeout(250);
 assert(
-  (await page.getByTestId("springboard-fav-wallet").count()) === 1,
-  "long-press (500ms) enters edit mode (pin badges shown)",
+  (await editingTileCount(page)) > 0,
+  "long-press (500ms) enters edit mode (tiles pulse)",
 );
 
-// 3. Toggle a favorite via the per-tile fav button (visible in edit mode).
-await page.getByTestId("springboard-fav-calendar").click();
-await page.waitForTimeout(250);
-
-// 4. Page navigation — click the "Page 2" dot. Exit edit first (a second
+// 3. Page navigation — click the "Page 2" dot. Exit edit first (a second
 //    long-press toggles it off) so the walkthrough ends on a clean grid.
 await longPress(page, `springboard-tile-wallet`, 500);
 await page.waitForTimeout(250);
 assert(
-  (await page.getByTestId("springboard-fav-wallet").count()) === 0,
+  (await editingTileCount(page)) === 0,
   "a second long-press exits edit mode",
 );
 const page2 = page.getByRole("button", { name: "Page 2" });
@@ -303,10 +308,6 @@ const actions = new Set(telemetry.map((e) => e.action));
 assert(
   actions.has("launch"),
   `telemetry ring contains a launch action (${[...actions].join(", ")})`,
-);
-assert(
-  actions.has("favorite"),
-  `telemetry ring contains a favorite action (${[...actions].join(", ")})`,
 );
 
 assert(errors.length === 0, `no page errors (saw ${errors.length})`);

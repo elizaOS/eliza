@@ -106,16 +106,29 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
       homeDeclarations(),
     );
 
-    expect(signals).toEqual([
-      {
-        widgetKey: "agent-orchestrator/agent-orchestrator.activity",
-        weight: HOME_SIGNAL_WEIGHTS.workflow,
-        timestamp: NOW,
-      },
-    ]);
+    // A workflow event boosts every workflow-subscribed home widget: the
+    // orchestrator activity card and the curated agent-activity feed tile. Both
+    // float to workflow strength.
+    expect(signals).toContainEqual({
+      widgetKey: "agent-orchestrator/agent-orchestrator.activity",
+      weight: HOME_SIGNAL_WEIGHTS.workflow,
+      timestamp: NOW,
+    });
+    expect(signals).toContainEqual({
+      widgetKey: "feed/feed.agent-activity",
+      weight: HOME_SIGNAL_WEIGHTS.workflow,
+      timestamp: NOW,
+    });
 
     const order = rankedKeys(signals);
-    expect(order[0]).toBe("agent-orchestrator/agent-orchestrator.activity");
+    // The workflow-boosted widgets sit at the very front, ahead of the quiet
+    // notifications card.
+    expect(order.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        "agent-orchestrator/agent-orchestrator.activity",
+        "feed/feed.agent-activity",
+      ]),
+    );
     expect(
       order.indexOf("agent-orchestrator/agent-orchestrator.activity"),
     ).toBeLessThan(order.indexOf("notifications/notifications.recent"));
@@ -141,9 +154,16 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
         (s) => s.widgetKey === "agent-orchestrator/agent-orchestrator.activity",
       )?.weight,
     ).toBeLessThan(HOME_SIGNAL_WEIGHTS.blocked);
-    expect(rankedKeys(signals)[0]).toBe(
+    // The error lifts the orchestrator card to the front of a quiet home (the
+    // curated agent-activity feed tile, also workflow-subscribed, floats with
+    // it), both ahead of the quiet notifications baseline.
+    const order = rankedKeys(signals);
+    expect(order.slice(0, 2)).toContain(
       "agent-orchestrator/agent-orchestrator.activity",
     );
+    expect(
+      order.indexOf("agent-orchestrator/agent-orchestrator.activity"),
+    ).toBeLessThan(order.indexOf("notifications/notifications.recent"));
   });
 
   it("with no live signals, ranks purely by base order (quiet home)", () => {

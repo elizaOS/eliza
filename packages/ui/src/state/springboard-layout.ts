@@ -1,12 +1,17 @@
 /**
  * Springboard layout — persisted icon arrangement for the iOS-like launcher.
  *
- * The catalog renders as a paged home-screen ("springboard"): a fixed dock of
- * favorites plus one or more swipeable pages of view icons. This module owns the
- * pure, persisted layout model (which icon sits on which page, in what order,
- * and which icons are favorited into the dock). The rendering/gesture layer
- * consumes these helpers; all reconciliation logic lives here so it is unit
- * testable without a DOM.
+ * The catalog renders as a paged home-screen ("springboard"): one or more
+ * swipeable pages of uniform view icons. This module owns the pure, persisted
+ * layout model (which icon sits on which page, in what order). The
+ * rendering/gesture layer consumes these helpers; all reconciliation logic lives
+ * here so it is unit testable without a DOM.
+ *
+ * The `favorites` field and `toggleFavorite`/`moveIcon` favorite-eviction are
+ * retained as pure model plumbing (and `SPRINGBOARD_DOCK_LIMIT` is still the
+ * desktop-tab pin cap in `useDesktopTabs`), but the Springboard no longer
+ * renders a favorites dock — every tile is identical, so `defaultLayout` seeds
+ * no favorites and all available views flow onto the pages.
  *
  * Mirrors the persistence style of `view-recents.ts`.
  */
@@ -14,37 +19,26 @@
 export const SPRINGBOARD_STORAGE_KEY = "elizaos.views.springboard";
 
 /**
- * Icons per springboard page (4 columns × 5 rows, iOS-like). Now that the top
+ * Icons per springboard page (4 columns × 6 rows, iOS-like). Now that the top
  * double safe-area gap is gone and the page indicator clears the chat composer,
- * a full 5-row page fits a normal phone; smaller phones scroll the grid. The
- * grid is `overflow-y-auto`, so overflow scrolls rather than clipping.
+ * a full 6-row page fits a normal phone; smaller phones scroll the grid. The
+ * grid is `overflow-y-auto`, so overflow scrolls rather than clipping. The
+ * Springboard renders a fixed 4-column grid, so this is `4 × 6 = 24`.
  */
-export const SPRINGBOARD_PAGE_SIZE = 20;
-/** Maximum icons pinned to the dock (favorites). */
+export const SPRINGBOARD_PAGE_SIZE = 24;
+/**
+ * Pin cap reused by the desktop-tab pinning model (`useDesktopTabs`). The
+ * mobile Springboard no longer has a favorites dock, but the desktop tab rail
+ * still caps pinned tabs at this iOS-style count.
+ */
 export const SPRINGBOARD_DOCK_LIMIT = 4;
 
-/**
- * Default favorites dock for a fresh install (#9144). Capped at
- * SPRINGBOARD_DOCK_LIMIT. These are stable built-in `system` view ids; any that
- * are not actually available in the live catalog are dropped during
- * `reconcileLayout` (favorites ∩ available), so an unknown id never leaves a
- * hole. Order matches the dock left-to-right. Chat/Home and Springboard are one
- * combined surface now, so the dock carries destinations from inside the
- * launcher rather than self-links back to the launcher:
- *   - settings — universal, stable system view
- *   - activity — pairs with the default activity surface when present
- *   - files    — durable user content
- *   - tasks    — work queue / task surface
- */
-export const DEFAULT_SPRINGBOARD_FAVORITES: readonly string[] = [
-  "settings",
-  "activity",
-  "files",
-  "tasks",
-];
-
 export interface SpringboardLayout {
-  /** Ordered view ids pinned to the dock. Capped at SPRINGBOARD_DOCK_LIMIT. */
+  /**
+   * Ordered view ids kept out of the page grid. Retained as model plumbing for
+   * `toggleFavorite`/`moveIcon`; the Springboard seeds this empty (no dock) so
+   * every view renders as a uniform page tile.
+   */
   favorites: string[];
   /** Ordered pages; each page is an ordered list of view ids. */
   pages: string[][];
@@ -62,12 +56,11 @@ export function emptyLayout(): SpringboardLayout {
 }
 
 /**
- * First-run layout — seeds the default favorites dock (#9144) so the dock is
- * never empty on a fresh install. Unknown default ids are dropped during
- * `reconcileLayout`. Returns a fresh array so callers can't mutate the constant.
+ * First-run layout. The favorites dock was removed, so a fresh install seeds no
+ * favorites — every available view flows onto the pages as a uniform tile.
  */
 export function defaultLayout(): SpringboardLayout {
-  return { favorites: [...DEFAULT_SPRINGBOARD_FAVORITES], pages: [] };
+  return emptyLayout();
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -80,9 +73,6 @@ export function readSpringboardLayout(): SpringboardLayout {
   if (typeof window === "undefined") return emptyLayout();
   try {
     const raw = window.localStorage.getItem(SPRINGBOARD_STORAGE_KEY);
-    // Genuine first run (no stored key) seeds the default dock; a stored
-    // `favorites: []` (user cleared the dock) is respected below and NOT
-    // re-seeded.
     if (!raw) return defaultLayout();
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return emptyLayout();

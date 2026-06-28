@@ -2178,10 +2178,16 @@ export function App() {
           // `paddingTop` below keeps CONTENT notch-aware. Locked by
           // App.safe-area-fill.test.ts.
           className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
-          // Reserve the status-bar safe area so view headers + back buttons sit
-          // below the status bar. Top banners bleed their bg back up through it
-          // via `.mobile-top-banner:first-child` (see styles.css). No-op on web.
-          style={{ paddingTop: "var(--safe-area-top, 0px)" }}
+          // Reserve a TIGHT status-bar inset: enough to clear the notch/Dynamic
+          // Island but no oversized empty band above the content (the repeated
+          // "too much space at the top" report). Shave the inset down from the
+          // full safe area, with a 1.25rem floor so notch-less phones still
+          // clear their status bar. Top banners bleed their bg back up via
+          // `.mobile-top-banner:first-child` (styles.css). No-op on web.
+          style={{
+            paddingTop:
+              "max(calc(var(--safe-area-top, 0px) - 1.25rem), 1.25rem)",
+          }}
         >
           {/* The unified app background, mounted once here so it persists
               seamlessly across shared-background routes. It keeps the

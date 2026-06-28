@@ -50,10 +50,10 @@ describe("BackgroundView", () => {
     const setBackgroundConfig = vi.fn();
     seed({ setBackgroundConfig });
     render(<BackgroundView />);
-    fireEvent.click(screen.getByLabelText("Set background to Blue"));
+    fireEvent.click(screen.getByLabelText("Set background to Green"));
     expect(setBackgroundConfig).toHaveBeenCalledWith({
       mode: "shader",
-      color: "#2563eb",
+      color: "#059669",
     });
   });
 

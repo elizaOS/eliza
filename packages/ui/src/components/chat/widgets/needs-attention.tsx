@@ -5,6 +5,7 @@ import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { dispatchChatPrefill } from "../../../events";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useNow } from "../../../hooks/useNow";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -108,6 +109,11 @@ function oldestPending(
 export function NeedsAttentionWidget(_props: Partial<WidgetProps>) {
   const { pending, loaded } = useApprovals();
 
+  // `useNow` is 0 on the first render (deterministic render path — no Date.now
+  // in render) then the live clock, ticking on the poll cadence to re-evaluate
+  // the stale-age escalation. On the first render `now === 0` reads as not-stale
+  // (the neutral `approval` weight); the live clock promotes it if overdue.
+  const now = useNow(REFRESH_INTERVAL_MS);
   const top = useMemo(() => oldestPending(pending), [pending]);
 
   // Float up at `approval` weight while anything is pending; escalate to
@@ -116,11 +122,11 @@ export function NeedsAttentionWidget(_props: Partial<WidgetProps>) {
   // store holds the steady-state weight, not a clock value).
   const weight = useMemo(() => {
     if (top == null) return null;
-    const stale = Date.now() - top.createdAt >= STALE_PENDING_AGE_MS;
+    const stale = now - top.createdAt >= STALE_PENDING_AGE_MS;
     return stale
       ? HOME_SIGNAL_WEIGHTS.escalation
       : HOME_SIGNAL_WEIGHTS.approval;
-  }, [top]);
+  }, [top, now]);
   usePublishHomeAttention(NEEDS_ATTENTION_WIDGET_KEY, weight);
 
   // Route back to the handler: prefill the chat composer with a natural-language
@@ -136,7 +142,7 @@ export function NeedsAttentionWidget(_props: Partial<WidgetProps>) {
   if (!loaded || top == null) return null;
 
   const count = pending.length;
-  const stale = Date.now() - top.createdAt >= STALE_PENDING_AGE_MS;
+  const stale = now - top.createdAt >= STALE_PENDING_AGE_MS;
   return (
     <HomeWidgetCard
       icon={<CircleHelp />}

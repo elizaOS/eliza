@@ -67,8 +67,7 @@ export function DocumentViewer({
 
   useEffect(() => {
     const id = documentId ?? "";
-    const refreshToken = reloadToken;
-    void refreshToken;
+    void reloadToken; // re-run on manual refresh (kept in deps below)
     if (!id) {
       setDoc(null);
       setFragments([]);
@@ -223,11 +222,7 @@ export function DocumentViewer({
           </div>
         )}
 
-        {error && (
-          <div className="rounded-sm border border-danger/25 bg-danger/10 py-8 text-center text-sm font-medium text-danger">
-            {error}
-          </div>
-        )}
+        {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
 
         {!loading && !error && !doc && (
           <PagePanel.Empty
@@ -388,9 +383,6 @@ export function DocumentViewer({
               variant="inset"
               className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
             >
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                {t("common.preview", { defaultValue: "Preview" })}
-              </div>
               {editing ? (
                 <Textarea
                   value={draftText}
@@ -415,11 +407,6 @@ export function DocumentViewer({
               variant="inset"
               className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
             >
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                {t("documentsview.FragmentsLabel", {
-                  defaultValue: "Fragments",
-                })}
-              </div>
               <div className="divide-y divide-border/20">
                 {fragments.map((fragment, index) => {
                   const createdLabel = formatDocumentTimestamp(

@@ -42,6 +42,29 @@ export interface SwabbleAudioLevelEvent {
   peak?: number;
 }
 
+/**
+ * Emitted by the native detector when a configured trigger phrase ("hey eliza")
+ * fires. This is the signal that arms the UI listening window
+ * (`wake-listen-window.ts`) — distinct from the continuous `audioLevel` meter.
+ *
+ * Field shape mirrors the canonical `SwabbleWakeWordEvent` in
+ * `@elizaos/capacitor-swabble` (`plugins/plugin-native-swabble/src/definitions.ts`);
+ * kept as a local copy because the bridge models native plugins structurally
+ * rather than importing the Capacitor package.
+ */
+export interface SwabbleWakeWordEvent {
+  /** The detected wake word (e.g. "eliza"). */
+  wakeWord: string;
+  /** The command text following the wake word ("" when none yet). */
+  command: string;
+  /** Full transcript text at detection. */
+  transcript: string;
+  /** Seconds between the wake word and command start (-1 on web — no timing). */
+  postGap: number;
+  /** Detector confidence in [0,1] when available. */
+  confidence?: number;
+}
+
 export interface SwabblePluginLike extends NativePlugin {
   getConfig(): Promise<{ config: SwabbleConfig | null }>;
   isListening(): Promise<{ listening: boolean }>;
@@ -51,6 +74,10 @@ export interface SwabblePluginLike extends NativePlugin {
   addListener(
     eventName: "audioLevel",
     listenerFunc: (event: SwabbleAudioLevelEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "wakeWord",
+    listenerFunc: (event: SwabbleWakeWordEvent) => void,
   ): Promise<PluginListenerHandle>;
 }
 

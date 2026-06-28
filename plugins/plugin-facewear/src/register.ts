@@ -1,4 +1,9 @@
+// Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
+// browser barrel, which doesn't reliably re-export this registry helper.
+
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
+import { registerSettingsSection } from "@elizaos/ui/components/settings/settings-section-registry";
+import { Glasses } from "lucide-react";
 import { type ComponentType, createElement, useEffect, useState } from "react";
 
 type DeferredViewComponent = ComponentType<Record<string, unknown>>;
@@ -77,10 +82,81 @@ export const FacewearTuiView = deferredComponent(loadFacewearTuiView);
 export const SmartglassesView = deferredComponent(loadSmartglassesView);
 export const SmartglassesTuiView = deferredComponent(loadSmartglassesTuiView);
 
+function FacewearSettingsSection() {
+  const [active, setActive] = useState<"devices" | "smartglasses">("devices");
+  const tabClassName = (selected: boolean) =>
+    `h-8 rounded-sm px-3 text-xs font-medium transition-colors ${
+      selected ? "bg-bg text-txt-strong shadow-sm" : "text-muted hover:text-txt"
+    }`;
+
+  return createElement(
+    "div",
+    { className: "flex min-h-[34rem] min-w-0 flex-col gap-3" },
+    createElement(
+      "div",
+      {
+        role: "tablist",
+        "aria-label": "Facewear settings",
+        className:
+          "inline-flex w-fit items-center gap-1 rounded-md bg-surface p-1",
+      },
+      createElement(
+        "button",
+        {
+          type: "button",
+          role: "tab",
+          "aria-selected": active === "devices",
+          onClick: () => setActive("devices"),
+          className: tabClassName(active === "devices"),
+        },
+        "Devices",
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          role: "tab",
+          "aria-selected": active === "smartglasses",
+          onClick: () => setActive("smartglasses"),
+          className: tabClassName(active === "smartglasses"),
+        },
+        "Smartglasses",
+      ),
+    ),
+    createElement(
+      "div",
+      { className: "min-h-0 min-w-0 flex-1 overflow-hidden" },
+      active === "devices"
+        ? createElement(FacewearAppView, {
+            onOpenSmartglasses: () => setActive("smartglasses"),
+            embedded: true,
+          })
+        : createElement(SmartglassesView),
+    ),
+  );
+}
+
+registerSettingsSection({
+  id: "facewear",
+  label: "settings.sections.facewear.label",
+  defaultLabel: "Facewear",
+  icon: Glasses,
+  tone: "accent",
+  hue: "slate",
+  group: "system",
+  titleKey: "settings.sections.facewear.title",
+  defaultTitle: "Facewear & Smartglasses",
+  order: 6.5,
+  viewKind: "system",
+  bodyClassName: "min-h-0",
+  Component: FacewearSettingsSection,
+});
+
 registerAppShellPage({
   id: "facewear.tui",
   pluginId: "@elizaos/plugin-facewear",
   label: "Facewear TUI",
+  viewKind: "preview",
   icon: "Terminal",
   path: "/apps/facewear/tui",
   order: 80.1,
@@ -92,6 +168,7 @@ registerAppShellPage({
   id: "facewear",
   pluginId: "@elizaos/plugin-facewear",
   label: "Facewear",
+  viewKind: "preview",
   icon: "Glasses",
   path: "/apps/facewear",
   order: 80,
@@ -103,6 +180,7 @@ registerAppShellPage({
   id: "smartglasses.tui",
   pluginId: "@elizaos/plugin-facewear",
   label: "Smartglasses TUI",
+  viewKind: "preview",
   icon: "Terminal",
   path: "/apps/smartglasses/tui",
   order: 81.1,
@@ -114,6 +192,7 @@ registerAppShellPage({
   id: "smartglasses",
   pluginId: "@elizaos/plugin-facewear",
   label: "Smartglasses",
+  viewKind: "preview",
   icon: "Glasses",
   path: "/apps/smartglasses",
   order: 81,

@@ -11,6 +11,7 @@ const feedPlugin: Plugin = {
     // register-terminal-view.tsx.
     {
       id: "feed",
+      viewKind: "system",
       label: "Feed",
       description: "Feed prediction market operator dashboard",
       icon: "Gamepad2",

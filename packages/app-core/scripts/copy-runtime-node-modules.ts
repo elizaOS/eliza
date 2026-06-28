@@ -79,6 +79,13 @@ const PATCH_COMPATIBLE_HOISTED_PACKAGES = new Set([
   "@walletconnect/universal-provider",
   "@walletconnect/utils",
 ]);
+const FORWARD_COMPATIBLE_HOISTED_PACKAGES = new Set([
+  // The AWS SDK's Smithy packages are published in lockstep ranges. Reusing a
+  // newer root copy avoids private nested trees whose paths exceed the desktop
+  // self-extractor tar limits.
+  "@smithy/core",
+  "@smithy/signature-v4",
+]);
 const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>([
   // git-workspace-service declares @octokit/rest as both a dependency (^20)
   // and a peer (>=20). Desktop bundles it via plugin-agent-orchestrator,
@@ -2079,6 +2086,35 @@ function getMajorMinorVersion(version: string | null): string | null {
   return match ? `${match[1]}.${match[2]}` : null;
 }
 
+function parseSemverTriplet(
+  version: string | null,
+): [number, number, number] | null {
+  if (!version) return null;
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return null;
+  return [
+    Number.parseInt(match[1], 10),
+    Number.parseInt(match[2], 10),
+    Number.parseInt(match[3], 10),
+  ];
+}
+
+function isSameMajorVersionAtLeast(
+  candidateVersion: string | null,
+  minimumVersion: string | null,
+): boolean {
+  const candidate = parseSemverTriplet(candidateVersion);
+  const minimum = parseSemverTriplet(minimumVersion);
+  if (!candidate || !minimum || candidate[0] !== minimum[0]) {
+    return false;
+  }
+
+  if (candidate[1] !== minimum[1]) {
+    return candidate[1] > minimum[1];
+  }
+  return candidate[2] >= minimum[2];
+}
+
 function shouldReuseTopLevelRuntimePackage(
   name: string,
   topLevelVersion: string | null,
@@ -2089,7 +2125,10 @@ function shouldReuseTopLevelRuntimePackage(
   }
 
   if (!PATCH_COMPATIBLE_HOISTED_PACKAGES.has(name)) {
-    return false;
+    return (
+      FORWARD_COMPATIBLE_HOISTED_PACKAGES.has(name) &&
+      isSameMajorVersionAtLeast(topLevelVersion, resolvedVersion)
+    );
   }
 
   const topLevelMajorMinor = getMajorMinorVersion(topLevelVersion);

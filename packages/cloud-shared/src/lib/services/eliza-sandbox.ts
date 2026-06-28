@@ -66,6 +66,7 @@ import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
+import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
 import {
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
@@ -1867,8 +1868,17 @@ export class ElizaSandboxService {
     orgId: string,
   ): Promise<SharedAgentCharacter | null> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec || rec.execution_tier !== "shared") return null;
-    return this.buildSharedRuntimeCharacter(rec);
+    if (rec && rec.execution_tier === "shared") {
+      return this.buildSharedRuntimeCharacter(rec);
+    }
+    // Bootstrap window: a freshly-created dedicated agent (not yet "running", so
+    // findRunningSandbox misses it) is served by the in-Worker shared runtime
+    // until its container boots — return the same character the shared turn uses.
+    const bootstrap = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (bootstrap && isDedicatedBootstrapWindow(bootstrap)) {
+      return this.buildSharedRuntimeCharacter(bootstrap);
+    }
+    return null;
   }
 
   // Bridge
@@ -1876,6 +1886,15 @@ export class ElizaSandboxService {
   async bridge(agentId: string, orgId: string, rpc: BridgeRequest): Promise<BridgeResponse> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec) {
+      // Bootstrap window: a freshly-created dedicated agent whose container is
+      // still provisioning is served by the in-Worker shared runtime so the user
+      // can chat immediately; the client hands off to the dedicated subdomain
+      // once it reports running. (findRunningSandbox misses it since it is not
+      // yet "running", so re-resolve by id+org.)
+      const bootstrap = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      if (bootstrap && isDedicatedBootstrapWindow(bootstrap)) {
+        return this.bridgeSharedBootstrap(bootstrap, rpc);
+      }
       logger.warn("[agent-sandbox] Bridge call to non-running sandbox", {
         agentId,
         method: rpc.method,
@@ -1929,6 +1948,43 @@ export class ElizaSandboxService {
     } catch (error) {
       logger.warn("[agent-sandbox] Bridge request failed", {
         agentId,
+        method: rpc.method,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32000, message: "Sandbox bridge is unreachable" },
+      };
+    }
+  }
+
+  /**
+   * Bridge dispatch for a DEDICATED agent still in its first-provision bootstrap
+   * window (no container yet). Mirrors the shared-tier branch: the in-Worker
+   * shared runtime answers status/heartbeat and message.send (billing + KV turn
+   * history keyed by the agent id) so the user chats immediately; the client
+   * hands off to the dedicated subdomain once the container reports running.
+   */
+  private async bridgeSharedBootstrap(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<BridgeResponse> {
+    try {
+      if (rpc.method === "status.get" || rpc.method === "heartbeat") {
+        return await this.bridgeSharedStatus(rec, rpc);
+      }
+      if (rpc.method === "message.send") {
+        return await this.bridgeSharedMessageSend(rec, rpc);
+      }
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32601, message: `Method not found: ${rpc.method}` },
+      };
+    } catch (error) {
+      logger.warn("[agent-sandbox] Bootstrap bridge request failed", {
+        agentId: rec.id,
         method: rpc.method,
         error: error instanceof Error ? error.message : String(error),
       });

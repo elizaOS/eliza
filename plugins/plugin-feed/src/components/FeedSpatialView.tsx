@@ -146,15 +146,11 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
   if (!hasSession) {
     return (
       <Card gap={1} padding={1}>
-        <Text style="caption" tone="warning">
-          None
+        <Text bold>Ready to trade?</Text>
+        <Text style="caption" tone="muted">
+          Spawn a Feed agent to watch prediction markets and trade autonomously.
         </Text>
-        <Button
-          grow={1}
-          disabled
-          agent="spawn-agent"
-          onPress={dispatch("spawn")}
-        >
+        <Button grow={1} agent="spawn-agent" onPress={dispatch("spawn")}>
           Spawn agent
         </Button>
         {statusMessage ? (
@@ -223,7 +219,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
         </VStack>
       ) : (
         <Text tone="muted" style="caption">
-          None
+          No open positions yet
         </Text>
       )}
 
@@ -242,7 +238,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
 
       {predictionMarkets.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          None
+          No live markets
         </Text>
       ) : (
         <List gap={0}>
@@ -264,7 +260,7 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
 
       {recentTrades.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
-          None
+          No recent trades
         </Text>
       ) : (
         <List gap={0}>
@@ -328,7 +324,9 @@ export function FeedSpatialView({ snapshot, onAction }: FeedSpatialViewProps) {
       ) : null}
 
       <HStack gap={1} align="center">
-        <Text grow={1}>{wallet ? formatCurrency(wallet.balance) : "None"}</Text>
+        <Text grow={1}>
+          {wallet ? formatCurrency(wallet.balance) : "No wallet"}
+        </Text>
         <Text style="caption" tone="muted">
           {`trading ${formatCurrency(tradingBalance)}`}
         </Text>

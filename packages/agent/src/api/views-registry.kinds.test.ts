@@ -44,17 +44,21 @@ afterEach(() => {
 });
 
 describe("BUILTIN_VIEWS categorization", () => {
-  it("sorts every built-in view into a kind, with the dev tools as developer", () => {
+  it("sorts every built-in view into the curated system/developer/preview IA", () => {
     const byId = new Map(BUILTIN_VIEWS.map((v) => [v.id, resolveViewKind(v)]));
     expect(byId.get("chat")).toBe("system");
     expect(byId.get("settings")).toBe("system");
     expect(byId.get("character")).toBe("system");
-    expect(byId.get("automations")).toBe("release");
-    expect(byId.get("transcripts")).toBe("release");
+    expect(byId.get("documents")).toBe("system");
+    expect(byId.get("transcripts")).toBe("system");
     expect(byId.get("logs")).toBe("developer");
     expect(byId.get("database")).toBe("developer");
-    expect(byId.get("memories")).toBe("developer");
     expect(byId.get("trajectories")).toBe("developer");
+    expect(byId.get("automations")).toBe("preview");
+    expect(byId.get("camera")).toBe("preview");
+    expect(byId.get("plugins-page")).toBe("preview");
+    expect(byId.get("memories")).toBe("preview");
+    expect(byId.get("background")).toBe("preview");
     // No built-in is left uncategorized (resolves to a concrete kind).
     for (const v of BUILTIN_VIEWS) {
       expect(["system", "release", "developer", "preview"]).toContain(

@@ -241,6 +241,7 @@ import "./client-files";
 import "./client-imessage";
 import "./client-local-inference";
 import "./client-notifications";
+import "./client-scheduled-tasks";
 import "./client-voice-models";
 import "./client-workflow";
 import "./client-skills";

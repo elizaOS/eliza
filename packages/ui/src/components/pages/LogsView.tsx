@@ -1,3 +1,4 @@
+import { ScrollText } from "lucide-react";
 import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { LogEntry } from "../../api";
@@ -6,7 +7,7 @@ import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatTime } from "../../utils/format";
-import { ChatSearchHint } from "../composites/chat-search-hint";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import {
@@ -254,16 +255,11 @@ function LogsViewBody() {
   return (
     <div className="flex h-full flex-col gap-3" data-testid="logs-view">
       {/* Filters row — filters left, count beside the title */}
-      <PagePanel variant="surface" className="space-y-3 p-3 sm:p-4">
+      <PagePanel variant="surface" className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-semibold text-txt">
-              {t("logsview.FilterLogs")}
-            </span>
-            <span className="text-xs text-muted tabular-nums">
-              {filteredLogs.length}
-            </span>
-          </div>
+          <span className="text-xs text-muted tabular-nums">
+            {filteredLogs.length}
+          </span>
           {errorCount > 0 ? (
             <span className="text-xs text-danger tabular-nums">
               {t("logsview.ErrorCount", {
@@ -273,7 +269,6 @@ function LogsViewBody() {
             </span>
           ) : null}
         </div>
-        <ChatSearchHint noun="logs" query={searchQuery} />
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={logLevelFilter === "" ? "all" : logLevelFilter}
@@ -283,7 +278,7 @@ function LogsViewBody() {
           >
             <SelectTrigger
               ref={levelControl.ref}
-              className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+              className="w-40 h-10 rounded-sm text-sm text-txt"
               {...levelControl.agentProps}
             >
               <SelectValue placeholder={t("logsview.AllLevels")} />
@@ -305,7 +300,7 @@ function LogsViewBody() {
           >
             <SelectTrigger
               ref={sourceControl.ref}
-              className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+              className="w-40 h-10 rounded-sm text-sm text-txt"
               {...sourceControl.agentProps}
             >
               <SelectValue placeholder={t("logsview.AllSources")} />
@@ -329,7 +324,7 @@ function LogsViewBody() {
             >
               <SelectTrigger
                 ref={tagControl.ref}
-                className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
+                className="w-40 h-10 rounded-sm text-sm text-txt"
                 {...tagControl.agentProps}
               >
                 <SelectValue placeholder={t("logsview.AllTags")} />
@@ -361,12 +356,17 @@ function LogsViewBody() {
         {logLoadError ? (
           <div
             role="alert"
-            className="rounded-sm border border-danger/35 bg-danger/8 px-3 py-2 text-xs text-danger"
+            className="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-danger"
           >
-            {t("logsview.LoadFailed", {
-              defaultValue: "Failed to load logs: {{message}}",
-              message: logLoadError,
-            })}
+            <span>
+              {t("logsview.LoadFailed", {
+                defaultValue: "Failed to load logs: {{message}}",
+                message: logLoadError,
+              })}
+            </span>
+            <Button size="sm" onClick={() => void loadLogs()}>
+              {t("common.retry", { defaultValue: "Retry" })}
+            </Button>
           </div>
         ) : null}
       </PagePanel>
@@ -374,32 +374,45 @@ function LogsViewBody() {
       {/* Log entries — full remaining height */}
       <PagePanel
         variant="surface"
-        className="flex-1 min-h-0 overflow-y-auto p-2 font-mono text-sm"
+        className="flex-1 min-h-0 overflow-y-auto font-mono text-sm"
       >
         {initialLoading && filteredLogs.length === 0 && !logLoadError ? (
           <ListSkeleton className="m-1" rows={8} rowClassName="h-10" />
         ) : filteredLogs.length === 0 ? (
-          <PagePanel.Empty
-            variant="panel"
-            role="status"
-            className="m-1 min-h-[16rem] rounded-sm border-border/35 bg-bg-hover/60 px-6 py-10"
-            description={
+          <ChatEmptyStateWithRecommendations
+            icon={ScrollText}
+            title={
               hasActiveFilters
                 ? t("logsview.NoLogEntriesMatchingFiltersDescription")
                 : t("logsview.NoLogEntriesYetDescription")
             }
-            title={t(
+            recommendations={
               hasActiveFilters
-                ? "logsview.NoLogEntriesMatchingFilters"
-                : "logsview.NoLogEntriesYet",
-            )}
+                ? [
+                    "Show me only error-level logs",
+                    "What do the recent agent logs say?",
+                  ]
+                : [
+                    "Why isn't the agent emitting any logs?",
+                    "Summarize what the system has done so far",
+                    "Show me recent errors and warnings",
+                  ]
+            }
+            primaryAction={
+              hasActiveFilters
+                ? {
+                    label: t("logsview.ClearFilters"),
+                    onClick: handleClearFilters,
+                  }
+                : undefined
+            }
           />
         ) : (
-          <PagePanel variant="inset" className="overflow-hidden rounded-sm">
+          <div className="overflow-hidden">
             {filteredLogs.map((entry: LogEntry) => (
               <LogRow key={logEntryKey(entry)} entry={entry} />
             ))}
-          </PagePanel>
+          </div>
         )}
       </PagePanel>
     </div>

@@ -9,6 +9,7 @@ import type { ConfigUiHint } from "../types";
 import type {
   ConversationScope,
   ReleaseChannel,
+  ScheduledTaskView,
   TriggerRunRecord,
   TriggerSummary,
 } from "./client-types-core";
@@ -1624,7 +1625,8 @@ export type AutomationSource =
   | "workflow"
   | "workflow_draft"
   | "workflow_shadow"
-  | "automation_draft";
+  | "automation_draft"
+  | "scheduled_task";
 export type AutomationStatus =
   | "active"
   | "paused"
@@ -1673,6 +1675,13 @@ export interface AutomationItem {
   task?: WorkbenchTask;
   trigger?: TriggerSummary;
   workflow?: import("./client-types-chat").WorkflowDefinition;
+  /**
+   * Raw LifeOps scheduled task this item was adapted from, when
+   * `source === "scheduled_task"`. Lets a scheduled-task editor read the
+   * original record without re-fetching. Absent for workflow/task/trigger
+   * items.
+   */
+  scheduledTask?: ScheduledTaskView;
   schedules: TriggerSummary[];
   room?: AutomationRoomBinding | null;
   lastExecution?: AutomationLastExecution;

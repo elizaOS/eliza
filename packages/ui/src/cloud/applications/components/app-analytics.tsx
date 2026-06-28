@@ -130,7 +130,7 @@ interface RequestLogsResponse {
 
 const SOURCE_COLORS: Record<string, string> = {
   api_key: BRAND_COLORS.orange,
-  sandbox_preview: "#8b5cf6",
+  sandbox_preview: "#e11d48",
   embed: "#FF5800",
 };
 
@@ -143,7 +143,7 @@ const SOURCE_LABELS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   pageview: "#10b981",
   chat: BRAND_COLORS.orange,
-  image: "#8b5cf6",
+  image: "#e11d48",
   video: "#FF5800",
   voice: "#f59e0b",
   agent: "#ec4899",
@@ -473,7 +473,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                       fontSize: "12px",
                     }}
                   />
-                  <Bar dataKey="newUsers" fill="#8b5cf6" name="New Users" />
+                  <Bar dataKey="newUsers" fill="#e11d48" name="New Users" />
                   <Bar dataKey="users" fill="#FF5800" name="Total Users" />
                 </BarChart>
               </ResponsiveContainer>

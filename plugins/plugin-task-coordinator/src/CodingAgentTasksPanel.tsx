@@ -6,6 +6,9 @@ import {
   client,
   useAppSelectorShallow,
 } from "@elizaos/ui";
+// Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
+// browser barrel, which doesn't reliably re-export this newer component.
+import { ChatEmptyStateWithRecommendations } from "@elizaos/ui/components/composites/chat/ChatEmptyStateWithRecommendations";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {
@@ -20,7 +23,6 @@ import {
   SparseWatermark,
   TaskCard,
   TaskCountChip,
-  TaskEmptyState,
   TaskListHeader,
   TaskMetaChip,
   TaskSearchInput,
@@ -151,9 +153,7 @@ function DetailList({
 }) {
   return (
     <div className="space-y-1.5">
-      <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
-        {title}
-      </div>
+      <div className="text-2xs font-semibold text-muted/70">{title}</div>
       {children}
     </div>
   );
@@ -250,7 +250,7 @@ function ThreadDetailContent({
 
       {detail.acceptanceCriteria && detail.acceptanceCriteria.length > 0 ? (
         <div>
-          <div className="mb-1 text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          <div className="mb-1 text-2xs font-semibold text-muted">
             {t("codingagenttaskspanel.acceptance", {
               defaultValue: "Acceptance",
             })}
@@ -440,7 +440,7 @@ function ThreadDetailContent({
                   key={entry.id}
                   className="rounded border border-border/40 bg-bg-hover/40 p-2"
                 >
-                  <div className="mb-1 text-2xs uppercase tracking-[0.08em] text-muted">
+                  <div className="mb-1 text-2xs text-muted">
                     {entry.direction === "stdin"
                       ? t("codingagenttaskspanel.prompt", {
                           defaultValue: "prompt",
@@ -591,7 +591,7 @@ function ThreadDetailPane({
   );
 }
 
-export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
+export function CodingAgentTasksPanel() {
   const { t: appT, uiLanguage: appUiLanguage } = useAppSelectorShallow((s) => ({
     t: s.t,
     uiLanguage: s.uiLanguage,
@@ -607,6 +607,9 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
+  // The coding-agent endpoint is owned by the Node-only orchestrator plugin and
+  // is absent on mobile/web; a 404 means "set up coding agents", not an error.
+  const [backendAbsent, setBackendAbsent] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
@@ -656,6 +659,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         if (cancelled) return;
         setLoadError(null);
         setMutationError(null);
+        setBackendAbsent(false);
         setThreads(nextThreads);
         setSelectedThreadId((current) => {
           if (current === null) return null;
@@ -672,6 +676,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         // render the empty state instead of the red error banner.
         if (error instanceof ApiError && error.status === 404) {
           setLoadError(null);
+          setBackendAbsent(true);
           setThreads([]);
           setSelectedThreadId(null);
           setSelectedThread(null);
@@ -831,7 +836,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         data-testid="task-coordinator-panel"
       >
         {detailError ? (
-          <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+          <div className="text-xs text-danger">
             {t("codingagenttaskspanel.loadTaskDetailFailed", {
               defaultValue: "Failed to load task detail: {{error}}",
               error: detailError,
@@ -839,9 +844,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
           </div>
         ) : null}
         {mutationError ? (
-          <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
-            {mutationError}
-          </div>
+          <div className="text-xs text-danger">{mutationError}</div>
         ) : null}
         <ThreadDetailPane
           thread={selectedThreadSummary}
@@ -867,46 +870,54 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         icon={<ListChecks className="h-5 w-5" />}
         title={t("taskseventspanel.Tasks", { defaultValue: "Coding Tasks" })}
         counts={
-          <>
-            <TaskCountChip value={threads.length} label="total" />
-            {activeCount > 0 ? (
-              <TaskCountChip value={activeCount} label="active" tone="active" />
-            ) : null}
-            {doneCount > 0 ? (
-              <TaskCountChip value={doneCount} label="done" tone="accent" />
-            ) : null}
-          </>
+          threads.length > 0 ? (
+            <>
+              <TaskCountChip value={threads.length} label="total" />
+              {activeCount > 0 ? (
+                <TaskCountChip
+                  value={activeCount}
+                  label="active"
+                  tone="active"
+                />
+              ) : null}
+              {doneCount > 0 ? (
+                <TaskCountChip value={doneCount} label="done" tone="accent" />
+              ) : null}
+            </>
+          ) : null
         }
       />
 
-      <div className="flex items-center gap-2">
-        <TaskSearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder={searchLabel}
-          inputRef={searchRef}
-          agentProps={searchAgentProps}
-        />
-        <button
-          ref={archivedRef}
-          type="button"
-          onClick={() => setShowArchived((value) => !value)}
-          aria-pressed={showArchived}
-          data-testid="task-show-archived"
-          className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
-            showArchived
-              ? "border-accent/40 bg-accent-subtle text-accent"
-              : "border-border/50 bg-bg-accent/30 text-muted hover:text-txt"
-          }`}
-          {...archivedAgentProps}
-        >
-          <Archive className="h-3.5 w-3.5" />
-          {showArchivedLabel}
-        </button>
-      </div>
+      {threads.length > 0 || loading ? (
+        <div className="flex items-center gap-2">
+          <TaskSearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder={searchLabel}
+            inputRef={searchRef}
+            agentProps={searchAgentProps}
+          />
+          <button
+            ref={archivedRef}
+            type="button"
+            onClick={() => setShowArchived((value) => !value)}
+            aria-pressed={showArchived}
+            data-testid="task-show-archived"
+            className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
+              showArchived
+                ? "border-accent/40 bg-accent-subtle text-accent"
+                : "border-border/50 bg-bg-accent/30 text-muted hover:text-txt"
+            }`}
+            {...archivedAgentProps}
+          >
+            <Archive className="h-3.5 w-3.5" />
+            {showArchivedLabel}
+          </button>
+        </div>
+      ) : null}
 
       {loadError ? (
-        <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="text-xs text-danger">
           {t("codingagenttaskspanel.loadThreadsFailed", {
             defaultValue: "Failed to load task threads: {{error}}",
             error: loadError,
@@ -914,9 +925,7 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
         </div>
       ) : null}
       {mutationError ? (
-        <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
-          {mutationError}
-        </div>
+        <div className="text-xs text-danger">{mutationError}</div>
       ) : null}
 
       {threads.length > 0 ? (
@@ -944,14 +953,32 @@ export function CodingAgentTasksPanel(_props: { fullPage?: boolean } = {}) {
           })}
         </div>
       ) : (
-        <TaskEmptyState
-          title={t("codingagenttaskspanel.empty.title", {
-            defaultValue: "None",
-          })}
-          hint={t("codingagenttaskspanel.empty.hint", {
-            defaultValue:
-              "Coding agents you dispatch will appear here with their sessions, decisions, and live console output.",
-          })}
+        <ChatEmptyStateWithRecommendations
+          icon={Bot}
+          title={
+            backendAbsent
+              ? t("codingagenttaskspanel.empty.setupTitle", {
+                  defaultValue: "Coding agents aren't set up here yet.",
+                })
+              : t("codingagenttaskspanel.empty.title", {
+                  defaultValue: "No coding tasks yet.",
+                })
+          }
+          recommendations={[
+            t("codingagenttaskspanel.empty.rec.fixBug", {
+              defaultValue: "Dispatch a coding agent to fix a failing test",
+            }),
+            t("codingagenttaskspanel.empty.rec.addFeature", {
+              defaultValue: "Have a coding agent add a small feature",
+            }),
+            backendAbsent
+              ? t("codingagenttaskspanel.empty.rec.setup", {
+                  defaultValue: "Help me set up coding agents",
+                })
+              : t("codingagenttaskspanel.empty.rec.refactor", {
+                  defaultValue: "Ask a coding agent to refactor a file",
+                }),
+          ]}
         />
       )}
     </div>

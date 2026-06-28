@@ -42,7 +42,7 @@ export function FeedDetailExtension({ app }: AppDetailExtensionProps) {
 
   return (
     <section className="space-y-3" data-testid="feed-detail-dashboard">
-      <div className="rounded-2xl border border-border/40 bg-card/80 p-3">
+      <div className="px-1 py-1">
         <div className="flex items-center gap-2">
           <StatusDot state={run.health.state} />
           <div className="min-w-0 flex-1">
@@ -165,7 +165,7 @@ function Metric({
           ? "bg-danger"
           : "bg-muted";
   return (
-    <div className="grid grid-cols-[4px_1fr_auto] items-center gap-3 rounded-xl bg-bg/65 px-3 py-2">
+    <div className="grid grid-cols-[4px_1fr_auto] items-center gap-3 px-1 py-1.5">
       <span className={`h-9 rounded-full ${rail}`} />
       <div className="min-w-0">
         <div className="text-2xs text-muted">{label}</div>
@@ -192,7 +192,7 @@ function ActivityList({
 }) {
   if (items.length === 0) {
     return (
-      <div className="bg-bg/65 px-3 py-2 text-xs text-muted">
+      <div className="px-1 py-2 text-xs text-muted">
         No market activity yet.
       </div>
     );
@@ -201,7 +201,7 @@ function ActivityList({
   return (
     <div className="space-y-2">
       {items.map((item) => (
-        <div key={item.id} className="bg-bg/65 px-3 py-2">
+        <div key={item.id} className="px-1 py-2">
           <div className="flex items-center gap-2 text-2xs text-muted">
             <span className="truncate">{item.label}</span>
             <span className="ml-auto shrink-0">

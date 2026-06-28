@@ -21,6 +21,7 @@ const trajectoryLoggerPlugin: Plugin = {
     {
       id: "trajectory-logger",
       label: "Trajectory Logger",
+      viewKind: "developer",
       developerOnly: true,
       description:
         "Realtime view of the agent's last and pending HANDLE / PLAN / ACTION / EVALUATE turns",

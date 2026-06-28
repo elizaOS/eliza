@@ -767,11 +767,11 @@
       exports.useState = function(initialState) {
         return ReactSharedInternals.H.useState(initialState);
       };
-      exports.useSyncExternalStore = function(subscribe4, getSnapshot3, getServerSnapshot) {
+      exports.useSyncExternalStore = function(subscribe5, getSnapshot4, getServerSnapshot2) {
         return ReactSharedInternals.H.useSyncExternalStore(
-          subscribe4,
-          getSnapshot3,
-          getServerSnapshot
+          subscribe5,
+          getSnapshot4,
+          getServerSnapshot2
         );
       };
       exports.useTransition = function() {
@@ -4440,22 +4440,22 @@
         }
         return [newState, dispatch];
       }
-      function updateSyncExternalStore(subscribe4, getSnapshot3, getServerSnapshot) {
+      function updateSyncExternalStore(subscribe5, getSnapshot4, getServerSnapshot2) {
         var fiber = currentlyRenderingFiber, hook = updateWorkInProgressHook(), isHydrating$jscomp$0 = isHydrating;
         if (isHydrating$jscomp$0) {
-          if (void 0 === getServerSnapshot) throw Error(formatProdErrorMessage(407));
-          getServerSnapshot = getServerSnapshot();
-        } else getServerSnapshot = getSnapshot3();
+          if (void 0 === getServerSnapshot2) throw Error(formatProdErrorMessage(407));
+          getServerSnapshot2 = getServerSnapshot2();
+        } else getServerSnapshot2 = getSnapshot4();
         var snapshotChanged = !objectIs(
           (currentHook || hook).memoizedState,
-          getServerSnapshot
+          getServerSnapshot2
         );
-        snapshotChanged && (hook.memoizedState = getServerSnapshot, didReceiveUpdate = true);
+        snapshotChanged && (hook.memoizedState = getServerSnapshot2, didReceiveUpdate = true);
         hook = hook.queue;
-        updateEffect(subscribeToStore.bind(null, fiber, hook, subscribe4), [
-          subscribe4
+        updateEffect(subscribeToStore.bind(null, fiber, hook, subscribe5), [
+          subscribe5
         ]);
-        if (hook.getSnapshot !== getSnapshot3 || snapshotChanged || null !== workInProgressHook && workInProgressHook.memoizedState.tag & 1) {
+        if (hook.getSnapshot !== getSnapshot4 || snapshotChanged || null !== workInProgressHook && workInProgressHook.memoizedState.tag & 1) {
           fiber.flags |= 2048;
           pushSimpleEffect(
             9,
@@ -4464,29 +4464,29 @@
               null,
               fiber,
               hook,
-              getServerSnapshot,
-              getSnapshot3
+              getServerSnapshot2,
+              getSnapshot4
             ),
             null
           );
           if (null === workInProgressRoot) throw Error(formatProdErrorMessage(349));
-          isHydrating$jscomp$0 || 0 !== (renderLanes & 127) || pushStoreConsistencyCheck(fiber, getSnapshot3, getServerSnapshot);
+          isHydrating$jscomp$0 || 0 !== (renderLanes & 127) || pushStoreConsistencyCheck(fiber, getSnapshot4, getServerSnapshot2);
         }
-        return getServerSnapshot;
+        return getServerSnapshot2;
       }
-      function pushStoreConsistencyCheck(fiber, getSnapshot3, renderedSnapshot) {
+      function pushStoreConsistencyCheck(fiber, getSnapshot4, renderedSnapshot) {
         fiber.flags |= 16384;
-        fiber = { getSnapshot: getSnapshot3, value: renderedSnapshot };
-        getSnapshot3 = currentlyRenderingFiber.updateQueue;
-        null === getSnapshot3 ? (getSnapshot3 = createFunctionComponentUpdateQueue(), currentlyRenderingFiber.updateQueue = getSnapshot3, getSnapshot3.stores = [fiber]) : (renderedSnapshot = getSnapshot3.stores, null === renderedSnapshot ? getSnapshot3.stores = [fiber] : renderedSnapshot.push(fiber));
+        fiber = { getSnapshot: getSnapshot4, value: renderedSnapshot };
+        getSnapshot4 = currentlyRenderingFiber.updateQueue;
+        null === getSnapshot4 ? (getSnapshot4 = createFunctionComponentUpdateQueue(), currentlyRenderingFiber.updateQueue = getSnapshot4, getSnapshot4.stores = [fiber]) : (renderedSnapshot = getSnapshot4.stores, null === renderedSnapshot ? getSnapshot4.stores = [fiber] : renderedSnapshot.push(fiber));
       }
-      function updateStoreInstance(fiber, inst, nextSnapshot, getSnapshot3) {
+      function updateStoreInstance(fiber, inst, nextSnapshot, getSnapshot4) {
         inst.value = nextSnapshot;
-        inst.getSnapshot = getSnapshot3;
+        inst.getSnapshot = getSnapshot4;
         checkIfSnapshotChanged(inst) && forceStoreRerender(fiber);
       }
-      function subscribeToStore(fiber, inst, subscribe4) {
-        return subscribe4(function() {
+      function subscribeToStore(fiber, inst, subscribe5) {
+        return subscribe5(function() {
           checkIfSnapshotChanged(inst) && forceStoreRerender(fiber);
         });
       }
@@ -5205,23 +5205,23 @@
           mountWorkInProgressHook().memoizedState = stateHook;
           return [false, stateHook];
         },
-        useSyncExternalStore: function(subscribe4, getSnapshot3, getServerSnapshot) {
+        useSyncExternalStore: function(subscribe5, getSnapshot4, getServerSnapshot2) {
           var fiber = currentlyRenderingFiber, hook = mountWorkInProgressHook();
           if (isHydrating) {
-            if (void 0 === getServerSnapshot)
+            if (void 0 === getServerSnapshot2)
               throw Error(formatProdErrorMessage(407));
-            getServerSnapshot = getServerSnapshot();
+            getServerSnapshot2 = getServerSnapshot2();
           } else {
-            getServerSnapshot = getSnapshot3();
+            getServerSnapshot2 = getSnapshot4();
             if (null === workInProgressRoot)
               throw Error(formatProdErrorMessage(349));
-            0 !== (workInProgressRootRenderLanes & 127) || pushStoreConsistencyCheck(fiber, getSnapshot3, getServerSnapshot);
+            0 !== (workInProgressRootRenderLanes & 127) || pushStoreConsistencyCheck(fiber, getSnapshot4, getServerSnapshot2);
           }
-          hook.memoizedState = getServerSnapshot;
-          var inst = { value: getServerSnapshot, getSnapshot: getSnapshot3 };
+          hook.memoizedState = getServerSnapshot2;
+          var inst = { value: getServerSnapshot2, getSnapshot: getSnapshot4 };
           hook.queue = inst;
-          mountEffect(subscribeToStore.bind(null, fiber, inst, subscribe4), [
-            subscribe4
+          mountEffect(subscribeToStore.bind(null, fiber, inst, subscribe5), [
+            subscribe5
           ]);
           fiber.flags |= 2048;
           pushSimpleEffect(
@@ -5231,12 +5231,12 @@
               null,
               fiber,
               inst,
-              getServerSnapshot,
-              getSnapshot3
+              getServerSnapshot2,
+              getSnapshot4
             ),
             null
           );
-          return getServerSnapshot;
+          return getServerSnapshot2;
         },
         useId: function() {
           var hook = mountWorkInProgressHook(), identifierPrefix = workInProgressRoot.identifierPrefix;
@@ -8967,10 +8967,10 @@
           var tag = node.tag;
           if ((0 === tag || 11 === tag || 15 === tag) && node.flags & 16384 && (tag = node.updateQueue, null !== tag && (tag = tag.stores, null !== tag)))
             for (var i = 0; i < tag.length; i++) {
-              var check2 = tag[i], getSnapshot3 = check2.getSnapshot;
+              var check2 = tag[i], getSnapshot4 = check2.getSnapshot;
               check2 = check2.value;
               try {
-                if (!objectIs(getSnapshot3(), check2)) return false;
+                if (!objectIs(getSnapshot4(), check2)) return false;
               } catch (error51) {
                 return false;
               }
@@ -12780,7 +12780,7 @@
   }
   function useAppSelector(selector, isEqual = Object.is) {
     const lastRef = (0, import_react.useRef)(null);
-    const getSnapshot3 = (0, import_react.useCallback)(() => {
+    const getSnapshot4 = (0, import_react.useCallback)(() => {
       const value = readAppValue();
       const last = lastRef.current;
       if (last && last.value === value && last.selector === selector && last.isEqual === isEqual) {
@@ -12799,7 +12799,7 @@
       lastRef.current = { value, selector, isEqual, selected };
       return selected;
     }, [selector, isEqual]);
-    return (0, import_react.useSyncExternalStore)(subscribe, getSnapshot3, getSnapshot3);
+    return (0, import_react.useSyncExternalStore)(subscribe, getSnapshot4, getSnapshot4);
   }
   function useAppSelectorShallow(selector) {
     return useAppSelector(selector, shallowEqual);
@@ -12874,6 +12874,20 @@
       return await request.call(rpc.request, options2.params);
     }
     return null;
+  }
+  async function registerDynamicView(manifest, options2) {
+    return invokeDesktopBridgeRequest({
+      rpcMethod: "dynamicViewRegister",
+      ipcChannel: "dynamic-view:register",
+      params: { manifest, update: options2?.update === true }
+    });
+  }
+  async function unregisterDynamicView(viewId) {
+    return invokeDesktopBridgeRequest({
+      rpcMethod: "dynamicViewUnregister",
+      ipcChannel: "dynamic-view:unregister",
+      params: { viewId }
+    });
   }
   var init_electrobun_rpc = __esm({
     "packages/ui/src/bridge/electrobun-rpc.ts"() {
@@ -14758,6 +14772,7 @@
   // packages/ui/src/components/pages/SpringboardSurface.tsx
   var import_core12 = __toESM(require_core(), 1);
   var React2 = __toESM(require_react(), 1);
+  init_electrobun_rpc();
 
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.views-stub.ts
   function builtinView(id3, label, path, icon, visibleInManager = false, heroImageUrl) {
@@ -30370,18 +30385,19 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var _ELIZA_1_VISION_TIER_ID_SET = new Set(
     ELIZA_1_VISION_TIER_IDS
   );
-  var ELIZA_1_MTP_TIER_IDS = [
+  var ELIZA_1_HOSTED_MTP_TIER_IDS = [];
+  function hostedMtpDrafterAvailableForTier(id3) {
+    return ELIZA_1_HOSTED_MTP_TIER_IDS.some((mtpId) => mtpId === id3);
+  }
+  var ELIZA_1_ON_DEVICE_TIER_IDS = [
     "eliza-1-2b",
-    "eliza-1-4b",
-    "eliza-1-9b",
-    "eliza-1-27b",
-    "eliza-1-27b-256k"
+    "eliza-1-4b"
   ];
-  var _ELIZA_1_MTP_TIER_ID_SET = new Set(
-    ELIZA_1_MTP_TIER_IDS
+  var _ELIZA_1_ON_DEVICE_TIER_ID_SET = new Set(
+    ELIZA_1_ON_DEVICE_TIER_IDS
   );
-  function mtpSupportedForTier(id3) {
-    return _ELIZA_1_MTP_TIER_ID_SET.has(id3);
+  function isOnDeviceTier(id3) {
+    return _ELIZA_1_ON_DEVICE_TIER_ID_SET.has(id3);
   }
   var DEFAULT_ELIGIBLE_MODEL_IDS = new Set(
     ELIZA_1_RELEASE_TIER_IDS
@@ -30552,9 +30568,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     const components = {
       text: bundleComponent(id3, spec.textFile),
       voice: bundleComponent(id3, primaryVoiceFileForTier(id3)),
-      asr: bundleComponent(id3, "asr/eliza-1-asr.gguf"),
       vad: bundleComponent(id3, "vad/silero-vad-v5.gguf")
     };
+    if (isOnDeviceTier(id3)) {
+      components.litert = bundleComponent(
+        id3,
+        `text/eliza-1-${tierSlug(id3)}.litertlm`
+      );
+    }
     if (spec.hasEmbedding) {
       components.embedding = bundleComponent(
         id3,
@@ -30567,7 +30588,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         `vision/mmproj-${tierSlug(id3)}.gguf`
       );
     }
-    if (mtpSupportedForTier(id3)) {
+    if (hostedMtpDrafterAvailableForTier(id3)) {
       components.mtp = bundleComponent(id3, `mtp/drafter-${tierSlug(id3)}.gguf`);
     }
     return { finetuned: false, components };
@@ -30588,7 +30609,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         ctxCheckpointInterval: 4096
       }
     };
-    if (mtpSupportedForTier(id3)) {
+    if (hostedMtpDrafterAvailableForTier(id3)) {
       runtime.mtp = {
         specType: "draft-mtp",
         drafterFile: `mtp/drafter-${tierSlug(id3)}.gguf`,
@@ -30601,32 +30622,57 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
   var QUANT_SUFFIX = {
     q3_k_m: "q3_k_m",
+    // Google's official Gemma-4 QAT quant. `Q4_0` is the GGUF block format
+    // their QAT checkpoints export to — distinct from the post-training
+    // `q4_k_m` we ship as the desktop default.
     q4_0: "Q4_0",
     q4_k_m: "q4_k_m",
     q5_k_m: "q5_k_m",
     q6_k: "q6_k",
-    q8_0: "q8_0"
+    q8_0: "q8_0",
+    // LiteRT-LM mobile bundle suffix. The artifact is a `.litertlm`, not a
+    // `.gguf`; `textLiteRtComponent` overrides the filename, so this suffix
+    // only feeds the non-LiteRT variant-id naming path defensively.
+    wna8o8: "wna8o8"
   };
   function textQuantizationMatrix(args) {
     const fileBase = args.primaryGgufFile.replace(/\.gguf$/, "");
-    const mk = (id3, label, scale2, minRamScale, status) => ({
+    const litertFile = `${fileBase.replace(/-128k$|-256k$/, "")}.litertlm`;
+    const mk = (id3, label, scale2, minRamScale, status, extra) => ({
       id: id3,
       label,
-      ggufFile: id3 === "q4_k_m" ? args.primaryGgufFile : `${fileBase}-${QUANT_SUFFIX[id3]}.gguf`,
+      ggufFile: extra?.artifactFormat === "litertlm" ? litertFile : id3 === "q4_k_m" ? args.primaryGgufFile : `${fileBase}-${QUANT_SUFFIX[id3]}.gguf`,
       sizeGb: Number((args.q4SizeGb * scale2).toFixed(1)),
       minRamGb: Math.ceil(args.q4MinRamGb * minRamScale),
-      status
+      status,
+      ...extra
     });
-    return {
-      defaultVariantId: "q4_k_m",
-      variants: [
-        mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
-        mk("q4_k_m", "4-bit", 1, 1, "published"),
-        mk("q5_k_m", "5-bit", 1.22, 1.18, "planned"),
-        mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
-        mk("q8_0", "8-bit", 1.95, 1.8, "planned")
-      ]
-    };
+    const variants = [
+      mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
+      // Gemma-4 QAT Q4_0: same ~4-bit footprint as q4_k_m but the official
+      // quantization-aware-trained checkpoint. Keep this planned until the
+      // tier-specific `*-Q4_0.gguf` artifacts are present in the hosted bundle.
+      mk(
+        "q4_0",
+        "4-bit",
+        0.94,
+        0.95,
+        "planned",
+        args.onDevice ? { mobilePreferred: true } : void 0
+      ),
+      mk("q4_k_m", "4-bit", 1, 1, "published"),
+      mk("q5_k_m", "5-bit", 1.22, 1.18, "planned"),
+      mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
+      mk("q8_0", "8-bit", 1.95, 1.8, "planned")
+    ];
+    if (args.onDevice) {
+      variants.push(
+        mk("wna8o8", "4-bit", 0.94, 0.95, "planned", {
+          artifactFormat: "litertlm"
+        })
+      );
+    }
+    return { defaultVariantId: "q4_k_m", variants };
   }
   function blurbForTier(id3) {
     const displayName = tierDisplayName(id3);
@@ -30671,7 +30717,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       quantization: textQuantizationMatrix({
         primaryGgufFile: bundlePath(id3, spec.textFile),
         q4SizeGb: spec.sizeGb,
-        q4MinRamGb: spec.q4MinRamGb
+        q4MinRamGb: spec.q4MinRamGb,
+        onDevice: isOnDeviceTier(id3)
       }),
       blurb: blurbForTier(id3),
       publishStatus: eliza1TierPublishStatus(id3)
@@ -31930,6 +31977,59 @@ ${iconSvg}
     );
   }
 
+  // packages/ui/src/state/useDeveloperMode.ts
+  var import_react3 = __toESM(require_react(), 1);
+  var import_meta = {};
+  var STORAGE_KEY = "eliza:developerMode";
+  var ENABLED = "1";
+  var DISABLED = "0";
+  var listeners2 = /* @__PURE__ */ new Set();
+  function defaultDeveloperMode() {
+    try {
+      return Boolean(import_meta.env?.DEV);
+    } catch {
+      return false;
+    }
+  }
+  function readStorage() {
+    if (typeof window === "undefined") return defaultDeveloperMode();
+    try {
+      const raw2 = window.localStorage.getItem(STORAGE_KEY);
+      if (raw2 === ENABLED) return true;
+      if (raw2 === DISABLED) return false;
+      return defaultDeveloperMode();
+    } catch {
+      return defaultDeveloperMode();
+    }
+  }
+  var cachedEnabled = readStorage();
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", (event) => {
+      if (event.key !== null && event.key !== STORAGE_KEY) return;
+      const next = readStorage();
+      if (next === cachedEnabled) return;
+      cachedEnabled = next;
+      for (const listener of listeners2) {
+        listener();
+      }
+    });
+  }
+  function subscribe3(listener) {
+    listeners2.add(listener);
+    return () => {
+      listeners2.delete(listener);
+    };
+  }
+  function getSnapshot2() {
+    return cachedEnabled;
+  }
+  function getServerSnapshot() {
+    return false;
+  }
+  function useIsDeveloperMode() {
+    return (0, import_react3.useSyncExternalStore)(subscribe3, getSnapshot2, getServerSnapshot);
+  }
+
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.view-kinds-stub.ts
   function useEnabledViewKinds() {
     return { developer: true, preview: true };
@@ -31971,7 +32071,7 @@ ${iconSvg}
   }
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
-  var import_react5 = __toESM(require_react(), 1);
+  var import_react6 = __toESM(require_react(), 1);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/shared/src/utils/mergeClasses.mjs
   var mergeClasses = (...classes) => classes.filter((className, index2, array2) => {
@@ -31994,7 +32094,7 @@ ${iconSvg}
   };
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/Icon.mjs
-  var import_react4 = __toESM(require_react(), 1);
+  var import_react5 = __toESM(require_react(), 1);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/defaultAttributes.mjs
   var defaultAttributes = {
@@ -32020,12 +32120,12 @@ ${iconSvg}
   };
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/context.mjs
-  var import_react3 = __toESM(require_react(), 1);
-  var LucideContext = (0, import_react3.createContext)({});
-  var useLucideContext = () => (0, import_react3.useContext)(LucideContext);
+  var import_react4 = __toESM(require_react(), 1);
+  var LucideContext = (0, import_react4.createContext)({});
+  var useLucideContext = () => (0, import_react4.useContext)(LucideContext);
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/Icon.mjs
-  var Icon = (0, import_react4.forwardRef)(
+  var Icon = (0, import_react5.forwardRef)(
     ({ color: color2, size: size4, strokeWidth, absoluteStrokeWidth, className = "", children, iconNode, ...rest }, ref) => {
       const {
         size: contextSize = 24,
@@ -32035,7 +32135,7 @@ ${iconSvg}
         className: contextClass = ""
       } = useLucideContext() ?? {};
       const calculatedStrokeWidth = absoluteStrokeWidth ?? contextAbsoluteStrokeWidth ? Number(strokeWidth ?? contextStrokeWidth) * 24 / Number(size4 ?? contextSize) : strokeWidth ?? contextStrokeWidth;
-      return (0, import_react4.createElement)(
+      return (0, import_react5.createElement)(
         "svg",
         {
           ref,
@@ -32049,7 +32149,7 @@ ${iconSvg}
           ...rest
         },
         [
-          ...iconNode.map(([tag, attrs]) => (0, import_react4.createElement)(tag, attrs)),
+          ...iconNode.map(([tag, attrs]) => (0, import_react5.createElement)(tag, attrs)),
           ...Array.isArray(children) ? children : [children]
         ]
       );
@@ -32058,8 +32158,8 @@ ${iconSvg}
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
   var createLucideIcon = (iconName, iconNode) => {
-    const Component3 = (0, import_react5.forwardRef)(
-      ({ className, ...props }, ref) => (0, import_react5.createElement)(Icon, {
+    const Component3 = (0, import_react6.forwardRef)(
+      ({ className, ...props }, ref) => (0, import_react6.createElement)(Icon, {
         ref,
         iconNode,
         className: mergeClasses(
@@ -32947,13 +33047,13 @@ ${iconSvg}
   var Zap = createLucideIcon("zap", __iconNode82);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/LayoutGroupContext.mjs
-  var import_react6 = __toESM(require_react(), 1);
-  var LayoutGroupContext = (0, import_react6.createContext)({});
+  var import_react7 = __toESM(require_react(), 1);
+  var LayoutGroupContext = (0, import_react7.createContext)({});
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/use-constant.mjs
-  var import_react7 = __toESM(require_react(), 1);
+  var import_react8 = __toESM(require_react(), 1);
   function useConstant(init) {
-    const ref = (0, import_react7.useRef)(null);
+    const ref = (0, import_react8.useRef)(null);
     if (ref.current === null) {
       ref.current = init();
     }
@@ -32961,17 +33061,17 @@ ${iconSvg}
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/use-isomorphic-effect.mjs
-  var import_react8 = __toESM(require_react(), 1);
+  var import_react9 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/is-browser.mjs
   var isBrowser = typeof window !== "undefined";
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/use-isomorphic-effect.mjs
-  var useIsomorphicLayoutEffect = isBrowser ? import_react8.useLayoutEffect : import_react8.useEffect;
+  var useIsomorphicLayoutEffect = isBrowser ? import_react9.useLayoutEffect : import_react9.useEffect;
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/PresenceContext.mjs
-  var import_react9 = __toESM(require_react(), 1);
-  var PresenceContext = /* @__PURE__ */ (0, import_react9.createContext)(null);
+  var import_react10 = __toESM(require_react(), 1);
+  var PresenceContext = /* @__PURE__ */ (0, import_react10.createContext)(null);
 
   // node_modules/.bun/motion-utils@12.39.0/node_modules/motion-utils/dist/es/array.mjs
   function addUniqueItem(arr, item) {
@@ -39558,33 +39658,33 @@ ${iconSvg}
   });
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionConfigContext.mjs
-  var import_react10 = __toESM(require_react(), 1);
-  var MotionConfigContext = (0, import_react10.createContext)({
+  var import_react11 = __toESM(require_react(), 1);
+  var MotionConfigContext = (0, import_react11.createContext)({
     transformPagePoint: (p) => p,
     isStatic: false,
     reducedMotion: "never"
   });
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/AnimatePresence/use-presence.mjs
-  var import_react11 = __toESM(require_react(), 1);
-  function usePresence(subscribe4 = true) {
-    const context = (0, import_react11.useContext)(PresenceContext);
+  var import_react12 = __toESM(require_react(), 1);
+  function usePresence(subscribe5 = true) {
+    const context = (0, import_react12.useContext)(PresenceContext);
     if (context === null)
       return [true, null];
     const { isPresent, onExitComplete, register } = context;
-    const id3 = (0, import_react11.useId)();
-    (0, import_react11.useEffect)(() => {
-      if (subscribe4) {
+    const id3 = (0, import_react12.useId)();
+    (0, import_react12.useEffect)(() => {
+      if (subscribe5) {
         return register(id3);
       }
-    }, [subscribe4]);
-    const safeToRemove = (0, import_react11.useCallback)(() => subscribe4 && onExitComplete && onExitComplete(id3), [id3, onExitComplete, subscribe4]);
+    }, [subscribe5]);
+    const safeToRemove = (0, import_react12.useCallback)(() => subscribe5 && onExitComplete && onExitComplete(id3), [id3, onExitComplete, subscribe5]);
     return !isPresent && onExitComplete ? [false, safeToRemove] : [true];
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/LazyContext.mjs
-  var import_react12 = __toESM(require_react(), 1);
-  var LazyContext = (0, import_react12.createContext)({ strict: false });
+  var import_react13 = __toESM(require_react(), 1);
+  var LazyContext = (0, import_react13.createContext)({ strict: false });
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/features/definitions.mjs
   var featureProps = {
@@ -39704,14 +39804,14 @@ ${iconSvg}
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/index.mjs
   var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
-  var import_react22 = __toESM(require_react(), 1);
+  var import_react23 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionContext/index.mjs
-  var import_react13 = __toESM(require_react(), 1);
-  var MotionContext = /* @__PURE__ */ (0, import_react13.createContext)({});
+  var import_react14 = __toESM(require_react(), 1);
+  var MotionContext = /* @__PURE__ */ (0, import_react14.createContext)({});
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionContext/create.mjs
-  var import_react14 = __toESM(require_react(), 1);
+  var import_react15 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionContext/utils.mjs
   function getCurrentTreeVariants(props, context) {
@@ -39727,18 +39827,18 @@ ${iconSvg}
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/MotionContext/create.mjs
   function useCreateMotionContext(props) {
-    const { initial, animate } = getCurrentTreeVariants(props, (0, import_react14.useContext)(MotionContext));
-    return (0, import_react14.useMemo)(() => ({ initial, animate }), [variantLabelsAsDependency(initial), variantLabelsAsDependency(animate)]);
+    const { initial, animate } = getCurrentTreeVariants(props, (0, import_react15.useContext)(MotionContext));
+    return (0, import_react15.useMemo)(() => ({ initial, animate }), [variantLabelsAsDependency(initial), variantLabelsAsDependency(animate)]);
   }
   function variantLabelsAsDependency(prop) {
     return Array.isArray(prop) ? prop.join(" ") : prop;
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/dom/use-render.mjs
-  var import_react17 = __toESM(require_react(), 1);
+  var import_react18 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/html/use-props.mjs
-  var import_react15 = __toESM(require_react(), 1);
+  var import_react16 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/html/utils/create-render-state.mjs
   var createHtmlRenderState = () => ({
@@ -39757,7 +39857,7 @@ ${iconSvg}
     }
   }
   function useInitialMotionValues({ transformTemplate }, visualState) {
-    return (0, import_react15.useMemo)(() => {
+    return (0, import_react16.useMemo)(() => {
       const state2 = createHtmlRenderState();
       buildHTMLStyles(state2, visualState, transformTemplate);
       return Object.assign({}, state2.vars, state2.style);
@@ -39786,7 +39886,7 @@ ${iconSvg}
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/svg/use-props.mjs
-  var import_react16 = __toESM(require_react(), 1);
+  var import_react17 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/svg/utils/create-render-state.mjs
   var createSvgRenderState = () => ({
@@ -39796,7 +39896,7 @@ ${iconSvg}
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/svg/use-props.mjs
   function useSVGProps(props, visualState, _isStatic, Component3) {
-    const visualProps = (0, import_react16.useMemo)(() => {
+    const visualProps = (0, import_react17.useMemo)(() => {
       const state2 = createSvgRenderState();
       buildSVGAttrs(state2, visualState, isSVGTag(Component3), props.transformTemplate, props.style);
       return {
@@ -39873,17 +39973,17 @@ ${iconSvg}
     const useVisualProps = isSVG ?? isSVGComponent(Component3) ? useSVGProps : useHTMLProps;
     const visualProps = useVisualProps(props, latestValues, isStatic, Component3);
     const filteredProps = filterProps(props, typeof Component3 === "string", forwardMotionProps);
-    const elementProps = Component3 !== import_react17.Fragment ? { ...filteredProps, ...visualProps, ref } : {};
+    const elementProps = Component3 !== import_react18.Fragment ? { ...filteredProps, ...visualProps, ref } : {};
     const { children } = props;
-    const renderedChildren = (0, import_react17.useMemo)(() => isMotionValue(children) ? children.get() : children, [children]);
-    return (0, import_react17.createElement)(Component3, {
+    const renderedChildren = (0, import_react18.useMemo)(() => isMotionValue(children) ? children.get() : children, [children]);
+    return (0, import_react18.createElement)(Component3, {
       ...elementProps,
       children: renderedChildren
     });
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/utils/use-visual-state.mjs
-  var import_react18 = __toESM(require_react(), 1);
+  var import_react19 = __toESM(require_react(), 1);
   function makeState({ scrapeMotionValuesFromProps: scrapeMotionValuesFromProps3, createRenderState }, props, context, presenceContext) {
     const state2 = {
       latestValues: makeLatestValues(props, context, presenceContext, scrapeMotionValuesFromProps3),
@@ -39934,8 +40034,8 @@ ${iconSvg}
     return values;
   }
   var makeUseVisualState = (config2) => (props, isStatic) => {
-    const context = (0, import_react18.useContext)(MotionContext);
-    const presenceContext = (0, import_react18.useContext)(PresenceContext);
+    const context = (0, import_react19.useContext)(MotionContext);
+    const presenceContext = (0, import_react19.useContext)(PresenceContext);
     const make = () => makeState(config2, props, context, presenceContext);
     return isStatic ? make() : useConstant(make);
   };
@@ -39956,14 +40056,14 @@ ${iconSvg}
   var motionComponentSymbol = /* @__PURE__ */ Symbol.for("motionComponentSymbol");
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/utils/use-motion-ref.mjs
-  var import_react19 = __toESM(require_react(), 1);
+  var import_react20 = __toESM(require_react(), 1);
   function useMotionRef(visualState, visualElement, externalRef) {
-    const externalRefContainer = (0, import_react19.useRef)(externalRef);
-    (0, import_react19.useInsertionEffect)(() => {
+    const externalRefContainer = (0, import_react20.useRef)(externalRef);
+    (0, import_react20.useInsertionEffect)(() => {
       externalRefContainer.current = externalRef;
     });
-    const refCleanup = (0, import_react19.useRef)(null);
-    return (0, import_react19.useCallback)((instance) => {
+    const refCleanup = (0, import_react20.useRef)(null);
+    return (0, import_react20.useCallback)((instance) => {
       if (instance) {
         visualState.onMount?.(instance);
       }
@@ -39990,11 +40090,11 @@ ${iconSvg}
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/utils/use-visual-element.mjs
-  var import_react21 = __toESM(require_react(), 1);
+  var import_react22 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/SwitchLayoutGroupContext.mjs
-  var import_react20 = __toESM(require_react(), 1);
-  var SwitchLayoutGroupContext = (0, import_react20.createContext)({});
+  var import_react21 = __toESM(require_react(), 1);
+  var SwitchLayoutGroupContext = (0, import_react21.createContext)({});
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/utils/is-ref-object.mjs
   function isRefObject(ref) {
@@ -40003,14 +40103,14 @@ ${iconSvg}
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/utils/use-visual-element.mjs
   function useVisualElement(Component3, visualState, props, createVisualElement, ProjectionNodeConstructor, isSVG) {
-    const { visualElement: parent } = (0, import_react21.useContext)(MotionContext);
-    const lazyContext = (0, import_react21.useContext)(LazyContext);
-    const presenceContext = (0, import_react21.useContext)(PresenceContext);
-    const motionConfig = (0, import_react21.useContext)(MotionConfigContext);
+    const { visualElement: parent } = (0, import_react22.useContext)(MotionContext);
+    const lazyContext = (0, import_react22.useContext)(LazyContext);
+    const presenceContext = (0, import_react22.useContext)(PresenceContext);
+    const motionConfig = (0, import_react22.useContext)(MotionConfigContext);
     const reducedMotionConfig = motionConfig.reducedMotion;
     const skipAnimations = motionConfig.skipAnimations;
-    const visualElementRef = (0, import_react21.useRef)(null);
-    const hasMountedOnce = (0, import_react21.useRef)(false);
+    const visualElementRef = (0, import_react22.useRef)(null);
+    const hasMountedOnce = (0, import_react22.useRef)(false);
     createVisualElement = createVisualElement || lazyContext.renderer;
     if (!visualElementRef.current && createVisualElement) {
       visualElementRef.current = createVisualElement(Component3, {
@@ -40028,18 +40128,18 @@ ${iconSvg}
       }
     }
     const visualElement = visualElementRef.current;
-    const initialLayoutGroupConfig = (0, import_react21.useContext)(SwitchLayoutGroupContext);
+    const initialLayoutGroupConfig = (0, import_react22.useContext)(SwitchLayoutGroupContext);
     if (visualElement && !visualElement.projection && ProjectionNodeConstructor && (visualElement.type === "html" || visualElement.type === "svg")) {
       createProjectionNode2(visualElementRef.current, props, ProjectionNodeConstructor, initialLayoutGroupConfig);
     }
-    const isMounted = (0, import_react21.useRef)(false);
-    (0, import_react21.useInsertionEffect)(() => {
+    const isMounted = (0, import_react22.useRef)(false);
+    (0, import_react22.useInsertionEffect)(() => {
       if (visualElement && isMounted.current) {
         visualElement.update(props, presenceContext);
       }
     });
     const optimisedAppearId = props[optimizedAppearDataAttribute];
-    const wantsHandoff = (0, import_react21.useRef)(Boolean(optimisedAppearId) && typeof window !== "undefined" && !window.MotionHandoffIsComplete?.(optimisedAppearId) && window.MotionHasOptimisedAnimation?.(optimisedAppearId));
+    const wantsHandoff = (0, import_react22.useRef)(Boolean(optimisedAppearId) && typeof window !== "undefined" && !window.MotionHandoffIsComplete?.(optimisedAppearId) && window.MotionHasOptimisedAnimation?.(optimisedAppearId));
     useIsomorphicLayoutEffect(() => {
       hasMountedOnce.current = true;
       if (!visualElement)
@@ -40052,7 +40152,7 @@ ${iconSvg}
         visualElement.animationState.animateChanges();
       }
     });
-    (0, import_react21.useEffect)(() => {
+    (0, import_react22.useEffect)(() => {
       if (!visualElement)
         return;
       if (!wantsHandoff.current && visualElement.animationState) {
@@ -40105,7 +40205,7 @@ ${iconSvg}
     function MotionDOMComponent(props, externalRef) {
       let MeasureLayout2;
       const configAndProps = {
-        ...(0, import_react22.useContext)(MotionConfigContext),
+        ...(0, import_react23.useContext)(MotionConfigContext),
         ...props,
         layoutId: useLayoutId(props)
       };
@@ -40121,16 +40221,16 @@ ${iconSvg}
       return (0, import_jsx_runtime2.jsxs)(MotionContext.Provider, { value: context, children: [MeasureLayout2 && context.visualElement ? (0, import_jsx_runtime2.jsx)(MeasureLayout2, { visualElement: context.visualElement, ...configAndProps }) : null, useRender(Component3, props, useMotionRef(visualState, context.visualElement, externalRef), visualState, isStatic, forwardMotionProps, isSVG)] });
     }
     MotionDOMComponent.displayName = `motion.${typeof Component3 === "string" ? Component3 : `create(${Component3.displayName ?? Component3.name ?? ""})`}`;
-    const ForwardRefMotionComponent = (0, import_react22.forwardRef)(MotionDOMComponent);
+    const ForwardRefMotionComponent = (0, import_react23.forwardRef)(MotionDOMComponent);
     ForwardRefMotionComponent[motionComponentSymbol] = Component3;
     return ForwardRefMotionComponent;
   }
   function useLayoutId({ layoutId }) {
-    const layoutGroupId = (0, import_react22.useContext)(LayoutGroupContext).id;
+    const layoutGroupId = (0, import_react23.useContext)(LayoutGroupContext).id;
     return layoutGroupId && layoutId !== void 0 ? layoutGroupId + "-" + layoutId : layoutId;
   }
   function useStrictMode(configAndProps, preloadedFeatures) {
-    const isStrict = (0, import_react22.useContext)(LazyContext).strict;
+    const isStrict = (0, import_react23.useContext)(LazyContext).strict;
     if (false) {
       const strictMessage = "You have rendered a `motion` component within a `LazyMotion` component. This will break tree shaking. Import and render a `m` component instead.";
       configAndProps.ignoreStrict ? warning(false, strictMessage, "lazy-strict-mode") : invariant(false, strictMessage, "lazy-strict-mode");
@@ -40181,11 +40281,11 @@ ${iconSvg}
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/render/dom/create-visual-element.mjs
-  var import_react23 = __toESM(require_react(), 1);
+  var import_react24 = __toESM(require_react(), 1);
   var createDomVisualElement = (Component3, options2) => {
     const isSVG = options2.isSVG ?? isSVGComponent(Component3);
     return isSVG ? new SVGVisualElement(options2) : new HTMLVisualElement(options2, {
-      allowProjection: Component3 !== import_react23.Fragment
+      allowProjection: Component3 !== import_react24.Fragment
     });
   };
 
@@ -41094,9 +41194,9 @@ ${iconSvg}
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/features/layout/MeasureLayout.mjs
   var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
-  var import_react24 = __toESM(require_react(), 1);
+  var import_react25 = __toESM(require_react(), 1);
   var hasTakenAnySnapshot = false;
-  var MeasureLayoutWithContext = class extends import_react24.Component {
+  var MeasureLayoutWithContext = class extends import_react25.Component {
     /**
      * This only mounts projection nodes for components that
      * need measuring, we might want to do it for all components
@@ -41192,8 +41292,8 @@ ${iconSvg}
   };
   function MeasureLayout(props) {
     const [isPresent, safeToRemove] = usePresence();
-    const layoutGroup = (0, import_react24.useContext)(LayoutGroupContext);
-    return (0, import_jsx_runtime3.jsx)(MeasureLayoutWithContext, { ...props, layoutGroup, switchLayoutGroup: (0, import_react24.useContext)(SwitchLayoutGroupContext), isPresent, safeToRemove });
+    const layoutGroup = (0, import_react25.useContext)(LayoutGroupContext);
+    return (0, import_jsx_runtime3.jsx)(MeasureLayoutWithContext, { ...props, layoutGroup, switchLayoutGroup: (0, import_react25.useContext)(SwitchLayoutGroupContext), isPresent, safeToRemove });
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/motion/features/drag.mjs
@@ -41427,13 +41527,13 @@ ${iconSvg}
   var motion = /* @__PURE__ */ createMotionProxy(featureBundle, createDomVisualElement);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/value/use-motion-value.mjs
-  var import_react25 = __toESM(require_react(), 1);
+  var import_react26 = __toESM(require_react(), 1);
   function useMotionValue(initial) {
     const value = useConstant(() => motionValue(initial));
-    const { isStatic } = (0, import_react25.useContext)(MotionConfigContext);
+    const { isStatic } = (0, import_react26.useContext)(MotionConfigContext);
     if (isStatic) {
-      const [, setLatest] = (0, import_react25.useState)(initial);
-      (0, import_react25.useEffect)(() => value.on("change", setLatest), []);
+      const [, setLatest] = (0, import_react26.useState)(initial);
+      (0, import_react26.useEffect)(() => value.on("change", setLatest), []);
     }
     return value;
   }
@@ -41516,11 +41616,11 @@ ${iconSvg}
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/Reorder/Group.mjs
   var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-  var import_react27 = __toESM(require_react(), 1);
+  var import_react28 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/context/ReorderContext.mjs
-  var import_react26 = __toESM(require_react(), 1);
-  var ReorderContext = (0, import_react26.createContext)(null);
+  var import_react27 = __toESM(require_react(), 1);
+  var ReorderContext = (0, import_react27.createContext)(null);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/Reorder/utils/check-reorder.mjs
   function checkReorder(order, value, offset4, velocity) {
@@ -41546,8 +41646,8 @@ ${iconSvg}
   function ReorderGroupComponent({ children, as = "ul", axis = "y", onReorder, values, ...props }, externalRef) {
     const Component3 = useConstant(() => motion[as]);
     const order = [];
-    const isReordering = (0, import_react27.useRef)(false);
-    const groupRef = (0, import_react27.useRef)(null);
+    const isReordering = (0, import_react28.useRef)(false);
+    const groupRef = (0, import_react28.useRef)(null);
     invariant(Boolean(values), "Reorder.Group must be provided a values prop", "reorder-values");
     const context = {
       axis,
@@ -41582,7 +41682,7 @@ ${iconSvg}
         }
       }
     };
-    (0, import_react27.useEffect)(() => {
+    (0, import_react28.useEffect)(() => {
       isReordering.current = false;
     });
     const setRef3 = (element) => {
@@ -41599,14 +41699,14 @@ ${iconSvg}
     };
     return (0, import_jsx_runtime4.jsx)(Component3, { ...props, style: groupStyle, ref: setRef3, ignoreStrict: true, children: (0, import_jsx_runtime4.jsx)(ReorderContext.Provider, { value: context, children }) });
   }
-  var ReorderGroup = /* @__PURE__ */ (0, import_react27.forwardRef)(ReorderGroupComponent);
+  var ReorderGroup = /* @__PURE__ */ (0, import_react28.forwardRef)(ReorderGroupComponent);
   function compareMin(a, b) {
     return a.layout.min - b.layout.min;
   }
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/Reorder/Item.mjs
   var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
-  var import_react28 = __toESM(require_react(), 1);
+  var import_react29 = __toESM(require_react(), 1);
 
   // node_modules/.bun/framer-motion@12.40.0+8c0d3e65c5d65bc3/node_modules/framer-motion/dist/es/components/Reorder/utils/auto-scroll.mjs
   var threshold = 50;
@@ -41712,7 +41812,7 @@ ${iconSvg}
   }
   function ReorderItemComponent({ children, style = {}, value, as = "li", onDrag, onDragEnd, layout: layout2 = true, ...props }, externalRef) {
     const Component3 = useConstant(() => motion[as]);
-    const context = (0, import_react28.useContext)(ReorderContext);
+    const context = (0, import_react29.useContext)(ReorderContext);
     const point = {
       x: useDefaultMotionValue(style.x),
       y: useDefaultMotionValue(style.y)
@@ -41733,10 +41833,10 @@ ${iconSvg}
       registerItem(value, measured);
     }, ref: externalRef, ignoreStrict: true, children });
   }
-  var ReorderItem = /* @__PURE__ */ (0, import_react28.forwardRef)(ReorderItemComponent);
+  var ReorderItem = /* @__PURE__ */ (0, import_react29.forwardRef)(ReorderItemComponent);
 
   // packages/ui/src/components/pages/Springboard.tsx
-  var import_react31 = __toESM(require_react(), 1);
+  var import_react32 = __toESM(require_react(), 1);
 
   // node_modules/.bun/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
   function r(e) {
@@ -44893,7 +44993,7 @@ ${iconSvg}
   }
 
   // packages/ui/src/components/views/ViewTileImage.tsx
-  var import_react29 = __toESM(require_react(), 1);
+  var import_react30 = __toESM(require_react(), 1);
 
   // packages/ui/src/config/boot-config-store.ts
   var import_core11 = __toESM(require_core(), 1);
@@ -44933,7 +45033,7 @@ ${iconSvg}
   }
 
   // packages/ui/src/utils/asset-url.ts
-  var import_meta = {};
+  var import_meta2 = {};
   var cachedRuntimeBaseHref = null;
   function stripLeadingPathMarkers(assetPath) {
     return assetPath.trim().replace(/^\.?\//, "").replace(/^\/+/, "");
@@ -44970,7 +45070,7 @@ ${iconSvg}
     const href = window.location?.href;
     if (typeof href !== "string" || !href) return null;
     try {
-      const viteBaseUrl = import_meta.env?.BASE_URL;
+      const viteBaseUrl = import_meta2.env?.BASE_URL;
       cachedRuntimeBaseHref = computeBaseHref(href, viteBaseUrl);
       return cachedRuntimeBaseHref;
     } catch {
@@ -45166,7 +45266,7 @@ ${iconSvg}
     glyphClassName = "h-6 w-6",
     imageTestId
   }) {
-    const [failure, setFailure] = (0, import_react29.useState)("none");
+    const [failure, setFailure] = (0, import_react30.useState)("none");
     const primaryUrl = failure === "none" ? resolveTileImageUrl(entry.imageUrl) : void 0;
     const fallbackUrl = failure !== "all" ? resolveTileImageUrl(entry.fallbackImageUrl) : void 0;
     const url2 = primaryUrl ?? fallbackUrl;
@@ -45209,7 +45309,7 @@ ${iconSvg}
   var LONG_PRESS_MS = 450;
   var LONG_PRESS_MOVE_SLOP = 10;
   var SWIPE_THRESHOLD = 60;
-  var IconTile = (0, import_react31.memo)(function IconTile2({
+  var IconTile = (0, import_react32.memo)(function IconTile2({
     entry,
     editing,
     favorited,
@@ -45220,8 +45320,8 @@ ${iconSvg}
     onDelete,
     onLongPress
   }) {
-    const timer = (0, import_react31.useRef)(null);
-    const pressStart = (0, import_react31.useRef)(null);
+    const timer = (0, import_react32.useRef)(null);
+    const pressStart = (0, import_react32.useRef)(null);
     const clear = () => {
       if (timer.current !== null) {
         clearTimeout(timer.current);
@@ -45293,8 +45393,8 @@ ${iconSvg}
                 },
                 className: cn(
                   // Filled chips stay legible across image and dark tile backgrounds.
-                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold shadow-md ring-1",
-                  favorited ? "bg-accent text-white ring-black/20" : "bg-white text-neutral-900 ring-black/15"
+                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-bold shadow-md",
+                  favorited ? "border-black/20 bg-accent text-white" : "border-black/15 bg-white text-neutral-900"
                 ),
                 children: favorited ? "\u2605" : "+"
               }
@@ -45353,14 +45453,14 @@ ${iconSvg}
     showPageDots = true,
     className
   }) {
-    const availableIds = (0, import_react31.useMemo)(() => entries2.map((e) => e.id), [entries2]);
-    const byId = (0, import_react31.useMemo)(() => new Map(entries2.map((e) => [e.id, e])), [entries2]);
+    const availableIds = (0, import_react32.useMemo)(() => entries2.map((e) => e.id), [entries2]);
+    const byId = (0, import_react32.useMemo)(() => new Map(entries2.map((e) => [e.id, e])), [entries2]);
     const controlled = onToggleFavorite != null;
-    const favorites = (0, import_react31.useMemo)(
+    const favorites = (0, import_react32.useMemo)(
       () => controlled ? favoriteIds ?? [] : null,
       [controlled, favoriteIds]
     );
-    const [layout2, setLayout] = (0, import_react31.useState)(() => {
+    const [layout2, setLayout] = (0, import_react32.useState)(() => {
       const stored = readSpringboardLayout();
       return reconcileLayout(
         { favorites: favorites ?? stored.favorites, pages: stored.pages },
@@ -45368,9 +45468,9 @@ ${iconSvg}
       );
     });
     const pageControlled = pageProp !== void 0;
-    const [localPage, setLocalPage] = (0, import_react31.useState)(0);
+    const [localPage, setLocalPage] = (0, import_react32.useState)(0);
     const activePage = pageProp ?? localPage;
-    const setActivePage = (0, import_react31.useCallback)(
+    const setActivePage = (0, import_react32.useCallback)(
       (next) => {
         if (pageControlled) onPageChange?.(next);
         else setLocalPage(next);
@@ -45378,16 +45478,16 @@ ${iconSvg}
       [pageControlled, onPageChange]
     );
     const editingControlled = editingProp !== void 0;
-    const [localEditing, setLocalEditing] = (0, import_react31.useState)(false);
+    const [localEditing, setLocalEditing] = (0, import_react32.useState)(false);
     const editing = editingProp ?? localEditing;
-    const setEditingState = (0, import_react31.useCallback)(
+    const setEditingState = (0, import_react32.useCallback)(
       (next) => {
         if (editingControlled) onEditingChange?.(next);
         else setLocalEditing(next);
       },
       [editingControlled, onEditingChange]
     );
-    (0, import_react31.useEffect)(() => {
+    (0, import_react32.useEffect)(() => {
       setLayout(
         (prev) => reconcileLayout(
           { favorites: favorites ?? prev.favorites, pages: prev.pages },
@@ -45395,16 +45495,16 @@ ${iconSvg}
         )
       );
     }, [availableIds, favorites]);
-    (0, import_react31.useEffect)(() => {
+    (0, import_react32.useEffect)(() => {
       if (pageControlled) return;
       const pageCount = layout2.pages.length > 0 ? layout2.pages.length : 1;
       setLocalPage((p) => p > pageCount - 1 ? pageCount - 1 : p);
     }, [layout2.pages.length, pageControlled]);
-    const commit2 = (0, import_react31.useCallback)((next) => {
+    const commit2 = (0, import_react32.useCallback)((next) => {
       setLayout(next);
       writeSpringboardLayout(next);
     }, []);
-    const toggleFav = (0, import_react31.useCallback)(
+    const toggleFav = (0, import_react32.useCallback)(
       (id3) => {
         const wasFavorited = (favorites ?? layout2.favorites).includes(id3);
         emitViewInteraction({
@@ -45420,7 +45520,7 @@ ${iconSvg}
       },
       [controlled, onToggleFavorite, commit2, layout2, availableIds, favorites]
     );
-    const handleLaunch = (0, import_react31.useCallback)(
+    const handleLaunch = (0, import_react32.useCallback)(
       (entry) => {
         emitViewInteraction({
           source: "springboard",
@@ -45431,31 +45531,31 @@ ${iconSvg}
       },
       [onLaunch]
     );
-    const toggleEditMode = (0, import_react31.useCallback)(() => {
+    const toggleEditMode = (0, import_react32.useCallback)(() => {
       emitViewInteraction({
         source: "springboard",
         action: editing ? "edit-mode-exit" : "edit-mode-enter"
       });
       setEditingState(!editing);
     }, [editing, setEditingState]);
-    const pages = (0, import_react31.useMemo)(
+    const pages = (0, import_react32.useMemo)(
       () => layout2.pages.length > 0 ? layout2.pages : [[]],
       [layout2.pages]
     );
-    (0, import_react31.useEffect)(() => {
+    (0, import_react32.useEffect)(() => {
       onPageCountChange?.(pages.length);
     }, [pages.length, onPageCountChange]);
     const clampedPage = Math.min(activePage, pages.length - 1);
-    const favoriteIdList = (0, import_react31.useMemo)(
+    const favoriteIdList = (0, import_react32.useMemo)(
       () => (favorites ?? layout2.favorites).slice(0, SPRINGBOARD_DOCK_LIMIT),
       [favorites, layout2.favorites]
     );
-    const favoriteEntries = (0, import_react31.useMemo)(
+    const favoriteEntries = (0, import_react32.useMemo)(
       () => favoriteIdList.map((id3) => byId.get(id3)).filter((e) => e != null),
       [byId, favoriteIdList]
     );
-    const favoriteSet = (0, import_react31.useMemo)(() => new Set(favoriteIdList), [favoriteIdList]);
-    const handleReorder = (0, import_react31.useCallback)(
+    const favoriteSet = (0, import_react32.useMemo)(() => new Set(favoriteIdList), [favoriteIdList]);
+    const handleReorder = (0, import_react32.useCallback)(
       (pageIndex, nextIds) => {
         let next = layout2;
         nextIds.forEach((id3, index2) => {
@@ -45470,7 +45570,7 @@ ${iconSvg}
       },
       [layout2, commit2]
     );
-    const renderTile = (0, import_react31.useCallback)(
+    const renderTile = (0, import_react32.useCallback)(
       (entry, favorited) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
         IconTile,
         {
@@ -45505,7 +45605,7 @@ ${iconSvg}
             "div",
             {
               "data-testid": "springboard-dock",
-              className: "mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md sm:mx-4 sm:gap-4 sm:px-6",
+              className: "mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6",
               children: favoriteEntries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { children: renderTile(entry, true) }, `dock-${entry.id}`))
             }
           ) : null,
@@ -45656,14 +45756,35 @@ ${iconSvg}
     }
     return out;
   }
+  var EMPTY_DYNAMIC_VIEW_FORM = {
+    id: "",
+    title: "",
+    entrypoint: "",
+    description: ""
+  };
+  function dynamicViewBridgeAvailable() {
+    const request = getElectrobunRendererRpc()?.request;
+    return typeof request?.dynamicViewRegister === "function" && typeof request?.dynamicViewUnregister === "function";
+  }
+  function editableEntrypointFor(entry) {
+    return entry.view?.bundleUrl ?? entry.view?.path ?? entry.path ?? `/apps/${entry.id}`;
+  }
   var SpringboardSurface = React2.memo(function SpringboardSurface2({
     onNavigateHomeFromEdge
   }) {
-    const { views, loading } = useRoutableViews();
-    const { entries: catalogEntries, get: getCatalogEntry } = useViewCatalog();
+    const { views, loading, refresh: refreshViews } = useRoutableViews();
+    const {
+      entries: catalogEntries,
+      get: getCatalogEntry,
+      refresh: refreshCatalog
+    } = useViewCatalog();
     const enabledKinds = useEnabledViewKinds();
+    const developerMode = useIsDeveloperMode();
     const activeModality = React2.useMemo(() => getActiveViewModality(), []);
+    const [dynamicViewForm, setDynamicViewForm] = React2.useState(EMPTY_DYNAMIC_VIEW_FORM);
+    const [dynamicViewStatus, setDynamicViewStatus] = React2.useState(null);
     const { springboardPage, springboardEditing } = useShellSurface();
+    const showDynamicViewControls = developerMode && dynamicViewBridgeAvailable();
     const loadedEntries = React2.useMemo(
       () => views.filter(
         (view) => isVisibleSpringboardView(view, enabledKinds, activeModality)
@@ -45682,6 +45803,10 @@ ${iconSvg}
       () => new Map(entries2.map((entry) => [entry.id, entry])),
       [entries2]
     );
+    const refreshDynamicViews = React2.useCallback(() => {
+      refreshViews();
+      refreshCatalog();
+    }, [refreshCatalog, refreshViews]);
     const handleLaunch = React2.useCallback(
       (entry) => {
         if (entry.state !== "loaded") {
@@ -45704,21 +45829,197 @@ ${iconSvg}
       },
       [getCatalogEntry]
     );
-    return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "absolute inset-0 flex min-h-0 flex-col px-0 pt-2 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-      Springboard,
-      {
-        entries: entries2,
-        loading,
-        onLaunch: (entry) => handleLaunch(entryById.get(entry.id) ?? entry),
-        onEdgeSwipeRight: onNavigateHomeFromEdge,
-        page: springboardPage,
-        onPageChange: setSpringboardPage,
-        onPageCountChange: setSpringboardPageCount,
-        editing: springboardEditing,
-        onEditingChange: setSpringboardEditing,
-        showPageDots: false
-      }
-    ) });
+    const canManageView = React2.useCallback(
+      (id3) => {
+        if (!showDynamicViewControls) return false;
+        const entry = entryById.get(id3);
+        return entry?.state === "loaded" && entry.kind === "view" && !entry.builtin;
+      },
+      [entryById, showDynamicViewControls]
+    );
+    const updateDynamicField = React2.useCallback(
+      (field, value) => {
+        setDynamicViewForm((current) => ({ ...current, [field]: value }));
+      },
+      []
+    );
+    const handleEditDynamicView = React2.useCallback(
+      (id3) => {
+        const entry = entryById.get(id3);
+        if (!entry) return;
+        setDynamicViewForm({
+          id: entry.id,
+          title: entry.label,
+          entrypoint: editableEntrypointFor(entry),
+          description: entry.description ?? ""
+        });
+        setDynamicViewStatus(null);
+      },
+      [entryById]
+    );
+    const handleSaveDynamicView = React2.useCallback(
+      async (event) => {
+        event.preventDefault();
+        const id3 = dynamicViewForm.id.trim();
+        const title = dynamicViewForm.title.trim();
+        const entrypoint = dynamicViewForm.entrypoint.trim();
+        const description = dynamicViewForm.description.trim();
+        if (!id3 || !title || !entrypoint) {
+          setDynamicViewStatus(
+            "Dynamic view ID, title, and entrypoint are required."
+          );
+          return;
+        }
+        const manifest = {
+          id: id3,
+          title,
+          source: "developer",
+          entrypoint,
+          placement: "canvas"
+        };
+        if (description) manifest.description = description;
+        try {
+          const saved = await registerDynamicView(manifest, { update: true });
+          if (!saved) {
+            setDynamicViewStatus("Dynamic view bridge is unavailable.");
+            return;
+          }
+          setDynamicViewStatus(`Saved ${saved.title}.`);
+          refreshDynamicViews();
+        } catch (error51) {
+          setDynamicViewStatus(
+            error51 instanceof Error ? error51.message : String(error51)
+          );
+        }
+      },
+      [dynamicViewForm, refreshDynamicViews]
+    );
+    const handleDeleteDynamicView = React2.useCallback(
+      async (id3) => {
+        const entry = entryById.get(id3);
+        if (!entry) return;
+        try {
+          const result = await unregisterDynamicView(id3);
+          if (!result) {
+            setDynamicViewStatus("Dynamic view bridge is unavailable.");
+            return;
+          }
+          if (!result.removed) {
+            setDynamicViewStatus(`${entry.label} was not registered.`);
+            return;
+          }
+          setDynamicViewStatus(`Deleted ${entry.label}.`);
+          setDynamicViewForm(
+            (current) => current.id === id3 ? { ...EMPTY_DYNAMIC_VIEW_FORM } : current
+          );
+          refreshDynamicViews();
+        } catch (error51) {
+          setDynamicViewStatus(
+            error51 instanceof Error ? error51.message : String(error51)
+          );
+        }
+      },
+      [entryById, refreshDynamicViews]
+    );
+    return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "absolute inset-0 flex min-h-0 flex-col px-0 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]", children: [
+      showDynamicViewControls ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
+        "form",
+        {
+          "aria-label": "Dynamic view management",
+          onSubmit: handleSaveDynamicView,
+          className: "mx-3 mb-2 grid flex-none gap-2 rounded-lg border border-white/10 bg-black/55 p-3 text-white sm:mx-4",
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "grid gap-2 sm:grid-cols-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "grid gap-1 text-xs font-medium", children: [
+                "Dynamic view ID",
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                  "input",
+                  {
+                    className: "h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent",
+                    value: dynamicViewForm.id,
+                    onChange: (event) => updateDynamicField("id", event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "grid gap-1 text-xs font-medium", children: [
+                "Dynamic view title",
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                  "input",
+                  {
+                    className: "h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent",
+                    value: dynamicViewForm.title,
+                    onChange: (event) => updateDynamicField("title", event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "grid gap-1 text-xs font-medium", children: [
+                "Dynamic view entrypoint",
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                  "input",
+                  {
+                    className: "h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent",
+                    value: dynamicViewForm.entrypoint,
+                    onChange: (event) => updateDynamicField("entrypoint", event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("label", { className: "grid gap-1 text-xs font-medium", children: [
+                "Dynamic view description",
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                  "input",
+                  {
+                    className: "h-9 rounded-md border border-white/15 bg-black/40 px-2 text-sm text-white outline-none focus-visible:border-accent",
+                    value: dynamicViewForm.description,
+                    onChange: (event) => updateDynamicField("description", event.currentTarget.value)
+                  }
+                )
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "flex min-h-9 flex-wrap items-center gap-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                "button",
+                {
+                  type: "submit",
+                  className: "h-8 rounded-md bg-accent px-3 text-sm font-semibold text-white hover:bg-accent/85",
+                  children: "Save"
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+                "button",
+                {
+                  type: "button",
+                  className: "h-8 rounded-md border border-white/15 px-3 text-sm font-semibold text-white hover:bg-white/10",
+                  onClick: () => {
+                    setDynamicViewForm({ ...EMPTY_DYNAMIC_VIEW_FORM });
+                    setDynamicViewStatus(null);
+                  },
+                  children: "Clear"
+                }
+              ),
+              dynamicViewStatus ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { role: "status", className: "text-sm text-white/80", children: dynamicViewStatus }) : null
+            ] })
+          ]
+        }
+      ) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+        Springboard,
+        {
+          entries: entries2,
+          loading,
+          onLaunch: (entry) => handleLaunch(entryById.get(entry.id) ?? entry),
+          onEdgeSwipeRight: onNavigateHomeFromEdge,
+          canManageView: showDynamicViewControls ? canManageView : void 0,
+          onEditView: showDynamicViewControls ? handleEditDynamicView : void 0,
+          onDeleteView: showDynamicViewControls ? handleDeleteDynamicView : void 0,
+          page: springboardPage,
+          onPageChange: setSpringboardPage,
+          onPageCountChange: setSpringboardPageCount,
+          editing: springboardEditing,
+          onEditingChange: setSpringboardEditing,
+          showPageDots: false
+        }
+      )
+    ] });
   });
 
   // packages/ui/src/components/shell/HomeSpringboardSurface.tsx
@@ -45732,7 +46033,7 @@ ${iconSvg}
     initialPage = "home",
     className
   }) {
-    const { page, springboardPage, springboardPageCount, springboardEditing } = useShellSurface();
+    const { page, springboardPage, springboardEditing } = useShellSurface();
     React3.useEffect(() => {
       setShellSurfacePage(initialPage);
     }, [initialPage]);
@@ -45803,17 +46104,7 @@ ${iconSvg}
       }),
       [page]
     );
-    const totalDots = 1 + Math.max(1, springboardPageCount);
-    const activeDot = page === "home" ? 0 : 1 + springboardPage;
-    const jumpToDot = React3.useCallback((index2) => {
-      if (index2 <= 0) {
-        goHome();
-        return;
-      }
-      goSpringboard();
-      setSpringboardPage(index2 - 1);
-    }, []);
-    return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
       "section",
       {
         "data-testid": "home-springboard-surface",
@@ -45822,71 +46113,47 @@ ${iconSvg}
           "absolute inset-0 z-[1] select-none overflow-hidden",
           className
         ),
-        children: [
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
-            "div",
-            {
-              "data-testid": "home-springboard-rail",
-              className: cn(
-                "absolute inset-0 flex w-[200%]",
-                "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
-              ),
-              style: railStyle,
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-                  "div",
-                  {
-                    "data-testid": "home-springboard-home-page",
-                    "aria-hidden": page !== "home",
-                    className: "relative h-full w-1/2 shrink-0 touch-pan-y",
-                    onPointerDown: homeHandlers.onPointerDown,
-                    onPointerUp: homeHandlers.onPointerUp,
-                    onPointerCancel: homeHandlers.onPointerCancel,
-                    onClickCapture: homeHandlers.onClickCapture,
-                    children: home
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-                  "div",
-                  {
-                    "data-testid": "home-springboard-springboard-page",
-                    "aria-hidden": page !== "springboard",
-                    className: "relative h-full w-1/2 shrink-0 touch-pan-y",
-                    onPointerDown: springboardHandlers.onPointerDown,
-                    onPointerUp: springboardHandlers.onPointerUp,
-                    onPointerCancel: springboardHandlers.onPointerCancel,
-                    onClickCapture: springboardHandlers.onClickCapture,
-                    children: React3.cloneElement(springboard, {
-                      onNavigateHomeFromEdge: goHome
-                    })
-                  }
-                )
-              ]
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-            "div",
-            {
-              "data-testid": "home-springboard-indicator",
-              className: "pointer-events-auto absolute inset-x-0 bottom-[calc(var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)] z-[2] flex justify-center gap-1.5",
-              children: Array.from({ length: totalDots }, (_, index2) => /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-                "button",
+        children: /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+          "div",
+          {
+            "data-testid": "home-springboard-rail",
+            className: cn(
+              "absolute inset-0 flex w-[200%]",
+              "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+            ),
+            style: railStyle,
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+                "div",
                 {
-                  type: "button",
-                  "aria-label": index2 === 0 ? "Home" : `Apps page ${index2}`,
-                  "aria-current": index2 === activeDot,
-                  onClick: () => jumpToDot(index2),
-                  className: cn(
-                    // Keep inactive dots discoverable on the orange wallpaper.
-                    "h-1.5 w-1.5 rounded-full shadow-sm transition-colors",
-                    index2 === activeDot ? "bg-white/90" : "bg-white/45"
-                  )
-                },
-                `shell-dot-${index2}`
-              ))
-            }
-          )
-        ]
+                  "data-testid": "home-springboard-home-page",
+                  "aria-hidden": page !== "home",
+                  className: "relative h-full w-1/2 shrink-0 touch-pan-y",
+                  onPointerDown: homeHandlers.onPointerDown,
+                  onPointerUp: homeHandlers.onPointerUp,
+                  onPointerCancel: homeHandlers.onPointerCancel,
+                  onClickCapture: homeHandlers.onClickCapture,
+                  children: home
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+                "div",
+                {
+                  "data-testid": "home-springboard-springboard-page",
+                  "aria-hidden": page !== "springboard",
+                  className: "relative h-full w-1/2 shrink-0 touch-pan-y",
+                  onPointerDown: springboardHandlers.onPointerDown,
+                  onPointerUp: springboardHandlers.onPointerUp,
+                  onPointerCancel: springboardHandlers.onPointerCancel,
+                  onClickCapture: springboardHandlers.onClickCapture,
+                  children: React3.cloneElement(springboard, {
+                    onNavigateHomeFromEdge: goHome
+                  })
+                }
+              )
+            ]
+          }
+        )
       }
     );
   }
@@ -45909,10 +46176,10 @@ ${iconSvg}
   }
 
   // packages/ui/src/hooks/useRenderGuard.ts
-  var import_react32 = __toESM(require_react(), 1);
-  var import_meta2 = {};
+  var import_react33 = __toESM(require_react(), 1);
+  var import_meta3 = {};
   function readEnvValue(key) {
-    const meta3 = import_meta2;
+    const meta3 = import_meta3;
     if (key === "VITE_ELIZA_RENDER_TELEMETRY") {
       const explicit = meta3.env?.VITE_ELIZA_RENDER_TELEMETRY;
       if (explicit !== void 0) return explicit;
@@ -45936,7 +46203,7 @@ ${iconSvg}
       return true;
     }
     const nodeEnv = typeof process !== "undefined" ? "production" : void 0;
-    const meta3 = import_meta2;
+    const meta3 = import_meta3;
     const mode = meta3.env?.MODE;
     return meta3.env?.DEV === true || mode === "development" || mode === "test" || nodeEnv === "development" || nodeEnv === "test";
   }
@@ -45971,7 +46238,7 @@ ${iconSvg}
   var import_react73 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/AppContext.tsx
-  var import_react68 = __toESM(require_react(), 1);
+  var import_react69 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/components/ui/confirm-dialog.tsx
@@ -47247,9 +47514,9 @@ ${iconSvg}
   }
 
   // node_modules/.bun/use-callback-ref@1.3.3+b2e33729a97476bf/node_modules/use-callback-ref/dist/es2015/useRef.js
-  var import_react33 = __toESM(require_react());
+  var import_react34 = __toESM(require_react());
   function useCallbackRef2(initialValue, callback) {
-    var ref = (0, import_react33.useState)(function() {
+    var ref = (0, import_react34.useState)(function() {
       return {
         // value
         value: initialValue,
@@ -48510,8 +48777,8 @@ ${iconSvg}
   var React35 = __toESM(require_react(), 1);
 
   // packages/ui/src/config/boot-config-react.hooks.ts
-  var import_react34 = __toESM(require_react(), 1);
-  var AppBootContext = (0, import_react34.createContext)(DEFAULT_BOOT_CONFIG);
+  var import_react35 = __toESM(require_react(), 1);
+  var AppBootContext = (0, import_react35.createContext)(DEFAULT_BOOT_CONFIG);
 
   // packages/ui/src/config/branding-base.ts
   var DEFAULT_APP_DISPLAY_NAME = "Eliza";
@@ -48532,8 +48799,8 @@ ${iconSvg}
   }
 
   // packages/ui/src/config/branding-react.hooks.ts
-  var import_react35 = __toESM(require_react(), 1);
-  var BrandingContext = (0, import_react35.createContext)(
+  var import_react36 = __toESM(require_react(), 1);
+  var BrandingContext = (0, import_react36.createContext)(
     void 0
   );
 
@@ -48668,8 +48935,8 @@ ${iconSvg}
   }
 
   // packages/ui/src/navigation/index.ts
-  var import_meta3 = {};
-  var viteEnv = import_meta3.env;
+  var import_meta4 = {};
+  var viteEnv = import_meta4.env;
   function viteEnvFlagEnabled(name, defaultValue) {
     const value = viteEnv?.[name];
     if (value == null) return defaultValue;
@@ -52122,7 +52389,7 @@ ${iconSvg}
   init_app_store();
 
   // packages/ui/src/state/ChatComposerContext.hooks.ts
-  var import_react36 = __toESM(require_react(), 1);
+  var import_react37 = __toESM(require_react(), 1);
   var DEFAULT_COMPOSER = {
     chatInput: "",
     chatSending: false,
@@ -52132,24 +52399,24 @@ ${iconSvg}
     setChatPendingImages: () => {
     }
   };
-  var ChatComposerCtx = (0, import_react36.createContext)(DEFAULT_COMPOSER);
-  var ChatInputRefCtx = (0, import_react36.createContext)(null);
+  var ChatComposerCtx = (0, import_react37.createContext)(DEFAULT_COMPOSER);
+  var ChatInputRefCtx = (0, import_react37.createContext)(null);
 
   // packages/ui/src/state/ChatTurnStatusContext.hooks.ts
-  var import_react37 = __toESM(require_react(), 1);
-  var ChatTurnStatusCtx = (0, import_react37.createContext)({
+  var import_react38 = __toESM(require_react(), 1);
+  var ChatTurnStatusCtx = (0, import_react38.createContext)({
     serverTurnStatus: null,
     setServerTurnStatus: () => {
     }
   });
 
   // packages/ui/src/state/CompanionSceneConfigContext.hooks.ts
-  var import_react38 = __toESM(require_react(), 1);
-  var CompanionSceneConfigCtx = (0, import_react38.createContext)(null);
+  var import_react39 = __toESM(require_react(), 1);
+  var CompanionSceneConfigCtx = (0, import_react39.createContext)(null);
 
   // packages/ui/src/state/ConversationMessagesContext.hooks.ts
-  var import_react39 = __toESM(require_react(), 1);
-  var ConversationMessagesCtx = (0, import_react39.createContext)(
+  var import_react40 = __toESM(require_react(), 1);
+  var ConversationMessagesCtx = (0, import_react40.createContext)(
     {
       conversationMessages: [],
       removeConversationMessage: () => {
@@ -55351,13 +55618,13 @@ Assistant:`;
       /^\/api\/conversations\/([^/]+)\/greeting$/
     );
     if (greetingMatch && method === "POST") {
-      const greeting = await generateLocalGreeting();
+      const greeting2 = await generateLocalGreeting();
       return json2({
-        text: greeting.text,
+        text: greeting2.text,
         agentName: AGENT_NAME,
         generated: true,
         persisted: false,
-        ...greeting.localInference ? { localInference: greeting.localInference } : {}
+        ...greeting2.localInference ? { localInference: greeting2.localInference } : {}
       });
     }
     const messageMatch = pathname.match(
@@ -55477,7 +55744,7 @@ Assistant:`;
   }
 
   // packages/ui/src/api/ios-local-agent-transport.ts
-  var import_meta4 = {};
+  var import_meta5 = {};
   var transport = null;
   var globalRequestHandlerInstalled = false;
   var globalFetchBridgeInstalled = false;
@@ -55511,7 +55778,7 @@ Assistant:`;
     LOG_LEVEL: "error"
   };
   function viteEnv2() {
-    const metaEnv = import_meta4.env ?? {};
+    const metaEnv = import_meta5.env ?? {};
     const processEnv = typeof process === "undefined" ? {} : process.env;
     return { ...processEnv, ...metaEnv };
   }
@@ -60716,7 +60983,7 @@ Assistant:`;
     "voiceconfigview.StoppedCurrentSpeechOutput": "Stopped current speech output.",
     "voiceconfigview.StopSpeaking": "Stop Speaking",
     "voiceconfigview.StopTalkMode": "Stop Talk Mode",
-    "voiceconfigview.TalkModeDescription": "Native voice loop controls, speech output, and whisper diagnostics.",
+    "voiceconfigview.TalkModeDescription": "Native voice loop controls, speech output, and ASR diagnostics.",
     "voiceconfigview.TalkModeStarted": "Talk mode started.",
     "voiceconfigview.TalkModeStateRefreshed": "Talk mode state refreshed.",
     "voiceconfigview.TalkModeStatusUnavailable": "Talk mode status unavailable.",
@@ -60727,7 +60994,6 @@ Assistant:`;
     "voiceconfigview.Triggers": "Triggers",
     "voiceconfigview.TTSProvider": "TTS Provider",
     "voiceconfigview.WakeWord": "Wake Word",
-    "voiceconfigview.Whisper": "Whisper",
     "wallet.addressCopied": "Address copied.",
     "wallet.advancedSetup": "Advanced wallet setup",
     "wallet.copyEvmAddress": "Copy EVM address",
@@ -63835,8 +64101,8 @@ Assistant:`;
   }
 
   // packages/ui/src/state/TranslationContext.hooks.ts
-  var import_react40 = __toESM(require_react(), 1);
-  var TranslationCtx = (0, import_react40.createContext)(
+  var import_react41 = __toESM(require_react(), 1);
+  var TranslationCtx = (0, import_react41.createContext)(
     null
   );
   var TEST_TRANSLATION_CONTEXT = {
@@ -63847,21 +64113,21 @@ Assistant:`;
   };
 
   // packages/ui/src/state/TranslationProvider.tsx
-  var import_react41 = __toESM(require_react(), 1);
+  var import_react42 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
   var import_jsx_runtime24 = __toESM(require_jsx_runtime(), 1);
 
   // packages/ui/src/state/useApp.ts
-  var import_react42 = __toESM(require_react(), 1);
+  var import_react43 = __toESM(require_react(), 1);
   var appContextGlobal = globalThis;
   if (!appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__) {
-    appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__ = (0, import_react42.createContext)(null);
+    appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__ = (0, import_react43.createContext)(null);
   }
   var AppContext = appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__;
 
   // packages/ui/src/state/PtySessionsContext.hooks.ts
-  var import_react43 = __toESM(require_react(), 1);
-  var PtySessionsCtx = (0, import_react43.createContext)({
+  var import_react44 = __toESM(require_react(), 1);
+  var PtySessionsCtx = (0, import_react44.createContext)({
     ptySessions: []
   });
 
@@ -63906,30 +64172,30 @@ Assistant:`;
   var LOCAL_ACTIVE_SERVER = createPersistedActiveServer({ kind: "local" });
 
   // packages/ui/src/state/useAppLifecycleEvents.ts
-  var import_react44 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/useAppProviderEffects.ts
   var import_react45 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/useAppShellState.ts
+  // packages/ui/src/state/useAppProviderEffects.ts
   var import_react46 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useAppShellState.ts
+  var import_react47 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useCharacterState.ts
-  var import_react47 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/useChatCallbacks.ts
-  var import_react50 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/useChatLifecycle.ts
   var import_react48 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/useChatSend.ts
+  // packages/ui/src/state/useChatCallbacks.ts
+  var import_react51 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useChatLifecycle.ts
   var import_react49 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useChatSend.ts
+  var import_react50 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/api/client-cloud.ts
@@ -66899,35 +67165,35 @@ Assistant:`;
   var COMPANION_STALE_THREAD_MAX_AGE_MS = 30 * 60 * 1e3;
 
   // packages/ui/src/state/useChatState.ts
-  var import_react51 = __toESM(require_react(), 1);
+  var import_react52 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useCloudState.ts
-  var import_react52 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
-
-  // packages/ui/src/state/useDataLoaders.ts
   var import_react53 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/useDisplayPreferences.ts
+  // packages/ui/src/state/useDataLoaders.ts
   var import_react54 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useDisplayPreferences.ts
+  var import_react55 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useExportImportState.ts
-  var import_react55 = __toESM(require_react(), 1);
+  var import_react56 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useFirstRunCallbacks.ts
   init_dist();
-  var import_react56 = __toESM(require_react(), 1);
+  var import_react57 = __toESM(require_react(), 1);
 
   // packages/ui/src/first-run/ensure-store-build-workspace-folder.ts
   init_electrobun_rpc();
 
   // packages/ui/src/state/useFirstRunState.ts
-  var import_react57 = __toESM(require_react(), 1);
+  var import_react58 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useLifecycleState.ts
-  var import_react58 = __toESM(require_react(), 1);
+  var import_react59 = __toESM(require_react(), 1);
   init_action_notice();
   var INITIAL_LIFECYCLE_STATE = {
     connected: false,
@@ -66958,25 +67224,25 @@ Assistant:`;
   };
 
   // packages/ui/src/state/useLogsState.ts
-  var import_react59 = __toESM(require_react(), 1);
+  var import_react60 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useMiscUiState.ts
-  var import_react60 = __toESM(require_react(), 1);
-
-  // packages/ui/src/state/useNavigationState.ts
   var import_react61 = __toESM(require_react(), 1);
 
-  // packages/ui/src/state/usePairingState.ts
+  // packages/ui/src/state/useNavigationState.ts
   var import_react62 = __toESM(require_react(), 1);
-  init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/usePluginsSkillsState.ts
+  // packages/ui/src/state/usePairingState.ts
   var import_react63 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
-  // packages/ui/src/state/useStartupCoordinator.ts
+  // packages/ui/src/state/usePluginsSkillsState.ts
   var import_react64 = __toESM(require_react(), 1);
+  init_home_screen_fixture_api_stub();
+
+  // packages/ui/src/state/useStartupCoordinator.ts
+  var import_react65 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/startup-phase-hydrate.ts
@@ -67244,14 +67510,14 @@ Assistant:`;
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useTabSync.ts
-  var import_react65 = __toESM(require_react(), 1);
+  var import_react66 = __toESM(require_react(), 1);
 
   // packages/ui/src/state/useTriggersState.ts
-  var import_react66 = __toESM(require_react(), 1);
+  var import_react67 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/useWalletState.ts
-  var import_react67 = __toESM(require_react(), 1);
+  var import_react68 = __toESM(require_react(), 1);
   init_home_screen_fixture_api_stub();
 
   // packages/ui/src/state/AppContext.tsx
@@ -67266,46 +67532,8 @@ Assistant:`;
   init_app_store();
 
   // packages/ui/src/state/useContentPack.ts
-  var import_react69 = __toESM(require_react(), 1);
-  init_app_store();
-
-  // packages/ui/src/state/useDeveloperMode.ts
   var import_react70 = __toESM(require_react(), 1);
-  var import_meta5 = {};
-  var STORAGE_KEY = "eliza:developerMode";
-  var ENABLED = "1";
-  var DISABLED = "0";
-  var listeners2 = /* @__PURE__ */ new Set();
-  function defaultDeveloperMode() {
-    try {
-      return Boolean(import_meta5.env?.DEV);
-    } catch {
-      return false;
-    }
-  }
-  function readStorage() {
-    if (typeof window === "undefined") return defaultDeveloperMode();
-    try {
-      const raw2 = window.localStorage.getItem(STORAGE_KEY);
-      if (raw2 === ENABLED) return true;
-      if (raw2 === DISABLED) return false;
-      return defaultDeveloperMode();
-    } catch {
-      return defaultDeveloperMode();
-    }
-  }
-  var cachedEnabled = readStorage();
-  if (typeof window !== "undefined") {
-    window.addEventListener("storage", (event) => {
-      if (event.key !== null && event.key !== STORAGE_KEY) return;
-      const next = readStorage();
-      if (next === cachedEnabled) return;
-      cachedEnabled = next;
-      for (const listener of listeners2) {
-        listener();
-      }
-    });
-  }
+  init_app_store();
 
   // packages/ui/src/state/usePreviewMode.ts
   var import_react71 = __toESM(require_react(), 1);
@@ -72781,17 +73009,17 @@ Assistant:`;
     recompute();
     emit2();
   }
-  function subscribe3(listener) {
+  function subscribe4(listener) {
     listeners4.add(listener);
     return () => {
       listeners4.delete(listener);
     };
   }
-  function getSnapshot2() {
+  function getSnapshot3() {
     return snapshot;
   }
   function useHomeAttentionSignals() {
-    return (0, import_react75.useSyncExternalStore)(subscribe3, getSnapshot2, getSnapshot2);
+    return (0, import_react75.useSyncExternalStore)(subscribe4, getSnapshot3, getSnapshot3);
   }
   function usePublishHomeAttention(widgetKey, weight) {
     (0, import_react75.useEffect)(() => {
@@ -73843,7 +74071,7 @@ Assistant:`;
         onClick: onActivate,
         className: cn(
           // Dark neutral glass keeps white text and orange status values legible.
-          "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/45 px-3 py-2.5 text-left backdrop-blur-md",
+          "group flex w-full items-center gap-3 rounded-xl border border-white/12 bg-black/55 px-3 py-2.5 text-left",
           "transition-colors hover:bg-black/55"
         ),
         children: [
@@ -73862,8 +74090,7 @@ Assistant:`;
                   {
                     "aria-hidden": true,
                     className: cn(
-                      // Use a filled dot; the ring only separates it from the icon.
-                      "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-black/40",
+                      "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-black/40",
                       TONE_DOT_CLASS[tone]
                     )
                   }
@@ -76476,7 +76703,8 @@ Assistant:`;
     className,
     layout: layout2 = "stack",
     hideWhenEmpty = true,
-    filter: filter2
+    filter: filter2,
+    fallback
   }) {
     const plugins = useAppSelectorShallow((s) => s.plugins);
     const enabledKinds = useEnabledViewKinds();
@@ -76578,23 +76806,122 @@ Assistant:`;
       }).filter((node) => node !== null),
       [displayed, widgetPropsBase, pluginById]
     );
-    if (children.length === 0 && hideWhenEmpty) return null;
+    const containerRef = (0, import_react91.useRef)(null);
+    const [renderedEmpty, setRenderedEmpty] = (0, import_react91.useState)(false);
+    (0, import_react91.useLayoutEffect)(() => {
+      if (fallback == null) return;
+      const el = containerRef.current;
+      setRenderedEmpty(el == null || el.childElementCount === 0);
+    });
+    if (children.length === 0 && hideWhenEmpty) {
+      return fallback ?? null;
+    }
     const layoutClass = layout2 === "grid" ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "flex flex-col gap-3";
-    return /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
-      "div",
-      {
-        className: `${layoutClass} ${className ?? ""}`,
-        style: { contain: "layout" },
-        "data-testid": `widget-host-${slot}`,
-        "data-layout": layout2,
-        "data-slot": slot,
-        children
-      }
+    const showFallback = fallback != null && renderedEmpty;
+    return /* @__PURE__ */ (0, import_jsx_runtime57.jsxs)(import_jsx_runtime57.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime57.jsx)(
+        "div",
+        {
+          ref: containerRef,
+          className: `${layoutClass} ${className ?? ""}`,
+          style: { contain: "layout" },
+          "data-testid": `widget-host-${slot}`,
+          "data-layout": layout2,
+          "data-slot": slot,
+          children
+        }
+      ),
+      showFallback ? fallback : null
+    ] });
+  }
+
+  // packages/ui/src/components/shell/DefaultHomeWidgets.tsx
+  var import_jsx_runtime58 = __toESM(require_jsx_runtime(), 1);
+  var WEEKDAYS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
+  var WEEKDAYS_LONG = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday"
+  ];
+  var MONTHS = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December"
+  ];
+  var DAY_MS = 864e5;
+  function greeting(hour) {
+    if (hour < 5) return "Good night";
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    if (hour < 21) return "Good evening";
+    return "Good night";
+  }
+  function DefaultHomeWidgets() {
+    const now2 = useNow(6e4);
+    if (!now2) return null;
+    const d = new Date(now2);
+    const hours = d.getHours();
+    const minutes = d.getMinutes();
+    const hour12 = hours % 12 || 12;
+    const ampm = hours < 12 ? "AM" : "PM";
+    const time4 = `${hour12}:${String(minutes).padStart(2, "0")}`;
+    const dateLabel = `${WEEKDAYS_LONG[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+    const weekStart = now2 - d.getDay() * DAY_MS;
+    const todayDate = d.getDate();
+    const week = Array.from(
+      { length: 7 },
+      (_, i) => new Date(weekStart + i * DAY_MS)
     );
+    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { "data-testid": "default-home-widgets", className: "flex flex-col gap-3", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "flex flex-col items-center gap-1 rounded-2xl border border-white/10 bg-black/35 px-6 py-7 text-center", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "text-[3.25rem] font-semibold leading-none tabular-nums tracking-tight text-white", children: [
+          time4,
+          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { className: "ml-1.5 align-top text-base font-medium text-white/60", children: ampm })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "mt-1 text-sm font-medium text-white/75", children: dateLabel }),
+        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "text-xs text-white/50", children: greeting(hours) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "grid grid-cols-7 gap-1 rounded-2xl border border-white/10 bg-black/35 px-3 py-3", children: week.map((day) => {
+        const isToday = day.getDate() === todayDate && day.getMonth() === d.getMonth();
+        return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
+          "div",
+          {
+            className: "flex flex-col items-center gap-1",
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { className: "text-[10px] font-medium uppercase text-white/45", children: WEEKDAYS_SHORT[day.getDay()] }),
+              /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+                "span",
+                {
+                  className: cn(
+                    "grid h-7 w-7 place-items-center rounded-full text-xs tabular-nums",
+                    isToday ? "bg-accent font-bold text-white" : "font-medium text-white/80"
+                  ),
+                  children: day.getDate()
+                }
+              )
+            ]
+          },
+          day.getTime()
+        );
+      }) })
+    ] });
   }
 
   // packages/ui/src/components/shell/HomeScreen.tsx
-  var import_jsx_runtime58 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime59 = __toESM(require_jsx_runtime(), 1);
   var HOME_ENTER_CSS = `
 @keyframes home-enter {
   from { opacity: 0; transform: translateY(10px); }
@@ -76667,7 +76994,7 @@ Assistant:`;
     const { events, clearEvents } = useActivityEvents();
     const enterClass = useEnterOnceClass();
     useHomeLayoutShiftObserver();
-    return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)(
       "div",
       {
         "data-testid": "home-screen",
@@ -76677,33 +77004,34 @@ Assistant:`;
           // paddingTop: var(--safe-area-top)); adding it again here double-padded
           // the content and left a large empty band above the dashboard. Just a
           // small gutter — the notch is already cleared by the root.
-          "px-4 pt-2",
+          "px-4",
           // Clear the floating chat composer at the bottom.
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]"
         ),
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("style", { children: HOME_ENTER_CSS }),
-          /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
-            clockAccessory ? /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: cn(enterClass, "flex justify-end"), children: clockAccessory }) : null,
-            /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: enterClass, style: { animationDelay: "70ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("style", { children: HOME_ENTER_CSS }),
+          /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)("div", { className: "mx-auto flex w-full max-w-2xl flex-col gap-4", children: [
+            clockAccessory ? /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: cn(enterClass, "flex justify-end"), children: clockAccessory }) : null,
+            /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: enterClass, style: { animationDelay: "70ms" }, children: /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
               WidgetHost,
               {
                 slot: "home",
                 layout: "grid",
                 events,
-                clearEvents
+                clearEvents,
+                fallback: /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(DefaultHomeWidgets, {})
               }
             ) }),
-            tiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+            tiles.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
               "nav",
               {
                 "aria-label": "Apps",
                 "data-testid": "home-tiles",
                 className: cn(enterClass, "mt-2"),
                 style: { animationDelay: "150ms" },
-                children: /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
+                children: /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("div", { className: "grid grid-cols-4 gap-3", children: tiles.map((tile) => {
                   const Icon2 = tile.icon;
-                  return /* @__PURE__ */ (0, import_jsx_runtime58.jsxs)(
+                  return /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)(
                     "button",
                     {
                       type: "button",
@@ -76718,14 +77046,14 @@ Assistant:`;
                         "hover:bg-white/[0.14]   "
                       ),
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)(
+                        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
                           Icon2,
                           {
                             className: "h-[22px] w-[22px] text-white/90",
                             "aria-hidden": true
                           }
                         ),
-                        /* @__PURE__ */ (0, import_jsx_runtime58.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
+                        /* @__PURE__ */ (0, import_jsx_runtime59.jsx)("span", { className: "max-w-full truncate text-[11px] font-medium text-white/80", children: tile.label })
                       ]
                     },
                     tile.id
@@ -76740,31 +77068,31 @@ Assistant:`;
   }
 
   // packages/ui/src/components/shell/__e2e__/home-screen-fixture.tsx
-  var import_jsx_runtime59 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime60 = __toESM(require_jsx_runtime(), 1);
   seedHomeWidgetAppStore();
   seedHomeWidgetNotifications();
   installHomeWidgetFetchMock();
   var params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
   var showNativeOsTiles = params.has("native");
   function Harness() {
-    return /* @__PURE__ */ (0, import_jsx_runtime59.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime60.jsxs)(
       "div",
       {
         "data-testid": "home-fixture-root",
         style: { position: "fixed", inset: 0, overflow: "hidden" },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(ShaderBackground, {}),
-          /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(ShaderBackground, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
             HomeSpringboardSurface,
             {
-              home: /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(
+              home: /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(
                 HomeScreen,
                 {
                   onOpenTile: (t2) => console.log(`[fixture] open ${JSON.stringify(t2)}`),
                   showNativeOsTiles
                 }
               ),
-              springboard: /* @__PURE__ */ (0, import_jsx_runtime59.jsx)(SpringboardSurface, {})
+              springboard: /* @__PURE__ */ (0, import_jsx_runtime60.jsx)(SpringboardSurface, {})
             }
           )
         ]
@@ -76772,7 +77100,7 @@ Assistant:`;
     );
   }
   var root = document.getElementById("root");
-  if (root) (0, import_client2.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime59.jsx)(Harness, {}));
+  if (root) (0, import_client2.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime60.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 

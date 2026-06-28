@@ -8,13 +8,16 @@ import {
   type FeedPredictionMarket,
   type FeedWallet,
   formatDetailTimestamp,
-  SurfaceCard,
-  SurfaceSection,
   selectLatestRunForApp,
 } from "@elizaos/app-core/ui-compat";
 import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+// Imported via direct subpaths: the big `@elizaos/ui` root barrel doesn't
+// resolve these newly-added members under the plugin's bundler tsconfig.
+import { ChatEmptyStateWithRecommendations } from "@elizaos/ui/components/composites/chat/ChatEmptyStateWithRecommendations";
+import { dispatchChatPrefill } from "@elizaos/ui/events";
 import { useAppSelector } from "@elizaos/ui/state";
+import { LineChart } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   GameSurfaceHero,
@@ -23,7 +26,6 @@ import {
   GameSurfaceZone,
   HeroCta,
   type StatChip,
-  WaitingForSession,
 } from "./game-surface-shell";
 
 const FEED_ACCENT = "#ff8a24";
@@ -93,6 +95,30 @@ function listPreview(items: FeedPredictionMarket[]): string {
       return `${market.title} (${yesPrice}/${noPrice})`;
     })
     .join(" · ");
+}
+
+function StatLine({
+  label,
+  value,
+  subtitle,
+}: {
+  label: string;
+  value: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="shrink-0 text-xs-tight text-muted">{label}</span>
+        <span className="break-words text-right text-sm font-medium text-txt">
+          {value}
+        </span>
+      </div>
+      {subtitle ? (
+        <span className="text-2xs text-muted">{subtitle}</span>
+      ) : null}
+    </div>
+  );
 }
 
 function FeedSuggestedPromptButton({
@@ -314,24 +340,25 @@ export function FeedOperatorSurface({
   );
 
   if (!run) {
-    const chips: StatChip[] = [
-      { icon: "◉", label: "Agent", value: "Pending", state: "pending" },
-      { icon: "◒", label: "Portfolio", value: "—", state: "idle" },
-      { icon: "▲", label: "Markets", value: "—", state: "idle" },
-      { icon: "◇", label: "Wallet", value: "—", state: "idle" },
-    ];
     return (
       <div data-testid="feed-operator-ready">
-        <GameSurfaceShell>
-          <GameSurfaceHero
-            title="Feed"
-            statusLabel="None"
-            statusState="pending"
-            cta={<HeroCta label="Spawn agent" accent={FEED_ACCENT} disabled />}
-          />
-          <GameSurfaceStrip chips={chips} />
-          <WaitingForSession accent={FEED_ACCENT} message="" />
-        </GameSurfaceShell>
+        <ChatEmptyStateWithRecommendations
+          icon={LineChart}
+          title="Ready to trade?"
+          recommendations={[
+            "Spawn a Feed trading agent",
+            "Which prediction markets are trending right now?",
+            "Draft an autonomous trading strategy",
+          ]}
+          primaryAction={{
+            label: "Spawn agent",
+            onClick: () =>
+              dispatchChatPrefill({
+                text: "Spawn a Feed trading agent and start the prediction-market loop.",
+                select: true,
+              }),
+          }}
+        />
       </div>
     );
   }
@@ -387,19 +414,16 @@ export function FeedOperatorSurface({
         />
         <GameSurfaceStrip chips={liveChips} />
         <GameSurfaceZone>
-          <div className="flex flex-wrap items-center gap-2 text-xs-tight text-muted">
-            <span className="inline-flex items-center gap-2">
-              <span
-                aria-hidden
-                className="size-2 rounded-full"
-                style={{
-                  background:
-                    run.health.state === "healthy" ? FEED_ACCENT : "#ef4444",
-                }}
-              />
-              <span className="text-txt">{run.status}</span>
-              <span>{run.viewerAttachment}</span>
-            </span>
+          <div className="flex items-center gap-2 text-xs-tight text-muted">
+            <span
+              aria-hidden
+              className="size-2 rounded-full"
+              style={{
+                background:
+                  run.health.state === "healthy" ? FEED_ACCENT : "#ef4444",
+              }}
+            />
+            <span className="text-txt">{run.health.state}</span>
             <span className="ml-auto">
               {matchingRuns.length} active run
               {matchingRuns.length === 1 ? "" : "s"}
@@ -407,151 +431,133 @@ export function FeedOperatorSurface({
           </div>
 
           {showDashboard ? (
-            <SurfaceSection title="Live Status">
-              <div className="space-y-2">
-                <SurfaceCard
-                  label="Agent"
-                  value={
-                    agentStatus?.displayName ?? agentStatus?.name ?? "Waiting"
-                  }
-                  subtitle={
-                    agentStatus
-                      ? `${agentStatus.agentStatus ?? "idle"} · ${agentStatus.autonomous ? "autonomous" : "operator-led"}`
-                      : "No status"
-                  }
-                />
-                <SurfaceCard
-                  label="Current Focus"
-                  value={activeGoal?.description ?? "—"}
-                  subtitle={
-                    activeGoal
-                      ? (() => {
-                          const progress = formatDecimal(
-                            activeGoal.progress,
-                            0,
-                          );
-                          return progress
-                            ? `${activeGoal.status} · ${progress}%`
-                            : activeGoal.status;
-                        })()
-                      : undefined
-                  }
-                />
-                <SurfaceCard
-                  label="Portfolio"
-                  value={
-                    agentPortfolio
-                      ? `${formatCurrency(agentPortfolio.totalAssets)} total assets`
-                      : "—"
-                  }
-                  subtitle={
-                    agentPortfolio
-                      ? `${agentPortfolio.positions} positions · ${formatPnL(agentPortfolio.totalPnL)} total PnL`
-                      : undefined
-                  }
-                />
-                <SurfaceCard
-                  label="Team Coordination"
-                  value={
-                    teamDashboard.summary?.ownerName ??
-                    `${teamDashboard.agents.length} team agents observed`
-                  }
-                  subtitle={
-                    teamTotals
-                      ? `${formatCurrency(teamTotals.walletBalance)} wallet${
-                          asFiniteNumber(teamTotals.openPositions) != null
-                            ? ` · ${teamTotals.openPositions} open positions`
-                            : ""
-                        }`
-                      : undefined
-                  }
-                />
-              </div>
-            </SurfaceSection>
+            <div className="flex flex-col gap-2">
+              <StatLine
+                label="Agent"
+                value={
+                  agentStatus?.displayName ?? agentStatus?.name ?? "Waiting"
+                }
+                subtitle={
+                  agentStatus
+                    ? `${agentStatus.agentStatus ?? "idle"} · ${agentStatus.autonomous ? "autonomous" : "operator-led"}`
+                    : "No status"
+                }
+              />
+              <StatLine
+                label="Focus"
+                value={activeGoal?.description ?? "No active focus"}
+                subtitle={
+                  activeGoal
+                    ? (() => {
+                        const progress = formatDecimal(activeGoal.progress, 0);
+                        return progress
+                          ? `${activeGoal.status} · ${progress}%`
+                          : activeGoal.status;
+                      })()
+                    : undefined
+                }
+              />
+              <StatLine
+                label="Portfolio"
+                value={
+                  agentPortfolio
+                    ? `${formatCurrency(agentPortfolio.totalAssets)} total assets`
+                    : "No positions yet"
+                }
+                subtitle={
+                  agentPortfolio
+                    ? `${agentPortfolio.positions} positions · ${formatPnL(agentPortfolio.totalPnL)} total PnL`
+                    : undefined
+                }
+              />
+              <StatLine
+                label="Team"
+                value={
+                  teamDashboard.summary?.ownerName ??
+                  `${teamDashboard.agents.length} team agents observed`
+                }
+                subtitle={
+                  teamTotals
+                    ? `${formatCurrency(teamTotals.walletBalance)} wallet${
+                        asFiniteNumber(teamTotals.openPositions) != null
+                          ? ` · ${teamTotals.openPositions} open positions`
+                          : ""
+                      }`
+                    : undefined
+                }
+              />
+            </div>
           ) : null}
 
           {showDashboard ? (
-            <SurfaceSection title="Market Watch">
-              <SurfaceCard
+            <div className="flex flex-col gap-2">
+              <StatLine
                 label="Markets"
                 value={listPreview(predictionMarkets)}
               />
-              <div className="space-y-2">
-                {recentTrades.slice(0, 3).map((trade) => (
-                  <SurfaceCard
-                    key={trade.id}
-                    label={summarizeFeedActivity(trade)}
-                    value={formatDetailTimestamp(trade.timestamp)}
-                    subtitle={
-                      trade.pnl != null
-                        ? `PnL ${formatPnL(trade.pnl)}`
-                        : undefined
-                    }
-                  />
-                ))}
-                {recentTrades.length === 0 ? (
-                  <SurfaceCard label="Trades" value="—" />
-                ) : null}
-              </div>
-            </SurfaceSection>
+              {recentTrades.slice(0, 3).map((trade) => (
+                <div
+                  key={trade.id}
+                  className="flex items-baseline justify-between gap-3 text-xs-tight"
+                >
+                  <span className="min-w-0 truncate text-txt">
+                    {summarizeFeedActivity(trade)}
+                  </span>
+                  <span className="shrink-0 text-muted">
+                    {formatDetailTimestamp(trade.timestamp)}
+                    {trade.pnl != null ? ` · PnL ${formatPnL(trade.pnl)}` : ""}
+                  </span>
+                </div>
+              ))}
+              {recentTrades.length === 0 ? (
+                <div className="text-xs-tight text-muted">No recent trades</div>
+              ) : null}
+            </div>
           ) : null}
 
           {showChat ? (
-            <SurfaceSection title="Team">
-              <div className="space-y-2">
-                <SurfaceCard
-                  label="Team Conversations"
-                  value={
-                    teamConversations.length > 0
-                      ? teamConversations
-                          .slice(0, 3)
-                          .map(
-                            (conversation) => conversation.name || "Untitled",
-                          )
-                          .join(" · ")
-                      : "—"
-                  }
-                  subtitle={
-                    teamConversations.length > 0
-                      ? `${teamConversations.filter((conversation) => conversation.isActive).length} active`
-                      : undefined
-                  }
-                />
-                <SurfaceCard
-                  label="Operator Channel"
-                  value={
-                    run.session?.canSendCommands ? "Ready" : "Reconnecting"
-                  }
-                  subtitle={formatDetailTimestamp(
-                    run.lastHeartbeatAt ?? run.updatedAt,
-                  )}
-                />
-              </div>
-              <div className="space-y-2">
-                {recentChatMessages.map((message) => (
-                  <div key={message.id} className="px-1 py-1">
-                    <div className="flex items-center gap-2 text-2xs text-muted">
-                      <span>{message.senderName ?? message.senderId}</span>
-                      <span className="ml-auto">
-                        {formatDetailTimestamp(message.createdAt)}
-                      </span>
-                    </div>
-                    <div className="mt-1 whitespace-pre-wrap text-xs-tight leading-5 text-txt">
-                      {message.content}
-                    </div>
+            <div className="flex flex-col gap-2">
+              <StatLine
+                label="Conversations"
+                value={
+                  teamConversations.length > 0
+                    ? teamConversations
+                        .slice(0, 3)
+                        .map((conversation) => conversation.name || "Untitled")
+                        .join(" · ")
+                    : "No team conversations"
+                }
+                subtitle={
+                  teamConversations.length > 0
+                    ? `${teamConversations.filter((conversation) => conversation.isActive).length} active`
+                    : undefined
+                }
+              />
+              <StatLine
+                label="Operator channel"
+                value={run.session?.canSendCommands ? "Ready" : "Reconnecting"}
+                subtitle={formatDetailTimestamp(
+                  run.lastHeartbeatAt ?? run.updatedAt,
+                )}
+              />
+              {recentChatMessages.map((message) => (
+                <div key={message.id}>
+                  <div className="flex items-center gap-2 text-2xs text-muted">
+                    <span>{message.senderName ?? message.senderId}</span>
+                    <span className="ml-auto">
+                      {formatDetailTimestamp(message.createdAt)}
+                    </span>
                   </div>
-                ))}
-                {recentChatMessages.length === 0 ? (
-                  <div className="px-1 py-1 text-xs-tight italic text-muted">
-                    —
+                  <div className="mt-1 whitespace-pre-wrap text-xs-tight leading-5 text-txt">
+                    {message.content}
                   </div>
-                ) : null}
-              </div>
-            </SurfaceSection>
+                </div>
+              ))}
+            </div>
           ) : null}
 
           {showChat ? (
-            <SurfaceSection title="Steering">
+            <div className="flex flex-col gap-2">
               {suggestedPrompts.length ? (
                 <div className="flex flex-wrap gap-2">
                   {suggestedPrompts.map((prompt, index) => (
@@ -565,26 +571,24 @@ export function FeedOperatorSurface({
                   ))}
                 </div>
               ) : null}
-              <div className="space-y-2">
-                <SurfaceCard
-                  label="Autonomy"
-                  value={agentStatus?.autonomous ? "Active" : "Paused"}
-                  subtitle={
-                    agentStatus
-                      ? `${agentStatus.autonomousTrading ? "Trading" : "Trading paused"} · ${agentStatus.autonomousPosting ? "Posting" : "Posting paused"}`
-                      : undefined
-                  }
-                />
-                <SurfaceCard
-                  label="Wallet"
-                  value={wallet ? formatCurrency(wallet.balance) : "—"}
-                  subtitle={
-                    wallet
-                      ? `${wallet.transactions.length} transactions · trading ${formatCurrency(tradingBalance)}`
-                      : undefined
-                  }
-                />
-              </div>
+              <StatLine
+                label="Autonomy"
+                value={agentStatus?.autonomous ? "Active" : "Paused"}
+                subtitle={
+                  agentStatus
+                    ? `${agentStatus.autonomousTrading ? "Trading" : "Trading paused"} · ${agentStatus.autonomousPosting ? "Posting" : "Posting paused"}`
+                    : undefined
+                }
+              />
+              <StatLine
+                label="Wallet"
+                value={wallet ? formatCurrency(wallet.balance) : "No wallet"}
+                subtitle={
+                  wallet
+                    ? `${wallet.transactions.length} transactions · trading ${formatCurrency(tradingBalance)}`
+                    : undefined
+                }
+              />
               <div className="flex flex-wrap gap-2">
                 <Button
                   ref={toggleAgentButton.ref}
@@ -599,11 +603,11 @@ export function FeedOperatorSurface({
                   {controlAction === "pause" ? "Pause" : "Resume"}
                 </Button>
               </div>
-            </SurfaceSection>
+            </div>
           ) : null}
 
           {statusMessage ? (
-            <div className="bg-card/70 px-1 py-2 text-xs-tight leading-5 text-muted-strong">
+            <div className="px-1 py-2 text-xs-tight leading-5 text-muted-strong">
               {statusMessage}
             </div>
           ) : null}

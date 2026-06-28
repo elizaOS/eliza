@@ -16,8 +16,10 @@ import {
   Component,
   type ErrorInfo,
   type ReactNode,
+  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
@@ -134,6 +136,23 @@ function isWidgetSlot(value: string): value is WidgetSlot {
   return WIDGET_SLOTS.has(value);
 }
 
+/**
+ * Map a home widget's declared `size` to STATIC Tailwind grid-span classes.
+ * The classes are spelled out as literals (never interpolated) so Tailwind's
+ * content scanner keeps them. Default footprint is 2x1.
+ */
+function spanClassForSize(size: PluginWidgetDeclaration["size"]): string {
+  if (!size) return "col-span-2 row-span-1";
+  const cols =
+    size.cols === 1
+      ? "col-span-1"
+      : size.cols === 4
+        ? "col-span-4"
+        : "col-span-2";
+  const rows = size.rows === 2 ? "row-span-2" : "row-span-1";
+  return `${cols} ${rows}`;
+}
+
 export interface WidgetHostProps {
   /** Which slot to render widgets for. */
   slot: WidgetSlot;
@@ -156,6 +175,13 @@ export interface WidgetHostProps {
    * visibility overrides on top of the registry's plugin-enabled gate.
    */
   filter?: (declaration: PluginWidgetDeclaration) => boolean;
+  /**
+   * Rendered in place of an empty host (when `hideWhenEmpty` and no widget has
+   * content). The home dashboard passes the always-on default widgets (clock /
+   * date / calendar) here so it is never blank, while the data-driven widgets
+   * keep self-hiding until they have something to show (#9143).
+   */
+  fallback?: ReactNode;
 }
 
 export function WidgetHost({
@@ -166,6 +192,7 @@ export function WidgetHost({
   layout = "stack",
   hideWhenEmpty = true,
   filter,
+  fallback,
 }: WidgetHostProps) {
   const plugins = useAppSelectorShallow((s) =>
     Array.isArray(s.plugins) ? s.plugins : [],
@@ -303,10 +330,15 @@ export function WidgetHost({
       displayed
         .map(({ declaration, Component }) => {
           const widgetKey = `${declaration.pluginId}/${declaration.id}`;
+          // Span classes only apply on the home 4-col grid; other slots leave
+          // `spanClassName` undefined so their widgets stay full-width.
+          const spanClassName =
+            slot === "home" ? spanClassForSize(declaration.size) : undefined;
           const widgetProps: WidgetProps = {
             ...widgetPropsBase,
             pluginId: declaration.pluginId,
             pluginState: pluginById.get(declaration.pluginId),
+            spanClassName,
           };
 
           if (Component) {
@@ -321,7 +353,7 @@ export function WidgetHost({
             return (
               <WidgetErrorBoundary key={widgetKey} widgetId={widgetKey}>
                 <div
-                  className="min-w-0"
+                  className={`min-w-0 ${spanClassName ?? ""}`}
                   data-testid={`widget-uispec-${declaration.id}`}
                 >
                   <UiRenderer
@@ -338,28 +370,60 @@ export function WidgetHost({
           return null;
         })
         .filter((node): node is React.JSX.Element => node !== null),
-    [displayed, widgetPropsBase, pluginById],
+    [displayed, widgetPropsBase, pluginById, slot],
   );
 
-  if (children.length === 0 && hideWhenEmpty) return null;
+  // Whether the resolved widgets actually rendered any visible DOM. `children`
+  // counts RESOLVED widget elements, but each data widget self-hides (renders
+  // `null`) when it has nothing to show — so the home can resolve the
+  // always-visible cards (notifications, needs-response, …) yet paint nothing.
+  // We measure the real rendered child count after layout and, when a `fallback`
+  // is supplied (the home's default clock/calendar), show it whenever the
+  // widgets painted nothing. Only meaningful when a fallback exists.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [renderedEmpty, setRenderedEmpty] = useState(false);
+  useLayoutEffect(() => {
+    if (fallback == null) return;
+    const el = containerRef.current;
+    setRenderedEmpty(el == null || el.childElementCount === 0);
+  });
 
+  // No widget even resolved → render the fallback directly (or hide).
+  if (children.length === 0 && hideWhenEmpty) {
+    return fallback ?? null;
+  }
+
+  // The home slot uses a fixed 4-column grid so each widget's static col-span
+  // class places it; other grid surfaces keep the responsive 1→2 column grid,
+  // and non-grid layouts stay a vertical stack.
   const layoutClass =
-    layout === "grid"
-      ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
-      : "flex flex-col gap-3";
+    slot === "home"
+      ? "grid grid-cols-4 gap-2.5"
+      : layout === "grid"
+        ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+        : "flex flex-col gap-3";
+
+  const showFallback = fallback != null && renderedEmpty;
 
   return (
-    <div
-      // `contain: layout` (CSS containment): a widget reorder/resize repaints
-      // within this host and never reflows the surrounding page, so a ranking
-      // change doesn't jump the whole home (#9304).
-      className={`${layoutClass} ${className ?? ""}`}
-      style={{ contain: "layout" }}
-      data-testid={`widget-host-${slot}`}
-      data-layout={layout}
-      data-slot={slot}
-    >
-      {children}
-    </div>
+    <>
+      <div
+        ref={containerRef}
+        // `contain: layout` (CSS containment): a widget reorder/resize repaints
+        // within this host and never reflows the surrounding page, so a ranking
+        // change doesn't jump the whole home (#9304).
+        className={`${layoutClass} ${className ?? ""}`}
+        style={{ contain: "layout" }}
+        data-testid={`widget-host-${slot}`}
+        data-layout={layout}
+        data-slot={slot}
+      >
+        {children}
+      </div>
+      {/* The widgets resolved but all self-hid (no data) → show the default
+          widgets so the dashboard is never blank. The empty container above has
+          zero height, so visually only the fallback shows. */}
+      {showFallback ? fallback : null}
+    </>
   );
 }

@@ -73,6 +73,13 @@ add_test(NAME wakeword_window_test COMMAND wakeword_window_test)
 add_executable(wakeword_runtime_test test/wakeword_runtime_test.c)
 target_link_libraries(wakeword_runtime_test PRIVATE wakeword)
 target_compile_options(wakeword_runtime_test PRIVATE -O2 -Wall -Wextra)
+
+# Real-audio scorer (no add_test — it needs an audio file). Drives arbitrary
+# 16 kHz mono f32 PCM through the runtime so the shipped head can be verified
+# against real speech. See test/wakeword_score_raw.c.
+add_executable(wakeword_score_raw test/wakeword_score_raw.c)
+target_link_libraries(wakeword_score_raw PRIVATE wakeword)
+target_compile_options(wakeword_score_raw PRIVATE -O2 -Wall -Wextra)
 add_test(NAME wakeword_runtime_test
          COMMAND wakeword_runtime_test
                  ${CMAKE_BINARY_DIR}/wakeword/hey-eliza.melspec.gguf

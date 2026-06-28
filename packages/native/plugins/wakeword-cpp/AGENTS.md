@@ -39,12 +39,17 @@ are not present.
   `scripts/wakeword_to_gguf.py::OPENWAKEWORD_UPSTREAM_COMMIT`. The
   runtime reads `wakeword.upstream_commit` from each GGUF and refuses
   loads when the three GGUFs disagree among themselves.
-- The temporary head bundled in eliza-1 today
-  (`hey-eliza-int8.onnx`) is the upstream `hey_jarvis_v0.1` weights
-  re-rendered through the int8 path under the eliza-1 head name. A
-  real "hey eliza" head is trained by
+- The **real** "hey eliza" head now ships, registered as `wakeword` v0.3.0
+  (`packages/shared/src/local-inference/voice-models.ts`,
+  `voice/wakeword/hey-eliza.{melspec,embedding,classifier}.gguf` on
+  HF `elizaos/eliza-1@c544bb4c`). It was trained by
   `packages/training/scripts/wakeword/train_eliza1_wakeword_head.py`
-  and is a separate workstream.
+  (`--no-mel-rescale`) and is verified end-to-end on real audio:
+  "hey eliza" scores ~1.0 while "hey jarvis" scores ~0.13 (i.e. it is the
+  trained eliza-1 head, NOT the old `hey_jarvis_v0.1` placeholder).
+  Reproduce with `test/wakeword_score_raw.c` — see
+  `.github/issue-evidence/9880-wake-word/`. The `hey-eliza-int8.onnx`
+  placeholder note is historical (pre-v0.3.0).
 
 ## Three-stage pipeline + GGUF conversion
 

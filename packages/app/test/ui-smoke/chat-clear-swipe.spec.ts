@@ -378,3 +378,68 @@ test("clearing an empty draft replaces it instead of piling up orphan conversati
   await expect(page.getByTestId("conversation-undo-toast")).toHaveCount(0);
   await expectNoPageDiagnostics(page, testInfo.title);
 });
+
+test("clearing activates a fast, greeting-less conversation and backfills the greeting (no frozen spinner)", async ({
+  page,
+}, testInfo) => {
+  // Device-like create: the conversation record comes back WITHOUT an inline
+  // greeting (the client no longer asks the create to bootstrap one — that work
+  // is model-bound and on the single-threaded on-device agent it would block
+  // the create for many seconds, freezing the new chat behind the loading
+  // spinner). The create is intentionally delayed to mimic that queueing; the
+  // greeting then arrives via the separate /greeting endpoint. The fresh chat
+  // must activate and the greeting must backfill — never hang on a spinner.
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const n = store.created.length + 1;
+    const id = `conv-fresh-${n}`;
+    const ts = new Date(NOW + n * 1000).toISOString();
+    const record: ConvRecord = {
+      id,
+      title: "New chat",
+      roomId: `room-fresh-${n}`,
+      createdAt: ts,
+      updatedAt: ts,
+    };
+    store.convos.unshift(record);
+    // The greeting is registered for the /greeting endpoint, NOT returned inline.
+    store.messages[id] = [
+      {
+        id: `g-${id}`,
+        role: "assistant",
+        text: `FRESH GREETING ${n} — how can I help?`,
+        timestamp: NOW + n * 1000,
+      },
+    ];
+    store.created.push(id);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ conversation: record }), // no `greeting` field
+    });
+  });
+
+  await openAppPath(page, "/chat");
+  const overlay = page.getByTestId("continuous-chat-overlay");
+  await expect(overlay).toBeVisible({ timeout: 60_000 });
+  await pointerDrag(page, '[data-testid="chat-sheet-grabber"]', 0, -400, 8);
+
+  const thread = page.locator("#continuous-thread");
+  const clear = page.getByTestId("chat-full-clear");
+  await expect(clear).toBeVisible({ timeout: 15_000 });
+  await clear.click();
+
+  // The greeting-less create activates the fresh conversation and the greeting
+  // backfills from /greeting — the thread shows it (not the old standup, not a
+  // permanently empty/spinning sheet).
+  await expect(thread).toContainText("FRESH GREETING 1", { timeout: 20_000 });
+  await expect(thread).not.toContainText("STANDUP");
+  expect(store.created.length).toBe(1);
+  // The spinner must have resolved — it is gone once the greeting is shown.
+  await expect(page.getByTestId("chat-thread-loading")).toHaveCount(0);
+  await expectNoPageDiagnostics(page, testInfo.title);
+});

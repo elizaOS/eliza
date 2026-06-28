@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
@@ -46,17 +46,12 @@ afterEach(() => {
 });
 
 describe("AppearanceSettingsSection background controls", () => {
-  it("consolidates the unified background controls into Appearance settings", () => {
-    const setBackgroundConfig = vi.fn();
-    seed({ setBackgroundConfig });
+  it("keeps background controls in the dedicated Background settings section", () => {
+    seed();
 
     render(<AppearanceSettingsSection />);
 
-    expect(screen.getByTestId("background-settings-controls")).not.toBeNull();
-    fireEvent.click(screen.getByLabelText("Set background to Blue"));
-    expect(setBackgroundConfig).toHaveBeenCalledWith({
-      mode: "shader",
-      color: "#2563eb",
-    });
+    expect(screen.queryByTestId("background-settings-controls")).toBeNull();
+    expect(screen.queryByLabelText("Set background to Green")).toBeNull();
   });
 });

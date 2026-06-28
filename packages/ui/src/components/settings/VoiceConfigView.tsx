@@ -18,6 +18,7 @@ import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets
 import { useAppSelector } from "../../state";
 import {
   hasConfiguredApiKey,
+  normalizeForWake,
   PREMADE_VOICES,
   sanitizeApiKey,
   VOICE_PROVIDERS,
@@ -493,7 +494,20 @@ function WakeWordSection({
   serverConfig?: Partial<SwabbleConfig> | null;
 }) {
   const t = useAppSelector((s) => s.t);
-  const [triggers, setTriggers] = useState<string[]>(["eliza"]);
+  // The wake phrase follows the character name (issue #9880): when the user
+  // renames the character in settings, the default trigger tracks it unless they
+  // have customized the trigger list themselves.
+  const characterName = useAppSelector(
+    (s) =>
+      s.characterData?.name?.trim() ||
+      s.agentStatus?.agentName?.trim() ||
+      "eliza",
+  );
+  const defaultTrigger = normalizeForWake(characterName) || "eliza";
+  const [triggers, setTriggers] = useState<string[]>([defaultTrigger]);
+  // Tracks the last name-derived trigger we applied, so a rename only replaces
+  // an unchanged default and never clobbers a user-customized phrase.
+  const autoTriggerRef = useRef(defaultTrigger);
   const [triggerInput, setTriggerInput] = useState("");
   const [postTriggerGap, setPostTriggerGap] = useState(0.45);
   const [modelSize, setModelSize] =
@@ -511,7 +525,11 @@ function WakeWordSection({
         ]);
         const resolved = config ?? serverConfig ?? null;
         if (resolved) {
-          if (resolved.triggers?.length) setTriggers(resolved.triggers);
+          if (resolved.triggers?.length) {
+            setTriggers(resolved.triggers);
+            if (resolved.triggers.length === 1)
+              autoTriggerRef.current = resolved.triggers[0];
+          }
           if (resolved.minPostTriggerGap != null)
             setPostTriggerGap(resolved.minPostTriggerGap);
           if (resolved.modelSize) setModelSize(resolved.modelSize);
@@ -565,6 +583,20 @@ function WakeWordSection({
       // Ignore
     }
   }, []);
+
+  // Propagate a character rename into the wake trigger, but only when the
+  // trigger is still the name-derived default — never overwrite a phrase the
+  // user typed themselves (issue #9880).
+  useEffect(() => {
+    if (
+      triggers.length === 1 &&
+      triggers[0] === autoTriggerRef.current &&
+      defaultTrigger !== autoTriggerRef.current
+    ) {
+      autoTriggerRef.current = defaultTrigger;
+      void handleTriggersChange([defaultTrigger]);
+    }
+  }, [defaultTrigger, triggers, handleTriggersChange]);
 
   const addTrigger = useCallback(
     (raw: string) => {

@@ -102,16 +102,18 @@ describe("J2 — spine + first-run integration", () => {
     // Step 2: provide wake time → completes.
     const done = await service.runDefaultsPath({ wakeTime: "6:30am" });
     expect(done.status).toBe("ok");
-    expect(done.scheduledTasks.length).toBe(4);
+    expect(done.scheduledTasks.length).toBe(5);
 
     const cached = await readFallbackScheduledTasks(runtime);
-    expect(cached.length).toBe(4);
+    expect(cached.length).toBe(5);
     const slots = new Set(
       cached
         .map((t) => t.input.metadata?.slot)
         .filter((s): s is string => typeof s === "string"),
     );
-    expect(slots).toEqual(new Set(["gm", "gn", "checkin", "morningBrief"]));
+    expect(slots).toEqual(
+      new Set(["gm", "gn", "checkin", "morningBrief", "weeklyReview"]),
+    );
 
     // Step 3: pipe the cached inputs into a fresh in-memory runner — this
     // models what the production runner does when it loads cached tasks
@@ -125,7 +127,7 @@ describe("J2 — spine + first-run integration", () => {
       const t = await runner.schedule(cachedRec.input);
       scheduled.push(t);
     }
-    expect(scheduled.length).toBe(4);
+    expect(scheduled.length).toBe(5);
     expect(scheduled.every((t) => t.state.status === "scheduled")).toBe(true);
 
     // Step 4: apply lifecycle verbs across the seeded tasks.
@@ -150,6 +152,31 @@ describe("J2 — spine + first-run integration", () => {
       minutes: 30,
     });
     expect(snoozed.state.firedAt).toBe("2026-05-09T08:30:00.000Z");
+  });
+
+  it("boot seeder feeds the spine runner and is idempotent across two boots", async () => {
+    const runtime = createMinimalRuntimeStub();
+    // Use the real spine runner (production-shaped) as the FirstRunService
+    // runner so boot-seeded inputs flow straight into the scheduler store.
+    const runner = makeFreshRunner();
+    const service = new FirstRunService(runtime, { runner });
+
+    // First boot on an already-initialized runtime that never ran first-run:
+    // the full default pack materializes in the spine store.
+    const firstBoot = await service.seedDefaultPackOnBoot();
+    expect(firstBoot.seeded.length).toBe(5);
+    const afterFirst = await runner.list();
+    expect(afterFirst.length).toBe(5);
+
+    // Second boot: per-key marker short-circuits before scheduling, so the
+    // spine store still holds exactly five rows (no duplicates).
+    const secondBoot = await new FirstRunService(runtime, {
+      runner,
+    }).seedDefaultPackOnBoot();
+    expect(secondBoot.seeded.length).toBe(0);
+    expect(secondBoot.skipped.length).toBe(5);
+    const afterSecond = await runner.list();
+    expect(afterSecond.length).toBe(5);
   });
 
   it("first-run replay path leaves scheduled inputs idempotent under the runner", async () => {

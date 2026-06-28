@@ -68,6 +68,7 @@ export const facewearPlugin: Plugin = {
     // so no brand-new `@elizaos/core` runtime export reaches the bundle build.
     {
       id: "facewear",
+      viewKind: "preview",
       path: "/apps/facewear",
       label: "Facewear",
       description:
@@ -103,6 +104,7 @@ export const facewearPlugin: Plugin = {
     // SmartglassesSpatialView source (via the SmartglassesPanelView wrapper).
     {
       id: "smartglasses",
+      viewKind: "preview",
       path: "/apps/smartglasses",
       label: "Smartglasses",
       description:
@@ -152,6 +154,7 @@ export const facewearPlugin: Plugin = {
     navTabs: [
       {
         id: "facewear",
+        viewKind: "preview",
         label: "Facewear",
         icon: "Glasses",
         path: "/apps/facewear",
@@ -159,6 +162,7 @@ export const facewearPlugin: Plugin = {
       },
       {
         id: "smartglasses",
+        viewKind: "preview",
         label: "Smartglasses",
         icon: "Glasses",
         path: "/apps/smartglasses",

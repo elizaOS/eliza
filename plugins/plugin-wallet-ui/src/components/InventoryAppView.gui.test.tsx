@@ -46,6 +46,35 @@ vi.mock("@elizaos/ui", () => ({
   client: walletClient,
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", { type: "button", ...props }),
+  ChatEmptyStateWithRecommendations: ({
+    title,
+    recommendations = [],
+    primaryAction,
+  }: {
+    title?: string;
+    recommendations?: Array<string | { label: string; prompt?: string }>;
+    primaryAction?: { label: string; onClick: () => void };
+  }) =>
+    React.createElement(
+      "div",
+      null,
+      title ? React.createElement("div", null, title) : null,
+      primaryAction
+        ? React.createElement(
+            "button",
+            { type: "button", onClick: primaryAction.onClick },
+            primaryAction.label,
+          )
+        : null,
+      ...recommendations.map((rec) => {
+        const label = typeof rec === "string" ? rec : rec.label;
+        return React.createElement(
+          "button",
+          { type: "button", key: label },
+          label,
+        );
+      }),
+    ),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   useActivityEvents: () => appHooks.activityEvents,
   useApp: appHooks.useApp,
@@ -393,7 +422,7 @@ describe("InventoryView GUI — populated holdings", () => {
 });
 
 describe("InventoryView GUI — rail tab switching", () => {
-  it("switches Tokens -> DeFi -> NFTs lists and shows counts", async () => {
+  it("switches Tokens -> DeFi -> NFTs lists", async () => {
     appHooks.useApp.mockReturnValue(makeAppState());
     render(React.createElement(InventoryAppView));
     const sidebar = await screen.findByTestId("wallets-sidebar");
@@ -404,9 +433,11 @@ describe("InventoryView GUI — rail tab switching", () => {
     ).toBeTruthy();
     expect(within(sidebar).queryByText("Agent NFT")).toBeNull();
 
-    // DeFi: no LP-like positions in the fixture -> empty state.
+    // DeFi: no LP-like positions in the fixture -> recommendation empty state.
     fireEvent.click(within(sidebar).getByRole("button", { name: "DeFi" }));
-    expect(within(sidebar).getByText("None")).toBeTruthy();
+    expect(
+      within(sidebar).getByText("Where can I stake my tokens?"),
+    ).toBeTruthy();
     expect(
       within(sidebar).queryByText(hasFlatText("100.0000 USDC")),
     ).toBeNull();
@@ -415,13 +446,13 @@ describe("InventoryView GUI — rail tab switching", () => {
     fireEvent.click(within(sidebar).getByRole("button", { name: "NFTs" }));
     expect(within(sidebar).getByText("Agent NFT")).toBeTruthy();
 
-    // Tab count badges: Tokens=4 (BNB + USDC + CAKE + SOL native), DeFi=0, NFTs=1.
+    // Tabs are icon + label only (no count badge).
     const tokensTab = within(sidebar).getByRole("button", { name: "Tokens" });
     const defiTab = within(sidebar).getByRole("button", { name: "DeFi" });
     const nftsTab = within(sidebar).getByRole("button", { name: "NFTs" });
-    expect(tokensTab.textContent).toBe("Tokens4");
-    expect(defiTab.textContent).toBe("DeFi0");
-    expect(nftsTab.textContent).toBe("NFTs1");
+    expect(tokensTab.textContent).toBe("Tokens");
+    expect(defiTab.textContent).toBe("DeFi");
+    expect(nftsTab.textContent).toBe("NFTs");
   });
 });
 
@@ -562,11 +593,11 @@ describe("InventoryView GUI — P&L window selector + chart", () => {
     await screen.findByTestId("wallets-sidebar");
 
     // PnlChart renders a polyline (pnlSeries has >=2 finite points), not the
-    // empty "P&L pending" placeholder.
+    // empty "Trade to see your P&L here" placeholder.
     await waitFor(() =>
       expect(container.querySelector("polyline")).toBeTruthy(),
     );
-    expect(screen.queryByText("P&L pending")).toBeNull();
+    expect(screen.queryByText("Trade to see your P&L here")).toBeNull();
 
     // SummaryChip shows the formatted realized P&L (1.5 BNB, positive).
     expect(screen.getByText("+1.5 BNB")).toBeTruthy();
@@ -601,7 +632,7 @@ describe("InventoryView GUI — P&L window selector + chart", () => {
     appHooks.useApp.mockReturnValue(makeAppState());
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
-    expect(await screen.findByText("P&L pending")).toBeTruthy();
+    expect(await screen.findByText("Trade to see your P&L here")).toBeTruthy();
   });
 });
 
@@ -656,8 +687,9 @@ describe("InventoryView GUI — dashboard panels", () => {
 
     // Danger banner.
     expect(screen.getByText("RPC provider unreachable")).toBeTruthy();
-    // Empty panels.
-    expect(await screen.findAllByText("None")).not.toHaveLength(0);
+    // Empty panels now recommend a next step instead of showing a dead box.
+    expect(await screen.findByText("How do I provide liquidity?")).toBeTruthy();
+    expect(screen.getByText("What NFT collections are trending?")).toBeTruthy();
   });
 });
 
@@ -677,8 +709,8 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    // WalletEmptyHero unconfigured variant + keys CTA.
-    expect((await screen.findAllByText("Wallet")).length).toBeGreaterThan(0);
+    // WalletEmptyHero unconfigured variant: motif + keys CTA (no title text).
+    expect(await screen.findByLabelText("Empty wallet")).toBeTruthy();
     const configure = screen.getByRole("button", { name: "Keys" });
     fireEvent.click(configure);
     expect(state.setTab).toHaveBeenCalledWith("settings");

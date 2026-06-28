@@ -912,9 +912,18 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       const creationEpoch = conversationHydrationEpochRef.current;
 
       try {
+        // Create WITHOUT bootstrapGreeting: server-side greeting generation is
+        // model-bound, and on the single-threaded on-device agent it queues
+        // behind in-flight FFI work (a warming/loading 1.4 GB model, an active
+        // generation), so a `bootstrapGreeting` create can block for many
+        // seconds — up to its 120 s timeout — before the conversation record
+        // even comes back. That froze the new chat behind the loading spinner
+        // ("reset shows a spinner but never makes the new chat"). Creating bare
+        // is a quick insert, so the fresh conversation activates immediately
+        // (below) and the greeting is fetched separately/async (the inline path
+        // is still honored if a server ever returns one).
         const { conversation: rawConversation, greeting: inlineGreeting } =
           await client.createConversation(title, {
-            bootstrapGreeting: true,
             lang: uiLanguage,
           });
         if (!isConversationRecord(rawConversation)) {

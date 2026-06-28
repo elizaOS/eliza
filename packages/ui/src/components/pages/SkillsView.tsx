@@ -6,7 +6,7 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import { ChatSearchHint } from "../composites/chat-search-hint";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
@@ -522,52 +522,34 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
       >
         <div data-testid="skills-detail">
           <PagePanel variant="section">
-            <PagePanel.Header
-              heading={t("advancedpageview.Skills", {
-                defaultValue: "Skills",
-              })}
-              className="border-border/35"
-              actions={
-                <PagePanel.Meta className="border-border/45 px-2.5 py-1 font-bold tracking-[0.16em] text-muted">
-                  {t("skillsview.VisibleCount", {
-                    defaultValue: "{{count}} shown",
-                    count: filteredSkills.length,
-                  })}
-                </PagePanel.Meta>
-              }
-            />
-
-            <div className="border-b border-border/35 px-4 py-2.5 sm:px-5">
-              <ChatSearchHint noun="skills" query={filterText} />
-            </div>
-
-            <div className="bg-bg/18 px-4 py-4 sm:px-5">
+            <div className="px-4 py-4 sm:px-5">
               {skills.length === 0 && !skillCreateFormOpen ? (
                 <div
                   data-testid="skills-empty-state"
-                  className="grid min-h-[20rem] place-items-center px-6 py-10"
+                  className="flex min-h-[20rem]"
                 >
-                  <div className="w-full max-w-2xl text-center">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-sm bg-accent/12 text-accent">
-                      <Brain className="h-7 w-7" />
-                    </div>
-                    <h2 className="mt-4 text-base font-semibold text-txt">
-                      {t("skillsview.noSkillsInstalled", {
-                        defaultValue: "No Skills Installed",
-                      })}
-                    </h2>
-                    <div className="mt-6 flex w-full flex-col justify-center gap-2 sm:w-auto sm:flex-row sm:gap-3">
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
-                        onClick={() => setInstallModalOpen(true)}
-                      >
-                        <Store className="mr-2 h-4 w-4" />
-                        {t("skillsview.BrowseMarketplace")}
-                      </Button>
-                    </div>
-                  </div>
+                  <ChatEmptyStateWithRecommendations
+                    icon={Brain}
+                    title={t("skillsview.noSkillsInstalled", {
+                      defaultValue: "No Skills Installed",
+                    })}
+                    recommendations={[
+                      t("skillsview.recommendEmail", {
+                        defaultValue: "Find me an Email skill to install",
+                      }),
+                      t("skillsview.recommendSearch", {
+                        defaultValue: "Add a web Search skill",
+                      }),
+                      t("skillsview.recommendWeather", {
+                        defaultValue: "Install a Weather skill",
+                      }),
+                    ]}
+                    primaryAction={{
+                      label: t("skillsview.BrowseMarketplace"),
+                      onClick: () => setInstallModalOpen(true),
+                      icon: Store,
+                    }}
+                  />
                 </div>
               ) : filteredSkills.length === 0 && !skillCreateFormOpen ? (
                 <PagePanel.Empty
@@ -584,8 +566,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 />
               ) : skillCreateFormOpen ? (
                 <PagePanel variant="surface" className="overflow-hidden">
-                  <PagePanel.Header heading={t("skillsview.CreateNewSkill")} />
-                  <div className="bg-bg/18 px-4 py-4 sm:px-5">
+                  <div className="px-4 py-4 sm:px-5">
                     <div className="flex flex-col gap-3">
                       <div>
                         <span className="mb-1 block text-xs-tight font-medium text-muted">
@@ -675,7 +656,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 >
                   <div className="flex items-start gap-3 px-4 py-4 sm:px-5">
                     <div className="mt-0.5 shrink-0">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-accent/30 bg-accent/18 p-2.5 text-base font-bold text-txt-strong">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-sm bg-accent/18 p-2.5 text-base font-bold text-txt-strong">
                         {selectedSkill.name.charAt(0).toUpperCase()}
                       </div>
                     </div>
@@ -745,7 +726,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       />
                     </div>
                   </div>
-                  <div className="bg-bg/18 px-4 py-4 sm:px-5">
+                  <div className="px-4 py-4 sm:px-5">
                     <div className="mb-4 flex flex-wrap items-center gap-2">
                       <Button
                         ref={editSourceButton.ref}
@@ -790,7 +771,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                           </span>
                         </div>
                         {skillReviewReport.findings.length > 0 && (
-                          <div className="custom-scrollbar max-h-64 overflow-y-auto rounded-sm border border-border/35 bg-card/30">
+                          <div className="custom-scrollbar max-h-64 overflow-y-auto">
                             {skillReviewReport.findings.map((finding, _idx) => (
                               <div
                                 key={`${finding.file}:${finding.line}:${finding.message}`}
