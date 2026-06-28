@@ -27,6 +27,7 @@ import {
   isTranscriptionStartPhrase,
   stripExitPhrase,
 } from "../../voice/transcription-exit";
+import { useWakeListenWindow } from "../../voice/useWakeListenWindow";
 import {
   createVoiceCapture,
   type VoiceCaptureBackend,
@@ -914,6 +915,33 @@ export function useShellController(): ShellController {
       if (!responding) startCapture("converse");
     }
   }, [responding, startCapture, stopCapture, voiceOutput]);
+
+  // "Hey eliza" wake word: a native detection arms a bounded listening window
+  // that opens the mic and closes once the agent has responded (or after an idle
+  // timeout if nothing is said). Implemented as a temporary hands-free engage —
+  // it never persists "always-on", and it stays inert when the user already
+  // chose always-on (wake is only an entry ramp, never an exit). See
+  // ../../voice/VOICE_UX.md.
+  const wakeAlreadyAlwaysOn =
+    handsFree && loadContinuousChatMode() === "always-on";
+  useWakeListenWindow({
+    enabled: true,
+    alwaysOn: wakeAlreadyAlwaysOn,
+    agentBusy: responding,
+    onOpen: React.useCallback(() => {
+      setIsOpen(true);
+      setHandsFree(true);
+      handsFreeRef.current = true;
+      voiceOutput.unlockAudio();
+      if (!responding && !captureRef.current) startCapture("converse");
+    }, [responding, startCapture, voiceOutput]),
+    onClose: React.useCallback(() => {
+      // Close the temporary window without disturbing a persisted mode.
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      if (captureRef.current) stopCapture();
+    }, [stopCapture]),
+  });
 
   // Toggle transcription mode (long-form, record-only — the agent never replies
   // to a transcribed turn). It is an ADDITIVE voice layer: the mic stays on and

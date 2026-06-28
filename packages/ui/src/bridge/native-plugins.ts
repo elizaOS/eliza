@@ -42,6 +42,20 @@ export interface SwabbleAudioLevelEvent {
   peak?: number;
 }
 
+/**
+ * Emitted by the native detector when a configured trigger phrase ("hey eliza")
+ * fires. This is the signal that arms the UI listening window
+ * (`wake-listen-window.ts`) — distinct from the continuous `audioLevel` meter.
+ */
+export interface SwabbleWakeWordEvent {
+  /** The trigger phrase that matched (e.g. "eliza"). */
+  trigger: string;
+  /** Detector confidence in [0,1] when available. */
+  confidence?: number;
+  /** Detection timestamp (epoch ms) when the native layer supplies one. */
+  timestamp?: number;
+}
+
 export interface SwabblePluginLike extends NativePlugin {
   getConfig(): Promise<{ config: SwabbleConfig | null }>;
   isListening(): Promise<{ listening: boolean }>;
@@ -51,6 +65,10 @@ export interface SwabblePluginLike extends NativePlugin {
   addListener(
     eventName: "audioLevel",
     listenerFunc: (event: SwabbleAudioLevelEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "wakeWord",
+    listenerFunc: (event: SwabbleWakeWordEvent) => void,
   ): Promise<PluginListenerHandle>;
 }
 

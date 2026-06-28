@@ -39,6 +39,10 @@ export {
 } from "./playback-frame-pump";
 export * from "./types";
 export {
+  type UseWakeListenWindowOptions,
+  useWakeListenWindow,
+} from "./useWakeListenWindow";
+export {
   createVoiceCapture,
   type VoiceCaptureBackend,
   type VoiceCaptureFactoryOptions,
@@ -53,3 +57,13 @@ export {
   type PresetRuntimeMode,
   pickDefaultVoiceProvider,
 } from "./voice-provider-defaults";
+export {
+  DEFAULT_WAKE_WINDOW_CONFIG,
+  initialWakeWindowState,
+  micShouldBeOpen,
+  type WakeWindowConfig,
+  type WakeWindowEvent,
+  type WakeWindowPhase,
+  type WakeWindowState,
+  wakeWindowReducer,
+} from "./wake-listen-window";
