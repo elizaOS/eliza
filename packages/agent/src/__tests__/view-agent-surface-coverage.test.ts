@@ -26,7 +26,7 @@ const CONVERTED_PLUGINS = [
   "plugin-phone",
   "plugin-polymarket",
   "plugin-screenshare",
-  "plugin-shopify-ui",
+  "plugin-shopify",
   "plugin-steward-app",
   "plugin-task-coordinator",
   "plugin-training",

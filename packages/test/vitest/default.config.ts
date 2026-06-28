@@ -480,7 +480,7 @@ export default defineConfig({
       "eliza/packages/app-core/src/**/*.test.tsx",
       "eliza/packages/agent/src/runtime/roles/test/**/*.test.ts",
       "eliza/plugins/plugin-personal-assistant/src/selfcontrol/**/*.test.ts",
-      "eliza/plugins/plugin-shopify-ui/src/**/*.test.ts",
+      "eliza/plugins/plugin-shopify/src/**/*.test.ts",
       "eliza/plugins/plugin-steward-app/src/**/*.test.ts",
       "eliza/plugins/plugin-wallet-ui/src/**/*.test.ts",
       "eliza/plugins/plugin-wallet-ui/src/**/*.test.tsx",

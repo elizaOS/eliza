@@ -36,8 +36,8 @@
   },
   {
     "slug": "shopify",
-    "canonicalName": "@elizaos/plugin-shopify-ui",
-    "aliases": ["@elizaos/plugin-shopify"]
+    "canonicalName": "@elizaos/plugin-shopify",
+    "aliases": ["@elizaos/plugin-shopify-ui"]
   },
   {
     "slug": "screenshare",

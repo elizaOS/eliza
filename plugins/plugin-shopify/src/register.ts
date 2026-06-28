@@ -17,7 +17,7 @@ if (typeof window === "undefined") {
 // the render path on native. See packages/app/src/mobile-plugin-views.ts.
 registerAppShellPage({
   id: "shopify",
-  pluginId: "@elizaos/plugin-shopify-ui",
+  pluginId: "@elizaos/plugin-shopify",
   label: "Shopify",
   icon: "ShoppingBag",
   path: "/shopify",

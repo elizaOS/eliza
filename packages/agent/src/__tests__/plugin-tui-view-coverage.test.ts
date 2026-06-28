@@ -37,7 +37,7 @@ const VIEW_MANIFESTS = [
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket/src/plugin.ts",
-  "plugins/plugin-shopify-ui/src/plugin.ts",
+  "plugins/plugin-shopify/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
@@ -98,7 +98,7 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-polymarket-positions",
     "terminal-polymarket-trading-check",
   ],
-  "plugins/plugin-shopify-ui/src/shopify-view-bundle.ts": [
+  "plugins/plugin-shopify/src/shopify-view-bundle.ts": [
     "terminal-shopify-state",
     "terminal-shopify-products",
     "terminal-shopify-orders",

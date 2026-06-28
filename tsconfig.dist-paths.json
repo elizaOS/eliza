@@ -228,9 +228,6 @@
       "@elizaos/plugin-elizamaker": [
         "./plugins/plugin-elizamaker/dist/index.d.ts"
       ],
-      "@elizaos/plugin-shopify-ui": [
-        "./plugins/plugin-shopify-ui/dist/index.d.ts"
-      ],
       "@elizaos/plugin-app-control": [
         "./plugins/plugin-app-control/dist/index.d.ts"
       ],

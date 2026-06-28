@@ -196,9 +196,9 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["PolymarketView", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-shopify-ui",
-    manifestPath: "plugins/plugin-shopify-ui/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-shopify-ui/src/ShopifyView.tsx",
+    pluginDir: "plugins/plugin-shopify",
+    manifestPath: "plugins/plugin-shopify/src/plugin.ts",
+    xrComponentSrc: "plugins/plugin-shopify/src/ShopifyView.tsx",
     requiredTerms: ["ShopifyView", "useState"],
   },
   {

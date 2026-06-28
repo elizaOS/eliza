@@ -22,8 +22,8 @@
       "@elizaos/plugin-vector-browser/register": [
         "../../plugins/plugin-vector-browser/src/register.ts"
       ],
-      "@elizaos/plugin-shopify-ui": [
-        "../../plugins/plugin-shopify-ui/src/index.ts"
+      "@elizaos/plugin-shopify": [
+        "../../plugins/plugin-shopify/src/index.ts"
       ],
       "@elizaos/plugin-steward-app": [
         "../../plugins/plugin-steward-app/src/index.ts"

@@ -6330,7 +6330,7 @@
       "id": "shopify",
       "name": "Shopify",
       "description": "Storefront and admin tools for agent-driven commerce.",
-      "npmName": "@elizaos/plugin-shopify-ui",
+      "npmName": "@elizaos/plugin-shopify",
       "source": "bundled",
       "tags": [],
       "config": {},
@@ -6349,7 +6349,7 @@
       "curatedApp": {
         "slug": "shopify",
         "order": 8,
-        "aliases": ["@elizaos/plugin-shopify"]
+        "aliases": ["@elizaos/plugin-shopify-ui"]
       },
       "kind": "app",
       "subtype": "marketplace",
@@ -6358,7 +6358,7 @@
         "capabilities": [],
         "curatedSlug": "shopify",
         "routePlugin": {
-          "specifier": "@elizaos/plugin-shopify-ui/plugin",
+          "specifier": "@elizaos/plugin-shopify/plugin",
           "exportName": "shopifyPlugin"
         }
       }

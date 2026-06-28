@@ -24,8 +24,8 @@
       "@elizaos/plugin-steward-app": [
         "../../plugins/plugin-steward-app/src/index.ts"
       ],
-      "@elizaos/plugin-shopify-ui": [
-        "../../plugins/plugin-shopify-ui/src/index.ts"
+      "@elizaos/plugin-shopify": [
+        "../../plugins/plugin-shopify/src/index.ts"
       ],
       "@elizaos/plugin-training": ["./src/types/host-external-modules.ts"],
       "@elizaos/plugin-vector-browser": [

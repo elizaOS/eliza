@@ -79,7 +79,7 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-steward-app",
   "plugins/plugin-task-coordinator",
   "plugins/plugin-training",
-  "plugins/plugin-shopify-ui",
+  "plugins/plugin-shopify",
   "plugins/plugin-agent-skills",
   "plugins/plugin-app-manager",
   "plugins/plugin-browser",

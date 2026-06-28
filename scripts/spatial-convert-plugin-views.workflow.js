@@ -31,7 +31,7 @@ const PLUGINS =
         "plugin-steward-app",
         "plugin-task-coordinator",
         "plugin-personal-assistant",
-        "plugin-shopify-ui",
+        "plugin-shopify",
         "plugin-app-control",
         "plugin-trajectory-logger",
         "app-model-tester",

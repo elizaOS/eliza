@@ -91,7 +91,7 @@ const LEVELS = [
   },
   {
     name: "plugin view shopify",
-    file: "plugins/plugin-shopify-ui/src/ShopifyView.tsx",
+    file: "plugins/plugin-shopify/src/ShopifyView.tsx",
   },
   {
     name: "plugin view notes",

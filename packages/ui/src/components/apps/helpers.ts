@@ -71,7 +71,7 @@ const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
   "@elizaos/plugin-elizamaker",
   "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-polymarket",
-  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-shopify",
   "@elizaos/plugin-steward-app",
 ]);
 
@@ -347,7 +347,7 @@ export function getAppCatalogSectionKey(
   switch (canonicalName) {
     case "@elizaos/plugin-companion":
       return "games";
-    case "@elizaos/plugin-shopify-ui":
+    case "@elizaos/plugin-shopify":
     case "@elizaos/plugin-hyperliquid":
     case "@elizaos/plugin-polymarket":
       return "finance";

@@ -87,7 +87,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-todos/src/index.ts",
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket/src/plugin.ts",
-  "plugins/plugin-shopify-ui/src/plugin.ts",
+  "plugins/plugin-shopify/src/plugin.ts",
   "plugins/plugin-steward-app/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-vector-browser/src/plugin.ts",
@@ -162,7 +162,7 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
   "@elizaos/plugin-polymarket":
     "plugins/plugin-polymarket/src/plugin.ts",
-  "@elizaos/plugin-shopify-ui": "plugins/plugin-shopify-ui/src/plugin.ts",
+  "@elizaos/plugin-shopify": "plugins/plugin-shopify/src/plugin.ts",
   "@elizaos/plugin-steward-app": "plugins/plugin-steward-app/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",
@@ -222,7 +222,7 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/polymarket",
   },
   {
-    manifestPath: "plugins/plugin-shopify-ui/src/plugin.ts",
+    manifestPath: "plugins/plugin-shopify/src/plugin.ts",
     id: "shopify",
     viewType: "xr",
     path: "/shopify",

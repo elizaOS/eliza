@@ -26,7 +26,7 @@ const EXPECTED_SIDE_EFFECT_PACKAGES = [
   "@elizaos/plugin-messages",
   "@elizaos/plugin-phone",
   "@elizaos/plugin-polymarket",
-  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-shopify",
   "@elizaos/plugin-trajectory-logger",
   "@elizaos/plugin-vector-browser",
   "@elizaos/plugin-wallet-ui",

@@ -65,7 +65,7 @@ describe("normalizeAppRoutePluginId", () => {
     expect(normalizeAppRoutePluginId("@elizaos/plugin-steward-app")).toBe(
       "steward",
     );
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-shopify-ui")).toBe(
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-shopify")).toBe(
       "shopify",
     );
     expect(normalizeAppRoutePluginId("@elizaos/plugin-documents-routes")).toBe(

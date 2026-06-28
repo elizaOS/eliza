@@ -107,7 +107,7 @@ const shopifyRoutes: Route[] = [
 // ---------------------------------------------------------------------------
 
 export const shopifyPlugin: Plugin = {
-  name: "@elizaos/plugin-shopify-ui",
+  name: "@elizaos/plugin-shopify",
   description:
     "Shopify store management dashboard routes (extracted from app-core server.ts)",
   routes: shopifyRoutes,

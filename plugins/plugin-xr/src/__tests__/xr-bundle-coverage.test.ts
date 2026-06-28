@@ -141,8 +141,8 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-polymarket/src/plugin.ts",
   },
   {
-    pluginDir: "plugins/plugin-shopify-ui",
-    manifestPath: "plugins/plugin-shopify-ui/src/plugin.ts",
+    pluginDir: "plugins/plugin-shopify",
+    manifestPath: "plugins/plugin-shopify/src/plugin.ts",
   },
   {
     pluginDir: "plugins/plugin-steward-app",

@@ -339,7 +339,7 @@ export const polymarketPlugin = {
 export const plugin = polymarketPlugin;
 export default polymarketPlugin;
 `,
-    "@elizaos/plugin-shopify-ui": `
+    "@elizaos/plugin-shopify": `
 export const shopifyPlugin = {
   name: "shopify",
   routes: [],
@@ -498,7 +498,7 @@ const forceLiveStubPackages = new Set([
   "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-polymarket",
-  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-shopify",
   "@elizaos/plugin-steward-app",
   "@elizaos/plugin-training",
 ]);

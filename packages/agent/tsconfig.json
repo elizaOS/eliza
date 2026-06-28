@@ -122,8 +122,8 @@
       "@elizaos/plugin-steward-app": [
         "../../plugins/plugin-steward-app/src/index.ts"
       ],
-      "@elizaos/plugin-shopify-ui": [
-        "../../plugins/plugin-shopify-ui/src/index.ts"
+      "@elizaos/plugin-shopify": [
+        "../../plugins/plugin-shopify/src/index.ts"
       ],
       "@elizaos/ui": [
         "../ui/src/index.ts"

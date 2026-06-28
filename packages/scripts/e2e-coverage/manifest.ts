@@ -166,8 +166,8 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-polymarket": existing(
     "plugins/plugin-polymarket/src/routes.real.test.ts",
   ),
-  "plugin-shopify-ui": existing(
-    "plugins/plugin-shopify-ui/src/routes.contract.test.ts",
+  "plugin-shopify": existing(
+    "plugins/plugin-shopify/src/routes.contract.test.ts",
   ),
   "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
   "plugin-social-alpha": existing(

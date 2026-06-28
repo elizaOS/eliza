@@ -170,7 +170,7 @@ const smokeViewDeclarations = [
   [
     "shopify",
     "Shopify",
-    "plugin-shopify-ui",
+    "plugin-shopify",
     "/shopify",
     "ShopifyView",
     ["gui", "tui"],
@@ -514,7 +514,7 @@ const stubCatalogApps = [
     capabilities: ["drops", "minting", "whitelist"],
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-shopify-ui",
+    name: "@elizaos/plugin-shopify",
     displayName: "Shopify",
     description: "Manage Shopify store operations from the agent workspace.",
     category: "platform",

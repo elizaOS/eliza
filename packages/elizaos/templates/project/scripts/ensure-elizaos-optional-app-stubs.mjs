@@ -19,7 +19,7 @@ const optionalPackages = [
   "@elizaos/plugin-documents",
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-polymarket",
-  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-shopify",
   "@elizaos/plugin-steward-app",
   "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-training",

@@ -32,8 +32,8 @@
         "../../plugins/plugin-vector-browser/src/register.ts"
       ],
       "@elizaos/plugin-phone": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/plugin-shopify-ui": [
-        "../../plugins/plugin-shopify-ui/dist/index.d.ts"
+      "@elizaos/plugin-shopify": [
+        "../../plugins/plugin-shopify/dist/index.d.ts"
       ],
       "@elizaos/plugin-steward-app": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-training": ["./src/types/app-plugin-modules.d.ts"],
