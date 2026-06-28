@@ -130,9 +130,6 @@ const DEDICATED_TOOL: Readonly<Record<string, string>> = {
  * back down as you pay debt off elsewhere — the ceiling is the forcing function.
  */
 const KEYLESS_DEBT: Readonly<Record<string, string>> = {
-  "apps-personal-assistant-feed-interactions.spec.ts":
-    "Fixture-driven personal-assistant feed smoke; needs keyless wiring after " +
-    "the lifeops decomposition refactor settles the new view-bearing plugins.",
   "sensitive-request-in-chat.spec.ts":
     "Fixture-driven sensitive-request chat smoke; needs keyless wiring after " +
     "the lifeops decomposition refactor settles the new view-bearing plugins.",
@@ -146,8 +143,10 @@ const KEYLESS_DEBT: Readonly<Record<string, string>> = {
  * 3 → 2 (#9304): task-widget-in-chat.spec.ts wired into scenario-pr.yml (the
  * canonical chat → marker → render → click → navigate → workbench e2e now gates
  * every PR keyless).
+ * 2 → 1: apps-personal-assistant-feed-interactions.spec.ts wired into
+ * scenario-pr.yml.
  */
-const MAX_KEYLESS_DEBT = 2;
+const MAX_KEYLESS_DEBT = 1;
 
 function specFileNames(): string[] {
   return readdirSync(UI_SMOKE_DIR)
