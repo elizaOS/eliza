@@ -74,6 +74,7 @@ import type {
   WorkbenchVfsQuota,
   WorkbenchVfsSnapshot,
 } from "./client-types";
+import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 
 type DocumentListOptions = {
   limit?: number;
@@ -869,15 +870,26 @@ function withConversationListDefaults<T extends { conversations?: unknown }>(
   return response;
 }
 
+async function invokeLocalDesktopChatRpc<T>(
+  baseUrl: string,
+  options: { rpcMethod: string; ipcChannel: string; params?: unknown },
+): Promise<T | null> {
+  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
+  return invokeDesktopBridgeRequest<T>(options);
+}
+
 ElizaClient.prototype.listConversations = async function (this: ElizaClient) {
   // Prefer typed Electrobun RPC. The bun-side composer throws
   // AgentNotReadyError if the agent has no port yet; we catch and
   // fall through to HTTP so the sidebar's polling loop sees the same
   // "transport not ready" semantic as before RPC was wired.
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
+    const viaRpc = await invokeLocalDesktopChatRpc<{
       conversations: Conversation[];
-    }>({ rpcMethod: "listConversations", ipcChannel: "agent" });
+    }>(this.getBaseUrl(), {
+      rpcMethod: "listConversations",
+      ipcChannel: "agent",
+    });
     if (viaRpc) return withConversationListDefaults(viaRpc);
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
@@ -930,9 +942,9 @@ ElizaClient.prototype.getConversationMessages = async function (
 ) {
   let response: { messages: ConversationMessage[] } | null = null;
   try {
-    response = await invokeDesktopBridgeRequest<{
+    response = await invokeLocalDesktopChatRpc<{
       messages: ConversationMessage[];
-    }>({
+    }>(this.getBaseUrl(), {
       rpcMethod: "getConversationMessages",
       ipcChannel: "agent",
       params: { id },
@@ -964,10 +976,10 @@ ElizaClient.prototype.getInboxMessages = async function (
   const query = params.toString();
   const path = query ? `/api/inbox/messages?${query}` : "/api/inbox/messages";
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
+    const viaRpc = await invokeLocalDesktopChatRpc<{
       messages: Array<ConversationMessage & { roomId: string; source: string }>;
       count: number;
-    }>({
+    }>(this.getBaseUrl(), {
       rpcMethod: "getInboxMessages",
       ipcChannel: "agent",
       params: buildInboxMessagesRpcParams(options),
@@ -984,10 +996,13 @@ ElizaClient.prototype.getInboxMessages = async function (
 
 ElizaClient.prototype.getInboxSources = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{ sources: string[] }>({
-      rpcMethod: "getInboxSources",
-      ipcChannel: "agent",
-    });
+    const viaRpc = await invokeLocalDesktopChatRpc<{ sources: string[] }>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "getInboxSources",
+        ipcChannel: "agent",
+      },
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -1003,7 +1018,7 @@ ElizaClient.prototype.getInboxChats = async function (
   const query = params.toString();
   const path = query ? `/api/inbox/chats?${query}` : "/api/inbox/chats";
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
+    const viaRpc = await invokeLocalDesktopChatRpc<{
       chats: Array<{
         canSend?: boolean;
         id: string;
@@ -1018,7 +1033,7 @@ ElizaClient.prototype.getInboxChats = async function (
         messageCount: number;
       }>;
       count: number;
-    }>({
+    }>(this.getBaseUrl(), {
       rpcMethod: "getInboxChats",
       ipcChannel: "agent",
       params: buildInboxChatsRpcParams(options),

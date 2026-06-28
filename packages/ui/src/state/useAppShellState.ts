@@ -20,7 +20,13 @@ export interface AppShellState {
   configText: string;
 }
 
-export function useAppShellState() {
+interface UseAppShellStateOptions {
+  syncServerFavorites?: boolean;
+}
+
+export function useAppShellState({
+  syncServerFavorites = true,
+}: UseAppShellStateOptions = {}) {
   const [ownerName, setOwnerNameState] = useState<string | null>(null);
   const [appsSubTab, setAppsSubTabRaw] = useState<
     "browse" | "running" | "games"
@@ -69,6 +75,7 @@ export function useAppShellState() {
   }, []);
 
   useEffect(() => {
+    if (!syncServerFavorites) return;
     let cancelled = false;
     void fetchServerFavoriteApps().then((serverApps) => {
       if (cancelled || serverApps == null) return;
@@ -85,7 +92,7 @@ export function useAppShellState() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [syncServerFavorites]);
 
   const setRecentApps = useCallback((apps: string[]) => {
     setRecentAppsRaw(apps);

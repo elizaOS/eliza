@@ -179,7 +179,8 @@ export function useStartupShellController(): StartupShellController {
     const coordState = coordinatorStateRef.current;
     if (
       coordState.phase !== "first-run-required" ||
-      coordState.serverReachable ||
+      !firstRunCloudProvisionedContainer ||
+      !coordState.serverReachable ||
       cloudSkipProbeStartedRef.current
     ) {
       return;
@@ -212,7 +213,7 @@ export function useStartupShellController(): StartupShellController {
     return () => {
       cancelled = true;
     };
-  }, [phase, setState]);
+  }, [firstRunCloudProvisionedContainer, phase, setState]);
 
   const handleBootstrapAdvance = useCallback(() => {
     setShowBootstrap(false);

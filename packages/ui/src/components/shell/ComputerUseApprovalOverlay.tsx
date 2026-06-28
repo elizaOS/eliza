@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
 import { useAppSelector } from "../../state";
 import { openEventSource } from "../../utils/event-source";
@@ -35,6 +36,9 @@ function approvalStreamUrl(): string {
 export function ComputerUseApprovalOverlay() {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const t = useAppSelector((s) => s.t);
+  const appShellRoutesSupported = supportsFullAppShellRoutes(
+    client.getBaseUrl(),
+  );
   const [snapshot, setSnapshot] =
     useState<ComputerUseApprovalSnapshot>(EMPTY_SNAPSHOT);
   const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
@@ -44,14 +48,22 @@ export function ComputerUseApprovalOverlay() {
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!appShellRoutesSupported) {
+      setSnapshot(EMPTY_SNAPSHOT);
+      return;
+    }
     try {
       setSnapshot(await client.getComputerUseApprovals());
     } catch {
       setSnapshot(EMPTY_SNAPSHOT);
     }
-  }, []);
+  }, [appShellRoutesSupported]);
 
   useEffect(() => {
+    if (!appShellRoutesSupported) {
+      setSnapshot(EMPTY_SNAPSHOT);
+      return undefined;
+    }
     let cancelled = false;
     let pollingTimer: number | null = null;
     let eventSource: EventSource | null = null;
@@ -119,7 +131,7 @@ export function ComputerUseApprovalOverlay() {
       }
       eventSource?.close();
     };
-  }, [refresh]);
+  }, [appShellRoutesSupported, refresh]);
 
   // Defensive: the snapshot can be partially populated during reconnect/
   // recovery windows, so `pendingApprovals` may be momentarily undefined.

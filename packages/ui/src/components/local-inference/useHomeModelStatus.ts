@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { client } from "../../api";
+import { isDesktopExternalApiBaseUrl } from "../../api/desktop-external-api-base";
+import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import {
   deriveHomeModelStatus,
   type HomeModelStatus,
@@ -33,8 +35,19 @@ function appendTokenParam(url: string): string {
 export function useHomeModelStatus(): HomeModelStatus {
   const [status, setStatus] = useState<HomeModelStatus>(NOT_REQUIRED);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runtimeMode = useRuntimeMode();
 
   useEffect(() => {
+    if (
+      runtimeMode.state.phase === "loading" ||
+      runtimeMode.isCloudMode ||
+      runtimeMode.isRemoteMode ||
+      isDesktopExternalApiBaseUrl(client.getBaseUrl())
+    ) {
+      setStatus(NOT_REQUIRED);
+      return;
+    }
+
     let cancelled = false;
 
     const refresh = async () => {
@@ -69,7 +82,11 @@ export function useHomeModelStatus(): HomeModelStatus {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       es?.close();
     };
-  }, []);
+  }, [
+    runtimeMode.isCloudMode,
+    runtimeMode.isRemoteMode,
+    runtimeMode.state.phase,
+  ]);
 
   return status;
 }

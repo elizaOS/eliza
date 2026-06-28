@@ -651,13 +651,17 @@ function useDebouncedTurnStatus(
  */
 function TurnStatusInner({
   status,
+  showLabel = true,
 }: {
   status: ChatTurnStatus | null;
+  showLabel?: boolean;
 }): React.JSX.Element {
   const shown = useDebouncedTurnStatus(status);
   const speaking = shown?.kind === "speaking";
   const label =
-    shown && shown.kind !== "thinking" ? turnStatusLabel(shown) : null;
+    showLabel && shown && shown.kind !== "thinking"
+      ? turnStatusLabel(shown)
+      : null;
   return (
     <span
       className="inline-flex items-center gap-2"
@@ -934,11 +938,12 @@ const ThreadLine = React.memo(function ThreadLine({
           !message.content.trim() &&
           !message.attachments?.length ? (
             // The in-flight assistant turn (kept by visibleMessages only while
-            // responding): show the rich status (thinking / running an action /
-            // waking) INSIDE the bubble, anchored where the streamed text fills in
-            // — then the text replaces it. Falls back to plain dots if no status.
+            // responding): show dots INSIDE the bubble, anchored where the
+            // streamed text fills in — then the text replaces them. Labels stay
+            // in the standalone status row so the bubble never flashes
+            // "Running …" text in place of the answer.
             <>
-              <TurnStatusInner status={turnStatus ?? null} />
+              <TurnStatusInner status={turnStatus ?? null} showLabel={false} />
               {message.attachments?.length ? (
                 <MessageAttachments attachments={message.attachments} />
               ) : null}
@@ -2072,12 +2077,23 @@ export function ContinuousChatOverlay({
 
   const closeSheet = React.useCallback(() => {
     draggingRef.current = false;
-    stopThreadAnimation();
     stopOpenProgressAnimation();
     setFreeH(null);
     setMaximized(false);
     setMode("input");
-  }, [stopThreadAnimation, stopOpenProgressAnimation]);
+    if (reduce) {
+      stopThreadAnimation();
+      threadHeight.set(0);
+    } else {
+      animateThreadHeight(0);
+    }
+  }, [
+    reduce,
+    threadHeight,
+    stopThreadAnimation,
+    stopOpenProgressAnimation,
+    animateThreadHeight,
+  ]);
 
   // Leaving the chat for Settings/Home: animate OUT of maximize and collapse the
   // sheet (closeSheet un-maximizes + springs the thread height down) BEFORE
@@ -2150,16 +2166,29 @@ export function ContinuousChatOverlay({
       // A detent always clears any free-drag rest height and (since only FULL
       // can be maximized) drops full-bleed when stepping anywhere else.
       draggingRef.current = false;
-      stopThreadAnimation();
       setFreeH(null);
       if (to !== "full") setMaximized(false);
       // "collapsed" is the input bar (sheet closed); half/full open the thread.
       setMode(to === "collapsed" ? "input" : to);
+      const target = to === "collapsed" ? 0 : to === "half" ? halfH : openH;
+      if (reduce) {
+        stopThreadAnimation();
+        threadHeight.set(target);
+      } else {
+        animateThreadHeight(target);
+      }
       // Stepping all the way down closes the keyboard (the chat is dismissed).
       if (to === "collapsed") inputRef.current?.blur();
       detentHaptic();
     },
-    [stopThreadAnimation],
+    [
+      halfH,
+      openH,
+      reduce,
+      threadHeight,
+      stopThreadAnimation,
+      animateThreadHeight,
+    ],
   );
 
   const openFromGrabber = React.useCallback(() => {
@@ -3176,7 +3205,7 @@ export function ContinuousChatOverlay({
                     : headerPadTop,
                 }}
                 className={cn(
-                  "relative z-10 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
+                  "relative z-20 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                 )}
               >
                 <div className="flex items-center gap-1.5">

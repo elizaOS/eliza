@@ -81,6 +81,25 @@ const LONG_PRESS_MS = 450;
  *  a horizontal swipe-back can never ghost-fire edit mode mid-gesture. */
 const LONG_PRESS_MOVE_SLOP = 10;
 
+function viewKindBadge(entry: ViewEntry): {
+  label: string;
+  title: string;
+} | null {
+  if (entry.viewKind === "preview") {
+    return {
+      label: "Preview",
+      title: `${entry.label} is marked preview`,
+    };
+  }
+  if (entry.viewKind === "developer" || entry.developerOnly === true) {
+    return {
+      label: "Dev",
+      title: `${entry.label} is marked developer`,
+    };
+  }
+  return null;
+}
+
 // Memoized so a layout reconcile (install/uninstall/sort) re-renders only the
 // tiles whose props actually changed, not all ~20 on a page.
 const IconTile = memo(function IconTile({
@@ -96,6 +115,7 @@ const IconTile = memo(function IconTile({
 }: IconTileProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressStart = useRef<{ x: number; y: number } | null>(null);
+  const badge = viewKindBadge(entry);
 
   const clear = () => {
     if (timer.current !== null) {
@@ -158,6 +178,15 @@ const IconTile = memo(function IconTile({
             imageTestId={`springboard-image-${entry.id}`}
           />
         </button>
+        {badge ? (
+          <span
+            data-testid={`springboard-kind-${entry.id}`}
+            title={badge.title}
+            className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full border border-black/20 bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900 shadow-sm"
+          >
+            {badge.label}
+          </span>
+        ) : null}
         {editing ? (
           <button
             type="button"

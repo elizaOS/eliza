@@ -69,6 +69,27 @@ describe("Springboard", () => {
     expect(screen.getByText("Chat")).toBeTruthy();
   });
 
+  it("marks preview and developer tiles without changing release tiles", () => {
+    render(
+      <Springboard
+        entries={[
+          entry("settings", "Settings"),
+          { ...entry("alpha", "Alpha"), viewKind: "preview" },
+          { ...entry("trace", "Trace"), viewKind: "developer" },
+        ]}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("springboard-kind-settings")).toBeNull();
+    expect(screen.getByTestId("springboard-kind-alpha").textContent).toBe(
+      "Preview",
+    );
+    expect(screen.getByTestId("springboard-kind-trace").textContent).toBe(
+      "Dev",
+    );
+  });
+
   it("launches a view on tap (not in edit mode)", () => {
     const onLaunch = vi.fn();
     render(<Springboard entries={FEW} onLaunch={onLaunch} />);
@@ -170,6 +191,47 @@ describe("Springboard", () => {
     expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
   });
 
+  it("rubber-bands at the last page edge instead of dead-stopping", () => {
+    runAnimationFramesImmediately();
+    const many = Array.from({ length: 25 }, (_, i) =>
+      entry(`v${i}`, `View ${i}`),
+    );
+    render(<Springboard entries={many} onLaunch={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    const pageWindow = screen.getByTestId("springboard-page-window");
+    Object.defineProperty(pageWindow, "clientWidth", {
+      configurable: true,
+      value: 390,
+    });
+    const rail = screen.getByTestId("springboard-page-rail");
+
+    fireEvent.pointerDown(pageWindow, {
+      isPrimary: true,
+      pointerId: 4,
+      clientX: 120,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(pageWindow, {
+      isPrimary: true,
+      pointerId: 4,
+      clientX: 20,
+      clientY: 304,
+    });
+
+    expect(rail.style.transform).toContain("-425px");
+    expect(rail.style.transition).toBe("none");
+
+    fireEvent.pointerUp(pageWindow, {
+      isPrimary: true,
+      pointerId: 4,
+      clientX: 20,
+      clientY: 304,
+    });
+
+    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
+  });
+
   it("drops views that are no longer available on re-render", () => {
     const { rerender } = render(
       <Springboard entries={FEW} onLaunch={() => {}} />,
@@ -197,19 +259,20 @@ describe("Springboard", () => {
 });
 
 describe("Springboard image tiles", () => {
-  it("renders a compact app icon instead of a preview hero when imageUrl is set", () => {
+  it("renders a compact image icon over a glyph fallback when imageUrl is set", () => {
     const { container } = render(
       <Springboard
         entries={[imageEntry("notes", "Notes", "/api/views/notes/hero")]}
         onLaunch={() => {}}
       />,
     );
-    expect(screen.queryByTestId("springboard-image-notes")).toBeNull();
+    const image = screen.getByTestId("springboard-image-notes");
+    expect(image.getAttribute("src")).toBe("/api/views/notes/hero");
     const visual = container.querySelector<HTMLElement>(
       '[data-view-visual="notes"]',
     );
     expect(visual).toBeTruthy();
-    expect(visual?.getAttribute("style")).toContain("linear-gradient");
+    expect(visual?.querySelector("img")).toBeTruthy();
     expect(visual?.querySelector("svg")).toBeTruthy();
     // The launch button is still labelled for a11y + tap.
     expect(screen.getByRole("button", { name: "Notes" })).toBeTruthy();

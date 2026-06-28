@@ -44,6 +44,9 @@ const HIDDEN_SPRINGBOARD_PATHS = new Set([
 ]);
 
 const SPRINGBOARD_SYSTEM_ENTRY_IDS = new Set([
+  "phone",
+  "messages",
+  "contacts",
   "settings",
   "tasks",
   "automations",
@@ -88,6 +91,13 @@ function compareEntryLabels(left: { label: string }, right: { label: string }) {
     numeric: true,
     sensitivity: "base",
   });
+}
+
+function compareSpringboardEntries(left: ViewEntry, right: ViewEntry): number {
+  const leftOrder = left.order ?? (left.kind === "view" ? 500 : 1000);
+  const rightOrder = right.order ?? (right.kind === "view" ? 500 : 1000);
+  if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+  return compareEntryLabels(left, right);
 }
 
 function dedupeEntries(entries: ViewEntry[]): ViewEntry[] {
@@ -166,7 +176,8 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
         .filter((view) =>
           isVisibleSpringboardView(view, enabledKinds, activeModality),
         )
-        .map(viewToEntry),
+        .map(viewToEntry)
+        .sort(compareSpringboardEntries),
     [activeModality, enabledKinds, views],
   );
 
@@ -175,12 +186,15 @@ export const SpringboardSurface = React.memo(function SpringboardSurface({
       catalogEntries
         .filter((entry) => entry.state !== "loaded")
         .filter((entry) => entry.modality === activeModality)
-        .sort(compareEntryLabels),
+        .sort(compareSpringboardEntries),
     [activeModality, catalogEntries],
   );
 
   const entries = React.useMemo(
-    () => dedupeEntries([...loadedEntries, ...availableEntries]),
+    () =>
+      dedupeEntries([...loadedEntries, ...availableEntries]).sort(
+        compareSpringboardEntries,
+      ),
     [availableEntries, loadedEntries],
   );
 

@@ -1,3 +1,13 @@
+import { generateViewHeroSvgFor } from "@elizaos/shared";
+
+const WEATHER_HERO = `data:image/svg+xml,${encodeURIComponent(
+  generateViewHeroSvgFor({
+    id: "weather",
+    label: "Weather",
+    icon: "CloudSun",
+  }),
+)}`;
+
 export function useViewCatalog() {
   return {
     entries: [
@@ -6,6 +16,8 @@ export function useViewCatalog() {
         id: "weather",
         label: "Weather",
         icon: "CloudSun",
+        imageUrl: WEATHER_HERO,
+        fallbackImageUrl: WEATHER_HERO,
         hasHero: false,
         modality: "gui",
         state: "available",

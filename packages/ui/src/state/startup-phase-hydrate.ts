@@ -14,6 +14,7 @@ import {
   client,
   type StreamEventEnvelope,
 } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
 import {
@@ -305,6 +306,9 @@ export function bindReadyPhase(
   let handleVis: (() => void) | null = null;
 
   const doHydratePty = () => {
+    const baseUrl =
+      typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+    if (!supportsFullAppShellRoutes(baseUrl)) return;
     client
       .getCodingAgentStatus()
       .then((s) => {

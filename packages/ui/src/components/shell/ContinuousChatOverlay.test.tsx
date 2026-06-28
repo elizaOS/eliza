@@ -1488,7 +1488,7 @@ describe("ContinuousChatOverlay", () => {
       );
     });
 
-    it("shows the status inline inside the empty in-flight assistant bubble", () => {
+    it("shows dots-only status inside the empty in-flight assistant bubble", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -1508,9 +1508,8 @@ describe("ContinuousChatOverlay", () => {
       const indicators = screen.getAllByTestId("turn-status-indicator");
       expect(indicators).toHaveLength(1);
       expect(indicators[0].getAttribute("data-status-kind")).toBe("waking");
-      expect(screen.getByTestId("turn-status-label").textContent).toBe(
-        "Waking the agent",
-      );
+      expect(screen.queryByTestId("turn-status-label")).toBeNull();
+      expect(screen.getByTestId("typing-dots")).toBeTruthy();
     });
 
     it("hides reasoning disclosure while the latest assistant turn is streaming", () => {

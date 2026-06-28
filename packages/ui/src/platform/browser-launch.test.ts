@@ -80,6 +80,28 @@ describe("browser launch connection handling", () => {
     expect(window.location.href).toBe("http://localhost/");
   });
 
+  it("allows dedicated cloud agent apiBase parameters", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "http://localhost/?apiBase=https%3A%2F%2Fagent-1.elizacloud.ai%2F",
+    );
+
+    await expect(applyLaunchConnectionFromUrl()).resolves.toBe(true);
+
+    expect(mocks.setBaseUrl).toHaveBeenCalledWith(
+      "https://agent-1.elizacloud.ai",
+    );
+    expect(mocks.setToken).toHaveBeenCalledWith(null);
+    expect(mocks.savePersistedActiveServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiBase: "https://agent-1.elizacloud.ai",
+        kind: "remote",
+      }),
+    );
+    expect(window.location.href).toBe("http://localhost/");
+  });
+
   it("rejects unconfigured public HTTPS apiBase parameters", async () => {
     window.history.replaceState(
       null,

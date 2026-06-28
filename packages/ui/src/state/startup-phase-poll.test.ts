@@ -245,6 +245,66 @@ describe("runPollingBackend", () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
+  it("routes a web same-origin proxy outage to offline first-run instead of waiting for timeout", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("");
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Bad Gateway"), {
+        kind: "http",
+        status: 502,
+        path: "/api/auth/status",
+      }),
+    );
+
+    const staleLocal = {
+      id: "local:desktop",
+      kind: "local" as const,
+      label: "Local agent",
+      apiBase: "http://127.0.0.1:31337",
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: false,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: false,
+        defaultTarget: null,
+      },
+      {
+        persistedActiveServer: staleLocal,
+        restoredActiveServer: staleLocal,
+        shouldPreserveCompletedFirstRun: false,
+        hadPriorFirstRun: true,
+      },
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
+    expect(deps.setFirstRunOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: expect.any(Array),
+        models: expect.any(Object),
+      }),
+    );
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_UNAVAILABLE_FIRST_RUN",
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
   it("recovers to local when a fresh first-run dead-ends on a remote with auth required + pairing disabled", async () => {
     // Regression: a stale cloud active-server (control plane) left from an
     // aborted cloud sign-in returns required:true + pairingEnabled:false. With

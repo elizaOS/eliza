@@ -8,7 +8,7 @@ import {
   isViewVisible,
   type ViewKind,
 } from "@elizaos/core";
-import { X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
@@ -98,6 +98,7 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "./state";
+import { goHome } from "./state/shell-surface-store";
 import { isShellPaintable } from "./state/startup-coordinator";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
@@ -353,9 +354,9 @@ function useIsPopout(): boolean {
 }
 
 /**
- * Shell mode for the Linux OS overlay windows. The OS launches the same app
- * bundle with `--shell-mode=chat-overlay` (a floating, transparent assistant
- * pill window), `--shell-mode=launcher` (full home view), or
+ * Shell mode for focused native surfaces. The OS launches the same app
+ * bundle with `--shell-mode=chat-overlay` (transparent assistant overlay),
+ * `--shell-mode=launcher` (full home view), or
  * `--shell-mode=kiosk` (the locked appliance shell: a single fullscreen
  * view-manager surface with an always-visible bottom chat pill). The mode is
  * read from the URL (`?shellMode=` / `?shell-mode=`) or the
@@ -1344,6 +1345,21 @@ const APP_SHELL_CLASS =
 const APP_SHELL_CLASS_TRANSPARENT =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt";
 
+function ShellBackButton({ onBack }: { onBack: () => void }): ReactNode {
+  return (
+    <button
+      type="button"
+      aria-label="Go back"
+      title="Go back"
+      data-testid="shell-back-button"
+      onClick={onBack}
+      className="fixed left-[calc(var(--safe-area-left,0px)+0.75rem)] top-[calc(var(--safe-area-top,0px)+0.75rem)] z-[60] grid h-9 w-9 place-items-center rounded-full border border-border/60 bg-bg/90 text-txt shadow-sm transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <ArrowLeft className="h-4 w-4" aria-hidden />
+    </button>
+  );
+}
+
 type ShellContentProps = {
   CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
@@ -1362,6 +1378,7 @@ type ShellContentProps = {
   uiShellMode: string;
   viewLayout: ActiveViewLayout | null;
   onClearViewLayout: () => void;
+  onNavigateBack: () => void;
 };
 
 function CompanionShellContent(props: ShellContentProps): ReactNode {
@@ -1434,6 +1451,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
       : APP_SHELL_CLASS;
   return (
     <div key={`tab-shell-${props.tab}`} className={shellClass}>
+      <ShellBackButton onBack={props.onNavigateBack} />
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         {props.viewLayout ? (
@@ -1457,6 +1475,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
   return (
     <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
+      <ShellBackButton onBack={props.onNavigateBack} />
       <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         <ViewRouter />
       </main>
@@ -1924,6 +1943,30 @@ export function App() {
     setViewLayout(null);
   }, []);
 
+  const handleShellBack = useCallback(() => {
+    setViewLayout(null);
+    setActiveDesktopTabId(null);
+
+    if (typeof window !== "undefined") {
+      const currentPath = getWindowNavigationPath();
+      if (!isRouteRootPath(currentPath) && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+
+      const chatPath = pathForTab("chat");
+      if (shouldUseHashNavigation()) {
+        window.location.hash = chatPath;
+      } else if (getWindowNavigationPath() !== chatPath) {
+        window.history.pushState(null, "", chatPath);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
+    }
+
+    setTab("chat");
+    goHome();
+  }, [setTab]);
+
   // desktopTabBar is computed here (after handlers) so the memo below can
   // reference a stable value. Rendered inside each shell variant, not at the
   // outer level, so Header + TabBar + content stack correctly per shell.
@@ -1981,6 +2024,7 @@ export function App() {
         uiShellMode={uiShellMode}
         viewLayout={viewLayout}
         onClearViewLayout={handleClearViewLayout}
+        onNavigateBack={handleShellBack}
       />
     ),
     [
@@ -1998,6 +2042,7 @@ export function App() {
       availableViewsForDesktopTabs,
       viewLayout,
       handleClearViewLayout,
+      handleShellBack,
     ],
   );
 

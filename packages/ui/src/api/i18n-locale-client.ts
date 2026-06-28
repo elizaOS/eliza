@@ -17,11 +17,19 @@ function localeBase(): string {
   return apiBase ? apiBase.replace(/\/$/, "") : window.location.origin;
 }
 
+function shouldFetchSuggestedLanguage(): boolean {
+  if (typeof window === "undefined") return false;
+  if (getBootConfig().apiBase) return true;
+  const host = window.location.hostname.toLowerCase();
+  return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+}
+
 /**
  * Fetch the server's suggested UI language. Returns `null` when the endpoint
  * is unreachable or the server has no confident suggestion (advisory only).
  */
 export async function fetchSuggestedLanguage(): Promise<UiLanguage | null> {
+  if (!shouldFetchSuggestedLanguage()) return null;
   let res: Response;
   try {
     res = await fetchWithCsrf(`${localeBase()}/api/i18n/locale`);

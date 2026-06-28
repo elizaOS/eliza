@@ -8,6 +8,7 @@ const MIN_FLICK_DISTANCE = 48;
 const FLICK_VELOCITY = 0.45;
 const SETTLE_MS = 360;
 const SNAP_BACK_MS = 280;
+const EDGE_RESISTANCE = 0.35;
 const SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 
 interface DragState {
@@ -158,6 +159,14 @@ export function useHorizontalPager<
     return false;
   }, []);
 
+  const visualDragOffset = React.useCallback((state: DragState, dx: number) => {
+    if (dx > 0 && state.page === 0) return dx * EDGE_RESISTANCE;
+    if (dx < 0 && state.page >= pageCountRef.current - 1) {
+      return dx * EDGE_RESISTANCE;
+    }
+    return dx;
+  }, []);
+
   const releaseCapture = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>, state: DragState) => {
       if (!state.captured) return;
@@ -293,7 +302,6 @@ export function useHorizontalPager<
         state.axis = ax > ay * AXIS_DOMINANCE_RATIO ? "horizontal" : "vertical";
       }
       if (state.axis !== "horizontal") return;
-      if (!canMove(state, dx)) return;
 
       if (!state.captured) {
         try {
@@ -303,9 +311,11 @@ export function useHorizontalPager<
           // Capture is best-effort; the transform can still follow pointermove.
         }
       }
-      scheduleOffset(pageOffset(state.page, state.width) + dx);
+      scheduleOffset(
+        pageOffset(state.page, state.width) + visualDragOffset(state, dx),
+      );
     },
-    [canMove, scheduleOffset],
+    [scheduleOffset, visualDragOffset],
   );
 
   const onPointerUp = React.useCallback(

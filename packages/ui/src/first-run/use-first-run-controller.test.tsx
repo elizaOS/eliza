@@ -193,6 +193,7 @@ vi.mock("../state", () => {
     elizaCloudConnected: false,
     elizaCloudLoginBusy: false,
     elizaCloudLoginError: null,
+    elizaCloudLoginFallbackUrl: null,
     firstRunName: "Demo Agent",
     handleCloudLogin: mocks.handleCloudLogin,
     showActionBanner: mocks.showActionBanner,

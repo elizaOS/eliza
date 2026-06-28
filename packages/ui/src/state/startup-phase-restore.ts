@@ -6,7 +6,6 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { FIRST_RUN_PROVIDER_CATALOG, getStylePresets } from "@elizaos/shared";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { client, type FirstRunOptions } from "../api";
 import {
@@ -49,12 +48,17 @@ import {
   savePersistedFirstRunComplete,
 } from "./persistence";
 import type { StartupEvent } from "./startup-coordinator";
+import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 
 // Direct elizaCloud API base used to backfill a missing apiBase on a
 // persisted cloud active-server. Mirrors DEFAULT_DIRECT_CLOUD_API_BASE_URL
 // in api/client-cloud.ts; kept inline because that constant is module-private.
 const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
 const DESKTOP_RESTORE_RPC_TIMEOUT_MS = 5_000;
+
+function isDevUiPort(): boolean {
+  return typeof window !== "undefined" && window.location.port === "2138";
+}
 
 /**
  * Repair a restored cloud active-server whose apiBase is missing OR is the
@@ -500,7 +504,7 @@ export async function runRestoringSession(
   // persisted server exists (covers headless/VPS setups where config was
   // set via files without going through UI firstRun).
   const probed =
-    !forceFreshFirstRun && !persistedActiveServer
+    !forceFreshFirstRun && !persistedActiveServer && !isDevUiPort()
       ? await detectExistingFirstRunConnection({
           client,
           timeoutMs: isDesktop
@@ -566,23 +570,7 @@ export async function runRestoringSession(
 
   if (!restoredActiveServer) {
     // No saved backend found — let the user (re-)onboard.
-    deps.setFirstRunOptions({
-      names: [],
-      styles: getStylePresets(deps.uiLanguage),
-      providers: [
-        ...FIRST_RUN_PROVIDER_CATALOG,
-      ] as FirstRunOptions["providers"],
-      cloudProviders: [],
-      models: {
-        nano: [],
-        small: [],
-        medium: [],
-        large: [],
-        mega: [],
-      } as FirstRunOptions["models"],
-      inventoryProviders: [],
-      sharedStyleRules: "",
-    });
+    deps.setFirstRunOptions(buildStaticFirstRunOptions(deps.uiLanguage));
     if (!forceFreshFirstRun) {
       try {
         const det = await scanProviderCredentials();
