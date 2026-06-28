@@ -7,8 +7,13 @@
 // wrapper against a stubbed `fetch` and assert the populated list renders and
 // that each control fires the correct loopback request.
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { fireEvent } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ViewManagerView } from "./ViewManagerView";
 
