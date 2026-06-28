@@ -80,6 +80,9 @@ export default defineConfig([
       options.alias = {
         "@elizaos/core": resolvePackage("@elizaos/core"),
         "@elizaos/plugin-openai": resolvePackage("@elizaos/plugin-openai"),
+        "@elizaos/plugin-openrouter": resolvePackage(
+          "@elizaos/plugin-openrouter",
+        ),
         "@elizaos/plugin-anthropic": resolvePackage(
           "@elizaos/plugin-anthropic",
         ),
@@ -87,8 +90,8 @@ export default defineConfig([
         "@elizaos/plugin-google-genai": resolvePackage(
           "@elizaos/plugin-google-genai",
         ),
-        "@elizaos/plugin-eliza-classic": resolvePackage(
-          "@elizaos/plugin-eliza-classic",
+        "@elizaos/plugin-elizacloud": resolvePackage(
+          "@elizaos/plugin-elizacloud",
         ),
         "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb"),
         "@elizaos/plugin-inmemorydb": resolvePackage(
@@ -134,6 +137,10 @@ console.log("[ElizaOS] Offscreen bundle starting...");`,
           "@elizaos/plugin-openai",
           "dist/browser/index.browser.js",
         ),
+        "@elizaos/plugin-openrouter": resolvePackage(
+          "@elizaos/plugin-openrouter",
+          "dist/browser/index.browser.js",
+        ),
         "@elizaos/plugin-anthropic": resolvePackage(
           "@elizaos/plugin-anthropic",
           "dist/browser/index.browser.js",
@@ -146,9 +153,9 @@ console.log("[ElizaOS] Offscreen bundle starting...");`,
           "@elizaos/plugin-google-genai",
           "dist/browser/index.browser.js",
         ),
-        "@elizaos/plugin-eliza-classic": resolvePackage(
-          "@elizaos/plugin-eliza-classic",
-          "index.browser.ts",
+        "@elizaos/plugin-elizacloud": resolvePackage(
+          "@elizaos/plugin-elizacloud",
+          "dist/browser/index.browser.js",
         ),
         "@elizaos/plugin-localdb": resolvePackage(
           "@elizaos/plugin-localdb",
@@ -212,6 +219,10 @@ console.log("[ElizaOS] Bundle starting...");`,
           "@elizaos/plugin-openai",
           "dist/browser/index.browser.js",
         ),
+        "@elizaos/plugin-openrouter": resolvePackage(
+          "@elizaos/plugin-openrouter",
+          "dist/browser/index.browser.js",
+        ),
         "@elizaos/plugin-anthropic": resolvePackage(
           "@elizaos/plugin-anthropic",
           "dist/browser/index.browser.js",
@@ -224,9 +235,9 @@ console.log("[ElizaOS] Bundle starting...");`,
           "@elizaos/plugin-google-genai",
           "dist/browser/index.browser.js",
         ),
-        "@elizaos/plugin-eliza-classic": resolvePackage(
-          "@elizaos/plugin-eliza-classic",
-          "index.browser.ts",
+        "@elizaos/plugin-elizacloud": resolvePackage(
+          "@elizaos/plugin-elizacloud",
+          "dist/browser/index.browser.js",
         ),
         "@elizaos/plugin-localdb": resolvePackage(
           "@elizaos/plugin-localdb",

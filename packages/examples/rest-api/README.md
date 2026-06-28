@@ -123,12 +123,19 @@ OPENAI_API_KEY=your-key bun run start
 
 ## Environment Variables
 
-| Variable         | Description             | Required |
-| ---------------- | ----------------------- | -------- |
-| `OPENAI_API_KEY` | OpenAI API key          | Yes      |
-| `PORT`           | Server port (default: 3000) | No   |
-| `CHARACTER_NAME` | Agent name              | No       |
-| `CHARACTER_BIO`  | Agent bio/description   | No       |
+| Variable             | Description                         | Required |
+| -------------------- | ----------------------------------- | -------- |
+| `OPENAI_API_KEY`     | OpenAI API key                      | One provider key |
+| `OPENROUTER_API_KEY` | OpenRouter API key                  | One provider key |
+| `ANTHROPIC_API_KEY`  | Anthropic API key                   | One provider key |
+| `ELIZA_API_KEY`      | Eliza Cloud API key                 | One provider key |
+| `PORT`               | Server port (default: 3000)         | No       |
+| `CHARACTER_NAME`     | Agent name                          | No       |
+| `CHARACTER_BIO`      | Agent bio/description               | No       |
+
+Provider priority is `OPENAI_API_KEY` -> `OPENROUTER_API_KEY` ->
+`ANTHROPIC_API_KEY` -> `ELIZA_API_KEY`. If none is set, the server refuses to
+start.
 
 ## Important: Never Call Plugins Directly
 
@@ -136,8 +143,9 @@ OPENAI_API_KEY=your-key bun run start
 
 ```typescript
 // ❌ WRONG - Never call plugin functions directly
-import { generateElizaResponse } from "@elizaos/plugin-eliza-classic";
-const response = generateElizaResponse(message);
+const response = await providerClient.chat.completions.create({
+  messages: [{ role: "user", content: message }],
+});
 ```
 
 **DO** this instead:

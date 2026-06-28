@@ -84,10 +84,6 @@
       "outputs": [],
       "cache": false
     },
-    "eliza-vrm-demo#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
     "@elizaos/app-core#build": {
       "dependsOn": [
         "@elizaos/core#build",
@@ -179,10 +175,6 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/example-roblox-agent#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
     "@elizaos/example-telegram#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
@@ -260,7 +252,8 @@
     },
     "@elizaos/electrobun#build": {
       "dependsOn": ["@elizaos/app#build", "^build"],
-      "outputs": ["build/**"]
+      "cache": false,
+      "outputs": []
     },
     "@elizaos/plugin-cli#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],

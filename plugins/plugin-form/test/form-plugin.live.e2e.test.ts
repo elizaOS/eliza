@@ -11,7 +11,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/test/helpers/real-runtime.ts";
-import { describeIf } from "../../../test/helpers/conditional-tests";
+import { describeIf } from "../../../packages/test/helpers/conditional-tests";
 
 const LIVE = process.env.ELIZA_LIVE_TEST === "1";
 

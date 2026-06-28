@@ -213,18 +213,11 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       signalKinds: ["workflow", "activity"],
     },
     {
-      pluginId: "shopify-ui",
+      pluginId: "shopify",
       label: "Shopify",
       icon: "ShoppingBag",
       defaultWidget: "notifications",
       signalKinds: ["approval", "notification", "activity"],
-    },
-    {
-      pluginId: "steward-app",
-      label: "Steward",
-      icon: "ShieldCheck",
-      defaultWidget: "notifications",
-      signalKinds: ["approval", "escalation", "notification"],
     },
     {
       pluginId: "task-coordinator",

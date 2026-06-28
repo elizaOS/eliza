@@ -12,8 +12,8 @@ The normal local validation path does not need API keys:
 bun install
 ```
 
-For human-gated setup instructions with links for Roblox, Minecraft,
-cloud CLIs, social bots, hardware, and wallet/trading examples, open
+For human-gated setup instructions with links for Minecraft, cloud CLIs,
+social bots, hardware, and wallet/trading examples, open
 [`setup-guide.html`](./setup-guide.html).
 
 For the current local validation matrix, commands, and remaining live/manual
@@ -32,10 +32,9 @@ all of these; otherwise set the provider used by the example you are running.
 | `OPENAI_API_KEY` | Most server, chat, cloud, social, MCP, REST, and deployment examples | Required for examples that only use OpenAI. Some examples fall back to local ELIZA mode when unset. |
 | `ANTHROPIC_API_KEY` | `chat`, `form`, `code`, `convex`, `discord`, `bluesky`, `trader` | Required when forcing Anthropic or testing Anthropic provider flows. |
 | `XAI_API_KEY` | `chat`, `form`, `twitter-xai` | Required for the X/Grok example. |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | `chat`, `form`, `convex`, app examples, browser extension, avatar | Required for Google GenAI provider flows. |
-| `GROQ_API_KEY` | `chat`, `form`, app examples, browser extension, avatar | Required for Groq provider flows. |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | `chat`, `form`, `convex`, app examples, browser extension | Required for Google GenAI provider flows. |
+| `GROQ_API_KEY` | `chat`, `form`, app examples, browser extension | Required for Groq provider flows. |
 | `OPENROUTER_API_KEY` / `LLM_API_KEY` | `moltbook`, app examples, optional model-provider paths | `moltbook` reads `LLM_API_KEY` first, then `OPENROUTER_API_KEY`, then `OPENAI_API_KEY`. |
-| `ELEVENLABS_API_KEY` | `avatar` | Required for voice output in the avatar demo. |
 
 ## Database And Deployment Keys
 
@@ -62,7 +61,6 @@ all of these; otherwise set the provider used by the example you are running.
 | `farcaster` | `OPENAI_API_KEY`, `FARCASTER_FID`, `FARCASTER_SIGNER_UUID`, `FARCASTER_NEYNAR_API_KEY` | Start with `FARCASTER_DRY_RUN=true`; set `ENABLE_CAST=true` only when ready to post. |
 | `farcaster-miniapp` | `ELIZA_API_URL`, `FARCASTER_FID`, `FARCASTER_SIGNER_UUID`, `FARCASTER_NEYNAR_API_KEY` | `SOLANA_RPC_URL`, `SOLANA_PRIVATE_KEY`, `EVM_PRIVATE_KEY`, chain provider URLs, `LIFI_API_KEY` |
 | `twitter-xai` | `XAI_API_KEY` and X auth | Recommended: `TWITTER_AUTH_MODE=broker` with `ELIZAOS_CLOUD_API_KEY` or `TWITTER_BROKER_TOKEN`. Env-token mode requires `TWITTER_API_KEY`, `TWITTER_API_SECRET_KEY`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_TOKEN_SECRET`; `TWITTER_BEARER_TOKEN` is read-only. Start with `TWITTER_DRY_RUN=true`. |
-| `roblox` | `ROBLOX_API_KEY`, `ROBLOX_UNIVERSE_ID`, Roblox Studio place setup, and game-side bridge script | `ROBLOX_PLACE_ID`, `ROBLOX_MESSAGING_TOPIC`, `ROBLOX_DRY_RUN`, `ELIZA_ROBLOX_SHARED_SECRET`, `OPENAI_API_KEY` for full LLM behavior. |
 | `moltbook` | `LLM_API_KEY` and `MOLTBOOK_TOKEN` for posting/commenting | `MOLTBOOK_TOKEN` unset gives read-only mode. |
 
 ## Wallet And Trading Credentials
@@ -86,7 +84,6 @@ until the full flow is verified.
 | `app/capacitor` | Configure provider keys through the app/backend settings. `VITE_CHAT_BACKEND_URL` points the frontend at a backend. |
 | `app/electron` | Configure provider keys through the app/backend settings. `ELECTRON_RENDERER_URL` is for frontend dev-server mode. |
 | `autonomous` | No hosted model API required by default. Local model paths use `MODELS_DIR` and `LOCAL_SMALL_MODEL`; shell sandbox uses `SHELL_ALLOWED_DIRECTORY`. |
-| `avatar` | Provider key for selected model; `ELEVENLABS_API_KEY` for TTS. |
 | `aws` | `OPENAI_API_KEY` plus AWS/SAM credentials for deployment. Local tests skip live chat when no key is set. |
 | `bluesky` | `BLUESKY_HANDLE`, `BLUESKY_PASSWORD`, and a model key. `LIVE_TEST=true` enables live integration tests. |
 | `browser-extension` | Build needs no API key. Live browser use requires adding a provider API key in extension settings. Safari also requires Xcode signing/install. |
@@ -109,7 +106,6 @@ until the full flow is verified.
 | `next` | `OPENAI_API_KEY`; `POSTGRES_URL` for production-like persistence. |
 | `react` | No API keys; browser ELIZA/PGLite demo. |
 | `rest-api/elysia`, `rest-api/express`, `rest-api/hono` | `OPENAI_API_KEY` for LLM responses; otherwise local ELIZA fallback. `POSTGRES_URL` optional. |
-| `roblox` | Roblox Open Cloud key/universe, Studio place, bridge Lua script, shared secret/topic alignment. |
 | `supabase` | Supabase CLI/project, `OPENAI_API_KEY` secret, deployed/local function URL and anon key for client tests. |
 | `telegram` | `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`. |
 | `text-adventure` | No API key required for local validation; `POSTGRES_URL`/`PGLITE_DATA_DIR` optional persistence settings. |
@@ -120,9 +116,9 @@ until the full flow is verified.
 
 ## Known Human-Gated Items
 
-- Roblox, Safari extension installation, AWS, GCP, Cloudflare, Vercel,
-  Supabase, and Convex all require external accounts or desktop/cloud setup
-  beyond local script execution.
+- Safari extension installation, AWS, GCP, Cloudflare, Vercel, Supabase, and
+  Convex all require external accounts or desktop/cloud setup beyond local
+  script execution.
 - Social examples can post publicly. Keep dry-run flags enabled until the
   account, bot permissions, and content behavior are confirmed.
 - Trading examples can transact with real funds. Use isolated wallets and

@@ -1257,7 +1257,6 @@ for (const root of [
     ["@elizaos/plugin-polymarket", "polymarket"],
     ["@elizaos/plugin-shopify", "shopify"],
     ["@elizaos/plugin-training", "training"],
-    ["@elizaos/plugin-vincent", "vincent"],
   ]);
   for (const [packageName, marker] of forcedLiveStubs) {
     const stubPath = `${nodeModules}/${packageName}/index.js`;

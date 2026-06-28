@@ -2,7 +2,7 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { HardwareProbe } from "../services/types";
-import type { CompatRuntimeState } from "./compat-route-shared";
+import type { CompatRuntimeState } from "./compat-helpers";
 
 // ── mocks ──────────────────────────────────────────────────────────────
 
@@ -39,31 +39,6 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 
 vi.mock("@elizaos/agent", () => ({
 	loadElizaConfig: () => ({ meta: {}, agents: {} }),
-}));
-
-vi.mock("./auth", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("./auth")>();
-	return {
-		...actual,
-		ensureRouteAuthorized: vi.fn(async () => true),
-		ensureCompatSensitiveRouteAuthorized: () => true,
-		getCompatApiToken: () => null,
-		getProvidedApiToken: () => null,
-		tokenMatches: () => true,
-	};
-});
-
-vi.mock("./auth/sessions", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("./auth/sessions")>();
-	return {
-		...actual,
-		findActiveSession: vi.fn(async () => null),
-		parseSessionCookie: vi.fn(() => null),
-	};
-});
-
-vi.mock("./server-first-run-helpers", () => ({
-	isCloudProvisioned: () => false,
 }));
 
 vi.mock("../services/service", () => ({

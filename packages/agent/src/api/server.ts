@@ -2792,8 +2792,8 @@ async function handleRequest(
   // ═══════════════════════════════════════════════════════════════════════
   // Wallet core routes (addresses, balances, generate, config, export)
   // Prefer the local wallet implementation during desktop startup. The
-  // steward-app bridge can pull browser/UI-only dependencies into the agent
-  // process and must not block local assistant boot.
+  // wallet route owner must not pull browser/UI-only dependencies into the
+  // agent process or block local assistant boot.
   // ═══════════════════════════════════════════════════════════════════════
   // plugin-wallet is desktop/cloud-only; on mobile its import does not resolve
   // and the await stalls /api/wallet/* requests. Skip on mobile → fall through

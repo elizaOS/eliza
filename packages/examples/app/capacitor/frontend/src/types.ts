@@ -1,11 +1,11 @@
 export type ProviderMode =
-  | "elizaClassic"
   | "openai"
+  | "openrouter"
   | "anthropic"
+  | "elizacloud"
   | "xai"
   | "gemini"
   | "groq"
-  | "openrouter"
   | "ollama";
 
 export type ProviderSettings = {
@@ -17,6 +17,11 @@ export type ProviderSettings = {
   anthropicApiKey: string;
   anthropicSmallModel: string;
   anthropicLargeModel: string;
+
+  elizacloudApiKey: string;
+  elizacloudBaseUrl: string;
+  elizacloudSmallModel: string;
+  elizacloudLargeModel: string;
 
   xaiApiKey: string;
   xaiBaseUrl: string;
@@ -48,7 +53,7 @@ export type AppConfig = {
 };
 
 export const DEFAULT_CONFIG: AppConfig = {
-  mode: "elizaClassic",
+  mode: "openai",
   provider: {
     openaiApiKey: "",
     openaiBaseUrl: "https://api.openai.com/v1",
@@ -58,6 +63,11 @@ export const DEFAULT_CONFIG: AppConfig = {
     anthropicApiKey: "",
     anthropicSmallModel: "claude-3-5-haiku-20241022",
     anthropicLargeModel: "claude-sonnet-4-6",
+
+    elizacloudApiKey: "",
+    elizacloudBaseUrl: "https://www.elizacloud.ai/api/v1",
+    elizacloudSmallModel: "gpt-oss-120b",
+    elizacloudLargeModel: "zai-glm-4.7",
 
     xaiApiKey: "",
     xaiBaseUrl: "https://api.x.ai/v1",
@@ -93,23 +103,23 @@ export type ChatMessage = {
 
 export function getModeLabel(mode: ProviderMode): string {
   switch (mode) {
-    case "elizaClassic":
-      return "ELIZA (offline)";
     case "openai":
       return "OpenAI";
+    case "openrouter":
+      return "OpenRouter";
     case "anthropic":
       return "Claude";
+    case "elizacloud":
+      return "Eliza Cloud";
     case "xai":
       return "Grok (xAI)";
     case "gemini":
       return "Gemini";
     case "groq":
       return "Groq";
-    case "openrouter":
-      return "OpenRouter";
     case "ollama":
       return "Ollama";
     default:
-      return "ELIZA (offline)";
+      return mode;
   }
 }

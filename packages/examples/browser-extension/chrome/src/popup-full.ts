@@ -28,7 +28,6 @@ import {
   getOrCreateRuntime,
   getScreenshot,
   resetConversation,
-  resolveEffectiveMode,
   sendMessage,
   updatePageContent,
   updateScreenshot,
@@ -40,6 +39,7 @@ import {
   type ExtensionConfig,
   type PageContent,
   type ProviderMode,
+  selectProvider,
 } from "../../shared/types";
 
 console.log("[Popup] Imports loaded");
@@ -78,20 +78,32 @@ const elements = {
   ) as HTMLInputElement,
   // Individual provider settings sections
   openaiSettings: document.getElementById("openaiSettings") as HTMLDivElement,
+  openrouterSettings: document.getElementById(
+    "openrouterSettings",
+  ) as HTMLDivElement,
   anthropicSettings: document.getElementById(
     "anthropicSettings",
   ) as HTMLDivElement,
   xaiSettings: document.getElementById("xaiSettings") as HTMLDivElement,
   geminiSettings: document.getElementById("geminiSettings") as HTMLDivElement,
   groqSettings: document.getElementById("groqSettings") as HTMLDivElement,
+  elizacloudSettings: document.getElementById(
+    "elizacloudSettings",
+  ) as HTMLDivElement,
   // API key inputs
   openaiApiKey: document.getElementById("openaiApiKey") as HTMLInputElement,
+  openrouterApiKey: document.getElementById(
+    "openrouterApiKey",
+  ) as HTMLInputElement,
   anthropicApiKey: document.getElementById(
     "anthropicApiKey",
   ) as HTMLInputElement,
   xaiApiKey: document.getElementById("xaiApiKey") as HTMLInputElement,
   geminiApiKey: document.getElementById("geminiApiKey") as HTMLInputElement,
   groqApiKey: document.getElementById("groqApiKey") as HTMLInputElement,
+  elizacloudApiKey: document.getElementById(
+    "elizacloudApiKey",
+  ) as HTMLInputElement,
 };
 
 // ============================================
@@ -290,18 +302,19 @@ function setMessageContent(
 
 function getModeLabel(mode: ProviderMode): string {
   const labels: Record<ProviderMode, string> = {
-    elizaClassic: "ELIZA Classic",
     openai: "OpenAI",
+    openrouter: "OpenRouter",
     anthropic: "Claude",
     xai: "Grok",
     gemini: "Gemini",
     groq: "Groq",
+    elizacloud: "Eliza Cloud",
   };
   return labels[mode] || mode;
 }
 
-function updateStatus(mode: ProviderMode, ready: boolean): void {
-  elements.statusText.textContent = getModeLabel(mode);
+function updateStatus(mode: ProviderMode | null, ready: boolean): void {
+  elements.statusText.textContent = mode ? getModeLabel(mode) : "No provider";
   elements.statusDot.className = ready ? "status-dot active" : "status-dot";
 }
 
@@ -420,12 +433,13 @@ function restoreMessages(messages: StoredMessage[]): void {
 // ============================================
 
 const providerSettingsSections: Record<ProviderMode, HTMLDivElement | null> = {
-  elizaClassic: null,
   openai: elements.openaiSettings,
+  openrouter: elements.openrouterSettings,
   anthropic: elements.anthropicSettings,
   xai: elements.xaiSettings,
   gemini: elements.geminiSettings,
   groq: elements.groqSettings,
+  elizacloud: elements.elizacloudSettings,
 };
 
 function updateProviderSettings(): void {
@@ -441,20 +455,20 @@ function updateProviderSettings(): void {
   }
 
   // Update the provider note
-  const effectiveMode = resolveEffectiveMode(config);
+  const selected = selectProvider(config);
   const noteText = elements.providerNote?.querySelector(".note-text");
   const noteDot = elements.providerNote?.querySelector(".dot") as HTMLElement;
 
   if (noteText && noteDot) {
-    if (config.mode === "elizaClassic") {
-      noteText.textContent = "ELIZA Classic works offline - no API key needed";
-      noteDot.style.background = "#22c55e";
-    } else if (effectiveMode === "elizaClassic") {
-      noteText.textContent = "No API key set - will use ELIZA Classic fallback";
-      noteDot.style.background = "#eab308";
-    } else {
+    if (selected === config.mode) {
       noteText.textContent = "API key configured";
       noteDot.style.background = "#22c55e";
+    } else if (selected) {
+      noteText.textContent = `No ${getModeLabel(config.mode)} key — using ${getModeLabel(selected)} instead`;
+      noteDot.style.background = "#eab308";
+    } else {
+      noteText.textContent = "No API key set — add one below to start chatting";
+      noteDot.style.background = "#ef4444";
     }
   }
 }
@@ -463,6 +477,8 @@ function loadApiKeysIntoForm(): void {
   // Populate form fields with saved values
   if (elements.openaiApiKey)
     elements.openaiApiKey.value = config.provider.openaiApiKey || "";
+  if (elements.openrouterApiKey)
+    elements.openrouterApiKey.value = config.provider.openrouterApiKey || "";
   if (elements.anthropicApiKey)
     elements.anthropicApiKey.value = config.provider.anthropicApiKey || "";
   if (elements.xaiApiKey)
@@ -471,12 +487,21 @@ function loadApiKeysIntoForm(): void {
     elements.geminiApiKey.value = config.provider.googleGenaiApiKey || "";
   if (elements.groqApiKey)
     elements.groqApiKey.value = config.provider.groqApiKey || "";
+  if (elements.elizacloudApiKey)
+    elements.elizacloudApiKey.value = config.provider.elizaCloudApiKey || "";
 }
 
 function setupApiKeyListeners(): void {
   // OpenAI
   elements.openaiApiKey?.addEventListener("input", () => {
     config.provider.openaiApiKey = elements.openaiApiKey.value;
+    saveConfig();
+    updateProviderSettings();
+  });
+
+  // OpenRouter
+  elements.openrouterApiKey?.addEventListener("input", () => {
+    config.provider.openrouterApiKey = elements.openrouterApiKey.value;
     saveConfig();
     updateProviderSettings();
   });
@@ -505,6 +530,13 @@ function setupApiKeyListeners(): void {
   // Groq
   elements.groqApiKey?.addEventListener("input", () => {
     config.provider.groqApiKey = elements.groqApiKey.value;
+    saveConfig();
+    updateProviderSettings();
+  });
+
+  // Eliza Cloud
+  elements.elizacloudApiKey?.addEventListener("input", () => {
+    config.provider.elizaCloudApiKey = elements.elizacloudApiKey.value;
     saveConfig();
     updateProviderSettings();
   });
@@ -688,8 +720,6 @@ async function handleSendMessage(text: string): Promise<void> {
       await captureAndUpdateScreenshot();
     }
 
-    const effectiveMode = resolveEffectiveMode(config);
-
     // Prefer background/offscreen inference so it can continue if popup closes.
     if (useBackgroundInference && currentPageUrl) {
       const resp = await new Promise<{
@@ -716,21 +746,16 @@ async function handleSendMessage(text: string): Promise<void> {
     }
 
     // Fallback: inference in popup (Safari / unsupported) — will stop if popup closes.
-    if (effectiveMode === "elizaClassic") {
+    let fullText = "";
+    await sendMessage(config, text, {
+      onAssistantChunk: (chunk) => {
+        fullText += chunk;
+        updateMessage(assistantMsg, fullText, true);
+      },
+    });
+    if (!fullText) {
       const { responseText } = await sendMessage(config, text);
       updateMessage(assistantMsg, responseText, true);
-    } else {
-      let fullText = "";
-      await sendMessage(config, text, {
-        onAssistantChunk: (chunk) => {
-          fullText += chunk;
-          updateMessage(assistantMsg, fullText, true);
-        },
-      });
-      if (!fullText) {
-        const { responseText } = await sendMessage(config, text);
-        updateMessage(assistantMsg, responseText, true);
-      }
     }
   } catch (error) {
     console.error("[Popup] Error sending message:", error);
@@ -766,8 +791,7 @@ async function handleClearChat(): Promise<void> {
   await clearChatHistory();
 
   elements.messages.innerHTML = "";
-  const effectiveMode = resolveEffectiveMode(config);
-  addMessage("assistant", getGreetingText(effectiveMode));
+  addMessage("assistant", getGreetingText());
 }
 
 // ============================================
@@ -775,22 +799,26 @@ async function handleClearChat(): Promise<void> {
 // ============================================
 
 async function initializeRuntime(): Promise<void> {
-  const effectiveMode = resolveEffectiveMode(config);
-  updateStatus(effectiveMode, false);
+  const selected = selectProvider(config);
+  updateStatus(selected, false);
 
   try {
     if (useBackgroundInference) {
       // Runtime lives in offscreen; popup is just UI.
-      updateStatus(effectiveMode, true);
+      updateStatus(selected, Boolean(selected));
       return;
     }
-    console.log("[Popup] Initializing runtime with mode:", effectiveMode);
+    if (!selected) {
+      elements.statusText.textContent = "No API key";
+      return;
+    }
+    console.log("[Popup] Initializing runtime with mode:", selected);
     await getOrCreateRuntime(config);
     console.log("[Popup] Runtime initialized");
-    updateStatus(effectiveMode, true);
+    updateStatus(selected, true);
   } catch (error) {
     console.error("[Popup] Error initializing runtime:", error);
-    updateStatus(effectiveMode, false);
+    updateStatus(selected, false);
     elements.statusText.textContent = "Error";
   }
 }
@@ -833,8 +861,7 @@ async function initialize(): Promise<void> {
     );
   } else {
     // Show greeting for new conversation
-    const effectiveMode = resolveEffectiveMode(config);
-    addMessage("assistant", getGreetingText(effectiveMode));
+    addMessage("assistant", getGreetingText());
   }
 
   console.log("[Popup] Initialization complete");

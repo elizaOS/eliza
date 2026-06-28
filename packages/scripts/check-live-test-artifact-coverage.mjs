@@ -79,7 +79,7 @@ const NON_MODEL_EXCLUSION_RULES = [
   },
   {
     reason: "Manual real/e2e plugin suite without model/provider terms; keep as non-model evidence unless a provider key is introduced.",
-    matches: (row) => /test:e2e:manual|\.real\.e2e|\.live\.e2e|acp-codex-smoke|example-bluesky|plugin-(documents|shopify-ui|steward-app|task-coordinator|vincent|agent-orchestrator)/i.test(row.value),
+    matches: (row) => /test:e2e:manual|\.real\.e2e|\.live\.e2e|acp-codex-smoke|example-bluesky|plugin-(documents|shopify-ui|task-coordinator|vincent|agent-orchestrator)/i.test(row.value),
   },
   {
     reason: "Package-local browser/unit/e2e bundle with no model/provider terms.",

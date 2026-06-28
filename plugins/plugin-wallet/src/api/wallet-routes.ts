@@ -932,10 +932,9 @@ export async function handleWalletRoutes(
   }
 
   // GET /api/wallet/nfts
-  // The always-loaded plugin-wallet has no NFT data source wired in — NFT
-  // indexing lives in the opt-in steward-app routes. Return an empty,
-  // well-typed collection (shape-matched to that handler) so the wallet and
-  // inventory views render cleanly instead of hitting an unhandled 404.
+  // No NFT indexer is wired here yet. Return an empty, well-typed collection
+  // so the wallet and inventory views render cleanly instead of hitting an
+  // unhandled 404.
   if (method === "GET" && pathname === "/api/wallet/nfts") {
     const empty: WalletNftsResponse = { evm: [], solana: null };
     json(res, empty);

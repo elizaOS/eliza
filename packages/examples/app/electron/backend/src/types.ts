@@ -1,12 +1,12 @@
 export type ProviderMode =
-  | "elizaClassic"
   | "openai"
   | "anthropic"
   | "xai"
   | "gemini"
   | "groq"
   | "openrouter"
-  | "ollama";
+  | "ollama"
+  | "elizacloud";
 
 type ProviderSettings = {
   openaiApiKey: string;
@@ -40,6 +40,11 @@ type ProviderSettings = {
   ollamaApiEndpoint: string;
   ollamaSmallModel: string;
   ollamaLargeModel: string;
+
+  elizacloudApiKey: string;
+  elizacloudBaseUrl: string;
+  elizacloudSmallModel: string;
+  elizacloudLargeModel: string;
 };
 
 export type AppConfig = {
@@ -48,7 +53,7 @@ export type AppConfig = {
 };
 
 export const DEFAULT_CONFIG: AppConfig = {
-  mode: "elizaClassic",
+  mode: "openai",
   provider: {
     openaiApiKey: "",
     openaiBaseUrl: "https://api.openai.com/v1",
@@ -81,6 +86,11 @@ export const DEFAULT_CONFIG: AppConfig = {
     ollamaApiEndpoint: "http://localhost:11434",
     ollamaSmallModel: "eliza-1-2b",
     ollamaLargeModel: "eliza-1-9b",
+
+    elizacloudApiKey: "",
+    elizacloudBaseUrl: "https://elizacloud.ai/api/v1",
+    elizacloudSmallModel: "gpt-oss-120b",
+    elizacloudLargeModel: "zai-glm-4.7",
   },
 };
 
@@ -91,10 +101,34 @@ export type ChatMessage = {
   timestamp: number;
 };
 
+/**
+ * Provider-selection contract. When the UI-selected provider has no
+ * credentials entered, fall back to whichever real inference provider has an
+ * API key present in the environment, checked in this fixed priority order.
+ * There is no offline fallback.
+ */
+const ENV_PROVIDER_PRIORITY: ReadonlyArray<{
+  mode: ProviderMode;
+  envVar: string;
+}> = [
+  { mode: "openai", envVar: "OPENAI_API_KEY" },
+  { mode: "openrouter", envVar: "OPENROUTER_API_KEY" },
+  { mode: "anthropic", envVar: "ANTHROPIC_API_KEY" },
+  { mode: "elizacloud", envVar: "ELIZA_API_KEY" },
+];
+
+export function selectProviderFromEnv(): ProviderMode {
+  for (const { mode, envVar } of ENV_PROVIDER_PRIORITY) {
+    const value = process.env[envVar];
+    if (typeof value === "string" && value.trim().length > 0) return mode;
+  }
+  throw new Error(
+    "No inference provider configured. Set one of OPENAI_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or ELIZA_API_KEY.",
+  );
+}
+
 function hasValidCredentials(config: AppConfig): boolean {
   switch (config.mode) {
-    case "elizaClassic":
-      return true;
     case "openai":
       return config.provider.openaiApiKey.trim().length > 0;
     case "anthropic":
@@ -109,12 +143,14 @@ function hasValidCredentials(config: AppConfig): boolean {
       return config.provider.openrouterApiKey.trim().length > 0;
     case "ollama":
       return config.provider.ollamaApiEndpoint.trim().length > 0;
+    case "elizacloud":
+      return config.provider.elizacloudApiKey.trim().length > 0;
     default:
       return false;
   }
 }
 
 export function getEffectiveMode(config: AppConfig): ProviderMode {
-  if (config.mode === "elizaClassic") return "elizaClassic";
-  return hasValidCredentials(config) ? config.mode : "elizaClassic";
+  if (hasValidCredentials(config)) return config.mode;
+  return selectProviderFromEnv();
 }

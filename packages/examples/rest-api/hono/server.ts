@@ -29,14 +29,74 @@ const PORT = Number(process.env.PORT ?? 3000);
 
 // Character configuration
 // Pass environment variables via character.secrets so getSetting() can find them
-// Without POSTGRES_URL, plugin-sql will use PGLite automatically
+// Without POSTGRES_URL, plugin-sql will use PGLite automatically.
+// The inference provider's API key is injected in getRuntime() once selected.
 const character: Character = createCharacter({
   name: "Eliza",
   bio: "A helpful AI assistant powered by elizaOS.",
-  secrets: {
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
-  },
+  secrets: {},
 });
+
+// ============================================================================
+// Inference Provider Selection
+// ============================================================================
+
+type ProviderName = "openai" | "openrouter" | "anthropic" | "elizacloud";
+
+interface ProviderSelection {
+  name: ProviderName;
+  /** Character secret key the provider plugin reads at init. */
+  secretKey: string;
+  secretValue: string;
+  /** Lazily import the provider plugin so only the chosen one is loaded. */
+  load: () => Promise<Plugin>;
+}
+
+/**
+ * Pick the inference provider from the first API key present, in priority order.
+ * Throws when no provider is configured — there is no offline fallback.
+ */
+function selectProvider(): ProviderSelection {
+  if (process.env.OPENAI_API_KEY) {
+    return {
+      name: "openai",
+      secretKey: "OPENAI_API_KEY",
+      secretValue: process.env.OPENAI_API_KEY,
+      load: async () => (await import("@elizaos/plugin-openai")).openaiPlugin,
+    };
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    return {
+      name: "openrouter",
+      secretKey: "OPENROUTER_API_KEY",
+      secretValue: process.env.OPENROUTER_API_KEY,
+      load: async () =>
+        (await import("@elizaos/plugin-openrouter")).openrouterPlugin,
+    };
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    return {
+      name: "anthropic",
+      secretKey: "ANTHROPIC_API_KEY",
+      secretValue: process.env.ANTHROPIC_API_KEY,
+      load: async () =>
+        (await import("@elizaos/plugin-anthropic")).anthropicPlugin,
+    };
+  }
+  if (process.env.ELIZA_API_KEY) {
+    return {
+      name: "elizacloud",
+      // The cloud plugin reads ELIZAOS_CLOUD_API_KEY at init.
+      secretKey: "ELIZAOS_CLOUD_API_KEY",
+      secretValue: process.env.ELIZA_API_KEY,
+      load: async () =>
+        (await import("@elizaos/plugin-elizacloud")).elizaOSCloudPlugin,
+    };
+  }
+  throw new Error(
+    "No inference provider configured. Set one of OPENAI_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or ELIZA_API_KEY.",
+  );
+}
 
 // ============================================================================
 // Runtime State
@@ -45,7 +105,7 @@ const character: Character = createCharacter({
 let runtime: IAgentRuntime | null = null;
 let initPromise: Promise<IAgentRuntime | null> | null = null;
 let initError: string | null = null;
-let useClassicFallback = false;
+let selectedProvider: ProviderName | null = null;
 
 // Session identifiers
 const roomId = stringToUuid("chat-room");
@@ -53,30 +113,23 @@ const worldId = stringToUuid("chat-world");
 
 async function getRuntime(): Promise<IAgentRuntime | null> {
   if (runtime) return runtime;
-  if (useClassicFallback) return null;
-
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
     try {
       console.log("🚀 Initializing elizaOS runtime...");
 
-      const { default: sqlPlugin } = await import("@elizaos/plugin-sql");
+      const selection = selectProvider();
+      selectedProvider = selection.name;
+      character.secrets = {
+        ...character.secrets,
+        [selection.secretKey]: selection.secretValue,
+      };
+      console.log(`💡 Using ${selection.name} for inference`);
 
-      // Choose plugins based on whether OpenAI key is available
-      const plugins: Plugin[] = [sqlPlugin as Plugin];
-      if (process.env.OPENAI_API_KEY) {
-        const { openaiPlugin } = await import("@elizaos/plugin-openai");
-        plugins.push(openaiPlugin);
-      } else {
-        console.log(
-          "💡 No OPENAI_API_KEY found, using elizaClassicPlugin for responses",
-        );
-        const { elizaClassicPlugin } = await import(
-          "@elizaos/plugin-eliza-classic"
-        );
-        plugins.push(elizaClassicPlugin);
-      }
+      const { default: sqlPlugin } = await import("@elizaos/plugin-sql");
+      const providerPlugin = await selection.load();
+      const plugins: Plugin[] = [sqlPlugin as Plugin, providerPlugin];
 
       const newRuntime = new AgentRuntime({
         character,
@@ -91,20 +144,7 @@ async function getRuntime(): Promise<IAgentRuntime | null> {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Failed to initialize elizaOS runtime:", message);
-
-      // Check if it's a recoverable error
-      if (
-        message.includes("Extension bundle not found") ||
-        message.includes("migrations")
-      ) {
-        console.log("⚠️ Database initialization issue.");
-        console.log("💡 Falling back to classic ELIZA mode.");
-        useClassicFallback = true;
-        initError = "Database not compatible. Using classic mode.";
-      } else {
-        initError = message;
-        useClassicFallback = true;
-      }
+      initError = message;
       return null;
     }
   })();
@@ -129,14 +169,14 @@ app.use("*", cors());
  * GET / - Info endpoint
  */
 app.get("/", async (c) => {
-  const rt = await getRuntime();
+  const _rt = await getRuntime();
   return c.json({
     name: character.name,
     bio: character.bio,
     version: "2.0.0",
     powered_by: "elizaOS",
     framework: "Hono",
-    mode: rt ? "elizaos" : "classic",
+    mode: selectedProvider ?? "uninitialized",
     endpoints: {
       "POST /chat": "Send a message and receive a response",
       "GET /health": "Health check endpoint",
@@ -152,7 +192,7 @@ app.get("/health", async (c) => {
   const rt = await getRuntime();
   return c.json({
     status: rt ? "healthy" : "degraded",
-    mode: rt ? "elizaos" : "classic",
+    mode: selectedProvider ?? "uninitialized",
     character: character.name,
     error: initError,
     timestamp: new Date().toISOString(),
@@ -227,7 +267,7 @@ app.post("/chat", async (c) => {
     response: responseText || "I processed your message but have no response.",
     character: character.name,
     userId,
-    mode: "elizaos",
+    mode: selectedProvider ?? "uninitialized",
   });
 });
 

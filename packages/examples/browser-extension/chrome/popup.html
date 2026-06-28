@@ -102,12 +102,13 @@
             <div class="field">
               <label for="providerSelect">Active Provider</label>
               <select id="providerSelect">
-                <option value="elizaClassic">ELIZA (offline)</option>
                 <option value="openai">OpenAI</option>
+                <option value="openrouter">OpenRouter</option>
                 <option value="anthropic">Anthropic (Claude)</option>
                 <option value="xai">xAI (Grok)</option>
                 <option value="gemini">Google Gemini</option>
                 <option value="groq">Groq</option>
+                <option value="elizacloud">Eliza Cloud</option>
               </select>
             </div>
             <div class="field-note" id="providerNote">
@@ -122,6 +123,15 @@
             <div class="field">
               <label for="openaiApiKey">API Key</label>
               <input type="password" id="openaiApiKey" placeholder="sk-...">
+            </div>
+          </div>
+
+          <!-- OpenRouter Settings -->
+          <div class="settings-section provider-settings" id="openrouterSettings">
+            <h3>OpenRouter Settings</h3>
+            <div class="field">
+              <label for="openrouterApiKey">API Key</label>
+              <input type="password" id="openrouterApiKey" placeholder="sk-or-...">
             </div>
           </div>
 
@@ -158,6 +168,15 @@
             <div class="field">
               <label for="groqApiKey">API Key</label>
               <input type="password" id="groqApiKey" placeholder="gsk_...">
+            </div>
+          </div>
+
+          <!-- Eliza Cloud Settings -->
+          <div class="settings-section provider-settings" id="elizacloudSettings">
+            <h3>Eliza Cloud Settings</h3>
+            <div class="field">
+              <label for="elizacloudApiKey">API Key</label>
+              <input type="password" id="elizacloudApiKey" placeholder="eliza-...">
             </div>
           </div>
 

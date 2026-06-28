@@ -17,7 +17,7 @@ function createRuntime() {
 
 afterEach(() => {
   vi.doUnmock("ai");
-  vi.doUnmock("../providers");
+  vi.doUnmock("../providers/anthropic");
   vi.clearAllMocks();
   vi.resetModules();
 });
@@ -35,7 +35,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText,
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({
         modelName,
       }),
@@ -76,7 +76,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -138,7 +138,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -187,7 +187,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -224,7 +224,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -257,7 +257,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -318,7 +318,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -379,7 +379,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -426,7 +426,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -474,7 +474,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -511,7 +511,7 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 
@@ -604,7 +604,7 @@ describe("Anthropic model defaults", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
+    vi.doMock("../providers/anthropic", () => ({
       createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
     }));
 

@@ -5,7 +5,7 @@ A cross-platform browser extension that lets you chat with any webpage using AI.
 ## Features
 
 - **Chat with any webpage** - Ask questions about the content you're viewing
-- **Multiple AI providers** - OpenAI, Anthropic (Claude), Google Gemini, Groq, xAI (Grok), or offline ELIZA
+- **Multiple AI providers** - OpenAI, OpenRouter, Anthropic (Claude), Google Gemini, Groq, xAI (Grok), or Eliza Cloud
 - **Privacy-focused** - API keys stored locally, page content never leaves your browser
 - **Streaming responses** - See AI responses as they're generated
 - **Cross-platform** - Works on Chrome and Safari
@@ -50,12 +50,18 @@ npm run convert
 
 | Provider | API Key Required | Models |
 |----------|-----------------|--------|
-| ELIZA (Classic) | No | Pattern matching (offline) |
 | OpenAI | Yes | GPT-4o, gpt-5-mini |
+| OpenRouter | Yes | Any OpenRouter-hosted model |
 | Anthropic | Yes | Claude Sonnet, Claude Haiku |
 | Google Gemini | Yes | Gemini 2.0 Flash |
 | Groq | Yes | GPT-OSS 120B |
 | xAI (Grok) | Yes | Grok-3, Grok-3-mini |
+| Eliza Cloud | Yes | Routed via Eliza Cloud |
+
+At least one provider API key must be configured — there is no offline fallback.
+When the selected provider has no key, the extension auto-selects the first
+configured provider (OpenAI → OpenRouter → Anthropic → Eliza Cloud → xAI →
+Gemini → Groq); if none is set it surfaces a clear error.
 
 ## Validation
 

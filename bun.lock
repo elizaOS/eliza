@@ -879,9 +879,10 @@
       "version": "2.0.0-beta.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-eliza-classic": "workspace:*",
-        "@elizaos/plugin-inmemorydb": "workspace:*",
+        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-openrouter": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "express": "^4.18.0",
         "uuid": "^14.0.0",
@@ -921,7 +922,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
-        "@elizaos/plugin-eliza-classic": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-google-genai": "workspace:*",
         "@elizaos/plugin-groq": "workspace:*",
         "@elizaos/plugin-localdb": "workspace:*",
@@ -961,7 +962,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
-        "@elizaos/plugin-eliza-classic": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-google-genai": "workspace:*",
         "@elizaos/plugin-groq": "workspace:*",
         "@elizaos/plugin-localdb": "workspace:*",
@@ -1005,32 +1006,6 @@
       "devDependencies": {
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
-      },
-    },
-    "packages/examples/avatar": {
-      "name": "eliza-vrm-demo",
-      "version": "2.0.0-beta.0",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-anthropic": "workspace:*",
-        "@elizaos/plugin-elevenlabs": "workspace:*",
-        "@elizaos/plugin-eliza-classic": "workspace:*",
-        "@elizaos/plugin-google-genai": "workspace:*",
-        "@elizaos/plugin-groq": "workspace:*",
-        "@elizaos/plugin-localdb": "workspace:*",
-        "@elizaos/plugin-openai": "workspace:*",
-        "@pixiv/three-vrm": "^3.4.2",
-        "react": "^19.2.3",
-        "react-dom": "^19.2.3",
-        "three": "0.184.0",
-      },
-      "devDependencies": {
-        "@types/react": "^19.2.3",
-        "@types/react-dom": "^19.2.2",
-        "@types/three": "0.184.1",
-        "@vitejs/plugin-react": "^6.0.0",
-        "typescript": "^6.0.3",
-        "vite": "^8.0.8",
       },
     },
     "packages/examples/aws": {
@@ -1077,11 +1052,12 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
-        "@elizaos/plugin-eliza-classic": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-google-genai": "workspace:*",
         "@elizaos/plugin-groq": "workspace:*",
         "@elizaos/plugin-localdb": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-openrouter": "workspace:*",
       },
       "devDependencies": {
         "@types/chrome": "^0.1.33",
@@ -1332,6 +1308,12 @@
     "packages/examples/html": {
       "name": "@elizaos-examples/html-eliza",
       "version": "2.0.0-beta.0",
+      "dependencies": {
+        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-openrouter": "workspace:*",
+      },
     },
     "packages/examples/lp-manager": {
       "name": "@elizaos/example-lp-manager",
@@ -1423,7 +1405,10 @@
       "dependencies": {
         "@electric-sql/pglite": "^0.4.0",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-eliza-classic": "workspace:*",
+        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-openrouter": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "react": "19.2.3",
         "react-dom": "19.2.3",
@@ -1442,8 +1427,10 @@
       "version": "2.0.0-beta.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-eliza-classic": "workspace:*",
+        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-openrouter": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elysiajs/cors": "^1.1.0",
         "@sinclair/typebox": "^0.34.0",
@@ -1460,8 +1447,10 @@
       "version": "2.0.0-beta.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-eliza-classic": "workspace:*",
+        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-openrouter": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "express": "^4.21.0",
         "uuid": "^14.0.0",
@@ -1477,8 +1466,10 @@
       "version": "2.0.0-beta.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-eliza-classic": "workspace:*",
+        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-openrouter": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "hono": "^4.12.16",
         "uuid": "^14.0.0",
@@ -1486,24 +1477,6 @@
       "devDependencies": {
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
-      },
-    },
-    "packages/examples/roblox": {
-      "name": "@elizaos/example-roblox-agent",
-      "version": "2.0.0-beta.0",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-openai": "workspace:*",
-        "@elizaos/plugin-roblox": "workspace:*",
-        "@elizaos/plugin-sql": "workspace:*",
-        "express": "^4.21.2",
-        "uuid": "^14.0.0",
-      },
-      "devDependencies": {
-        "@types/express": "^5.0.6",
-        "@types/node": "^25.0.3",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.0",
       },
     },
     "packages/examples/smartglasses": {
@@ -4810,19 +4783,6 @@
         "vitest": "^4.0.0",
       },
     },
-    "plugins/plugin-roblox": {
-      "name": "@elizaos/plugin-roblox",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
-        "@types/node": "^25.0.3",
-        "typescript": "^6.0.3",
-        "vitest": "^4.1.4",
-      },
-    },
     "plugins/plugin-scheduling": {
       "name": "@elizaos/plugin-scheduling",
       "version": "2.0.3-beta.7",
@@ -6301,8 +6261,6 @@
 
     "@elizaos/example-rest-api-hono": ["@elizaos/example-rest-api-hono@workspace:packages/examples/rest-api/hono"],
 
-    "@elizaos/example-roblox-agent": ["@elizaos/example-roblox-agent@workspace:packages/examples/roblox"],
-
     "@elizaos/example-smartglasses": ["@elizaos/example-smartglasses@workspace:packages/examples/smartglasses"],
 
     "@elizaos/example-telegram": ["@elizaos/example-telegram@workspace:packages/examples/telegram"],
@@ -6516,8 +6474,6 @@
     "@elizaos/plugin-remote-desktop": ["@elizaos/plugin-remote-desktop@workspace:plugins/plugin-remote-desktop"],
 
     "@elizaos/plugin-remote-manifest": ["@elizaos/plugin-remote-manifest@workspace:packages/plugin-remote-manifest"],
-
-    "@elizaos/plugin-roblox": ["@elizaos/plugin-roblox@workspace:plugins/plugin-roblox"],
 
     "@elizaos/plugin-scheduling": ["@elizaos/plugin-scheduling@workspace:plugins/plugin-scheduling"],
 
@@ -10619,8 +10575,6 @@
 
     "eliza-react-example": ["eliza-react-example@workspace:packages/examples/react"],
 
-    "eliza-vrm-demo": ["eliza-vrm-demo@workspace:packages/examples/avatar"],
-
     "elizagotchi": ["elizagotchi@workspace:packages/examples/elizagotchi"],
 
     "elizaos": ["elizaos@workspace:packages/elizaos"],
@@ -13963,8 +13917,6 @@
 
     "@elizaos/example-rest-api-express/express": ["express@4.22.2", "", { "dependencies": { "accepts": "~1.3.8", "array-flatten": "1.1.1", "body-parser": "~1.20.5", "content-disposition": "~0.5.4", "content-type": "~1.0.4", "cookie": "~0.7.1", "cookie-signature": "~1.0.6", "debug": "2.6.9", "depd": "2.0.0", "encodeurl": "~2.0.0", "escape-html": "~1.0.3", "etag": "~1.8.1", "finalhandler": "~1.3.1", "fresh": "~0.5.2", "http-errors": "~2.0.0", "merge-descriptors": "1.0.3", "methods": "~1.1.2", "on-finished": "~2.4.1", "parseurl": "~1.3.3", "path-to-regexp": "~0.1.12", "proxy-addr": "~2.0.7", "qs": "~6.15.1", "range-parser": "~1.2.1", "safe-buffer": "5.2.1", "send": "~0.19.0", "serve-static": "~1.16.2", "setprototypeof": "1.2.0", "statuses": "~2.0.1", "type-is": "~1.6.18", "utils-merge": "1.0.1", "vary": "~1.1.2" } }, "sha512-IuL+Elrou2ZvCFHs18/CIzy2Nzvo25nZ1/D2eIZlz7c+QUayAcYoiM2BthCjs+EBHVpjYjcuLDAiCWgeIX3X1Q=="],
 
-    "@elizaos/example-roblox-agent/express": ["express@4.22.2", "", { "dependencies": { "accepts": "~1.3.8", "array-flatten": "1.1.1", "body-parser": "~1.20.5", "content-disposition": "~0.5.4", "content-type": "~1.0.4", "cookie": "~0.7.1", "cookie-signature": "~1.0.6", "debug": "2.6.9", "depd": "2.0.0", "encodeurl": "~2.0.0", "escape-html": "~1.0.3", "etag": "~1.8.1", "finalhandler": "~1.3.1", "fresh": "~0.5.2", "http-errors": "~2.0.0", "merge-descriptors": "1.0.3", "methods": "~1.1.2", "on-finished": "~2.4.1", "parseurl": "~1.3.3", "path-to-regexp": "~0.1.12", "proxy-addr": "~2.0.7", "qs": "~6.15.1", "range-parser": "~1.2.1", "safe-buffer": "5.2.1", "send": "~0.19.0", "serve-static": "~1.16.2", "setprototypeof": "1.2.0", "statuses": "~2.0.1", "type-is": "~1.6.18", "utils-merge": "1.0.1", "vary": "~1.1.2" } }, "sha512-IuL+Elrou2ZvCFHs18/CIzy2Nzvo25nZ1/D2eIZlz7c+QUayAcYoiM2BthCjs+EBHVpjYjcuLDAiCWgeIX3X1Q=="],
-
     "@elizaos/gateway-discord/hono": ["hono@4.12.25", "", {}, "sha512-2NFaIyNVgJmBs/ecmtGzlmluTFs5cHEWGTdu0t1HBwYzoGXOL5nUQBRMXsXWla5i4KkG//QMzVP88m1+I3fdAQ=="],
 
     "@elizaos/gateway-webhook/hono": ["hono@4.12.25", "", {}, "sha512-2NFaIyNVgJmBs/ecmtGzlmluTFs5cHEWGTdu0t1HBwYzoGXOL5nUQBRMXsXWla5i4KkG//QMzVP88m1+I3fdAQ=="],
@@ -16631,32 +16583,6 @@
 
     "@elizaos/example-rest-api-express/express/type-is": ["type-is@1.6.18", "", { "dependencies": { "media-typer": "0.3.0", "mime-types": "~2.1.24" } }, "sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g=="],
 
-    "@elizaos/example-roblox-agent/express/accepts": ["accepts@1.3.8", "", { "dependencies": { "mime-types": "~2.1.34", "negotiator": "0.6.3" } }, "sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw=="],
-
-    "@elizaos/example-roblox-agent/express/body-parser": ["body-parser@1.20.5", "", { "dependencies": { "bytes": "~3.1.2", "content-type": "~1.0.5", "debug": "2.6.9", "depd": "2.0.0", "destroy": "~1.2.0", "http-errors": "~2.0.1", "iconv-lite": "~0.4.24", "on-finished": "~2.4.1", "qs": "~6.15.1", "raw-body": "~2.5.3", "type-is": "~1.6.18", "unpipe": "~1.0.0" } }, "sha512-3grm+/2tUOvu2cjJkvsIxrv/wVpfXQW4PsQHYm7yk4vfpu7Ekl6nEsYBoJUL6qDwZUx8wUhQ8tR2qz+ad9c9OA=="],
-
-    "@elizaos/example-roblox-agent/express/content-disposition": ["content-disposition@0.5.4", "", { "dependencies": { "safe-buffer": "5.2.1" } }, "sha512-FveZTNuGw04cxlAiWbzi6zTAL/lhehaWbTtgluJh4/E95DqMwTmha3KZN1aAWA8cFIhHzMZUvLevkw5Rqk+tSQ=="],
-
-    "@elizaos/example-roblox-agent/express/cookie-signature": ["cookie-signature@1.0.7", "", {}, "sha512-NXdYc3dLr47pBkpUCHtKSwIOQXLVn8dZEuywboCOJY/osA0wFSLlSawr3KN8qXJEyX66FcONTH8EIlVuK0yyFA=="],
-
-    "@elizaos/example-roblox-agent/express/debug": ["debug@2.6.9", "", { "dependencies": { "ms": "2.0.0" } }, "sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA=="],
-
-    "@elizaos/example-roblox-agent/express/finalhandler": ["finalhandler@1.3.2", "", { "dependencies": { "debug": "2.6.9", "encodeurl": "~2.0.0", "escape-html": "~1.0.3", "on-finished": "~2.4.1", "parseurl": "~1.3.3", "statuses": "~2.0.2", "unpipe": "~1.0.0" } }, "sha512-aA4RyPcd3badbdABGDuTXCMTtOneUCAYH/gxoYRTZlIJdF0YPWuGqiAsIrhNnnqdXGswYk6dGujem4w80UJFhg=="],
-
-    "@elizaos/example-roblox-agent/express/fresh": ["fresh@0.5.2", "", {}, "sha512-zJ2mQYM18rEFOudeV4GShTGIQ7RbzA7ozbU9I/XBpm7kqgMywgmylMwXHxZJmkVoYkna9d2pVXVXPdYTP9ej8Q=="],
-
-    "@elizaos/example-roblox-agent/express/merge-descriptors": ["merge-descriptors@1.0.3", "", {}, "sha512-gaNvAS7TZ897/rVaZ0nMtAyxNyi/pdbjbAwUpFQpN70GqnVfOiXpeUUMKRBmzXaSQ8DdTX4/0ms62r2K+hE6mQ=="],
-
-    "@elizaos/example-roblox-agent/express/path-to-regexp": ["path-to-regexp@0.1.13", "", {}, "sha512-A/AGNMFN3c8bOlvV9RreMdrv7jsmF9XIfDeCd87+I8RNg6s78BhJxMu69NEMHBSJFxKidViTEdruRwEk/WIKqA=="],
-
-    "@elizaos/example-roblox-agent/express/range-parser": ["range-parser@1.2.1", "", {}, "sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg=="],
-
-    "@elizaos/example-roblox-agent/express/send": ["send@0.19.2", "", { "dependencies": { "debug": "2.6.9", "depd": "2.0.0", "destroy": "1.2.0", "encodeurl": "~2.0.0", "escape-html": "~1.0.3", "etag": "~1.8.1", "fresh": "~0.5.2", "http-errors": "~2.0.1", "mime": "1.6.0", "ms": "2.1.3", "on-finished": "~2.4.1", "range-parser": "~1.2.1", "statuses": "~2.0.2" } }, "sha512-VMbMxbDeehAxpOtWJXlcUS5E8iXh6QmN+BkRX1GARS3wRaXEEgzCcB10gTQazO42tpNIya8xIyNx8fll1OFPrg=="],
-
-    "@elizaos/example-roblox-agent/express/serve-static": ["serve-static@1.16.3", "", { "dependencies": { "encodeurl": "~2.0.0", "escape-html": "~1.0.3", "parseurl": "~1.3.3", "send": "~0.19.1" } }, "sha512-x0RTqQel6g5SY7Lg6ZreMmsOzncHFU7nhnRWkKgWuMTu5NN0DR5oruckMqRvacAN9d5w6ARnRBXl9xhDCgfMeA=="],
-
-    "@elizaos/example-roblox-agent/express/type-is": ["type-is@1.6.18", "", { "dependencies": { "media-typer": "0.3.0", "mime-types": "~2.1.24" } }, "sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g=="],
-
     "@elizaos/plugin-social-alpha/tsx/esbuild": ["esbuild@0.27.7", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.27.7", "@esbuild/android-arm": "0.27.7", "@esbuild/android-arm64": "0.27.7", "@esbuild/android-x64": "0.27.7", "@esbuild/darwin-arm64": "0.27.7", "@esbuild/darwin-x64": "0.27.7", "@esbuild/freebsd-arm64": "0.27.7", "@esbuild/freebsd-x64": "0.27.7", "@esbuild/linux-arm": "0.27.7", "@esbuild/linux-arm64": "0.27.7", "@esbuild/linux-ia32": "0.27.7", "@esbuild/linux-loong64": "0.27.7", "@esbuild/linux-mips64el": "0.27.7", "@esbuild/linux-ppc64": "0.27.7", "@esbuild/linux-riscv64": "0.27.7", "@esbuild/linux-s390x": "0.27.7", "@esbuild/linux-x64": "0.27.7", "@esbuild/netbsd-arm64": "0.27.7", "@esbuild/netbsd-x64": "0.27.7", "@esbuild/openbsd-arm64": "0.27.7", "@esbuild/openbsd-x64": "0.27.7", "@esbuild/openharmony-arm64": "0.27.7", "@esbuild/sunos-x64": "0.27.7", "@esbuild/win32-arm64": "0.27.7", "@esbuild/win32-ia32": "0.27.7", "@esbuild/win32-x64": "0.27.7" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-IxpibTjyVnmrIQo5aqNpCgoACA/dTKLTlhMHihVHhdkxKyPO1uBBthumT0rdHmcsk9uMonIWS0m4FljWzILh3w=="],
 
     "@elizaos/vitest-vite/esbuild/@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.27.7", "", { "os": "aix", "cpu": "ppc64" }, "sha512-EKX3Qwmhz1eMdEJokhALr0YiD0lhQNwDqkPYyPhiSwKrh7/4KRjQc04sZ8db+5DVVnZ1LmbNDI1uAMPEUBnQPg=="],
@@ -18693,22 +18619,6 @@
 
     "@elizaos/example-rest-api-express/express/type-is/mime-types": ["mime-types@2.1.35", "", { "dependencies": { "mime-db": "1.52.0" } }, "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw=="],
 
-    "@elizaos/example-roblox-agent/express/accepts/mime-types": ["mime-types@2.1.35", "", { "dependencies": { "mime-db": "1.52.0" } }, "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw=="],
-
-    "@elizaos/example-roblox-agent/express/accepts/negotiator": ["negotiator@0.6.3", "", {}, "sha512-+EUsqGPLsM+j/zdChZjsnX51g4XrHFOIXwfnCVPGlQk/k5giakcKsuxCObBRu6DSm9opw/O6slWbJdghQM4bBg=="],
-
-    "@elizaos/example-roblox-agent/express/body-parser/iconv-lite": ["iconv-lite@0.4.24", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3" } }, "sha512-v3MXnZAcvnywkTUEZomIActle7RXXeedOR31wwl7VlyoXO4Qi9arvSenNQWne1TcRwhCL1HwLI21bEqdpj8/rA=="],
-
-    "@elizaos/example-roblox-agent/express/body-parser/raw-body": ["raw-body@2.5.3", "", { "dependencies": { "bytes": "~3.1.2", "http-errors": "~2.0.1", "iconv-lite": "~0.4.24", "unpipe": "~1.0.0" } }, "sha512-s4VSOf6yN0rvbRZGxs8Om5CWj6seneMwK3oDb4lWDH0UPhWcxwOWw5+qk24bxq87szX1ydrwylIOp2uG1ojUpA=="],
-
-    "@elizaos/example-roblox-agent/express/debug/ms": ["ms@2.0.0", "", {}, "sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A=="],
-
-    "@elizaos/example-roblox-agent/express/send/mime": ["mime@1.6.0", "", { "bin": { "mime": "cli.js" } }, "sha512-x0Vn8spI+wuJ1O6S7gnbaQg8Pxh4NNHb7KSINmEWKiPE4RKOplvijn+NkmYmmRgP68mc70j2EbeTFRsrswaQeg=="],
-
-    "@elizaos/example-roblox-agent/express/type-is/media-typer": ["media-typer@0.3.0", "", {}, "sha512-dq+qelQ9akHpcOl/gUVRTxVIOkAJ1wR3QAvb4RsVjS8oVoFjDGTc679wJYmUmknUF5HwMLOgb5O+a3KxfWapPQ=="],
-
-    "@elizaos/example-roblox-agent/express/type-is/mime-types": ["mime-types@2.1.35", "", { "dependencies": { "mime-db": "1.52.0" } }, "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw=="],
-
     "@elizaos/plugin-social-alpha/tsx/esbuild/@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.27.7", "", { "os": "aix", "cpu": "ppc64" }, "sha512-EKX3Qwmhz1eMdEJokhALr0YiD0lhQNwDqkPYyPhiSwKrh7/4KRjQc04sZ8db+5DVVnZ1LmbNDI1uAMPEUBnQPg=="],
 
     "@elizaos/plugin-social-alpha/tsx/esbuild/@esbuild/android-arm": ["@esbuild/android-arm@0.27.7", "", { "os": "android", "cpu": "arm" }, "sha512-jbPXvB4Yj2yBV7HUfE2KHe4GJX51QplCN1pGbYjvsyCZbQmies29EoJbkEc+vYuU5o45AfQn37vZlyXy4YJ8RQ=="],
@@ -19520,10 +19430,6 @@
     "@elizaos/example-rest-api-express/express/accepts/mime-types/mime-db": ["mime-db@1.52.0", "", {}, "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg=="],
 
     "@elizaos/example-rest-api-express/express/type-is/mime-types/mime-db": ["mime-db@1.52.0", "", {}, "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg=="],
-
-    "@elizaos/example-roblox-agent/express/accepts/mime-types/mime-db": ["mime-db@1.52.0", "", {}, "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg=="],
-
-    "@elizaos/example-roblox-agent/express/type-is/mime-types/mime-db": ["mime-db@1.52.0", "", {}, "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg=="],
 
     "@feed/local-a2a-server/express/accepts/mime-types/mime-db": ["mime-db@1.52.0", "", {}, "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg=="],
 

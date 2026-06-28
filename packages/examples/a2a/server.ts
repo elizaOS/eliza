@@ -2,10 +2,11 @@
  * elizaOS A2A (Agent-to-Agent) Server - TypeScript
  *
  * An HTTP server that exposes an elizaOS agent for agent-to-agent communication.
- * Uses real elizaOS runtime.
+ * Uses the real elizaOS runtime backed by a real LLM provider.
  *
- * - With `OPENAI_API_KEY`: uses OpenAI + SQL plugins
- * - Without `OPENAI_API_KEY`: uses ELIZA classic + localdb plugins (no API keys required)
+ * The inference provider is chosen by which API key env var is set, in priority
+ * order: `OPENAI_API_KEY` → `OPENROUTER_API_KEY` → `ANTHROPIC_API_KEY` →
+ * `ELIZA_API_KEY`. If none is set, the server refuses to start.
  */
 
 import {
@@ -31,6 +32,80 @@ import { v4 as uuidv4 } from "uuid";
 
 const PORT = Number(process.env.PORT ?? 3000);
 
+// ============================================================================
+// Provider selection
+// ============================================================================
+
+type ProviderName = "openai" | "openrouter" | "anthropic" | "elizacloud";
+
+interface ProviderSelection {
+  name: ProviderName;
+  secrets: Record<string, string>;
+  loadPlugin: () => Promise<Plugin>;
+}
+
+/**
+ * Picks the inference provider from the first API key env var that is set, in
+ * priority order. Throws when none is configured — there is no offline fallback.
+ */
+function selectProvider(): ProviderSelection {
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  if (openaiKey) {
+    return {
+      name: "openai",
+      secrets: { OPENAI_API_KEY: openaiKey },
+      loadPlugin: () =>
+        import("@elizaos/plugin-openai").then((mod) => mod.openaiPlugin),
+    };
+  }
+
+  const openrouterKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (openrouterKey) {
+    return {
+      name: "openrouter",
+      secrets: { OPENROUTER_API_KEY: openrouterKey },
+      loadPlugin: () =>
+        import("@elizaos/plugin-openrouter").then(
+          (mod) => mod.openrouterPlugin,
+        ),
+    };
+  }
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (anthropicKey) {
+    return {
+      name: "anthropic",
+      secrets: { ANTHROPIC_API_KEY: anthropicKey },
+      loadPlugin: () =>
+        import("@elizaos/plugin-anthropic").then((mod) => mod.anthropicPlugin),
+    };
+  }
+
+  // The Eliza Cloud plugin reads `ELIZAOS_CLOUD_API_KEY` at init; map the
+  // public `ELIZA_API_KEY` env var into that secret.
+  const elizaKey = process.env.ELIZA_API_KEY?.trim();
+  if (elizaKey) {
+    return {
+      name: "elizacloud",
+      secrets: { ELIZAOS_CLOUD_API_KEY: elizaKey },
+      loadPlugin: () =>
+        import("@elizaos/plugin-elizacloud").then(
+          (mod) => mod.elizaOSCloudPlugin,
+        ),
+    };
+  }
+
+  throw new Error(
+    "No inference provider configured. Set one of OPENAI_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or ELIZA_API_KEY.",
+  );
+}
+
+let providerSelection: ProviderSelection | null = null;
+function getProvider(): ProviderSelection {
+  providerSelection ??= selectProvider();
+  return providerSelection;
+}
+
 const CHARACTER = createCharacter({
   name: "Eliza",
   bio: "A helpful AI assistant powered by elizaOS, available via A2A protocol.",
@@ -46,9 +121,6 @@ let runtime: AgentRuntime | null = null;
 const sessions: Map<string, { roomId: UUID; userId: UUID }> = new Map();
 const worldId = stringToUuid("a2a-world");
 const messageServerId = stringToUuid("a2a-server");
-let generateFallbackResponse:
-  | ((message: string) => string | Promise<string>)
-  | null = null;
 
 type JsonObject = Record<string, ContentValue>;
 
@@ -58,47 +130,29 @@ function serializeBio(): string | null {
   return typeof bio === "string" ? bio : null;
 }
 
-function shouldUseOpenAi(): boolean {
-  const key = process.env.OPENAI_API_KEY;
-  return typeof key === "string" && key.trim().length > 0;
-}
-
-async function generateFallback(message: string): Promise<string> {
-  if (!generateFallbackResponse) {
-    await initializeRuntime();
-  }
-  if (!generateFallbackResponse) {
-    throw new Error("ELIZA fallback response generator not initialized");
-  }
-  return generateFallbackResponse(message);
-}
-
 async function initializeRuntime(): Promise<AgentRuntime> {
   if (runtime) return runtime;
 
-  console.log("🚀 Initializing elizaOS runtime...");
+  const provider = getProvider();
+  console.log(
+    `🚀 Initializing elizaOS runtime (provider: ${provider.name})...`,
+  );
 
-  const plugins = shouldUseOpenAi()
-    ? await Promise.all([
-        import("@elizaos/plugin-sql").then((mod) => mod.default),
-        import("@elizaos/plugin-openai").then((mod) => mod.openaiPlugin),
-      ])
-    : await Promise.all([
-        import("@elizaos/plugin-inmemorydb").then((mod) => mod.default),
-        import("@elizaos/plugin-eliza-classic").then(
-          ({ elizaClassicPlugin, generateElizaResponse }) => {
-            generateFallbackResponse = generateElizaResponse;
-            return elizaClassicPlugin;
-          },
-        ),
-      ]);
+  // Wire the selected provider's API key into the character secrets so the
+  // provider plugin can read it via runtime settings.
+  CHARACTER.secrets = { ...CHARACTER.secrets, ...provider.secrets };
+
+  const plugins: Plugin[] = await Promise.all([
+    import("@elizaos/plugin-sql").then((mod) => mod.default),
+    provider.loadPlugin(),
+  ]);
 
   runtime = new AgentRuntime({
     character: CHARACTER,
-    enableDocuments: shouldUseOpenAi(),
-    enableRelationships: shouldUseOpenAi(),
-    enableTrajectories: shouldUseOpenAi(),
-    plugins: plugins as Plugin[],
+    enableDocuments: true,
+    enableRelationships: true,
+    enableTrajectories: true,
+    plugins,
   });
 
   await runtime.initialize();
@@ -124,10 +178,6 @@ async function handleChat(
   sessionId: string,
   opts?: { callerAgentId?: string; context?: JsonObject },
 ): Promise<string> {
-  if (!shouldUseOpenAi()) {
-    return generateFallback(message);
-  }
-
   const rt = await initializeRuntime();
   const { roomId, userId } = getOrCreateSession(sessionId);
 
@@ -230,7 +280,7 @@ export function createApp(): express.Express {
       version: "1.0.0",
       capabilities: ["chat", "reasoning", "multi-turn"],
       powered_by: "elizaOS",
-      mode: shouldUseOpenAi() ? "openai" : "eliza-classic",
+      mode: getProvider().name,
       endpoints: {
         "POST /chat": "Send a message and receive a response",
         "POST /chat/stream": "Stream a response (SSE)",
@@ -320,15 +370,6 @@ export function createApp(): express.Express {
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
-
-      if (!shouldUseOpenAi()) {
-        res.write(
-          `data: ${JSON.stringify({ text: await generateFallback(message) })}\n\n`,
-        );
-        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-        res.end();
-        return;
-      }
 
       const rt = await initializeRuntime();
       const { roomId, userId } = getOrCreateSession(sessionId);

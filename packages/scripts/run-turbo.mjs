@@ -6,8 +6,21 @@ import path from "node:path";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const turboBin = path.join(repoRoot, "node_modules/.bin/turbo");
+const turboArgs = process.argv.slice(2);
 
-const child = spawn(turboBin, process.argv.slice(2), {
+if (!turboArgs.some((arg) => arg === "--ui" || arg.startsWith("--ui="))) {
+  turboArgs.unshift("--ui=stream");
+}
+
+const runIndex = turboArgs.findIndex((arg) => arg === "run");
+if (
+  runIndex !== -1 &&
+  !turboArgs.some((arg) => arg === "--log-order" || arg.startsWith("--log-order="))
+) {
+  turboArgs.splice(runIndex + 1, 0, "--log-order=stream");
+}
+
+const child = spawn(turboBin, turboArgs, {
   cwd: process.cwd(),
   env: process.env,
   stdio: ["inherit", "pipe", "pipe"],

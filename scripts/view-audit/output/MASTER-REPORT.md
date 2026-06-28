@@ -47,8 +47,8 @@
 | View | Sev | Route | Issue | Root cause | File | Fix |
 |---|---|---|---|---|---|---|
 | **tasks** | P2 | `GET /api/orchestrator/tasks` | Scary red "Failed to load task threads: Not found" banner on **every** surface | Panel depends on orchestrator route owned only by Node-only `plugin-agent-orchestrator` (can't run on mobile/browser); 404 is rendered as a hard load failure | `CodingAgentTasksPanel.tsx:648,667,895`; endpoint `plugin-agent-orchestrator/src/api/orchestrator-routes.ts:235` | In the `refreshThreads` catch: `if (error instanceof ApiError && error.status === 404) { setThreads([]); setLoadError(null); return; }` — show the existing "No coding tasks yet" empty state. Reserve the banner for 5xx/transport |
-| **wallet** | P2 | `GET /api/wallet/nfts` | Red "Failed to fetch NFTs: Not found" banner pinned over an otherwise-correct wallet on device | `/api/wallet/nfts` registered only in opt-in `plugin-steward-app` (loaded on no mobile/web surface); always-loaded `plugin-wallet` has no nfts branch → `return false` → server 404 | `InventoryView.tsx:2184`; `useWalletState.ts:318`; gap `plugin-wallet/src/api/wallet-routes.ts:1715` | (A) Add a `/api/wallet/nfts` branch to the always-loaded `plugin-wallet` `handleWalletRoutes`, returning 200 `{evm:[],solana:null}` when no source. (B) defensive: treat 404 as empty list in `loadNfts` (don't set shared `walletError`). Do A; add B as a guard |
-| **wallet.inventory** | P2 | `GET /api/wallet/nfts` | Same NFT 404 banner on a configured wallet | Same as `wallet` — auto-enabled `plugin-wallet` never registers `/nfts`; only `plugin-steward-app` + iOS kernel do | `InventoryView.tsx:2184`; `useWalletState.ts:311-323`; `client-wallet.ts:209-211` | Register `GET /api/wallet/nfts` on `plugin-wallet` (port `fetchEvmNfts` from `plugin-steward-app/src/api/wallet-evm-balance.ts`), 200 with empty arrays when no keys/RPC |
+| **wallet** | P2 | `GET /api/wallet/nfts` | Red "Failed to fetch NFTs: Not found" banner pinned over an otherwise-correct wallet on device | `/api/wallet/nfts` was unhandled by the always-loaded `plugin-wallet`, so `handleWalletRoutes` returned false and the server emitted 404 | `InventoryView.tsx:2184`; `useWalletState.ts:318`; gap `plugin-wallet/src/api/wallet-routes.ts:1715` | Done: `plugin-wallet` handles `GET /api/wallet/nfts` with 200 `{evm:[],solana:null}` fallback when no source is configured; keep the defensive 404-as-empty guard in `loadNfts` |
+| **wallet.inventory** | P2 | `GET /api/wallet/nfts` | Same NFT 404 banner on a configured wallet | Same as `wallet` — auto-enabled `plugin-wallet` had no `/nfts` branch | `InventoryView.tsx:2184`; `useWalletState.ts:311-323`; `client-wallet.ts:209-211` | Done: `plugin-wallet` owns `GET /api/wallet/nfts` and returns 200 with empty arrays when no keys/RPC/source are available |
 | **automations** | P2 | `GET /api/automations` | Raw red "Not found" banner between filter chips and empty state on device | Endpoint owned only by `plugin-workflow`, deliberately excluded from mobile ("Phones cannot host the workflow runtime"), but the tile is registered under mobile-loaded `plugin-task-coordinator` | `AutomationsFeed.tsx:235,238-245`; owner `plugin-workflow/src/routes/automations.ts:30`; exclusion `core-plugins.ts:39` | In the `refresh()` catch, `if (isApiError(e) && e.status === 404)` set an empty `AutomationListResponse` (clean "Nothing scheduled yet"), mirroring `StreamView.tsx:58`. Reserve banner for non-404 |
 | **phone-companion** | P2 | n/a (Capacitor) | Uncaught `CapacitorException: "ElizaIntent" plugin is not implemented on android` | `ElizaIntent` registered with only a `web` fallback; no Android native plugin; `getPairingStatus()` called without `.catch()` | `PhoneCompanionApp.tsx:56`; registration `eliza-intent.ts:113` | (2, preferred) add `android: () => new ElizaIntentWeb()` to `registerPlugin` so Android resolves the web fallback (`paired:false`); (1) keep a `.catch()` guard on the call |
 | **vincent** | P2 | `GET /api/vincent/status` | Misleading red "Not found" banner over a working disconnected screen on device | Vincent is an opt-in `server-launch` app; its routes mount only on launch. On the un-launched base agent the status call 404s and the dashboard treats it as a hard error | `useVincentDashboard.ts:56,90-95`; banner `VincentAppView.tsx:118` | In the catch, `if (err instanceof ApiError && err.status === 404)` set `vincentConnected=false` + clear `error` (keep the Connect CTA); only surface `error` for real failures |
@@ -63,13 +63,12 @@
 
 These 404s appear **only on the web `bun run dev` agent** because it doesn't load certain plugins. All consumers degrade gracefully; the real Pixel 9a device shows zero failures.
 
-- **views-catalog** — `/api/coding-agents`, `/api/orchestrator/status`, `/api/orchestrator/tasks`, `/api/apps/hero/steward`. Status poller uses `Promise.allSettled→null`; hero `<img>` falls back to icon.
+- **views-catalog** — `/api/coding-agents`, `/api/orchestrator/status`, `/api/orchestrator/tasks`. Status poller uses `Promise.allSettled→null`.
 - **character** — `/api/orchestrator/*` + `/api/coding-agents` 404/503 + WS refused, all from the global task-coordinator widget, not the view's own (successful) fetches.
-- **rolodex** — `/api/apps/hero/steward` (Steward plugin not loaded on web; resolves on device).
 - **orchestrator** — `/api/orchestrator/status`, `/api/orchestrator/tasks`. The view explicitly routes the 404 through `isOrchestratorBackendAbsent` → calm "Connect a cloud or desktop agent" hint (documented intended behavior).
 - **facewear** — `/api/facewear/status` (plugin not loaded on web; `if (res.ok)` guard absorbs it → default empty state).
 
-> Owner of most of these: `plugin-agent-orchestrator` / `plugin-task-coordinator` / `plugin-steward-app` are intentionally not loaded on the web dev agent. Optional dev nicety: register or stub these in the web harness to silence console noise.
+> Owner of most of these: `plugin-agent-orchestrator` / `plugin-task-coordinator` are intentionally not loaded on the web dev agent. Optional dev nicety: register or stub these in the web harness to silence console noise.
 
 ---
 
@@ -102,14 +101,14 @@ Many views were flagged only by the crawler's **`notFound`/`offline` body-text s
 | automations | `/api/automations` | mobile (workflow excluded) |
 | vincent | `/api/vincent/status` | base agent (server-launch, un-launched) |
 | hyperliquid | `/api/hyperliquid/status` | mobile (app-route subpath unresolvable) |
-| wallet / wallet.inventory | `/api/wallet/nfts` | every standard agent (only steward-app) |
+| wallet / wallet.inventory | `/api/wallet/nfts` | fixed in always-loaded `plugin-wallet` |
 | knowledge | `/api/documents` | mobile (app-core boot tail skipped) |
 
 **The fix is the same everywhere and already has precedent in-repo:** `StreamView.tsx:58` and `ShopifyAppView.helpers.ts:14-15` both special-case `status===404` and degrade to an unavailable/empty state. **These views should adopt that pattern.** A shared helper (e.g. `is404(err)` → degrade) would unify them. The banner must be reserved for genuine 5xx/transport failures.
 
 ### B. Endpoints registered in the wrong place / not at all
 - **fine-tuning**: 14 handlers implemented but never added to the exact-match `TRAINING_ROUTES` list — a registration-list/handler drift that 404s on **every** surface (not surface-specific). High-confidence, isolated fix.
-- **wallet NFTs**: a first-class wallet feature (`/api/wallet/nfts`) lives only in an opt-in plugin, not the always-loaded `plugin-wallet` that owns every other wallet route. The UI's documented data source (`plugin-wallet`) doesn't actually serve it.
+- **wallet NFTs**: fixed by moving `/api/wallet/nfts` into the always-loaded `plugin-wallet` route owner with an empty-list fallback when no NFT source is configured.
 
 ### C. Mobile-agent route gap (the inverse of the usual "web-only" artifacts)
 `knowledge`, `browser`, `hyperliquid` (and the systemic device-wide app-route 404s) all stem from **the mobile/Android agent booting through `@elizaos/agent` and skipping `@elizaos/app-core`'s `registerAppRoutePlugins` boot tail**, plus the `MOBILE_*_PLUGINS` allow-lists. App-route/registry plugins that work on web/desktop simply don't mount on device. `browser` is the worst variant: the inline `server.ts` duplicate actively **calls into the null-stub** and throws a raw JS error instead of cleanly 404ing. Systemic options: bake the needed app-route plugins into the mobile bundle, or guard every inline `server.ts` optional-route handler against stub/absent plugins.

@@ -8,11 +8,11 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { writeVoicePresetFileV2 } from "../../voice-preset-format";
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
-} from "../ffi-bindings";
+} from "../../ffi-bindings";
+import { writeVoicePresetFileV2 } from "../../voice-preset-format";
 import { KokoroFfiRuntime } from "../kokoro-ffi-runtime";
 import type { KokoroRuntimeInputs } from "../kokoro-runtime";
 import type { KokoroModelLayout, KokoroVoicePack } from "../types";

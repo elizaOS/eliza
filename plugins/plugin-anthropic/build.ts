@@ -5,7 +5,13 @@
  */
 import { buildPlugin } from "../plugin-build";
 
-const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
+const reexport = "export * from '../index';\nexport { default } from '../index';\n";
+const rootDeclaration = `import type { Plugin } from "@elizaos/core";
+
+export declare const anthropicPlugin: Plugin;
+declare const _default: Plugin;
+export default _default;
+`;
 
 await buildPlugin({
   name: "@elizaos/plugin-anthropic",
@@ -29,9 +35,9 @@ await buildPlugin({
   ],
   dtsProject: "tsconfig.build.json",
   dtsShims: [
-    { path: "index.d.ts", content: reexport("./node/index") },
-    { path: "node/index.d.ts", content: reexport("./index.node") },
-    { path: "browser/index.d.ts", content: reexport("./index.browser") },
-    { path: "cjs/index.d.ts", content: reexport("./index.node") },
+    { path: "index.d.ts", content: rootDeclaration },
+    { path: "node/index.d.ts", content: reexport },
+    { path: "browser/index.d.ts", content: reexport },
+    { path: "cjs/index.d.ts", content: reexport },
   ],
 });

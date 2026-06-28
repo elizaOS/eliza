@@ -2477,10 +2477,7 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-trajectory-logger",
           "plugins/plugin-trajectory-logger/src/register.ts",
         ],
-        [
-          "@elizaos/plugin-shopify",
-          "plugins/plugin-shopify/src/register.ts",
-        ],
+        ["@elizaos/plugin-shopify", "plugins/plugin-shopify/src/register.ts"],
         [
           "@elizaos/plugin-hyperliquid",
           "plugins/plugin-hyperliquid/src/register.ts",

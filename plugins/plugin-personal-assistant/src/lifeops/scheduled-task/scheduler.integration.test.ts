@@ -27,7 +27,7 @@ import { getScheduledTaskRunner } from "./service.ts";
 import {
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
   type ScheduledTask,
-} from "./types.ts";
+} from "./index.ts";
 
 interface ScheduledTaskSeed
   extends Omit<ScheduledTask, "taskId" | "state" | "createdBy"> {

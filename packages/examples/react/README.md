@@ -1,16 +1,18 @@
-# ELIZA React Example
+# elizaOS React Example
 
-A React implementation of the classic ELIZA chatbot powered by **elizaOS**, featuring a beautiful retro CRT terminal interface.
+A React chat client powered by **elizaOS**, running a full `AgentRuntime` in the
+browser with a retro CRT terminal interface. Inference is handled by a real LLM
+provider selected from whichever API key environment variable is set.
 
 ## Overview
 
 This example demonstrates:
 
 - **elizaOS Integration**: Full AgentRuntime with plugin architecture
-- **Classic ELIZA Plugin**: Pattern matching model handler (no LLM required)
-- **PGLite Database**: In-browser PostgreSQL-compatible storage
+- **Provider auto-selection**: Picks an LLM provider from the API key env var
+  that is set (OpenAI → OpenRouter → Anthropic → Eliza Cloud)
+- **PGLite Database**: In-browser PostgreSQL-compatible storage (WASM)
 - **Retro CRT aesthetic**: Phosphor green text, scanlines, and glow effects
-- **Fully client-side**: No server needed
 
 ## Quick Start
 
@@ -21,11 +23,16 @@ bun install
 # Navigate to this example
 cd packages/examples/react
 
-# Start development server
-bun dev
+# Provide an inference provider key (any ONE of these), then start the dev server
+OPENAI_API_KEY=sk-... bun dev
+# or OPENROUTER_API_KEY=... / ANTHROPIC_API_KEY=... / ELIZA_API_KEY=...
 ```
 
 The app will open at http://localhost:5173
+
+> The selected key is injected into the client bundle at build time so the
+> in-browser runtime can call the provider. If no key is set, the runtime throws
+> a clear error at boot.
 
 ## Architecture
 
@@ -52,56 +59,55 @@ This example uses the full elizaOS agent framework:
               ┌───────────────┴───────────────┐
               ▼                               ▼
 ┌──────────────────────────┐    ┌──────────────────────────┐
-│     plugin-sql           │    │  plugin-eliza-classic    │
-│    (PGLite adapter)      │    │  (Pattern matching)      │
-│                          │    │                          │
-│  In-browser PostgreSQL   │    │  TEXT_LARGE handler      │
-│  with persistent storage │    │  TEXT_SMALL handler      │
+│     plugin-sql           │    │   inference provider     │
+│    (PGLite adapter)      │    │  (openai / openrouter /  │
+│                          │    │   anthropic / elizacloud)│
+│  In-browser PostgreSQL   │    │                          │
+│  with persistent storage │    │  TEXT_LARGE / TEXT_SMALL │
 └──────────────────────────┘    └──────────────────────────┘
 ```
 
 ### Plugins Used
 
-1. **@elizaos/plugin-sql**: Provides PGLite database adapter for in-browser persistence
-2. **plugin-eliza-classic**: Custom plugin that provides TEXT_LARGE/TEXT_SMALL model handlers using classic ELIZA pattern matching
+1. **@elizaos/plugin-sql**: Provides the PGLite database adapter for in-browser
+   persistence.
+2. **One inference provider plugin**, chosen at runtime from the available API
+   key:
+   - `@elizaos/plugin-openai` (`OPENAI_API_KEY`)
+   - `@elizaos/plugin-openrouter` (`OPENROUTER_API_KEY`)
+   - `@elizaos/plugin-anthropic` (`ANTHROPIC_API_KEY`)
+   - `@elizaos/plugin-elizacloud` (`ELIZA_API_KEY`)
 
 ## How It Works
 
-### Pattern Matching (plugin-eliza-classic.ts)
+### Provider selection (eliza-runtime.ts)
 
-This implementation uses the original ELIZA pattern matching algorithm from Joseph Weizenbaum's 1966 program:
+At initialization the runtime checks the environment in priority order and
+lazily imports the matching provider plugin:
 
-1. **Keywords**: Input is scanned for keywords with associated weights
-2. **Patterns**: Each keyword has regex patterns to match against
-3. **Transformations**: Captured groups are reflected (I → you, my → your)
-4. **Responses**: Random responses from templates avoid repetition
+```typescript
+if (process.env.OPENAI_API_KEY) {
+  const { openaiPlugin } = await import("@elizaos/plugin-openai");
+  // ... register openaiPlugin, set the OPENAI_API_KEY character secret
+}
+// ... then OPENROUTER_API_KEY, ANTHROPIC_API_KEY, ELIZA_API_KEY
+```
+
+The selected provider's API key is set as the character secret the plugin reads
+at init (the Eliza Cloud plugin reads `ELIZAOS_CLOUD_API_KEY`, mapped from
+`ELIZA_API_KEY`). If none of the keys are set, the runtime throws:
+
+```
+No inference provider configured. Set one of OPENAI_API_KEY,
+OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or ELIZA_API_KEY.
+```
 
 ### elizaOS Integration
 
-The classic ELIZA logic is wrapped as an elizaOS plugin that provides model handlers:
-
-```typescript
-export const elizaClassicPlugin: Plugin = {
-  name: "eliza-classic",
-  description: "Classic ELIZA pattern matching psychotherapist",
-  priority: 100, // High priority to override other model providers
-
-  models: {
-    [ModelType.TEXT_LARGE]: handleTextGeneration,
-    [ModelType.TEXT_SMALL]: handleTextSmall,
-  },
-};
-```
-
-When the runtime processes a user message via `runtime.messageService.handleMessage(...)`, it will ultimately route to the classic ELIZA model handlers (TEXT_LARGE/TEXT_SMALL) provided by `plugin-eliza-classic` instead of an LLM API.
-
-### No LLM Required
-
-Unlike modern chatbots, classic ELIZA uses purely rule-based pattern matching. This makes it:
-
-- **Instant responses** (no API calls)
-- **Works offline** (all logic is client-side)
-- **Historically accurate** to the original 1966 program
+When the runtime processes a user message via
+`runtime.messageService.handleMessage(...)`, it routes the model calls
+(`TEXT_LARGE` / `TEXT_SMALL`) to the selected provider plugin. The chat persona
+(a Rogerian-style listener) is defined by the character `system` prompt.
 
 ## Project Structure
 
@@ -112,8 +118,8 @@ examples/react/
 │   ├── App.tsx                # Main chat component
 │   ├── App.css                # Terminal styling
 │   ├── index.css              # Global styles
-│   ├── eliza-runtime.ts       # AgentRuntime singleton manager
-│   └── plugin-eliza-classic.ts # ELIZA pattern matching plugin
+│   ├── eliza-runtime.ts       # AgentRuntime singleton + provider selection
+│   └── pglite-browser.ts      # Browser PGLite asset loader
 ├── index.html
 ├── package.json
 ├── tsconfig.json
@@ -139,40 +145,24 @@ bun run typecheck
 bun run build
 ```
 
-The local smoke test checks the Vite mount point, lazy browser runtime import, local ELIZA message flow, and PGlite/no-server wiring. Production output will be in the `dist/` directory.
+The local smoke test checks the Vite mount point, the lazy browser runtime
+import, the provider-selection wiring, and the PGlite storage setup. Production
+output will be in the `dist/` directory. The provider key is read from the build
+environment, so set it before running `bun run build`.
 
 ## Extending This Example
 
-### Adding More Model Providers
+### Swapping providers
 
-You can add additional model providers by creating new plugins. The AgentRuntime will select handlers based on priority:
-
-```typescript
-// Example: Add an LLM fallback with lower priority
-const llmPlugin: Plugin = {
-  name: "llm-fallback",
-  priority: 50, // Lower than ELIZA's 100
-  models: {
-    [ModelType.TEXT_LARGE]: async (runtime, params) => {
-      // Call your LLM API here
-    },
-  },
-};
-```
+Set a different API key env var and restart — the runtime selects the highest
+priority provider whose key is present. To change the priority or add a new
+provider, edit `selectInferenceProvider` in `src/eliza-runtime.ts`.
 
 ### Adding Bootstrap Actions
 
-The bootstrap plugin (actions, providers, services) is now automatically included in the elizaOS core runtime. No need to manually import or configure it - it's built-in and auto-registered during initialization.
-
-## About Classic ELIZA
-
-ELIZA was created by Joseph Weizenbaum at MIT in 1966. It simulates a Rogerian psychotherapist by:
-
-- Reflecting statements back as questions
-- Using keyword-based pattern matching
-- Creating the illusion of understanding through clever rephrasing
-
-This "ELIZA effect" - where people attribute human-like understanding to simple pattern matching - remains relevant in discussions about AI today.
+The bootstrap plugin (actions, providers, services) is automatically included in
+the elizaOS core runtime. No need to manually import or configure it — it is
+built-in and auto-registered during initialization.
 
 ## License
 
