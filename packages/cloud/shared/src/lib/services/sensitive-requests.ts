@@ -150,6 +150,7 @@ export interface SensitiveRequestsServiceDeps {
 const DEFAULT_LIFETIME_SECONDS = 30 * 60;
 const MAX_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 const TOKEN_BYTES = 32;
+type PrivateInfoField = SensitiveRequestPrivateInfoTarget["fields"][number];
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -662,7 +663,9 @@ export class SensitiveRequestsService {
     }
     if (!isPrivateInfoTarget(request.target)) throw ValidationError("Invalid private info target");
 
-    const allowedFields = new Set(request.target.fields.map((field) => field.name));
+    const allowedFields = new Set(
+      request.target.fields.map((field: PrivateInfoField) => field.name),
+    );
     const submittedFieldNames = Object.keys(params.fields).filter((name) =>
       allowedFields.has(name),
     );
@@ -671,8 +674,8 @@ export class SensitiveRequestsService {
     }
 
     const missingRequired = request.target.fields
-      .filter((field) => field.required && !params.fields?.[field.name])
-      .map((field) => field.name);
+      .filter((field: PrivateInfoField) => field.required && !params.fields?.[field.name])
+      .map((field: PrivateInfoField) => field.name);
     if (missingRequired.length > 0) {
       throw ValidationError("Private info submission is missing required fields", {
         missingFields: missingRequired,

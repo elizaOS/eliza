@@ -234,6 +234,12 @@ jobs:
       - name: Actual app agent-driven view switching browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/view-switching-chat-e2e.spec.ts --project=chromium
 
+      - name: Actual app agent bridge inventory browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/browser-skills-agent-bridge.spec.ts test/ui-smoke/plugin-view-agent-bridge-inventory.spec.ts test/ui-smoke/shell-view-agent-bridge-inventory.spec.ts --project=chromium
+
+      - name: Actual app core navigation matrix browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/view-switching-core-matrix.spec.ts --project=chromium
+
       - name: Actual app generated-audio + file-share browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/chat-generated-audio.spec.ts test/ui-smoke/files-view-share-journey.spec.ts --project=chromium
 

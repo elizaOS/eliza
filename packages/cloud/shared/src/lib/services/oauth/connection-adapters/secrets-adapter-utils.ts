@@ -10,6 +10,8 @@ import { secretsService } from "../../secrets";
 import { Errors } from "../errors";
 import type { OAuthConnection, OAuthConnectionSource } from "../types";
 
+type SecretRecord = typeof secrets.$inferSelect;
+
 /** Generate a stable connection ID for secrets-based adapters */
 export function generateConnectionId(platform: string, organizationId: string): string {
   return `${platform}:${organizationId}`;
@@ -33,7 +35,10 @@ export function verifyConnectionId(
 }
 
 /** Fetch all secrets matching a prefix for an organization */
-export async function fetchPlatformSecrets(organizationId: string, prefix: string) {
+export async function fetchPlatformSecrets(
+  organizationId: string,
+  prefix: string,
+): Promise<SecretRecord[]> {
   return dbRead
     .select()
     .from(secrets)
