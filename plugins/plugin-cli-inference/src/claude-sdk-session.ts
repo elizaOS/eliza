@@ -127,11 +127,42 @@ export interface ClaudeSdkSessionConfig {
 // (and never imports the SDK) unless ELIZA_CHAT_VIA_CLI=claude-sdk is set.
 const SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isSdkModule(value: unknown): value is SdkModule {
+  return (
+    isRecord(value) &&
+    typeof value.query === "function" &&
+    typeof value.tool === "function" &&
+    typeof value.createSdkMcpServer === "function"
+  );
+}
+
+function isZodModule(value: unknown): value is ZodModule {
+  if (!isRecord(value) || !isRecord(value.z)) {
+    return false;
+  }
+  const z = value.z;
+  return (
+    typeof z.string === "function" && typeof z.any === "function" && typeof z.record === "function"
+  );
+}
+
 async function loadSdk(): Promise<SdkModule> {
-  return (await import(SDK_PACKAGE)) as unknown as SdkModule;
+  const sdk: unknown = await import(SDK_PACKAGE);
+  if (!isSdkModule(sdk)) {
+    throw new Error("[cli-inference:sdk] Claude Agent SDK module has an unexpected shape");
+  }
+  return sdk;
 }
 async function loadZod(): Promise<ZodModule> {
-  return (await import("zod")) as unknown as ZodModule;
+  const zod: unknown = await import("zod");
+  if (!isZodModule(zod)) {
+    throw new Error("[cli-inference:sdk] zod module has an unexpected shape");
+  }
+  return zod;
 }
 
 /**
