@@ -9,7 +9,7 @@ This is a standalone browser extension — it is not a Node/Bun package imported
 ## Layout
 
 ```
-packages/browser-bridge-extension/
+packages/browser-extension/
   entrypoints/
     background.ts     Service worker: sync loop, auto-pair, session execution, website blocker
     content.ts        Content script injected into allowlisted pages: page capture + DOM actions
@@ -80,17 +80,17 @@ The build script (`scripts/build.mjs`) injects two define constants into each bu
 All scripts are run from the package directory:
 
 ```bash
-bun run --cwd packages/browser-bridge-extension build                   # Chrome (default)
-bun run --cwd packages/browser-bridge-extension build:chrome
-bun run --cwd packages/browser-bridge-extension build:safari-webextension
-bun run --cwd packages/browser-bridge-extension package:chrome          # .zip for Chrome Web Store
-bun run --cwd packages/browser-bridge-extension package:safari
-bun run --cwd packages/browser-bridge-extension package:stores
-bun run --cwd packages/browser-bridge-extension package:release
-bun run --cwd packages/browser-bridge-extension test                    # vitest unit tests (src/)
-bun run --cwd packages/browser-bridge-extension test:smoke              # smoke-checks Chrome dist artifacts
-bun run --cwd packages/browser-bridge-extension test:smoke:safari
-bun run --cwd packages/browser-bridge-extension test:ci                 # test + test:smoke
+bun run --cwd packages/browser-extension build                   # Chrome (default)
+bun run --cwd packages/browser-extension build:chrome
+bun run --cwd packages/browser-extension build:safari-webextension
+bun run --cwd packages/browser-extension package:chrome          # .zip for Chrome Web Store
+bun run --cwd packages/browser-extension package:safari
+bun run --cwd packages/browser-extension package:stores
+bun run --cwd packages/browser-extension package:release
+bun run --cwd packages/browser-extension test                    # vitest unit tests (src/)
+bun run --cwd packages/browser-extension test:smoke              # smoke-checks Chrome dist artifacts
+bun run --cwd packages/browser-extension test:smoke:safari
+bun run --cwd packages/browser-extension test:ci                 # test + test:smoke
 ```
 
 Output lands in `dist/chrome/` or `dist/safari/`. Load `dist/chrome/` as an unpacked extension in Chrome DevTools for local dev.

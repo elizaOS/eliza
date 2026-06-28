@@ -40,7 +40,7 @@ These packages exist in the monorepo but should NOT appear in the docs site:
 | `packages/native/`                     | Internal runtime + plugin implementations.                          |
 | `packages/bun-ios-runtime/`            | Internal iOS runtime detail; surfaced via mobile docs only.         |
 | `packages/electrobun-remote-plugins/`         | Private. Internal remote plugin primitives for desktop shells.             |
-| `packages/browser-bridge-extension/`   | Private. Internal browser extension.                                |
+| `packages/browser-extension/`          | Private. Internal browser extension.                                |
 | `packages/swe-bench-workspace/`        | Test infrastructure artifact.                                       |
 | `packages/shared/`                     | Internal shared utilities.                                          |
 | `packages/cloud-infra/`                | Kubernetes/Terraform infrastructure; private.                       |

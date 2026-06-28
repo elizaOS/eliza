@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/browser-bridge-extension",
+  "name": "@elizaos/browser-extension",
   "version": "2.0.0-beta.2",
   "type": "module",
   "scripts": {
