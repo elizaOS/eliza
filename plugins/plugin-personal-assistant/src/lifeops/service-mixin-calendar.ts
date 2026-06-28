@@ -3,18 +3,17 @@
  *
  * The calendar domain (feed sync, event CRUD, aggregation, next-event context,
  * reminder-plan scheduling for events) was extracted into the first-class
- * `@elizaos/plugin-calendar` package as `CalendarService`. This mixin keeps the
+ * `@elizaos/plugin-calendar` package as `CalendarService`, and the LifeOps-side
+ * surface lives in the `CalendarDomain` sub-service. This mixin keeps the
  * `LifeOpsService.<calendar>` method surface that LifeOps actions, routes,
  * providers, briefs, travel, and activity tracking already call, delegating
- * each call to the singleton `CalendarService`.
+ * each call to the `CalendarDomain`.
  *
  * LifeOps injects a `CalendarHostGate` into the service at init (see
  * `calendar-gate.ts`) so calendar events keep firing reminders and writing
  * audit rows through the LifeOps repository.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import { CalendarService } from "@elizaos/plugin-calendar";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -27,12 +26,12 @@ import type {
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
 } from "@elizaos/shared";
+import { CalendarDomain } from "./domains/calendar-service.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
-import { LifeOpsServiceError } from "./service-types.js";
 
 export interface LifeOpsCalendarService {
   listCalendars(
@@ -93,33 +92,21 @@ export interface LifeOpsCalendarService {
   ): Promise<LifeOpsNextCalendarEventContext>;
 }
 
-function resolveCalendarService(runtime: IAgentRuntime): CalendarService {
-  const service = runtime.getService(
-    CalendarService.serviceType,
-  ) as CalendarService | null;
-  if (!service) {
-    throw new LifeOpsServiceError(
-      503,
-      "Calendar service is unavailable. Ensure @elizaos/plugin-calendar is registered.",
-    );
-  }
-  return service;
-}
-
 /** @internal */
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsCalendarService> {
   const CalendarBase = Base;
   return class extends CalendarBase {
+    // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
+    // Public (not private) to avoid TS4094 on the re-exported mixin class.
+    readonly calendarDomain = new CalendarDomain(this);
+
     listCalendars(
       requestUrl: URL,
       request?: ListLifeOpsCalendarsRequest,
     ): Promise<LifeOpsCalendarSummary[]> {
-      return resolveCalendarService(this.runtime).listCalendars(
-        requestUrl,
-        request,
-      );
+      return this.calendarDomain.listCalendars(requestUrl, request);
     }
 
     setCalendarIncluded(
@@ -132,10 +119,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         grantId?: string;
       },
     ): Promise<LifeOpsCalendarSummary> {
-      return resolveCalendarService(this.runtime).setCalendarIncluded(
-        requestUrl,
-        request,
-      );
+      return this.calendarDomain.setCalendarIncluded(requestUrl, request);
     }
 
     getCalendarFeed(
@@ -143,11 +127,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       request?: GetLifeOpsCalendarFeedRequest,
       now?: Date,
     ): Promise<LifeOpsCalendarFeed> {
-      return resolveCalendarService(this.runtime).getCalendarFeed(
-        requestUrl,
-        request,
-        now,
-      );
+      return this.calendarDomain.getCalendarFeed(requestUrl, request, now);
     }
 
     createCalendarEvent(
@@ -155,11 +135,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       request: CreateLifeOpsCalendarEventRequest,
       now?: Date,
     ): Promise<LifeOpsCalendarEvent> {
-      return resolveCalendarService(this.runtime).createCalendarEvent(
-        requestUrl,
-        request,
-        now,
-      );
+      return this.calendarDomain.createCalendarEvent(requestUrl, request, now);
     }
 
     updateCalendarEvent(
@@ -179,10 +155,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
       },
     ): Promise<LifeOpsCalendarEvent> {
-      return resolveCalendarService(this.runtime).updateCalendarEvent(
-        requestUrl,
-        request,
-      );
+      return this.calendarDomain.updateCalendarEvent(requestUrl, request);
     }
 
     deleteCalendarEvent(
@@ -195,10 +168,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         eventId: string;
       },
     ): Promise<void> {
-      return resolveCalendarService(this.runtime).deleteCalendarEvent(
-        requestUrl,
-        request,
-      );
+      return this.calendarDomain.deleteCalendarEvent(requestUrl, request);
     }
 
     getNextCalendarEventContext(
@@ -206,7 +176,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       request?: GetLifeOpsCalendarFeedRequest,
       now?: Date,
     ): Promise<LifeOpsNextCalendarEventContext> {
-      return resolveCalendarService(this.runtime).getNextCalendarEventContext(
+      return this.calendarDomain.getNextCalendarEventContext(
         requestUrl,
         request,
         now,

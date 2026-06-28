@@ -1,20 +1,12 @@
 /**
- * LifeOps subscriptions mixin — thin delegation to the finances back-end.
+ * LifeOps subscriptions mixin — thin delegation to {@link SubscriptionsDomain}.
  *
- * The subscription audit / cancellation logic moved to
- * `@elizaos/plugin-finances` (`SubscriptionsService`), which owns the finance
- * tables and reaches Gmail + the browser bridge through runtime-service seams.
- * This mixin keeps the LifeOps service surface stable for the existing route +
- * action call sites by forwarding each method to a `SubscriptionsService`
- * constructed against the same runtime + owner. The legacy
- * `auditSubscriptions(requestUrl, request)` signature is preserved; the
- * `requestUrl` argument is no longer needed (the finances Gmail seam resolves
- * the connector account directly) and is ignored.
+ * Keeps the LifeOps service surface stable for the existing route + action call
+ * sites by forwarding each method to the domain sub-service. The legacy
+ * `auditSubscriptions(requestUrl, request)` signature is preserved.
  */
 
-import {
-  type LifeOpsSubscriptionPlaybook,
-} from "@elizaos/plugin-finances/subscriptions-playbooks";
+import type { LifeOpsSubscriptionPlaybook } from "@elizaos/plugin-finances/subscriptions-playbooks";
 import type {
   LifeOpsSubscriptionAuditSummary,
   LifeOpsSubscriptionCancellationRequest,
@@ -22,26 +14,20 @@ import type {
   LifeOpsSubscriptionDiscoveryRequest,
   LifeOpsSubscriptionExecutor,
 } from "@elizaos/plugin-finances/subscriptions-types";
-import {
-  SubscriptionsService,
-} from "@elizaos/plugin-finances/services/subscriptions-service";
+import { SubscriptionsDomain } from "./domains/subscriptions-service.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
-
-function subscriptionsServiceFor(
-  service: LifeOpsServiceBase,
-): SubscriptionsService {
-  return new SubscriptionsService(service.runtime, {
-    ownerEntityId: service.explicitOwnerEntityIdValue,
-  });
-}
 
 /** @internal */
 export function withSubscriptions<
   TBase extends Constructor<LifeOpsServiceBase>,
 >(Base: TBase) {
   class LifeOpsSubscriptionsServiceMixin extends Base {
+    // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
+    // Public (not private) to avoid TS4094 on the re-exported mixin class.
+    readonly subscriptionsDomain = new SubscriptionsDomain(this);
+
     async listSubscriptionPlaybooks(): Promise<LifeOpsSubscriptionPlaybook[]> {
-      return subscriptionsServiceFor(this).listSubscriptionPlaybooks();
+      return this.subscriptionsDomain.listSubscriptionPlaybooks();
     }
 
     findSubscriptionPlaybookForMerchant(merchant: string): {
@@ -50,20 +36,20 @@ export function withSubscriptions<
       managementUrl: string;
       executorPreference: LifeOpsSubscriptionPlaybook["executorPreference"];
     } | null {
-      return subscriptionsServiceFor(this).findSubscriptionPlaybookForMerchant(
+      return this.subscriptionsDomain.findSubscriptionPlaybookForMerchant(
         merchant,
       );
     }
 
     async getLatestSubscriptionAudit(): Promise<LifeOpsSubscriptionAuditSummary | null> {
-      return subscriptionsServiceFor(this).getLatestSubscriptionAudit();
+      return this.subscriptionsDomain.getLatestSubscriptionAudit();
     }
 
     async auditSubscriptions(
-      _requestUrl: URL,
+      requestUrl: URL,
       request: LifeOpsSubscriptionDiscoveryRequest = {},
     ): Promise<LifeOpsSubscriptionAuditSummary> {
-      return subscriptionsServiceFor(this).auditSubscriptions(request);
+      return this.subscriptionsDomain.auditSubscriptions(requestUrl, request);
     }
 
     async getSubscriptionCancellationStatus(args: {
@@ -71,27 +57,25 @@ export function withSubscriptions<
       serviceName?: string | null;
       serviceSlug?: string | null;
     }): Promise<LifeOpsSubscriptionCancellationSummary | null> {
-      return subscriptionsServiceFor(this).getSubscriptionCancellationStatus(
-        args,
-      );
+      return this.subscriptionsDomain.getSubscriptionCancellationStatus(args);
     }
 
     async cancelSubscription(
       request: LifeOpsSubscriptionCancellationRequest,
     ): Promise<LifeOpsSubscriptionCancellationSummary> {
-      return subscriptionsServiceFor(this).cancelSubscription(request);
+      return this.subscriptionsDomain.cancelSubscription(request);
     }
 
     summarizeSubscriptionAudit(
       summary: LifeOpsSubscriptionAuditSummary,
     ): string {
-      return subscriptionsServiceFor(this).summarizeSubscriptionAudit(summary);
+      return this.subscriptionsDomain.summarizeSubscriptionAudit(summary);
     }
 
     summarizeSubscriptionCancellation(
       summary: LifeOpsSubscriptionCancellationSummary,
     ): string {
-      return subscriptionsServiceFor(this).summarizeSubscriptionCancellation(
+      return this.subscriptionsDomain.summarizeSubscriptionCancellation(
         summary,
       );
     }
@@ -102,7 +86,7 @@ export function withSubscriptions<
       serviceSlug?: string;
       executor?: LifeOpsSubscriptionExecutor;
     } {
-      return subscriptionsServiceFor(this).resolveSubscriptionIntent(text);
+      return this.subscriptionsDomain.resolveSubscriptionIntent(text);
     }
   }
 
@@ -110,7 +94,7 @@ export function withSubscriptions<
 }
 
 /** Public surface added by {@link withSubscriptions} (a thin shim forwarding to
- * SubscriptionsService); listed on the LifeOpsService declaration-merge (mixin
+ * SubscriptionsDomain); listed on the LifeOpsService declaration-merge (mixin
  * composition exceeds TS inference depth). Type-only. */
 export interface LifeOpsSubscriptionService {
   listSubscriptionPlaybooks(): Promise<LifeOpsSubscriptionPlaybook[]>;
