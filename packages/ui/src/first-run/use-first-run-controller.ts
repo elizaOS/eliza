@@ -8,6 +8,7 @@ import {
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
+import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { getBootConfig } from "../config/boot-config";
 import {
   canSelectLocalRuntime,
@@ -19,6 +20,7 @@ import {
   addAgentProfile,
   createPersistedActiveServer,
   loadPersistedActiveServer,
+  removeAgentProfile,
   savePersistedActiveServer,
   useAppSelectorShallow,
 } from "../state";
@@ -775,7 +777,7 @@ export function useFirstRunController(): FirstRunController {
         accessToken: authToken,
       });
       savePersistedActiveServer(activeServer);
-      addAgentProfile({
+      const sharedAgentProfile = addAgentProfile({
         kind: "cloud",
         label: activeServer.label,
         ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
@@ -799,55 +801,116 @@ export function useFirstRunController(): FirstRunController {
       setBusyText(null);
       completeFirstRun("chat", { launchCompanionOverlay: true });
 
-      // Seamless shared→personal handoff. A freshly created cloud agent serves
-      // the user from the shared REST adapter while its dedicated container
-      // boots (selectedAgent.created with no bridge URL yet). In the background,
-      // once the container is reachable, copy the conversation the user built on
-      // the shared adapter into it and switch the live client over — no waiting,
-      // no lost history. Best-effort: on failure the user stays on the shared
-      // adapter, which keeps working.
+      // Seamless shared→dedicated cloud-agent handoff (Phase 1). A freshly
+      // created SHARED agent serves the user instantly from the container-free
+      // REST adapter — but, being container-free, it never grows a dedicated
+      // base on its own. So when the shared-tier flag is on we ALSO provision a
+      // SEPARATE dedicated agent in the background and arm the existing handoff
+      // supervisor to poll IT, copy the conversation across, and switch over
+      // once it's running. Without that separate dedicated target the supervisor
+      // would poll the shared agent forever and time out (the reconciliation's
+      // "the branch fires but never resolves"). Best-effort: on failure the user
+      // stays on the (working) shared adapter.
+      //
+      // Flag OFF → `preferSharedTier` was never sent, so `selectedAgent` is the
+      // dedicated agent itself (not a shared base) and this branch is skipped:
+      // byte-identical to pre-Phase-1.
       if (
+        getBootConfig().preferSharedCloudTier &&
         selectedAgent.created &&
         isDirectCloudSharedAgentBase(cloudAgentApiBase)
       ) {
-        const handoffAgentId = selectedAgent.agentId;
-        // Surface the handoff lifecycle (migrating → switched | timed-out |
-        // failed) as typed phase events instead of swapping silently, and keep
-        // a `timed-out`/`failed` retryable rather than a silent permanent
-        // fallback. The supervisor's import is idempotent, so a retry just
-        // re-runs the same call.
-        runCloudAgentHandoff(handoffAgentId, () =>
-          client.startCloudAgentHandoff({
-            agentId: handoffAgentId,
-            sharedApiBase: cloudAgentApiBase,
-            // The shared adapter keeps one canonical conversation per agent id.
-            conversationId: handoffAgentId,
-            cloudApiBase:
-              getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
-            authToken,
-            onSwitch: (containerBase) => {
-              client.setBaseUrl(containerBase);
-              client.setToken(authToken);
-              const switched = createPersistedActiveServer({
-                kind: "cloud",
-                id: `cloud:${handoffAgentId}`,
-                apiBase: containerBase,
-                accessToken: authToken,
-              });
-              savePersistedActiveServer(switched);
-              const profile = addAgentProfile({
-                kind: "cloud",
-                label: switched.label,
-                apiBase: containerBase,
-                accessToken: authToken,
-              });
-              switchAgentProfile(profile.id);
+        const sharedAgentId = selectedAgent.agentId;
+        // Provision the dedicated agent ONCE, here, so a handoff retry re-arms
+        // the supervisor against the same dedicated id instead of minting a new
+        // dedicated agent each time. A plain create (no `preferSharedTier`)
+        // yields the DEDICATED always-on container — the migration target.
+        const dedicated = await client
+          .createCloudCompatAgent({
+            agentName: name,
+            ...(bio.length ? { agentConfig: { bio } } : {}),
+            // Bypass the backend reuse guard: the org already has a non-terminal
+            // agent (the SHARED bridge we just created), so without forceCreate
+            // the server hands that one back and dedicatedAgentId === sharedId —
+            // the handoff probe then polls the shared base (which never grows a
+            // dedicated container) and times out, so the switch never fires.
+            forceCreate: true,
+          })
+          .catch(() => null);
+        const dedicatedAgentId =
+          dedicated?.success && dedicated.data.agentId
+            ? dedicated.data.agentId
+            : null;
+        if (dedicatedAgentId) {
+          // Surface the handoff lifecycle (migrating → switched | timed-out |
+          // failed) as typed phase events instead of swapping silently, and
+          // keep a `timed-out`/`failed` retryable rather than a silent permanent
+          // fallback. The supervisor's import is idempotent, so a retry just
+          // re-runs the same call against the same dedicated agent.
+          const cloudApiBase =
+            getBootConfig().cloudApiBase || "https://www.elizacloud.ai";
+          runCloudAgentHandoff(
+            sharedAgentId,
+            () =>
+              client.startCloudAgentHandoff({
+                // Source: the shared agent the user is chatting on right now.
+                agentId: sharedAgentId,
+                sharedApiBase: cloudAgentApiBase,
+                // The shared adapter keeps one canonical conversation per agent id.
+                conversationId: sharedAgentId,
+                // Target: the separate dedicated agent we just kicked off. The
+                // supervisor polls THIS record for its container base.
+                dedicatedAgentId,
+                cloudApiBase,
+                authToken,
+                // The invisible switch (PR3). switchAgentProfile() would
+                // clearAllChatDrafts() (wiping the composer) and dispatch
+                // SWITCH_AGENT (re-entering the coordinator → full-screen
+                // <StartupScreen/> + dropped WS). The handoff instead re-points
+                // SILENTLY in place: persist the dedicated profile, seamlessly
+                // swap the API/WS base (no visible disconnect), keep the same
+                // conversation id mounted, and DON'T touch drafts or the
+                // coordinator. The transcript was already copied to the dedicated
+                // agent, so the chat surface stays live throughout the swap.
+                onSwitch: (containerBase) => {
+                  silentlyRepointToDedicated({
+                    containerBase,
+                    authToken,
+                    dedicatedAgentId,
+                  });
+                },
+              }),
+            // Gated on switch-SUCCESS (`switched`/`switched-empty`): only once
+            // the user is on the dedicated and the transcript was copied is the
+            // transient shared bridge safe to delete. On `timed-out`/`failed`
+            // this never runs, so the user keeps the working shared bridge (and
+            // their conversation). Fire-and-forget: a failed delete just leaks a
+            // shared row — never blocks the (already switched) user.
+            () => {
+              // Drop the now-dead shared profile from the local registry. The
+              // switch already activated the dedicated profile (silent-repoint's
+              // addAgentProfile), so removing the shared one by its captured id
+              // can't touch the active dedicated profile — it just stops the
+              // orphaned `cloud:<sharedId>` row from lingering in the picker.
+              removeAgentProfile(sharedAgentProfile.id);
+              void client
+                .deleteSharedBridgeAgent(sharedAgentId, {
+                  cloudApiBase,
+                  authToken,
+                })
+                .then((res) => {
+                  if (!res.success) {
+                    console.warn(
+                      `[useFirstRunController] shared bridge delete failed (leaked row ${sharedAgentId}): ${res.error ?? "unknown"}`,
+                    );
+                  }
+                });
             },
-          }),
-        );
+          );
+        }
       }
     },
-    [completeFirstRun, switchAgentProfile, uiLanguage],
+    [completeFirstRun, uiLanguage],
   );
 
   const finishCloud = React.useCallback(

@@ -993,6 +993,15 @@ declare module "./client-base" {
        * one. Default (undefined/false) keeps the dedicated request unchanged.
        */
       preferSharedTier?: boolean;
+      /**
+       * Bypass the backend's org-scoped reuse guard so a SEPARATE agent is
+       * minted even when the org already has a live one. The shared→dedicated
+       * handoff sets this for the dedicated migration target; without it the
+       * reuse guard hands back the shared bridge (dedicatedId === sharedId) and
+       * the handoff probe never resolves. Default (undefined/false) leaves the
+       * request byte-identical — every existing caller still reuses.
+       */
+      forceCreate?: boolean;
     }): Promise<{
       success: boolean;
       data: {
@@ -1263,6 +1272,13 @@ declare module "./client-base" {
       conversationId: string;
       cloudApiBase: string;
       authToken: string;
+      /**
+       * The SEPARATE dedicated agent to migrate onto. When set, the readiness
+       * probe polls THIS agent's record for its container base (the shared
+       * `agentId` is container-free and never exposes one). Omitted → the probe
+       * polls `agentId` itself, the pre-shared-tier behavior.
+       */
+      dedicatedAgentId?: string;
       onSwitch: (containerBase: string) => void | Promise<void>;
       intervalMs?: number;
       timeoutMs?: number;
@@ -1270,6 +1286,24 @@ declare module "./client-base" {
     }): Promise<
       import("../cloud/handoff/conversation-handoff").ConversationHandoffResult
     >;
+    /**
+     * Delete the transient SHARED bridge agent (+ its `shared_runtime_history`,
+     * cascaded server-side) once the user has been switched to their dedicated
+     * agent (PR4). MUST only be called after a confirmed-successful handoff —
+     * deleting the shared while the user is still served by it loses their
+     * conversation.
+     *
+     * Pins the request to the explicit `cloudApiBase` (NOT the client's mutable
+     * `baseUrl`): by the time the switch succeeds the client has already
+     * repointed onto the dedicated container, so the base-derived
+     * `deleteCloudCompatAgent` would no longer resolve the cloud API. Shared
+     * delete is synchronous server-side (no container teardown), so success
+     * means the row + history are gone.
+     */
+    deleteSharedBridgeAgent(
+      agentId: string,
+      options: { cloudApiBase: string; authToken: string },
+    ): Promise<{ success: boolean; error?: string }>;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
       platform?: string;
@@ -1615,6 +1649,9 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       // (With the Phase-0 shared-tier flag on, `alwaysOn` is dropped so the
       // backend derives a SHARED agent instead — see tierFields above.)
       ...tierFields,
+      // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
+      // shared→dedicated handoff target). Omitted by default → reuse unchanged.
+      ...(opts.forceCreate ? { forceCreate: true } : {}),
       ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
       ...(opts.environmentVars
         ? { environmentVars: opts.environmentVars }
@@ -1662,6 +1699,9 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         // Dedicated (own-container, always-on) agent — see the direct-path note.
         // The Phase-0 shared-tier flag drops `alwaysOn` here too (tierFields).
         ...tierFields,
+        // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
+        // shared→dedicated handoff target). Omitted by default → reuse unchanged.
+        ...(opts.forceCreate ? { forceCreate: true } : {}),
         ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
         ...(opts.environmentVars
           ? { environmentVars: opts.environmentVars }
@@ -2954,12 +2994,18 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
     conversationId,
     cloudApiBase,
     authToken,
+    dedicatedAgentId,
     onSwitch,
     intervalMs,
     timeoutMs,
     log,
   } = options;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
+  // Migration TARGET. With the shared tier, the user chats on `agentId` (a
+  // container-free shared agent that never gets a dedicated base), so the
+  // dedicated record we poll for readiness is a SEPARATE agent. Default to
+  // `agentId` so the pre-shared-tier single-agent flow is unchanged.
+  const readinessAgentId = dedicatedAgentId ?? agentId;
 
   // Authed JSON fetch against a specific agent base (shared adapter OR the
   // dedicated container subdomain). Both accept the cloud session token —
@@ -2986,7 +3032,9 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
 
   const readiness: AgentReadinessProbe = {
     resolveReadyBase: async () => {
-      const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
+      const detail = await this.getCloudCompatAgent(readinessAgentId).catch(
+        () => null,
+      );
       const agent = detail?.success ? detail.data : null;
       if (!agent) return null;
       // The container is "ready" only once the record exposes a dedicated base
@@ -3000,7 +3048,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
       const base = resolveCloudAgentApiBase({
         bridgeUrl: agent.bridge_url,
         webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
-        agentId,
+        agentId: readinessAgentId,
         cloudApiBase: resolvedCloudApiBase,
       });
       // Never "switch" onto the shared adapter (no migration target there).
@@ -3019,6 +3067,43 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
     ...(typeof timeoutMs === "number" ? { timeoutMs } : {}),
     ...(log ? { log } : {}),
   });
+};
+
+ElizaClient.prototype.deleteSharedBridgeAgent = async function (
+  this: ElizaClient,
+  agentId,
+  options,
+) {
+  // Pin to the explicit cloud API base, not the client's (now repointed-to-
+  // dedicated) baseUrl. The shared-tier DELETE on `/api/v1/eliza/agents/:id`
+  // synchronously removes the shared `agent_sandboxes` row AND its
+  // `shared_runtime_history` (cascaded in `deleteAgent`); no container teardown.
+  const apiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
+  try {
+    const res = await fetch(
+      `${apiBase}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${options.authToken}`,
+        },
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+    if (res.status < 200 || res.status >= 300) {
+      return {
+        success: false,
+        error: `shared bridge delete failed (HTTP ${res.status})`,
+      };
+    }
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 };
 
 ElizaClient.prototype.checkBugReportInfo = async function (this: ElizaClient) {

@@ -204,7 +204,6 @@ vi.mock("./state", () => {
     activeOverlayApp: null,
     agentStatus: null,
     backendConnection: { state: "connected" },
-    cloudHandoffPhase: "idle",
     copyToClipboard: vi.fn(),
     databaseSubTab: "overview",
     dismissActionBanner: vi.fn(),

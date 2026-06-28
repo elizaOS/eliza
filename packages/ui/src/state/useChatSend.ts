@@ -9,6 +9,10 @@ import { asRecord } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
 import {
+  CLOUD_HANDOFF_PHASE_EVENT,
+  type CloudHandoffPhaseDetail,
+} from "../events";
+import {
   type ChatTurnStatus,
   type CodingAgentSession,
   type ConversationChannelType,
@@ -386,6 +390,19 @@ export function useChatSend(deps: UseChatSendDeps) {
 
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
+
+  // Freeze-on-shared (cloud-agent handoff, PR2). While a shared→dedicated
+  // handoff is migrating, the user is still pointed at the SHARED agent but the
+  // shared transcript has already been (or is about to be) snapshotted. The
+  // import endpoint is populated-room skip-all idempotent, so any message that
+  // reaches the shared history AFTER the snapshot is silently lost — a re-import
+  // inserts zero. To guarantee no loss we DON'T send outgoing messages to the
+  // shared agent during the window: they sit in `chatSendQueueRef` (un-drained)
+  // and are flushed once `onSwitch` has re-pointed the client at the dedicated
+  // container (which already holds the copied history). When no handoff is in
+  // flight this stays false → the drain runs exactly as before (byte-identical
+  // when `preferSharedCloudTier` is off, since no `migrating` phase ever fires).
+  const handoffFrozenRef = useRef(false);
 
   // Streaming-commit throttle.
   // The SSE `onToken` callback fires once per token (often >60/sec on a fast
@@ -1203,6 +1220,17 @@ export function useChatSend(deps: UseChatSendDeps) {
 
   const flushQueuedChatSends = useCallback(async () => {
     if (chatSendBusyRef.current) return;
+    // Handoff in progress: hold the queue. We must NOT dispatch to the network
+    // here — the live client still points at the shared agent, and anything that
+    // lands on the shared history after its snapshot is lost to the skip-all
+    // import. The queued turns stay put and are drained when the switch settles
+    // (the freeze is cleared and this is re-invoked, now pointed at the
+    // dedicated container). The composer is already cleared + `setChatSending`
+    // is on, so the user sees their message accepted, not dropped.
+    if (handoffFrozenRef.current) {
+      setChatSending(true);
+      return;
+    }
     chatSendBusyRef.current = true;
     setChatSending(true);
 
@@ -1228,6 +1256,39 @@ export function useChatSend(deps: UseChatSendDeps) {
     setChatFirstTokenReceived,
     setChatSending,
   ]);
+
+  // Drive the freeze off the existing shared→dedicated handoff lifecycle
+  // (CLOUD_HANDOFF_PHASE_EVENT). `migrating` opens the window (stop draining to
+  // the shared agent); every terminal phase closes it and drains:
+  //   - `switched` / `switched-empty`: `onSwitch` has already re-pointed the
+  //     client at the dedicated container (it runs INSIDE the handoff before the
+  //     phase is dispatched), so the drain now delivers the queued messages to
+  //     the dedicated — exactly where the copied history lives.
+  //   - `timed-out` / `failed`: no switch happened, the user safely stays on the
+  //     working shared agent, so unfreeze and let the queue flow to the shared
+  //     agent as normal (the snapshot never landed, nothing to lose).
+  // Without a handoff this listener never fires, so the queue drains inline as
+  // before — no behavior change when the shared-tier flag is off.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPhase = (event: Event) => {
+      const detail = (event as CustomEvent<CloudHandoffPhaseDetail>).detail;
+      if (!detail) return;
+      if (detail.phase === "migrating") {
+        handoffFrozenRef.current = true;
+        return;
+      }
+      // Any terminal phase ends the window. Drain whatever queued up — by now
+      // the client base is the dedicated container (on a switch) or unchanged
+      // (on timeout/failure), so the flush targets the right agent either way.
+      if (handoffFrozenRef.current) {
+        handoffFrozenRef.current = false;
+        void flushQueuedChatSends();
+      }
+    };
+    window.addEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
+    return () => window.removeEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
+  }, [flushQueuedChatSends]);
 
   const sendChatText = useCallback(
     async (

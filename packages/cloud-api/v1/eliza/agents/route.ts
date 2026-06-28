@@ -61,6 +61,14 @@ const createAgentSchema = z.object({
   // S2S callers that want to create the record without spending can opt out
   // with `autoProvision: false` (or the `?autoProvision=false` query param).
   autoProvision: z.boolean().optional(),
+  // Bypass the org-scoped reuse guard and ALWAYS mint a fresh agent. Default
+  // (absent/false) keeps `reuseExistingNonTerminal: true` so every existing
+  // caller still reuses an org's live agent. The seamless shared→dedicated
+  // handoff sets this so the 2nd create (the DEDICATED migration target) is a
+  // SEPARATE record from the shared bridge it's handing off from — otherwise
+  // the reuse guard hands back the shared agent and the handoff probe polls a
+  // base that never grows a dedicated container (it times out, no switch).
+  forceCreate: z.boolean().optional(),
 });
 
 type Agent = Awaited<ReturnType<typeof elizaSandboxService.listAgents>>[number];
@@ -364,7 +372,11 @@ app.post("/", async (c) => {
       : sanitizedConfig,
     environmentVars: parsed.data.environmentVars,
     executionTier,
-    reuseExistingNonTerminal: true,
+    // Default reuses the org's existing non-terminal agent (idempotent create);
+    // `forceCreate` opts out so a caller that needs a SEPARATE record (the
+    // shared→dedicated handoff's migration target) mints a fresh agent instead
+    // of getting the shared one handed back.
+    reuseExistingNonTerminal: parsed.data.forceCreate ? false : true,
   });
 
   // Idempotent reuse: the org already had a non-terminal agent, so createAgent
