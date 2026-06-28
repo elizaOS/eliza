@@ -21,15 +21,18 @@ import type { IAgentRuntime } from "../types/runtime";
 function makeRuntime(opts: {
 	hasModel: boolean;
 	embeddingDimension?: string | number;
+	embeddingDimensions?: string | number;
 }): { runtime: IAgentRuntime; ensureDim: ReturnType<typeof vi.fn> } {
 	const ensureDim = vi.fn(async () => true);
 	const runtime = createMockRuntime({
 		agentId: "00000000-0000-0000-0000-000000000001",
 		adapter: { ensureEmbeddingDimension: ensureDim },
 		getModel: vi.fn(() => (opts.hasModel ? async () => [] : undefined)),
-		getSetting: vi.fn((key: string) =>
-			key === "EMBEDDING_DIMENSION" ? opts.embeddingDimension : undefined,
-		),
+		getSetting: vi.fn((key: string) => {
+			if (key === "EMBEDDING_DIMENSION") return opts.embeddingDimension;
+			if (key === "EMBEDDING_DIMENSIONS") return opts.embeddingDimensions;
+			return undefined;
+		}),
 	});
 	return { runtime, ensureDim };
 }
@@ -79,5 +82,37 @@ describe("ensureEmbeddingDimension (core/provisioning.ts daemon-composition prob
 		});
 		await ensureEmbeddingDimension(runtime);
 		expect(ensureDim).toHaveBeenCalledWith(768);
+	});
+
+	it("falls back to EMBEDDING_DIMENSIONS (plural) when EMBEDDING_DIMENSION is unset", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimensions: "1536",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).toHaveBeenCalledWith(1536);
+	});
+
+	it("prefers the explicit singular EMBEDDING_DIMENSION when the two conflict (and logs a conflict warning)", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "384",
+			embeddingDimensions: "1536",
+		});
+		await ensureEmbeddingDimension(runtime);
+		// the explicit singular provisioning setting wins for the DB column; the
+		// operator-facing conflict warning is emitted as a side-effect (visible in
+		// the logger output) so a 384-vs-1536 mismatch can't silently break memory.
+		expect(ensureDim).toHaveBeenCalledWith(384);
+	});
+
+	it("uses the agreed value when singular and plural match", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "1536",
+			embeddingDimensions: "1536",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).toHaveBeenCalledWith(1536);
 	});
 });
