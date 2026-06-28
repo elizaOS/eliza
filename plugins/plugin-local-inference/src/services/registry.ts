@@ -21,12 +21,10 @@ interface RegistryFile {
 
 const EXTERNAL_SCAN_CACHE_TTL_MS = 5_000;
 
-let externalScanCache:
-	| {
-			expiresAt: number;
-			models: InstalledModel[];
-	  }
-	| null = null;
+let externalScanCache: {
+	expiresAt: number;
+	models: InstalledModel[];
+} | null = null;
 let externalScanPromise: Promise<InstalledModel[]> | null = null;
 
 async function ensureRootDir(): Promise<void> {
@@ -78,7 +76,7 @@ async function scanExternalModelsCached(): Promise<InstalledModel[]> {
 		})
 		.finally(() => {
 			externalScanPromise = null;
-	});
+		});
 	return externalScanPromise;
 }
 
