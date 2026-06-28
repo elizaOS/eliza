@@ -2,7 +2,33 @@
   "extends": "../tsconfig.build.shared.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "paths": {
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../packages/core/dist/*"],
+      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/api": ["../../packages/ui/dist/api/index.d.ts"],
+      "@elizaos/ui/api/*": ["../../packages/ui/dist/api/*"],
+      "@elizaos/ui/components": [
+        "../../packages/ui/dist/components/index.d.ts"
+      ],
+      "@elizaos/ui/components/*": ["../../packages/ui/dist/components/*"],
+      "@elizaos/ui/hooks": ["../../packages/ui/dist/hooks/index.d.ts"],
+      "@elizaos/ui/hooks/*": ["../../packages/ui/dist/hooks/*"],
+      "@elizaos/ui/spatial": ["../../packages/ui/dist/spatial/index.d.ts"],
+      "@elizaos/ui/spatial/tui": [
+        "../../packages/ui/dist/spatial/tui/index.d.ts"
+      ],
+      "@elizaos/ui/state": ["../../packages/ui/dist/state/index.d.ts"],
+      "@elizaos/ui/state/*": ["../../packages/ui/dist/state/*"],
+      "@elizaos/ui/utils": ["../../packages/ui/dist/utils/index.d.ts"],
+      "@elizaos/ui/utils/*": ["../../packages/ui/dist/utils/*"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
+      "@elizaos/plugin-wallet": ["../plugin-wallet/dist/index.d.mts"],
+      "@elizaos/plugin-wallet/*": ["../plugin-wallet/dist/*"]
+    }
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]
