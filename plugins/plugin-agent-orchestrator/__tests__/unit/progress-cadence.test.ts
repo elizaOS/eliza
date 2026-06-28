@@ -33,6 +33,7 @@
 import {
   _resetBuildVariantForTests,
   isLocalCodeExecutionAllowed,
+  ModelType,
 } from "@elizaos/core";
 import {
   afterEach,
@@ -47,9 +48,37 @@ import { createAgentOrchestratorPlugin } from "../../src/index.js";
 import { AcpService } from "../../src/services/acp-service.js";
 
 type SessionHandler = (sessionId: string, event: string, data: unknown) => void;
+type TimerApiWithAsyncDrain = typeof vi & {
+  runAllTimersAsync?: () => Promise<void>;
+  advanceTimersByTimeAsync?: (ms: number) => Promise<void>;
+};
 
 const ROOM = "11111111-2222-3333-4444-555555555555" as const;
 const SOURCE = "discord";
+
+async function drainHookRegistrationTimers(): Promise<void> {
+  const timerApi = vi as TimerApiWithAsyncDrain;
+  if (typeof timerApi.runAllTimersAsync === "function") {
+    await timerApi.runAllTimersAsync();
+    return;
+  }
+  vi.runAllTimers();
+  for (let i = 0; i < 10; i++) {
+    await Promise.resolve();
+  }
+}
+
+async function advanceTimersByTime(ms: number): Promise<void> {
+  const timerApi = vi as TimerApiWithAsyncDrain;
+  if (typeof timerApi.advanceTimersByTimeAsync === "function") {
+    await timerApi.advanceTimersByTimeAsync(ms);
+    return;
+  }
+  vi.advanceTimersByTime(ms);
+  for (let i = 0; i < 10; i++) {
+    await Promise.resolve();
+  }
+}
 
 // Env keys the progress policy + gating read. Saved/restored per test so modes
 // don't leak between cases and the plugin always registers in code-exec mode.
@@ -175,6 +204,11 @@ async function buildHookedRuntime(
 
   const runtime = {
     agentId: "agent-0000-0000-0000-000000000000",
+    character: {
+      name: "TestBot",
+      bio: ["a concise, helpful test assistant"],
+      style: { chat: ["casual", "terse"] },
+    },
     logger,
     getSetting: () => undefined,
     getService: (type: string) => services.get(type) ?? null,
@@ -202,9 +236,11 @@ async function buildHookedRuntime(
 
   await plugin.init?.({}, runtime);
   // init() schedules the hook registration on a setTimeout(0) macrotask whose
-  // body awaits getServiceLoadPromise; runAllTimersAsync drains the timer AND
-  // the awaited microtasks so the hook subscribes before we return.
-  await vi.runAllTimersAsync();
+  // body awaits getServiceLoadPromise; drain the timer AND the awaited
+  // microtasks so the hook subscribes before we return. Bun's direct test
+  // runner does not expose Vitest's runAllTimersAsync, so the helper falls back
+  // to a bounded microtask drain.
+  await drainHookRegistrationTimers();
 
   if (sessionHandlers.length === 0) {
     throw new Error(
@@ -246,7 +282,7 @@ function seedSession(
 /**
  * Fire one session event and let the hook's async body settle. The hook handler
  * is fire-and-forget async with a chain of plain awaits (getSession → emitProgress
- * → sendMessageToTarget). advanceTimersByTimeAsync drains pending timers AND the
+ * → sendMessageToTarget). advanceTimersByTime drains pending timers AND the
  * awaited microtasks between them; a few extra microtask turns flush the rest.
  */
 async function fire(
@@ -256,7 +292,7 @@ async function fire(
   data: unknown = {},
 ): Promise<void> {
   rt.emit(sessionId, event, data);
-  await vi.advanceTimersByTimeAsync(0);
+  await advanceTimersByTime(0);
   for (let i = 0; i < 8; i++) await Promise.resolve();
 }
 
@@ -300,11 +336,11 @@ describe("emitProgress routing ladder + cadence", () => {
 
     // After the 1.5s silence-flush window, flushMessageBuffer calls emitProgress
     // — but the 15s delayMs debounce holds the first post back.
-    await vi.advanceTimersByTimeAsync(1_600);
+    await advanceTimersByTime(1_600);
     expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
 
     // Crossing delayMs releases exactly one buffered post.
-    await vi.advanceTimersByTimeAsync(15_000);
+    await advanceTimersByTime(15_000);
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
 
     const [, content] = rt.sendMessageToTarget.mock.calls[0];
@@ -331,7 +367,7 @@ describe("emitProgress routing ladder + cadence", () => {
       toolCall: { id: "t1", kind: "edit", rawInput: { file_path: "/a/b.ts" } },
     });
     // Drain the silence-flush + any heartbeat windows.
-    await vi.advanceTimersByTimeAsync(60_000);
+    await advanceTimersByTime(60_000);
 
     expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
     expect(rt.editMessageOnTarget).not.toHaveBeenCalled();
@@ -346,21 +382,106 @@ describe("emitProgress routing ladder + cadence", () => {
     const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
     seedSession(rt, "s-ack", "ack-task");
 
+    // The spawn ack is the model's own one-line acknowledgement (in-voice,
+    // in-language) — not a hardcoded literal. The mocked model returns a fixed
+    // line; the posted ack is that line, sanitized.
+    rt.useModel.mockResolvedValueOnce("On it — starting now.");
+
     // First non-terminal event triggers the single spawn ACK (delayMs is forced
     // to 0 for ack mode, so it posts immediately).
     await fire(rt, "s-ack", "ready");
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
     expect(
       (rt.sendMessageToTarget.mock.calls[0][1] as { text: string }).text,
-    ).toBe("working on it now.");
+    ).toBe("On it — starting now.");
+    // The ack is generated with the small text model.
+    expect(rt.useModel).toHaveBeenCalledWith(
+      ModelType.TEXT_SMALL,
+      expect.objectContaining({
+        system: expect.stringContaining("TestBot"),
+        prompt: expect.any(String),
+      }),
+    );
 
     // Subsequent events (narration, tools) must NOT add more acks.
     await fire(rt, "s-ack", "message", { text: "still working" });
     await fire(rt, "s-ack", "tool_running", {
       toolCall: { id: "t1", kind: "read", rawInput: { file_path: "/x.ts" } },
     });
-    await vi.advanceTimersByTimeAsync(5_000);
+    await advanceTimersByTime(5_000);
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+
+    await rt.dispose();
+  });
+
+  it("ack mode feeds the task text to the model so it can match the user's language", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    // initialTask carries the real user request — the language signal handed to
+    // the model (here: French). The model itself is mocked, but we assert the
+    // request reached it so the in-language behavior is wired.
+    rt.sessions.set("s-fr", {
+      status: "running",
+      metadata: {
+        source: SOURCE,
+        roomId: ROOM,
+        label: "build-site",
+        initialTask: "construis-moi un site vitrine en français",
+      },
+    });
+    rt.useModel.mockResolvedValueOnce("C'est parti.");
+
+    await fire(rt, "s-fr", "ready");
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    expect(
+      (rt.sendMessageToTarget.mock.calls[0][1] as { text: string }).text,
+    ).toBe("C'est parti.");
+    const [, params] = rt.useModel.mock.calls[0] as [
+      unknown,
+      { prompt: string },
+    ];
+    expect(params.prompt).toContain(
+      "construis-moi un site vitrine en français",
+    );
+
+    await rt.dispose();
+  });
+
+  it("ack mode falls back to a short literal when the model call fails", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    seedSession(rt, "s-ack-fail", "ack-task");
+    rt.useModel.mockRejectedValueOnce(new Error("no model registered"));
+
+    await fire(rt, "s-ack-fail", "ready");
+    // Never silence: the ack still posts exactly once, using the fallback.
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    expect(
+      (rt.sendMessageToTarget.mock.calls[0][1] as { text: string }).text,
+    ).toBe("On it.");
+
+    await rt.dispose();
+  });
+
+  it("ack mode suppresses a delayed model ack after a terminal event", async () => {
+    process.env.ACPX_PROGRESS_MODE = "ack";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    seedSession(rt, "s-late-ack", "ack-task");
+
+    let resolveAck!: (value: string) => void;
+    const pendingAck = new Promise<string>((resolve) => {
+      resolveAck = resolve;
+    });
+    rt.useModel.mockReturnValueOnce(pendingAck);
+
+    await fire(rt, "s-late-ack", "ready");
+    expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
+
+    await fire(rt, "s-late-ack", "task_complete", { response: "done" });
+    resolveAck("On it late.");
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
 
     await rt.dispose();
   });
@@ -409,7 +530,7 @@ describe("emitProgress routing ladder + cadence", () => {
     // the only thing standing between the retry and a second "working on it now."
     // ack is the `isVerifyRetrySpawn` gate in registerProgressHook. Advance well
     // past the room-dedup window so this asserts the guard, not the room-dedup.
-    await vi.advanceTimersByTimeAsync(120_000);
+    await advanceTimersByTime(120_000);
     rt.sessions.set("s-retry", {
       status: "running",
       metadata: {
@@ -444,7 +565,7 @@ describe("emitProgress routing ladder + cadence", () => {
     // under the same label, past the room-dedup window. The label cache — now
     // populated because the first send returned a platformId — reuses the cached
     // main message and skips the network send entirely.
-    await vi.advanceTimersByTimeAsync(120_000);
+    await advanceTimersByTime(120_000);
     rt.sessions.set("s-respawn", {
       status: "running",
       metadata: { source: SOURCE, roomId: ROOM, label: "build-site" },
@@ -479,7 +600,7 @@ describe("emitProgress routing ladder + cadence", () => {
     await fire(rt, "s-thread", "message", {
       text: "Implementing the feature.",
     });
-    await vi.advanceTimersByTimeAsync(1_600); // silence-flush window
+    await advanceTimersByTime(1_600); // silence-flush window
     for (let i = 0; i < 8; i++) await Promise.resolve();
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
     const spawnText = (
@@ -492,7 +613,7 @@ describe("emitProgress routing ladder + cadence", () => {
     // More narration → routes into the SAME thread: no second main-channel send,
     // no second thread creation.
     await fire(rt, "s-thread", "message", { text: "Wiring it up." });
-    await vi.advanceTimersByTimeAsync(1_600);
+    await advanceTimersByTime(1_600);
     for (let i = 0; i < 8; i++) await Promise.resolve();
     expect(rt.createThreadOnTarget).toHaveBeenCalledTimes(1);
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
@@ -518,7 +639,7 @@ describe("emitProgress routing ladder + cadence", () => {
 
     // Advance past two slow heartbeat ticks. With empty output AND empty tool
     // history the tick returns before calling useModel or emitting anything.
-    await vi.advanceTimersByTimeAsync(65_000);
+    await advanceTimersByTime(65_000);
 
     expect(rt.useModel).not.toHaveBeenCalled();
     expect(rt.sendMessageToTarget).not.toHaveBeenCalled();
@@ -545,14 +666,14 @@ describe("emitProgress routing ladder + cadence", () => {
     rt.editMessageOnTarget.mockClear();
 
     // First fast tick (~10s): the LLM summary posts once.
-    await vi.advanceTimersByTimeAsync(10_500);
+    await advanceTimersByTime(10_500);
     const postsAfterFirst =
       rt.sendMessageToTarget.mock.calls.length +
       rt.editMessageOnTarget.mock.calls.length;
     expect(postsAfterFirst).toBe(1);
 
     // Two more ticks producing the identical summary → no additional posts.
-    await vi.advanceTimersByTimeAsync(25_000);
+    await advanceTimersByTime(25_000);
     const postsAfterMore =
       rt.sendMessageToTarget.mock.calls.length +
       rt.editMessageOnTarget.mock.calls.length;

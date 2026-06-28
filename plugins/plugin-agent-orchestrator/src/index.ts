@@ -9,6 +9,7 @@
  */
 
 import type {
+  Character,
   IAgentRuntime,
   Memory,
   Plugin,
@@ -39,6 +40,7 @@ import {
 } from "./actions/sandbox-stub.js";
 import { tasksAction } from "./actions/tasks.js";
 import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
+import { subAgentFailureResponseEvaluator } from "./evaluators/sub-agent-failure.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
 import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { activeWorkspaceContextProvider } from "./providers/active-workspace-context.js";
@@ -218,7 +220,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
     actions: orchestratorActions,
     providers: orchestratorProviders,
     responseHandlerEvaluators: codeExecutionAllowed
-      ? [subAgentCompletionResponseEvaluator]
+      ? [subAgentCompletionResponseEvaluator, subAgentFailureResponseEvaluator]
       : [],
     // Eager-start the orchestrator's services. They're declared in `services:`
     // above and registered by elizaOS, but service registration is lazy — the
@@ -577,7 +579,7 @@ export function compactProgressText(text: string): string {
 /**
  * Decide whether the planner already acknowledged a spawn turn, so the
  * orchestrator's spawn ACK can be suppressed (avoiding two back-to-back acks:
- * planner "On it." + orchestrator "working on it now."). True iff the planner
+ * the planner's "On it." plus the orchestrator's own spawn ack). True iff the planner
  * sent a user-facing message to the room within the spawn turn — i.e. at/after
  * the session's createdAt minus a small lookback (REPLY and the TASKS spawn
  * action run in the same turn, in either order). A planner reply older than
@@ -607,6 +609,131 @@ export function sanitizePlannerText(text: string): string {
   return cleaned.length > 0
     ? `${cleaned} ${SELF_HEAL_REPLACEMENT}`
     : SELF_HEAL_REPLACEMENT;
+}
+
+// ── LLM-generated spawn acknowledgement ──────────────────────────────────────
+// In "ack" mode the orchestrator posts ONE short line when it kicks off a coding
+// sub-agent. A single hardcoded literal ("working on it now.") read identically
+// robotic on every spawn, was always English regardless of the user's language,
+// and never matched the agent's character voice. Instead, the small text model
+// writes the line: it speaks in the configured character's own voice (no
+// hardcoded personality, no scraping `style.chat`) and in the user's language
+// (no i18n table), and natural sampling removes the verbatim repeat. This is the
+// same approach the LLM progress heartbeat already uses to write its status line
+// in the narration's language. The pure helpers below build the prompts and
+// sanitize the output (unit-tested); the single `useModel` call in the progress
+// hook is the only impure part, and it falls back to SPAWN_ACK_FALLBACK so the
+// ack can never become silence.
+
+// Minimal degraded fallback, used ONLY when the model call fails or returns
+// nothing usable — never the primary path. Kept short and neutral on purpose.
+export const SPAWN_ACK_FALLBACK = "On it.";
+
+// Longest acknowledgement we keep. An ack is a one-liner; anything longer is the
+// model over-answering, so it gets clipped.
+const SPAWN_ACK_MAX_CHARS = 120;
+const SPAWN_ACK_TIMEOUT_MS = 750;
+
+function withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), SPAWN_ACK_TIMEOUT_MS);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  return Promise.race([promise.catch(() => fallback), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+/**
+ * System prompt for spawn-ack generation. Carries the character's own voice —
+ * derived from the configured character, never hardcoded — plus the hard
+ * constraints that keep the output to a single short in-language line. Pure +
+ * deterministic so it is unit-tested directly.
+ */
+export function buildSpawnAckSystemPrompt(character: Character): string {
+  const name = (character.name ?? "").trim() || "the assistant";
+  const voiceParts: string[] = [];
+  const bio = (character.bio ?? []).map((b) => b.trim()).filter(Boolean);
+  if (bio.length > 0) voiceParts.push(bio.slice(0, 3).join(" "));
+  const traits = [
+    ...(character.adjectives ?? []),
+    ...(character.style?.chat ?? []),
+    ...(character.style?.all ?? []),
+  ]
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (traits.length > 0) {
+    voiceParts.push(`Voice: ${[...new Set(traits)].slice(0, 8).join(", ")}.`);
+  }
+  return [
+    `You are ${name}.`,
+    voiceParts.join(" ").trim(),
+    "You have just kicked off a background task the user asked for.",
+    "Reply with exactly ONE short, natural line, in your own voice, confirming you're on it.",
+    "Write it in the same language the user used.",
+    "No quotes, no emoji, no markdown, no preamble — just the line. Keep it under 12 words.",
+  ]
+    .filter((part) => part.length > 0)
+    .join(" ");
+}
+
+/**
+ * User-turn prompt for spawn-ack generation: the task being started. The task
+ * text doubles as the language signal — the model replies in whatever language
+ * it is written in (same mechanism as the heartbeat summarizer). Pure.
+ */
+export function buildSpawnAckUserPrompt(task: string): string {
+  const trimmed = task.trim();
+  const what = trimmed.length > 0 ? trimmed : "the task they just gave you";
+  const clipped = what.length > 400 ? `${what.slice(0, 397)}…` : what;
+  return `The task you're starting:\n${clipped}\n\nYour one-line acknowledgement:`;
+}
+
+/**
+ * Clean a model-produced ack into a single plain line: first non-empty line,
+ * surrounding quotes / emoji / list markers stripped, whitespace collapsed,
+ * length capped. Returns "" when nothing usable remains (the caller then falls
+ * back to SPAWN_ACK_FALLBACK). Pure + deterministic.
+ */
+export function sanitizeSpawnAck(raw: string): string {
+  if (!raw) return "";
+  const firstLine =
+    raw
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? "";
+  if (!firstLine) return "";
+  let cleaned = firstLine
+    .replace(PROGRESS_EMOJI_PREFIX_REGEX, "")
+    .replace(/^[>*\-•\s]+/, "")
+    .trim();
+  // Strip a single pair of surrounding quotes (straight, smart, or backtick).
+  const quotePairs: ReadonlyArray<readonly [string, string]> = [
+    ['"', '"'],
+    ["'", "'"],
+    ["“", "”"],
+    ["‘", "’"],
+    ["`", "`"],
+  ];
+  for (const [open, close] of quotePairs) {
+    if (
+      cleaned.length >= open.length + close.length &&
+      cleaned.startsWith(open) &&
+      cleaned.endsWith(close)
+    ) {
+      cleaned = cleaned
+        .slice(open.length, cleaned.length - close.length)
+        .trim();
+      break;
+    }
+  }
+  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.length > SPAWN_ACK_MAX_CHARS
+    ? `${cleaned.slice(0, SPAWN_ACK_MAX_CHARS - 1).trimEnd()}…`
+    : cleaned;
 }
 
 function stripToolTranscripts(raw: string): string {
@@ -825,11 +952,22 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // heartbeat re-run the first-post path and post a SECOND ack. Keying ack
   // suppression on this set instead makes it exactly one ack per session.
   const ackedSessions = new Set<string>();
+  // Terminal events can arrive while the model is still writing the first ack.
+  // Once terminal is observed, a late ack must be suppressed; otherwise the user
+  // can see "On it" after completion/failure. Bounded like ackedSessions.
+  const terminalSessions = new Set<string>();
+  const markSessionTerminal = (sessionId: string): void => {
+    terminalSessions.add(sessionId);
+    if (terminalSessions.size > 512) {
+      const oldest = terminalSessions.values().next().value;
+      if (oldest !== undefined) terminalSessions.delete(oldest);
+    }
+  };
   // Last "ack"-mode spawn ACK time per ROOM (`${source}::${roomId}`). One user
   // turn frequently fans out into several sub-agent sessions — a re-spawn, or a
   // multi-file build that spawns more than once — and ackedSessions is per
-  // SESSION, so each would post its own "working on it now." (the duplicate-ack
-  // nubs saw). Suppressing a sibling session's ACK when the room already acked
+  // SESSION, so each would post its own spawn ack (the duplicate-ack nubs saw).
+  // Suppressing a sibling session's ACK when the room already acked
   // within this window collapses one turn to a single ACK; a genuinely new
   // request after the window still gets its own.
   const roomAckAt = new Map<string, number>();
@@ -1071,6 +1209,43 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     lastHeartbeatSummary.delete(sessionId);
   };
 
+  // Generate the one-line "ack"-mode spawn acknowledgement via the small text
+  // model — in the character's own voice and the user's language (see
+  // buildSpawnAckSystemPrompt). The task text (the language signal) is read from
+  // the session's `initialTask` metadata, falling back to the label. Best-effort:
+  // any failure (no model registered, a throw, empty output) collapses to a short
+  // literal, so the ack is never silence and never blocks the spawn.
+  const generateSpawnAck = async (
+    sessionId: string,
+    label: string,
+  ): Promise<string> => {
+    try {
+      const session = await acp.getSession(sessionId).catch(() => null);
+      const meta = (session?.metadata ?? {}) as Record<string, unknown>;
+      const task =
+        typeof meta.initialTask === "string" && meta.initialTask.trim()
+          ? meta.initialTask
+          : label;
+      return await withSpawnAckTimeout(
+        runtime
+          .useModel(ModelType.TEXT_SMALL, {
+            system: buildSpawnAckSystemPrompt(runtime.character),
+            prompt: buildSpawnAckUserPrompt(task),
+            maxTokens: 32,
+            temperature: 0.7,
+          })
+          .then(
+            (raw) =>
+              sanitizeSpawnAck(typeof raw === "string" ? raw : "") ||
+              SPAWN_ACK_FALLBACK,
+          ),
+        SPAWN_ACK_FALLBACK,
+      );
+    } catch {
+      return SPAWN_ACK_FALLBACK;
+    }
+  };
+
   // Generic capability probe — multi-integration aware. The orchestrator
   // routes UX through whichever surface the target connector supports,
   // falling back gracefully when a capability is missing (e.g. Twitter/X
@@ -1236,6 +1411,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         target.roomId,
         sessionLabel,
       );
+      if (!state && terminalSessions.has(sessionId)) return;
       // Reuse the existing 🚀 main message for this label when it exists —
       // respawn / rate-limit retry / follow-up should NOT post a duplicate
       // "🚀 [label] running" line. Bind state to the cached message id and
@@ -1262,15 +1438,16 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         await emitProgress(sessionId, target, rawText, sessionLabel);
         return;
       }
-      const initialText = state
+      // The "ack"-mode spawn line is generated by the model AFTER the
+      // synchronous claim below (so the claim stays atomic), so leave it empty
+      // here and fill it once this event has exclusively claimed the first post.
+      const isAckFirstPost = !state && progressPolicy.mode === "ack";
+      let initialText = state
         ? displayText
         : progressPolicy.mode === "threaded"
           ? `🚀 [${sessionLabel}] running`
           : progressPolicy.mode === "ack"
-            ? // "ack" mode posts ONE clean spawn ACK (never the raw sub-agent
-              // narration) and never edits it afterward — the completion
-              // synthesis is the separate final message. Plain text, no emoji.
-              "working on it now."
+            ? ""
             : displayText;
       // Claim the first post synchronously before the await. A second progress
       // event for the same session that arrives while this send is in flight
@@ -1281,9 +1458,9 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         if (firstPostInFlight.has(sessionId)) return;
         // ack mode posts exactly one ACK per ROOM per window — a sibling
         // sub-agent session spawned by the SAME user turn must not post a second
-        // "working on it now.". Checked synchronously before the claim/await so
-        // a concurrent sibling bails here. (Per-session suppression below still
-        // guards the heartbeat / narration re-entry for this one session.)
+        // ack. Checked synchronously before the claim/await so a concurrent
+        // sibling bails here. (Per-session suppression below still guards the
+        // heartbeat / narration re-entry for this one session.)
         if (progressPolicy.mode === "ack") {
           const roomAckKey = `${target.source}::${target.roomId}`;
           const now = Date.now();
@@ -1313,6 +1490,18 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             const oldest = ackedSessions.values().next().value;
             if (oldest !== undefined) ackedSessions.delete(oldest);
           }
+        }
+      }
+      // "ack" mode posts ONE clean spawn ACK (never the raw sub-agent narration)
+      // and never edits it afterward — the completion synthesis is the separate
+      // final message. The line is the model's own in-voice, in-language
+      // acknowledgement. Generated here, AFTER the claim above, so the dedup
+      // stays synchronous and the model latency sits outside the claim window.
+      if (isAckFirstPost) {
+        initialText = await generateSpawnAck(sessionId, sessionLabel);
+        if (terminalSessions.has(sessionId)) {
+          firstPostInFlight.delete(sessionId);
+          return;
         }
       }
       const sent = await runtime.sendMessageToTarget(
@@ -1489,7 +1678,9 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     }
     // No reaction support and no edit: post a terminal failure message so
     // the user knows the sub-agent ended on a non-success state.
-    if (!state.canEdit) {
+    const suppressFailurePost =
+      progressPolicy.mode === "ack" || progressPolicy.mode === "silent";
+    if (!state.canEdit && !suppressFailurePost) {
       try {
         await runtime.sendMessageToTarget(
           target,
@@ -1564,6 +1755,14 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           typeof meta.label === "string" && meta.label.trim().length > 0
             ? meta.label
             : `sub-agent ${sessionId.slice(0, 8)}`;
+        const isTerminalEvent =
+          evName === "stopped" ||
+          evName === "error" ||
+          evName === "task_complete" ||
+          evName === "cancelled";
+        if (isTerminalEvent) {
+          markSessionTerminal(sessionId);
+        }
         // "ack" mode: post the single clean spawn ACK on the FIRST event of any
         // kind, not just narration. The ack used to ride on the first
         // message-buffer flush, which only fires after a narration silence gap
@@ -1579,8 +1778,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // same user request, spawned under a fresh sessionId minutes later. The
         // per-session ackedSessions/firstPostInFlight guards never see it, and the
         // per-room ack dedup window (60s) has long expired — so without this gate
-        // each retry posts another "working on it now." (the triple-ack users
-        // reported). The original user-requested session has no
+        // each retry posts another spawn ack (the triple-ack users reported).
+        // The original user-requested session has no
         // buildVerifyRetryCount, so it still acks exactly once.
         const isVerifyRetrySpawn =
           typeof meta.buildVerifyRetryCount === "number" &&
@@ -1588,6 +1787,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         if (
           progressPolicy.mode === "ack" &&
           !ackedSessions.has(sessionId) &&
+          !terminalSessions.has(sessionId) &&
           !isVerifyRetrySpawn &&
           evName !== "task_complete" &&
           evName !== "turn_complete" &&
@@ -1597,8 +1797,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         ) {
           // Dedupe against the planner's own acknowledgment. The planner often
           // replies "On it." in the same turn it spawns the task; posting a
-          // second orchestrator ACK ("working on it now.") right after is the
-          // back-to-back double-ack users complained about. If a user-facing
+          // second orchestrator ACK right after is the back-to-back double-ack
+          // users complained about. If a user-facing
           // (non-internal) message hit this room within the spawn turn — i.e.
           // at/after createdAt minus a small lookback — the planner already
           // acked: claim the marker (so trailing events + heartbeat stay
@@ -1628,17 +1828,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // edit messages in place, slow (30s) when each tick is a new post.
         if (evName === "ready" || evName === "tool_running") {
           startHeartbeat(sessionId, label, source, roomId);
-        } else if (
-          evName === "stopped" ||
-          evName === "error" ||
-          evName === "task_complete" ||
-          // `cancelled` is also a terminal event emitted by acp-service when a
-          // session is cancelled mid-flight (cancelSession or active.cancelled
-          // exit path). Without including it here, the heartbeat keeps polling
-          // and per-session map entries (toolHistory, progressBySession,
-          // lastPostByKey) leak for the life of the runtime.
-          evName === "cancelled"
-        ) {
+        } else if (isTerminalEvent) {
           // Mark the main-channel spawn message with the terminal outcome via
           // reaction + (when supported) inline summary edit, BEFORE the
           // progressBySession entry is cleared below. This is the user-facing
@@ -1923,6 +2113,7 @@ export {
   handleCodingAgentRoutes,
 } from "./api/routes.js";
 export { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
+export { subAgentFailureResponseEvaluator } from "./evaluators/sub-agent-failure.js";
 // Providers
 export { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 export {
