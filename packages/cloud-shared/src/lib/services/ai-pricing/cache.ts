@@ -1,4 +1,9 @@
-import { EXTERNAL_CACHE_TTL_MS, type ExternalCacheValue, type PreparedPricingEntry } from "./types";
+import {
+  EXTERNAL_CACHE_TTL_MS,
+  type ExternalCacheValue,
+  NEGATIVE_EXTERNAL_CACHE_TTL_MS,
+  type PreparedPricingEntry,
+} from "./types";
 
 const externalCatalogCache = new Map<string, ExternalCacheValue>();
 
@@ -23,7 +28,22 @@ export async function getCachedExternalEntries(
   // Evict expired entries before adding new ones to prevent unbounded growth
   evictExpiredCacheEntries();
 
-  const entries = await loader();
+  let entries: PreparedPricingEntry[];
+  try {
+    entries = await loader();
+  } catch (error) {
+    // Negative-cache the failure (shorter TTL) so a dead/erroring upstream — e.g.
+    // Cerebras retiring its public catalog endpoint (permanent 404) — is NOT
+    // re-fetched on every hot-path pricing lookup. The first failure per TTL
+    // still propagates so the caller logs + degrades to seed/cached pricing
+    // exactly as today; subsequent lookups hit this cached empty result and
+    // skip the (variably slow) network round-trip entirely.
+    externalCatalogCache.set(cacheKey, {
+      entries: [],
+      expiresAt: Date.now() + NEGATIVE_EXTERNAL_CACHE_TTL_MS,
+    });
+    throw error;
+  }
   externalCatalogCache.set(cacheKey, {
     entries,
     expiresAt: Date.now() + EXTERNAL_CACHE_TTL_MS,
