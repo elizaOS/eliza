@@ -15,6 +15,7 @@ on:
       - "packages/app-core/deploy/Dockerfile.ci"
       - "plugins/plugin-sql/**"
       - "plugins/plugin-elizacloud/**"
+      - "plugins/plugin-local-inference/**"
       - "packages/agent/**"
       - "packages/server/**"
       - "packages/core/**"
