@@ -31,11 +31,6 @@ export interface RunningMockLlm {
 export interface MockLlmOptions {
   /** Fixed assistant reply. Default `"PONG"`. */
   reply?: string;
-  /**
-   * Reply from the replayed chat context instead of using `reply`. Useful for
-   * multi-turn tests that need proof the runtime sent prior messages upstream.
-   */
-  echoContext?: boolean;
   /** Reported completion tokens. Default `8`. */
   completionTokens?: number;
   /**
