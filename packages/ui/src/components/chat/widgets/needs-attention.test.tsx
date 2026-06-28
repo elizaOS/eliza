@@ -10,10 +10,12 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  getBaseUrlMock,
   listPendingActionsMock,
   publishHomeAttentionSpy,
   dispatchChatPrefillSpy,
 } = vi.hoisted(() => ({
+  getBaseUrlMock: vi.fn(() => "http://localhost"),
   listPendingActionsMock: vi.fn(),
   publishHomeAttentionSpy: vi.fn(),
   dispatchChatPrefillSpy: vi.fn(),
@@ -22,7 +24,10 @@ const {
 // The widget reads the canonical surface through the typed client; mock only
 // the one method it calls.
 vi.mock("../../../api", () => ({
-  client: { listPendingActions: listPendingActionsMock },
+  client: {
+    getBaseUrl: getBaseUrlMock,
+    listPendingActions: listPendingActionsMock,
+  },
 }));
 
 // Spy on the self-signal hook so we can assert the published weight without
@@ -75,6 +80,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  getBaseUrlMock.mockReturnValue("http://localhost");
   publishHomeAttentionSpy.mockReset();
   dispatchChatPrefillSpy.mockReset();
   listPendingActionsMock.mockReset();
@@ -115,6 +121,19 @@ describe("NeedsAttentionWidget (#9449)", () => {
     });
     expect(screen.queryByTestId("chat-widget-needs-attention")).toBeNull();
     expect(container.firstChild).toBeNull();
+  });
+
+  it("does not probe approvals on dedicated cloud chat agents", async () => {
+    getBaseUrlMock.mockReturnValue(
+      "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+    );
+
+    const { container } = render(<NeedsAttentionWidget {...fetchProps} />);
+
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+    expect(listPendingActionsMock).not.toHaveBeenCalled();
   });
 
   it("does not update state when the approvals request resolves after unmount", async () => {

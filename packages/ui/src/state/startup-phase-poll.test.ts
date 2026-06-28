@@ -762,6 +762,68 @@ describe("runPollingBackend", () => {
     });
   });
 
+  it("does not probe first-run setup routes on a live limited cloud agent base", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: {
+        origin: "http://localhost:2138",
+        protocol: "http:",
+        port: "2138",
+      },
+    };
+    const activeServer = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+      accessToken: "cloud-token",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: activeServer,
+      restoredActiveServer: activeServer,
+      shouldPreserveCompletedFirstRun: true,
+      hadPriorFirstRun: true,
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: false,
+      authenticated: true,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getFirstRunStatus).not.toHaveBeenCalled();
+    expect(clientMock.getFirstRunOptions).not.toHaveBeenCalled();
+    expect(deps.setFirstRunCloudProvisionedContainer).toHaveBeenCalledWith(
+      false,
+    );
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+  });
+
   it("does NOT strand on Backend Unreachable when the agent lookup is inconclusive (no cloud token)", async () => {
     // Without a cloud token we cannot verify the dedicated agent. Rather than
     // wrongly clearing the saved server, fall back to the prior behaviour: the

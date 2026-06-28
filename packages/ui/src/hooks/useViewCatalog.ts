@@ -15,6 +15,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
 import { useEnabledViewKinds } from "../state/useViewKinds";
@@ -44,18 +45,22 @@ export function useViewCatalog(): UseViewCatalogResult {
   } = useAvailableViews();
   const enabledKinds = useEnabledViewKinds();
   const activeModality = useMemo(() => getActiveViewModality(), []);
+  const appShellRoutesSupported = supportsFullAppShellRoutes(
+    client.getBaseUrl(),
+  );
 
   const catalogRes = useCachedResource(
-    CATALOG_CACHE_KEY,
+    appShellRoutesSupported ? CATALOG_CACHE_KEY : null,
     () => loadAppsCatalog(),
     {
       staleTime: CATALOG_STALE_MS,
+      enabled: appShellRoutesSupported,
     },
   );
   const installedRes = useCachedResource(
-    INSTALLED_CACHE_KEY,
+    appShellRoutesSupported ? INSTALLED_CACHE_KEY : null,
     () => client.listInstalledApps(),
-    { staleTime: CATALOG_STALE_MS },
+    { staleTime: CATALOG_STALE_MS, enabled: appShellRoutesSupported },
   );
 
   // Per-entry transient state for the get→open flow (keyed by ViewEntry.key).

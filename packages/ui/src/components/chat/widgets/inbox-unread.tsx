@@ -1,6 +1,7 @@
 import { Inbox } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
@@ -85,8 +86,14 @@ export function InboxUnreadWidget(_props: Partial<WidgetProps>) {
   const nav = useWidgetNavigation();
 
   const loadInbox = useCallback(async () => {
+    const baseUrl = client.getBaseUrl();
+    if (!supportsFullAppShellRoutes(baseUrl)) {
+      setLoaded(true);
+      setUnread([]);
+      return;
+    }
     try {
-      const response = await fetch(`${client.getBaseUrl()}/api/lifeops/inbox`);
+      const response = await fetch(`${baseUrl}/api/lifeops/inbox`);
       if (!response.ok) return;
       const next = parseUnread(await response.json());
       // Skip the state update (and the re-render) when the poll is unchanged.

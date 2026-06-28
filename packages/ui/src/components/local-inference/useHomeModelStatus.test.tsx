@@ -134,4 +134,20 @@ describe("useHomeModelStatus", () => {
     expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
     expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
   });
+
+  it("rechecks the base before polling when startup flips to a dedicated cloud agent", async () => {
+    clientMock.getBaseUrl
+      .mockReturnValueOnce("http://127.0.0.1:31337")
+      .mockReturnValue(
+        "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+      );
+
+    const { result } = renderHook(() => useHomeModelStatus());
+
+    await waitFor(() => {
+      expect(result.current.kind).toBe("not-required");
+    });
+    expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
+    expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
+  });
 });

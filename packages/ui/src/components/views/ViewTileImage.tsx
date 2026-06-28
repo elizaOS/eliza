@@ -1,6 +1,9 @@
 import { type CSSProperties, useState } from "react";
 import { client } from "../../api";
-import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
+import {
+  isLimitedCloudAgentApiResourceUrl,
+  supportsFullAppShellRoutes,
+} from "../../api/app-shell-capabilities";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -54,7 +57,9 @@ function springboardIconStyle(entry: ViewEntry): CSSProperties {
  */
 function resolveTileImageUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("//")) return url;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("//")) {
+    return isLimitedCloudAgentApiResourceUrl(url) ? undefined : url;
+  }
   if (
     (url.startsWith("/api/") || url.startsWith("api/")) &&
     !supportsFullAppShellRoutes(client.getBaseUrl())

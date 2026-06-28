@@ -158,14 +158,22 @@ export async function runHydrating(
   deps.setFirstRunLoading(false);
   if (greetConvId) void deps.requestGreetingWhenRunningRef.current(greetConvId);
 
-  void deps.loadWorkbench();
-  void deps.loadPlugins();
+  const appShellRoutesSupported = supportsFullAppShellRoutes(
+    client.getBaseUrl(),
+  );
+
+  if (appShellRoutesSupported) {
+    void deps.loadWorkbench();
+    void deps.loadPlugins();
+  }
   void deps.loadCharacter();
 
-  // Warm the apps catalog cache so the Apps tab opens with the real
-  // sections instead of the placeholder skeleton. Fire-and-forget; the
-  // Apps view also loads on its own mount as a fallback.
-  void prefetchAppsCatalog();
+  if (appShellRoutesSupported) {
+    // Warm the apps catalog cache so the Apps tab opens with the real
+    // sections instead of the placeholder skeleton. Fire-and-forget; the
+    // Apps view also loads on its own mount as a fallback.
+    void prefetchAppsCatalog();
+  }
 
   void deps.pollCloudCredits();
 
@@ -178,13 +186,15 @@ export async function runHydrating(
   // the independent wallet fetch runs in parallel. Fire-and-forget: a failure
   // here must never block or fail the boot.
   const decorateShellAfterReady = (): void => {
-    void (async () => {
-      try {
-        deps.setWalletAddresses(await client.getWalletAddresses());
-      } catch (e: unknown) {
-        warn("wallet addresses", e);
-      }
-    })();
+    if (appShellRoutesSupported) {
+      void (async () => {
+        try {
+          deps.setWalletAddresses(await client.getWalletAddresses());
+        } catch (e: unknown) {
+          warn("wallet addresses", e);
+        }
+      })();
+    }
 
     void (async () => {
       // Avatar / VRM selection — resolve from server config, then stream

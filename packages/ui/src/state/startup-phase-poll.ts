@@ -10,6 +10,7 @@ import { logger } from "@elizaos/logger";
 import { getStylePresets } from "@elizaos/shared";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
@@ -469,6 +470,17 @@ export async function runPollingBackend(
       // in startup because every first-run/runtime endpoint returns 401.
       if (auth.required && !auth.authenticated && client.hasToken()) {
         deps.setAuthRequired(false);
+        deps.setFirstRunComplete(true);
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+        return;
+      }
+      if (
+        !supportsFullAppShellRoutes(client.getBaseUrl()) &&
+        (deps.firstRunCompletionCommittedRef.current ||
+          ctx?.shouldPreserveCompletedFirstRun === true)
+      ) {
+        deps.setFirstRunCloudProvisionedContainer(false);
         deps.setFirstRunComplete(true);
         deps.setFirstRunLoading(false);
         dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });

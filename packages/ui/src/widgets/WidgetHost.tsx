@@ -167,7 +167,9 @@ export function WidgetHost({
   hideWhenEmpty = true,
   filter,
 }: WidgetHostProps) {
-  const plugins = useAppSelectorShallow((s) => s.plugins);
+  const plugins = useAppSelectorShallow((s) =>
+    Array.isArray(s.plugins) ? s.plugins : [],
+  );
   const currentBaseUrl = useAppSelectorShallow(() => client.getBaseUrl());
   const enabledKinds = useEnabledViewKinds();
   // Live importance inputs for the home ranker. Subscribed unconditionally

@@ -10,7 +10,10 @@ import {
   Wrench,
 } from "lucide-react";
 import { client } from "../../api";
-import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
+import {
+  isLimitedCloudAgentApiResourceUrl,
+  supportsFullAppShellRoutes,
+} from "../../api/app-shell-capabilities";
 import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
 import type { AppIdentitySource } from "./app-identity";
 
@@ -39,6 +42,9 @@ export function iconImageSource(
 export function resolveRuntimeImageUrl(value: string): string {
   // Absolute URLs, data/blob URIs, and custom schemes are already runtime-safe.
   if (/^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:)/i.test(value)) {
+    if (isLimitedCloudAgentApiResourceUrl(value)) {
+      return "";
+    }
     return value;
   }
   // API-served hero endpoints must hit the API base, not the asset CDN.

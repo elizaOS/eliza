@@ -1,6 +1,7 @@
 import { Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 // Real wire types for the relationships routes (READ, not guessed):
 // packages/ui/src/api/client-types-relationships.ts
 //   - RelationshipsPersonSummary: { groupId, displayName, lastInteractionAt? , … }
@@ -124,6 +125,10 @@ export function RelationshipsAttentionWidget({ slot }: Partial<WidgetProps>) {
   const nav = useWidgetNavigation();
 
   const load = useCallback(async () => {
+    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+      setData(EMPTY_DATA);
+      return;
+    }
     try {
       const [peopleResult, candidates] = await Promise.all([
         client.getRelationshipsPeople(),

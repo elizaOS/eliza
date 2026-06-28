@@ -2,6 +2,7 @@ import type { PendingUserAction } from "@elizaos/core";
 import { CircleHelp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { dispatchChatPrefill } from "../../../events";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
@@ -55,6 +56,13 @@ export function useApprovals(): {
   const mountedRef = useRef(true);
 
   const load = useCallback(async () => {
+    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+      if (mountedRef.current) {
+        setPending([]);
+        setLoaded(true);
+      }
+      return;
+    }
     try {
       const { pending: next } = await client.listPendingActions();
       if (!mountedRef.current) return;

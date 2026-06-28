@@ -305,6 +305,27 @@ describe("Springboard image tiles", () => {
     );
     expect(visual?.querySelector("svg")).toBeTruthy();
   });
+
+  it("falls back to a glyph for already-resolved dedicated cloud API heroes", () => {
+    const { container } = render(
+      <Springboard
+        entries={[
+          imageEntry(
+            "notes",
+            "Notes",
+            "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai/api/views/notes/hero",
+          ),
+        ]}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("springboard-image-notes")).toBeNull();
+    const visual = container.querySelector<HTMLElement>(
+      '[data-view-visual="notes"]',
+    );
+    expect(visual?.querySelector("svg")).toBeTruthy();
+  });
 });
 
 describe("Springboard long-press to edit", () => {

@@ -32,6 +32,14 @@ describe("resolveRuntimeImageUrl", () => {
     expect(resolveRuntimeImageUrl("/api/apps/hero/steward")).toBe("");
   });
 
+  it("skips already-resolved API image URLs from dedicated cloud chat agents", () => {
+    expect(
+      resolveRuntimeImageUrl(
+        "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai/api/apps/hero/steward",
+      ),
+    ).toBe("");
+  });
+
   it("still resolves static app assets for dedicated cloud chat agents", () => {
     clientMock.getBaseUrl.mockReturnValue(
       "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",

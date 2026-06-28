@@ -15,10 +15,12 @@ import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
 
 const {
+  getBaseUrlMock,
   getRelationshipsPeopleMock,
   getRelationshipsCandidatesMock,
   publishHomeAttentionMock,
 } = vi.hoisted(() => ({
+  getBaseUrlMock: vi.fn(() => "http://localhost"),
   getRelationshipsPeopleMock: vi.fn(),
   getRelationshipsCandidatesMock: vi.fn(),
   publishHomeAttentionMock: vi.fn(),
@@ -26,6 +28,7 @@ const {
 
 vi.mock("../../../api", () => ({
   client: {
+    getBaseUrl: getBaseUrlMock,
     getRelationshipsPeople: getRelationshipsPeopleMock,
     getRelationshipsCandidates: getRelationshipsCandidatesMock,
   },
@@ -97,6 +100,7 @@ const fetchProps: Partial<WidgetProps> = { slot: "home" };
 
 describe("RelationshipsAttentionWidget (#9143)", () => {
   beforeEach(() => {
+    getBaseUrlMock.mockReturnValue("http://localhost");
     getRelationshipsPeopleMock.mockReset();
     getRelationshipsCandidatesMock.mockReset();
     publishHomeAttentionMock.mockReset();
@@ -249,6 +253,22 @@ describe("RelationshipsAttentionWidget (#9143)", () => {
     });
     expect(screen.queryByTestId("chat-widget-relationships")).toBeNull();
     expect(container.firstChild).toBeNull();
+  });
+
+  it("does not probe relationship routes on dedicated cloud chat agents", async () => {
+    getBaseUrlMock.mockReturnValue(
+      "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+    );
+
+    const { container } = render(
+      <RelationshipsAttentionWidget {...fetchProps} />,
+    );
+
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+    expect(getRelationshipsPeopleMock).not.toHaveBeenCalled();
+    expect(getRelationshipsCandidatesMock).not.toHaveBeenCalled();
   });
 
   it("publishes the approval weight when a merge candidate is pending (urgent)", async () => {

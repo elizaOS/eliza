@@ -27,6 +27,13 @@ function appendTokenParam(url: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
 
+function supportsLocalInferenceStatus(): boolean {
+  const baseUrl = client.getBaseUrl();
+  return (
+    supportsFullAppShellRoutes(baseUrl) && !isDesktopExternalApiBaseUrl(baseUrl)
+  );
+}
+
 /**
  * Collapses the local-inference hub's per-slot text readiness into a single
  * home-surface status, refreshed live from the download stream. Defaults to
@@ -43,8 +50,7 @@ export function useHomeModelStatus(): HomeModelStatus {
       runtimeMode.state.phase === "loading" ||
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
-      !supportsFullAppShellRoutes(client.getBaseUrl()) ||
-      isDesktopExternalApiBaseUrl(client.getBaseUrl())
+      !supportsLocalInferenceStatus()
     ) {
       setStatus(NOT_REQUIRED);
       return;
@@ -53,6 +59,10 @@ export function useHomeModelStatus(): HomeModelStatus {
     let cancelled = false;
 
     const refresh = async () => {
+      if (!supportsLocalInferenceStatus()) {
+        if (!cancelled) setStatus(NOT_REQUIRED);
+        return;
+      }
       try {
         const hub = await client.getLocalInferenceHub();
         if (!cancelled) setStatus(deriveHomeModelStatus(hub.textReadiness));
@@ -62,6 +72,13 @@ export function useHomeModelStatus(): HomeModelStatus {
     };
 
     void refresh();
+
+    if (!supportsLocalInferenceStatus()) {
+      setStatus(NOT_REQUIRED);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const url = appendTokenParam(
       resolveApiUrl("/api/local-inference/downloads/stream"),

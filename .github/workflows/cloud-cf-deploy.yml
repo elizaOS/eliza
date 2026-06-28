@@ -217,7 +217,7 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-console:
     name: Deploy Console (Pages · elizacloud.ai)
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
