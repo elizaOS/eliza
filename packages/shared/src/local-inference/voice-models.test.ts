@@ -6,7 +6,39 @@ import {
   VOICE_MODEL_VERSIONS,
   type VoiceModelId,
   versionsFor,
+  voiceModelAssetUrl,
 } from "./voice-models.js";
+
+describe("eliza-1 wake-word GGUF packaging (#9880)", () => {
+  const wake = latestVoiceModelVersion("wakeword");
+
+  it("publishes the three hey-eliza GGUFs with verifiable sha256 + size", () => {
+    expect(wake?.version).toBe("0.3.0");
+    expect(wake?.hfRepo).toBe("elizaos/eliza-1");
+    const kinds = wake?.ggufAssets?.map((a) => a.filename).sort();
+    expect(kinds).toEqual([
+      "voice/wakeword/hey-eliza.classifier.gguf",
+      "voice/wakeword/hey-eliza.embedding.gguf",
+      "voice/wakeword/hey-eliza.melspec.gguf",
+    ]);
+    for (const a of wake?.ggufAssets ?? []) {
+      expect(a.sha256).toMatch(/^[0-9a-f]{64}$/); // pinned, verifiable
+      expect(a.sizeBytes).toBeGreaterThan(0);
+      expect(a.quant).toBe("fp16");
+    }
+  });
+
+  it("builds the pinned HuggingFace resolve URL for each asset", () => {
+    if (!wake) throw new Error("wakeword version missing");
+    expect(
+      voiceModelAssetUrl(wake, {
+        filename: "voice/wakeword/hey-eliza.classifier.gguf",
+      }),
+    ).toBe(
+      "https://huggingface.co/elizaos/eliza-1/resolve/c544bb4c78a601a0da8372b9399dfe668fbadb1e/voice/wakeword/hey-eliza.classifier.gguf",
+    );
+  });
+});
 
 describe("compareVoiceModelSemver", () => {
   it("orders major.minor.patch", () => {
