@@ -3588,6 +3588,7 @@ export function OrchestratorWorkbench() {
               ) : (
                 <ChatEmptyStateWithRecommendations
                   icon={Layers}
+                  testId="task-empty-state"
                   title={
                     backendAbsent
                       ? t("orchestrator.empty.setupTitle", {
@@ -3638,7 +3639,13 @@ export function OrchestratorWorkbench() {
         <main
           className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg"
           data-testid="orchestrator-timeline"
-          style={selectedId ? undefined : HIDDEN_STYLE}
+          // Keep a real minimum height in the one-column desktop layout: stacked
+          // below the (often tall) inspector, a basis-0 flex-1 timeline would
+          // otherwise collapse toward zero and bleed its header over the
+          // inspector's controls. A definite floor makes the outer container
+          // scroll through both panels instead. Inline (the view bundle ships no
+          // CSS of its own). Hidden entirely until a task room is open.
+          style={selectedId ? { minHeight: "20rem" } : HIDDEN_STYLE}
         >
           {detail ? (
             <>
