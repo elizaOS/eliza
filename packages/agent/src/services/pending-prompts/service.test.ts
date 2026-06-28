@@ -70,19 +70,23 @@ describe("PendingPromptsService", () => {
     const runtime = makeRuntime();
     const service = await PendingPromptsService.start(runtime);
     const store = service.getStore();
+    const now = Date.now();
+    const taskAFiredAt = new Date(now - 5 * 60_000).toISOString();
+    const taskBFiredAt = new Date(now).toISOString();
+    const taskAExpiresAt = new Date(now + 60 * 60_000).toISOString();
     await store.record({
       taskId: "task-a",
       roomId: "room-a",
       promptSnippet: "Approve the calendar change?",
-      firedAt: "2026-06-24T18:00:00.000Z",
+      firedAt: taskAFiredAt,
       expectedReplyKind: "approval",
-      expiresAt: "2026-06-24T19:00:00.000Z",
+      expiresAt: taskAExpiresAt,
     });
     await store.record({
       taskId: "task-b",
       roomId: "room-b",
       promptSnippet: "How did lunch go?",
-      firedAt: "2026-06-24T18:05:00.000Z",
+      firedAt: taskBFiredAt,
       expectedReplyKind: "free_form",
     });
 
@@ -105,7 +109,7 @@ describe("PendingPromptsService", () => {
         roomId: "room-a",
         expectedReplyKind: "approval",
         weight: 9,
-        expiresAt: Date.parse("2026-06-24T19:00:00.000Z"),
+        expiresAt: Date.parse(taskAExpiresAt),
       }),
     ]);
   });
