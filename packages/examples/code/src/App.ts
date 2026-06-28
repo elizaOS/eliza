@@ -206,8 +206,6 @@ function normalizeSubAgentType(input: string | undefined): SubAgentType | null {
   if (raw === "codex") return "codex";
   if (raw === "opencode" || raw === "open-code" || raw === "open_code")
     return "opencode";
-  if (raw === "sweagent" || raw === "swe-agent" || raw === "swe_agent")
-    return "sweagent";
   if (
     raw === "elizaos-native" ||
     raw === "eliza-native" ||
@@ -657,7 +655,7 @@ export class App {
           addMessage(
             currentRoomId,
             "system",
-            `Active agent: ${state.selectedSubAgentType ?? "(not set)"}\n\nUsage: /agent <type>\nTypes:\n- eliza\n- claude-code\n- codex\n- opencode\n- sweagent\n- elizaos-native`,
+            `Active agent: ${state.selectedSubAgentType ?? "(not set)"}\n\nUsage: /agent <type>\nTypes:\n- eliza\n- claude-code\n- codex\n- opencode\n- elizaos-native`,
           );
           this.tui.requestRender();
           return true;
@@ -669,7 +667,7 @@ export class App {
           addMessage(
             currentRoomId,
             "system",
-            `Unknown agent type: "${typeRaw}". Try: eliza, claude-code, codex, opencode, sweagent, elizaos-native`,
+            `Unknown agent type: "${typeRaw}". Try: eliza, claude-code, codex, opencode, elizaos-native`,
           );
           this.tui.requestRender();
           return true;

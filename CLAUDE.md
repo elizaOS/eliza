@@ -69,7 +69,6 @@ packages/        framework, shared libraries, and product surfaces
   tui/           terminal UI
   skills/        runtime skills knowledge base (USE_SKILL)
   scenario-runner/ scenario + eval harness
-  sweagent/      SWE-bench style coding-agent harness
   cloud-api/     managed backend API (Hono on Cloudflare Workers)
   app/           web + desktop dashboard; also hosts the current cloud apex UI
   cloud-shared/  shared cloud backend: db (Drizzle), billing, services, types

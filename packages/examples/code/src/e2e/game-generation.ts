@@ -7,8 +7,8 @@
  * create working games:
  *
  * 1. TypeScript Guessing Game (tested with eliza or codex)
- * 2. Rust Blackjack Game (tested with claude-code or sweagent)
- * 3. Python Adventure Game (tested with eliza or sweagent)
+ * 2. Rust Blackjack Game (tested with claude-code)
+ * 3. Python Adventure Game (tested with eliza)
  *
  * Requirements:
  * - ANTHROPIC_API_KEY or OPENAI_API_KEY must be set
@@ -348,11 +348,6 @@ function getAvailableAgents(): SubAgentType[] {
   // Claude Code requires Anthropic
   if (anthropic) {
     agents.push("claude-code");
-  }
-
-  // SWE-agent works with any provider
-  if (openai || anthropic) {
-    agents.push("sweagent");
   }
 
   return agents;
