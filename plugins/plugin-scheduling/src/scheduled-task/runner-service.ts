@@ -109,9 +109,10 @@ export type ScheduledTaskRunnerDepsProvider = (
   agentId: string,
 ) => ScheduledTaskRunnerDepsBundle;
 
-type DepsCarrier = {
-  __scheduledTaskRunnerDepsProvider?: ScheduledTaskRunnerDepsProvider;
-};
+const depsProvidersByRuntime = new WeakMap<
+  IAgentRuntime,
+  ScheduledTaskRunnerDepsProvider
+>();
 
 /**
  * Register the production deps provider on the runtime. First-wins: a later
@@ -125,22 +126,20 @@ export function registerScheduledTaskRunnerDeps(
   runtime: IAgentRuntime,
   provider: ScheduledTaskRunnerDepsProvider,
 ): void {
-  const carrier = runtime as unknown as DepsCarrier;
-  if (carrier.__scheduledTaskRunnerDepsProvider) {
+  if (depsProvidersByRuntime.has(runtime)) {
     logger.debug(
       { src: SERVICE_TYPE, agentId: runtime.agentId },
       "ScheduledTask runner deps provider already registered; keeping first-wins registration.",
     );
     return;
   }
-  carrier.__scheduledTaskRunnerDepsProvider = provider;
+  depsProvidersByRuntime.set(runtime, provider);
 }
 
 export function getScheduledTaskRunnerDeps(
   runtime: IAgentRuntime,
 ): ScheduledTaskRunnerDepsProvider | null {
-  const carrier = runtime as unknown as DepsCarrier;
-  return carrier.__scheduledTaskRunnerDepsProvider ?? null;
+  return depsProvidersByRuntime.get(runtime) ?? null;
 }
 
 // --- Default deps provider (no-PA path) ------------------------------------

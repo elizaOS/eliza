@@ -34,16 +34,18 @@ export interface DefaultTaskPack {
   fallback?: boolean;
 }
 
-type PackCarrier = {
-  __scheduledTaskDefaultPacks?: Map<string, DefaultTaskPack>;
-};
+const defaultTaskPacksByRuntime = new WeakMap<
+  IAgentRuntime,
+  Map<string, DefaultTaskPack>
+>();
 
 function packMap(runtime: IAgentRuntime): Map<string, DefaultTaskPack> {
-  const carrier = runtime as unknown as PackCarrier;
-  if (!carrier.__scheduledTaskDefaultPacks) {
-    carrier.__scheduledTaskDefaultPacks = new Map();
+  let packs = defaultTaskPacksByRuntime.get(runtime);
+  if (!packs) {
+    packs = new Map();
+    defaultTaskPacksByRuntime.set(runtime, packs);
   }
-  return carrier.__scheduledTaskDefaultPacks;
+  return packs;
 }
 
 /**

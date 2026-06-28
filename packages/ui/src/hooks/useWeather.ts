@@ -97,13 +97,7 @@ function writeCache(value: CachedWeather): void {
  *  allowed; otherwise the coarse IP lookup is the no-prompt default. */
 async function geolocationAlreadyGranted(): Promise<boolean> {
   try {
-    const perms = (
-      navigator as unknown as {
-        permissions?: {
-          query?: (d: { name: string }) => Promise<{ state: string }>;
-        };
-      }
-    ).permissions;
+    const perms = navigator.permissions;
     if (!perms?.query) return false;
     const status = await perms.query({ name: "geolocation" });
     return status.state === "granted";

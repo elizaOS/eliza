@@ -30,6 +30,22 @@ function requestBaseUrl(req: IncomingMessage): string {
   return `${proto}://${host}`;
 }
 
+function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isIncomingMessage(value: unknown): value is IncomingMessage {
+  return isRecord(value) && isRecord(value.headers) && isRecord(value.socket);
+}
+
+function isServerResponse(value: unknown): value is ServerResponse {
+  return (
+    isRecord(value) &&
+    typeof value.end === "function" &&
+    typeof value.setHeader === "function"
+  );
+}
+
 function buildContext(
   req: IncomingMessage,
   res: ServerResponse,
@@ -50,10 +66,10 @@ function buildContext(
 }
 
 function scheduledTasksLegacyHandler(): LegacyRouteHandler {
+  const runtimeByContext = new WeakMap<SchedulingRouteContext, IAgentRuntime>();
   const handle = makeScheduledTasksRouteHandler({
     async resolveRunner(ctx) {
-      const runtime = (ctx as unknown as { __runtime?: IAgentRuntime })
-        .__runtime;
+      const runtime = runtimeByContext.get(ctx);
       if (!runtime) {
         ctx.error(ctx.res, "Agent runtime is not available", 503);
         return null;
@@ -62,13 +78,17 @@ function scheduledTasksLegacyHandler(): LegacyRouteHandler {
     },
   });
   return async (req, res, runtime): Promise<void> => {
-    const httpReq = req as unknown as IncomingMessage;
-    const httpRes = res as unknown as ServerResponse;
-    const ctx = buildContext(httpReq, httpRes);
-    (ctx as unknown as { __runtime?: IAgentRuntime }).__runtime = runtime;
+    if (!isIncomingMessage(req) || !isServerResponse(res)) {
+      throw new TypeError(
+        "Scheduled-tasks legacy route requires Node HTTP request/response objects",
+      );
+    }
+
+    const ctx = buildContext(req, res);
+    runtimeByContext.set(ctx, runtime);
     const handled = await handle(ctx);
     if (!handled) {
-      sendJsonError(httpRes, "Scheduled-tasks route not found", 404);
+      sendJsonError(res, "Scheduled-tasks route not found", 404);
     }
   };
 }
