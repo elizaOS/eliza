@@ -205,6 +205,22 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     expect(enqueueAgentProvision).toHaveBeenCalledTimes(1);
   });
 
+  test("forceCreate:true on a SHARED-tier create is rejected (400) — no unmetered shared mint past the reuse guard", async () => {
+    // A shared create skips the credit gate, so forceCreate must NOT let a
+    // caller bypass the reuse ceiling and spam unmetered shared rows. The only
+    // legit forceCreate caller (the shared→dedicated handoff) always targets a
+    // dedicated (alwaysOn) agent, so forceCreate + shared has no valid use.
+    const res = await postCreate({
+      agentName: "alpha",
+      // no dockerImage / alwaysOn / persistent plugins → getAgentTier === "shared"
+      forceCreate: true,
+    });
+
+    expect(res.status).toBe(400);
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+  });
+
   test("default (no forceCreate) still reuses → createAgent called with reuseExistingNonTerminal:true (byte-identical to before)", async () => {
     const agent = pendingAgent();
     createAgent.mockResolvedValue({ agent, idempotent: true });
