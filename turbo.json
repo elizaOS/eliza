@@ -96,16 +96,6 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
-    "@elizaos/agent#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/skills#build",
-        "@elizaos/tui#build"
-      ],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
-    },
     "@elizaos/ui#build": {
       "dependsOn": [
         "@elizaos/cloud-sdk#build",
