@@ -1160,7 +1160,11 @@ export function DiscordGatewayConnection() {
               {t("cloud.discord.character", { defaultValue: "Character" })}
             </Label>
             <div className="flex gap-2">
-              <Select value={characterId} onValueChange={setCharacterId}>
+              <Select
+                key={characterId || "discord-gateway-character-unselected"}
+                value={characterId}
+                onValueChange={setCharacterId}
+              >
                 <SelectTrigger id="character" className="flex-1">
                   <SelectValue
                     placeholder={t("cloud.discord.selectCharacterPlaceholder", {
