@@ -6,7 +6,7 @@
  * adapter/target registries.
  */
 
-import { type LucideIcon, type LucideProps, Puzzle } from "lucide-react";
+import { Save, type LucideIcon, type LucideProps, Puzzle } from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -24,18 +24,18 @@ import {
   readPendingFocusConnector,
 } from "../../events";
 import { useAppSelector } from "../../state";
-import { BlueBubblesStatusPanel } from "../connectors/BlueBubblesStatusPanel";
-import { DiscordLocalConnectorPanel } from "../connectors/DiscordLocalConnectorPanel";
-import { IMessageStatusPanel } from "../connectors/IMessageStatusPanel";
-import { SignalQrOverlay } from "../connectors/SignalQrOverlay";
-import { TelegramAccountConnectorPanel } from "../connectors/TelegramAccountConnectorPanel";
-import { WhatsAppQrOverlay } from "../connectors/WhatsAppQrOverlay";
+import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
+import { useConnectorMode } from "../connectors/ConnectorModeSelector.hooks";
+import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
+import { hasConnectorSetupPanel } from "../connectors/ConnectorSetupPanel.helpers";
 import { getBrandIcon } from "../conversations/brand-icons";
+import { PluginConfigForm, TelegramPluginConfig } from "../pages/PluginConfigForm";
 import {
   ALWAYS_ON_PLUGIN_IDS,
   iconImageSource,
   resolveIcon,
 } from "../pages/plugin-list-utils";
+import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -70,7 +70,7 @@ function connectorIcon(plugin: PluginInfo): LucideIcon {
   const imageSrc = typeof icon === "string" ? iconImageSource(icon) : undefined;
   const Inner = typeof icon === "string" || !icon ? null : icon;
   return forwardRef<SVGSVGElement, LucideProps>(
-    function ConnectorMedallionIcon({ className }) {
+    function ConnectorMedallionIcon({ className }, ref) {
       if (Brand) return <Brand className={className} />;
       if (imageSrc)
         return (
@@ -81,37 +81,125 @@ function connectorIcon(plugin: PluginInfo): LucideIcon {
           />
         );
       const IconComponent = Inner;
-      if (IconComponent) return <IconComponent className={className} />;
-      return <Puzzle className={className} aria-hidden />;
+      if (IconComponent)
+        return <IconComponent ref={ref} className={className} />;
+      return <Puzzle ref={ref} className={className} aria-hidden />;
     },
   );
 }
 
 function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   const t = useAppSelector((s) => s.t);
-  switch (plugin.id) {
-    case "telegram":
-      return <TelegramAccountConnectorPanel />;
-    case "discord":
-      return <DiscordLocalConnectorPanel />;
-    case "imessage":
-      return <IMessageStatusPanel />;
-    case "bluebubbles":
-      return <BlueBubblesStatusPanel />;
-    case "signal":
-      return <SignalQrOverlay />;
-    case "whatsapp":
-      return <WhatsAppQrOverlay />;
-    default:
-      return (
+  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const handlePluginConfigSave = useAppSelector(
+    (s) => s.handlePluginConfigSave,
+  );
+  const pluginSaving =
+    useAppSelector((s) => s.pluginSaving) ?? new Set<string>();
+  const pluginSaveSuccess =
+    useAppSelector((s) => s.pluginSaveSuccess) ?? new Set<string>();
+  const [pluginConfigs, setPluginConfigs] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const connectorMode = useConnectorMode(plugin.id, { elizaCloudConnected });
+  const setupPluginId = connectorMode.setupPluginId;
+  const setupPanel =
+    setupPluginId && hasConnectorSetupPanel(setupPluginId) ? (
+      <ConnectorSetupPanel pluginId={setupPluginId} />
+    ) : null;
+  const showPluginConfig =
+    plugin.parameters.length > 0 && setupPluginId === plugin.id;
+  const pendingConfig = pluginConfigs[plugin.id] ?? {};
+  const hasPendingConfig = Object.keys(pendingConfig).length > 0;
+  const isSaving = pluginSaving.has(plugin.id);
+  const didSave = pluginSaveSuccess.has(plugin.id);
+
+  const handleParamChange = useCallback(
+    (pluginId: string, paramKey: string, value: string) => {
+      setPluginConfigs((prev) => ({
+        ...prev,
+        [pluginId]: { ...prev[pluginId], [paramKey]: value },
+      }));
+    },
+    [],
+  );
+
+  const handleSave = useCallback(async () => {
+    await handlePluginConfigSave(plugin.id, pendingConfig);
+    setPluginConfigs((prev) => {
+      const next = { ...prev };
+      delete next[plugin.id];
+      return next;
+    });
+  }, [handlePluginConfigSave, pendingConfig, plugin.id]);
+
+  return (
+    <div className="space-y-4">
+      {connectorMode.modes.length > 1 ? (
+        <ConnectorModeSelector
+          connectorId={plugin.id}
+          selectedMode={connectorMode.selectedMode}
+          onModeChange={connectorMode.setSelectedMode}
+          elizaCloudConnected={elizaCloudConnected}
+        />
+      ) : null}
+
+      {showPluginConfig ? (
+        <div className="space-y-3">
+          {plugin.id === "telegram" ? (
+            <TelegramPluginConfig
+              plugin={plugin}
+              pluginConfigs={pluginConfigs}
+              onParamChange={handleParamChange}
+            />
+          ) : (
+            <PluginConfigForm
+              plugin={plugin}
+              pluginConfigs={pluginConfigs}
+              onParamChange={handleParamChange}
+            />
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 gap-1.5 rounded-sm px-4 text-xs-tight font-semibold"
+              onClick={() => {
+                void handleSave();
+              }}
+              disabled={!hasPendingConfig || isSaving}
+            >
+              <Save className="h-3.5 w-3.5" aria-hidden="true" />
+              {isSaving
+                ? t("common.saving", { defaultValue: "Saving..." })
+                : didSave
+                  ? t("pluginsview.Saved", { defaultValue: "Saved" })
+                  : t("pluginsview.SaveSettings", {
+                      defaultValue: "Save settings",
+                    })}
+            </Button>
+            {plugin.id === "discord" ? (
+              <span className="text-xs-tight text-muted">
+                {t("settings.sections.connectors.discordAppIdHint", {
+                  defaultValue:
+                    "Application ID is optional; it is auto-resolved from the bot token when possible.",
+                })}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : setupPanel ? (
+        setupPanel
+      ) : (
         <div className="text-xs-tight text-muted">
           {t("settings.sections.connectors.ownSetupSurface", {
             defaultValue: "{{name}} uses its own setup surface.",
             name: plugin.name,
           })}
         </div>
-      );
-  }
+      )}
+    </div>
+  );
 }
 
 function ConnectorEnableSwitch({
