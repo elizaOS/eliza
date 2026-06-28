@@ -19,11 +19,11 @@ const SCAN_ROOTS = [
 const EXPECTED_SIDE_EFFECT_PACKAGES = [
   "@elizaos/app-model-tester",
   "@elizaos/plugin-contacts",
-  "@elizaos/plugin-native-settings",
   "@elizaos/plugin-facewear",
   "@elizaos/plugin-feed",
   "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-messages",
+  "@elizaos/plugin-native-settings",
   "@elizaos/plugin-phone",
   "@elizaos/plugin-polymarket",
   "@elizaos/plugin-shopify",

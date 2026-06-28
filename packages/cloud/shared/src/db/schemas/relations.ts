@@ -83,19 +83,6 @@ export const usersRelations = relations(users, ({ one, many }) => ({
 }));
 
 /**
- * API keys table relations. Enables the single-round-trip combined auth lookup
- * (api key + user + organization) used by the cold-auth fast path — see
- * apiKeysRepository.findActiveWithUserAndOrg. Additive: does not change any
- * existing query.
- */
-export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
-  user: one(users, {
-    fields: [apiKeys.user_id],
-    references: [users.id],
-  }),
-}));
-
-/**
  * User identities table relations.
  */
 export const userIdentitiesRelations = relations(userIdentities, ({ one }) => ({

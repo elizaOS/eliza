@@ -128,6 +128,18 @@ export function SkillsView({
 /* ── Full-Page Skills View ─────────────────────────────────────────── */
 
 function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
+  return (
+    <ShellViewAgentSurface viewId="skills">
+      <SkillsFullViewContent contentHeader={contentHeader} />
+    </ShellViewAgentSurface>
+  );
+}
+
+function SkillsFullViewContent({
+  contentHeader,
+}: {
+  contentHeader?: ReactNode;
+} = {}) {
   const {
     skills,
     skillCreateFormOpen,
@@ -513,7 +525,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
   );
 
   return (
-    <ShellViewAgentSurface viewId="skills">
+    <>
       <PageLayout
         data-testid="skills-shell"
         sidebar={skillsSidebar}
@@ -880,7 +892,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
           onClose={() => setInstallModalOpen(false)}
         />
       )}
-    </ShellViewAgentSurface>
+    </>
   );
 }
 
