@@ -46,7 +46,7 @@ const {
   isInferenceAuthContext,
 } = await import("./inference-auth-cache");
 
-const KEY = "eliza_test_key_abc123";
+const KEY = "test-api-key";
 
 function reqWithApiKey(key = KEY): Request {
   return new Request("https://api.example/api/v1/chat/completions", {

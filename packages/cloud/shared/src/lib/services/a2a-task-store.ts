@@ -162,7 +162,7 @@ class A2ATaskStoreService {
     const orgIndexKey = `${TASK_ORG_INDEX_PREFIX}${organizationId}`;
 
     // Get recent task IDs from sorted set
-    const taskIds = await client.zrange(orgIndexKey, -limit, -1);
+    const taskIds = (await client.zrange(orgIndexKey, -limit, -1)) as string[];
 
     if (!taskIds.length) return [];
 
