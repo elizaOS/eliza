@@ -30,6 +30,7 @@
  */
 
 import {
+  normalizeApiBase,
   pushApiBaseToRenderer,
   resolveDesktopRuntimeMode,
   resolveDesktopRuntimeModeSignal,
@@ -49,6 +50,31 @@ function safeJsonForHtml(value: unknown): string {
 
 function resolveStartupTraceId(): string | null {
   return getStartupTraceConfig().sessionId;
+}
+
+function resolveCurrentExternalApiBase(): string | null {
+  const runtime = resolveDesktopRuntimeMode(process.env);
+  if (runtime.mode === "external" && runtime.externalApi.base) {
+    return runtime.externalApi.base;
+  }
+  const currentBase = normalizeApiBase(current.base ?? undefined);
+  if (!currentBase) return null;
+  try {
+    const parsed = new URL(currentBase);
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      hostname !== "localhost" &&
+      hostname !== "127.0.0.1" &&
+      hostname !== "::1" &&
+      hostname !== "[::1]"
+    ) {
+      return parsed.origin;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 /**
@@ -107,11 +133,10 @@ export function injectIntoHtml(html: string): string {
     const runtimeModeInject = runtimeModeSignal
       ? `window.__ELIZA_DESKTOP_RUNTIME_MODE__=${safeJsonForHtml(runtimeModeSignal)};`
       : "";
-    const runtime = resolveDesktopRuntimeMode(process.env);
-    const externalApiBaseInject =
-      runtime.mode === "external" && runtime.externalApi.base
-        ? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(runtime.externalApi.base)};`
-        : "";
+    const externalApiBase = resolveCurrentExternalApiBase();
+    const externalApiBaseInject = externalApiBase
+      ? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(externalApiBase)};`
+      : "";
     apiBaseInject = `window.__ELIZA_API_BASE__=${baseLiteral};${runtimeModeInject}${externalApiBaseInject}${tokenInject}${bootConfigInject}`;
   }
 
@@ -133,7 +158,12 @@ export function injectIntoHtml(html: string): string {
  */
 export function pushToWindow(win: { webview: { rpc?: unknown } }): void {
   if (!current.base) return;
-  pushApiBaseToRenderer(win, current.base, current.token || undefined);
+  pushApiBaseToRenderer(
+    win,
+    current.base,
+    current.token || undefined,
+    resolveCurrentExternalApiBase(),
+  );
 }
 
 /**

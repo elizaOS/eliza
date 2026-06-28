@@ -117,6 +117,7 @@ export interface UseChatLifecycleDeps {
   // Agent status
   agentStatus: AgentStatus | null;
   setAgentStatus: (s: AgentStatus | null) => void;
+  pollAgentReadiness?: boolean;
 
   // Lifecycle
   lifecycleAction: LifecycleAction | null;
@@ -229,6 +230,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   const {
     agentStatus,
     setAgentStatus,
+    pollAgentReadiness = true,
     lifecycleAction,
     beginLifecycleAction,
     finishLifecycleAction,
@@ -553,7 +555,8 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   // hands-free never unblocks. Runs whenever we're not ready and not in a
   // terminal state (covers a null/early status, not just `state:"running"`);
   // self-limiting — the boolean dep flips false the instant the agent is ready.
-  const awaitingAgentReadiness = shouldAwaitAgentReadiness(agentStatus);
+  const awaitingAgentReadiness =
+    pollAgentReadiness && shouldAwaitAgentReadiness(agentStatus);
   useEffect(() => {
     if (!awaitingAgentReadiness) return;
     let active = true;

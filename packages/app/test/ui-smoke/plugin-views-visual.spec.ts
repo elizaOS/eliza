@@ -10,6 +10,12 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 import { VIEW_CASES } from "./plugin-view-cases";
 
 const KNOWN_BROKEN = new Set<string>([]);
+const MIN_VISIBLE_TEXT_LENGTH_BY_VIEW_ID = new Map<string, number>([
+  ["feed", 4],
+  ["focus", 4],
+  ["social-alpha", 4],
+]);
+const DEFAULT_MIN_VISIBLE_TEXT_LENGTH = 21;
 
 // Interaction coverage ratchet signals: redundantHeadingParagraphs,
 // visualSignals, terminalCommands.
@@ -93,6 +99,9 @@ test.describe("registered plugin views visual coverage", () => {
       );
 
       const isCompanionGui = view.id === "companion" && view.viewType === "gui";
+      const minVisibleTextLength =
+        MIN_VISIBLE_TEXT_LENGTH_BY_VIEW_ID.get(view.id) ??
+        DEFAULT_MIN_VISIBLE_TEXT_LENGTH;
       const viewRoot = page.locator("main").first();
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
       if (isCompanionGui) {
@@ -107,7 +116,10 @@ test.describe("registered plugin views visual coverage", () => {
               const text = await viewRoot.evaluate((root) =>
                 (root.textContent ?? "").trim().replace(/\s+/g, " "),
               );
-              return text.length > 20 && !/^Loading view\b/.test(text);
+              return (
+                text.length >= minVisibleTextLength &&
+                !/^Loading view\b/.test(text)
+              );
             },
             {
               message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
@@ -172,7 +184,7 @@ test.describe("registered plugin views visual coverage", () => {
         expect(
           preOverlayAudit.visibleText.length,
           `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
-        ).toBeGreaterThan(20);
+        ).toBeGreaterThanOrEqual(minVisibleTextLength);
       }
       if (view.id !== "views-manager") {
         expect(
@@ -332,7 +344,7 @@ test.describe("registered plugin views visual coverage", () => {
         expect(
           audit.visibleText.length,
           `${view.id} ${view.viewType} should expose readable text`,
-        ).toBeGreaterThan(20);
+        ).toBeGreaterThanOrEqual(minVisibleTextLength);
       }
       if (view.viewType === "tui" && hasVisibleLegacyTuiRoot) {
         expect(

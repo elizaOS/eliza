@@ -19,6 +19,8 @@ import {
   useMemo,
   useRef,
 } from "react";
+import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useNow } from "../hooks/useNow";
@@ -116,6 +118,17 @@ const WIDGET_SLOTS: ReadonlySet<string> = new Set<WidgetSlot>([
   "nav-page",
   "home",
 ]);
+const FULL_APP_SHELL_WIDGET_PLUGIN_IDS: ReadonlySet<string> = new Set([
+  "agent-orchestrator",
+  "calendar",
+  "finances",
+  "goals",
+  "health",
+  "inbox",
+  "needs-attention",
+  "relationships",
+  "todo",
+]);
 
 function isWidgetSlot(value: string): value is WidgetSlot {
   return WIDGET_SLOTS.has(value);
@@ -154,7 +167,10 @@ export function WidgetHost({
   hideWhenEmpty = true,
   filter,
 }: WidgetHostProps) {
-  const plugins = useAppSelectorShallow((s) => s.plugins);
+  const plugins = useAppSelectorShallow((s) =>
+    Array.isArray(s.plugins) ? s.plugins : [],
+  );
+  const currentBaseUrl = useAppSelectorShallow(() => client.getBaseUrl());
   const enabledKinds = useEnabledViewKinds();
   // Live importance inputs for the home ranker. Subscribed unconditionally
   // (hooks can't be conditional) but only consumed for the `home` slot below.
@@ -179,11 +195,17 @@ export function WidgetHost({
 
   const resolved = useMemo(() => {
     const all = resolveWidgetsForSlot(slot, plugins ?? [], serverDeclarations);
-    const gated = all.filter((entry) =>
-      isViewVisible(entry.declaration, enabledKinds),
+    const fullAppShellRoutesEnabled =
+      supportsFullAppShellRoutes(currentBaseUrl);
+    const gated = all.filter(
+      (entry) =>
+        isViewVisible(entry.declaration, enabledKinds) &&
+        (fullAppShellRoutesEnabled ||
+          (!FULL_APP_SHELL_WIDGET_PLUGIN_IDS.has(entry.declaration.pluginId) &&
+            entry.defaultWidgetSink !== "activity")),
     );
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
-  }, [slot, plugins, serverDeclarations, filter, enabledKinds]);
+  }, [slot, plugins, serverDeclarations, filter, enabledKinds, currentBaseUrl]);
 
   // Notification → signal inputs, memoized so the `now` tick (which re-runs the
   // component) doesn't rebuild this array each minute — it changes only when the

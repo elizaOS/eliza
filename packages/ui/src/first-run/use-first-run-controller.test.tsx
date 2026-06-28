@@ -193,6 +193,7 @@ vi.mock("../state", () => {
     elizaCloudConnected: false,
     elizaCloudLoginBusy: false,
     elizaCloudLoginError: null,
+    elizaCloudLoginFallbackUrl: null,
     firstRunName: "Demo Agent",
     handleCloudLogin: mocks.handleCloudLogin,
     showActionBanner: mocks.showActionBanner,
@@ -381,12 +382,7 @@ describe("useFirstRunController cloud first-run", () => {
     expect(mocks.persistMobileRuntimeModeForServerTarget).toHaveBeenCalledWith(
       "elizacloud",
     );
-    expect(mocks.submitFirstRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: "Demo Agent",
-        sandboxMode: "standard",
-      }),
-    );
+    expect(mocks.submitFirstRun).not.toHaveBeenCalled();
     expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
       launchCompanionOverlay: true,
     });
@@ -532,6 +528,10 @@ describe("useFirstRunController cloud first-run", () => {
     });
 
     expect(mocks.startCloudAgentHandoff).not.toHaveBeenCalled();
+    expect(mocks.submitFirstRun).not.toHaveBeenCalled();
+    expect(mocks.completeFirstRun).toHaveBeenCalledWith("chat", {
+      launchCompanionOverlay: true,
+    });
   });
 
   it("flag OFF: a created shared agent neither provisions a dedicated agent nor arms the handoff", async () => {

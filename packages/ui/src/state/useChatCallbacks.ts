@@ -473,6 +473,7 @@ export interface UseChatCallbacksDeps {
   setElizaCloudLoginError: (v: string | null) => void;
 
   // First-run setters (used by completeResetLocalStateAfterServerWipe)
+  firstRunComplete: boolean;
   firstRunCompletionCommittedRef: MutableRefObject<boolean>;
   setFirstRunUiRevealNonce: (fn: (n: number) => number) => void;
   setFirstRunLoading: (v: boolean) => void;
@@ -583,6 +584,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setElizaCloudUserId,
     setElizaCloudStatusReason,
     setElizaCloudLoginError,
+    firstRunComplete,
     firstRunCompletionCommittedRef,
     setFirstRunUiRevealNonce,
     setFirstRunLoading,
@@ -813,6 +815,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   const lifecycle = useChatLifecycle({
     agentStatus,
     setAgentStatus,
+    pollAgentReadiness: firstRunComplete,
     lifecycleAction,
     beginLifecycleAction,
     finishLifecycleAction,

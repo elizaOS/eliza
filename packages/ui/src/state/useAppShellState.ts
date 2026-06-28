@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   fetchServerFavoriteApps,
   loadFavoriteApps,
@@ -20,7 +22,13 @@ export interface AppShellState {
   configText: string;
 }
 
-export function useAppShellState() {
+interface UseAppShellStateOptions {
+  syncServerFavorites?: boolean;
+}
+
+export function useAppShellState({
+  syncServerFavorites = true,
+}: UseAppShellStateOptions = {}) {
   const [ownerName, setOwnerNameState] = useState<string | null>(null);
   const [appsSubTab, setAppsSubTabRaw] = useState<
     "browse" | "running" | "games"
@@ -65,10 +73,14 @@ export function useAppShellState() {
   const setFavoriteApps = useCallback((apps: string[]) => {
     setFavoriteAppsRaw(apps);
     saveFavoriteApps(apps);
-    void replaceServerFavoriteApps(apps);
+    if (supportsFullAppShellRoutes(client.getBaseUrl())) {
+      void replaceServerFavoriteApps(apps);
+    }
   }, []);
 
   useEffect(() => {
+    if (!syncServerFavorites) return;
+    if (!supportsFullAppShellRoutes(client.getBaseUrl())) return;
     let cancelled = false;
     void fetchServerFavoriteApps().then((serverApps) => {
       if (cancelled || serverApps == null) return;
@@ -85,7 +97,7 @@ export function useAppShellState() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [syncServerFavorites]);
 
   const setRecentApps = useCallback((apps: string[]) => {
     setRecentAppsRaw(apps);

@@ -256,7 +256,11 @@ export function resolveRendererFacingApiBase(
  */
 type ApiBaseUpdateRpc = {
   send?: {
-    apiBaseUpdate?: (payload: { base: string; token?: string }) => void;
+    apiBaseUpdate?: (payload: {
+      base: string;
+      token?: string;
+      externalApiBase?: string | null;
+    }) => void;
   };
 };
 
@@ -264,9 +268,14 @@ export function pushApiBaseToRenderer(
   win: { webview: { rpc?: unknown } },
   base: string,
   apiToken?: string,
+  externalApiBase?: string | null,
 ): void {
   const trimmedToken = apiToken?.trim();
-  const payload = { base, token: trimmedToken || undefined };
+  const payload = {
+    base,
+    token: trimmedToken || undefined,
+    externalApiBase: externalApiBase ?? null,
+  };
   try {
     const rpcSend = (win.webview.rpc as ApiBaseUpdateRpc | undefined)?.send;
     rpcSend?.apiBaseUpdate?.(payload);

@@ -1,4 +1,9 @@
 import { type CSSProperties, useState } from "react";
+import { client } from "../../api";
+import {
+  isLimitedCloudAgentApiResourceUrl,
+  supportsFullAppShellRoutes,
+} from "../../api/app-shell-capabilities";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -52,17 +57,25 @@ function springboardIconStyle(entry: ViewEntry): CSSProperties {
  */
 function resolveTileImageUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("//")) return url;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith("//")) {
+    return isLimitedCloudAgentApiResourceUrl(url) ? undefined : url;
+  }
+  if (
+    (url.startsWith("/api/") || url.startsWith("api/")) &&
+    !supportsFullAppShellRoutes(client.getBaseUrl())
+  ) {
+    return undefined;
+  }
   return resolveApiUrl(url);
 }
 
 /**
  * The shared visual core for view launch surfaces.
  *
- * Springboard tiles are app icons: deterministic colored glyph tiles that stay
- * readable at 64px and never look like cropped preview cards. Catalog cards are
- * previews: render the concrete hero or generated branded fallback, then fall
- * back to a glyph if every image source fails.
+ * Springboard tiles are app icons: paint the deterministic glyph tile
+ * underneath the concrete hero or generated branded fallback so icons never
+ * appear blank while image decoding catches up after a swipe. Catalog cards are
+ * previews and use the same image/fallback order at their larger size.
  *
  * A load failure emits a `hero-image-error` interaction event (best-effort,
  * client-only) from preview surfaces so broken hero endpoints are observable
@@ -87,7 +100,59 @@ export function ViewTileImage({
 }) {
   const [failure, setFailure] = useState<"none" | "primary" | "all">("none");
 
+  const primaryUrl =
+    failure === "none" ? resolveTileImageUrl(entry.imageUrl) : undefined;
+  const fallbackUrl =
+    failure !== "all" ? resolveTileImageUrl(entry.fallbackImageUrl) : undefined;
+  const url = primaryUrl ?? fallbackUrl;
+  const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
+
   if (source === "springboard") {
+    if (url) {
+      return (
+        <div
+          className={cn(containerClassName, "relative overflow-hidden")}
+          data-view-visual={entry.id}
+          style={springboardIconStyle(entry)}
+        >
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-4 -top-5 h-14 w-14 rounded-full bg-white/25"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.36)_0%,rgba(255,255,255,0.08)_42%,rgba(0,0,0,0.2)_100%)]"
+          />
+          <ViewIcon
+            icon={entry.icon}
+            label={entry.label}
+            id={entry.id}
+            className={cn(
+              glyphClassName,
+              "relative z-0 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
+            )}
+          />
+          <img
+            src={url}
+            alt=""
+            draggable={false}
+            loading="eager"
+            decoding="async"
+            onError={() => {
+              emitViewInteraction({
+                source,
+                action: "hero-image-error",
+                viewId: entry.id,
+              });
+              setFailure(primaryUrl && hasFallback ? "primary" : "all");
+            }}
+            className="absolute inset-0 z-10 h-full w-full object-cover"
+            data-testid={imageTestId}
+          />
+        </div>
+      );
+    }
+
     return (
       <div
         className={cn(containerClassName, "relative overflow-hidden")}
@@ -114,13 +179,6 @@ export function ViewTileImage({
       </div>
     );
   }
-
-  const primaryUrl =
-    failure === "none" ? resolveTileImageUrl(entry.imageUrl) : undefined;
-  const fallbackUrl =
-    failure !== "all" ? resolveTileImageUrl(entry.fallbackImageUrl) : undefined;
-  const url = primaryUrl ?? fallbackUrl;
-  const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
 
   if (url) {
     return (

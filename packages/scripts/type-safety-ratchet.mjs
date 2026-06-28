@@ -45,6 +45,7 @@ const EXCLUDED_SEGMENTS = new Set([
   "__mocks__",
   "__tests__",
   "fixtures",
+  "generated",
   "mock",
   "mocks",
   "test",
@@ -83,18 +84,11 @@ function isProductionSourceFile(relPath) {
 }
 
 function trackedSourceFiles() {
-  const output = execFileSync(
-    "git",
-    [
-      "ls-files",
-      "--",
-      ":(glob)src/**/*.ts",
-      ":(glob)src/**/*.tsx",
-      ":(glob)**/src/**/*.ts",
-      ":(glob)**/src/**/*.tsx",
-    ],
-    { cwd: ROOT, encoding: "utf8" },
-  );
+  const output = execFileSync("git", ["ls-files"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
 
   return [...new Set(output.split("\n").filter(Boolean))]
     .filter(isProductionSourceFile)
@@ -274,6 +268,10 @@ function baselinePayload(files, counts) {
     updatedAt: new Date().toISOString(),
     scope: {
       trackedOnly: true,
+      // Enumerate every tracked file via `git ls-files`, then keep production
+      // source under a `src/` segment (see isProductionSourceFile). `globs`
+      // documents the kept set; it is not the enumeration mechanism.
+      enumeration: "git ls-files",
       globs: [
         "src/**/*.ts",
         "src/**/*.tsx",
@@ -300,6 +298,7 @@ function baselinePayload(files, counts) {
         "**/__mocks__/**",
         "**/__tests__/**",
         "**/fixtures/**",
+        "**/generated/**",
         "**/mock/**",
         "**/mocks/**",
         "**/test/**",

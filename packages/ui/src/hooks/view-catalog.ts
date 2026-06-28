@@ -93,6 +93,8 @@ export interface ViewEntry {
   developerOnly?: boolean;
   /** Four-tier visibility category resolved from the source declaration. */
   viewKind?: ViewKind;
+  /** Sort priority for launcher/nav surfaces (lower = earlier). */
+  order?: number;
   /** Source records (one is set depending on `kind`). */
   view?: ViewRegistryEntry;
   app?: RegistryAppInfo;
@@ -132,6 +134,7 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     builtin: view.builtin,
     developerOnly: view.developerOnly,
     viewKind: view.viewKind,
+    order: view.order,
     view,
   };
 }

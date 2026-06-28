@@ -108,7 +108,7 @@ describe("plugin view LLM mock coverage", () => {
     const visualCases = readVisualMatrixCases();
     const visualMockCases = PLUGIN_VIEW_LLM_MOCK_CASES.filter(isGuiOrTui);
 
-    expect(visualCases.length).toBe(66);
+    expect(visualCases.length).toBe(68);
     expect(new Set(visualCases.map(caseKey))).toEqual(
       new Set(visualMockCases.map(caseKey)),
     );
@@ -120,7 +120,7 @@ describe("plugin view LLM mock coverage", () => {
       (view) => view.viewType === "xr",
     );
 
-    expect(xrCases.length).toBe(33);
+    expect(xrCases.length).toBe(35);
     expect(new Set(xrCases.map(caseKey))).toEqual(
       new Set(xrMockCases.map(caseKey)),
     );
@@ -137,7 +137,7 @@ describe("plugin view LLM mock coverage", () => {
       ]),
     );
 
-    expect(PLUGIN_VIEW_LLM_MOCK_CASES.length).toBe(99);
+    expect(PLUGIN_VIEW_LLM_MOCK_CASES.length).toBe(103);
     expect(PLUGIN_VIEW_LLM_MOCK_JOURNEYS).toHaveLength(
       PLUGIN_VIEW_LLM_MOCK_CASES.length,
     );

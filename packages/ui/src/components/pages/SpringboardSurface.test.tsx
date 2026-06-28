@@ -67,6 +67,7 @@ function availableApp(id: string, label: string): ViewEntry {
 const DEFAULT_VIEWS = [
   view("chat", "Chat", "/chat"),
   view("views", "Views", "/views"),
+  view("phone", "Phone", "/phone", { visibleInManager: false }),
   view("settings", "Settings", "/settings", { visibleInManager: false }),
   view("notes", "Notes", "/notes"),
   view("views-manager", "View Manager", "/views"),
@@ -104,6 +105,7 @@ describe("SpringboardSurface", () => {
     render(<SpringboardSurface />);
 
     expect(screen.getByTestId("springboard-tile-settings")).toBeTruthy();
+    expect(screen.getByTestId("springboard-tile-phone")).toBeTruthy();
     expect(screen.getByTestId("springboard-tile-notes")).toBeTruthy();
     expect(screen.queryByTestId("springboard-tile-chat")).toBeNull();
     expect(screen.queryByTestId("springboard-tile-views")).toBeNull();
@@ -134,5 +136,30 @@ describe("SpringboardSurface", () => {
     expect(get).toHaveBeenCalledTimes(1);
     const launched = get.mock.calls.at(0)?.at(0);
     expect(launched?.id).toBe("weather");
+  });
+
+  it("orders stable first-party views ahead of developer QA views and catalog apps", () => {
+    useRoutableViewsMock.mockReturnValue({
+      views: [
+        view("notes", "Notes", "/notes", { order: 920 }),
+        view("phone", "Phone", "/phone", { visibleInManager: false }),
+        view("settings", "Settings", "/settings", {
+          visibleInManager: false,
+        }),
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    render(<SpringboardSurface />);
+
+    const page = screen.getByTestId("springboard-page-0");
+    const ids = Array.from(
+      page.querySelectorAll<HTMLElement>('[data-testid^="springboard-tile-"]'),
+    ).map((node) =>
+      node.getAttribute("data-testid")?.replace("springboard-tile-", ""),
+    );
+
+    expect(ids).toEqual(["phone", "notes", "weather"]);
   });
 });

@@ -66,6 +66,19 @@ describe("startup coordinator", () => {
     });
   });
 
+  it("routes unavailable web backends into offline first-run with the target preserved", () => {
+    expect(
+      startupReducer(
+        { phase: "polling-backend", target: "cloud-managed", attempts: 0 },
+        { type: "BACKEND_UNAVAILABLE_FIRST_RUN" },
+      ),
+    ).toEqual({
+      phase: "first-run-required",
+      serverReachable: false,
+      target: "cloud-managed",
+    });
+  });
+
   it("defaults a targetless first-run completion to embedded-local", () => {
     expect(
       startupReducer(

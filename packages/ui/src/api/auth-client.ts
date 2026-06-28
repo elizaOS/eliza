@@ -12,6 +12,7 @@ import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { getBootConfig } from "../config/boot-config";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
+import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 
 // ── Shared response shapes ────────────────────────────────────────────────────
 
@@ -313,12 +314,14 @@ export async function authMe(): Promise<AuthMeResult> {
   // LoginView). When the agent does return an authoritative 401,
   // its body lands in `unauthorized` and we map to AuthMeResult.
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
-      identity?: AuthIdentity;
-      session?: AuthSessionInfo;
-      access?: AuthAccessInfo;
-      unauthorized?: { reason: string; access: AuthAccessInfo };
-    }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
+    const viaRpc = isDesktopExternalApiBaseUrl(authBase())
+      ? null
+      : await invokeDesktopBridgeRequest<{
+          identity?: AuthIdentity;
+          session?: AuthSessionInfo;
+          access?: AuthAccessInfo;
+          unauthorized?: { reason: string; access: AuthAccessInfo };
+        }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
     if (viaRpc) {
       if (viaRpc.identity && viaRpc.session) {
         return {

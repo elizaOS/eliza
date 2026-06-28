@@ -1,10 +1,23 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getCurrent, injectIntoHtml, setCurrent } from "./api-base-owner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  getCurrent,
+  injectIntoHtml,
+  pushToWindow,
+  setCurrent,
+} from "./api-base-owner";
 
 const ENV_KEYS = [
+  "ELIZA_API_BASE",
+  "ELIZA_API_BASE_URL",
+  "ELIZA_DESKTOP_API_BASE",
+  "ELIZA_DESKTOP_CLOUD_AGENT_BASE",
+  "ELIZA_DESKTOP_CLOUD_ONLY",
+  "ELIZA_DESKTOP_RUNTIME_MODE",
+  "ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT",
+  "ELIZA_DESKTOP_TEST_API_BASE",
   "ELIZA_STARTUP_SESSION_ID",
   "ELIZA_STARTUP_STATE_FILE",
   "ELIZA_STARTUP_EVENTS_FILE",
@@ -17,12 +30,10 @@ let tempHome: string | null = null;
 beforeEach(() => {
   for (const key of ENV_KEYS) {
     originalEnv.set(key, process.env[key]);
+    if (key !== "HOME") delete process.env[key];
   }
   tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-api-base-owner-"));
   process.env.HOME = tempHome;
-  delete process.env.ELIZA_STARTUP_SESSION_ID;
-  delete process.env.ELIZA_STARTUP_STATE_FILE;
-  delete process.env.ELIZA_STARTUP_EVENTS_FILE;
   setCurrent(null);
 });
 
@@ -79,5 +90,56 @@ describe("api-base-owner", () => {
     );
     expect(injected).toContain('"__ELIZA_API_TOKEN__"');
     expect(injected).toContain("elizaos.app.boot-config");
+  });
+
+  it("marks a non-loopback current API base as an external desktop API base", () => {
+    setCurrent("https://agent.example.com", "cloud-token");
+
+    const injected = injectIntoHtml("<html><head></head><body></body></html>");
+
+    expect(injected).toContain(
+      'window.__ELIZA_API_BASE__="https://agent.example.com";',
+    );
+    expect(injected).toContain(
+      'window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__="https://agent.example.com";',
+    );
+  });
+
+  it("pushes the external desktop API base to already-open renderer windows", () => {
+    setCurrent("https://agent.example.com", "cloud-token");
+    const apiBaseUpdate = vi.fn();
+
+    pushToWindow({
+      webview: {
+        rpc: {
+          send: { apiBaseUpdate },
+        },
+      },
+    });
+
+    expect(apiBaseUpdate).toHaveBeenCalledWith({
+      base: "https://agent.example.com",
+      token: "cloud-token",
+      externalApiBase: "https://agent.example.com",
+    });
+  });
+
+  it("does not mark loopback API bases as external", () => {
+    setCurrent("http://127.0.0.1:31337", "dev-token");
+    const apiBaseUpdate = vi.fn();
+
+    pushToWindow({
+      webview: {
+        rpc: {
+          send: { apiBaseUpdate },
+        },
+      },
+    });
+
+    expect(apiBaseUpdate).toHaveBeenCalledWith({
+      base: "http://127.0.0.1:31337",
+      token: "dev-token",
+      externalApiBase: null,
+    });
   });
 });

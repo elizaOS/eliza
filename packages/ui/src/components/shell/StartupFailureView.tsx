@@ -119,11 +119,27 @@ export function StartupFailureView({
           ) : null}
 
           <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
+            {error.reason === "backend-unreachable" ? (
+              <Button
+                variant="default"
+                size="lg"
+                onClick={() => startFreshFirstRunReload()}
+                className="w-full sm:w-auto sm:min-w-[11rem]"
+                data-testid="startup-use-cloud"
+              >
+                {t("startupfailureview.ChooseElizaCloud", {
+                  defaultValue: "Choose Eliza Cloud",
+                })}
+              </Button>
+            ) : null}
             <Button
-              variant="default"
+              variant={
+                error.reason === "backend-unreachable" ? "outline" : "default"
+              }
               size="lg"
               onClick={onRetry}
               className="w-full sm:w-auto sm:min-w-[11rem]"
+              data-testid="startup-retry"
             >
               {t("startupfailureview.RetryStartup")}
             </Button>
@@ -133,19 +149,21 @@ export function StartupFailureView({
                 size="lg"
                 onClick={() => bugReport.open(startupDraft)}
                 className="w-full sm:w-auto sm:min-w-[10rem]"
+                data-testid="startup-report-bug"
               >
                 {t("bugreportmodal.ReportABug")}
               </Button>
             ) : null}
             {error.reason === "backend-unreachable" ? (
               <>
-                {/* Escape the unreachable saved backend: abandon it and start
-                    over on a local agent (the "or reset" the message promises). */}
+                {/* Escape the unreachable saved backend: abandon it and re-run
+                    first-run so the user can choose cloud, local, or remote. */}
                 <Button
                   variant="outline"
                   size="lg"
                   onClick={() => startFreshFirstRunReload()}
                   className="w-full sm:w-auto sm:min-w-[10rem]"
+                  data-testid="startup-start-over"
                 >
                   {t("startupfailureview.StartOver", {
                     defaultValue: "Start over",
@@ -156,6 +174,7 @@ export function StartupFailureView({
                   size="lg"
                   asChild
                   className="w-full sm:w-auto sm:min-w-[10rem]"
+                  data-testid="startup-open-app"
                 >
                   <a href={branding.appUrl} target="_blank" rel="noreferrer">
                     {t("startupfailureview.OpenApp")}

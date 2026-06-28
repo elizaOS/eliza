@@ -18,7 +18,8 @@
  * onboarding completes the overlay is closed and the normal dashboard window
  * opens.
  *
- * Modeled on pill-window.ts (the existing small borderless/transparent overlay).
+ * Uses the same small borderless/transparent-window constraints as the other
+ * focused native overlay surfaces.
  */
 
 import { type BrowserWindow, Screen } from "electrobun/bun";
@@ -51,11 +52,10 @@ export function createOnboardingOverlayWindow(args: {
   }
 
   // Use the full work area so the renderer can place UI elements anywhere on
-  // screen — the onboarding card is pinned top-right via CSS, and the voice
-  // pill is centered at the bottom. The window is transparent + passthrough,
-  // so clicks on empty regions fall through to the desktop. The
-  // makeKeyAndOrderFront call after dom-ready ensures the interactive elements
-  // (buttons, pill) receive clicks.
+  // screen — the onboarding card is pinned top-right via CSS. The window is
+  // transparent + passthrough, so clicks on empty regions fall through to the
+  // desktop. The makeKeyAndOrderFront call after dom-ready ensures the
+  // interactive elements receive clicks.
   const workArea = Screen.getPrimaryDisplay().workArea;
   const frame = {
     x: workArea.x,
@@ -72,8 +72,7 @@ export function createOnboardingOverlayWindow(args: {
     frame,
     titleBarStyle: "hidden",
     transparent: true,
-    // Match the pill window's proven-visible config. A small, borderless,
-    // transparent window only showed reliably with activate:false — a
+    // A small, borderless, transparent window only showed reliably with activate:false — a
     // borderless NSWindow cannot become key, and activate:true left the small
     // window unshown (the full-screen variant happened to paint regardless).
     // No passthrough: the window is small, so clicks outside it already reach

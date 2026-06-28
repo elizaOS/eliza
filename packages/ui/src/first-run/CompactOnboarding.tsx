@@ -19,7 +19,16 @@ import { useFirstRunController } from "./use-first-run-controller";
 
 export function CompactOnboarding(): React.ReactElement {
   const c = useFirstRunController();
-  const { busyText, cloudError, error, submitting, step, draft, cloudOnly } = c;
+  const {
+    busyText,
+    cloudError,
+    cloudLoginFallbackUrl,
+    error,
+    submitting,
+    step,
+    draft,
+    cloudOnly,
+  } = c;
   const busy = submitting;
   // Brand wordmark from the active branding (whitelabel seam) — falls back to
   // the elizaOS name when no host branding is configured.
@@ -117,9 +126,10 @@ export function CompactOnboarding(): React.ReactElement {
   // unavailable. Pull the URL out so we can render a real tappable button
   // instead of dumping the raw string at the user.
   const cloudLoginUrl = React.useMemo(() => {
+    if (cloudLoginFallbackUrl) return cloudLoginFallbackUrl;
     const match = (cloudError ?? "").match(/https?:\/\/\S+/);
     return match ? match[0] : null;
-  }, [cloudError]);
+  }, [cloudError, cloudLoginFallbackUrl]);
 
   // While an action is in flight, show its progress (busyText) — a stale
   // cloud error from a previous attempt must not shadow "Starting" etc. When

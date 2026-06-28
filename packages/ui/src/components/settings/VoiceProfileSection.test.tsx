@@ -125,9 +125,11 @@ describe("VoiceProfileSection", () => {
     await waitFor(() => {
       expect(patch).toHaveBeenCalledWith("g1", { displayName: "New name" });
     });
-    expect(screen.getByTestId("voice-profile-name-g1").textContent).toBe(
-      "New name",
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-profile-name-g1").textContent).toBe(
+        "New name",
+      );
+    });
   });
 
   it("deletes a non-owner profile via adapter.delete", async () => {

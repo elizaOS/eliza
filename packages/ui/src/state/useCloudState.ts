@@ -23,6 +23,7 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
   refreshCloudStewardSession,
@@ -96,6 +97,11 @@ function isSameOriginLocalHttpBackend(): boolean {
   return isPrivateNetworkHost(hostname);
 }
 
+function isDevUiPortWithoutEmbeddedBackend(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.port === "2138";
+}
+
 function isCapacitorNativeRuntime(): boolean {
   if (typeof globalThis === "undefined") return false;
   const capacitor = (
@@ -160,7 +166,16 @@ function hasCloudLoginBackend(): boolean {
       !isCapacitorAssetBase(explicitBase)
     );
   }
+  if (isDevUiPortWithoutEmbeddedBackend()) return false;
   return isSameOriginLocalHttpBackend();
+}
+
+function canPollCloudStatus(): boolean {
+  const explicitBase =
+    typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
+  if (isCapacitorNativeRuntime()) return true;
+  if (explicitBase && isConfiguredCloudSiteBase(explicitBase)) return true;
+  return hasCloudLoginBackend() && supportsFullAppShellRoutes(explicitBase);
 }
 
 /**
@@ -298,6 +313,13 @@ export function useCloudState({
   // ── Callbacks ──────────────────────────────────────────────────────
 
   const pollCloudCredits = useCallback(async (): Promise<boolean> => {
+    if (!canPollCloudStatus()) {
+      if (elizaCloudPollInterval.current) {
+        clearInterval(elizaCloudPollInterval.current);
+        elizaCloudPollInterval.current = null;
+      }
+      return lastElizaCloudPollConnectedRef.current;
+    }
     if (elizaCloudDisconnectInFlightRef.current) {
       return lastElizaCloudPollConnectedRef.current;
     }
@@ -494,10 +516,15 @@ export function useCloudState({
       const hasBackend = hasCloudLoginBackend();
       const cloudApiBase =
         getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
-      const useDirectAuth = !hasBackend;
+      let useDirectAuth = !hasBackend;
 
       if (hasBackend) {
         const cloudStatus = await client.getCloudStatus().catch(() => null);
+        if (cloudStatus === null) {
+          // Browser/dev shells can run on localhost without a local agent proxy.
+          // In that case, keep first-run Cloud usable via the direct Cloud flow.
+          useDirectAuth = true;
+        }
         const alreadyAuthenticated = isCloudStatusAuthenticated(
           Boolean(cloudStatus?.connected),
           cloudStatus?.reason,

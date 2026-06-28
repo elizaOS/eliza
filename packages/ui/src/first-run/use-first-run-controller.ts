@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import * as React from "react";
 import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
@@ -82,6 +83,22 @@ const FIRST_RUN_LOCAL_ASR_AUTO_STOP = {
   maxSpeechMs: 10_000,
 };
 
+function canProbeCloudStatus(): boolean {
+  const baseUrl =
+    typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
+  if (!supportsFullAppShellRoutes(baseUrl)) return false;
+  if (baseUrl) return true;
+  if (typeof window !== "undefined" && window.location.port === "2138") {
+    return false;
+  }
+  return true;
+}
+
+async function getCloudStatusIfSupported() {
+  if (!canProbeCloudStatus()) return null;
+  return client.getCloudStatus().catch(() => null);
+}
+
 export interface FirstRunVoiceState {
   supported: boolean;
   listening: boolean;
@@ -102,6 +119,7 @@ export interface FirstRunController {
   submitting: boolean;
   busyText: string | null;
   error: string | null;
+  cloudLoginFallbackUrl: string | null;
   cloudError: string | null | undefined;
   voice: FirstRunVoiceState;
   microphone: MicrophonePermissionController;
@@ -311,6 +329,7 @@ export function useFirstRunController(): FirstRunController {
     elizaCloudConnected,
     elizaCloudLoginBusy,
     elizaCloudLoginError,
+    elizaCloudLoginFallbackUrl,
     handleCloudLogin,
     firstRunName,
     showActionBanner,
@@ -323,6 +342,7 @@ export function useFirstRunController(): FirstRunController {
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
     elizaCloudLoginError: s.elizaCloudLoginError,
+    elizaCloudLoginFallbackUrl: s.elizaCloudLoginFallbackUrl,
     handleCloudLogin: s.handleCloudLogin,
     firstRunName: s.firstRunName,
     showActionBanner: s.showActionBanner,
@@ -554,7 +574,7 @@ export function useFirstRunController(): FirstRunController {
         setState("firstRunProvider", "elizacloud");
         const authWindow = preOpenWindow();
         await handleCloudLogin(authWindow);
-        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        const cloudStatus = await getCloudStatusIfSupported();
         let cloudConnectedForFinish = isCloudStatusAuthenticated(
           Boolean(cloudStatus?.connected),
           cloudStatus?.reason,
@@ -787,15 +807,12 @@ export function useFirstRunController(): FirstRunController {
       });
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setBusyText("Saving first-run profile");
-      // A shared-runtime cloud agent has no agent server, so POST /api/first-run
-      // (submitFirstRun) 404s — there is no per-agent first-run config store to
-      // write to, and the agent is already provisioned + named cloud-side. Don't
-      // let that 404 throw and strand onboarding before completeFirstRun() runs;
-      // tolerate it for a shared-agent base and finish the transition to chat.
-      try {
+      // Direct Cloud agent bases (shared REST adapters and dedicated
+      // <agent>.elizacloud.ai hosts) are chat runtimes, not full app-shell
+      // setup servers. They do not own /api/first-run, and browser localhost
+      // cannot safely POST to dedicated agent subdomains because of CORS.
+      if (supportsFullAppShellRoutes(cloudAgentApiBase)) {
         await client.submitFirstRun(plan.payload);
-      } catch (err) {
-        if (!isDirectCloudSharedAgentBase(client.getBaseUrl())) throw err;
       }
       clearPersistedFirstRunState();
       setBusyText(null);
@@ -921,7 +938,7 @@ export function useFirstRunController(): FirstRunController {
       setState("firstRunProvider", "elizacloud");
       let cloudConnectedForFinish = elizaCloudConnected;
       if (!cloudConnectedForFinish) {
-        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        const cloudStatus = await getCloudStatusIfSupported();
         cloudConnectedForFinish = isCloudStatusAuthenticated(
           Boolean(cloudStatus?.connected),
           cloudStatus?.reason,
@@ -930,7 +947,7 @@ export function useFirstRunController(): FirstRunController {
       if (firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish)) {
         const authWindow = preOpenWindow();
         await handleCloudLogin(authWindow);
-        const cloudStatus = await client.getCloudStatus().catch(() => null);
+        const cloudStatus = await getCloudStatusIfSupported();
         cloudConnectedForFinish = isCloudStatusAuthenticated(
           Boolean(cloudStatus?.connected),
           cloudStatus?.reason,
@@ -1410,6 +1427,7 @@ export function useFirstRunController(): FirstRunController {
     submitting,
     busyText,
     error,
+    cloudLoginFallbackUrl: elizaCloudLoginFallbackUrl ?? null,
     cloudError: elizaCloudLoginError,
     voice,
     microphone,

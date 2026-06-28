@@ -40,6 +40,7 @@ import {
   type WalletTradingProfileWindow,
   type WorkbenchOverview,
 } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import type { UiLanguage } from "../i18n";
 import { normalizeOwnerName } from "../utils/owner-name";
 import {
@@ -634,6 +635,14 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   const [workbenchTodosAvailable, setWorkbenchTodosAvailable] = useState(false);
 
   const loadWorkbench = useCallback(async () => {
+    if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+      setWorkbench(null);
+      setWorkbenchTasksAvailable(false);
+      setWorkbenchTriggersAvailable(false);
+      setWorkbenchTodosAvailable(false);
+      setWorkbenchLoading(false);
+      return;
+    }
     setWorkbenchLoading(true);
     try {
       const result = await client.getWorkbenchOverview();

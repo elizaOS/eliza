@@ -455,6 +455,23 @@ describe("App navigate-view event wiring", () => {
     expect(queryByTestId("app-background-shader")).toBeNull();
   });
 
+  it("renders shell back chrome on app routes and uses browser history", async () => {
+    appState.tab = "apps";
+    window.history.replaceState(null, "", "/chat");
+    window.history.pushState(null, "", "/apps/remote-ledger");
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("shell-back-button")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("shell-back-button"));
+
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(appState.setTab).not.toHaveBeenCalledWith("chat");
+  });
+
   it("lets a view explicitly share the Home/Springboard background", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/shared-canvas");

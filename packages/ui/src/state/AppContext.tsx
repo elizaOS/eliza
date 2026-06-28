@@ -565,7 +565,9 @@ function AppProviderInner({
   } = characterHook;
 
   // elizaCloud* state, refs, and callbacks are now provided by useCloudState (cloudHook above).
-  const shellState = useAppShellState();
+  const shellState = useAppShellState({
+    syncServerFavorites: firstRunComplete,
+  });
   const {
     state: {
       ownerName,
@@ -972,6 +974,7 @@ function AppProviderInner({
     promptModal,
     agentName: agentStatus?.agentName,
     characterName: characterDraft?.name,
+    hydrateServerConfig: firstRunComplete,
   });
   const {
     state: {
@@ -1253,6 +1256,7 @@ function AppProviderInner({
     setElizaCloudUserId,
     setElizaCloudStatusReason,
     setElizaCloudLoginError,
+    firstRunComplete,
     firstRunCompletionCommittedRef,
     setFirstRunUiRevealNonce,
     setFirstRunLoading,

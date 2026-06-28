@@ -63,8 +63,21 @@ ensureElectrobunGlobal();
 
 function dispatchMessage(messageName: string, payload: unknown): void {
   if (messageName === "apiBaseUpdate") {
-    const apiBaseUpdate = payload as { base: string; token?: string };
+    const apiBaseUpdate = payload as {
+      base: string;
+      token?: string;
+      externalApiBase?: string | null;
+    };
     window.__ELIZA_API_BASE__ = apiBaseUpdate.base;
+    if (
+      typeof apiBaseUpdate.externalApiBase === "string" &&
+      apiBaseUpdate.externalApiBase.trim()
+    ) {
+      window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__ =
+        apiBaseUpdate.externalApiBase.trim();
+    } else {
+      Reflect.deleteProperty(window, "__ELIZA_DESKTOP_EXTERNAL_API_BASE__");
+    }
     if (apiBaseUpdate.token) {
       Object.defineProperty(window, "__ELIZA_API_TOKEN__", {
         value: apiBaseUpdate.token,
@@ -196,6 +209,7 @@ declare global {
   interface Window {
     __ELIZA_API_BASE__?: string;
     __ELIZA_API_TOKEN__: string;
+    __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: string;
     __ELIZA_ELECTROBUN_RPC__?: typeof electrobunRpc;
   }
 }

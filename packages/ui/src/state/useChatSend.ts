@@ -17,7 +17,7 @@ import {
   type ImageAttachment,
   type MessageAttachmentContentType,
 } from "../api";
-import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
+import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
@@ -28,7 +28,6 @@ import {
   type CloudHandoffPhaseDetail,
 } from "../events";
 import { getWindowNavigationPath, type Tab } from "../navigation";
-import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
@@ -69,12 +68,7 @@ function optimisticAttachmentKind(
  * user's message must NOT be silently dropped.
  */
 function isCloudAgentBase(value: string | null | undefined): boolean {
-  if (!value?.trim()) return false;
-  // Either the shared-runtime REST adapter or a dedicated <id>.elizacloud.ai
-  // subdomain; control-plane hosts are excluded by isDedicatedCloudAgentBase.
-  return (
-    isDirectCloudSharedAgentBase(value) || isDedicatedCloudAgentBase(value)
-  );
+  return isLimitedCloudAgentApiBase(value);
 }
 
 interface ChatViewRouting {
@@ -1034,7 +1028,8 @@ export function useChatSend(deps: UseChatSendDeps) {
           userMessageCount === 1 &&
           data.completed !== false &&
           data.text.trim() &&
-          !data.failureKind
+          !data.failureKind &&
+          !isCloudAgentBase(client.getBaseUrl())
         ) {
           void client
             .renameConversation(convId, "", { generate: true })
