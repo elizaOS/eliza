@@ -87,7 +87,7 @@ const LEVELS = [
   },
   {
     name: "plugin view polymarket",
-    file: "plugins/plugin-polymarket-app/src/PolymarketAppView.tsx",
+    file: "plugins/plugin-polymarket-app/src/PolymarketView.tsx",
   },
   {
     name: "plugin view shopify",
@@ -127,7 +127,7 @@ const LEVELS = [
   },
   {
     name: "plugin view feed",
-    file: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
+    file: "plugins/plugin-feed/src/components/FeedView.tsx",
   },
   {
     name: "plugin view manager",

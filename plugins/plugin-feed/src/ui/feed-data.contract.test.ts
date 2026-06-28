@@ -337,6 +337,6 @@ describe("summarizeFeedActivity — every FeedActivityType + fallback", () => {
   });
 });
 
-// extractWallet lives in FeedOperatorSurface.tsx (a private helper), so its
-// behavior is covered by FeedOperatorSurface.render.test.tsx (Wallet card +
-// chip values), not here.
+// extractWallet lives in FeedView.tsx (a private helper), so its behavior is
+// covered by FeedView.test.tsx (wallet balance + trading-balance rendering),
+// not here.

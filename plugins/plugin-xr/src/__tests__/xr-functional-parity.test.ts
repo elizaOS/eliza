@@ -192,8 +192,8 @@ const PLUGIN_REGISTRY: Array<{
   {
     pluginDir: "plugins/plugin-polymarket-app",
     manifestPath: "plugins/plugin-polymarket-app/src/plugin.ts",
-    xrComponentSrc: "plugins/plugin-polymarket-app/src/PolymarketAppView.tsx",
-    requiredTerms: ["PolymarketAppView", "useState"],
+    xrComponentSrc: "plugins/plugin-polymarket-app/src/PolymarketView.tsx",
+    requiredTerms: ["PolymarketView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-shopify-ui",
@@ -222,8 +222,8 @@ const PLUGIN_REGISTRY: Array<{
   {
     pluginDir: "plugins/plugin-feed",
     manifestPath: "plugins/plugin-feed/src/index.ts",
-    xrComponentSrc: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
-    requiredTerms: ["FeedOperatorSurface", "useState"],
+    xrComponentSrc: "plugins/plugin-feed/src/components/FeedView.tsx",
+    requiredTerms: ["FeedView", "useState"],
   },
   {
     pluginDir: "plugins/plugin-app-control",
@@ -303,7 +303,7 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
     capabilities: ["terminal-wallet-state"],
   },
   "plugins/plugin-feed": {
-    srcFile: "plugins/plugin-feed/src/ui/FeedOperatorSurface.interact.ts",
+    srcFile: "plugins/plugin-feed/src/ui/feed-interact.ts",
     capabilities: ["get-state", "refresh-agent-status"],
   },
   "plugins/plugin-screenshare": {

@@ -4,11 +4,9 @@ export {
   derivePolymarketTopOfBook,
   type PolymarketTopOfBook,
 } from "./orderbook";
-export * from "./PolymarketAppView";
-export * from "./PolymarketAppView.helpers";
+export * from "./polymarket-view.helpers";
 export { PolymarketView } from "./PolymarketView";
 export { polymarketPlugin } from "./plugin";
-export { POLYMARKET_APP_NAME, polymarketApp } from "./polymarket-app";
 export * from "./polymarket-contracts";
 export { polymarketStatusProvider } from "./provider";
 export * from "./register";

@@ -1,10 +1,9 @@
-// Keyless tests for the positions surface added alongside the AppView's
-// PolymarketPositionsPanel: the agent-address fallback in `/positions`, the
-// `account` block in `/status`, and the account-health `summary` aggregate
-// (total value / total cash PnL / implied return). All exercise the real
-// `handlePolymarketRoute` with a fake fetch — no network, no credentials — so
-// they run in every keyless lane. Mirrors the HL sibling's summary-parsing
-// assertions.
+// Keyless tests for the positions surface that powers the view's positions
+// section: the agent-address fallback in `/positions`, the `account` block in
+// `/status`, and the account-health `summary` aggregate (total value / total
+// cash PnL / implied return). All exercise the real `handlePolymarketRoute`
+// with a fake fetch — no network, no credentials — so they run in every keyless
+// lane. Mirrors the HL sibling's summary-parsing assertions.
 
 import type http from "node:http";
 import { describe, expect, it } from "vitest";

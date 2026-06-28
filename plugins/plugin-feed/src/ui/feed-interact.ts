@@ -1,7 +1,7 @@
-// View-bundle `interact` capability handler, split out of FeedOperatorSurface.tsx
-// so that file exports only React components and stays Fast-Refresh-compatible
-// (Vite would full-reload a component file that also exports a plain function).
-// The view bundle re-exports `interact` via ./feed-view-bundle.ts.
+// View-bundle `interact` capability handler for the Feed TUI surface. Kept in
+// its own module (not on the React component file) so the view bundle can
+// re-export a plain function without tripping Fast Refresh. The view bundle
+// re-exports `interact` via ./feed-view-bundle.ts.
 
 async function readFeedJson(response: Response): Promise<unknown> {
   const text = await response.text();

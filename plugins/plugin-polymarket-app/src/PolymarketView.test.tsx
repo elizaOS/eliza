@@ -33,7 +33,7 @@ vi.mock("@elizaos/app-core", () => ({ client: polymarketClient }));
 vi.mock("./client", () => ({}));
 
 import { PolymarketView } from "./PolymarketView";
-import { interact } from "./PolymarketAppView.interact";
+import { interact } from "./polymarket-view.interact";
 
 const sampleStatus = {
   publicReads: {

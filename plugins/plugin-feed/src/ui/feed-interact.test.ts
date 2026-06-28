@@ -1,6 +1,6 @@
 // Real-handler tests for the Feed TUI `interact()` capability dispatcher.
 //
-// `interact()` (FeedOperatorSurface.interact.ts) is the code the host
+// `interact()` (feed-interact.ts) is the code the host
 // `TerminalPluginView` invokes for every TUI capability. It talks to the Feed
 // proxy over `global.fetch` and parses responses through `readFeedJson`. These
 // tests drive the REAL handler with a stubbed `fetch`, asserting the exact
@@ -9,7 +9,7 @@
 // unknown-capability throw. No host mock is involved.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { interact } from "./FeedOperatorSurface.interact";
+import { interact } from "./feed-interact";
 
 interface FetchCall {
   url: string;

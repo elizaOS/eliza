@@ -9,10 +9,8 @@
  * surface renders the same `FeedSpatialView` through the terminal registry (see
  * `register-terminal-view.tsx`).
  *
- * The Feed plugin is a GAME plugin: its legacy `FeedOperatorSurface` is still
- * registered into the GameView game registry (`registerOperatorSurface`), so it
- * keeps its own copy of this data layer. FeedView is the standalone surface the
- * view bundle exports for the GUI/XR modalities.
+ * This is the single GUI/XR surface the view bundle exports (`componentExport:
+ * "FeedView"`); there is no separate operator-surface component.
  */
 
 import {

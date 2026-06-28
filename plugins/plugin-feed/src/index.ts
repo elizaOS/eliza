@@ -60,7 +60,8 @@ if (typeof window === "undefined") {
 export default feedPlugin;
 export * from "./routes.js";
 export * from "./ui/feed-data.js";
-// NOTE: the UI surface (./ui/index — FeedOperatorSurface + registerOperatorSurface)
-// is intentionally NOT re-exported here. The Node agent imports this entry to
-// register the plugin's views; pulling React/UI in breaks that bundle. The app
-// loads the UI via the dedicated browser entry (src/ui/index.ts) + view bundle.
+// NOTE: only the pure proxy + data layers are re-exported here. The Node agent
+// imports this entry to register the plugin's views; pulling React/UI in would
+// break that bundle. The GUI/XR surface loads from the dedicated view bundle
+// (src/ui/feed-view-bundle.ts → FeedView), and the terminal surface mounts the
+// same FeedSpatialView via register-terminal-view.tsx.

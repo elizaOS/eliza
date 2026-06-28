@@ -4,26 +4,19 @@ Operator surface for the Feed prediction market game, embedded as an elizaOS app
 
 ## Purpose / role
 
-Connects an Eliza agent to the Feed prediction market platform. It registers three UI views (standard, XR, TUI) and a full HTTP proxy layer that forwards agent, market, social, messaging, and admin requests to the Feed backend. The plugin is opt-in — add it to an agent's character or plugin list; it is not auto-enabled. Configuration is read entirely from env vars or agent settings.
+Connects an Eliza agent to the Feed prediction market platform. It registers **one** adaptive UI view (GUI + XR + TUI from a single source) and a full HTTP proxy layer that forwards agent, market, social, messaging, and admin requests to the Feed backend. The plugin is opt-in — add it to an agent's character or plugin list; it is not auto-enabled. Configuration is read entirely from env vars or agent settings.
 
 ## Plugin surface
 
 This plugin registers **views** only — no actions, providers, services, or evaluators. All runtime behaviour is UI-side or route-proxy-side.
 
-**Views** (registered in `src/index.ts`):
+**View** (registered in `src/index.ts`) — ONE declaration drives all three modalities:
 
-| id | label | viewType | componentExport | description |
-|----|-------|----------|-----------------|-------------|
-| `feed` | Feed | (default) | `FeedOperatorSurface` | Operator dashboard |
-| `feed` | Feed XR | `xr` | `FeedOperatorSurface` | XR variant |
-| `feed` | Feed TUI | `tui` | `FeedTuiView` | Terminal operator dashboard |
+| id | label | modalities | componentExport | description |
+|----|-------|------------|-----------------|-------------|
+| `feed` | Feed | `gui`, `xr`, `tui` | `FeedView` | Feed prediction market operator dashboard |
 
-The TUI view declares capabilities: `get-state`, `refresh-agent-status`, `open-live-dashboard`, `send-team-message`.
-
-**UI registrations** (in `src/ui/index.ts`):
-
-- `registerOperatorSurface("@elizaos/plugin-feed", FeedOperatorSurface)` — surfaces into the elizaOS app manager.
-- `registerDetailExtension("feed-operator-dashboard", FeedDetailExtension)` — injects a detail panel into the elizaOS UI shell.
+`FeedView` (`src/components/FeedView.tsx`) owns the live data layer and renders the one presentational `FeedSpatialView` inside a `SpatialSurface` — DOM in GUI, scaled DOM in XR. The TUI surface mounts the SAME `FeedSpatialView` through the terminal registry (`src/register-terminal-view.tsx`). The view declares capabilities: `get-state`, `refresh-agent-status`, `open-live-dashboard`, `send-team-message` (handled by `src/ui/feed-interact.ts`).
 
 **Route exports** (from `src/routes.ts`, consumed by the elizaOS app-core host):
 
@@ -40,22 +33,19 @@ The TUI view declares capabilities: `get-state`, `refresh-agent-status`, `open-l
 ```
 plugins/plugin-feed/
   src/
-    index.ts                        Plugin object: view registrations + re-exports
+    index.ts                        Plugin object: ONE view declaration + re-exports
     feed-auth.ts                    Auth helpers: resolveFeedConfig, proxyFeedRequest,
                                     persistFeedCredential, resolveSettingLike, FeedConfig
     routes.ts                       Full HTTP proxy layer — all /api/apps/feed/* routes
-    feed-data.ts                    Pure data helpers: extractAgentSummary,
-                                    extractTeamDashboard, summarizeFeedActivity, etc.
-    feed-view-bundle.ts             View bundle entry point
-    register-terminal-view.tsx      Terminal view registration helper
-    game-surface-shell.tsx          Game surface shell component
-    FeedOperatorSurface.interact.ts Interactive logic for FeedOperatorSurface
+    register-terminal-view.tsx      Registers FeedSpatialView for the terminal (TUI)
     components/
-      FeedSpatialView.tsx           Spatial/XR view component
+      FeedView.tsx                  GUI/XR wrapper: live data layer + <SpatialSurface>
+      FeedSpatialView.tsx           Presentational spatial view — renders in all modalities
     ui/
-      index.ts                      Registers operator surface + detail extension
-      FeedOperatorSurface.tsx       Main React dashboard component
-      FeedDetailExtension.tsx       Detail panel extension component
+      feed-data.ts                  Pure data parsers: extractAgentSummary,
+                                    extractTeamDashboard, summarizeFeedActivity, etc.
+      feed-view-bundle.ts           View-bundle entry (exports FeedView + interact)
+      feed-interact.ts              TUI interact() capability handler
   assets/
     hero.png                        App store hero image
   vite.config.views.ts              Vite config for the view bundle (dist/views/bundle.js)
@@ -106,11 +96,11 @@ Session tokens (`FEED_AGENT_SESSION_TOKEN`, `FEED_AGENT_SESSION_EXPIRES_AT`) are
    ```
 2. Routes are matched against the path after the `/api/apps/feed` prefix (stripped by `subpath()`).
 
-**Add a new UI component:**
+**Change the operator surface UI:**
 
-1. Create the React component under `src/ui/`.
-2. Export it from `src/ui/index.ts`.
-3. Register it via `registerOperatorSurface` or `registerDetailExtension` from `@elizaos/app-core/ui-compat` if it needs to surface in the elizaOS shell.
+1. Edit the one presentational component `src/components/FeedSpatialView.tsx` — authored with `@elizaos/ui/spatial` primitives (`Card`, `Text`, `Button`, `HStack`, `VStack`, `List`). It renders correctly in GUI, XR, and TUI from the same source. Keep it purely presentational (snapshot in, `onAction` out).
+2. Live-data wiring (loaders, refresh poll, autonomy control) lives in the GUI/XR wrapper `src/components/FeedView.tsx`; the same `FeedSpatialView` is fed a module-level snapshot for TUI in `src/register-terminal-view.tsx`.
+3. New TUI capabilities go in `src/ui/feed-interact.ts` (re-exported by `src/ui/feed-view-bundle.ts`) AND must be declared in the view's `capabilities` array in `src/index.ts`.
 
 **Add a new view:**
 
@@ -120,7 +110,7 @@ Session tokens (`FEED_AGENT_SESSION_TOKEN`, `FEED_AGENT_SESSION_EXPIRES_AT`) are
 ## Conventions / gotchas
 
 - The view bundle (`dist/views/bundle.js`) is built separately by Vite (`build:views`). Running only `build:js` leaves the views stale. Always run `build` or `build:views` before shipping a UI change.
-- `FeedOperatorSurface` and `FeedTuiView` are both exported from `dist/views/bundle.js` — the single Vite entry (`FeedOperatorSurface.tsx`) must re-export `FeedTuiView` for the TUI view to resolve at runtime.
+- There is exactly ONE view component: `FeedSpatialView`. `FeedView` (the bundle's `componentExport`) is a thin GUI/XR data wrapper around it; `register-terminal-view.tsx` mounts the same `FeedSpatialView` for TUI. Do NOT reintroduce a separate rich-DOM operator surface or a separate TUI component — the spatial view is the single source for all modalities.
 - The `elizaos.app` block in `package.json` controls how the elizaOS app manager discovers and launches Feed: `launchType: "url"`, viewer `postMessageAuth: true`, session mode `spectate-and-steer`.
 - Auth is Steward-first: `proxyFeedRequest` prefers the agent's Steward JWT (`STEWARD_AGENT_TOKEN`/`FEED_STEWARD_TOKEN`) and forwards it as `Authorization: Bearer` with no `/api/agents/auth` exchange (Feed verifies the shared-secret HS256 `iss:"steward"` token inline). On 401 it falls back to the `FEED_AGENT_ID/SECRET` agent-session path, which uses an in-process token cache (`cachedToken`) cleared + re-authed once on its own 401.
 - `persistFeedCredential` writes to both `process.env` and `runtime.setSetting` and patches the character's `settings.secrets` in-memory. This means credentials set during auto-provisioning survive in the runtime object but are not written to disk automatically.

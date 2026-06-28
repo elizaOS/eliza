@@ -4,4 +4,4 @@
 // separate from FeedView.tsx so that file exports only React components and stays
 // Fast-Refresh-compatible in dev.
 export { FeedView } from "../components/FeedView.tsx";
-export { interact } from "./FeedOperatorSurface.interact";
+export { interact } from "./feed-interact";

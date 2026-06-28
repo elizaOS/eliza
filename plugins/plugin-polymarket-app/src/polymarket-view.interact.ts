@@ -1,5 +1,5 @@
-// View-bundle `interact` capability handler, split out of PolymarketAppView.tsx
-// so that file exports only React components and stays Fast-Refresh-compatible
+// View-bundle `interact` capability handler, kept out of PolymarketView.tsx so
+// that file exports only React components and stays Fast-Refresh-compatible
 // (Vite would full-reload a component file that also exports a plain function).
 // The view bundle re-exports `interact` via ./polymarket-view-bundle.ts.
 import { client } from "@elizaos/app-core";
@@ -8,7 +8,7 @@ import type { PolymarketClient } from "./client";
 import {
   loadPolymarketTuiState,
   postPolymarketCommand,
-} from "./PolymarketAppView.helpers";
+} from "./polymarket-view.helpers";
 import type { PolymarketOrderbookResponse } from "./polymarket-contracts";
 
 export async function interact(
