@@ -21,7 +21,7 @@ on:
       - "packages/core/**"
       - "packages/app/**"
       - "packages/app-core/**"
-      - "packages/cloud-sdk/**"
+      - "packages/cloud/sdk/**"
       - ".github/workflows/build-agent-image.yml"
       - ".dockerignore"
   release:

@@ -25,7 +25,7 @@ on:
       - '.github/workflows/hetzner-e2e.yml'
       - '.github/workflows/hetzner-e2e-reaper.yml'
       - 'packages/scripts/cloud/admin/hetzner-e2e/**'
-      - 'packages/cloud-shared/src/lib/services/containers/**'
+      - 'packages/cloud/shared/src/lib/services/containers/**'
       - 'packages/scripts/cloud/admin/daemons/**'
       - 'packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs'
 

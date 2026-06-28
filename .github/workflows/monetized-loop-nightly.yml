@@ -207,7 +207,7 @@ jobs:
 
       - name: Build cloud-shared (drizzle artifacts)
         # cloud-e2e fixture re-runs migrations against PGlite so build is best-effort.
-        run: bun run --cwd packages/cloud-shared build || true
+        run: bun run --cwd packages/cloud/shared build || true
 
       - name: Run example-apps showcase + monetized full loop (mock stack)
         # monetized-mock-llm-journey drives the real POST /api/v1/messages +

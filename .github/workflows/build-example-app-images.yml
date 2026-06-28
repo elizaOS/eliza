@@ -21,7 +21,7 @@ on:
     paths:
       - "packages/examples/cloud/edad/**"
       - "packages/examples/cloud/clone-ur-crush/**"
-      - "packages/cloud-sdk/**"
+      - "packages/cloud/sdk/**"
       - ".github/workflows/build-example-app-images.yml"
   workflow_dispatch:
 
@@ -83,7 +83,7 @@ jobs:
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          cd packages/cloud-sdk
+          cd packages/cloud/sdk
           bun install --no-frozen-lockfile --ignore-scripts
           bun run build
 

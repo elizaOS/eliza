@@ -8,10 +8,10 @@ on:
   pull_request:
     branches: [develop, main]
     paths:
-      - "packages/cloud-api/**"
-      - "packages/cloud-shared/**"
-      - "packages/cloud-sdk/**"
-      - "packages/cloud-services/**"
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/sdk/**"
+      - "packages/cloud/services/**"
       - "packages/scripts/cloud/**"
       - "package.json"
       - "bun.lock"
@@ -20,10 +20,10 @@ on:
   push:
     branches: [develop, main]
     paths:
-      - "packages/cloud-api/**"
-      - "packages/cloud-shared/**"
-      - "packages/cloud-sdk/**"
-      - "packages/cloud-services/**"
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/sdk/**"
+      - "packages/cloud/services/**"
       - "packages/scripts/cloud/**"
       - "package.json"
       - "bun.lock"
@@ -56,7 +56,7 @@ jobs:
         run: bun run verify:cloud
 
       - name: Tenant-scope gate (no unscoped pk-only reads of apps data-plane) (#9853)
-        run: bun run --cwd packages/cloud-shared check:tenant-scope
+        run: bun run --cwd packages/cloud/shared check:tenant-scope
 
   unit-tests:
     runs-on: ubuntu-latest

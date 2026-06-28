@@ -7,10 +7,10 @@ on:
     branches: [develop, main]
     paths:
       - '.github/workflows/cloud-deploy-backend.yml'
-      - 'packages/cloud-api/**'
-      - 'packages/cloud-shared/**'
-      - 'packages/cloud-services/**'
-      - 'packages/cloud-sdk/**'
+      - 'packages/cloud/api/**'
+      - 'packages/cloud/shared/**'
+      - 'packages/cloud/services/**'
+      - 'packages/cloud/sdk/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -176,8 +176,8 @@ jobs:
 
       - name: Build backend artifact
         run: |
-          bun run --cwd packages/cloud-api codegen
-          bun run --cwd packages/cloud-api lint
+          bun run --cwd packages/cloud/api codegen
+          bun run --cwd packages/cloud/api lint
 
       - name: Prepare SSH access
         run: |

@@ -128,7 +128,7 @@ jobs:
 
       - name: Read DSN from apps-shared output
         if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
-        working-directory: packages/cloud-infra/cloud/terraform/hetzner/apps-shared
+        working-directory: packages/cloud/infra/cloud/terraform/hetzner/apps-shared
         env:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}

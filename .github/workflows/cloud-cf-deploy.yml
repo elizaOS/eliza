@@ -4,7 +4,7 @@ name: Cloud CF Deploy
 #
 # The web frontend builds ONE codebase (packages/app, which mounts the whole
 # cloud UI via @elizaos/ui/cloud) into TWO Pages projects (two domains, one
-# build target — packages/cloud-frontend has been deleted):
+# build target — packages/cloud/frontend has been deleted):
 #   - `eliza-cloud`  ->  packages/app (build:web)  ->  elizacloud.ai apex
 #       The cloud console (lander + dashboard) origin. Steward login + dashboard.
 #   - `eliza-app`    ->  packages/app (build:web)  ->  app.elizacloud.ai
@@ -20,7 +20,7 @@ name: Cloud CF Deploy
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
-#   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud-api/wrangler.toml
+#   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud/api/wrangler.toml
 # Provider secrets are published when configured (the Worker calls native
 # providers directly and uses OpenRouter as the backup):
 #   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
@@ -32,20 +32,20 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - "packages/cloud-api/**"
-      - "packages/cloud-shared/**"
-      - "packages/cloud-services/**"
-      - "packages/cloud-sdk/**"
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/services/**"
+      - "packages/cloud/sdk/**"
       - "packages/app/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
     branches: [main, develop]
     paths:
-      - "packages/cloud-api/**"
-      - "packages/cloud-shared/**"
-      - "packages/cloud-services/**"
-      - "packages/cloud-sdk/**"
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/services/**"
+      - "packages/cloud/sdk/**"
       - "packages/app/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
@@ -103,13 +103,13 @@ jobs:
         run: bun run build:core
 
       - name: Verify Worker
-        run: bun run --cwd packages/cloud-api typecheck
+        run: bun run --cwd packages/cloud/api typecheck
 
       - name: Run Worker e2e
-        run: bun run --cwd packages/cloud-api test:e2e
+        run: bun run --cwd packages/cloud/api test:e2e
 
       - name: Build
-        run: bun run --cwd packages/cloud-api build
+        run: bun run --cwd packages/cloud/api build
 
       - name: Resolve deploy environment
         id: env
@@ -152,7 +152,7 @@ jobs:
 
       - name: Publish Worker AI secrets
         if: steps.cf.outputs.configured == 'true'
-        working-directory: packages/cloud-api
+        working-directory: packages/cloud/api
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -202,7 +202,7 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true'
-        working-directory: packages/cloud-api
+        working-directory: packages/cloud/api
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

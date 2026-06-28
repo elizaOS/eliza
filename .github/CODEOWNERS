@@ -22,12 +22,12 @@
 /.github/dependabot.yml                 @elizaos/security-team
 
 # Cloud / backend — billing, auth, hosted APIs.
-/packages/cloud-api/                    @elizaos/backend-leads
-/packages/cloud-shared/                 @elizaos/backend-leads
-/packages/cloud-services/               @elizaos/backend-leads
-/packages/cloud-infra/                  @elizaos/backend-leads @elizaos/platform-team
-/packages/cloud-routing/                @elizaos/backend-leads
-/packages/cloud-sdk/                    @elizaos/backend-leads
+/packages/cloud/api/                    @elizaos/backend-leads
+/packages/cloud/shared/                 @elizaos/backend-leads
+/packages/cloud/services/               @elizaos/backend-leads
+/packages/cloud/infra/                  @elizaos/backend-leads @elizaos/platform-team
+/packages/cloud/routing/                @elizaos/backend-leads
+/packages/cloud/sdk/                    @elizaos/backend-leads
 
 # Security and crypto-handling code — mandatory security review.
 /packages/security/                     @elizaos/security-team

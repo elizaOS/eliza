@@ -8,10 +8,10 @@ on:
   pull_request:
     branches: [develop, main]
     paths:
-      - "packages/cloud-api/**"
-      - "packages/cloud-shared/**"
-      - "packages/cloud-services/**"
-      - "packages/cloud-sdk/**"
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/services/**"
+      - "packages/cloud/sdk/**"
       - "packages/test/cloud-mocks/**"
       - "packages/test/cloud-e2e/**"
       # The showcase loop (#9300) deploys + validates these example apps, so an
@@ -48,7 +48,7 @@ jobs:
 
       - name: Build cloud-shared (drizzle artifacts)
         # cloud-e2e fixture re-runs migrations against PGlite so build is best-effort.
-        run: bun run --cwd packages/cloud-shared build || true
+        run: bun run --cwd packages/cloud/shared build || true
 
       - name: Run cloud E2E
         run: bun run cloud:e2e

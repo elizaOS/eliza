@@ -69,7 +69,7 @@ jobs:
           - lane: test-elizaos-cli
             command: bun run --cwd packages/elizaos test
           - lane: test-cloud-shared
-            command: bun run --cwd packages/cloud-shared test
+            command: bun run --cwd packages/cloud/shared test
           - lane: test-plugin-coding-tools
             command: bun run --cwd plugins/plugin-coding-tools test
           - lane: test-scenario-runner

@@ -1,5 +1,5 @@
 name: Setup Cloud Test Environment
-description: Common setup for Bun-based cloud test jobs with optional local services. Runs from packages/cloud-shared/.
+description: Common setup for Bun-based cloud test jobs with optional local services. Runs from packages/cloud/shared/.
 
 inputs:
   bun-version:
@@ -30,13 +30,13 @@ runs:
       uses: actions/cache@v5
       with:
         path: ~/.bun/install/cache
-        key: bun-${{ runner.os }}-${{ hashFiles('packages/cloud-shared/bun.lock') }}
+        key: bun-${{ runner.os }}-${{ hashFiles('packages/cloud/shared/bun.lock') }}
         restore-keys: |
           bun-${{ runner.os }}-
 
     - name: Install dependencies
       shell: bash
-      working-directory: packages/cloud-shared
+      working-directory: packages/cloud/shared
       run: |
         for attempt in 1 2 3; do
           if [ "$attempt" -eq 3 ]; then
@@ -53,12 +53,12 @@ runs:
 
     - name: Build linked elizaOS workspaces
       shell: bash
-      working-directory: packages/cloud-shared
+      working-directory: packages/cloud/shared
       run: bun run build:linked-workspaces
 
     - name: Validate migration journal
       shell: bash
-      working-directory: packages/cloud-shared
+      working-directory: packages/cloud/shared
       run: bun run db:check-migrations
 
     - name: Start PostgreSQL test server
@@ -88,7 +88,7 @@ runs:
     - name: Start PGlite TCP server
       if: inputs.setup-db == 'true' && inputs.db-backend == 'pglite'
       shell: bash
-      working-directory: packages/cloud-shared
+      working-directory: packages/cloud/shared
       env:
         PGLITE_IN_MEMORY: "1"
         PGLITE_PORT: "5432"
@@ -101,7 +101,7 @@ runs:
     - name: Run database migrations
       if: inputs.setup-db == 'true'
       shell: bash
-      working-directory: packages/cloud-shared
+      working-directory: packages/cloud/shared
       env:
         DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
         TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres

@@ -668,7 +668,7 @@ jobs:
           set -o pipefail
           log_file="$(mktemp)"
 
-          if bun run --cwd packages/cloud-sdk test:e2e 2>&1 | tee "$log_file"; then
+          if bun run --cwd packages/cloud/sdk test:e2e 2>&1 | tee "$log_file"; then
             exit 0
           fi
 
