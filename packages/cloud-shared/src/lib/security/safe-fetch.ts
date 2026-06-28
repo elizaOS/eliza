@@ -129,7 +129,9 @@ function writeRequestBody(
   } else if (body instanceof Uint8Array) {
     req.end(Buffer.from(body));
   } else if (typeof (body as ReadableStream).getReader === "function") {
-    Readable.fromWeb(body as ReadableStream).pipe(req);
+    // `body` is the DOM ReadableStream; Readable.fromWeb wants node:stream/web's.
+    // They are structurally identical at runtime — cast to the expected param type.
+    Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]).pipe(req);
   } else {
     req.end(String(body));
   }
