@@ -53,7 +53,7 @@ export function CollapsibleSidebarSection({
           aria-expanded={!collapsed}
           aria-controls={bodyId}
           data-testid={`${testIdPrefix}-toggle-${sectionKey}`}
-          className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-sm bg-transparent px-1.5 py-1 text-left text-[11px] leading-none font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:text-txt"
+          className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-sm bg-transparent px-1.5 py-1 text-left text-[11px] leading-none font-medium text-muted transition-colors hover:text-txt"
         >
           {icon ? (
             <span className="inline-flex shrink-0 items-center justify-center text-muted">

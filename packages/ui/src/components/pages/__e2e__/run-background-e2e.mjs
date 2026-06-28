@@ -35,7 +35,7 @@ function assert(cond, msg) {
 // A gradient SVG used as the uploaded "photo".
 const uploadSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800">
   <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#0891b2"/><stop offset="1" stop-color="#7c3aed"/>
+    <stop offset="0" stop-color="#059669"/><stop offset="1" stop-color="#e11d48"/>
   </linearGradient></defs>
   <rect width="1200" height="800" fill="url(#g)"/>
   <circle cx="900" cy="240" r="160" fill="#f4f4f5" opacity="0.85"/>
@@ -110,14 +110,14 @@ try {
   );
   await snap(p, "default-orange");
 
-  // 2. Click the Blue swatch in the REAL view → background recolors live.
-  await p.getByLabel("Set background to Blue").click();
+  // 2. Click the Green swatch in the REAL view → background recolors live.
+  await p.getByLabel("Set background to Green").click();
   await settle(p);
   assert(
-    (await shaderColor(p)) === "rgb(37, 99, 235)",
-    "clicking the Blue swatch recolors the background live",
+    (await shaderColor(p)) === "rgb(5, 150, 105)",
+    "clicking the Green swatch recolors the background live",
   );
-  await snap(p, "swatch-blue");
+  await snap(p, "swatch-green");
 
   // 3. Upload an image → cover-image background.
   await p.setInputFiles('input[type="file"]', {
@@ -138,7 +138,7 @@ try {
 
   // 4. Agent chat path: emit background:apply (shader teal) → recolors.
   await p.evaluate(() =>
-    window.__emitBgApply?.({ op: "set", mode: "shader", color: "#0891b2" }),
+    window.__emitBgApply?.({ op: "set", mode: "shader", color: "#059669" }),
   );
   await settle(p);
   assert(

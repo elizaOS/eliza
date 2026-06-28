@@ -38,10 +38,14 @@ describe("home frontpage widget slot (#9143)", () => {
     expect(notif?.Component).toBeTruthy();
   });
 
-  it("does NOT resolve a Messages widget on home (removed #9304 — redundant with the chat overlay)", () => {
+  it("resolves the Recent conversations widget on home (curated home-grid tile)", () => {
+    // The home grid surfaces recent conversations as a naked 2x1 tile backed by
+    // the core conversations API (always-visible). It is distinct from the chat
+    // overlay: the overlay is the live thread, this is the at-a-glance list.
     const resolved = resolveWidgetsForSlot("home", []);
     const msgs = resolved.find((r) => r.declaration.id === "messages.recent");
-    expect(msgs).toBeUndefined();
+    expect(msgs?.declaration.slot).toBe("home");
+    expect(msgs?.Component).toBeTruthy();
   });
 
   it("keeps Notifications always-visible on home with NO plugins", () => {

@@ -38,6 +38,8 @@ import {
   registerBuiltInGates,
   registerDefaultEscalationLadders,
   registerFallbackAnchors,
+  registerScheduledTaskRunnerDeps,
+  type ScheduledTaskRunnerDepsBundle,
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
 } from "@elizaos/plugin-scheduling";
@@ -423,9 +425,17 @@ export interface CreateRuntimeRunnerOptions {
   now?: () => Date;
 }
 
-export function createRuntimeScheduledTaskRunner(
+/**
+ * Build the production deps bundle PA injects into `@elizaos/plugin-scheduling`'s
+ * runner host. This is the LifeOps-specific wiring — DB-backed store/log,
+ * production dispatcher, owner-facts / channel-keys / host-capability probes,
+ * and PA's anchor registry. The generic registries (gates, completion-checks,
+ * ladders, consolidation) are built here too so the spine's runner host uses the
+ * built-in set rather than rebuilding them.
+ */
+function buildLifeOpsRunnerDeps(
   opts: CreateRuntimeRunnerOptions,
-): ScheduledTaskRunnerHandle {
+): ScheduledTaskRunnerDepsBundle {
   const stores = makeRepositoryBackedStores(opts.runtime, opts.agentId);
 
   const gates = createTaskGateRegistry();
@@ -453,8 +463,7 @@ export function createRuntimeScheduledTaskRunner(
   const subjectStore: SubjectStoreView =
     opts.subjectStore ?? makeMissingSubjectStoreView(opts.runtime);
 
-  return createScheduledTaskRunner({
-    agentId: opts.agentId,
+  return {
     store: stores.store,
     logStore: stores.logStore,
     gates,
@@ -466,7 +475,6 @@ export function createRuntimeScheduledTaskRunner(
     globalPause,
     activity,
     subjectStore,
-    now: opts.now,
     channelKeys: () => {
       const registry = getChannelRegistry(opts.runtime);
       if (!registry) return new Set();
@@ -481,5 +489,46 @@ export function createRuntimeScheduledTaskRunner(
     dispatcher: createProductionScheduledTaskDispatcher({
       runtime: opts.runtime,
     }),
+  };
+}
+
+export function createRuntimeScheduledTaskRunner(
+  opts: CreateRuntimeRunnerOptions,
+): ScheduledTaskRunnerHandle {
+  const deps = buildLifeOpsRunnerDeps(opts);
+  return createScheduledTaskRunner({
+    agentId: opts.agentId,
+    store: deps.store,
+    logStore: deps.logStore,
+    gates: deps.gates ?? createTaskGateRegistry(),
+    completionChecks: deps.completionChecks ?? createCompletionCheckRegistry(),
+    ladders: deps.ladders ?? createEscalationLadderRegistry(),
+    anchors: deps.anchors ?? resolveRuntimeAnchorRegistry(opts.runtime),
+    consolidation: deps.consolidation ?? createConsolidationRegistry(),
+    ownerFacts: deps.ownerFacts,
+    globalPause: deps.globalPause,
+    activity: deps.activity,
+    subjectStore: deps.subjectStore,
+    ...(opts.now ? { now: opts.now } : {}),
+    ...(deps.channelKeys ? { channelKeys: deps.channelKeys } : {}),
+    ...(deps.hostCapabilities
+      ? { hostCapabilities: deps.hostCapabilities }
+      : {}),
+    dispatcher: deps.dispatcher,
   });
+}
+
+/**
+ * Register PA's production deps as the runner host's injected deps provider on
+ * `@elizaos/plugin-scheduling`. Called during PA `init`. First-wins: the spine
+ * keeps this provider once set, so PA rows land in `app_lifeops` via the
+ * injected repository-backed store even though the runner service itself lives
+ * in `@elizaos/plugin-scheduling`.
+ */
+export function registerLifeOpsScheduledTaskRunnerDeps(
+  runtime: IAgentRuntime,
+): void {
+  registerScheduledTaskRunnerDeps(runtime, (rt, agentId) =>
+    buildLifeOpsRunnerDeps({ runtime: rt, agentId }),
+  );
 }

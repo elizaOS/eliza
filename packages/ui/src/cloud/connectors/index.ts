@@ -31,6 +31,7 @@ import { registerSettingsSection } from "../../components/settings/settings-sect
 import { CloudSettingsSectionShell } from "../settings/CloudSettingsSectionShell";
 import { registerCloudRoute } from "../shell/cloud-route-registry";
 import { CloudConnectorsSection } from "./CloudConnectorsSection";
+import { CloudConnectorsSettingsBody } from "./CloudConnectorsUpsell";
 
 export { BlooioConnection } from "./blooio-connection";
 export { CloudConnectorsSection } from "./CloudConnectorsSection";
@@ -59,14 +60,17 @@ export const CLOUD_CONNECTORS_SECTION_ID = "cloud-connectors";
  *
  * The standalone cloud route is already rendered under CloudRouterShell, which
  * supplies query/i18n/auth providers. Settings sections render inside the
- * app-shell settings registry instead, so this adapter provides the cloud stack
- * before mounting the canonical connectors body.
+ * app-shell settings registry instead (under AppProvider), so this adapter
+ * provides the cloud stack before mounting {@link CloudConnectorsSettingsBody},
+ * which reads the app store to show the upsell when Cloud is not connected and
+ * the canonical connectors surface when it is. The standalone route mounts
+ * {@link CloudConnectorsSection} directly and never reaches the app-store read.
  */
 export function CloudConnectorsSettingsSection(): React.JSX.Element {
   return createElement(
     CloudSettingsSectionShell,
     null,
-    createElement(CloudConnectorsSection),
+    createElement(CloudConnectorsSettingsBody),
   );
 }
 

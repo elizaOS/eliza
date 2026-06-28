@@ -1730,6 +1730,42 @@ describe("ContinuousChatOverlay swipe-nav", () => {
     expect(document.getElementById("continuous-thread")).toBeNull();
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  it("still navigates (no crash) when swiping while the thread is loading/empty", () => {
+    // The exact reported state: after a reset the thread is empty and the
+    // loading spinner is up, and the user "thumbs back and forth". The swipe
+    // must stay bound and select the adjacent conversation instead of throwing.
+    const onSelect = vi.fn<(id: string) => void>();
+    const conversationNav = buildConversationNav(CONVERSATIONS, "b", onSelect);
+    const make = (over: Partial<ShellController>) =>
+      makeController({
+        conversationNav,
+        ...over,
+      } as unknown as Partial<ShellController>);
+
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={make({})} />,
+    );
+    openSheet(); // opens into the (present) default thread
+
+    // Conversation cleared, a fresh one loading: empty thread + spinner.
+    rerender(
+      <ContinuousChatOverlay
+        controller={make({
+          messages: [],
+          conversationLoading: true,
+        })}
+      />,
+    );
+    expect(screen.getByTestId("chat-thread-loading")).toBeTruthy();
+
+    const el = thread();
+    fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 6 });
+    fireEvent.pointerMove(el, { clientX: 280, clientY: 302, pointerId: 6 });
+    fireEvent.pointerUp(el, { clientX: 180, clientY: 302, pointerId: 6 });
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("c");
+  });
 });
 
 // The reported bug: clearing the chat dropped all messages, which unmounted the

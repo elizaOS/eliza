@@ -1,9 +1,5 @@
 import type { IAgentRuntime, RouteRequestContext } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type {
-  LifeOpsOccurrence,
-  LifeOpsTaskDefinition,
-} from "../contracts/index.js";
 import {
   getSelfControlStatus,
   isWebsiteBlockedByPolicy,
@@ -12,6 +8,10 @@ import {
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
 } from "@elizaos/plugin-blocker/services/website-blocker/index";
+import type {
+  LifeOpsOccurrence,
+  LifeOpsTaskDefinition,
+} from "../contracts/index.js";
 
 type WebsiteBlockerRequestBody = {
   websites?: string[] | string;

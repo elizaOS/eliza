@@ -4,6 +4,7 @@ import * as React from "react";
 import { useAgentElement } from "../../../agent-surface";
 import { useAppSelector } from "../../../state";
 import { Button } from "../../ui/button";
+import { ShellViewAgentSurface } from "../../views/ShellViewAgentSurface";
 import { startTutorial } from "./tutorial-controller";
 
 /**
@@ -14,6 +15,14 @@ import { startTutorial } from "./tutorial-controller";
  */
 
 export function TutorialView(): React.ReactElement {
+  return (
+    <ShellViewAgentSurface viewId="tutorial">
+      <TutorialViewBody />
+    </ShellViewAgentSurface>
+  );
+}
+
+function TutorialViewBody(): React.ReactElement {
   const setTab = useAppSelector((s) => s.setTab);
 
   const begin = React.useCallback(() => {
@@ -31,20 +40,12 @@ export function TutorialView(): React.ReactElement {
 
   return (
     <div
-      className="flex h-full w-full flex-col items-center justify-center overflow-y-auto px-6 py-10 text-center"
+      className="flex h-full w-full flex-col items-center justify-center overflow-y-auto px-6 py-6 text-center"
       data-testid="tutorial-launcher"
     >
-      <div className="flex max-w-sm flex-col items-center">
-        <div
-          className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-subtle"
-          aria-hidden
-        >
-          <Sparkles className="h-7 w-7 text-accent" />
-        </div>
-        <h1 className="text-2xl font-semibold text-txt-strong">Quick tour</h1>
-        <p className="mt-2 text-[15px] leading-relaxed text-txt/70">
-          A hands-on walkthrough of the basics — about a minute.
-        </p>
+      <div className="flex max-w-xs flex-col items-center">
+        <Sparkles className="mb-3 h-7 w-7 text-accent" aria-hidden />
+        <p className="text-xs text-txt/60">About a minute</p>
 
         <Button
           ref={start.ref}
@@ -52,7 +53,7 @@ export function TutorialView(): React.ReactElement {
           onClick={begin}
           data-testid="tutorial-start"
           size="lg"
-          className="mt-7 text-[15px] font-semibold"
+          className="mt-4 text-[15px] font-semibold"
         >
           Start
         </Button>

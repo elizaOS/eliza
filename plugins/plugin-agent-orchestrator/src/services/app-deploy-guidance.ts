@@ -36,6 +36,26 @@ export function isAppBuildTask(taskText: string | undefined | null): boolean {
 }
 
 /**
+ * Whether an app build is MONETIZED — it earns via per-call markup, so it needs
+ * Eliza Cloud OAuth + billing (an `appId`) regardless of where the static files
+ * are hosted. This is a general rule: a monetized app ALWAYS registers with
+ * Cloud. Used so a non-Cloud static host (agent-home) does not tell the
+ * sub-agent "don't use Eliza Cloud" for a monetized app — which contradicts the
+ * `build-monetized-app` skill and leaves the app unregistered (no sign-in).
+ */
+const MONETIZED_APP_RE =
+  /\b(?:moneti[sz]e[ds]?|monetization|markup|per[-\s]?(?:use|call|request|chat)\s+(?:billing|pricing|charge)|paid\s+(?:app|tiers?|version|plan|feature)|paywall|earn(?:s|ing|ings)?|pay[-\s]?to|subscription|premium\s+tiers?|charges?\s+\$?\d|x402)\b/i;
+
+export function isMonetizedAppTask(
+  taskText: string | undefined | null,
+): boolean {
+  if (typeof taskText !== "string" || taskText.trim().length === 0) {
+    return false;
+  }
+  return MONETIZED_APP_RE.test(taskText);
+}
+
+/**
  * Whether a task builds an elizaOS VIEW or PLUGIN. These get view-specific
  * cloud/local sandbox guidance (#8918) rather than the generic hosted-app
  * deploy contract.
@@ -85,24 +105,38 @@ export function resolveAppDeployConfig(): AppDeployConfig {
   return { target: "eliza-cloud" };
 }
 
-function elizaCloudGuidance(): string {
-  return [
-    "--- App Deployment (Eliza Cloud) ---",
-    "This task builds an app/site, so it must end up actually HOSTED with a verified live URL — not just local files.",
-    "- Build a real, working app and load it to confirm it works before reporting done.",
-    "- Host it on Eliza Cloud: use `@elizaos/cloud-sdk` when available, register the app to get an `appId`, and deploy via the Cloud container/app flow.",
-    "- For auth, use Eliza Cloud OAuth via a same-origin proxy to `/api/v1/apps/<appId>/chat` with the user's bearer token (add `X-Affiliate-Code` when monetizing). Use Cloud DB / hosted APIs for persistence.",
-    "- Do NOT hardcode owner API keys in frontend code, use mock replies, or hand-roll legacy `/messages` routes. Follow the `build-monetized-app` skill for the canonical registration + deploy + domain flow.",
+function elizaCloudGuidance(task?: string): string {
+  const lines = ["--- App Deployment (Eliza Cloud) ---"];
+  if (isMonetizedAppTask(task)) {
+    lines.push(
+      "START FROM THE TEMPLATE — do NOT build the Cloud SDK / registration / OAuth-proxy / Dockerfile from scratch. A complete, working, already-deployed monetized chat app is in THIS checkout at `packages/examples/cloud/edad`. Copy it as your starting point: `cp -r packages/examples/cloud/edad <your-app-dir>`, then ADAPT only the app-specific bits.",
+      "- CHANGE only: `public/index.html` (the SYSTEM_PROMPT constant, the MODEL constant, the <title>/brand/meta text, the input placeholder, the TOKEN_KEY/STATE_KEY localStorage prefixes), the art in `public/` (SVGs, favicon, og-image), and the markup % you set at registration.",
+      "- KEEP byte-for-byte: `server.ts`, `db.ts`, the Dockerfile, and the OAuth + same-origin proxy + `/health` plumbing — that IS the canonical correct monetized wiring (it forwards to `/api/v1/messages` with `x-app-id` + `x-affiliate-code`, the org-balance billing path).",
+      "- Register the app via `POST /api/v1/apps` (monetization enabled + an inference markup) to get the `appId` — use the owner's `ELIZAOS_CLOUD_API_KEY` from the env. Deploy per `packages/examples/cloud/edad/README.md` (it uses `POST /api/v1/containers`, the ungated path — do NOT use the gated `/apps/<id>/deploy`).",
+    );
+  } else {
+    lines.push(
+      "This task builds an app/site, so it must end up actually HOSTED with a verified live URL — not just local files.",
+      "- Build a real, working app and load it to confirm it works before reporting done.",
+      "- Host it on Eliza Cloud: use `@elizaos/cloud-sdk` when available, register the app to get an `appId`, and deploy via the Cloud container flow.",
+      "- For auth, use Eliza Cloud OAuth via a same-origin proxy that forwards to `/api/v1/messages` with the user's bearer token + `x-app-id` (add `x-affiliate-code` when monetizing). Use Cloud DB / hosted APIs for persistence.",
+      "- Do NOT hardcode owner API keys in frontend code, use mock replies, or hand-roll legacy `/messages` routes. Follow the `build-monetized-app` skill for the canonical registration + deploy + domain flow.",
+    );
+  }
+  lines.push(
     "- Report ONLY the verified live Cloud URL. If you could not deploy or verify it, say that plainly — never report an unverified or guessed URL.",
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
-function agentHomeGuidance(config: AppDeployConfig): string {
+function agentHomeGuidance(config: AppDeployConfig, task?: string): string {
   const dir = config.agentHomeAppsDir ?? "";
   const base = config.agentHomeBaseUrl ?? "";
   return [
     "--- App Deployment (agent-home) ---",
-    "This is a quick static/fun app for the operator's personal agent-home host. Do NOT use Eliza Cloud for this one.",
+    isMonetizedAppTask(task)
+      ? "Host the app's static files on the operator's agent-home host, but this is a MONETIZED app, so you MUST also register it with Eliza Cloud. START FROM THE TEMPLATE — do NOT re-derive the sign-in/proxy/registration flow from scratch: the working pattern is in this checkout at `packages/examples/cloud/edad`. Use `packages/examples/cloud/edad/public/index.html` as your frontend skeleton (it has the Cloud OAuth sign-in + chat-forwarding pattern) — adapt the SYSTEM_PROMPT/MODEL/brand/placeholder, and point its API calls at THIS host's same-origin proxy (`GET api/config/`, `POST api/chat/`). Register the app via `POST /api/v1/apps` (monetization enabled + a markup) using the owner's `ELIZAOS_CLOUD_API_KEY`, and write the returned appId into `cloud.json` next to index.html so sign-in + per-call billing work. Do NOT skip or defer registration, and do NOT tell the operator that steps remain."
+      : "This is a quick static/fun app for the operator's personal agent-home host. Do NOT use Eliza Cloud for this one.",
     "- Pick a fresh, short kebab-case `<slug>` from the request.",
     `- Write the app's static files (index.html + css/js — there is NO per-app build step) into \`${dir}/<slug>/\`.`,
     `- It is then served immediately at \`${base}/apps/<slug>/\` — load that URL to confirm it works, then report it as the live link.`,
@@ -126,11 +160,14 @@ export function viewPluginGuidance(
 }
 
 /** Build the deploy-guidance block for the configured target. */
-export function buildAppDeployGuidance(config?: AppDeployConfig): string {
+export function buildAppDeployGuidance(
+  config?: AppDeployConfig,
+  task?: string,
+): string {
   const resolved = config ?? resolveAppDeployConfig();
   return resolved.target === "agent-home"
-    ? agentHomeGuidance(resolved)
-    : elizaCloudGuidance();
+    ? agentHomeGuidance(resolved, task)
+    : elizaCloudGuidance(task);
 }
 
 function isCloudDeployTarget(config: AppDeployConfig): boolean {
@@ -174,5 +211,5 @@ export function augmentTaskWithDeployGuidance(
   if (!isAppBuildTask(task)) {
     return task;
   }
-  return `${task.trimEnd()}\n\n${buildAppDeployGuidance(config)}`;
+  return `${task.trimEnd()}\n\n${buildAppDeployGuidance(config, task)}`;
 }

@@ -49,6 +49,15 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
   // starts a processing loop), and its computeruse OCR/set-of-marks bridges
   // are best-effort dynamic imports that no-op without plugin-computeruse.
   "@elizaos/plugin-vision",
+  // Scheduling spine: the always-loaded ScheduledTask runtime primitive
+  // (runner host + REST surface + default-pack seed registry). Mobile-safe —
+  // its deps are core/shared/drizzle + the peer plugin-sql (already first in
+  // this list); it imports no app-core/agent/personal-assistant and probes
+  // host capabilities via ELIZA_PLATFORM. Personal-assistant enriches it
+  // (production deps + domain packs) when present; on a stock mobile boot the
+  // built-in defaults serve /api/lifeops/scheduled-tasks so the home Tasks
+  // widget resolves.
+  "@elizaos/plugin-scheduling",
 ];
 
 /**
@@ -126,6 +135,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
+  "@elizaos/plugin-scheduling", // always-loaded ScheduledTask runtime primitive (runner host + REST surface + seed registry); personal-assistant enriches it when present
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, todos, personality: advanced capabilities (advancedCapabilities: true)
   // - form: standalone @elizaos/plugin-form
@@ -274,6 +284,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-gitpathologist", // forensic git-history analysis (opt-in via ELIZA_GITPATHOLOGIST, auto-on when .git/ exists)
   // "@elizaos/plugin-directives", // directive processing remains opt-in
   // "@elizaos/plugin-mcp", // MCP protocol support remains opt-in
-  // "@elizaos/plugin-scheduling", // scheduling remains opt-in
+  // @elizaos/plugin-scheduling is now an always-loaded CORE + MOBILE plugin.
   // todos: now built-in as advanced capability (advancedCapabilities: true)
 ];

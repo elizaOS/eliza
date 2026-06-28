@@ -325,16 +325,8 @@ export class AppWorkerHostService extends Service {
 			},
 		});
 
-		const spawned: SpawnedWorker = {
-			slug: options.slug,
-			worker,
-			bootedAt: Date.now(),
-			readyAt: null,
-			pending: new Map(),
-			nextId: 1,
-			readyPromise: undefined as unknown as Promise<void>,
-		};
-		spawned.readyPromise = new Promise<void>((resolve, reject) => {
+		let spawned: SpawnedWorker;
+		const readyPromise = new Promise<void>((resolve, reject) => {
 			const onMessage = (raw: unknown) => {
 				if (isRuntimeBridgeRequest(raw)) {
 					void this.handleRuntimeBridgeRequest(spawned, raw);
@@ -398,6 +390,15 @@ export class AppWorkerHostService extends Service {
 				spawned.pending.clear();
 			});
 		});
+		spawned = {
+			slug: options.slug,
+			worker,
+			bootedAt: Date.now(),
+			readyAt: null,
+			pending: new Map(),
+			nextId: 1,
+			readyPromise,
+		};
 
 		this.workers.set(options.slug, spawned);
 		try {

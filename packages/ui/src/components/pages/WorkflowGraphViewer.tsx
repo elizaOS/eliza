@@ -52,7 +52,7 @@ function resolveNodeColor(type: string): {
     t.includes("noop") ||
     t.includes("start")
   ) {
-    return { bg: "#1e293b", border: "#64748b", badge: "#64748b" }; // slate — flow-control
+    return { bg: "#292524", border: "#78716c", badge: "#78716c" }; // stone — flow-control
   }
   if (
     t.includes("gmail") ||
@@ -65,10 +65,10 @@ function resolveNodeColor(type: string): {
     t.includes("openai") ||
     t.includes("anthropic")
   ) {
-    return { bg: "#2e1065", border: "#8b5cf6", badge: "#8b5cf6" }; // violet — integration
+    return { bg: "#4c0519", border: "#e11d48", badge: "#e11d48" }; // rose — integration
   }
-  // Default: action (blue)
-  return { bg: "#0c1a2e", border: "#3b82f6", badge: "#3b82f6" };
+  // Default: action.
+  return { bg: "#431407", border: "#f97316", badge: "#f97316" };
 }
 
 // ── Auto layout ──────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ function generatingEdges(edges: Edge[]): Edge[] {
     animated: true,
     style: {
       ...e.style,
-      stroke: "#3b82f6",
+      stroke: "#f97316",
       strokeDasharray: "6 3",
     },
   }));
@@ -193,30 +193,30 @@ function generatingEdges(edges: Edge[]): Edge[] {
 function graphChrome(uiTheme: "light" | "dark") {
   if (uiTheme === "light") {
     return {
-      canvasBg: "#f8fafc",
-      dots: "#cbd5e1",
-      minimapMask: "rgba(226, 232, 240, 0.72)",
+      canvasBg: "#fafaf9",
+      dots: "#d6d3d1",
+      minimapMask: "rgba(231, 229, 228, 0.72)",
       minimapBg: "#ffffff",
-      minimapBorder: "#cbd5e1",
-      emptyTitleClass: "text-slate-700",
-      emptyHelpClass: "text-slate-500",
-      overlayBg: "rgba(248, 250, 252, 0.72)",
+      minimapBorder: "#d6d3d1",
+      emptyTitleClass: "text-stone-700",
+      emptyHelpClass: "text-stone-500",
+      overlayBg: "rgba(250, 250, 249, 0.72)",
       overlayChipBg: "rgba(255, 255, 255, 0.94)",
-      overlayChipText: "#1d4ed8",
+      overlayChipText: "#c2410c",
     };
   }
 
   return {
-    canvasBg: "#020817",
-    dots: "#334155",
-    minimapMask: "rgba(2, 8, 23, 0.7)",
-    minimapBg: "#0f172a",
-    minimapBorder: "#334155",
-    emptyTitleClass: "text-slate-300",
-    emptyHelpClass: "text-slate-500",
-    overlayBg: "rgba(2, 8, 23, 0.6)",
-    overlayChipBg: "rgba(2, 8, 23, 0.82)",
-    overlayChipText: "#60a5fa",
+    canvasBg: "#0c0a09",
+    dots: "#57534e",
+    minimapMask: "rgba(12, 10, 9, 0.7)",
+    minimapBg: "#1c1917",
+    minimapBorder: "#57534e",
+    emptyTitleClass: "text-stone-300",
+    emptyHelpClass: "text-stone-500",
+    overlayBg: "rgba(12, 10, 9, 0.6)",
+    overlayChipBg: "rgba(12, 10, 9, 0.82)",
+    overlayChipText: "#fb923c",
   };
 }
 
@@ -422,11 +422,11 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
   const hasParams = node?.parameters && Object.keys(node.parameters).length > 0;
 
   // Map color families to StatusBadge variants (success | warning | danger | muted)
-  // amber=trigger→warning, slate=flow-control→muted, violet=integration→danger, blue=action→muted
+  // amber=trigger→warning, stone=flow-control→muted, rose=integration→danger, orange=action→muted
   const badgeVariant: "warning" | "muted" | "danger" =
     colors.badge === "#f59e0b"
       ? "warning"
-      : colors.badge === "#8b5cf6"
+      : colors.badge === "#e11d48"
         ? "danger"
         : "muted";
 

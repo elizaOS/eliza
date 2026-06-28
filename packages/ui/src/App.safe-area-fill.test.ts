@@ -25,7 +25,11 @@ import { describe, expect, it } from "vitest";
 const here = dirname(fileURLToPath(import.meta.url));
 const APP_SRC = readFileSync(join(here, "App.tsx"), "utf8");
 
-const SAFE_AREA_MARKER = 'paddingTop: "var(--safe-area-top, 0px)"';
+// The root reserves a tightened status-bar inset derived from --safe-area-top.
+// We locate the root by its paddingTop style; the value is allowed to shrink the
+// safe area, but the notch-awareness (a --safe-area-top-derived top inset) must
+// remain.
+const SAFE_AREA_MARKER = "max(calc(var(--safe-area-top";
 
 // Tailwind / CSS tokens that establish a containing block for fixed descendants.
 const CONTAINING_BLOCK_TOKENS = [

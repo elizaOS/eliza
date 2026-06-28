@@ -1,7 +1,24 @@
-import { describe, expect, it, vi } from "vitest";
-import { ensureEmbeddingDimension } from "../provisioning";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { IAgentRuntime } from "../types/runtime";
+
+const warnSpy = vi.fn();
+vi.mock("../logger", () => ({
+	createLogger: () => ({
+		warn: warnSpy,
+		info: vi.fn(),
+		debug: vi.fn(),
+		error: vi.fn(),
+	}),
+}));
+
+// Import after the mock is registered so provisioning's module-local logger
+// resolves to the spy above.
+const { ensureEmbeddingDimension } = await import("../provisioning");
+
+beforeEach(() => {
+	warnSpy.mockClear();
+});
 
 /**
  * ensureEmbeddingDimension in core/provisioning.ts — the EMBEDDING_DIMENSION-
@@ -21,15 +38,18 @@ import type { IAgentRuntime } from "../types/runtime";
 function makeRuntime(opts: {
 	hasModel: boolean;
 	embeddingDimension?: string | number;
+	embeddingDimensions?: string | number;
 }): { runtime: IAgentRuntime; ensureDim: ReturnType<typeof vi.fn> } {
 	const ensureDim = vi.fn(async () => true);
 	const runtime = createMockRuntime({
 		agentId: "00000000-0000-0000-0000-000000000001",
 		adapter: { ensureEmbeddingDimension: ensureDim },
 		getModel: vi.fn(() => (opts.hasModel ? async () => [] : undefined)),
-		getSetting: vi.fn((key: string) =>
-			key === "EMBEDDING_DIMENSION" ? opts.embeddingDimension : undefined,
-		),
+		getSetting: vi.fn((key: string) => {
+			if (key === "EMBEDDING_DIMENSION") return opts.embeddingDimension;
+			if (key === "EMBEDDING_DIMENSIONS") return opts.embeddingDimensions;
+			return undefined;
+		}),
 	});
 	return { runtime, ensureDim };
 }
@@ -79,5 +99,52 @@ describe("ensureEmbeddingDimension (core/provisioning.ts daemon-composition prob
 		});
 		await ensureEmbeddingDimension(runtime);
 		expect(ensureDim).toHaveBeenCalledWith(768);
+	});
+
+	it("falls back to EMBEDDING_DIMENSIONS (plural) when the singular key is unset", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimensions: "1536",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).toHaveBeenCalledWith(1536);
+		expect(warnSpy).not.toHaveBeenCalled();
+	});
+
+	it("prefers the plural EMBEDDING_DIMENSIONS on conflict and warns", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "384",
+			embeddingDimensions: "1536",
+		});
+		await ensureEmbeddingDimension(runtime);
+		// Plural wins: the runtime embedder reads EMBEDDING_DIMENSIONS and emits
+		// 1536-dim vectors, so the DB column must be sized to 1536, not 384.
+		expect(ensureDim).toHaveBeenCalledWith(1536);
+		expect(warnSpy).toHaveBeenCalledTimes(1);
+		const [ctx, msg] = warnSpy.mock.calls[0];
+		expect(ctx).toMatchObject({ singular: 384, plural: 1536 });
+		expect(msg).toContain("conflict");
+	});
+
+	it("uses the agreed value (no warning) when singular and plural match", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "1536",
+			embeddingDimensions: "1536",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).toHaveBeenCalledWith(1536);
+		expect(warnSpy).not.toHaveBeenCalled();
+	});
+
+	it("uses singular when only singular is set", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "384",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).toHaveBeenCalledWith(384);
+		expect(warnSpy).not.toHaveBeenCalled();
 	});
 });

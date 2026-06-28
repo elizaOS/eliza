@@ -26,6 +26,8 @@ registerAppShellPage({
   id: "trajectory-logger",
   pluginId: "@elizaos/plugin-trajectory-logger",
   label: "Trajectory Logger",
+  viewKind: "developer",
+  developerOnly: true,
   icon: "Activity",
   path: "/trajectory-logger",
   loader: () =>

@@ -548,3 +548,94 @@ export type SecurityAuditStreamEvent =
       type: "entry";
       entry: SecurityAuditEntry;
     };
+
+// ---------------------------------------------------------------------------
+// LifeOps ScheduledTask — transport view (GET /api/lifeops/scheduled-tasks)
+// ---------------------------------------------------------------------------
+//
+// The canonical `ScheduledTask` interface is frozen in
+// `@elizaos/plugin-scheduling` (the one-scheduler spine). The UI must not
+// import a plugin, so this is the read-only transport projection of the fields
+// the dashboard surfaces. It is intentionally a subset — additive widening is
+// safe, but it must never diverge in meaning from the runner's contract.
+// Mirrors the wire shape returned by the route's `runner.list()` JSON.
+
+export type ScheduledTaskKindView =
+  | "reminder"
+  | "checkin"
+  | "followup"
+  | "approval"
+  | "recap"
+  | "watcher"
+  | "output"
+  | "custom";
+
+export type ScheduledTaskStatusView =
+  | "scheduled"
+  | "fired"
+  | "acknowledged"
+  | "completed"
+  | "skipped"
+  | "expired"
+  | "failed"
+  | "dismissed";
+
+export type ScheduledTaskSourceView =
+  | "default_pack"
+  | "user_chat"
+  | "first_run"
+  | "plugin";
+
+/**
+ * Discriminated trigger view. Matches `ScheduledTaskTrigger` in the spine;
+ * the adapter only reads `kind` plus the cron `expression`/anchor, so the
+ * remaining trigger payloads are widened to optional opaque fields rather
+ * than fully re-typed (they are not rendered).
+ */
+export type ScheduledTaskTriggerView =
+  | { kind: "once"; atIso: string }
+  | { kind: "cron"; expression: string; tz: string }
+  | { kind: "interval"; everyMinutes: number; from?: string; until?: string }
+  | { kind: "relative_to_anchor"; anchorKey: string; offsetMinutes: number }
+  | { kind: "during_window"; windowKey: string }
+  | { kind: "event"; eventKind: string }
+  | { kind: "manual" }
+  | { kind: "after_task"; taskId: string; outcome: string };
+
+export interface ScheduledTaskStateView {
+  status: ScheduledTaskStatusView;
+  firedAt?: string;
+  acknowledgedAt?: string;
+  completedAt?: string;
+  followupCount: number;
+  lastFollowupAt?: string;
+  lastDecisionLog?: string;
+}
+
+export interface ScheduledTaskView {
+  taskId: string;
+  kind: ScheduledTaskKindView;
+  promptInstructions: string;
+  trigger: ScheduledTaskTriggerView;
+  priority: "low" | "medium" | "high";
+  respectsGlobalPause: boolean;
+  state: ScheduledTaskStateView;
+  source: ScheduledTaskSourceView;
+  createdBy: string;
+  ownerVisible: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+/** Optional filter accepted by `GET /api/lifeops/scheduled-tasks`. */
+export interface ScheduledTaskListFilter {
+  kind?: ScheduledTaskKindView;
+  status?: ScheduledTaskStatusView;
+  source?: ScheduledTaskSourceView;
+  firedSince?: string;
+  /** Restrict to owner-visible rows (passed as `ownerVisibleOnly=1`). */
+  ownerVisibleOnly?: boolean;
+}
+
+export interface ScheduledTaskListResponse {
+  tasks: ScheduledTaskView[];
+}

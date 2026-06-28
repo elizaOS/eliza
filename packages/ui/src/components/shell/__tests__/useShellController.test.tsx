@@ -72,6 +72,16 @@ const appMock = vi.hoisted(() => ({
     chatFirstTokenReceived: false,
     sendChatText: vi.fn(),
     agentStatus: { state: "running", canRespond: true },
+    // Conversation-management callbacks the controller wraps in the loading
+    // flag (clear / swipe). Default to instant resolution; the watchdog tests
+    // override handleNewConversation with a controllable promise.
+    handleNewConversation: vi.fn(() => Promise.resolve()),
+    handleSelectConversation: vi.fn(() => Promise.resolve()),
+    conversations: [] as Array<{ id: string }>,
+    setTab: vi.fn(),
+    handleChatStop: vi.fn(),
+    uiLanguage: "en",
+    elizaCloudVoiceProxyAvailable: false,
   },
   // Live server-reported turn status (#8813), read via useChatTurnStatus().
   serverTurnStatus: null as { kind: string } | null,
@@ -151,6 +161,10 @@ afterEach(() => {
   appMock.serverTurnStatus = null;
   appMock.value.sendChatText.mockClear();
   appMock.value.agentStatus = { ...READY_STATUS };
+  appMock.value.handleNewConversation = vi.fn(() => Promise.resolve());
+  appMock.value.handleSelectConversation = vi.fn(() => Promise.resolve());
+  appMock.value.activeConversationId = null;
+  appMock.value.conversations = [];
 });
 
 describe("useShellController", () => {
@@ -208,6 +222,61 @@ describe("useShellController", () => {
 
     const { result } = renderHook(() => useShellController());
 
+    expect(result.current.conversationLoading).toBe(false);
+  });
+});
+
+// ── Conversation loading watchdog + swipe (clear/new-chat robustness) ────────
+
+describe("useShellController — conversation loading watchdog", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("force-clears the loading spinner when the new-chat create hangs", async () => {
+    // A create that never resolves — the on-device agent queued behind a
+    // warming/loading model or an in-flight generation. The spinner must NOT
+    // hang there forever ("reset shows a spinner but never makes the new chat").
+    let resolveCreate: (() => void) | undefined;
+    appMock.value.handleNewConversation = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolveCreate = () => r();
+        }),
+    );
+
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.clearConversation());
+    expect(result.current.conversationLoading).toBe(true);
+
+    // Self-clears after the bounded watchdog window.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+
+    // A late create resolution neither errors nor re-sticks the spinner.
+    await act(async () => {
+      resolveCreate?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+  });
+
+  it("clears the loading flag as soon as a fast switch resolves (no needless wait)", async () => {
+    appMock.value.conversations = [{ id: "a" }, { id: "b" }];
+    appMock.value.activeConversationId = "a";
+
+    const { result } = renderHook(() => useShellController());
+
+    // Swipe to the next (older) conversation — the path that "thumbs back and
+    // forth". It resolves instantly, so the flag clears well before the cap and
+    // never strands the UI.
+    await act(async () => {
+      result.current.conversationNav.goNext();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(appMock.value.handleSelectConversation).toHaveBeenCalledWith("b");
     expect(result.current.conversationLoading).toBe(false);
   });
 });
@@ -425,6 +494,39 @@ describe("useShellController — voice capture routing", () => {
     await act(async () => result.current.toggleTranscriptionMode());
     expect(result.current.transcriptionMode).toBe(false);
     expect(result.current.handsFree).toBe(false);
+  });
+
+  it("wake word DURING transcription sends one inline reply and KEEPS recording (#9880)", async () => {
+    const { result } = renderHook(() => useShellController());
+    // Enter transcription mode directly (record-only; replies suppressed).
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(result.current.transcriptionMode).toBe(true);
+    // Let the transcription re-listen loop open a transcription-intent capture.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    appMock.value.sendChatText.mockClear();
+
+    // A plain utterance is recorded silently — NOT sent.
+    act(() => fireFinalTranscript("the meeting starts at noon"));
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+
+    // The wake phrase makes the agent reply inline (parallel chat) while
+    // transcription continues — sent as a VOICE_DM, WITHOUT transcriptionMode
+    // metadata (so the server reply gate doesn't suppress it).
+    act(() => fireFinalTranscript("hey eliza what is on my calendar"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
+      "what is on my calendar",
+    );
+    const meta = appMock.value.sendChatText.mock.calls[0]?.[1] as {
+      channelType?: string;
+      metadata?: { transcriptionMode?: boolean };
+    };
+    expect(meta?.channelType).toBe("VOICE_DM");
+    expect(meta?.metadata?.transcriptionMode).toBeUndefined();
+    // Crucially, transcription did NOT exit — recording continues.
+    expect(result.current.transcriptionMode).toBe(true);
   });
 
   it("does NOT respond to pure thinking-noise in always-on (shouldRespond gate)", async () => {

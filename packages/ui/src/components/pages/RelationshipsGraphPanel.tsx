@@ -27,10 +27,7 @@ import type {
   RelationshipsGraphSnapshot,
   RelationshipsPersonSummary,
 } from "../../api/client-types-relationships";
-import {
-  type TranslationContextValue,
-  useTranslation,
-} from "../../state/TranslationContext.hooks";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import {
   Tooltip,
@@ -38,8 +35,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
-
-type TranslateFn = TranslationContextValue["t"];
 
 const GRAPH_WIDTH = 1320;
 const GRAPH_HEIGHT = 760;
@@ -617,45 +612,6 @@ function GraphIconButton({
   );
 }
 
-function GraphLegend({ t }: { t: TranslateFn }) {
-  const items: Array<{ icon: ReactNode; label: string }> = [
-    {
-      icon: <Crown className="h-3.5 w-3.5 text-accent" />,
-      label: t("relationshipsgraph.owner", { defaultValue: "Owner" }),
-    },
-    {
-      icon: <Smile className="h-3.5 w-3.5 text-[rgba(34,197,94,0.9)]" />,
-      label: t("relationshipsgraph.positive", { defaultValue: "Positive" }),
-    },
-    {
-      icon: <Meh className="h-3.5 w-3.5 text-[rgba(240,185,11,0.9)]" />,
-      label: t("relationshipsgraph.neutral", { defaultValue: "Neutral" }),
-    },
-    {
-      icon: <Frown className="h-3.5 w-3.5 text-[rgba(239,68,68,0.9)]" />,
-      label: t("relationshipsgraph.negative", { defaultValue: "Negative" }),
-    },
-  ];
-  return (
-    <div className="flex items-center gap-1">
-      {items.map((item) => (
-        <Tooltip key={item.label}>
-          <TooltipTrigger asChild>
-            <span
-              role="img"
-              aria-label={item.label}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/24 bg-card/40"
-            >
-              {item.icon}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{item.label}</TooltipContent>
-        </Tooltip>
-      ))}
-    </div>
-  );
-}
-
 type TooltipState =
   | { kind: "node"; person: RelationshipsPersonSummary; x: number; y: number }
   | { kind: "edge"; edge: RelationshipsGraphEdge; x: number; y: number }
@@ -1043,8 +999,7 @@ export function RelationshipsGraphPanel({
     <TooltipProvider delayDuration={160} skipDelayDuration={80}>
       <div className={compact ? "space-y-3" : "space-y-4"}>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <GraphLegend t={t} />
-          <div className="inline-flex items-center gap-0.5 rounded-full border border-border/24 bg-card/40 px-1 py-0.5">
+          <div className="inline-flex items-center gap-0.5 rounded-none bg-transparent px-1 py-0.5">
             <GraphIconButton
               label={t("relationshipsgraph.zoomOut", {
                 defaultValue: "Zoom out",
@@ -1094,7 +1049,7 @@ export function RelationshipsGraphPanel({
         {/* biome-ignore lint/a11y/noStaticElementInteractions: graph container handles tooltip dismiss on mouse leave */}
         <div
           ref={containerRef}
-          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative cursor-grab touch-none overflow-auto overscroll-contain rounded-sm border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] active:cursor-grabbing`}
+          className={`${compact ? "max-h-[min(34rem,calc(100vh-120px))]" : "max-h-[min(42rem,calc(100vh-120px))]"} relative cursor-grab touch-none overflow-auto overscroll-contain rounded-none bg-transparent active:cursor-grabbing`}
           data-graph-container
           onMouseLeave={hideTooltip}
           onPointerDown={beginPan}

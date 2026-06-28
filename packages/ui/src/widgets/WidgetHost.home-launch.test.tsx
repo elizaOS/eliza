@@ -8,10 +8,11 @@
  * first screen when there is data, and that they self-hide (the #9143 clean-home
  * design) when there is none.
  *
- * Notifications are guaranteed on the cold home card. Plugin-scoped default
- * sinks such as messages are contract entries, but the shared aggregate cards
- * remain the visible surfaces. The per-plugin lifeops cards are API-polled and
- * self-hide without a backend, which is the correct fresh-launch behavior.
+ * Notifications are guaranteed on the cold home card. The curated home-grid
+ * tiles (recent conversations, agent activity, …) render when their core API
+ * surface has data and self-hide when it doesn't. The per-plugin lifeops cards
+ * are API-polled and self-hide without a backend, which is the correct
+ * fresh-launch behavior.
  */
 
 import type { AgentNotification } from "@elizaos/core";
@@ -112,7 +113,10 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
     const notifications = screen.getByTestId("widget-notifications");
     expect(notifications.textContent).toContain("PR review requested");
     expect(notifications.textContent).toContain("2");
-    expect(screen.queryByTestId("widget-messages")).toBeNull();
+    // Recent conversations is a curated home-grid tile; with conversation data
+    // present it renders alongside notifications.
+    const messages = screen.getByTestId("widget-messages");
+    expect(messages.textContent).toContain("Trip planning");
   });
 
   it("self-hides every card when there is no data (the #9143 clean home)", () => {

@@ -31,6 +31,7 @@ import {
   isTranscriptionStartPhrase,
   stripExitPhrase,
 } from "../../voice/transcription-exit";
+import { useWakeListenWindow } from "../../voice/useWakeListenWindow";
 import {
   createVoiceCapture,
   type VoiceCaptureBackend,
@@ -38,10 +39,15 @@ import {
   type VoiceCaptureState,
 } from "../../voice/voice-capture-factory";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
+import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import { dispatchHomeSpringboardNavigation } from "./home-springboard-events";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
+
+/** Upper bound (ms) the conversation-switch / clear loading spinner may show
+ *  before it is force-cleared — see `runWithConversationLoading`. */
+const CONVERSATION_LOADING_MAX_MS = 12_000;
 
 /** How a voice capture turn is consumed when it produces a final transcript.
  *  `"transcription"` records long-form: finals accumulate into ONE recording
@@ -234,6 +240,7 @@ const selectShellController = (s: AppContextValue) => ({
   chatFirstTokenReceived: s.chatFirstTokenReceived,
   sendChatText: s.sendChatText,
   agentStatus: s.agentStatus,
+  characterData: s.characterData,
   uiLanguage: s.uiLanguage,
   elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
   handleNewConversation: s.handleNewConversation,
@@ -250,6 +257,7 @@ export function useShellController(): ShellController {
     chatFirstTokenReceived,
     sendChatText,
     agentStatus,
+    characterData,
     uiLanguage,
     elizaCloudVoiceProxyAvailable,
     handleNewConversation,
@@ -259,6 +267,12 @@ export function useShellController(): ShellController {
     setTab,
     handleChatStop,
   } = useAppSelectorShallow(selectShellController);
+  // The wake phrase for transcript-mode inline replies follows the character
+  // name (issue #9880); falls back to the running agent name, then "eliza".
+  const wakeCharacterName =
+    characterData?.name?.trim() || agentStatus?.agentName?.trim() || "eliza";
+  const wakeCharacterNameRef = React.useRef(wakeCharacterName);
+  wakeCharacterNameRef.current = wakeCharacterName;
   // Read per-token streaming messages from the isolated context so token updates
   // don't depend on the giant AppContext value identity.
   const { conversationMessages } = useConversationMessages();
@@ -295,7 +309,20 @@ export function useShellController(): ShellController {
       const seq = conversationLoadingSeqRef.current + 1;
       conversationLoadingSeqRef.current = seq;
       setConversationLoading(true);
+      // Watchdog: never let the empty-thread spinner outlive a stuck switch or
+      // create. A cache-hit switch resolves in the same tick and a network load
+      // in a few seconds, but the on-device agent can be model-bound (a warming
+      // or loading 1.4 GB model, an in-flight generation), and a spinner that
+      // hangs there reads as a permanently frozen new chat. Force-clear after a
+      // bound so the (already-activated) conversation is usable while a slow
+      // greeting backfills. Seq-guarded so a newer switch owns the flag.
+      const watchdog = setTimeout(() => {
+        if (conversationLoadingSeqRef.current === seq) {
+          setConversationLoading(false);
+        }
+      }, CONVERSATION_LOADING_MAX_MS);
       void task().finally(() => {
+        clearTimeout(watchdog);
         if (conversationLoadingSeqRef.current === seq) {
           setConversationLoading(false);
         }
@@ -384,6 +411,9 @@ export function useShellController(): ShellController {
   // RESUMES it on exit, so turning transcript off leaves the mic on. Only the
   // mic button turns the mic (and thus transcript) fully off.
   const resumeHandsFreeAfterTranscriptRef = React.useRef(false);
+  // Set when a wake-triggered inline reply is sent during transcription, so the
+  // assistant's answer is folded into the transcript once it arrives (#9880).
+  const recordReplyIntoTranscriptRef = React.useRef(false);
   // Forward handle to `toggleTranscriptionMode` (defined far below) so the
   // converse capture loop can flip INTO transcription on a spoken "start
   // transcription" without a definition-order/closure problem.
@@ -533,6 +563,21 @@ export function useShellController(): ShellController {
   }, [messages]);
   const latestAgentReplyRef = React.useRef(latestAgentReply);
   latestAgentReplyRef.current = latestAgentReply;
+
+  // When a wake-triggered inline reply was sent during transcription, fold the
+  // agent's answer into the transcript record (speaker-labeled) so the parallel
+  // chat is captured, then clear the one-shot flag (#9880).
+  React.useEffect(() => {
+    if (!recordReplyIntoTranscriptRef.current) return;
+    if (!transcriptionModeRef.current) return;
+    if (chatSending) return; // wait for the reply to finish streaming
+    const reply = latestAgentReply.text.trim();
+    if (!reply) return;
+    recordReplyIntoTranscriptRef.current = false;
+    transcriptSessionRef.current?.addFinal(reply, Date.now(), {
+      speakerLabel: wakeCharacterNameRef.current,
+    });
+  }, [latestAgentReply, chatSending]);
 
   const send = React.useCallback(
     (
@@ -689,6 +734,42 @@ export function useShellController(): ShellController {
                 setHandsFree(true);
                 handsFreeRef.current = true;
               }
+              return;
+            }
+            // Wake word DURING transcription → one inline reply, parallel-chat
+            // style: the agent answers (and speaks) while recording keeps
+            // running (issue #9880). The user's wake utterance is still folded
+            // into the transcript so the exchange is captured; the turn is sent
+            // WITHOUT the transcriptionMode metadata so the server reply gate
+            // does not suppress it, and we do NOT leave transcription mode.
+            const wake = matchWakeName(text, wakeCharacterNameRef.current);
+            if (wake.matched) {
+              setTranscript("");
+              transcriptSessionRef.current?.addFinal(text, Date.now(), {
+                audioWav: segment.audioWav,
+                words: segment.words,
+              });
+              const command = wake.command.trim() || text;
+              const respondContext = {
+                recentAgentReply: latestAgentReplyRef.current.text,
+                replyAgeMs: latestAgentReplyRef.current.at
+                  ? Math.max(0, Date.now() - latestAgentReplyRef.current.at)
+                  : Number.POSITIVE_INFINITY,
+                agentSpeaking: speakingRef.current,
+              };
+              // Capture the assistant's spoken reply into the transcript too, so
+              // the parallel chat is part of the record.
+              recordReplyIntoTranscriptRef.current = true;
+              send(command, {
+                channelType: "VOICE_DM",
+                metadata: {
+                  voiceSource: lastBackend,
+                  voiceTurnSignal: buildVoiceTurnSignal(
+                    command,
+                    respondContext,
+                  ),
+                },
+              });
               return;
             }
             // Accumulate this utterance into the recording session — it does NOT
@@ -902,6 +983,34 @@ export function useShellController(): ShellController {
       if (!responding) startCapture("converse");
     }
   }, [responding, startCapture, stopCapture, voiceOutput]);
+
+  // "Hey eliza" wake word: a native detection arms a bounded listening window
+  // that opens the mic and closes once the agent has responded (or after an idle
+  // timeout if nothing is said). Implemented as a temporary hands-free engage —
+  // it never persists "always-on", and it stays inert when the user already
+  // chose always-on (wake is only an entry ramp, never an exit). See
+  // ../../voice/VOICE_UX.md.
+  const wakeAlreadyAlwaysOn =
+    handsFree && loadContinuousChatMode() === "always-on";
+  useWakeListenWindow({
+    enabled: true,
+    alwaysOn: wakeAlreadyAlwaysOn,
+    agentBusy: responding,
+    characterName: wakeCharacterName,
+    onOpen: React.useCallback(() => {
+      setIsOpen(true);
+      setHandsFree(true);
+      handsFreeRef.current = true;
+      voiceOutput.unlockAudio();
+      if (!responding && !captureRef.current) startCapture("converse");
+    }, [responding, startCapture, voiceOutput]),
+    onClose: React.useCallback(() => {
+      // Close the temporary window without disturbing a persisted mode.
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      if (captureRef.current) stopCapture();
+    }, [stopCapture]),
+  });
 
   // Toggle transcription mode (long-form, record-only — the agent never replies
   // to a transcribed turn). It is an ADDITIVE voice layer: the mic stays on and

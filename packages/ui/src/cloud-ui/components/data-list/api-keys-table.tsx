@@ -170,10 +170,10 @@ export function ApiKeysTable({
               <div>
                 <p className="text-white/40">Usage</p>
                 <p className="mt-1 font-medium text-white">
-                  {key.usageCount.toLocaleString()} requests
+                  {key.usageCount.toLocaleString("en-US")} requests
                 </p>
                 <p className="mt-0.5 text-white/74">
-                  {key.rateLimit.toLocaleString()} / min
+                  {key.rateLimit.toLocaleString("en-US")} / min
                 </p>
               </div>
               <div>
@@ -237,10 +237,10 @@ export function ApiKeysTable({
                 <TableCell>
                   <div className="flex flex-col gap-2">
                     <span className="font-medium text-white">
-                      {key.usageCount.toLocaleString()} requests
+                      {key.usageCount.toLocaleString("en-US")} requests
                     </span>
                     <p className="text-xs text-white/74">
-                      Rate limit {key.rateLimit.toLocaleString()} / min
+                      Rate limit {key.rateLimit.toLocaleString("en-US")} / min
                     </p>
                   </div>
                 </TableCell>

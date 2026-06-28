@@ -14,7 +14,8 @@
  * integration tests.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { resolveDefaultTimeZone } from "../defaults.js";
 import { asCacheRuntime } from "../runtime-cache.js";
 import type { ScheduledTask, ScheduledTaskInput } from "../wave1-types.js";
 import {
@@ -40,12 +41,14 @@ import { partialAnswersFromFacts } from "./replay.js";
 import {
   createFirstRunStateStore,
   createOwnerFactStore,
+  createSeededDefaultsStore,
   type FirstRunRecord,
   type FirstRunStateStore,
   type OwnerFactProvenance,
   type OwnerFactStore,
   type OwnerFacts,
   type OwnerFactsPatch,
+  type SeededDefaultsStore,
 } from "./state.js";
 
 // --- Runner injection ------------------------------------------------------
@@ -228,16 +231,20 @@ export interface ReplayPathInput {
 export class FirstRunService {
   private readonly stateStore: FirstRunStateStore;
   private readonly factStore: OwnerFactStore;
+  private readonly seededStore: SeededDefaultsStore;
   constructor(
     private readonly runtime: IAgentRuntime,
     options?: {
       stateStore?: FirstRunStateStore;
       factStore?: OwnerFactStore;
       runner?: ScheduledTaskRunnerLike;
+      seededStore?: SeededDefaultsStore;
     },
   ) {
     this.stateStore = options?.stateStore ?? createFirstRunStateStore(runtime);
     this.factStore = options?.factStore ?? createOwnerFactStore(runtime);
+    this.seededStore =
+      options?.seededStore ?? createSeededDefaultsStore(runtime);
     if (options?.runner) {
       // Caller-supplied runner trumps the registered one (used by tests).
       this.runnerOverride = options.runner;
@@ -251,6 +258,81 @@ export class FirstRunService {
       registeredRunner ??
       new FallbackInMemoryRunner(this.runtime)
     );
+  }
+
+  /**
+   * Schedule one default-pack input through the runner and record its
+   * idempotency key in the seeded-defaults marker. The marker is the
+   * deletion-respecting guard the boot seeder checks: once a key is recorded
+   * here, {@link seedDefaultPackOnBoot} never re-creates it.
+   */
+  private async scheduleAndMark(
+    runner: ScheduledTaskRunnerLike,
+    input: ScheduledTaskInput,
+    seededAtIso: string,
+  ): Promise<ScheduledTask> {
+    const task = await runner.schedule(input);
+    if (input.idempotencyKey) {
+      await this.seededStore.markSeeded(input.idempotencyKey, seededAtIso);
+    }
+    return task;
+  }
+
+  /**
+   * Idempotent, boot-safe seeder for the first-run defaults pack.
+   *
+   * Runs on EVERY boot (not gated behind first-run completion) so existing
+   * devices that predate the defaults pack still receive it. For each pack
+   * item: if its idempotency key has NEVER been seeded on this device, the
+   * task is created and the key is recorded; if the key was already seeded
+   * once, the item is skipped — so a default the user later deleted is not
+   * resurrected. The paused weekly-review starter keeps its `manual` trigger
+   * and so stays paused.
+   *
+   * Owner facts (morning window / timezone) are used when present; otherwise
+   * the standard defaults apply. Fresh installs are covered by the same
+   * per-key marker, so first-run scheduling and boot seeding never double-seed.
+   */
+  async seedDefaultPackOnBoot(): Promise<{
+    seeded: ScheduledTask[];
+    skipped: string[];
+  }> {
+    const facts = await this.factStore.read();
+    const morningWindow = facts.morningWindow?.value ?? DEFAULT_MORNING_WINDOW;
+    const timezone = facts.timezone?.value ?? resolveDefaultTimeZone();
+    const channel = facts.preferredNotificationChannel?.value ?? "in_app";
+
+    const pack = buildDefaultsPack({
+      morningWindow,
+      timezone,
+      agentId: this.runtime.agentId,
+      channel,
+    });
+
+    const runner = this.resolveRunner();
+    const seededAtIso = new Date().toISOString();
+    const seeded: ScheduledTask[] = [];
+    const skipped: string[] = [];
+    for (const input of pack) {
+      const key = input.idempotencyKey;
+      if (key && (await this.seededStore.has(key))) {
+        skipped.push(key);
+        continue;
+      }
+      seeded.push(await this.scheduleAndMark(runner, input, seededAtIso));
+    }
+    if (seeded.length > 0) {
+      logger.info(
+        {
+          src: "lifeops:first-run:boot-seeder",
+          agentId: this.runtime.agentId,
+          seeded: seeded.length,
+          skipped: skipped.length,
+        },
+        `[first-run] Seeded ${seeded.length} default-pack task(s) on boot (${skipped.length} already-seeded, left untouched).`,
+      );
+    }
+    return { seeded, skipped };
   }
 
   async readState(): Promise<FirstRunRecord> {
@@ -342,9 +424,12 @@ export class FirstRunService {
       channel: channelValidation.channel,
     });
     const runner = this.resolveRunner();
+    const seededAtIso = new Date().toISOString();
     const scheduledTasks: ScheduledTask[] = [];
     for (const input of pack) {
-      scheduledTasks.push(await runner.schedule(input));
+      scheduledTasks.push(
+        await this.scheduleAndMark(runner, input, seededAtIso),
+      );
     }
 
     const completed = await this.stateStore.complete();
@@ -420,9 +505,12 @@ export class FirstRunService {
       channel: finalized.channel,
     });
     const runner = this.resolveRunner();
+    const seededAtIso = new Date().toISOString();
     const scheduledTasks: ScheduledTask[] = [];
     for (const input of pack) {
-      scheduledTasks.push(await runner.schedule(input));
+      scheduledTasks.push(
+        await this.scheduleAndMark(runner, input, seededAtIso),
+      );
     }
     // Categories that gate followups would create per-relationship watcher
     // tasks via the followup-starter pack. Here we just record the
@@ -503,9 +591,12 @@ export class FirstRunService {
       channel: finalized.channel,
     });
     const runner = this.resolveRunner();
+    const seededAtIso = new Date().toISOString();
     const scheduledTasks: ScheduledTask[] = [];
     for (const taskInput of pack) {
-      scheduledTasks.push(await runner.schedule(taskInput));
+      scheduledTasks.push(
+        await this.scheduleAndMark(runner, taskInput, seededAtIso),
+      );
     }
 
     const completed = await this.stateStore.complete();
@@ -524,6 +615,7 @@ export class FirstRunService {
   /** Clears lifecycle state without rerunning first-run. */
   async resetState(): Promise<void> {
     await this.stateStore.reset();
+    await this.seededStore.reset();
   }
 
   private resolveTimezone(): string {
@@ -535,7 +627,7 @@ export class FirstRunService {
   }
 
   private formatDefaultsCompleteMessage(taskCount: number): string {
-    return `Defaults applied — ${taskCount} reminders scheduled (gm, gn, daily check-in, morning brief).`;
+    return `Defaults applied — ${taskCount} routines set up (gm, gn, daily check-in, morning brief, plus a paused weekly review you can turn on anytime).`;
   }
 
   private formatCustomizeCompleteMessage(

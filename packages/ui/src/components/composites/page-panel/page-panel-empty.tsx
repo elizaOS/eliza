@@ -23,7 +23,9 @@ export function PageEmptyState({
       >
         <div className="max-w-md space-y-2">
           <div className="text-base font-medium text-txt-strong">{title}</div>
-          {description ? <div className="sr-only">{description}</div> : null}
+          {description ? (
+            <div className="text-sm text-muted">{description}</div>
+          ) : null}
         </div>
         {action ? <div className="mt-4">{action}</div> : null}
         {children}
@@ -42,7 +44,9 @@ export function PageEmptyState({
       >
         <div className="max-w-md space-y-2">
           <div className="text-base font-medium text-txt-strong">{title}</div>
-          {description ? <div className="sr-only">{description}</div> : null}
+          {description ? (
+            <div className="text-sm text-muted">{description}</div>
+          ) : null}
         </div>
         {action ? <div className="mt-4">{action}</div> : null}
         {children}
@@ -58,11 +62,10 @@ export function PageEmptyState({
           : "min-h-[12rem] px-4 py-8",
         className,
       )}
-      description={undefined}
+      description={description}
       title={title}
       {...props}
     >
-      {description ? <span className="sr-only">{description}</span> : null}
       {children}
       {action ? <div className="mt-4">{action}</div> : null}
     </EmptyState>

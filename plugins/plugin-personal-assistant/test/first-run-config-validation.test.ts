@@ -50,6 +50,36 @@ const VALID_KINDS = new Set([
   "custom",
 ]);
 
+/**
+ * A runner that mirrors the production runner's idempotency contract: if a
+ * task with the same `idempotencyKey` already exists in the live store it is
+ * returned as-is (no duplicate). The store is a plain Map the test can delete
+ * from to model the user removing a default. This is exactly the surface the
+ * seeded-defaults marker must guard: the runner alone would happily re-create a
+ * deleted default; the marker is what prevents it.
+ */
+function makeTrackingRunner(tasks: Map<string, ScheduledTask>) {
+  let counter = 0;
+  return {
+    async schedule(input: ScheduledTaskInput): Promise<ScheduledTask> {
+      if (input.idempotencyKey) {
+        const existing = [...tasks.values()].find(
+          (t) => t.idempotencyKey === input.idempotencyKey,
+        );
+        if (existing) return existing;
+      }
+      counter += 1;
+      const task: ScheduledTask = {
+        ...input,
+        taskId: `track-${counter}`,
+        state: { status: "scheduled", followupCount: 0 },
+      };
+      tasks.set(task.taskId, task);
+      return task;
+    },
+  };
+}
+
 function asScheduledTask(input: ScheduledTaskInput): ScheduledTaskInput {
   expect(VALID_KINDS.has(input.kind)).toBe(true);
   expect(VALID_PRIORITIES.has(input.priority)).toBe(true);
@@ -63,20 +93,22 @@ function asScheduledTask(input: ScheduledTaskInput): ScheduledTaskInput {
 }
 
 describe("first-run config validation", () => {
-  it("buildDefaultsPack emits four shape-valid ScheduledTask inputs", () => {
+  it("buildDefaultsPack emits five shape-valid ScheduledTask inputs", () => {
     const pack = buildDefaultsPack({
       morningWindow: { startLocal: "06:30", endLocal: "11:30" },
       timezone: "America/Los_Angeles",
       agentId: "agent-1",
       channel: "in_app",
     });
-    expect(pack.length).toBe(4);
+    expect(pack.length).toBe(5);
     pack.forEach(asScheduledTask);
     // Specific slot assertions
     const slots = new Set(
       pack.map((p) => (p.metadata?.slot ?? null) as string | null),
     );
-    expect(slots).toEqual(new Set(["gm", "gn", "checkin", "morningBrief"]));
+    expect(slots).toEqual(
+      new Set(["gm", "gn", "checkin", "morningBrief", "weeklyReview"]),
+    );
     const checkin = pack.find((p) => p.metadata?.slot === "checkin");
     expect(checkin?.completionCheck?.kind).toBe("user_replied_within");
     const morningBrief = pack.find((p) => p.metadata?.slot === "morningBrief");
@@ -84,6 +116,12 @@ describe("first-run config validation", () => {
     if (morningBrief?.trigger.kind === "relative_to_anchor") {
       expect(morningBrief.trigger.anchorKey).toBe("wake.confirmed");
     }
+    // The weekly-review starter ships PAUSED: a manual trigger means it exists
+    // and is owner-visible but never fires on its own.
+    const weeklyReview = pack.find((p) => p.metadata?.slot === "weeklyReview");
+    expect(weeklyReview?.trigger.kind).toBe("manual");
+    expect(weeklyReview?.metadata?.pausedByDefault).toBe(true);
+    expect(weeklyReview?.ownerVisible).toBe(true);
   });
 
   it("parseTimezone / parseTimeWindow accept valid input and reject garbage", () => {
@@ -148,6 +186,107 @@ describe("first-run config validation", () => {
     expect(result.warning).toMatch(/not registered/i);
   });
 
+  it("seedDefaultPackOnBoot seeds on an already-initialized runtime that never ran first-run", async () => {
+    const runtime = createMinimalRuntimeStub();
+    const tasks = new Map<string, ScheduledTask>();
+    const service = new FirstRunService(runtime, {
+      runner: makeTrackingRunner(tasks),
+    });
+
+    // No first-run was ever performed (the lifecycle store is `pending`),
+    // yet boot seeding still materializes the full default pack.
+    const result = await service.seedDefaultPackOnBoot();
+    expect(result.seeded.length).toBe(5);
+    expect(result.skipped.length).toBe(0);
+    expect(tasks.size).toBe(5);
+
+    const slots = new Set(
+      [...tasks.values()].map((t) => t.metadata?.slot as string),
+    );
+    expect(slots).toEqual(
+      new Set(["gm", "gn", "checkin", "morningBrief", "weeklyReview"]),
+    );
+
+    // The weekly-review starter stays paused (manual trigger, never fires
+    // on its own).
+    const weekly = [...tasks.values()].find(
+      (t) => t.metadata?.slot === "weeklyReview",
+    );
+    expect(weekly?.trigger.kind).toBe("manual");
+    expect(weekly?.metadata?.pausedByDefault).toBe(true);
+  });
+
+  it("seedDefaultPackOnBoot is idempotent across two boots — no duplicates", async () => {
+    const runtime = createMinimalRuntimeStub();
+    const tasks = new Map<string, ScheduledTask>();
+
+    const first = await new FirstRunService(runtime, {
+      runner: makeTrackingRunner(tasks),
+    }).seedDefaultPackOnBoot();
+    expect(first.seeded.length).toBe(5);
+
+    // Second boot (fresh service instance, same persistent runtime cache):
+    // every key is already in the seeded marker, so nothing is re-created.
+    const second = await new FirstRunService(runtime, {
+      runner: makeTrackingRunner(tasks),
+    }).seedDefaultPackOnBoot();
+    expect(second.seeded.length).toBe(0);
+    expect(second.skipped.length).toBe(5);
+    expect(tasks.size).toBe(5);
+  });
+
+  it("seedDefaultPackOnBoot respects user deletion — a deleted default is not recreated", async () => {
+    const runtime = createMinimalRuntimeStub();
+    const tasks = new Map<string, ScheduledTask>();
+
+    await new FirstRunService(runtime, {
+      runner: makeTrackingRunner(tasks),
+    }).seedDefaultPackOnBoot();
+    expect(tasks.size).toBe(5);
+
+    // User deletes the weekly-review default out from under the runner.
+    const weeklyKey = "lifeops:first-run:default:weekly-review";
+    const weekly = [...tasks.values()].find(
+      (t) => t.idempotencyKey === weeklyKey,
+    );
+    if (!weekly) throw new Error("expected weekly-review default to be seeded");
+    tasks.delete(weekly.taskId);
+    expect(tasks.size).toBe(4);
+
+    // Next boot must NOT resurrect it — the seeded marker still records the
+    // key, so the boot seeder skips it.
+    const reboot = await new FirstRunService(runtime, {
+      runner: makeTrackingRunner(tasks),
+    }).seedDefaultPackOnBoot();
+    expect(reboot.seeded.length).toBe(0);
+    expect(reboot.skipped).toContain(weeklyKey);
+    expect(tasks.size).toBe(4);
+    expect(
+      [...tasks.values()].some((t) => t.idempotencyKey === weeklyKey),
+    ).toBe(false);
+  });
+
+  it("first-run then boot does not double-seed (shared per-key marker)", async () => {
+    const runtime = createMinimalRuntimeStub();
+    const tasks = new Map<string, ScheduledTask>();
+
+    // Fresh install runs first-run defaults, which seeds the pack and records
+    // the marker.
+    const firstRun = new FirstRunService(runtime, {
+      runner: makeTrackingRunner(tasks),
+    });
+    await firstRun.runDefaultsPath({ wakeTime: "6:30am" });
+    expect(tasks.size).toBe(5);
+
+    // A subsequent boot seeder sees every key already seeded → no double-seed.
+    const boot = await new FirstRunService(runtime, {
+      runner: makeTrackingRunner(tasks),
+    }).seedDefaultPackOnBoot();
+    expect(boot.seeded.length).toBe(0);
+    expect(boot.skipped.length).toBe(5);
+    expect(tasks.size).toBe(5);
+  });
+
   it("FirstRunService produces shape-valid tasks via the in-memory runner", async () => {
     const runtime = createMinimalRuntimeStub();
     const stateStore = createFirstRunStateStore(runtime);
@@ -177,8 +316,8 @@ describe("first-run config validation", () => {
 
     const done = await service.runDefaultsPath({ wakeTime: "6:30am" });
     expect(done.status).toBe("ok");
-    expect(done.scheduledTasks.length).toBe(4);
-    expect(recorded.length).toBe(4);
+    expect(done.scheduledTasks.length).toBe(5);
+    expect(recorded.length).toBe(5);
     expect(done.facts.morningWindow?.startLocal).toBe("06:30");
   });
 });

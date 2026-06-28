@@ -26,9 +26,8 @@ import {
   type RunningHetznerMock,
   startHetznerMock,
 } from "@elizaos/cloud-test-mocks/hetzner";
-import { type RunningMockLlm, startMockLlm } from "./mock-llm";
-
 import { buildSharedEnv } from "./env";
+import { type RunningMockLlm, startMockLlm } from "./mock-llm";
 
 /**
  * Resolve the bun executable for `child_process.spawn`. On Windows, Node cannot

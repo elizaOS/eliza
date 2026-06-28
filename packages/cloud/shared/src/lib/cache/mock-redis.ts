@@ -308,8 +308,8 @@ export class MockPipeline {
   }
 
   async exec<T extends unknown[] = unknown[]>(): Promise<T> {
-    if (this.ops.length === 0) return [] as unknown as T;
     const out: unknown[] = [];
+    if (this.ops.length === 0) return out as T;
     for (const op of this.ops) {
       out.push(await op());
     }

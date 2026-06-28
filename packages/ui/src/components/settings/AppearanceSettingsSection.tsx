@@ -8,7 +8,6 @@ import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { selectableTileClass } from "./appearance-primitives.helpers";
-import { BackgroundSettingsControls } from "./BackgroundSettingsControls";
 import { LoadContentPackForm } from "./LoadContentPackForm";
 import { LoadedPacksList } from "./LoadedPacksList";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -131,13 +130,6 @@ export function AppearanceSettingsSection() {
             />
           ))}
         </div>
-      </SettingsGroup>
-
-      <SettingsGroup
-        bare
-        title={t("settings.background", { defaultValue: "Background" })}
-      >
-        <BackgroundSettingsControls className="max-w-none bg-surface/50 p-4" />
       </SettingsGroup>
 
       <SettingsGroup

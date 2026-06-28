@@ -491,6 +491,38 @@ describe("assertRequiredBundledPackagesLanded", () => {
     ).toBe(path.join(requesterDestDir, "node_modules"));
   });
 
+  it("reuses newer root Smithy packages so AWS SDK support trees stay tar-safe", () => {
+    const rootDestDir = path.join(tmpDir, "dist");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(
+      targetNodeModules,
+      "@aws-sdk",
+      "signature-v4-multi-region",
+    );
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@smithy/signature-v4",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@smithy/signature-v4", "5.5.2"]]),
+        resolvedVersion: "5.4.6",
+      }),
+    ).toBe(targetNodeModules);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@smithy/signature-v4",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@smithy/signature-v4", "5.4.6"]]),
+        resolvedVersion: "5.5.2",
+      }),
+    ).toBe(path.join(requesterDestDir, "node_modules"));
+  });
+
   it("honors workspace package publish files when copying runtime packages", () => {
     const packageRoot = path.join(tmpDir, "workspace-package");
     mkdirSync(path.join(packageRoot, "dist"), { recursive: true });

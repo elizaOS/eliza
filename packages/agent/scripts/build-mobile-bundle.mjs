@@ -1861,6 +1861,7 @@ const manifest = {
       "@elizaos/plugin-sql",
       "@elizaos/plugin-background-runner",
       "@elizaos/plugin-vision",
+      "@elizaos/plugin-scheduling",
     ],
     aospOnly: [
       "@elizaos/plugin-wifi",

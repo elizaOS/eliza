@@ -2470,6 +2470,11 @@ export function shouldForwardEnv(key: string): boolean {
     FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ||
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
+    // The live Cloud creds use the ELIZAOS_ prefix (ELIZAOS_CLOUD_API_KEY /
+    // ELIZAOS_CLOUD_URL), which the broad ELIZA_ rule above does NOT match. A
+    // spawned monetized-app build needs them to register the app (POST
+    // /api/v1/apps) without hunting the filesystem for the key.
+    key.startsWith("ELIZAOS_CLOUD") ||
     // Parent-context bridge session id (ELIZA_HOOK_PORT already passes via the
     // ELIZA_ prefix). Without this the loopback /api/coding-agents/<id>/* bridge
     // is unreachable from an ACP-spawned sub-agent.

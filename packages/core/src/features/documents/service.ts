@@ -947,6 +947,7 @@ export class DocumentService extends Service {
 			...filterScope,
 			limit: 20,
 			match_threshold: 0.1,
+			accessContext,
 		});
 
 		const visibleFragments = await this.filterVisibleMemories(
@@ -981,6 +982,7 @@ export class DocumentService extends Service {
 			agentId: this.runtime.agentId,
 			...filterScope,
 			count: 1000,
+			accessContext,
 		});
 
 		const visibleFragments = await this.filterVisibleMemories(
@@ -1049,6 +1051,7 @@ export class DocumentService extends Service {
 			...filterScope,
 			limit: 40,
 			match_threshold: 0.05,
+			accessContext,
 		});
 
 		const visibleCandidates = await this.filterVisibleMemories(

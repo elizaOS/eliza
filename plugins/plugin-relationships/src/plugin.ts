@@ -35,6 +35,7 @@ export const relationshipsPlugin: Plugin = {
   views: [
     {
       id: "relationships",
+      viewKind: "system",
       label: "Relationships",
       description:
         "Entity and relationship knowledge-graph viewer: people, organizations, identities, and the typed edges between them.",

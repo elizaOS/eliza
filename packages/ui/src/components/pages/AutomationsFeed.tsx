@@ -53,6 +53,7 @@ import {
   passesFilter,
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
+import { mergeUnifiedTasks } from "../../utils/merge-unified-tasks";
 import { decodeScheduleTags } from "../../utils/task-schedule";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
@@ -60,6 +61,7 @@ import { ListSkeleton } from "../ui/skeleton-layouts";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import { ScheduledTaskEditor } from "./ScheduledTaskEditor";
 import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";
 import {
@@ -72,7 +74,8 @@ export type { FeedFilter } from "../../utils/automation-feed-filter";
 type EditorState =
   | { kind: "none" }
   | { kind: "task"; taskId: string | null }
-  | { kind: "workflow"; workflowId: string | null };
+  | { kind: "workflow"; workflowId: string | null }
+  | { kind: "scheduled"; itemId: string };
 
 export interface AutomationsFeedProps {
   /**
@@ -139,11 +142,27 @@ interface FeedRow {
   source: AutomationItem;
 }
 
+/** Derive a schedule label from a scheduled-task item's synthesized summary. */
+function scheduledRowSchedule(item: AutomationItem): string | null {
+  return (
+    item.schedules
+      .map((trigger) => {
+        if (trigger.cronExpression)
+          return formatSchedule(trigger.cronExpression);
+        if (trigger.displayName) return trigger.displayName;
+        return null;
+      })
+      .filter((s): s is string => Boolean(s))
+      .join(", ") || null
+  );
+}
+
 function automationToRow(
   item: AutomationItem,
   t: ReturnType<typeof useTranslation>["t"],
 ): FeedRow {
   const isWorkflow = item.type === "workflow";
+  const isScheduledTask = item.source === "scheduled_task";
   const schedule = isWorkflow
     ? item.schedules
         .map((trigger) => {
@@ -154,19 +173,21 @@ function automationToRow(
         })
         .filter((s): s is string => Boolean(s))
         .join(", ") || null
-    : (() => {
-        const decoded = decodeScheduleTags(item.task?.tags);
-        if (decoded.kind === "recurring" && decoded.cronExpression) {
-          return formatSchedule(decoded.cronExpression);
-        }
-        if (decoded.kind === "event" && decoded.eventName) {
-          return t("automationsfeed.onEvent", {
-            event: decoded.eventName,
-            defaultValue: "On {{event}}",
-          });
-        }
-        return null;
-      })();
+    : isScheduledTask
+      ? scheduledRowSchedule(item)
+      : (() => {
+          const decoded = decodeScheduleTags(item.task?.tags);
+          if (decoded.kind === "recurring" && decoded.cronExpression) {
+            return formatSchedule(decoded.cronExpression);
+          }
+          if (decoded.kind === "event" && decoded.eventName) {
+            return t("automationsfeed.onEvent", {
+              event: decoded.eventName,
+              defaultValue: "On {{event}}",
+            });
+          }
+          return null;
+        })();
 
   return {
     key: item.id,
@@ -198,6 +219,13 @@ export function AutomationsFeed({
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const { link, setLink } = useAutomationDeepLink();
+  // Scheduled-task rows open a LifeOps verb panel. They are not part of the
+  // workflow/task deep-link schema (they route to the runner, not workflow
+  // CRUD), so a small local id selects the scheduled editor and takes
+  // precedence over the deep-link-derived editor.
+  const [scheduledEditorId, setScheduledEditorId] = useState<string | null>(
+    null,
+  );
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
 
   const focusAutomationChat = useCallback(() => {
@@ -214,6 +242,8 @@ export function AutomationsFeed({
   });
 
   const editor: EditorState = useMemo(() => {
+    if (scheduledEditorId)
+      return { kind: "scheduled", itemId: scheduledEditorId };
     if (link.kind === "list") return { kind: "none" };
     if (link.kind === "workflow")
       return {
@@ -224,10 +254,15 @@ export function AutomationsFeed({
       kind: "task",
       taskId: link.id === NEW_AUTOMATION_LINK_ID ? null : link.id,
     };
-  }, [link]);
+  }, [link, scheduledEditorId]);
 
   const setEditor = useCallback(
     (next: EditorState) => {
+      if (next.kind === "scheduled") {
+        setScheduledEditorId(next.itemId);
+        return;
+      }
+      setScheduledEditorId(null);
       if (next.kind === "none") setLink({ kind: "list" });
       else if (next.kind === "workflow")
         setLink({
@@ -248,9 +283,22 @@ export function AutomationsFeed({
       if (!options?.silent) setLoading(true);
       setError(null);
       try {
-        const res = await client.listAutomations();
-        setData(res);
-        setCached("automations:list", res);
+        // Unified read: automations (workflows + workbench tasks + triggers)
+        // merged client-side with LifeOps scheduled tasks. The scheduled-task
+        // fetch degrades to empty where the runner isn't hosted, so a missing
+        // LifeOps surface never breaks the automations list.
+        const [res, scheduled] = await Promise.all([
+          client.listAutomations(),
+          client
+            .listScheduledTasks({ ownerVisibleOnly: true })
+            .catch(() => ({ tasks: [] })),
+        ]);
+        const merged: AutomationListResponse = {
+          ...res,
+          automations: mergeUnifiedTasks(res.automations, scheduled.tasks),
+        };
+        setData(merged);
+        setCached("automations:list", merged);
       } catch (e) {
         // A 404 means the workflow runtime isn't hosted here (e.g. mobile) —
         // render the clean empty state, not an error banner. Any other failure
@@ -356,6 +404,22 @@ export function AutomationsFeed({
   );
 
   // Editor mode
+  if (editor.kind === "scheduled") {
+    const item = data?.automations.find((a) => a.id === editor.itemId) ?? null;
+    if (item) {
+      return (
+        <ScheduledTaskEditor
+          item={item}
+          onApplied={() => {
+            setEditor({ kind: "none" });
+            void refresh();
+          }}
+          onCancel={() => setEditor({ kind: "none" })}
+        />
+      );
+    }
+    // Item vanished (e.g. refreshed away) — fall through to the list.
+  }
   if (editor.kind === "task") {
     const existing =
       editor.taskId && data
@@ -496,7 +560,12 @@ export function AutomationsFeed({
                     else rowRefs.current.delete(id);
                   }}
                   onOpen={() => {
-                    if (row.kind === "task") {
+                    if (row.source.source === "scheduled_task") {
+                      setEditor({
+                        kind: "scheduled",
+                        itemId: row.source.id,
+                      });
+                    } else if (row.kind === "task") {
                       setEditor({
                         kind: "task",
                         taskId: row.source.task?.id ?? null,

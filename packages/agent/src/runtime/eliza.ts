@@ -1225,7 +1225,7 @@ export function ensureProvisionedCloudContainerConfig(
   }
 
   if (changed) {
-    logger.warn(
+    logger.info(
       "[eliza] Provisioned cloud container missing managed runtime topology; forcing Eliza Cloud routing in memory",
     );
   }

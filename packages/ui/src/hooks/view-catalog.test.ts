@@ -96,6 +96,8 @@ describe("mergeViewCatalog", () => {
           name: "@elizaos/plugin-arcade",
           displayName: "Arcade",
           category: "game",
+          // A root-relative `/api/...` hero 404s on native, so it is NOT a
+          // reachable hero — the entry uses the branded client SVG instead.
           heroImage: "/api/apps/hero/arcade",
         }),
       ],
@@ -107,9 +109,31 @@ describe("mergeViewCatalog", () => {
     expect(claw?.state).toBe("available");
     expect(claw?.kind).toBe("app");
     expect(claw?.label).toBe("Arcade");
-    expect(claw?.heroUrl).toBe("/api/apps/hero/arcade");
+    // A root-relative API hero is not shell-reachable → use the bundled icon
+    // (a preloaded PNG data URI) so the tile never 404s on native.
+    expect(claw?.heroUrl).toBeUndefined();
     expect(claw?.hasHero).toBe(true);
-    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/svg\+xml,/);
+    expect(claw?.imageUrl).toMatch(/^data:image\/png/);
+    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/png/);
+  });
+
+  it("uses an absolute (shell-reachable) app hero as the real tile image", () => {
+    const entries = merge({
+      catalog: [
+        makeApp({
+          name: "@elizaos/plugin-arcade",
+          displayName: "Arcade",
+          heroImage: "https://cdn.example.com/arcade.png",
+        }),
+      ],
+    });
+    const claw = entries.find((e) => e.appName === "@elizaos/plugin-arcade");
+    // An absolute URL loads in any shell, so it is the real hero + primary image.
+    expect(claw?.hasHero).toBe(true);
+    expect(claw?.heroUrl).toBe("https://cdn.example.com/arcade.png");
+    expect(claw?.imageUrl).toBe("https://cdn.example.com/arcade.png");
+    // The fallback is still the branded SVG for an onError recovery.
+    expect(claw?.fallbackImageUrl).toMatch(/^data:image\/png/);
   });
 
   it("generates branded image fallbacks for entries without real hero art", () => {
@@ -123,11 +147,42 @@ describe("mergeViewCatalog", () => {
     const calendar = entries.find((e) => e.id === "calendar");
     const notes = entries.find((e) => e.id === "@elizaos/plugin-notes");
     expect(calendar?.heroUrl).toBeUndefined();
-    expect(calendar?.imageUrl).toMatch(/^data:image\/svg\+xml,/);
-    expect(calendar?.fallbackImageUrl).toBe(calendar?.imageUrl);
+    expect(calendar?.imageUrl).toMatch(/^data:image\/png/);
+    expect(calendar?.fallbackImageUrl).toMatch(/^data:image\/png/);
     expect(notes?.heroUrl).toBeUndefined();
-    expect(notes?.imageUrl).toMatch(/^data:image\/svg\+xml,/);
-    expect(notes?.fallbackImageUrl).toBe(notes?.imageUrl);
+    expect(notes?.imageUrl).toMatch(/^data:image\/png/);
+    expect(notes?.fallbackImageUrl).toMatch(/^data:image\/png/);
+  });
+});
+
+describe("viewToEntry uses bundled icons (native 404 fix)", () => {
+  it("uses the bundled preloaded icon, never the /api hero, when no real hero exists", () => {
+    const entry = viewToEntry(
+      makeView("calendar", {
+        label: "Calendar",
+        hasHeroImage: false,
+        heroImageUrl: "/api/views/calendar/hero",
+      }),
+    );
+    expect(entry.hasHero).toBe(true);
+    expect(entry.heroUrl).toBeUndefined();
+    expect(entry.imageUrl).toMatch(/^data:image\/png/);
+    expect(entry.imageUrl).not.toBe("/api/views/calendar/hero");
+  });
+
+  it("ALWAYS uses the bundled icon for a view, even when the agent reports a real hero (the /api path 404s on native)", () => {
+    const entry = viewToEntry(
+      makeView("notes", {
+        label: "Notes",
+        hasHeroImage: true,
+        heroImageUrl: "/api/views/notes/hero",
+      }),
+    );
+    expect(entry.hasHero).toBe(true);
+    expect(entry.heroUrl).toBeUndefined();
+    expect(entry.imageUrl).toMatch(/^data:image\/png/);
+    expect(entry.imageUrl).not.toBe("/api/views/notes/hero");
+    expect(entry.fallbackImageUrl).toMatch(/^data:image\/png/);
   });
 
   it("dedupes: a catalog app whose plugin is already a loaded view is not shown twice", () => {

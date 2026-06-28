@@ -235,11 +235,7 @@ const signAndSendHandler: LegacyRouteHandler = async (req, res, runtime) => {
       (runtime.getSetting("SOLANA_RPC_URL") as string | undefined) ??
       process.env.SOLANA_RPC_URL ??
       "https://api.mainnet-beta.solana.com";
-    const conn =
-      solanaService && typeof solanaService === "object" && "connection" in solanaService
-        ? ((solanaService as unknown as { connection: Connection }).connection ??
-          new Connection(rpcUrl, "confirmed"))
-        : new Connection(rpcUrl, "confirmed");
+    const conn = solanaService?.getConnection() ?? new Connection(rpcUrl, "confirmed");
 
     const sendOptions: SendOptions =
       body.sendOptions && typeof body.sendOptions === "object"

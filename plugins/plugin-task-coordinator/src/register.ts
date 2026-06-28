@@ -6,6 +6,8 @@ registerAppShellPage({
   id: "orchestrator",
   pluginId: "@elizaos/plugin-task-coordinator",
   label: "Orchestrator",
+  viewKind: "developer",
+  developerOnly: true,
   icon: "Layers",
   path: "/orchestrator",
   order: 70,

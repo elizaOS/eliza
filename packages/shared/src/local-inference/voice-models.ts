@@ -954,6 +954,19 @@ export function compareVoiceModelSemver(
   return 0;
 }
 
+/**
+ * The HuggingFace `resolve` URL for one GGUF asset of a voice-model version,
+ * pinned to that version's exact `hfRevision`. This is the canonical download
+ * URL the packaging-verification test and the runtime downloader both use, so
+ * the catalog stays the single source of truth for where bytes come from.
+ */
+export function voiceModelAssetUrl(
+  version: Pick<VoiceModelVersion, "hfRepo" | "hfRevision">,
+  asset: Pick<VoiceModelGgufAsset, "filename">,
+): string {
+  return `https://huggingface.co/${version.hfRepo}/resolve/${version.hfRevision}/${asset.filename}`;
+}
+
 /** Return all versions for a given model id, latest first. */
 export function versionsFor(
   id: VoiceModelId,

@@ -18,14 +18,17 @@ import {
   FileAudio,
   FileText,
   FileVideo,
+  FolderOpen,
   ImageIcon,
   Loader2,
   Share2,
   Trash2,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client, type StoredFile } from "../../api";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
   formatByteSize,
   formatRelativeTime,
@@ -37,8 +40,10 @@ import {
   filenameForMime,
   shareAttachment,
 } from "../../utils/download-share";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 /* ── mime → kind facets ───────────────────────────────────────────────── */
 
@@ -63,6 +68,16 @@ function kindForMime(mimeType: string): FileKind {
   if (mime.startsWith("audio/")) return "audio";
   if (mime.startsWith("video/")) return "video";
   return "document";
+}
+
+function agentSafeId(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "file"
+  );
 }
 
 function facetLabel(
@@ -97,6 +112,91 @@ function KindIcon({ kind }: { kind: FileKind }) {
   }
 }
 
+function FileFacetButton({
+  facet,
+  label,
+  count,
+  active,
+  onSelect,
+}: {
+  facet: FileFacet;
+  label: string;
+  count: number;
+  active: boolean;
+  onSelect: (facet: FileFacet) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `file-facet-${facet}`,
+    role: "toggle",
+    label: `Show ${label} files`,
+    group: "file-facets",
+    status: active ? "active" : "inactive",
+    description: "Filter the Files view by file type",
+    onActivate: () => onSelect(facet),
+  });
+
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      data-testid={`file-facet-${facet}`}
+      aria-pressed={active}
+      onClick={() => onSelect(facet)}
+      className={`rounded-full px-3 py-1 text-xs-tight font-semibold transition-colors ${
+        active
+          ? "bg-accent/15 text-accent"
+          : "text-muted hover:bg-surface hover:text-txt"
+      }`}
+    >
+      {label}
+      <span className="ml-1.5 text-muted/70">{count}</span>
+    </button>
+  );
+}
+
+function FileShareButton({
+  file,
+  fileAgentId,
+  t,
+  onShare,
+}: {
+  file: StoredFile;
+  fileAgentId: string;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+  onShare: (file: StoredFile) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `file-share-${fileAgentId}`,
+    role: "button",
+    label: `Share ${file.fileName}`,
+    group: "file-actions",
+    description:
+      "Share this stored file, falling back to download when native sharing is unavailable",
+    onActivate: () => onShare(file),
+  });
+
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      variant="outline"
+      size="sm"
+      className="rounded-sm"
+      data-testid="file-share"
+      aria-label={t("filesview.shareFile", {
+        name: file.fileName,
+        defaultValue: "Share {{name}}",
+      })}
+      onClick={() => onShare(file)}
+    >
+      <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
+      {t("filesview.share", { defaultValue: "Share" })}
+    </Button>
+  );
+}
+
 /* ── per-file card ────────────────────────────────────────────────────── */
 
 interface FileCardProps {
@@ -126,16 +226,34 @@ const FileCard = memo(function FileCard({
   const sizeLabel = formatByteSize(file.size);
   const dateLabel = formatRelativeTime(file.createdAt);
   const absoluteDate = new Date(file.createdAt).toISOString();
+  const fileAgentId = agentSafeId(file.fileName || file.hash);
+  const downloadControl = useAgentElement<HTMLButtonElement>({
+    id: `file-download-${fileAgentId}`,
+    role: "button",
+    label: `Download ${file.fileName}`,
+    group: "file-actions",
+    description: "Download this stored file",
+    onActivate: () => onDownload(file),
+  });
+  const deleteControl = useAgentElement<HTMLButtonElement>({
+    id: `file-delete-${fileAgentId}`,
+    role: "button",
+    label: `Delete ${file.fileName}`,
+    group: "file-actions",
+    status: deleting ? "deleting" : "ready",
+    description: "Delete this stored file after confirmation",
+    onActivate: () => onDelete(file),
+  });
 
   return (
     <li
-      className="flex flex-col gap-3 rounded-sm border border-border/55 bg-card p-3"
+      className="flex flex-col gap-3 rounded-sm p-3"
       data-testid="file-card"
       data-file-name={file.fileName}
       data-file-kind={kind}
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border/45 bg-surface">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-surface/60">
           {kind === "image" ? (
             <img
               src={previewUrl}
@@ -155,7 +273,7 @@ const FileCard = memo(function FileCard({
             {file.fileName}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
-            <span className="rounded-full border border-accent/30 bg-accent/12 px-2 py-0.5 text-accent-fg">
+            <span className="rounded-full px-2 py-0.5 text-accent">
               {kindLabel}
             </span>
             <span>{sizeLabel}</span>
@@ -168,6 +286,8 @@ const FileCard = memo(function FileCard({
 
       <div className="flex flex-wrap items-center gap-2">
         <Button
+          ref={downloadControl.ref}
+          {...downloadControl.agentProps}
           type="button"
           variant="outline"
           size="sm"
@@ -183,23 +303,16 @@ const FileCard = memo(function FileCard({
           {t("filesview.download", { defaultValue: "Download" })}
         </Button>
         {shareSupported ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="rounded-sm"
-            data-testid="file-share"
-            aria-label={t("filesview.shareFile", {
-              name: file.fileName,
-              defaultValue: "Share {{name}}",
-            })}
-            onClick={() => onShare(file)}
-          >
-            <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
-            {t("filesview.share", { defaultValue: "Share" })}
-          </Button>
+          <FileShareButton
+            file={file}
+            fileAgentId={fileAgentId}
+            t={t}
+            onShare={onShare}
+          />
         ) : null}
         <Button
+          ref={deleteControl.ref}
+          {...deleteControl.agentProps}
           type="button"
           variant="surfaceDestructive"
           size="sm"
@@ -227,14 +340,36 @@ const FileCard = memo(function FileCard({
 /* ── main view ────────────────────────────────────────────────────────── */
 
 export function FilesView() {
+  return (
+    <ShellViewAgentSurface viewId="files">
+      <FilesViewBody />
+    </ShellViewAgentSurface>
+  );
+}
+
+function FilesViewBody() {
   const { t } = useTranslation();
   const [files, setFiles] = useState<StoredFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [facet, setFacet] = useState<FileFacet>("all");
+  const [query, setQuery] = useState("");
   const [deletingName, setDeletingName] = useState<string | null>(null);
 
   const shareSupported = useMemo(() => canShareFiles(), []);
+
+  // The active view drives the one floating chat composer as its filter box:
+  // each keystroke flows in via onQuery, narrowing the grid by filename.
+  const chatBinding = useMemo(
+    () => ({
+      placeholder: t("filesview.searchPlaceholder", {
+        defaultValue: "Search files by name…",
+      }),
+      onQuery: setQuery,
+    }),
+    [t],
+  );
+  useRegisterViewChatBinding(chatBinding);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -269,13 +404,14 @@ export function FilesView() {
     return counts;
   }, [files]);
 
-  const filtered = useMemo(
-    () =>
-      facet === "all"
-        ? files
-        : files.filter((f) => kindForMime(f.mimeType) === facet),
-    [facet, files],
-  );
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return files.filter((f) => {
+      if (facet !== "all" && kindForMime(f.mimeType) !== facet) return false;
+      if (q && !f.fileName.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [facet, files, query]);
 
   const handleDownload = useCallback(async (file: StoredFile) => {
     const url = resolveAppAssetUrl(file.url);
@@ -286,6 +422,14 @@ export function FilesView() {
       // Download failed for this transport — nothing more we can do client-side.
     }
   }, []);
+  const retryControl = useAgentElement<HTMLButtonElement>({
+    id: "files-retry-load",
+    role: "button",
+    label: "Retry loading files",
+    group: "file-actions",
+    description: "Reload the Files view after a load error",
+    onActivate: () => void loadFiles(),
+  });
 
   const handleShare = useCallback(
     async (file: StoredFile) => {
@@ -354,22 +498,16 @@ export function FilesView() {
     >
       {FACETS.map((f) => {
         const active = facet === f;
+        const label = facetLabel(t, f);
         return (
-          <button
+          <FileFacetButton
             key={f}
-            type="button"
-            data-testid={`file-facet-${f}`}
-            aria-pressed={active}
-            onClick={() => setFacet(f)}
-            className={`rounded-full border px-3 py-1 text-xs-tight font-semibold transition-colors ${
-              active
-                ? "border-accent/40 bg-accent/15 text-accent-fg"
-                : "border-border/55 bg-card text-muted hover:bg-surface hover:text-txt"
-            }`}
-          >
-            {facetLabel(t, f)}
-            <span className="ml-1.5 text-muted/70">{facetCounts[f]}</span>
-          </button>
+            facet={f}
+            label={label}
+            count={facetCounts[f]}
+            active={active}
+            onSelect={setFacet}
+          />
         );
       })}
     </div>
@@ -382,29 +520,26 @@ export function FilesView() {
       aria-label={t("filesview.title", { defaultValue: "Files" })}
       aria-busy={loading}
     >
-      <div className="space-y-3">
-        <div>
-          <h1 className="text-lg font-semibold text-txt">
-            {t("filesview.title", { defaultValue: "Files" })}
-          </h1>
-          <p className="text-sm text-muted">
-            {t("filesview.subtitle", {
-              defaultValue:
-                "Every file saved by your agent, with download, share, and delete.",
-            })}
-          </p>
-        </div>
-        {facetBar}
-      </div>
+      {facetBar}
 
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         {error ? (
           <div
             role="alert"
-            className="flex items-center gap-2 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger"
+            className="flex flex-wrap items-center gap-3 text-sm text-danger"
           >
             <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
             <span>{error}</span>
+            <Button
+              ref={retryControl.ref}
+              {...retryControl.agentProps}
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={() => void loadFiles()}
+            >
+              {t("filesview.retry", { defaultValue: "Retry" })}
+            </Button>
           </div>
         ) : null}
 
@@ -417,15 +552,25 @@ export function FilesView() {
             {t("filesview.loading", { defaultValue: "Loading files…" })}
           </div>
         ) : files.length === 0 ? (
-          <PagePanel.Empty
-            variant="surface"
-            data-testid="files-empty"
-            title={t("filesview.emptyTitle", { defaultValue: "No files yet" })}
-            description={t("filesview.emptyDescription", {
-              defaultValue:
-                "Files saved by your agent — uploads, attachments, and generated media — will appear here.",
-            })}
-          />
+          <div className="flex flex-1 flex-col" data-testid="files-empty">
+            <ChatEmptyStateWithRecommendations
+              icon={FolderOpen}
+              title={t("filesview.emptyTitle", {
+                defaultValue: "No files yet",
+              })}
+              recommendations={[
+                t("filesview.recGenerate", {
+                  defaultValue: "Generate a file and save it to my files",
+                }),
+                t("filesview.recSaveChat", {
+                  defaultValue: "Save our conversation as a text document",
+                }),
+                t("filesview.recSample", {
+                  defaultValue: "Create a sample markdown note",
+                }),
+              ]}
+            />
+          </div>
         ) : filtered.length === 0 ? (
           <PagePanel.Empty
             variant="inset"
@@ -434,7 +579,7 @@ export function FilesView() {
               defaultValue: "No files match this filter",
             })}
             description={t("filesview.noMatchesDescription", {
-              defaultValue: "Try a different type filter.",
+              defaultValue: "Try a different type filter or search term.",
             })}
           />
         ) : (

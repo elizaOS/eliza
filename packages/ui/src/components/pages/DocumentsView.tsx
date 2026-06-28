@@ -36,7 +36,7 @@ import {
   maybeCompressDocumentUploadImage,
 } from "../../utils/documents-upload-image";
 import { formatByteSize } from "../../utils/format";
-import { ChatSearchHint } from "../composites/chat-search-hint";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
@@ -1157,7 +1157,7 @@ export function DocumentsView({
   );
 
   const documentContent = (
-    <div className="order-2 flex min-w-0 flex-1 lg:order-1">
+    <div className="order-2 flex min-w-0 flex-1 md:order-1">
       <DocumentViewer
         documentId={selectedDocId}
         onUpdated={() => {
@@ -1169,10 +1169,10 @@ export function DocumentsView({
 
   const selectorRail = (
     <div
-      className={`order-1 flex w-full shrink-0 flex-col gap-3 lg:order-2 ${
+      className={`order-1 flex w-full shrink-0 flex-col gap-3 md:order-2 ${
         useCompactSelectorRail
-          ? "lg:w-[18.5rem] xl:w-[20rem]"
-          : "lg:w-[22rem] xl:w-[24rem]"
+          ? "md:w-[16rem] lg:w-[18.5rem] xl:w-[20rem]"
+          : "md:w-[18rem] lg:w-[22rem] xl:w-[24rem]"
       }`}
     >
       <PagePanel
@@ -1195,27 +1195,7 @@ export function DocumentsView({
           useCompactSelectorRail ? "min-h-[14rem]" : "min-h-[18rem]"
         }`}
       >
-        <div className="mb-2 flex items-center justify-between gap-3 px-1">
-          <div className="min-w-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-            {isShowingSearchResults
-              ? t("documentsview.SearchResults", {
-                  defaultValue: "Search results",
-                })
-              : t("documentsview.Documents", { defaultValue: "Documents" })}
-          </div>
-          <div className="shrink-0 text-2xs text-muted">
-            {documents.length === 1
-              ? t("documentsview.DocumentCountOne", {
-                  defaultValue: "1 doc",
-                })
-              : t("documentsview.DocumentCountMany", {
-                  defaultValue: "{{count}} docs",
-                  count: documents.length,
-                })}
-          </div>
-        </div>
-        <ChatSearchHint noun="documents" query={searchQuery} className="px-1" />
-        <div className="mt-2">{scopeFilterStrip}</div>
+        <div className="px-1">{scopeFilterStrip}</div>
 
         <div className="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-0.5 py-0.5">
           {loading && !isShowingSearchResults && documents.length === 0 && (
@@ -1223,11 +1203,36 @@ export function DocumentsView({
           )}
 
           {!loading && !isShowingSearchResults && documents.length === 0 && (
-            <PagePanel.Empty
-              variant="inset"
-              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
-              description={t("documentsview.UploadFilesOrImpo")}
-              title={t("documentsview.NoDocumentsYet")}
+            <ChatEmptyStateWithRecommendations
+              icon={FileText}
+              title={t("documentsview.NoDocumentsYet", {
+                defaultValue: "No documents yet",
+              })}
+              recommendations={[
+                {
+                  label: t("documentsview.RecImportUrl", {
+                    defaultValue: "Import a document from a URL",
+                  }),
+                  prompt: t("documentsview.RecImportUrlPrompt", {
+                    defaultValue:
+                      "Import a document into my knowledge base from this URL: ",
+                  }),
+                },
+                {
+                  label: t("documentsview.RecCreateNote", {
+                    defaultValue: "Create a text note",
+                  }),
+                  prompt: t("documentsview.RecCreateNotePrompt", {
+                    defaultValue:
+                      "Create a text knowledge document for me to remember: ",
+                  }),
+                },
+                {
+                  label: t("documentsview.RecWhatToAdd", {
+                    defaultValue: "What should I add to Knowledge?",
+                  }),
+                },
+              ]}
             />
           )}
 
@@ -1289,12 +1294,7 @@ export function DocumentsView({
       variant="inset"
       className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none "
     >
-      <div className="flex flex-col gap-2 md:flex-row md:items-center">
-        <ChatSearchHint
-          noun="documents"
-          query={searchQuery}
-          className="min-w-0 flex-1"
-        />
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
         {fileInputId ? (
           <label
             htmlFor={fileInputId}
@@ -1356,7 +1356,9 @@ export function DocumentsView({
           className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none "
         >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          {t("documentsview.DocumentServiceIs")}
+          {t("documentsview.DocumentServiceIs", {
+            defaultValue: "Knowledge service is initializing...",
+          })}
         </PagePanel>
       )}
 
@@ -1389,7 +1391,7 @@ export function DocumentsView({
 
       {compactDocumentStrip}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
         {documentContent}
         {shouldRenderSelectorRail ? selectorRail : null}
       </div>
