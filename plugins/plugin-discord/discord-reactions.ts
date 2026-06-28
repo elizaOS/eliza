@@ -183,6 +183,11 @@ export async function handleReaction(
 				source: "discord",
 				inReplyTo,
 				channelType,
+				// `text` above truncates the reacted-to message to a 50-char display
+				// stub; preserve the full original so context-building feeds the
+				// planner the complete statement, not a fragment it back-rationalizes
+				// into a phantom task (#9874 item 2).
+				...(messageContent ? { reactedMessageText: messageContent } : {}),
 			},
 			metadata: {
 				accountId,
