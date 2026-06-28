@@ -368,35 +368,11 @@ export function makeDirectAppDeployRunner(args: {
   });
 }
 
-/**
- * WORKER factory — `pg`-free. `ensureTenantDb` runs `provisionDatabase` over a
- * `userDatabaseService` constructed WITHOUT a tenant-DB provisioning backend, so
- * it takes the shared-DB fallback (returns process.env.DATABASE_URL; no DDL, no
- * `pg`). Isolation in this mode is by app/agent UUID scoping in plugin-sql, not
- * by REVOKE-CONNECT. Use this in cloud-api (workerd) until tenant-DB DDL is moved
- * into the CONTAINER_PROVISION executor (then this factory enqueues instead).
- *
- * The injected `userDatabaseService` here is the bare singleton (no provisioning
- * backend) — passing it explicitly keeps the dependency visible and testable.
- */
-export function makeWorkerAppDeployRunner(args: {
-  userDatabaseService: UserDatabaseService;
-  jobsWriter: ContainerJobsWriter;
-  resolveImage?: AppDeployRunnerDeps["resolveImage"];
-  port?: number;
-}): DefaultAppDeployRunner {
-  return new DefaultAppDeployRunner({
-    ensureTenantDb: async (appId, appName) => {
-      const provisioned = await args.userDatabaseService.provisionDatabase(appId, appName);
-      if (!provisioned.success || !provisioned.connectionUri) {
-        throw new Error(
-          `ensureTenantDb (shared) failed for app ${appId}: ${provisioned.error ?? "no connection URI"}`,
-        );
-      }
-      return provisioned.connectionUri;
-    },
-    jobsWriter: args.jobsWriter,
-    resolveImage: args.resolveImage,
-    port: args.port,
-  });
-}
+// NOTE: there used to be a `makeWorkerAppDeployRunner` here — a `pg`-free factory
+// that ran `provisionDatabase` over a backend-less `UserDatabaseService`, taking
+// the shared-DB fallback (no `CREATE ROLE`/`REVOKE CONNECT`, isolation by UUID
+// only) while still being used for "isolated" apps. It had zero callers (the live
+// path enqueues an APP_DEPLOY job → the node daemon runs `makeNodeAppDeployRunner`
+// with real per-tenant DDL, and an unarmed daemon hard-fails). It was removed so
+// nobody can re-wire a silent isolation downgrade; `provisionDatabase` now also
+// fail-closes when no provisioning backend is wired.
