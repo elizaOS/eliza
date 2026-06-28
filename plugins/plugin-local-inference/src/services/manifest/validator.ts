@@ -26,6 +26,7 @@ import {
 	collectQwenAsrProvenanceBlockers,
 	QWEN_PROVENANCE_RE,
 } from "../asr-provenance";
+import { readBundleTextArchitectureBlockers } from "../text-provenance";
 import {
 	ELIZA_1_TOKENIZER_FAMILY,
 	ELIZA_1_TOKENIZER_VOCAB_SIZE,
@@ -67,7 +68,10 @@ export type ValidationResult = ValidationOk | ValidationErr;
  * `{ ok: false, errors }`. Truly exceptional cases (non-object input)
  * surface as Zod issues, not exceptions.
  */
-export function validateManifest(input: unknown): ValidationResult {
+export function validateManifest(
+	input: unknown,
+	opts?: { bundleRoot?: string },
+): ValidationResult {
 	const parsed = Eliza1ManifestSchema.safeParse(input);
 	if (!parsed.success) {
 		return {
@@ -81,6 +85,13 @@ export function validateManifest(input: unknown): ValidationResult {
 	const errors = collectContractErrors(parsed.data, {
 		allowVersionStaging: true,
 	});
+	// Ground-truth provenance: when the caller has the staged bundle on disk and
+	// the manifest claims a strict release, verify the text GGUF's architecture
+	// is actually Gemma-4. `lineage.text.base` (checked above) is operator-
+	// authored and can drift from the bytes shipped; the GGUF header cannot.
+	if (opts?.bundleRoot && isStrictReleaseManifest(parsed.data)) {
+		errors.push(...readBundleTextArchitectureBlockers(opts.bundleRoot));
+	}
 	if (errors.length > 0) {
 		return { ok: false, errors };
 	}
