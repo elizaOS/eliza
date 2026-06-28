@@ -3,10 +3,10 @@
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
-import { dbWrite } from "../db/helpers";
-import { organizations } from "../db/schemas/organizations";
-import { users } from "../db/schemas/users";
-import { apiKeysService } from "../lib/services/api-keys";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
+import { users } from "@elizaos/cloud-shared/db/schemas/users";
+import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
 
 type JsonObject = Record<string, unknown>;
 

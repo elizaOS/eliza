@@ -9,16 +9,16 @@ import { createElizaPlugin } from "@elizaos/agent";
 import { documentsPlugin } from "@elizaos/plugin-documents";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
-import { describeIf } from "../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../test/helpers/http";
+} from "../../../packages/test/helpers/http";
 import {
   isLiveTestEnabled,
   selectLiveProvider,
-} from "../../../test/helpers/live-provider";
+} from "../../../packages/test/helpers/live-provider";
 
 const envPath = path.resolve(
   import.meta.dirname,

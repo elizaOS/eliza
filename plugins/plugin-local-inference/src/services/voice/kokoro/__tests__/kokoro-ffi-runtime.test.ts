@@ -12,7 +12,7 @@ import { writeVoicePresetFileV2 } from "../../voice-preset-format";
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
-} from "../ffi-bindings";
+} from "../../ffi-bindings";
 import { KokoroFfiRuntime } from "../kokoro-ffi-runtime";
 import type { KokoroRuntimeInputs } from "../kokoro-runtime";
 import type { KokoroModelLayout, KokoroVoicePack } from "../types";
