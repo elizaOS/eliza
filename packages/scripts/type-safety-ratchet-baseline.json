@@ -1,6 +1,6 @@
 {
   "schema": "eliza_type_safety_ratchet_v1",
-  "updatedAt": "2026-06-28T20:25:32.713Z",
+  "updatedAt": "2026-06-28T21:05:00.000Z",
   "scope": {
     "trackedOnly": true,
     "enumeration": "git ls-files",
@@ -38,7 +38,7 @@
     ]
   },
   "limits": {
-    "asUnknownAs": 117,
+    "asUnknownAs": 118,
     "asAny": 0,
     "explicitAny": 126,
     "tsSuppress": 0,
