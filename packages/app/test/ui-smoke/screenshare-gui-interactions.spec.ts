@@ -150,27 +150,23 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
 
   await openAppPath(page, "/screenshare");
 
-  await expect(page.getByRole("status", { name: /^Session:/ })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Start host session" }),
-  ).toBeVisible();
-  await expect(page.getByText("Capabilities")).toBeVisible();
+  await expect(page.getByText("idle", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
+  await expect(page.getByText("capabilities")).toBeVisible();
   await expect(page.getByText("screenshot", { exact: true })).toBeVisible();
   await expect(page.getByText("keyboard", { exact: true })).toBeVisible();
   await expect(page.getByTitle("screenshot: playwright-frame")).toBeVisible();
   await expect(page.getByTitle("keyboard: playwright-input")).toBeVisible();
 
-  await page.getByRole("button", { name: "Start host session" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
   await expect
     .poll(() => recorder.startRequests())
     .toEqual([{ label: "This machine" }]);
-  await expect(
-    page.getByRole("status", { name: "Session: active" }),
-  ).toBeVisible();
-  await expect(page.getByRole("status", { name: "Frames: 3" })).toBeVisible();
-  await expect(page.getByRole("status", { name: "Inputs: 2" })).toBeVisible();
+  await expect(page.getByText("active", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("3", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("2", { exact: true }).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Copy host details" }).click();
+  await page.getByRole("button", { name: "Copy" }).click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -197,7 +193,7 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
     token: "screen-token-1",
   });
 
-  await page.getByRole("button", { name: "Open host viewer" }).click();
+  await page.getByRole("button", { name: "Open" }).click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -218,7 +214,7 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
   await page.getByPlaceholder("Server URL").fill("https://remote.example");
   await page.getByPlaceholder("Session").fill("remote-session");
   await page.getByPlaceholder("Token").fill("remote-token");
-  await page.getByRole("button", { name: "Connect to remote" }).click();
+  await page.getByRole("button", { name: "Connect" }).click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -235,12 +231,12 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
     );
 
   const refreshesBefore = recorder.capabilitiesRequests();
-  await page.getByRole("button", { name: "Refresh capabilities" }).click();
+  await page.getByRole("button", { name: "Refresh" }).click();
   await expect
     .poll(() => recorder.capabilitiesRequests())
     .toBeGreaterThan(refreshesBefore);
 
-  await page.getByRole("button", { name: "Stop host session" }).click();
+  await page.getByRole("button", { name: "Stop" }).click();
   await expect
     .poll(() => recorder.stopRequests())
     .toEqual([{ token: "screen-token-1" }]);

@@ -374,12 +374,14 @@ async function main() {
     log(`launching ${appId} on ${udid}`);
     simctl(["launch", udid, appId]);
     await sleep(1500);
-    tryRun("xcrun", [
-      "simctl",
-      "openurl",
-      udid,
-      `${urlScheme}://first-run/runtime/remote`,
-    ]);
+    if (has("--use-deeplink")) {
+      tryRun("xcrun", [
+        "simctl",
+        "openurl",
+        udid,
+        `${urlScheme}://first-run/runtime/remote`,
+      ]);
+    }
     takeScreenshot(udid, "fresh-onboarding");
     const result = await pollResult(udid, appId);
     const screenshot = takeScreenshot(udid, "home-landing");

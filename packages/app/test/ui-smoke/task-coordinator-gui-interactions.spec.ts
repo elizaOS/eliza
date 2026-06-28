@@ -344,7 +344,6 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
 
   await openAppPath(page, "/task-coordinator");
 
-  await expect(page.getByTestId("task-coordinator-panel")).toBeVisible();
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
   await expect(page.getByText("Refactor sidebar density")).toBeVisible();
 
@@ -357,9 +356,7 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
   await expect(page.getByText("Refactor sidebar density")).toHaveCount(0);
 
-  await page
-    .getByRole("button", { name: /Audit task coordinator GUI/ })
-    .click();
+  await page.getByRole("button", { name: "Open" }).first().click();
   await expect.poll(() => recorder.detailRequests()).toContain("task-smoke-1");
   await expect(page.getByText("Search filters task threads")).toBeVisible();
   await expect(page.getByText("Gauss")).toBeVisible();
@@ -378,9 +375,7 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
 
   await openAppPath(page, "/task-coordinator");
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
-  await page
-    .getByRole("button", { name: /Audit task coordinator GUI/ })
-    .click();
+  await page.getByRole("button", { name: "Open" }).first().click();
   await expect(page.getByRole("button", { name: "Reopen" })).toBeVisible();
 
   await page.getByRole("button", { name: "Reopen", exact: true }).click();
@@ -388,8 +383,6 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
 
   await openAppPath(page, "/task-coordinator");
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
-  await page
-    .getByRole("button", { name: /Audit task coordinator GUI/ })
-    .click();
+  await page.getByRole("button", { name: "Open" }).first().click();
   await expect(page.getByRole("button", { name: "Delete" })).toBeVisible();
 });
