@@ -43,6 +43,13 @@ export interface WakeNameMatchOptions {
 
 const NO_MATCH: WakeNameMatch = { matched: false, command: "", distance: 0 };
 
+/**
+ * Scripts that do not separate words with spaces (CJK ideographs, Japanese kana,
+ * Korean hangul). Names in these scripts use the substring match path.
+ */
+const NON_SEGMENTING =
+  /[\u3000-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/u;
+
 /** Optional words that may precede the name in a wake phrase. */
 const WAKE_PREFIXES = new Set([
   "hey",
@@ -55,15 +62,29 @@ const WAKE_PREFIXES = new Set([
   "hallo",
 ]);
 
-/** Lowercase, strip punctuation, collapse whitespace, drop accents. */
+/**
+ * Lowercase, fold Latin accents, strip punctuation/symbols, and collapse
+ * whitespace — while PRESERVING letters and digits of every script. Unicode-aware
+ * so a renamed character in any language (Cyrillic "Эльза", CJK "エリザ", Arabic
+ * "أليزا") survives normalization instead of being erased to "" (issue #9880).
+ * Latin behaviour is unchanged.
+ */
 export function normalizeForWake(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    text
+      .normalize("NFKD")
+      // Fold ONLY the Latin/Greek/Cyrillic accent block (é→e). This deliberately
+      // does not touch the Japanese voiced mark or Arabic harakat, which change
+      // meaning rather than decorate it.
+      .replace(/[̀-ͯ]/g, "")
+      // Recompose so a decomposed kana (サ + U+3099) rejoins into ザ instead of
+      // leaving a stray combining mark that the symbol-strip would delete.
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .replace(/\s+/gu, " ")
+      .trim()
+  );
 }
 
 function tokenize(text: string): string[] {
@@ -153,6 +174,21 @@ export function matchWakeName(
     if (hit) {
       const command = tokens.slice(hit.end).join(" ");
       return { matched: true, command, distance: hit.distance };
+    }
+  }
+
+  // Space-less scripts (CJK / kana / hangul) often glue the name to the rest of
+  // the utterance with no separator, so token matching can't isolate it. For
+  // those names, fall back to an exact substring search of the normalized
+  // transcript. Gated to non-segmenting scripts so it never loosens Latin
+  // matching (where it would create false positives like "al" inside "also").
+  const joinedName = nameTokens.join("");
+  if (NON_SEGMENTING.test(joinedName)) {
+    const haystack = tokens.join("");
+    const at = haystack.indexOf(joinedName);
+    if (at !== -1) {
+      const command = haystack.slice(at + joinedName.length).trim();
+      return { matched: true, command, distance: 0 };
     }
   }
   return NO_MATCH;

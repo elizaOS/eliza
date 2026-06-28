@@ -99,6 +99,36 @@ describe("matchWakeName", () => {
     ).toBe(true);
   });
 
+  it("works for non-Latin character names (Cyrillic / Arabic)", () => {
+    // Cyrillic — renamed character "Эльза".
+    expect(matchWakeName("привет эльза как дела", "Эльза").matched).toBe(true);
+    expect(matchWakeName("привет эльза как дела", "Эльза").command).toBe(
+      "как дела",
+    );
+    // Wrong name does not match.
+    expect(matchWakeName("привет эльза", "ада").matched).toBe(false);
+    // Arabic — diacritics (harakat) are normalized away.
+    expect(matchWakeName("مرحبا أليزا", "اليزا").matched).toBe(true);
+  });
+
+  it("works for space-less scripts via substring fallback (CJK / kana / hangul)", () => {
+    // Japanese: "へいエリザ、てんき" — name glued to prefix + trailing command.
+    const ja = matchWakeName("へいエリザ てんき", "エリザ");
+    expect(ja.matched).toBe(true);
+    // Korean hangul name.
+    expect(matchWakeName("안녕 엘리자 도와줘", "엘리자").matched).toBe(true);
+    // Chinese name as a bare token.
+    expect(matchWakeName("你好 爱丽莎 今天天气", "爱丽莎").matched).toBe(true);
+    // A different CJK name does not match.
+    expect(matchWakeName("你好 小明", "爱丽莎").matched).toBe(false);
+  });
+
+  it("normalizeForWake preserves non-Latin letters instead of erasing them", () => {
+    expect(normalizeForWake("Эльза")).toBe("эльза");
+    expect(normalizeForWake("エリザ")).toBe("エリザ");
+    expect(normalizeForWake("أَلِيزَا").length).toBeGreaterThan(0);
+  });
+
   it("isWakePhrase is a boolean wrapper", () => {
     expect(isWakePhrase("hey eliza", "eliza")).toBe(true);
     expect(isWakePhrase("nope", "eliza")).toBe(false);

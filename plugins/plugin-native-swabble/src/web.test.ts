@@ -131,6 +131,48 @@ describe("SwabbleWeb fallback", () => {
     );
   });
 
+  it.each([
+    {
+      lang: "ru-RU",
+      trigger: "эльза",
+      said: "эльза открой календарь",
+      command: "открой календарь",
+    },
+    {
+      lang: "ja-JP",
+      trigger: "エリザ",
+      said: "エリザ カレンダーを開いて",
+      command: "カレンダーを開いて",
+    },
+    {
+      lang: "ar-SA",
+      trigger: "أليزا",
+      said: "أليزا افتح التقويم",
+      command: "افتح التقويم",
+    },
+  ])("detects a non-Latin wake word and command ($lang)", async ({
+    lang,
+    trigger,
+    said,
+    command,
+  }) => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: [trigger], locale: lang } });
+    FakeRecognition.latest?.onresult?.(speechEvent(said));
+
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ wakeWord: trigger, command }),
+    );
+  });
+
   it("ignores malformed speech result payloads without emitting transcripts", async () => {
     setWindow({ SpeechRecognition: FakeRecognition });
     setNavigator({
