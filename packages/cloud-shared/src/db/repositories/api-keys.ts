@@ -5,6 +5,10 @@ import type { UserWithOrganization } from "./users";
 
 export type { ApiKey, NewApiKey };
 
+type ApiKeyWithRelationalUser = ApiKey & {
+  user: UserWithOrganization | null;
+};
+
 /**
  * Repository for API key database operations.
  *
@@ -92,7 +96,9 @@ export class ApiKeysRepository {
   async findActiveWithUserAndOrg(
     hash: string,
   ): Promise<{ apiKey: ApiKey; user: UserWithOrganization } | undefined> {
-    const load = (db: typeof dbRead) =>
+    const load = (
+      db: typeof dbRead,
+    ): Promise<ApiKeyWithRelationalUser | undefined> =>
       db.query.apiKeys.findFirst({
         where: and(eq(apiKeys.key_hash, hash), eq(apiKeys.is_active, true)),
         with: { user: { with: { organization: true } } },
@@ -111,10 +117,8 @@ export class ApiKeysRepository {
 
     const { user, ...apiKey } = row;
     return {
-      apiKey: apiKey as ApiKey,
-      // `user` already carries `organization` from the nested relational `with`,
-      // matching UserWithOrganization ({ ...User, organization: Organization | null }).
-      user: user as unknown as UserWithOrganization,
+      apiKey,
+      user,
     };
   }
 

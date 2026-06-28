@@ -152,7 +152,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node packages/app-core/scripts/ensure-shared-i18n-data.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --filter=@elizaos/contracts --filter=@elizaos/prompts --concurrency=1
+          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --filter=@elizaos/contracts --concurrency=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Prompts codegen writes generated source consumed by core/shared; run
+          # it outside Turbo so Windows prep does not build stale generated inputs.
+          bun run --cwd packages/prompts build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --concurrency=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
