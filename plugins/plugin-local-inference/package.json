@@ -46,6 +46,16 @@
 			"import": "./dist/routes/index.js",
 			"default": "./dist/routes/index.js"
 		},
+		"./local-inference-routes": {
+			"types": "./src/local-inference-routes.ts",
+			"eliza-source": {
+				"types": "./src/local-inference-routes.ts",
+				"import": "./src/local-inference-routes.ts",
+				"default": "./src/local-inference-routes.ts"
+			},
+			"import": "./dist/local-inference-routes.js",
+			"default": "./dist/local-inference-routes.js"
+		},
 		"./services": {
 			"types": "./src/services/index.ts",
 			"eliza-source": {
