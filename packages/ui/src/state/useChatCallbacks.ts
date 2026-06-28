@@ -92,6 +92,18 @@ function isPersistedGreetingMessage(message: ConversationMessage): boolean {
   );
 }
 
+function hasUserConversationMessage(messages: ConversationMessage[]): boolean {
+  return messages.some((message) => message.role === "user");
+}
+
+function isDraftOnlyConversationMessages(
+  messages: ConversationMessage[],
+): boolean {
+  if (hasUserConversationMessage(messages)) return false;
+  if (messages.length === 0) return true;
+  return messages.every(isPersistedGreetingMessage);
+}
+
 /** The subset of the API client the initial-conversation hydration needs.
  *  Injected (not the module singleton) so the policy below is unit-testable. */
 export type HydrateConversationClient = Pick<
@@ -112,6 +124,65 @@ export interface HydrateInitialConversationDeps {
   setActiveConversationId: (id: string | null) => void;
   setConversationMessages: (messages: ConversationMessage[]) => void;
   uiLanguage: string;
+}
+
+function conversationRecency(conversation: Conversation): number {
+  const updated = Date.parse(conversation.updatedAt);
+  return Number.isNaN(updated) ? 0 : updated;
+}
+
+async function resolveRestoredConversationWithMessages(
+  api: HydrateConversationClient,
+  conversations: Conversation[],
+): Promise<{
+  conversation: Conversation;
+  messages: ConversationMessage[];
+}> {
+  const savedConversationId = loadActiveConversationId();
+  const restoredConversation =
+    conversations.find(
+      (conversation) => conversation.id === savedConversationId,
+    ) ?? conversations[0];
+  let restoredMessages: ConversationMessage[] = [];
+  try {
+    restoredMessages = filterRenderableConversationMessages(
+      (await api.getConversationMessages(restoredConversation.id)).messages,
+    );
+  } catch {
+    return { conversation: restoredConversation, messages: [] };
+  }
+
+  if (
+    conversations.length <= 1 ||
+    !isDraftOnlyConversationMessages(restoredMessages)
+  ) {
+    return { conversation: restoredConversation, messages: restoredMessages };
+  }
+
+  // Scan most-recently-updated first so we restore the user's latest real chat,
+  // not the oldest. Sort defensively client-side instead of relying on the
+  // server's list ordering. Common case is a single extra fetch (the draft sits
+  // at index 0, the latest real chat next); the loop is bounded by the rare
+  // case where every conversation is a greeting-only draft.
+  const candidatesByRecencyDesc = [...conversations].sort(
+    (a, b) => conversationRecency(b) - conversationRecency(a),
+  );
+  for (const candidate of candidatesByRecencyDesc) {
+    if (candidate.id === restoredConversation.id) continue;
+    let candidateMessages: ConversationMessage[];
+    try {
+      candidateMessages = filterRenderableConversationMessages(
+        (await api.getConversationMessages(candidate.id)).messages,
+      );
+    } catch {
+      continue;
+    }
+    if (hasUserConversationMessage(candidateMessages)) {
+      return { conversation: candidate, messages: candidateMessages };
+    }
+  }
+
+  return { conversation: restoredConversation, messages: restoredMessages };
 }
 
 /**
@@ -157,11 +228,8 @@ export async function hydrateInitialConversation(
     }
     setConversations(conversations);
     if (conversations.length > 0) {
-      const savedConversationId = loadActiveConversationId();
-      const restoredConversation =
-        conversations.find(
-          (conversation) => conversation.id === savedConversationId,
-        ) ?? conversations[0];
+      const { conversation: restoredConversation, messages: nextMessages } =
+        await resolveRestoredConversationWithMessages(api, conversations);
       if (!isCurrentHydration()) {
         return null;
       }
@@ -172,13 +240,6 @@ export async function hydrateInitialConversation(
         conversationId: restoredConversation.id,
       });
       try {
-        const { messages } = await api.getConversationMessages(
-          restoredConversation.id,
-        );
-        if (!isCurrentHydration()) {
-          return null;
-        }
-        const nextMessages = filterRenderableConversationMessages(messages);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;
