@@ -213,7 +213,7 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       signalKinds: ["workflow", "activity"],
     },
     {
-      pluginId: "shopify-ui",
+      pluginId: "shopify",
       label: "Shopify",
       icon: "ShoppingBag",
       defaultWidget: "notifications",

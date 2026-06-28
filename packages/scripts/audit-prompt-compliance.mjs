@@ -58,7 +58,6 @@ const DESCRIPTION_COMPRESSED_ONLY = process.argv.includes(
 const COMPRESSED_DESCRIPTION_MAX_LENGTH = 160;
 const STRICT_COMPRESSED_SOURCE_ROOTS = [
   "plugins/plugin-calendly",
-  "plugins/plugin-roblox",
   "plugins/plugin-wallet/src/analytics/birdeye",
 ];
 const GENERATED_COMPRESSED_SOURCE_ROOTS = ["packages/core/src/generated"];

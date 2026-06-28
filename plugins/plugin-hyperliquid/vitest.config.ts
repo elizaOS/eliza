@@ -206,10 +206,6 @@ export default defineConfig({
       ),
       pluginAlias("plugin-registry"),
       pluginAlias(
-        "plugin-roblox",
-        path.join(repoRoot, "plugins/plugin-roblox/index.ts"),
-      ),
-      pluginAlias(
         "plugin-shell",
         path.join(repoRoot, "plugins/plugin-shell/index.ts"),
       ),

@@ -119,9 +119,6 @@
         "./packages/examples/app/electron/backend/dist/index.d.ts"
       ],
       "@elizaos/example-chat": ["./packages/examples/chat/dist/index.d.ts"],
-      "@elizaos/example-roblox-agent": [
-        "./packages/examples/roblox/dist/index.d.ts"
-      ],
       "@elizaos/example-a2a-server": [
         "./packages/examples/a2a/dist/index.d.ts"
       ],
@@ -258,7 +255,6 @@
       ],
       "@elizaos/plugin-feishu": ["./plugins/plugin-feishu/dist/index.d.ts"],
       "@elizaos/plugin-slack": ["./plugins/plugin-slack/dist/index.d.ts"],
-      "@elizaos/plugin-roblox": ["./plugins/plugin-roblox/dist/index.d.ts"],
       "@elizaos/plugin-instagram": [
         "./plugins/plugin-instagram/dist/index.d.ts"
       ],
