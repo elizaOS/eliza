@@ -50,6 +50,7 @@ export function LoadingScreen({
     (async () => {
       try {
         const response = await fetch(vrmUrl, { signal: controller.signal });
+        if (!isMounted) return;
         const contentLength = Number(
           response.headers.get("content-length") || 0,
         );
@@ -65,6 +66,7 @@ export function LoadingScreen({
 
         for (;;) {
           const { done, value } = await reader.read();
+          if (!isMounted) return;
           if (done) break;
           received += value.byteLength;
           if (!isMounted || controller.signal.aborted) return;

@@ -959,6 +959,10 @@ const NATIVE_PLUGIN_ALIAS_ENTRIES = CAPACITOR_PLUGIN_NAMES.map((name) => ({
 const CAPACITOR_BUILD_TARGET = process.env.ELIZA_CAPACITOR_BUILD_TARGET ?? "";
 const IS_CAPACITOR_MOBILE_BUILD =
   CAPACITOR_BUILD_TARGET === "ios" || CAPACITOR_BUILD_TARGET === "android";
+const USE_CORE_SOURCE_BROWSER_ENTRY =
+  IS_CAPACITOR_MOBILE_BUILD ||
+  process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1" ||
+  process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1";
 
 function appShellMetadataPlugin(): Plugin {
   const isIosStoreBuild =
@@ -1216,9 +1220,9 @@ function isElizaCoreBrowserDistId(id: string | undefined): boolean {
  * HMR on the runtime, which the renderer almost never edits.
  */
 function resolveElizaCoreBundlePath(): string {
-  // Mobile builds run Vite over the Capacitor app once per smoke target; use
-  // source here so esbuild never re-transforms a minified core browser bundle.
-  if (IS_CAPACITOR_MOBILE_BUILD) {
+  // Mobile and live-stack build-watch lanes run Vite over a freshly built app;
+  // use source there so esbuild never re-transforms the core browser bundle.
+  if (USE_CORE_SOURCE_BROWSER_ENTRY) {
     const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
     if (sourceBrowserEntry) return sourceBrowserEntry;
   }

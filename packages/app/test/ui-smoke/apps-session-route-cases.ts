@@ -247,6 +247,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     selector: '[data-testid="automations-shell"]',
     timeoutMs: 90_000,
   },
+  {
+    name: "background view",
+    path: "/background",
+    selector: 'button[aria-label="Upload a background image"]',
+    timeoutMs: 90_000,
+  },
 ];
 
 const managerVisibleViewTileCases = [
