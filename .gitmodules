@@ -67,7 +67,3 @@
 	path = upstreams/electrobun
 	url = https://github.com/elizaOS/electrobun.git
 	branch = develop
-[submodule "packages/steward"]
-	path = packages/steward
-	url = https://github.com/Steward-Fi/steward.git
-	branch = develop

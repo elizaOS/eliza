@@ -231,7 +231,6 @@
   "workspaces": [
     "packages/*",
     "!packages/feed",
-    "!packages/steward",
     "packages/benchmarks/lib",
     "packages/benchmarks/interrupt-bench",
     "packages/benchmarks/eliza-1",
