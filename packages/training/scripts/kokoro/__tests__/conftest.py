@@ -8,9 +8,8 @@ peft, librosa, onnx). They rely on:
   - `numpy` for the voice-bin shape check.
 
 Each test runs the script's `main()` function directly with argv, asserting
-file outputs. This matches the convention in
-`packages/training/scripts/test_distill_mtp_drafter.py` — drive a CLI by
-its own main() so coverage tracks the real entry point.
+file outputs — drive a CLI by its own `main()` so coverage tracks the real
+entry point.
 """
 
 from __future__ import annotations
