@@ -1944,7 +1944,18 @@ function makeEsToolkitCompatEsmPlugin(
 export default defineConfig({
   root: here,
   customLogger: viteLogger,
-  base: "./",
+  // Native shells (Electrobun `views://`, Capacitor `file://`) load assets
+  // relative to the HTML document, so they need a relative base — keep "./".
+  // The web bundle (`build:web` → Cloudflare Pages, served from an origin root)
+  // is an SPA whose client-side routes go several segments deep
+  // (e.g. /auth/cli-login, /app-auth/authorize, /payment/:id). With a relative
+  // base, `./assets/x.js` resolves against the route directory (→
+  // /auth/assets/x.js), which the SPA catch-all returns as index.html
+  // (text/html). The browser then rejects the stylesheet/module and the bundle
+  // never boots — the page hangs on a blank/loading shell. `build:web` sets
+  // ELIZA_WEB_ABSOLUTE_BASE=1 so the deployed SPA uses an absolute "/" base and
+  // every route depth resolves assets to /assets/… correctly.
+  base: process.env.ELIZA_WEB_ABSOLUTE_BASE === "1" ? "/" : "./",
   // Keep pre-bundle cache under the app dir (not node_modules/.vite) so Bun
   // installs don't fight Vite, and `bun run clean` / docs can target one path.
   // ELIZA_VITE_CACHE_DIR lets a parallel dev/measurement server use an isolated
