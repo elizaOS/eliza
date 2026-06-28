@@ -49,9 +49,11 @@ describe("resolveImageRef: build-from-repo-disabled guard", () => {
     const img = await resolveImageRef(buildOff, {
       ...baseApp,
       repoUrl: REPO,
-      metadata: { imageTag: "ghcr.io/u/myapp:v1" },
+      // Allowlisted first-party namespace (the image allowlist gate runs on the
+      // resolved image — see the gate describe block below).
+      metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
     });
-    expect(img).toBe("ghcr.io/u/myapp:v1");
+    expect(img).toBe("ghcr.io/elizaos/myapp:v1");
   });
 
   test("repo app + build on -> uses the built image", async () => {
@@ -65,5 +67,61 @@ describe("resolveImageRef: build-from-repo-disabled guard", () => {
   test("non-repo app still falls back to APP_DEFAULT_IMAGE (unchanged)", async () => {
     process.env.APP_DEFAULT_IMAGE = "ghcr.io/elizaos/app-default:smoke";
     expect(await resolveImageRef(buildOff, baseApp)).toBe("ghcr.io/elizaos/app-default:smoke");
+  });
+});
+
+// #9853 — an app deploy runs an image on our shared docker nodes, so the resolved
+// image is gated on the same allowlist the coding-container routes use. Empty
+// allowlist is fail-closed; the default allowlist covers the first-party GHCR
+// namespaces (so the default agent image / APP_DEFAULT_IMAGE pass unchanged).
+describe("resolveImageRef: image allowlist gate", () => {
+  const baseApp = { id: "app-1", name: "demo", metadata: {} as Record<string, unknown> };
+  const buildOff = { resolveImage: undefined } as unknown as AppDeployRunnerDeps;
+
+  afterEach(() => {
+    delete process.env.APP_DEFAULT_IMAGE;
+    delete process.env.CODING_CONTAINER_IMAGE_ALLOWLIST;
+  });
+
+  test("rejects an imageTag outside the default allowlist", async () => {
+    await expect(
+      resolveImageRef(buildOff, {
+        ...baseApp,
+        metadata: { imageTag: "docker.io/evil/pwn:latest" },
+      }),
+    ).rejects.toThrow(/is not permitted/);
+  });
+
+  test("allows an imageTag inside the default first-party allowlist", async () => {
+    const img = await resolveImageRef(buildOff, {
+      ...baseApp,
+      metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
+    });
+    expect(img).toBe("ghcr.io/elizaos/myapp:v1");
+  });
+
+  test("the default agent image passes the default allowlist", async () => {
+    process.env.APP_DEFAULT_IMAGE = "ghcr.io/elizaos/eliza:stable";
+    expect(await resolveImageRef(buildOff, baseApp)).toBe("ghcr.io/elizaos/eliza:stable");
+  });
+
+  test("a mis-set APP_DEFAULT_IMAGE outside the allowlist is rejected", async () => {
+    process.env.APP_DEFAULT_IMAGE = "docker.io/library/nginx:latest";
+    await expect(resolveImageRef(buildOff, baseApp)).rejects.toThrow(/is not permitted/);
+  });
+
+  test("honors an operator-narrowed allowlist (rejects an off-list image)", async () => {
+    process.env.CODING_CONTAINER_IMAGE_ALLOWLIST = "ghcr.io/onlyme/*";
+    await expect(
+      resolveImageRef(buildOff, {
+        ...baseApp,
+        metadata: { imageTag: "ghcr.io/elizaos/eliza:stable" },
+      }),
+    ).rejects.toThrow(/is not permitted/);
+    const img = await resolveImageRef(buildOff, {
+      ...baseApp,
+      metadata: { imageTag: "ghcr.io/onlyme/app:v1" },
+    });
+    expect(img).toBe("ghcr.io/onlyme/app:v1");
   });
 });
