@@ -365,10 +365,13 @@ def main() -> int:
                     help="Skip the Eliza-1 GGUF bundle stage.")
     ap.set_defaults(eliza1_bundle=None)  # None ⇒ auto (on iff the fork is found)
     ap.add_argument("--mtp-drafter", action="store_true",
-                    help="Also distill a MTP speculative-decode drafter for "
-                         "this tier (distill_mtp_drafter.py). Needs a GPU for "
-                         "a real run; uses --synthetic-smoke when --eval-mode "
-                         "smoke so the pipeline still validates on CPU.")
+                    help="REMOVED — passing this now hard-errors. In-repo MTP "
+                         "drafter distillation (scripts/distill_mtp_drafter.py) "
+                         "was deleted; release-grade distillation is H100/H200-"
+                         "gated and done out of band. Produce the drafter via "
+                         "the no-train convert + A/B runbook (plugins/plugin-"
+                         "local-inference/docs/gemma4-mtp-drafter-conversion.md) "
+                         "and stage it into the bundle's mtp/ dir.")
     ap.add_argument("--skip-throughput-bench", action="store_true",
                     help="Skip stage 6c (llama-bench tokens/sec on the produced "
                          "GGUFs — prefill + generation t/s, CUDA build if "
@@ -378,6 +381,17 @@ def main() -> int:
 
     if args.publish and not args.bundle_dir:
         raise SystemExit("--publish requires --bundle-dir")
+
+    if args.mtp_drafter:
+        raise SystemExit(
+            "--mtp-drafter is no longer supported: the in-repo drafter "
+            "distillation script (scripts/distill_mtp_drafter.py) was removed. "
+            "Release-grade MTP drafter distillation is H100/H200-gated and done "
+            "out of band. For the supported no-train path, convert the published "
+            "Gemma-4 MTP drafter and A/B it per "
+            "plugins/plugin-local-inference/docs/gemma4-mtp-drafter-conversion.md, "
+            "then stage the resulting drafter GGUF into the bundle's mtp/ dir."
+        )
 
     entry = registry_get(args.registry_key)
     if (
@@ -684,10 +698,12 @@ def main() -> int:
 
     # ───────────── stage 6b: Eliza-1-typed GGUF bundle ─────────────────
     # PolarQuant 4-bit weights packed via the fork's Q4_POLAR GGML type +
-    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + eliza1_manifest.json,
-    # optionally paired with a MTP drafter. optimize_for_eliza1.py is the
-    # canonical orchestrator (it re-runs polarquant→qjl→turboquant idempotently
-    # and then converts via the fork) — run_pipeline just delegates to it.
+    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + eliza1_manifest.json.
+    # The MTP drafter is produced out of band (no-train convert + A/B per
+    # plugins/plugin-local-inference/docs/gemma4-mtp-drafter-conversion.md) and
+    # staged into the bundle's mtp/ dir, not by this stage. optimize_for_eliza1.py
+    # is the canonical orchestrator (it re-runs polarquant→qjl→turboquant
+    # idempotently and then converts via the fork) — run_pipeline delegates to it.
     fork_dir = _resolve_eliza1_llama_cpp()
     want_bundle = args.eliza1_bundle if args.eliza1_bundle is not None else (fork_dir is not None)
     if want_bundle and not args.skip_quantize:
@@ -702,23 +718,6 @@ def main() -> int:
             summary["stages"]["eliza1_bundle"] = {"skipped": "no checkpoint"}
         else:
             opt_dir = ckpt_dir / "eliza1-optimized"
-            drafter_gguf: Path | None = None
-            if args.mtp_drafter:
-                mtp_dir = ckpt_dir / "mtp"
-                d_cmd = [
-                    "uv", "run", "--extra", "train", "python",
-                    "scripts/distill_mtp_drafter.py",
-                    "--tier", tier_id,
-                    "--target-checkpoint", str(finetuned_model),
-                    "--dataset", str(train_file),
-                    "--out-dir", str(mtp_dir),
-                ]
-                if args.eval_mode == "smoke":
-                    d_cmd.append("--synthetic-smoke")
-                rc = run(d_cmd, cwd=ROOT)
-                summary["stages"]["mtp_drafter"] = {"exit": rc, "output": str(mtp_dir)}
-                cand = mtp_dir / f"drafter-{tier_id}.gguf"
-                drafter_gguf = cand if cand.exists() else None
             o_cmd = [
                 "uv", "run", "--extra", "train", "python",
                 "scripts/optimize_for_eliza1.py",
@@ -729,8 +728,6 @@ def main() -> int:
                 "--calibration-samples", "128",
                 "--llama-cpp-dir", str(fork_dir),
             ]
-            if drafter_gguf is not None:
-                o_cmd += ["--drafter-repo", str(drafter_gguf)]
             if args.publish and getattr(entry, "eliza_repo_id", None):
                 o_cmd += ["--hf-repo", entry.eliza_repo_id]
             rc = run(o_cmd, cwd=ROOT)

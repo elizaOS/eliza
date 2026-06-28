@@ -539,8 +539,9 @@ def _write_target_meta(
                 "finalElizaWeights": True,
                 "architecture": None,
                 "architectureSource": (
-                    "not validated; run scripts/mtp/validate_drafter.py "
-                    "against the final target and drafter GGUFs before publish"
+                    "not validated; validate the target/drafter GGUF pair out "
+                    "of band before publish (see plugins/plugin-local-inference/"
+                    "docs/gemma4-mtp-drafter-conversion.md)"
                 ),
                 "targetCheckpointSha256": drafter_target_sha,
                 "matchesTargetCheckpoint": drafter_matches,
@@ -552,7 +553,8 @@ def _write_target_meta(
                         "key": "tokenizer.ggml.*",
                         "blockingReason": (
                             "target/drafter tokenizer metadata has not been "
-                            "validated by scripts/mtp/validate_drafter.py"
+                            "validated out of band (see plugins/plugin-local-"
+                            "inference/docs/gemma4-mtp-drafter-conversion.md)"
                         ),
                     }
                 ],
