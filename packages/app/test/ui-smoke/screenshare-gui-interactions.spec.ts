@@ -154,7 +154,7 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
   await expect(
     page.getByRole("button", { name: "Start host session" }),
   ).toBeVisible();
-  await expect(page.getByText("Capabilities")).toBeVisible();
+  await expect(page.getByText("Capabilities", { exact: true })).toBeVisible();
   await expect(page.getByText("screenshot", { exact: true })).toBeVisible();
   await expect(page.getByText("keyboard", { exact: true })).toBeVisible();
   await expect(page.getByText("playwright-frame")).toBeVisible();
