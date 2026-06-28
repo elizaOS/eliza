@@ -192,6 +192,69 @@ describe("executeContainerProvision", () => {
       else process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = prev;
     }
   });
+
+  test("#9853: marks deployed only after the public URL is reachable", async () => {
+    const prev = process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+    process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = "apps.elizacloud.ai";
+    try {
+      const { store } = fakeStore();
+      const { provider } = fakeProvider();
+      const probed: string[] = [];
+      const deployed: string[] = [];
+      await executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        {
+          provider,
+          store,
+          probeAppReachable: async (url) => {
+            probed.push(url);
+            return true;
+          },
+          markAppDeployed: async (appId) => {
+            deployed.push(appId);
+          },
+        },
+      );
+      expect(probed).toHaveLength(1);
+      expect(probed[0]).toContain("apps.elizacloud.ai");
+      expect(deployed).toEqual([ROW.appId]);
+    } finally {
+      if (prev === undefined) delete process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+      else process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = prev;
+    }
+  });
+
+  test("#9853: an unreachable public URL throws and never marks deployed", async () => {
+    const prev = process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+    process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = "apps.elizacloud.ai";
+    try {
+      const { events, store } = fakeStore();
+      const { provider } = fakeProvider();
+      const deployed: string[] = [];
+      await expect(
+        executeContainerProvision(
+          job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+          {
+            provider,
+            store,
+            // Container is live and routed, but the app never answers.
+            probeAppReachable: async () => false,
+            markAppDeployed: async (appId) => {
+              deployed.push(appId);
+            },
+          },
+        ),
+      ).rejects.toThrow("not HTTP-reachable");
+      // Deploy NOT reported as success...
+      expect(deployed).toEqual([]);
+      // ...but the live container stays `running`, never flipped to `error`.
+      expect(events.some((e) => e.op === "running")).toBe(true);
+      expect(events.some((e) => e.op === "error")).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+      else process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = prev;
+    }
+  });
 });
 
 describe("executeContainerDelete / restart / logs", () => {
