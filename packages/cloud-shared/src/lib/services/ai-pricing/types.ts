@@ -85,4 +85,14 @@ export type CandidatePreparedPricingEntry = {
 
 export const EXTERNAL_CACHE_TTL_MS = 15 * 60 * 1000;
 
+/**
+ * Shorter TTL used to NEGATIVE-cache a failed external-catalog fetch. Without it,
+ * a permanently-failing upstream (e.g. Cerebras retiring its public
+ * `/public/v1/models?format=openrouter` catalog → 404) is re-fetched on EVERY
+ * hot-path pricing lookup (measured 2x per chat request in prod), adding the
+ * failing fetch's variable latency to every turn. 5 min lets a recovered
+ * upstream be picked up again reasonably soon.
+ */
+export const NEGATIVE_EXTERNAL_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export const BITROUTER_MODELS_URL = "https://api.bitrouter.ai/v1/models?output_modalities=all";
