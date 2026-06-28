@@ -7,7 +7,11 @@ import type { PluginInfo } from "../../api";
 const appMock = vi.hoisted(() => ({
   value: {} as {
     handlePluginToggle: ReturnType<typeof vi.fn>;
+    handlePluginConfigSave: ReturnType<typeof vi.fn>;
     plugins: PluginInfo[];
+    elizaCloudConnected: boolean;
+    pluginSaving: Set<string>;
+    pluginSaveSuccess: Set<string>;
     t: (key: string, options?: { defaultValue?: string }) => string;
   },
 }));
@@ -63,7 +67,11 @@ describe("ConnectorsSection", () => {
   beforeEach(() => {
     appMock.value = {
       handlePluginToggle: vi.fn(async () => {}),
+      handlePluginConfigSave: vi.fn(async () => {}),
       plugins: [],
+      elizaCloudConnected: false,
+      pluginSaving: new Set<string>(),
+      pluginSaveSuccess: new Set<string>(),
       t: (_key, options) => options?.defaultValue ?? _key,
     };
   });
