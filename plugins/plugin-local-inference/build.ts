@@ -30,6 +30,7 @@ const result = await Bun.build({
 	// (oven-sh/bun#12734).
 	entrypoints: [
 		"./src/index.ts",
+		"./src/local-inference-routes.ts",
 		"./src/runtime/index.ts",
 		"./src/routes/index.ts",
 		"./src/services/index.ts",
@@ -55,6 +56,7 @@ console.log("📝 Generating TypeScript declarations...");
 // Override rootDir to src so declarations land directly in dist/ rather than nested under the monorepo rootDir
 await $`tsc --emitDeclarationOnly --declaration --declarationDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet();
 
+await import(new URL("./dist/local-inference-routes.js", import.meta.url).href);
 await import(new URL("./dist/voice-workbench.js", import.meta.url).href);
 
 console.log(
