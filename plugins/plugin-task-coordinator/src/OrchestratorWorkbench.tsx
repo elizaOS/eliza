@@ -29,7 +29,7 @@ import {
 } from "@elizaos/ui";
 // Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
 // browser barrel, which doesn't reliably re-export this newer component.
-import { ChatEmptyStateWithRecommendations } from "@elizaos/ui/components/composites/chat/ChatEmptyStateWithRecommendations";
+import { ChatEmptyStateWithRecommendations } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Select,
