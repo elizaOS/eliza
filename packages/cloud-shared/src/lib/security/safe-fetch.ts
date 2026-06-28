@@ -107,7 +107,7 @@ async function nodePinnedFetch(
       }
 
       const bodyless = method === "HEAD" || status === 204 || status === 205 || status === 304;
-      const body = bodyless ? null : (Readable.toWeb(res) as ReadableStream<Uint8Array>);
+      const body = bodyless ? null : (Readable.toWeb(res) as unknown as ReadableStream<Uint8Array>);
       resolve(new Response(body, { status, statusText: res.statusMessage, headers }));
     });
 
@@ -128,10 +128,11 @@ function writeRequestBody(
     req.end(body);
   } else if (body instanceof Uint8Array) {
     req.end(Buffer.from(body));
-  } else if (typeof (body as ReadableStream).getReader === "function") {
+  } else if (typeof (body as unknown as ReadableStream).getReader === "function") {
     // `body` is the DOM ReadableStream; Readable.fromWeb wants node:stream/web's.
-    // They are structurally identical at runtime — cast to the expected param type.
-    Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]).pipe(req);
+    // They are structurally identical at runtime — cast through `unknown` to the
+    // expected param type (the BodyInit union doesn't overlap the node type).
+    Readable.fromWeb(body as unknown as Parameters<typeof Readable.fromWeb>[0]).pipe(req);
   } else {
     req.end(String(body));
   }
